@@ -90,31 +90,73 @@ export function Chat(props: {
   } | null>(null);
   const [isAddingFriend, setIsAddingFriend] = createSignal(false);
   const [pendingRequests, setPendingRequests] = createSignal<PendingRequestItem[]>([]);
-  const [lastPreviews, setLastPreviews] = createSignal<Record<string, string>>({});
+
+  // Persist previews in localStorage to survive page reload
+  const previewStorageKey = `chatw_previews_${props.currentUserId}`;
+  const savedPreviews: Record<string, string> = (() => {
+    try { return JSON.parse(localStorage.getItem(previewStorageKey) || '{}'); } catch { return {}; }
+  })();
+  const [lastPreviews, setLastPreviews] = createSignal<Record<string, string>>(savedPreviews);
   const [unreadCounts, setUnreadCounts] = createSignal<Record<string, number>>({});
 
-  const totalUnreadCount = () => {
-    return Object.values(unreadCounts()).reduce((sum, c) => sum + c, 0);
+  // Wrap setLastPreviews to also persist to localStorage
+  const updatePreview = (partnerId: string, text: string) => {
+    setLastPreviews((prev) => {
+      const next = { ...prev, [partnerId]: text };
+      try { localStorage.setItem(previewStorageKey, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  const totalUnreadCount = () =>
+    Object.values(unreadCounts()).reduce((sum, c) => sum + c, 0);
+
+  // Unlock AudioContext on first user interaction so chime works without autoplay error
+  let audioCtx: AudioContext | null = null;
+  const unlockAudio = () => {
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      if (AC && !audioCtx) {
+        audioCtx = new AC();
+        // Resume so subsequent calls work immediately
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const playNotificationChime = () => {
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AC) return;
+      const ctx = audioCtx || new AC();
+      if (!audioCtx) audioCtx = ctx;
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => _chime(ctx));
+      } else {
+        _chime(ctx);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const _chime = (ctx: AudioContext) => {
+    try {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
-      osc.stop(ctx.currentTime + 0.22);
+      osc.stop(ctx.currentTime + 0.3);
     } catch {
-      // Audio autoplay policy fallback
+      // ignore
     }
   };
 
@@ -145,6 +187,9 @@ export function Chat(props: {
   onMount(async () => {
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', handleWindowResize);
+      // Unlock AudioContext on first interaction to bypass autoplay policy
+      document.addEventListener('click', unlockAudio, { once: true });
+      document.addEventListener('keydown', unlockAudio, { once: true });
     }
 
     const keys = await getUserKeys();
@@ -183,11 +228,9 @@ export function Chat(props: {
 
         // Determine if user is currently looking at this active conversation
         const active = activeFriend();
-        const isViewingActive =
-          active &&
-          active.id === partnerId &&
-          sidebarTab() === 'chats' &&
-          !isSettingsOpen();
+        // Message belongs to active conversation if activeFriend matches partner,
+        // regardless of which sidebar tab is open (messages are always appended)
+        const isForActiveFriend = active && active.id === partnerId;
 
         try {
           // Fetch or get sender peer keys for signature verification
@@ -210,10 +253,11 @@ export function Chat(props: {
             senderEcdsaKey: senderPeerKeys.ecdsaKey,
           });
 
-          // Update last message preview
-          setLastPreviews((prev) => ({ ...prev, [partnerId]: decrypted.text }));
+          // Always update preview for this partner
+          updatePreview(partnerId, decrypted.text);
 
-          if (isViewingActive) {
+          if (isForActiveFriend) {
+            // Append message to active conversation
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev;
               return [
@@ -231,8 +275,16 @@ export function Chat(props: {
               ];
             });
             scrollToBottom();
+            // Only count as unread if not actively viewing chat window
+            if (!isFromMe && (sidebarTab() !== 'chats' || isSettingsOpen())) {
+              setUnreadCounts((prev) => ({
+                ...prev,
+                [partnerId]: (prev[partnerId] || 0) + 1,
+              }));
+              playNotificationChime();
+            }
           } else {
-            // Not viewing this chat: mark as unread if received from partner
+            // Incoming from a different partner: mark unread and chime
             if (!isFromMe) {
               setUnreadCounts((prev) => ({
                 ...prev,
@@ -240,30 +292,10 @@ export function Chat(props: {
               }));
               playNotificationChime();
             }
-
-            // If activeFriend is this partner but settings was open or in friends tab, also append
-            if (active && active.id === partnerId) {
-              setMessages((prev) => {
-                if (prev.some((m) => m.id === msg.id)) return prev;
-                return [
-                  ...prev,
-                  {
-                    id: msg.id,
-                    seq: msg.seq,
-                    senderId: msg.sender_id,
-                    recipientId: msg.recipient_id,
-                    text: decrypted.text,
-                    createdAt: msg.created_at,
-                    isSelf: isFromMe,
-                    status: 'sent',
-                  },
-                ];
-              });
-            }
           }
         } catch {
           // Decryption failed or signature invalid
-          if (isViewingActive) {
+          if (isForActiveFriend) {
             setMessages((prev) => [
               ...prev,
               {
@@ -301,6 +333,8 @@ export function Chat(props: {
     onCleanup(() => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleWindowResize);
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
       }
       unsubscribe();
     });
@@ -442,7 +476,7 @@ export function Chat(props: {
       setMessages(decryptedList);
       if (decryptedList.length > 0) {
         const last = decryptedList[decryptedList.length - 1];
-        setLastPreviews((prev) => ({ ...prev, [friend.id]: last.text }));
+        updatePreview(friend.id, last.text);
       }
       scrollToBottom();
     } catch (err: any) {
@@ -609,7 +643,7 @@ export function Chat(props: {
         },
       ]);
 
-      setLastPreviews((prev) => ({ ...prev, [active.id]: text }));
+      updatePreview(active.id, text);
       scrollToBottom();
     } catch (err: any) {
       // On failure, display error message
