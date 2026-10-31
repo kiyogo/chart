@@ -172,7 +172,7 @@ export function Chat(props: {
   // Peer keys cache in memory
   const peerKeysCache = new Map<string, PeerKeys>();
 
-  let messagesEndRef: HTMLDivElement | undefined;
+  let messagesContainerRef: HTMLDivElement | undefined;
   let typingTimeout: any = null;
   let isCurrentlyTyping = false;
   let inputRef: HTMLInputElement | undefined;
@@ -362,12 +362,11 @@ export function Chat(props: {
     }
   };
 
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      if (messagesEndRef) {
-        messagesEndRef.scrollIntoView({ behavior: 'smooth' });
-      }
-    }, 50);
+  // Scroll to bottom of chat (column-reverse: scrollTop = 0 is the bottom)
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    if (messagesContainerRef) {
+      messagesContainerRef.scrollTo({ top: 0, behavior });
+    }
   };
 
   const reloadFriends = async () => {
@@ -478,7 +477,8 @@ export function Chat(props: {
         const last = decryptedList[decryptedList.length - 1];
         updatePreview(friend.id, last.text);
       }
-      scrollToBottom();
+      // Instant jump to bottom on first load (no animation)
+      scrollToBottom('instant');
     } catch (err: any) {
       // Failed to load
     }
@@ -1034,11 +1034,11 @@ export function Chat(props: {
                 </button>
               </header>
 
-              {/* Messages */}
-              <div class="chat-messages">
+              {/* Messages — column-reverse: newest at bottom, scroll up for older */}
+              <div class="chat-messages" ref={messagesContainerRef}>
                 <For
-                  each={messages()}
-                  fallback={<div class="empty-chat">Chưa có tin nhắn</div>}
+                  each={[...messages()].reverse()}
+                  fallback={<div class="empty-chat-inner">Chưa có tin nhắn</div>}
                 >
                   {(msg) => (
                     <div class={`message-row ${msg.isSelf ? 'sent' : 'received'}`}>
@@ -1054,7 +1054,6 @@ export function Chat(props: {
                     </div>
                   )}
                 </For>
-                <div ref={messagesEndRef} />
               </div>
 
               {/* Typing Indicator */}
