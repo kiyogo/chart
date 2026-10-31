@@ -461,7 +461,7 @@ input::placeholder {
   max-width: 100%;
   flex-shrink: 0;
   height: 100%;
-  background-color: var(--bg-primary);
+  background-color: #FFFFFF;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -473,7 +473,7 @@ input::placeholder {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: var(--bg-primary);
+  background-color: #FFFFFF;
   flex-shrink: 0;
 }
 
@@ -497,7 +497,7 @@ input::placeholder {
   text-align: center;
   gap: 8px;
   padding: 24px 20px;
-  background-color: var(--bg-secondary);
+  background-color: #FFFFFF;
   border-radius: var(--radius-lg);
 }
 
@@ -514,7 +514,8 @@ input::placeholder {
 }
 
 .partner-info-sidebar .settings-row {
-  background-color: var(--bg-secondary);
+  background-color: #FFFFFF;
+  border: 1px solid #ECEEF2;
 }
 
 .chat-header {
@@ -841,7 +842,7 @@ input::placeholder {
     width: 380px;
     max-width: 100%;
     z-index: 50;
-    background-color: var(--bg-primary);
+    background-color: #FFFFFF;
   }
 }
 
