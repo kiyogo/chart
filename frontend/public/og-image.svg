@@ -16,8 +16,10 @@
   <circle cx="600" cy="200" r="350" fill="url(#glow)" />
 
   <!-- Logo Group -->
-  <g transform="translate(540, 110)">
-    <path fill="#2563EB" d="M100 10H20C14.5 10 10 14.5 10 20v90l20-20h70c5.5 0 10-4.5 10-10V20c0-5.5-4.5-10-10-10z"/>
+  <g transform="translate(540, 90)">
+    <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
   </g>
 
   <!-- Typography -->
