@@ -3,8 +3,15 @@
 export function LogoIcon(props: { size?: number }) {
   const s = props.size || 24;
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <svg width={s} height={s} viewBox="0 0 48 48" fill="none">
+      <defs>
+        <linearGradient id="logoIconGrad" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#3B82F6" />
+          <stop offset="1" stop-color="#1D4ED8" />
+        </linearGradient>
+      </defs>
+      <path d="M24 4C12.954 4 4 12.059 4 22c0 4.29 1.666 8.232 4.474 11.272L6.16 41.52a1.2 1.2 0 0 0 1.56 1.56l8.348-2.385C18.674 41.487 21.27 42 24 42c11.046 0 20-8.059 20-18S35.046 4 24 4Z" fill="url(#logoIconGrad)" />
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M24 13c-4.142 0-7.5 3.358-7.5 7.5V23H15a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1.5v-2.5c0-4.142-3.358-7.5-7.5-7.5Zm-4.5 10v-2.5c0-2.485 2.015-4.5 4.5-4.5s4.5 2.015 4.5 4.5V23h-9Zm4.5 4.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" fill="#FFFFFF" />
     </svg>
   );
 }

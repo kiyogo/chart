@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js';
 import { api } from '../api/client';
+import { LogoIcon } from '../components/Icons';
 import { createAndStoreUserKeys, getUserKeys } from '../crypto/e2ee';
 
 export function SetName(props: { onNameSet: () => void }) {
@@ -53,6 +54,9 @@ export function SetName(props: { onNameSet: () => void }) {
   return (
     <div class="auth-container">
       <form class="auth-box" onSubmit={handleSubmit}>
+        <div class="auth-logo">
+          <LogoIcon size={44} />
+        </div>
         <h2 class="auth-title">Đặt tên của bạn</h2>
         <input
           type="text"

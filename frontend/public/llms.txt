@@ -1,0 +1,17 @@
+# chatw - End-to-End Encrypted Private Messenger
+
+> chatw is a minimalist, high-performance personal messaging application built with Rust (Axum) and SolidJS, featuring true zero-knowledge End-to-End Encryption (E2EE).
+
+## Architecture & Cryptography
+- Key Exchange: ECDH P-256 (NIST P-256) via Web Crypto API
+- Key Derivation: HKDF-SHA-256
+- Message Encryption: AES-256-GCM (12-byte IV, 16-byte authentication tag)
+- Digital Signatures: ECDSA P-256 with SHA-256
+- Local Key Storage: IndexedDB (non-extractable private keys)
+- Real-time Transport: WebSocket with heartbeat and automatic reconnect
+- Avatar Format: High-performance auto-compressed AVIF images
+
+## Source Code & Deployment
+- GitHub Repository: https://github.com/kiyogo/chart
+- Backend: Rust 1.85+, Axum 0.8, SQLx, PostgreSQL 16
+- Frontend: SolidJS, TypeScript, Vite, Pure CSS (zero-dependency)
