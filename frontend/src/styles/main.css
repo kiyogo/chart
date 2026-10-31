@@ -181,17 +181,21 @@ input::placeholder {
 .sidebar-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .icon-btn {
-  width: 34px;
-  height: 34px;
+  position: relative;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
+  background: transparent;
+  transition: all 120ms ease;
+  flex-shrink: 0;
 }
 
 .icon-btn:hover {
@@ -211,6 +215,33 @@ input::placeholder {
 .icon-btn.btn-danger:hover {
   background-color: #FCE8E6;
   color: var(--danger);
+}
+
+.tab-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  background-color: var(--msg-sent);
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 9999px;
+  border: 2px solid var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+.icon-btn.active .tab-badge,
+.icon-btn:hover .tab-badge {
+  border-color: var(--bg-hover);
 }
 
 /* Sidebar Panels */
@@ -300,6 +331,14 @@ input::placeholder {
   flex-direction: column;
 }
 
+.chat-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
 .chat-item-name {
   font-size: 14px;
   font-weight: 500;
@@ -309,22 +348,45 @@ input::placeholder {
   white-space: nowrap;
 }
 
+.chat-item-name.unread {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .chat-item-preview {
   font-size: 12px;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 220px;
+  max-width: 200px;
+}
+
+.chat-item-preview.unread {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.chat-item-badge {
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  background-color: var(--msg-sent);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .pending-badge {
-  font-size: 11px;
-  background-color: var(--msg-sent);
-  color: #FFFFFF;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-weight: 600;
+  display: none;
 }
 
 .request-card {

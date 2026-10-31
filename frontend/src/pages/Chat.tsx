@@ -91,6 +91,41 @@ export function Chat(props: {
   const [isAddingFriend, setIsAddingFriend] = createSignal(false);
   const [pendingRequests, setPendingRequests] = createSignal<PendingRequestItem[]>([]);
   const [lastPreviews, setLastPreviews] = createSignal<Record<string, string>>({});
+  const [unreadCounts, setUnreadCounts] = createSignal<Record<string, number>>({});
+
+  const totalUnreadCount = () => {
+    return Object.values(unreadCounts()).reduce((sum, c) => sum + c, 0);
+  };
+
+  const playNotificationChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.22);
+    } catch {
+      // Audio autoplay policy fallback
+    }
+  };
+
+  createEffect(() => {
+    const total = totalUnreadCount();
+    const reqs = pendingRequests().length;
+    const combined = total + reqs;
+    if (typeof document !== 'undefined') {
+      document.title = combined > 0 ? `(${combined}) chatw` : 'chatw';
+    }
+  });
 
   // Peer keys cache in memory
   const peerKeysCache = new Map<string, PeerKeys>();
@@ -128,11 +163,31 @@ export function Chat(props: {
         const keys = userKeys();
         if (!keys) return;
 
-        // Determine if message belongs to active conversation
+        const isFromMe = msg.sender_id === props.currentUserId;
+        const partnerId = isFromMe ? msg.recipient_id : msg.sender_id;
+
+        // Ensure partner is in friends list
+        if (!friends().some((f) => f.id === partnerId)) {
+          await reloadFriends();
+        }
+
+        // Bump partner to top of conversation list
+        setFriends((prev) => {
+          const idx = prev.findIndex((f) => f.id === partnerId);
+          if (idx > 0) {
+            const f = prev[idx];
+            return [f, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+          }
+          return prev;
+        });
+
+        // Determine if user is currently looking at this active conversation
         const active = activeFriend();
-        const isForActive =
+        const isViewingActive =
           active &&
-          (msg.sender_id === active.id || msg.recipient_id === active.id);
+          active.id === partnerId &&
+          sidebarTab() === 'chats' &&
+          !isSettingsOpen();
 
         try {
           // Fetch or get sender peer keys for signature verification
@@ -156,13 +211,9 @@ export function Chat(props: {
           });
 
           // Update last message preview
-          const partnerId =
-            msg.sender_id === props.currentUserId
-              ? msg.recipient_id
-              : msg.sender_id;
           setLastPreviews((prev) => ({ ...prev, [partnerId]: decrypted.text }));
 
-          if (isForActive) {
+          if (isViewingActive) {
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev;
               return [
@@ -174,16 +225,45 @@ export function Chat(props: {
                   recipientId: msg.recipient_id,
                   text: decrypted.text,
                   createdAt: msg.created_at,
-                  isSelf: msg.sender_id === props.currentUserId,
+                  isSelf: isFromMe,
                   status: 'sent',
                 },
               ];
             });
             scrollToBottom();
+          } else {
+            // Not viewing this chat: mark as unread if received from partner
+            if (!isFromMe) {
+              setUnreadCounts((prev) => ({
+                ...prev,
+                [partnerId]: (prev[partnerId] || 0) + 1,
+              }));
+              playNotificationChime();
+            }
+
+            // If activeFriend is this partner but settings was open or in friends tab, also append
+            if (active && active.id === partnerId) {
+              setMessages((prev) => {
+                if (prev.some((m) => m.id === msg.id)) return prev;
+                return [
+                  ...prev,
+                  {
+                    id: msg.id,
+                    seq: msg.seq,
+                    senderId: msg.sender_id,
+                    recipientId: msg.recipient_id,
+                    text: decrypted.text,
+                    createdAt: msg.created_at,
+                    isSelf: isFromMe,
+                    status: 'sent',
+                  },
+                ];
+              });
+            }
           }
         } catch {
           // Decryption failed or signature invalid
-          if (isForActive) {
+          if (isViewingActive) {
             setMessages((prev) => [
               ...prev,
               {
@@ -201,6 +281,7 @@ export function Chat(props: {
         }
       } else if (event.type === 'friend.request') {
         await reloadRequests();
+        playNotificationChime();
       } else if (event.type === 'friend.accepted') {
         await reloadFriends();
         await reloadRequests();
@@ -280,6 +361,14 @@ export function Chat(props: {
     setIsFriendTyping(false);
     setMessages([]);
     setPartnerFingerprint(null);
+
+    // Clear unread count for this friend
+    setUnreadCounts((prev) => {
+      if (!prev[friend.id]) return prev;
+      const next = { ...prev };
+      delete next[friend.id];
+      return next;
+    });
 
     // Auto-open on large screen if closed
     if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
@@ -583,31 +672,50 @@ export function Chat(props: {
           <div class="sidebar-actions">
             <button
               type="button"
-              class={`icon-btn ${sidebarTab() === 'chats' ? 'active' : ''}`}
-              onClick={() => setSidebarTab('chats')}
+              class={`icon-btn ${sidebarTab() === 'chats' && !isSettingsOpen() ? 'active' : ''}`}
+              onClick={() => {
+                setSidebarTab('chats');
+                setIsSettingsOpen(false);
+                const active = activeFriend();
+                if (active) {
+                  setUnreadCounts((prev) => {
+                    if (!prev[active.id]) return prev;
+                    const next = { ...prev };
+                    delete next[active.id];
+                    return next;
+                  });
+                }
+              }}
               aria-label="Danh sách chat"
             >
               <LogoIcon size={18} />
+              <Show when={totalUnreadCount() > 0}>
+                <span class="tab-badge">{totalUnreadCount() > 99 ? '99+' : totalUnreadCount()}</span>
+              </Show>
             </button>
             <button
               type="button"
-              class={`icon-btn ${sidebarTab() === 'friends' ? 'active' : ''}`}
+              class={`icon-btn ${sidebarTab() === 'friends' && !isSettingsOpen() ? 'active' : ''}`}
               onClick={() => {
                 setSidebarTab('friends');
+                setIsSettingsOpen(false);
               }}
               aria-label="Kết bạn"
             >
               <FriendsIcon />
-              {pendingRequests().length > 0 && (
-                <span class="pending-badge">{pendingRequests().length}</span>
-              )}
+              <Show when={pendingRequests().length > 0}>
+                <span class="tab-badge">{pendingRequests().length > 99 ? '99+' : pendingRequests().length}</span>
+              </Show>
             </button>
             <button
               type="button"
               class={`icon-btn ${isSettingsOpen() ? 'active' : ''}`}
               onClick={() => {
-                setIsSettingsOpen(!isSettingsOpen());
-                setActiveFriend(null);
+                const nextOpen = !isSettingsOpen();
+                setIsSettingsOpen(nextOpen);
+                if (nextOpen) {
+                  setActiveFriend(null);
+                }
               }}
               aria-label="Cài đặt"
             >
@@ -733,21 +841,33 @@ export function Chat(props: {
               each={friends()}
               fallback={<div class="empty-chat">Chưa có bạn bè nào</div>}
             >
-              {(friend) => (
-                <button
-                  type="button"
-                  class={`chat-item ${activeFriend()?.id === friend.id ? 'selected' : ''}`}
-                  onClick={() => selectFriend(friend)}
-                >
-                  <Avatar name={friend.username} avatarUrl={friend.avatar_url} size={38} />
-                  <div class="chat-item-info">
-                    <div class="chat-item-name">{friend.username}</div>
-                    <div class="chat-item-preview">
-                      {lastPreviews()[friend.id] || 'Bắt đầu trò chuyện'}
+              {(friend) => {
+                const unread = () => unreadCounts()[friend.id] || 0;
+                return (
+                  <button
+                    type="button"
+                    class={`chat-item ${activeFriend()?.id === friend.id ? 'selected' : ''}`}
+                    onClick={() => selectFriend(friend)}
+                  >
+                    <Avatar name={friend.username} avatarUrl={friend.avatar_url} size={38} />
+                    <div class="chat-item-info">
+                      <div class="chat-item-header">
+                        <span class={`chat-item-name ${unread() > 0 ? 'unread' : ''}`}>
+                          {friend.username}
+                        </span>
+                        <Show when={unread() > 0}>
+                          <span class="chat-item-badge">
+                            {unread() > 99 ? '99+' : unread()}
+                          </span>
+                        </Show>
+                      </div>
+                      <div class={`chat-item-preview ${unread() > 0 ? 'unread' : ''}`}>
+                        {lastPreviews()[friend.id] || 'Bắt đầu trò chuyện'}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              )}
+                  </button>
+                );
+              }}
             </For>
           </div>
         </Show>
