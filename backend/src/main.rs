@@ -124,7 +124,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 7b. CORS layer – allow Tauri desktop origins alongside the web origin
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
-        .allow_headers(AllowHeaders::any())
+        .allow_headers(AllowHeaders::list([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            header::ACCEPT,
+            header::ORIGIN,
+            header::COOKIE,
+        ]))
         .allow_credentials(true)
         .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
             let s = origin.to_str().unwrap_or("");
