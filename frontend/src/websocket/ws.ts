@@ -57,8 +57,18 @@ class WebSocketClient {
       return;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/ws`;
+    // In Tauri desktop mode, connect directly to the backend server.
+    // In web mode, use the current window host (proxied by Vite in dev, same-origin in prod).
+    let wsUrl: string;
+    if (typeof window !== 'undefined' && '__TAURI__' in window) {
+      const envBase = import.meta.env.VITE_API_BASE as string | undefined;
+      const httpBase = envBase ?? 'http://127.0.0.1:8081';
+      // Convert http(s) to ws(s)
+      wsUrl = httpBase.replace(/^http/, 'ws') + '/api/ws';
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsUrl = `${protocol}//${window.location.host}/api/ws`;
+    }
 
     try {
       this.ws = new WebSocket(wsUrl);

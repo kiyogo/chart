@@ -1,5 +1,25 @@
 // Typed HTTP API Client for chatw
 
+/**
+ * Detect the backend base URL.
+ * - In the browser (web app): use relative paths (proxied by Vite → backend).
+ * - In Tauri desktop app: the webview loads from a tauri:// origin so we need
+ *   an absolute URL. Read from VITE_API_BASE env var, or default to the
+ *   local backend port used in production.
+ */
+function getApiBase(): string {
+  // __TAURI__ is injected by Tauri at runtime when running as desktop app
+  if (typeof window !== 'undefined' && '__TAURI__' in window) {
+    // Allow overriding via env variable set at build time
+    const envBase = import.meta.env.VITE_API_BASE as string | undefined;
+    return envBase ?? 'http://127.0.0.1:8081';
+  }
+  // Web: use relative paths (Vite dev proxy or same-origin in prod)
+  return '';
+}
+
+const API_BASE = getApiBase();
+
 export interface MeResponse {
   id: string;
   username: string | null;
@@ -52,10 +72,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
   }
 
-  const res = await fetch(path, {
+  const url = API_BASE + path;
+  const res = await fetch(url, {
     ...options,
     headers,
-    credentials: 'same-origin',
+    credentials: 'include',
   });
 
   if (!res.ok) {

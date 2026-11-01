@@ -1,12 +1,13 @@
 use axum::{
     Router,
-    http::{HeaderValue, StatusCode, header},
+    http::{HeaderValue, Method, StatusCode, header},
     middleware::{Next, from_fn},
     response::Response,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 use tower_http::{
+    cors::{AllowHeaders, AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
     timeout::TimeoutLayer,
 };
@@ -120,8 +121,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(dir = ?static_dir, "serving static frontend assets");
     }
 
+    // 7b. CORS layer – allow Tauri desktop origins alongside the web origin
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+        .allow_headers(AllowHeaders::any())
+        .allow_credentials(true)
+        .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
+            let s = origin.to_str().unwrap_or("");
+            // Allow same-origin web app, Tauri desktop schemes (Windows/Linux/macOS)
+            s.starts_with("http://localhost")
+                || s.starts_with("http://127.0.0.1")
+                || s == "tauri://localhost"
+                || s.starts_with("https://tauri.localhost")
+                || s.starts_with("http://tauri.localhost")
+        }));
+
     let app = app
         .layer(from_fn(security_headers_middleware))
+        .layer(cors)
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(15),
