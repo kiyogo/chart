@@ -15,7 +15,8 @@ export default defineConfig({
   clearScreen: false,
 
   server: {
-    port: 3000,
+    host: '127.0.0.1',
+    port: 1420,
     // Tauri expects a fixed port; fail if it's not available
     strictPort: true,
     proxy: {
@@ -31,12 +32,7 @@ export default defineConfig({
   envPrefix: ['VITE_', 'TAURI_'],
 
   build: {
-    // Tauri supports modern browsers; no need to transpile to ES5
-    target: isTauri ? ['es2021', 'chrome105', 'safari15'] : 'esnext',
-    // Don't minify for debug builds
-    minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
-    // Produce source maps for debug builds
-    sourcemap: !!process.env.TAURI_DEBUG,
+    target: 'esnext',
     outDir: 'dist',
     emptyOutDir: true,
   },
