@@ -13,6 +13,5 @@ start "chatw-backend" cmd /k "cd /d %~dp0backend && cargo run"
 
 timeout /t 3 /nobreak >nul
 
-echo 3. Launching Desktop App...
-cd /d "%~dp0frontend"
-npm run tauri:dev
+echo 3. Launching Standalone Desktop App...
+start "" "%~dp0dist-desktop\chatw.exe"

@@ -62,7 +62,7 @@ class WebSocketClient {
     let wsUrl: string;
     if (typeof window !== 'undefined' && '__TAURI__' in window) {
       const envBase = import.meta.env.VITE_API_BASE as string | undefined;
-      const httpBase = envBase ?? 'http://127.0.0.1:8081';
+      const httpBase = envBase ?? 'http://127.0.0.1:8082';
       // Convert http(s) to ws(s)
       wsUrl = httpBase.replace(/^http/, 'ws') + '/api/ws';
     } else {

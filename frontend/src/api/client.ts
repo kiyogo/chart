@@ -12,7 +12,7 @@ function getApiBase(): string {
   if (typeof window !== 'undefined' && '__TAURI__' in window) {
     // Allow overriding via env variable set at build time
     const envBase = import.meta.env.VITE_API_BASE as string | undefined;
-    return envBase ?? 'http://127.0.0.1:8081';
+    return envBase ?? 'http://127.0.0.1:8082';
   }
   // Web: use relative paths (Vite dev proxy or same-origin in prod)
   return '';

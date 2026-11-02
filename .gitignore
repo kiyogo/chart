@@ -12,4 +12,5 @@ playwright-report/
 # Tauri desktop build outputs
 frontend/src-tauri/target/
 frontend/src-tauri/gen/
+dist-desktop/
 
