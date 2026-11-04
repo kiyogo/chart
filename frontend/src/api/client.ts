@@ -7,18 +7,34 @@
  *   an absolute URL. Read from VITE_API_BASE env var, or default to the
  *   local backend port used in production.
  */
-function getApiBase(): string {
-  // __TAURI__ is injected by Tauri at runtime when running as desktop app
-  if (typeof window !== 'undefined' && '__TAURI__' in window) {
-    // Allow overriding via env variable set at build time
-    const envBase = import.meta.env.VITE_API_BASE as string | undefined;
-    return envBase ?? 'http://127.0.0.1:8082';
-  }
-  // Web: use relative paths (Vite dev proxy or same-origin in prod)
-  return '';
+/** True when running inside the Tauri desktop shell (bundled or navigated to the backend). */
+export function isTauri(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
+  );
 }
 
-const API_BASE = getApiBase();
+/**
+ * True when the page is served from the bundled Tauri asset origin
+ * (`tauri://localhost` on macOS/Linux, `http://tauri.localhost` on Windows).
+ * Relative `/api` URLs do not exist there, which caused the blank-screen login bug.
+ */
+export function isBundledTauriOrigin(): boolean {
+  if (typeof window === 'undefined') return false;
+  const { protocol, hostname } = window.location;
+  return protocol === 'tauri:' || hostname === 'tauri.localhost';
+}
+
+/** Backend origin used by the desktop app. Must match the backend PUBLIC_URL so cookies stay first-party. */
+export const DESKTOP_BACKEND_ORIGIN =
+  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8082';
+
+export function getApiBase(): string {
+  return isBundledTauriOrigin() ? DESKTOP_BACKEND_ORIGIN : '';
+}
+
+export const API_BASE = getApiBase();
 
 export interface MeResponse {
   id: string;
@@ -104,7 +120,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   auth: {
     me: () => request<MeResponse>('/api/auth/me'),
+    providers: () => request<{ google: boolean; dev: boolean }>('/api/auth/providers'),
     logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
+    devLogin: (username?: string) =>
+      request<{ success: boolean; user_id?: string }>('/api/auth/dev-login', {
+        method: 'POST',
+        body: JSON.stringify({ username }),
+      }),
   },
   users: {
     setName: (name: string) =>

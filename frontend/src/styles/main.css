@@ -130,12 +130,79 @@ input::placeholder {
   font-weight: 500;
 }
 
+.auth-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: -12px;
+}
+
+.auth-btn-primary:disabled,
+.auth-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .auth-btn-secondary {
   padding: 10px 16px;
   background-color: var(--bg-secondary);
   color: var(--text-primary);
   border-radius: var(--radius-md);
   font-weight: 500;
+  border: 1px solid #E5E7EB;
+}
+
+.auth-btn-secondary:hover {
+  background-color: var(--bg-hover);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 4px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.auth-divider span {
+  padding: 0 10px;
+}
+
+.auth-dev-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #E5E7EB;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: border-color 150ms ease;
+}
+
+.auth-input:focus {
+  border-color: var(--msg-sent);
+}
+
+.auth-error {
+  font-size: 13px;
+  color: var(--danger);
+  background-color: #FEF2F2;
+  border: 1px solid #FEE2E2;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
 }
 
 .error-text {
@@ -144,11 +211,94 @@ input::placeholder {
   margin-top: 4px;
 }
 
+/* Custom Windows Titlebar (Image 2 style) */
+.custom-titlebar {
+  height: 32px;
+  background-color: #18181B;
+  color: #E4E4E7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 500;
+  width: 100%;
+  flex-shrink: 0;
+  border-bottom: 1px solid #27272A;
+  z-index: 9999;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  height: 100%;
+}
+
+.titlebar-icon {
+  display: flex;
+  align-items: center;
+  color: #3B82F6;
+}
+
+.titlebar-text {
+  font-size: 12px;
+  color: #A1A1AA;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.titlebar-spacer {
+  flex: 1;
+  height: 100%;
+}
+
+.titlebar-controls {
+  display: flex;
+  height: 100%;
+}
+
+.titlebar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  background: transparent;
+  color: #D4D4D8;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.titlebar-btn:hover {
+  background-color: #27272A;
+  color: #FFFFFF;
+}
+
+.titlebar-btn-close:hover {
+  background-color: #E81123 !important;
+  color: #FFFFFF !important;
+}
+
 /* App Main Layout */
 .app-layout {
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
+  overflow: hidden;
+}
+
+.app-content {
+  flex: 1;
+  display: flex;
+  width: 100%;
+  height: calc(100% - 32px);
+  overflow: hidden;
+  position: relative;
 }
 
 /* Left Sidebar */

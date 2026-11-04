@@ -38,6 +38,8 @@ fn create_test_config() -> Config {
         uploads_dir: std::env::temp_dir().join("chatw_test_uploads"),
         max_ws_connections: 100,
         trust_proxy: false,
+        dev_login_enabled: false,
+        google_configured: false,
     }
 }
 

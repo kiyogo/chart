@@ -18,6 +18,10 @@ pub struct Config {
     pub uploads_dir: PathBuf,
     pub max_ws_connections: usize,
     pub trust_proxy: bool,
+    /// Local-only passwordless login for development. Never enabled on non-loopback origins.
+    pub dev_login_enabled: bool,
+    /// False when Google credentials are placeholders, so the UI can avoid a dead-end redirect.
+    pub google_configured: bool,
 }
 
 fn var(name: &str) -> Result<String, String> {
@@ -99,12 +103,25 @@ impl Config {
             PathBuf::from("uploads")
         };
 
+        let is_loopback_origin = ["http://localhost", "http://127.0.0.1"]
+            .iter()
+            .any(|p| public_origin == *p || public_origin.starts_with(&format!("{p}:")));
+        let dev_login_requested: bool = parse("DEV_LOGIN", "false")?;
+        if dev_login_requested && !is_loopback_origin {
+            return Err("DEV_LOGIN=true is only allowed when PUBLIC_URL is a loopback origin".into());
+        }
+
+        let google_client_id = var("GOOGLE_CLIENT_ID")?;
+        let google_configured = google_client_id.ends_with(".apps.googleusercontent.com")
+            && !google_client_id.starts_with("dev-")
+            && !google_client_id.starts_with("your-");
+
         Ok(Self {
             database_url: var("DATABASE_URL")?,
             db_max_connections: parse("DB_MAX_CONNECTIONS", "10")?,
             bind_addr: parse("BIND_ADDR", "127.0.0.1:8080")?,
             public_origin,
-            google_client_id: var("GOOGLE_CLIENT_ID")?,
+            google_client_id,
             google_client_secret: var("GOOGLE_CLIENT_SECRET")?,
             google_redirect_url,
             session_secret,
@@ -114,6 +131,8 @@ impl Config {
             uploads_dir,
             max_ws_connections: parse("MAX_WS_CONNECTIONS", "5000")?,
             trust_proxy: parse("TRUST_PROXY", "false")?,
+            dev_login_enabled: dev_login_requested,
+            google_configured,
         })
     }
 

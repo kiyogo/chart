@@ -43,12 +43,32 @@ pub struct MeResponse {
     pub has_keys: bool,
 }
 
+#[derive(serde::Deserialize)]
+pub struct DevLoginRequest {
+    pub username: Option<String>,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/google", get(handle_google_login))
         .route("/google/callback", get(handle_google_callback))
+        .route("/dev-login", post(handle_dev_login))
+        .route("/providers", get(handle_providers))
         .route("/me", get(handle_me))
         .route("/logout", post(handle_logout))
+}
+
+#[derive(Serialize)]
+pub struct ProvidersResponse {
+    pub google: bool,
+    pub dev: bool,
+}
+
+async fn handle_providers(State(state): State<AppState>) -> Json<ProvidersResponse> {
+    Json(ProvidersResponse {
+        google: state.config.google_configured,
+        dev: state.config.dev_login_enabled,
+    })
 }
 
 async fn handle_google_login(State(state): State<AppState>) -> AppResult<Response> {
@@ -195,5 +215,54 @@ async fn handle_logout(State(state): State<AppState>, headers: HeaderMap) -> App
         header::SET_COOKIE,
         clear_cookie.parse().map_err(|_| AppError::Internal)?,
     );
+    Ok(response)
+}
+
+async fn handle_dev_login(
+    State(state): State<AppState>,
+    body: Option<Json<DevLoginRequest>>,
+) -> AppResult<Response> {
+    if !state.config.dev_login_enabled {
+        return Err(AppError::NotFound("not_found"));
+    }
+
+    let username = body
+        .and_then(|b| b.0.username)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let sub = match &username {
+        Some(u) => format!("dev_{}", u.to_lowercase()),
+        None => format!("dev_user_{}", Uuid::new_v4().simple()),
+    };
+
+    let mut tx = state.db.begin().await?;
+    let existing = sqlx::query!("SELECT id FROM users WHERE google_sub = $1", sub)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+    let user_id = match existing {
+        Some(row) => row.id,
+        None => {
+            let new_id = Uuid::new_v4();
+            sqlx::query!(
+                "INSERT INTO users (id, google_sub, username, username_norm) VALUES ($1, $2, NULL, NULL)",
+                new_id,
+                sub
+            )
+            .execute(&mut *tx)
+            .await?;
+            new_id
+        }
+    };
+    tx.commit().await?;
+
+    let session_cookie = create_session(&state.db, &state.config, user_id).await?;
+    let mut response = StatusCode::OK.into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        session_cookie.parse().map_err(|_| AppError::Internal)?,
+    );
+
     Ok(response)
 }
