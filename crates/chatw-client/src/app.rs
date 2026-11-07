@@ -145,6 +145,45 @@ impl ChatApp {
         });
     }
 
+    fn trigger_google_login(&self, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx = self.tx_gui.clone();
+        let ctx = ctx.clone();
+
+        self.runtime.spawn(async move {
+            let ticket_res = http.create_oauth_ticket().await;
+            match ticket_res {
+                Ok(ticket) => {
+                    let auth_url = format!("{}/api/auth/google?ticket={}", http.base_url, ticket);
+                    let _ = std::process::Command::new("cmd")
+                        .args(["/C", "start", &auth_url])
+                        .spawn();
+
+                    let mut found_token = None;
+                    for _ in 0..180 {
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        if let Ok(Some(token)) = http.check_oauth_ticket(ticket).await {
+                            found_token = Some(token);
+                            break;
+                        }
+                    }
+
+                    if let Some(token) = found_token {
+                        http.set_session_token(&token);
+                        let me_res = http.get_me().await;
+                        let _ = tx.send(GuiEvent::DevLoginResult(me_res));
+                    } else {
+                        let _ = tx.send(GuiEvent::DevLoginResult(Err("Hết thời gian chờ đăng nhập Google".into())));
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(GuiEvent::DevLoginResult(Err(format!("Lỗi kết nối máy chủ: {e}"))));
+                }
+            }
+            ctx.request_repaint();
+        });
+    }
+
     fn trigger_dev_login(&self, username: String, ctx: &egui::Context) {
         let http = self.http.clone();
         let tx = self.tx_gui.clone();
@@ -554,10 +593,9 @@ impl eframe::App for ChatApp {
                         if let Some(action) = login_view.show(ui) {
                             match action {
                                 LoginAction::GoogleLogin => {
-                                    // Open browser to Google OAuth route
-                                    let _ = std::process::Command::new("cmd")
-                                        .args(["/C", "start", "http://127.0.0.1:8082/api/auth/google"])
-                                        .spawn();
+                                    login_view.is_loading = true;
+                                    login_view.error_msg = None;
+                                    self.trigger_google_login(ctx);
                                 }
                                 LoginAction::DevLogin(username) => {
                                     login_view.is_loading = true;

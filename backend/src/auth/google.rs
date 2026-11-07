@@ -14,6 +14,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jw
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -27,6 +28,8 @@ pub struct OAuthStatePayload {
     pub nonce: String,
     pub code_verifier: String,
     pub exp: i64,
+    #[serde(default)]
+    pub ticket: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -120,7 +123,7 @@ pub fn verify_oauth_cookie(secret: &[u8], cookie_val: &str) -> Option<OAuthState
 }
 
 /// GET /api/auth/google
-pub async fn google_login_handler(config: &Config) -> AppResult<Response> {
+pub async fn google_login_handler(config: &Config, ticket: Option<Uuid>) -> AppResult<Response> {
     let state = generate_random_token();
     let nonce = generate_random_token();
     let (code_verifier, code_challenge) = generate_pkce();
@@ -130,6 +133,7 @@ pub async fn google_login_handler(config: &Config) -> AppResult<Response> {
         nonce: nonce.clone(),
         code_verifier,
         exp: Utc::now().timestamp() + 600, // 10 minutes
+        ticket,
     };
 
     let cookie_val = sign_oauth_cookie(&config.session_secret, &oauth_payload);

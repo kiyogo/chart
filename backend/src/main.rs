@@ -81,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 5. Initialize shared state
     let ws_hub = Arc::new(WsHub::new(config.max_ws_connections));
     let jwks_cache = Arc::new(tokio::sync::RwLock::new(GoogleJwksCache::new()));
+    let oauth_tickets = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
     let http_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()?;
@@ -91,6 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http_client,
         jwks_cache,
         ws_hub,
+        oauth_tickets,
     };
 
     // 6. Build API router

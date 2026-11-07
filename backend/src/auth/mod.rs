@@ -5,7 +5,7 @@ use axum::{
     Json, Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use serde::Serialize;
@@ -19,7 +19,7 @@ use crate::{
         },
         session::{
             OAUTH_COOKIE_NAME, SESSION_COOKIE_NAME, authenticate_session, create_session,
-            destroy_session, parse_cookie,
+            create_session_raw, destroy_session, parse_cookie,
         },
     },
     config::Config,
@@ -33,6 +33,7 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub jwks_cache: Arc<tokio::sync::RwLock<google::GoogleJwksCache>>,
     pub ws_hub: Arc<crate::websocket::WsHub>,
+    pub oauth_tickets: Arc<tokio::sync::RwLock<std::collections::HashMap<Uuid, Option<String>>>>,
 }
 
 #[derive(Serialize)]
@@ -48,14 +49,59 @@ pub struct DevLoginRequest {
     pub username: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct GoogleLoginQuery {
+    pub ticket: Option<Uuid>,
+}
+
+#[derive(Serialize)]
+pub struct CreateTicketResponse {
+    pub ticket: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct CheckTicketResponse {
+    pub ready: bool,
+    pub token: Option<String>,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/google", get(handle_google_login))
         .route("/google/callback", get(handle_google_callback))
+        .route("/oauth-ticket", post(handle_create_oauth_ticket))
+        .route("/oauth-ticket/{ticket_id}", get(handle_check_oauth_ticket))
         .route("/dev-login", post(handle_dev_login))
         .route("/providers", get(handle_providers))
         .route("/me", get(handle_me))
         .route("/logout", post(handle_logout))
+}
+
+async fn handle_create_oauth_ticket(State(state): State<AppState>) -> Json<CreateTicketResponse> {
+    let ticket = Uuid::new_v4();
+    state.oauth_tickets.write().await.insert(ticket, None);
+    Json(CreateTicketResponse { ticket })
+}
+
+async fn handle_check_oauth_ticket(
+    State(state): State<AppState>,
+    axum::extract::Path(ticket_id): axum::extract::Path<Uuid>,
+) -> Json<CheckTicketResponse> {
+    let mut tickets = state.oauth_tickets.write().await;
+    if let Some(token_opt) = tickets.get(&ticket_id) {
+        if let Some(token) = token_opt {
+            let tok = token.clone();
+            tickets.remove(&ticket_id);
+            return Json(CheckTicketResponse {
+                ready: true,
+                token: Some(tok),
+            });
+        }
+    }
+    Json(CheckTicketResponse {
+        ready: false,
+        token: None,
+    })
 }
 
 #[derive(Serialize)]
@@ -71,8 +117,11 @@ async fn handle_providers(State(state): State<AppState>) -> Json<ProvidersRespon
     })
 }
 
-async fn handle_google_login(State(state): State<AppState>) -> AppResult<Response> {
-    google_login_handler(&state.config).await
+async fn handle_google_login(
+    State(state): State<AppState>,
+    Query(query): Query<GoogleLoginQuery>,
+) -> AppResult<Response> {
+    google_login_handler(&state.config, query.ticket).await
 }
 
 async fn handle_google_callback(
@@ -156,7 +205,11 @@ async fn handle_google_callback(
     };
 
     // Create session cookie
-    let session_cookie = create_session(&state.db, &state.config, user_id).await?;
+    let (raw_token, session_cookie) = create_session_raw(&state.db, &state.config, user_id).await?;
+
+    if let Some(ticket_id) = saved.ticket {
+        state.oauth_tickets.write().await.insert(ticket_id, Some(raw_token));
+    }
 
     // Clear oauth cookie
     let secure_flag = if state.config.cookie_secure {
@@ -168,7 +221,32 @@ async fn handle_google_callback(
         "{OAUTH_COOKIE_NAME}=; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}"
     );
 
-    let mut response = Redirect::to("/").into_response();
+    let html = r#"<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <title>chatw - Đăng nhập Google thành công</title>
+    <style>
+        body { background: #09090b; color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .box { background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 36px; text-align: center; max-width: 420px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
+        .icon { font-size: 44px; margin-bottom: 16px; }
+        h1 { font-size: 20px; margin: 0 0 10px; color: #ffffff; }
+        p { font-size: 14px; color: #a1a1aa; margin: 0 0 20px; line-height: 1.5; }
+        .btn { display: inline-block; background: #2563eb; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="icon">✅</div>
+        <h1>Đăng nhập Google thành công</h1>
+        <p>Phiên đăng nhập đã được tạo thành công cho tài khoản chatw của bạn. Bạn có thể đóng tab này và quay lại ứng dụng.</p>
+        <a href="javascript:window.close()" class="btn">Đóng cửa sổ</a>
+    </div>
+    <script>setTimeout(function(){ window.close(); }, 2500);</script>
+</body>
+</html>"#;
+
+    let mut response = axum::response::Html(html).into_response();
     response.headers_mut().append(
         header::SET_COOKIE,
         session_cookie.parse().map_err(|_| AppError::Internal)?,

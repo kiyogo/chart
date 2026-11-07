@@ -43,8 +43,8 @@ pub fn generate_session_token() -> [u8; 32] {
     buf
 }
 
-/// Create a new session in PostgreSQL and return the Set-Cookie header value.
-pub async fn create_session(pool: &PgPool, config: &Config, user_id: Uuid) -> AppResult<String> {
+/// Create a new session in PostgreSQL and return both the raw hex token and the Set-Cookie header value.
+pub async fn create_session_raw(pool: &PgPool, config: &Config, user_id: Uuid) -> AppResult<(String, String)> {
     let token = generate_session_token();
     let token_hash = hash_session_token(&config.session_secret, &token);
     let expires_at = Utc::now() + chrono::Duration::from_std(config.session_ttl).unwrap();
@@ -62,9 +62,17 @@ pub async fn create_session(pool: &PgPool, config: &Config, user_id: Uuid) -> Ap
     let max_age = config.session_ttl.as_secs();
     let secure_flag = if config.cookie_secure { "; Secure" } else { "" };
 
-    Ok(format!(
+    let cookie_str = format!(
         "{SESSION_COOKIE_NAME}={token_hex}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure_flag}"
-    ))
+    );
+
+    Ok((token_hex, cookie_str))
+}
+
+/// Create a new session in PostgreSQL and return the Set-Cookie header value.
+pub async fn create_session(pool: &PgPool, config: &Config, user_id: Uuid) -> AppResult<String> {
+    let (_, cookie_str) = create_session_raw(pool, config, user_id).await?;
+    Ok(cookie_str)
 }
 
 /// Invalidate a session in the database and return a cookie-clearing header.

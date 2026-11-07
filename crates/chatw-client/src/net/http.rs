@@ -239,6 +239,49 @@ impl HttpClient {
         Ok(())
     }
 
+    pub fn set_session_token(&self, token: &str) {
+        let cookie_str = format!("chatw_session={token}; Domain=127.0.0.1; Path=/; HttpOnly");
+        if let Ok(url) = self.base_url.parse::<reqwest::Url>() {
+            self.cookie_jar.add_cookie_str(&cookie_str, &url);
+        }
+    }
+
+    pub async fn create_oauth_ticket(&self) -> Result<Uuid, String> {
+        let url = format!("{}/api/auth/oauth-ticket", self.base_url);
+        let res = self.client.post(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tạo phiên xác thực: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err("Không thể tạo phiên xác thực".into());
+        }
+
+        let val = res.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+        let ticket_str = val["ticket"].as_str().ok_or("Thiếu mã xác thực")?;
+        Uuid::parse_str(ticket_str).map_err(|e| e.to_string())
+    }
+
+    pub async fn check_oauth_ticket(&self, ticket: Uuid) -> Result<Option<String>, String> {
+        let url = format!("{}/api/auth/oauth-ticket/{}", self.base_url, ticket);
+        let res = self.client.get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi kiểm tra xác thực: {e}"))?;
+
+        if !res.status().is_success() {
+            return Ok(None);
+        }
+
+        let val = res.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+        if val["ready"].as_bool().unwrap_or(false) {
+            if let Some(tok) = val["token"].as_str() {
+                return Ok(Some(tok.to_string()));
+            }
+        }
+        Ok(None)
+    }
+
     pub async fn logout(&self) -> Result<(), String> {
         let url = format!("{}/api/auth/logout", self.base_url);
         let _ = self.client.post(&url).send().await;
