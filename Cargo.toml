@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/chatw-core",
+    "crates/chatw-client",
+    "backend",
+]
+resolver = "2"

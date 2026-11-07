@@ -1,0 +1,682 @@
+use std::sync::{Arc, mpsc};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use egui::{Color32, RichText};
+use uuid::Uuid;
+
+use chatw_core::{
+    ClientKeys, FriendItem, MeResponse, MessageWireItem, PendingRequestItem,
+    PublicKeysResponse, UserSearchResult, WsClientCommand, WsServerEvent,
+    compute_fingerprint, decrypt_message, encrypt_message,
+};
+use crate::net::{HttpClient, WsManager};
+use crate::storage;
+use crate::titlebar;
+use crate::views::{ChatAction, ChatView, DecryptedMessage, LoginAction, LoginView, SetNameView};
+
+#[allow(dead_code)]
+pub enum GuiEvent {
+    AuthResult(Result<MeResponse, String>),
+    DevLoginResult(Result<MeResponse, String>),
+    SetNameResult(Result<(), String>),
+    FriendsList(Result<Vec<FriendItem>, String>),
+    PendingList(Result<Vec<PendingRequestItem>, String>),
+    SearchResults(Result<Vec<UserSearchResult>, String>),
+    FriendKeysLoaded {
+        user_id: Uuid,
+        result: Result<PublicKeysResponse, String>,
+    },
+    HistoryLoaded {
+        friend_id: Uuid,
+        result: Result<Vec<MessageWireItem>, String>,
+    },
+    MessageSendResult {
+        result: Result<(), String>,
+    },
+    FriendRequestSent(Result<(), String>),
+    FriendRequestAccepted(Result<(), String>),
+}
+
+pub enum AppState {
+    CheckingAuth,
+    Login(LoginView),
+    SetName(SetNameView),
+    Chat(ChatView),
+}
+
+pub struct ChatApp {
+    pub runtime: Arc<tokio::runtime::Runtime>,
+    pub http: HttpClient,
+    pub ws: Option<WsManager>,
+    pub keys: ClientKeys,
+    pub state: AppState,
+    pub tx_gui: mpsc::Sender<GuiEvent>,
+    pub rx_gui: mpsc::Receiver<GuiEvent>,
+    pub is_maximized: bool,
+    pub pending_decrypt_queue: Vec<(Uuid, MessageWireItem)>,
+}
+
+fn drain_decrypt_queue(
+    queue: &mut Vec<(Uuid, MessageWireItem)>,
+    chat: &mut ChatView,
+    my_keys: &ClientKeys,
+    ws: &Option<WsManager>,
+) {
+    let mut still_pending = Vec::new();
+    let current_queue = std::mem::take(queue);
+
+    for (sender_id, wire) in current_queue {
+        if let Some((_, _, ecdsa_pub)) = chat.cached_keys.get(&sender_id) {
+            if let Ok(raw_env) = URL_SAFE_NO_PAD.decode(&wire.envelope) {
+                if let Ok(text) = decrypt_message(my_keys, ecdsa_pub, &raw_env) {
+                    let msgs = chat.messages.entry(sender_id).or_default();
+                    if !msgs.iter().any(|m| m.id == wire.id) {
+                        msgs.push(DecryptedMessage {
+                            id: wire.id,
+                            sender_id,
+                            is_me: false,
+                            text,
+                            time_str: wire.created_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+                        });
+                    }
+                    if let Some(ws_mgr) = ws {
+                        let _ = ws_mgr.tx_commands.send(WsClientCommand::Ack { message_id: wire.id });
+                    }
+                    continue;
+                }
+            }
+        }
+        still_pending.push((sender_id, wire));
+    }
+
+    *queue = still_pending;
+}
+
+impl ChatApp {
+    pub fn new(cc: &eframe::CreationContext) -> Self {
+        // Set visual styling to pure flat dark minimalist
+        let mut visuals = egui::Visuals::dark();
+        visuals.window_shadow = egui::epaint::Shadow::NONE;
+        visuals.panel_fill = Color32::from_rgb(9, 9, 11); // Zinc 950
+        visuals.override_text_color = Some(Color32::from_rgb(250, 250, 250));
+        visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(24, 24, 27); // Zinc 900
+        visuals.widgets.inactive.bg_fill = Color32::from_rgb(39, 39, 42); // Zinc 800
+        visuals.widgets.hovered.bg_fill = Color32::from_rgb(63, 63, 70); // Zinc 700
+        visuals.widgets.active.bg_fill = Color32::from_rgb(37, 99, 235); // Blue 600
+        cc.egui_ctx.set_visuals(visuals);
+
+        let runtime = Arc::new(
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to initialize Tokio runtime"),
+        );
+
+        let http = HttpClient::new("http://127.0.0.1:8082".to_string());
+        let keys = storage::load_or_create_keys();
+        let (tx_gui, rx_gui) = mpsc::channel();
+
+        let app = Self {
+            runtime,
+            http,
+            ws: None,
+            keys,
+            state: AppState::CheckingAuth,
+            tx_gui,
+            rx_gui,
+            is_maximized: false,
+            pending_decrypt_queue: Vec::new(),
+        };
+
+        // Trigger initial auth check
+        app.check_auth(&cc.egui_ctx);
+
+        app
+    }
+
+    fn check_auth(&self, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx = self.tx_gui.clone();
+        let ctx = ctx.clone();
+
+        self.runtime.spawn(async move {
+            let res = http.get_me().await;
+            let _ = tx.send(GuiEvent::AuthResult(res));
+            ctx.request_repaint();
+        });
+    }
+
+    fn trigger_dev_login(&self, username: String, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx = self.tx_gui.clone();
+        let ctx = ctx.clone();
+        let uname_opt = if username.trim().is_empty() {
+            None
+        } else {
+            Some(username.trim().to_string())
+        };
+
+        self.runtime.spawn(async move {
+            let login_res = http.dev_login(uname_opt.as_deref()).await;
+            match login_res {
+                Ok(_) => {
+                    let me_res = http.get_me().await;
+                    let _ = tx.send(GuiEvent::DevLoginResult(me_res));
+                }
+                Err(e) => {
+                    let _ = tx.send(GuiEvent::DevLoginResult(Err(e)));
+                }
+            }
+            ctx.request_repaint();
+        });
+    }
+
+    fn trigger_set_name(&self, name: String, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx = self.tx_gui.clone();
+        let ctx = ctx.clone();
+
+        self.runtime.spawn(async move {
+            let res = http.set_name(&name).await;
+            let _ = tx.send(GuiEvent::SetNameResult(res));
+            ctx.request_repaint();
+        });
+    }
+
+    fn refresh_friends_and_pending(&self, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx_friends = self.tx_gui.clone();
+        let ctx_friends = ctx.clone();
+        self.runtime.spawn(async move {
+            let res = http.list_friends().await;
+            let _ = tx_friends.send(GuiEvent::FriendsList(res));
+            ctx_friends.request_repaint();
+        });
+
+        let http2 = self.http.clone();
+        let tx_pending = self.tx_gui.clone();
+        let ctx_pending = ctx.clone();
+        self.runtime.spawn(async move {
+            let res = http2.list_pending_requests().await;
+            let _ = tx_pending.send(GuiEvent::PendingList(res));
+            ctx_pending.request_repaint();
+        });
+    }
+
+    fn load_friend_keys(&self, user_id: Uuid, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx = self.tx_gui.clone();
+        let ctx = ctx.clone();
+
+        self.runtime.spawn(async move {
+            let res = http.get_user_keys(user_id).await;
+            let _ = tx.send(GuiEvent::FriendKeysLoaded { user_id, result: res });
+            ctx.request_repaint();
+        });
+    }
+
+    fn load_message_history(&self, friend_id: Uuid, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx = self.tx_gui.clone();
+        let ctx = ctx.clone();
+
+        self.runtime.spawn(async move {
+            let res = http.get_message_history(friend_id, 50).await;
+            let _ = tx.send(GuiEvent::HistoryLoaded { friend_id, result: res });
+            ctx.request_repaint();
+        });
+    }
+
+    fn send_friend_request(&self, username: String, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx = self.tx_gui.clone();
+        let ctx = ctx.clone();
+
+        self.runtime.spawn(async move {
+            let res = http.send_friend_request(&username).await;
+            let _ = tx.send(GuiEvent::FriendRequestSent(res));
+            ctx.request_repaint();
+        });
+    }
+
+    fn accept_friend_request(&self, request_id: Uuid, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let tx = self.tx_gui.clone();
+        let ctx = ctx.clone();
+
+        self.runtime.spawn(async move {
+            let res = http.accept_friend_request(request_id).await;
+            let _ = tx.send(GuiEvent::FriendRequestAccepted(res));
+            ctx.request_repaint();
+        });
+    }
+
+    fn start_websocket_and_connect(&mut self, ctx: &egui::Context) {
+        let ws = WsManager::start(
+            "ws://127.0.0.1:8082/api/ws".to_string(),
+            self.http.cookie_jar.clone(),
+            ctx.clone(),
+        );
+        self.ws = Some(ws);
+    }
+
+    fn handle_logged_in_user(&mut self, me: MeResponse, ctx: &egui::Context) {
+        let http = self.http.clone();
+        let keys = self.keys.clone();
+        let user_id = me.id;
+        let username_opt = me.username.clone();
+
+        // Save session locally
+        storage::save_user_session(user_id, username_opt.clone());
+
+        // Register E2EE keys if not registered
+        if !me.has_keys {
+            let ecdh_b64 = keys.ecdh_pub_b64();
+            let ecdsa_b64 = keys.ecdsa_pub_b64();
+            self.runtime.spawn(async move {
+                let _ = http.register_keys(&ecdh_b64, &ecdsa_b64).await;
+            });
+        }
+
+        if let Some(uname) = username_opt {
+            let mut chat_view = ChatView::new(user_id, uname);
+            // Insert my own keys in cache
+            chat_view.cached_keys.insert(
+                user_id,
+                (self.keys.ecdh_pub_bytes, self.keys.fingerprint, self.keys.ecdsa_pub_bytes),
+            );
+            self.state = AppState::Chat(chat_view);
+            self.start_websocket_and_connect(ctx);
+            self.refresh_friends_and_pending(ctx);
+        } else {
+            self.state = AppState::SetName(SetNameView::default());
+        }
+    }
+}
+
+impl eframe::App for ChatApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Track maximization state for titlebar icon
+        self.is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+
+        let mut keys_to_load: Vec<Uuid> = Vec::new();
+        let mut should_refresh_data = false;
+        let mut should_recheck_auth = false;
+
+        // 1. Drain background GUI events
+        while let Ok(event) = self.rx_gui.try_recv() {
+            match event {
+                GuiEvent::AuthResult(res) => {
+                    match res {
+                        Ok(me) => {
+                            self.handle_logged_in_user(me, ctx);
+                        }
+                        Err(_) => {
+                            self.state = AppState::Login(LoginView::default());
+                        }
+                    }
+                }
+                GuiEvent::DevLoginResult(res) => {
+                    match res {
+                        Ok(me) => {
+                            self.handle_logged_in_user(me, ctx);
+                        }
+                        Err(e) => {
+                            if let AppState::Login(ref mut view) = self.state {
+                                view.is_loading = false;
+                                view.error_msg = Some(e);
+                            }
+                        }
+                    }
+                }
+                GuiEvent::SetNameResult(res) => {
+                    match res {
+                        Ok(_) => {
+                            should_recheck_auth = true;
+                        }
+                        Err(e) => {
+                            if let AppState::SetName(ref mut view) = self.state {
+                                view.is_loading = false;
+                                view.error_msg = Some(e);
+                            }
+                        }
+                    }
+                }
+                GuiEvent::FriendsList(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(friends) = res {
+                            chat.friends = friends;
+                        }
+                    }
+                }
+                GuiEvent::PendingList(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(pending) = res {
+                            chat.pending_requests = pending;
+                        }
+                    }
+                }
+                GuiEvent::SearchResults(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(results) = res {
+                            chat.search_results = results;
+                        }
+                    }
+                }
+                GuiEvent::FriendKeysLoaded { user_id, result } => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(pk) = result {
+                            if let (Ok(ecdh_vec), Ok(ecdsa_vec)) = (
+                                URL_SAFE_NO_PAD.decode(&pk.ecdh_public),
+                                URL_SAFE_NO_PAD.decode(&pk.ecdsa_public),
+                            ) {
+                                if ecdh_vec.len() == 65 && ecdsa_vec.len() == 65 {
+                                    let mut ecdh = [0u8; 65];
+                                    let mut ecdsa = [0u8; 65];
+                                    ecdh.copy_from_slice(&ecdh_vec);
+                                    ecdsa.copy_from_slice(&ecdsa_vec);
+                                    let fp = compute_fingerprint(&ecdh);
+                                    chat.cached_keys.insert(user_id, (ecdh, fp, ecdsa));
+                                    drain_decrypt_queue(&mut self.pending_decrypt_queue, chat, &self.keys, &self.ws);
+                                }
+                            }
+                        }
+                    }
+                }
+                GuiEvent::HistoryLoaded { friend_id, result } => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(items) = result {
+                            let mut decrypted_list = Vec::new();
+                            for item in items.into_iter().rev() {
+                                let is_me = item.sender_id == chat.current_user_id;
+                                let signer_pub = if is_me {
+                                    Some(self.keys.ecdsa_pub_bytes)
+                                } else {
+                                    chat.cached_keys.get(&item.sender_id).map(|k| k.2)
+                                };
+
+                                if let Some(ecdsa_pub) = signer_pub {
+                                    if let Ok(raw_env) = URL_SAFE_NO_PAD.decode(&item.envelope) {
+                                        if let Ok(text) = decrypt_message(&self.keys, &ecdsa_pub, &raw_env) {
+                                            decrypted_list.push(DecryptedMessage {
+                                                id: item.id,
+                                                sender_id: item.sender_id,
+                                                is_me,
+                                                text,
+                                                time_str: item.created_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    self.pending_decrypt_queue.push((item.sender_id, item));
+                                    keys_to_load.push(friend_id);
+                                }
+                            }
+                            chat.messages.insert(friend_id, decrypted_list);
+                        }
+                    }
+                }
+                GuiEvent::MessageSendResult { result } => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Err(e) = result {
+                            chat.status_message = Some(format!("Lỗi gửi tin nhắn: {e}"));
+                        }
+                    }
+                }
+                GuiEvent::FriendRequestSent(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        match res {
+                            Ok(_) => {
+                                chat.status_message = Some("Đã gửi lời mời kết bạn thành công".into());
+                                should_refresh_data = true;
+                            }
+                            Err(e) => {
+                                chat.status_message = Some(format!("Lỗi: {e}"));
+                            }
+                        }
+                    }
+                }
+                GuiEvent::FriendRequestAccepted(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        match res {
+                            Ok(_) => {
+                                chat.status_message = Some("Đã đồng ý kết bạn".into());
+                                should_refresh_data = true;
+                            }
+                            Err(e) => {
+                                chat.status_message = Some(format!("Lỗi: {e}"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if should_recheck_auth {
+            self.check_auth(ctx);
+        }
+        if should_refresh_data {
+            self.refresh_friends_and_pending(ctx);
+        }
+
+        // 2. Drain WebSocket events
+        let mut ws_events = Vec::new();
+        if let Some(ref mut ws) = self.ws {
+            while let Ok(event) = ws.rx_events.try_recv() {
+                ws_events.push(event);
+            }
+        }
+
+        for event in ws_events {
+            if let AppState::Chat(ref mut chat) = self.state {
+                match event {
+                    WsServerEvent::MessageNew(wire) => {
+                        let sender_id = wire.sender_id;
+                        if let Some((_, _, ecdsa_pub)) = chat.cached_keys.get(&sender_id) {
+                            if let Ok(raw_env) = URL_SAFE_NO_PAD.decode(&wire.envelope) {
+                                if let Ok(text) = decrypt_message(&self.keys, ecdsa_pub, &raw_env) {
+                                    let msgs = chat.messages.entry(sender_id).or_default();
+                                    if !msgs.iter().any(|m| m.id == wire.id) {
+                                        msgs.push(DecryptedMessage {
+                                            id: wire.id,
+                                            sender_id,
+                                            is_me: false,
+                                            text,
+                                            time_str: wire.created_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+                                        });
+                                    }
+                                    if let Some(ref ws) = self.ws {
+                                        let _ = ws.tx_commands.send(WsClientCommand::Ack { message_id: wire.id });
+                                    }
+                                }
+                            }
+                        } else {
+                            self.pending_decrypt_queue.push((sender_id, wire));
+                            keys_to_load.push(sender_id);
+                        }
+                    }
+                    WsServerEvent::FriendRequest(item) => {
+                        if !chat.pending_requests.iter().any(|p| p.id == item.id) {
+                            chat.pending_requests.push(item);
+                        }
+                    }
+                    WsServerEvent::FriendAccepted { user_id, username } => {
+                        if !chat.friends.iter().any(|f| f.id == user_id) {
+                            chat.friends.push(FriendItem {
+                                id: user_id,
+                                username,
+                                avatar_url: None,
+                            });
+                        }
+                        keys_to_load.push(user_id);
+                    }
+                    WsServerEvent::TypingStart { user_id } => {
+                        chat.typing_users.insert(user_id);
+                    }
+                    WsServerEvent::TypingStop { user_id } => {
+                        chat.typing_users.remove(&user_id);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Load any requested friend keys
+        for uid in keys_to_load {
+            self.load_friend_keys(uid, ctx);
+        }
+
+        // 3. Render Custom Windows Titlebar (No OS decorations)
+        egui::TopBottomPanel::top("top_titlebar")
+            .exact_height(32.0)
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| {
+                titlebar::render_titlebar(ui, self.is_maximized);
+            });
+
+        // 4. Render Active View
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(Color32::from_rgb(9, 9, 11)))
+            .show(ctx, |ui| {
+                match &mut self.state {
+                    AppState::CheckingAuth => {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(ui.available_height() * 0.4);
+                            ui.spinner();
+                            ui.add_space(16.0);
+                            ui.label(
+                                RichText::new("Đang kiểm tra phiên đăng nhập")
+                                    .size(14.0)
+                                    .color(Color32::from_rgb(161, 161, 170)),
+                            );
+                        });
+                    }
+                    AppState::Login(login_view) => {
+                        if let Some(action) = login_view.show(ui) {
+                            match action {
+                                LoginAction::GoogleLogin => {
+                                    // Open browser to Google OAuth route
+                                    let _ = std::process::Command::new("cmd")
+                                        .args(["/C", "start", "http://127.0.0.1:8082/api/auth/google"])
+                                        .spawn();
+                                }
+                                LoginAction::DevLogin(username) => {
+                                    login_view.is_loading = true;
+                                    login_view.error_msg = None;
+                                    self.trigger_dev_login(username, ctx);
+                                }
+                            }
+                        }
+                    }
+                    AppState::SetName(set_name_view) => {
+                        if let Some(submitted_name) = set_name_view.show(ui) {
+                            set_name_view.is_loading = true;
+                            set_name_view.error_msg = None;
+                            self.trigger_set_name(submitted_name, ctx);
+                        }
+                    }
+                    AppState::Chat(chat_view) => {
+                        if let Some(action) = chat_view.show(ui) {
+                            match action {
+                                ChatAction::SelectFriend(friend_id) => {
+                                    chat_view.selected_friend_id = Some(friend_id);
+                                    if !chat_view.cached_keys.contains_key(&friend_id) {
+                                        self.load_friend_keys(friend_id, ctx);
+                                    }
+                                    self.load_message_history(friend_id, ctx);
+                                }
+                                ChatAction::SendMessage(text) => {
+                                    if let Some(friend_id) = chat_view.selected_friend_id {
+                                        let my_id = chat_view.current_user_id;
+                                        if let Some((friend_ecdh, friend_fp, _)) = chat_view.cached_keys.get(&friend_id).copied() {
+                                            let msg_id = Uuid::new_v4();
+                                            // 1. Recipient envelope (for friend)
+                                            let recip_res = encrypt_message(
+                                                &self.keys,
+                                                &friend_ecdh,
+                                                &friend_fp,
+                                                msg_id,
+                                                my_id,
+                                                friend_id,
+                                                &text,
+                                            );
+                                            // 2. Sender envelope (for myself)
+                                            let sender_res = encrypt_message(
+                                                &self.keys,
+                                                &self.keys.ecdh_pub_bytes,
+                                                &self.keys.fingerprint,
+                                                msg_id,
+                                                my_id,
+                                                my_id,
+                                                &text,
+                                            );
+
+                                            if let (Ok(recip_bytes), Ok(sender_bytes)) = (recip_res, sender_res) {
+                                                let recip_b64 = URL_SAFE_NO_PAD.encode(recip_bytes);
+                                                let sender_b64 = URL_SAFE_NO_PAD.encode(sender_bytes);
+
+                                                // Optimistic add to UI
+                                                let msgs = chat_view.messages.entry(friend_id).or_default();
+                                                msgs.push(DecryptedMessage {
+                                                    id: msg_id,
+                                                    sender_id: my_id,
+                                                    is_me: true,
+                                                    text: text.clone(),
+                                                    time_str: chrono::Local::now().format("%H:%M").to_string(),
+                                                });
+
+                                                // Dispatch HTTP send task
+                                                let http = self.http.clone();
+                                                let tx = self.tx_gui.clone();
+                                                let ctx = ctx.clone();
+                                                self.runtime.spawn(async move {
+                                                    let res = http.send_message(msg_id, friend_id, &recip_b64, &sender_b64).await;
+                                                    let _ = tx.send(GuiEvent::MessageSendResult { result: res });
+                                                    ctx.request_repaint();
+                                                });
+                                            }
+                                        } else {
+                                            chat_view.status_message = Some("Đang tải khóa mã hóa của bạn bè".into());
+                                            self.load_friend_keys(friend_id, ctx);
+                                        }
+                                    }
+                                }
+                                ChatAction::SendFriendRequest(username) => {
+                                    self.send_friend_request(username, ctx);
+                                }
+                                ChatAction::AcceptFriendRequest(req_id) => {
+                                    self.accept_friend_request(req_id, ctx);
+                                }
+                                ChatAction::RejectFriendRequest(_) => {}
+                                ChatAction::TypingStarted => {
+                                    if let Some(friend_id) = chat_view.selected_friend_id {
+                                        if let Some(ws) = &self.ws {
+                                            let _ = ws.tx_commands.send(WsClientCommand::TypingStart { recipient_id: friend_id });
+                                        }
+                                    }
+                                }
+                                ChatAction::TypingStopped => {
+                                    if let Some(friend_id) = chat_view.selected_friend_id {
+                                        if let Some(ws) = &self.ws {
+                                            let _ = ws.tx_commands.send(WsClientCommand::TypingStop { recipient_id: friend_id });
+                                        }
+                                    }
+                                }
+                                ChatAction::RefreshData => {
+                                    self.refresh_friends_and_pending(ctx);
+                                }
+                                ChatAction::Logout => {
+                                    let http = self.http.clone();
+                                    self.runtime.spawn(async move {
+                                        let _ = http.logout().await;
+                                    });
+                                    storage::clear_user_session();
+                                    self.ws = None;
+                                    self.state = AppState::Login(LoginView::default());
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+    }
+}
