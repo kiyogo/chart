@@ -35,3 +35,11 @@
 - [x] Task 7.3: Loại bỏ thanh tab con thừa thãi trong sidebar, chuẩn hóa 4 icon điều hướng trên header sidebar giống 100% web.
 - [x] Task 7.4: Hiển thị avatar đối tác 28px cạnh bong bóng tin nhắn nhận.
 
+## Nhóm 8: Tái cấu trúc Panel Chuẩn Egui, Khắc phục Viền Đen & Chuẩn hóa 100% Pixel-Perfect Web
+- [x] Task 8.1: Nâng cấp `titlebar.rs` với SVG Logo outline rỗng (`LogoIcon` 16x16) và các nút điều khiển Windows vector nét mảnh (Minimize, Maximize 10x10, Close 10x10 với hover đỏ).
+- [x] Task 8.2: Tái thiết kế `views/login.rs` với SVG Logo 44px, nút Google G 4 màu chính hãng, và ô TextEdit bọc Frame có viền 1px `#E5E7EB` bo góc 8px.
+- [x] Task 8.3: Tái cấu trúc `views/chat.rs` sang kiến trúc module (render_sidebar_content, render_chat_content, render_settings_content, render_partner_info_content), chuẩn hóa 4 nút header 28x28px không tràn, vẽ lại icon Logout thanh thoát.
+- [x] Task 8.4: Tích hợp `egui::SidePanel::left(320px)` + `CentralPanel` + `SidePanel::right(380px)` trong `app.rs`, loại bỏ vệt đen và đảm bảo đường viền phân cách 1px sắc nét.
+- [x] Task 8.5: Kiểm thử toàn bộ test cases, biên dịch Release `dist-desktop/chatw.exe`, kiểm tra chạy thực tế và git auto-push.
+
+

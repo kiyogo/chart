@@ -1,4 +1,8 @@
-use egui::{Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{
+    pos2, vec2, Align, Align2, Color32, CornerRadius, Layout, Pos2, RichText, Sense, Stroke,
+    StrokeKind, Ui, Vec2,
+};
+use crate::titlebar::draw_svg_logo_icon;
 
 pub struct LoginView {
     pub username_input: String,
@@ -29,6 +33,59 @@ pub enum LoginAction {
     CancelGoogleLogin,
 }
 
+/// Draws authentic Google 4-color "G" logo
+fn draw_svg_google_g_icon(painter: &egui::Painter, center: Pos2, radius: f32) {
+    let stroke_w = (radius * 0.45).max(2.8);
+    let r = radius * 0.78;
+
+    // 1. Red top arc (225° to 315°)
+    let c_red = Color32::from_rgb(234, 67, 53); // #EA4335
+    let stroke_red = Stroke::new(stroke_w, c_red);
+    let steps = 6;
+    for i in 0..steps {
+        let a1 = std::f32::consts::PI * (1.25 + 0.5 * (i as f32 / steps as f32));
+        let a2 = std::f32::consts::PI * (1.25 + 0.5 * ((i + 1) as f32 / steps as f32));
+        let p1 = center + vec2(a1.cos() * r, a1.sin() * r);
+        let p2 = center + vec2(a2.cos() * r, a2.sin() * r);
+        painter.line_segment([p1, p2], stroke_red);
+    }
+
+    // 2. Yellow left arc (135° to 225°)
+    let c_yellow = Color32::from_rgb(251, 188, 5); // #FBBC05
+    let stroke_yellow = Stroke::new(stroke_w, c_yellow);
+    for i in 0..steps {
+        let a1 = std::f32::consts::PI * (0.75 + 0.5 * (i as f32 / steps as f32));
+        let a2 = std::f32::consts::PI * (0.75 + 0.5 * ((i + 1) as f32 / steps as f32));
+        let p1 = center + vec2(a1.cos() * r, a1.sin() * r);
+        let p2 = center + vec2(a2.cos() * r, a2.sin() * r);
+        painter.line_segment([p1, p2], stroke_yellow);
+    }
+
+    // 3. Green bottom arc (45° to 135°)
+    let c_green = Color32::from_rgb(52, 168, 83); // #34A853
+    let stroke_green = Stroke::new(stroke_w, c_green);
+    for i in 0..steps {
+        let a1 = std::f32::consts::PI * (0.25 + 0.5 * (i as f32 / steps as f32));
+        let a2 = std::f32::consts::PI * (0.25 + 0.5 * ((i + 1) as f32 / steps as f32));
+        let p1 = center + vec2(a1.cos() * r, a1.sin() * r);
+        let p2 = center + vec2(a2.cos() * r, a2.sin() * r);
+        painter.line_segment([p1, p2], stroke_green);
+    }
+
+    // 4. Blue right arc (-45° to 45°) & crossbar
+    let c_blue = Color32::from_rgb(66, 133, 244); // #4285F4
+    let stroke_blue = Stroke::new(stroke_w, c_blue);
+    for i in 0..(steps / 2) {
+        let a1 = std::f32::consts::PI * (0.0 + 0.25 * (i as f32 / (steps / 2) as f32));
+        let a2 = std::f32::consts::PI * (0.0 + 0.25 * ((i + 1) as f32 / (steps / 2) as f32));
+        let p1 = center + vec2(a1.cos() * r, a1.sin() * r);
+        let p2 = center + vec2(a2.cos() * r, a2.sin() * r);
+        painter.line_segment([p1, p2], stroke_blue);
+    }
+    // Blue horizontal bar
+    painter.line_segment([center - vec2(0.5, 0.0), center + vec2(r, 0.0)], stroke_blue);
+}
+
 impl LoginView {
     pub fn show(&mut self, ui: &mut Ui) -> Option<LoginAction> {
         let mut action = None;
@@ -44,20 +101,9 @@ impl LoginView {
             let card_width = 320.0;
             ui.set_max_width(card_width);
 
-            // 1. Logo: Chat bubble icon in #2563EB (size 44px)
+            // 1. Logo: Outline SVG chat bubble icon (44px) in #2563EB matching web LogoIcon
             let (logo_rect, _) = ui.allocate_exact_size(Vec2::new(44.0, 44.0), Sense::hover());
-            ui.painter().rect_filled(
-                logo_rect,
-                CornerRadius::same(10),
-                Color32::from_rgb(37, 99, 235), // Blue #2563EB
-            );
-            ui.painter().text(
-                logo_rect.center(),
-                Align2::CENTER_CENTER,
-                "💬",
-                egui::FontId::proportional(22.0),
-                Color32::WHITE,
-            );
+            draw_svg_logo_icon(ui.painter(), logo_rect, Color32::from_rgb(37, 99, 235));
 
             ui.add_space(14.0);
 
@@ -126,20 +172,14 @@ impl LoginView {
 
                 ui.painter().rect_filled(btn_rect, CornerRadius::same(8), btn_bg);
 
-                // Draw Google G white badge inside button
-                let icon_center = egui::pos2(btn_rect.left() + 24.0, btn_rect.center().y);
-                ui.painter().circle_filled(icon_center, 10.0, Color32::WHITE);
-                ui.painter().text(
-                    icon_center,
-                    Align2::CENTER_CENTER,
-                    "G",
-                    egui::FontId::proportional(12.0),
-                    Color32::from_rgb(66, 133, 244), // Google Blue #4285F4
-                );
+                // Draw authentic Google 4-color G badge on white circle
+                let badge_center = pos2(btn_rect.left() + 24.0, btn_rect.center().y);
+                ui.painter().circle_filled(badge_center, 11.0, Color32::WHITE);
+                draw_svg_google_g_icon(ui.painter(), badge_center, 7.5);
 
-                // Button label
+                // Button label matching web .auth-btn-primary
                 ui.painter().text(
-                    egui::pos2(btn_rect.center().x + 6.0, btn_rect.center().y),
+                    pos2(btn_rect.center().x + 6.0, btn_rect.center().y),
                     Align2::CENTER_CENTER,
                     "Tiếp tục với Google",
                     egui::FontId::proportional(14.0),
@@ -161,15 +201,15 @@ impl LoginView {
 
             ui.painter().line_segment(
                 [
-                    egui::pos2(center_x - card_width / 2.0, line_y),
-                    egui::pos2(center_x - text_half_w, line_y),
+                    pos2(center_x - card_width / 2.0, line_y),
+                    pos2(center_x - text_half_w, line_y),
                 ],
                 Stroke::new(1.0_f32, line_color),
             );
             ui.painter().line_segment(
                 [
-                    egui::pos2(center_x + text_half_w, line_y),
-                    egui::pos2(center_x + card_width / 2.0, line_y),
+                    pos2(center_x + text_half_w, line_y),
+                    pos2(center_x + card_width / 2.0, line_y),
                 ],
                 Stroke::new(1.0_f32, line_color),
             );
@@ -182,11 +222,26 @@ impl LoginView {
 
             ui.add_space(14.0);
 
-            // 6. Dev input matching web .auth-input
-            let input = egui::TextEdit::singleline(&mut self.username_input)
+            // 6. Dev input matching web .auth-input: 1px border #E5E7EB, 8px radius, white background
+            let (input_box_rect, _) = ui.allocate_exact_size(Vec2::new(card_width, 40.0), Sense::hover());
+            ui.painter().rect_filled(input_box_rect, CornerRadius::same(8), Color32::WHITE);
+            ui.painter().rect_stroke(
+                input_box_rect,
+                CornerRadius::same(8),
+                Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)), // #E5E7EB
+                StrokeKind::Inside,
+            );
+
+            let mut input_child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(input_box_rect.shrink2(vec2(12.0, 4.0)))
+                    .layout(Layout::left_to_right(Align::Center)),
+            );
+            let input_edit = egui::TextEdit::singleline(&mut self.username_input)
                 .hint_text("Tên tài khoản thử (ví dụ: alice)")
-                .min_size(Vec2::new(card_width, 38.0));
-            let input_resp = ui.add(input);
+                .frame(false)
+                .desired_width(card_width - 24.0);
+            let input_resp = input_child.add(input_edit);
 
             ui.add_space(10.0);
 
@@ -239,72 +294,82 @@ impl LoginView {
                     .fill(Color32::from_rgb(254, 242, 242)) // #FEF2F2
                     .stroke(Stroke::new(1.0_f32, Color32::from_rgb(254, 226, 226))) // #FEE2E2
                     .corner_radius(CornerRadius::same(8))
-                    .inner_margin(egui::Margin::symmetric(12, 8))
+                    .inner_margin(egui::Margin::symmetric(14, 10))
                     .show(ui, |ui| {
+                        ui.set_max_width(card_width);
                         ui.label(
                             RichText::new(err)
                                 .size(13.0)
-                                .color(Color32::from_rgb(220, 38, 38)), // #DC2626
+                                .color(Color32::from_rgb(220, 38, 38)),
                         );
                     });
             }
 
-            // 9. Server configuration toggle (clean and minimal)
             ui.add_space(24.0);
+
+            // 9. Server configuration expandable
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new("Máy chủ:")
-                        .size(11.5)
+                        .size(12.0)
                         .color(Color32::from_rgb(115, 115, 115)),
                 );
-                let current_label = if self.server_url_input.contains("127.0.0.1")
-                    || self.server_url_input.contains("localhost")
-                {
+
+                let is_default = self.server_url_input == "http://127.0.0.1:8082";
+                let summary_text = if is_default {
                     "Local (127.0.0.1:8082)"
-                } else if self.server_url_input.contains("chat.kiyo.vn") {
-                    "Cloud (api.chat.kiyo.vn)"
                 } else {
-                    "Tùy chỉnh"
+                    &self.server_url_input
                 };
-                if ui
-                    .button(
-                        RichText::new(current_label)
-                            .size(11.5)
-                            .color(Color32::from_rgb(37, 99, 235)),
-                    )
-                    .clicked()
-                {
+
+                let config_btn = ui.button(
+                    RichText::new(summary_text)
+                        .size(11.5)
+                        .color(Color32::from_rgb(37, 99, 235)),
+                );
+                if config_btn.clicked() {
                     self.show_server_config = !self.show_server_config;
                 }
             });
 
             if self.show_server_config {
                 ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    let input = egui::TextEdit::singleline(&mut self.server_url_input)
-                        .hint_text("http://127.0.0.1:8082")
-                        .desired_width(220.0);
-                    ui.add(input);
-                    if ui.button(RichText::new("Lưu").size(11.0)).clicked() {
-                        action = Some(LoginAction::ChangeServer(
-                            self.server_url_input.trim().to_string(),
-                        ));
-                        self.show_server_config = false;
-                    }
-                });
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    if ui.button(RichText::new("Dùng Local: 8082").size(11.0)).clicked() {
-                        self.server_url_input = "http://127.0.0.1:8082".to_string();
-                        action = Some(LoginAction::ChangeServer(self.server_url_input.clone()));
-                        self.show_server_config = false;
-                    }
-                    if ui.button(RichText::new("Dùng api.chat.kiyo.vn").size(11.0)).clicked() {
-                        self.server_url_input = "https://api.chat.kiyo.vn".to_string();
-                        action = Some(LoginAction::ChangeServer(self.server_url_input.clone()));
-                        self.show_server_config = false;
-                    }
-                });
+                egui::Frame::NONE
+                    .fill(Color32::from_rgb(247, 248, 250))
+                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)))
+                    .corner_radius(CornerRadius::same(8))
+                    .inner_margin(egui::Margin::symmetric(12, 10))
+                    .show(ui, |ui| {
+                        ui.set_max_width(card_width);
+                        ui.label(
+                            RichText::new("Địa chỉ Backend API:")
+                                .size(12.0)
+                                .color(Color32::from_rgb(115, 115, 115)),
+                        );
+                        ui.add_space(4.0);
+                        let inp = ui.add(
+                            egui::TextEdit::singleline(&mut self.server_url_input)
+                                .desired_width(card_width - 24.0),
+                        );
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            if ui.button(RichText::new("Lưu & Kết nối").size(12.0)).clicked()
+                                || (inp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                            {
+                                action = Some(LoginAction::ChangeServer(
+                                    self.server_url_input.trim().to_string(),
+                                ));
+                                self.show_server_config = false;
+                            }
+                            if ui.button(RichText::new("Mặc định").size(12.0)).clicked() {
+                                self.server_url_input = "http://127.0.0.1:8082".to_string();
+                                action = Some(LoginAction::ChangeServer(
+                                    self.server_url_input.clone(),
+                                ));
+                                self.show_server_config = false;
+                            }
+                        });
+                    });
             }
         });
 

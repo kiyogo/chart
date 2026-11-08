@@ -1,4 +1,31 @@
-use egui::{Color32, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, ViewportCommand};
+use egui::{
+    pos2, vec2, Color32, Rect, Response, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2,
+    ViewportCommand,
+};
+
+/// Draws the authentic web LogoIcon: hollow chat bubble outline with a small tail
+pub fn draw_svg_logo_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+    let s = rect.size() / 24.0;
+    let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
+    let stroke = Stroke::new((1.8 * s.x).max(1.2), color);
+
+    // SVG path: M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z
+    let points = [
+        pt(21.0, 5.0),
+        pt(21.0, 15.0),
+        pt(19.0, 17.0),
+        pt(7.0, 17.0),
+        pt(3.0, 21.0),
+        pt(3.0, 5.0),
+        pt(5.0, 3.0),
+        pt(19.0, 3.0),
+        pt(21.0, 5.0),
+    ];
+
+    for i in 0..points.len() - 1 {
+        painter.line_segment([points[i], points[i + 1]], stroke);
+    }
+}
 
 pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     let titlebar_height = 32.0;
@@ -7,15 +34,12 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
         Sense::hover(),
     );
 
-    // Background of titlebar: Dark #18181B
+    // Background of titlebar: Dark #18181B matching web custom titlebar
     ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(24, 24, 27));
 
     // Bottom border #27272A
     ui.painter().line_segment(
-        [
-            rect.left_bottom(),
-            rect.right_bottom(),
-        ],
+        [rect.left_bottom(), rect.right_bottom()],
         Stroke::new(1.0_f32, Color32::from_rgb(39, 39, 42)),
     );
 
@@ -30,16 +54,9 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     );
     left_ui.add_space(12.0);
 
-    // Draw little chat bubble icon
-    let (icon_rect, _) = left_ui.allocate_exact_size(Vec2::new(18.0, 18.0), Sense::hover());
-    left_ui.painter().rect_filled(icon_rect, 4.0, logo_color);
-    left_ui.painter().text(
-        icon_rect.center(),
-        egui::Align2::CENTER_CENTER,
-        "💬",
-        egui::FontId::proportional(11.0),
-        Color32::WHITE,
-    );
+    // Draw authentic web LogoIcon (outline SVG chat bubble)
+    let (icon_rect, _) = left_ui.allocate_exact_size(Vec2::new(16.0, 16.0), Sense::hover());
+    draw_svg_logo_icon(left_ui.painter(), icon_rect, logo_color);
 
     left_ui.add_space(8.0);
     left_ui.colored_label(
@@ -53,14 +70,14 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     let btn_width = 46.0;
     let controls_width = btn_width * 3.0;
     let controls_rect = Rect::from_min_size(
-        egui::pos2(rect.right() - controls_width, rect.top()),
+        pos2(rect.right() - controls_width, rect.top()),
         Vec2::new(controls_width, titlebar_height),
     );
 
     // Center draggable area: between left title and right controls
     let drag_rect = Rect::from_min_max(
-        egui::pos2(rect.left() + 260.0, rect.top()),
-        egui::pos2(rect.right() - controls_width, rect.bottom()),
+        pos2(rect.left() + 260.0, rect.top()),
+        pos2(rect.right() - controls_width, rect.bottom()),
     );
     let drag_resp = ui.interact(drag_rect, ui.id().with("titlebar_drag"), Sense::click_and_drag());
     if drag_resp.drag_started() {
@@ -77,31 +94,42 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
 
-    // 1. Minimize button
-    if custom_button(&mut controls_ui, "—", btn_width, titlebar_height, false).clicked() {
+    // 1. Minimize button (crisp vector 10x1 bar)
+    if window_control_button(&mut controls_ui, WindowButtonKind::Minimize, btn_width, titlebar_height).clicked() {
         controls_ui.ctx().send_viewport_cmd(ViewportCommand::Minimized(true));
     }
 
-    // 2. Maximize / Restore button
-    let max_icon = if is_maximized { "❐" } else { "□" };
-    if custom_button(&mut controls_ui, max_icon, btn_width, titlebar_height, false).clicked() {
+    // 2. Maximize / Restore button (crisp vector 10x10 square or double square)
+    let max_kind = if is_maximized {
+        WindowButtonKind::Restore
+    } else {
+        WindowButtonKind::Maximize
+    };
+    if window_control_button(&mut controls_ui, max_kind, btn_width, titlebar_height).clicked() {
         controls_ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
     }
 
-    // 3. Close button (with Red hover)
-    if custom_button(&mut controls_ui, "✕", btn_width, titlebar_height, true).clicked() {
+    // 3. Close button (crisp vector X with red hover)
+    if window_control_button(&mut controls_ui, WindowButtonKind::Close, btn_width, titlebar_height).clicked() {
         controls_ui.ctx().send_viewport_cmd(ViewportCommand::Close);
     }
 }
 
-fn custom_button(
+enum WindowButtonKind {
+    Minimize,
+    Maximize,
+    Restore,
+    Close,
+}
+
+fn window_control_button(
     ui: &mut Ui,
-    text: &str,
+    kind: WindowButtonKind,
     width: f32,
     height: f32,
-    is_close: bool,
 ) -> Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, height), Sense::click());
+    let is_close = matches!(kind, WindowButtonKind::Close);
 
     let bg_color = if resp.is_pointer_button_down_on() {
         if is_close {
@@ -121,7 +149,7 @@ fn custom_button(
 
     ui.painter().rect_filled(rect, 0.0, bg_color);
 
-    let text_color = if resp.hovered() && is_close {
+    let icon_color = if resp.hovered() && is_close {
         Color32::WHITE
     } else if resp.hovered() {
         Color32::from_rgb(244, 244, 245)
@@ -129,13 +157,56 @@ fn custom_button(
         Color32::from_rgb(212, 212, 216)
     };
 
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        text,
-        egui::FontId::proportional(12.0),
-        text_color,
-    );
+    let center = rect.center();
+
+    match kind {
+        WindowButtonKind::Minimize => {
+            // 10x1 horizontal bar matching web <svg width="10" height="1"><path d="M0 0h10v1H0z" /></svg>
+            let bar_rect = Rect::from_center_size(center + vec2(0.0, 1.0), vec2(10.0, 1.0));
+            ui.painter().rect_filled(bar_rect, 0.0, icon_color);
+        }
+        WindowButtonKind::Maximize => {
+            // 10x10 hollow square matching web <svg width="10" height="10"><path d="M0.5 0.5h9v9h-9z" /></svg>
+            let sq_rect = Rect::from_center_size(center, vec2(10.0, 10.0));
+            ui.painter().rect_stroke(
+                sq_rect,
+                0.0,
+                Stroke::new(1.0_f32, icon_color),
+                StrokeKind::Inside,
+            );
+        }
+        WindowButtonKind::Restore => {
+            // 2 overlapping squares matching web maximize restore state
+            let back_rect = Rect::from_min_size(center + vec2(-3.0, -5.0), vec2(8.0, 8.0));
+            let front_rect = Rect::from_min_size(center + vec2(-5.0, -3.0), vec2(8.0, 8.0));
+            ui.painter().rect_stroke(
+                back_rect,
+                0.0,
+                Stroke::new(1.0_f32, icon_color),
+                StrokeKind::Inside,
+            );
+            ui.painter().rect_filled(front_rect, 0.0, bg_color);
+            ui.painter().rect_stroke(
+                front_rect,
+                0.0,
+                Stroke::new(1.0_f32, icon_color),
+                StrokeKind::Inside,
+            );
+        }
+        WindowButtonKind::Close => {
+            // 10x10 crisp vector X
+            let half = 4.5_f32;
+            let stroke = Stroke::new(1.1_f32, icon_color);
+            ui.painter().line_segment(
+                [center + vec2(-half, -half), center + vec2(half, half)],
+                stroke,
+            );
+            ui.painter().line_segment(
+                [center + vec2(half, -half), center + vec2(-half, half)],
+                stroke,
+            );
+        }
+    }
 
     resp
 }
