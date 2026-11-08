@@ -1,4 +1,5 @@
-use egui::{Align2, Color32, CornerRadius, RichText, Sense, Ui, Vec2};
+use egui::{pos2, vec2, Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Ui, Vec2};
+use crate::titlebar::{draw_svg_logo_icon, font_regular, font_semibold};
 
 pub struct SetNameView {
     pub name_input: String,
@@ -21,54 +22,57 @@ impl SetNameView {
         let mut submitted_name = None;
 
         // Container: White background (#FFFFFF)
-        ui.painter().rect_filled(ui.max_rect(), 0.0, Color32::from_rgb(255, 255, 255));
+        let avail = ui.available_rect_before_wrap();
+        ui.painter().rect_filled(avail, 0.0, Color32::from_rgb(255, 255, 255));
+
+        let card_width = 320.0;
+        let top_pad = ((avail.height() - 250.0) * 0.5).max(32.0);
 
         ui.vertical_centered(|ui| {
-            ui.add_space(ui.available_height() * 0.15);
-
-            // Card box (max-width: 320px) matching web .auth-box
-            let card_width = 320.0;
+            ui.add_space(top_pad);
             ui.set_max_width(card_width);
 
-            // 1. Logo: Chat bubble icon in #2563EB (size 44px)
+            // 1. Logo: 44x44 outline chat bubble in #2563EB matching web LogoIcon
             let (logo_rect, _) = ui.allocate_exact_size(Vec2::new(44.0, 44.0), Sense::hover());
-            ui.painter().rect_filled(
-                logo_rect,
-                CornerRadius::same(10),
-                Color32::from_rgb(37, 99, 235), // Blue #2563EB
-            );
-            ui.painter().text(
-                logo_rect.center(),
-                Align2::CENTER_CENTER,
-                "💬",
-                egui::FontId::proportional(22.0),
-                Color32::WHITE,
-            );
+            draw_svg_logo_icon(ui.painter(), logo_rect, Color32::from_rgb(37, 99, 235));
 
             ui.add_space(16.0);
 
             // 2. Title: Đặt tên của bạn (20px, font-weight 600, color #171717)
             ui.label(
                 RichText::new("Đặt tên của bạn")
-                    .size(20.0)
-                    .strong()
+                    .font(font_semibold(20.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 
             ui.add_space(20.0);
 
-            // 3. Input matching web .auth-input
-            let input = egui::TextEdit::singleline(&mut self.name_input)
-                .hint_text("Nhập tên người dùng")
-                .min_size(Vec2::new(card_width, 40.0));
-            let input_resp = ui.add(input);
+            // 3. Input matching web input (#F7F8FA background, 8px radius, padding 10px 14px)
+            let (inp_rect, _) = ui.allocate_exact_size(Vec2::new(card_width, 40.0), Sense::hover());
+            ui.painter().rect_filled(inp_rect, CornerRadius::same(8), Color32::from_rgb(247, 248, 250));
 
-            // 4. Error message if any
+            let mut inp_child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(inp_rect.shrink2(vec2(14.0, 4.0)))
+                    .layout(Layout::left_to_right(Align::Center)),
+            );
+            let input_edit = egui::TextEdit::singleline(&mut self.name_input)
+                .font(font_regular(14.0))
+                .hint_text(
+                    RichText::new("Nhập tên người dùng")
+                        .font(font_regular(14.0))
+                        .color(Color32::from_rgb(115, 115, 115)),
+                )
+                .frame(false)
+                .desired_width(card_width - 28.0);
+            let input_resp = inp_child.add(input_edit);
+
+            // 4. Error message if any (.error-text)
             if let Some(ref err) = self.error_msg {
                 ui.add_space(8.0);
                 ui.label(
                     RichText::new(err)
-                        .size(13.0)
+                        .font(font_regular(13.0))
                         .color(Color32::from_rgb(220, 38, 38)), // #DC2626
                 );
             }
@@ -82,21 +86,21 @@ impl SetNameView {
             );
 
             let btn_bg = if btn_resp.is_pointer_button_down_on() {
-                Color32::from_rgb(29, 78, 216) // Blue 700 #1D4ED8
+                Color32::from_rgb(29, 78, 216) // #1D4ED8
             } else if btn_resp.hovered() {
                 Color32::from_rgb(30, 64, 175)
             } else {
-                Color32::from_rgb(37, 99, 235) // Blue 600 #2563EB
+                Color32::from_rgb(37, 99, 235) // #2563EB
             };
 
             ui.painter().rect_filled(btn_rect, CornerRadius::same(8), btn_bg);
 
             let btn_text = if self.is_loading { "Đang lưu" } else { "Tiếp tục" };
             ui.painter().text(
-                btn_rect.center(),
+                pos2(btn_rect.center().x, btn_rect.center().y),
                 Align2::CENTER_CENTER,
                 btn_text,
-                egui::FontId::proportional(14.0),
+                font_semibold(14.0),
                 Color32::WHITE,
             );
 

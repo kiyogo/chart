@@ -100,21 +100,9 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     let fonts_dir = std::path::Path::new(&windir).join("Fonts");
 
-    // 1. Arial (Highest priority: 100% full Vietnamese precomposed glyphs)
-    let arial_path = fonts_dir.join("arial.ttf");
-    if let Ok(bytes) = std::fs::read(&arial_path) {
-        fonts.font_data.insert(
-            "arial".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-        fonts
-            .families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .insert(0, "arial".to_owned());
-    }
+    let semibold_family = egui::FontFamily::Name("semibold".into());
 
-    // 2. Segoe UI (Standard Windows modern typography)
+    // 1. Segoe UI Regular (Primary Web UI font on Windows)
     let segoe_path = fonts_dir.join("segoeui.ttf");
     if let Ok(bytes) = std::fs::read(&segoe_path) {
         fonts.font_data.insert(
@@ -125,24 +113,65 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
+            .insert(0, "segoe_ui".to_owned());
+    }
+
+    // 2. Segoe UI Semibold (font-weight: 500/600 in Web CSS)
+    let seguisb_path = fonts_dir.join("seguisb.ttf");
+    let segoeuib_path = fonts_dir.join("segoeuib.ttf");
+    if let Ok(bytes) = std::fs::read(&seguisb_path).or_else(|_| std::fs::read(&segoeuib_path)) {
+        fonts.font_data.insert(
+            "segoe_ui_semibold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .entry(semibold_family.clone())
+            .or_default()
+            .push("segoe_ui_semibold".to_owned());
+    }
+    if fonts.font_data.contains_key("segoe_ui") {
+        fonts
+            .families
+            .entry(semibold_family.clone())
+            .or_default()
             .push("segoe_ui".to_owned());
     }
 
-    // 3. Tahoma (Windows UI fallback)
-    let tahoma_path = fonts_dir.join("tahoma.ttf");
-    if let Ok(bytes) = std::fs::read(&tahoma_path) {
+    // 3. Consolas (Monospace font for UUID & Fingerprints matching Web CSS)
+    let consola_path = fonts_dir.join("consola.ttf");
+    if let Ok(bytes) = std::fs::read(&consola_path) {
         fonts.font_data.insert(
-            "tahoma".to_owned(),
+            "consolas".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "consolas".to_owned());
+    }
+
+    // 4. Arial (Fallback)
+    let arial_path = fonts_dir.join("arial.ttf");
+    if let Ok(bytes) = std::fs::read(&arial_path) {
+        fonts.font_data.insert(
+            "arial".to_owned(),
             std::sync::Arc::new(egui::FontData::from_owned(bytes)),
         );
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .push("tahoma".to_owned());
+            .push("arial".to_owned());
+        fonts
+            .families
+            .entry(semibold_family.clone())
+            .or_default()
+            .push("arial".to_owned());
     }
 
-    // 4. Segoe UI Emoji (for symbols and emojis)
+    // 5. Segoe UI Emoji (for emojis)
     let emoji_path = fonts_dir.join("seguiemj.ttf");
     if let Ok(bytes) = std::fs::read(&emoji_path) {
         fonts.font_data.insert(
@@ -152,6 +181,11 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("segoe_emoji".to_owned());
+        fonts
+            .families
+            .entry(semibold_family)
             .or_default()
             .push("segoe_emoji".to_owned());
     }

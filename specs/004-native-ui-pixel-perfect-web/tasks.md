@@ -42,4 +42,11 @@
 - [x] Task 8.4: Tích hợp `egui::SidePanel::left(320px)` + `CentralPanel` + `SidePanel::right(380px)` trong `app.rs`, loại bỏ vệt đen và đảm bảo đường viền phân cách 1px sắc nét.
 - [x] Task 8.5: Kiểm thử toàn bộ test cases, biên dịch Release `dist-desktop/chatw.exe`, kiểm tra chạy thực tế và git auto-push.
 
+## Nhóm 9: Nâng cấp Toàn diện Typography Segoe UI Semibold & Vector Icons Khớp Web 1000%
+- [x] Task 9.1: Nạp font Windows Segoe UI (`segoeui.ttf`), Segoe UI Semibold (`seguisb.ttf`) và Consolas (`consola.ttf`) khắc phục triệt để lỗi "chữ quá xấu", hiển thị font chuẩn Windows UI.
+- [x] Task 9.2: Định vị tọa độ `Rect` tuyệt đối cho 4 nút hành động trên Sidebar Header (`gap: 6px`, right padding `16px`), chấm dứt hoàn toàn tình trạng nút Đăng xuất bị cắt một nửa (`[-`).
+- [x] Task 9.3: Vẽ lại toàn bộ Vector Icons với đường cong góc tròn (`draw_smooth_polyline`, `push_arc_points`, round caps/joins) khớp 100% SVG của web.
+- [x] Task 9.4: Đồng bộ hóa toàn bộ bảng màu Avatar 8 màu, kích thước font chữ (11px, 14px, 16px, 24px) theo `Avatar.tsx`.
+- [x] Task 9.5: Kiểm thử tự động `cargo test -p chatw-client` (7/7 passed), biên dịch release và chạy ứng dụng thực tế.
+
 

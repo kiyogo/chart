@@ -6,6 +6,10 @@ use egui::{
 };
 use uuid::Uuid;
 use chatw_core::{FriendItem, PendingRequestItem, UserSearchResult};
+use crate::titlebar::{
+    draw_smooth_polyline, draw_svg_logo_icon, font_mono, font_regular, font_semibold,
+    push_arc_points,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SidebarTab {
@@ -16,6 +20,7 @@ pub enum SidebarTab {
 #[derive(Clone, Debug)]
 pub struct DecryptedMessage {
     pub id: Uuid,
+    #[allow(dead_code)]
     pub sender_id: Uuid,
     pub is_me: bool,
     pub text: String,
@@ -43,6 +48,7 @@ pub struct ChatView {
     pub server_url_input: String,
 }
 
+#[allow(dead_code)]
 pub enum ChatAction {
     SelectFriend(Uuid),
     SendMessage(String),
@@ -57,12 +63,129 @@ pub enum ChatAction {
 }
 
 // ==========================================
-// PURE RUST VECTOR SVG ICONS MATCHING WEB
+// EXACT WEB SVG ICONS (24x24 viewBox, stroke-width 2, round caps/joins)
 // ==========================================
 
+pub fn draw_svg_chat_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+    draw_svg_logo_icon(painter, rect, color);
+}
+
+/// Web `<FriendsIcon />`:
+/// `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />`
+/// `<circle cx="9" cy="7" r="4" />`
+/// `<path d="M23 21v-2a4 4 0 0 0-3-3.87" />`
+/// `<path d="M16 3.13a4 4 0 0 1 0 7.75" />`
+pub fn draw_svg_friends_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+    let s = rect.size() / 24.0;
+    let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
+    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
+    let pi = std::f32::consts::PI;
+
+    // 1. Primary person head: circle(9, 7, r=4)
+    painter.circle_stroke(pt(9.0, 7.0), 4.0 * s.x, stroke);
+
+    // 2. Primary person body with smooth radius-4 shoulder arcs
+    let mut body1 = Vec::with_capacity(20);
+    body1.push(pt(1.0, 21.0));
+    push_arc_points(&mut body1, pt(5.0, 19.0), vec2(4.0 * s.x, 4.0 * s.y), pi, pi * 1.5, 6);
+    push_arc_points(&mut body1, pt(13.0, 19.0), vec2(4.0 * s.x, 4.0 * s.y), pi * 1.5, pi * 2.0, 6);
+    body1.push(pt(17.0, 21.0));
+    draw_smooth_polyline(painter, &body1, stroke, false);
+
+    // 3. Secondary person head arc: center(15, 7), r=4, angle -75° to +75°
+    let mut head2 = Vec::with_capacity(12);
+    push_arc_points(&mut head2, pt(15.0, 7.0), vec2(4.0 * s.x, 4.0 * s.y), -pi * 0.42, pi * 0.42, 10);
+    draw_smooth_polyline(painter, &head2, stroke, false);
+
+    // 4. Secondary person shoulder arc: center(19, 19), r=4, angle -75° to 0° then down to (23, 21)
+    let mut body2 = Vec::with_capacity(10);
+    push_arc_points(&mut body2, pt(19.0, 19.0), vec2(4.0 * s.x, 4.0 * s.y), -pi * 0.42, 0.0, 6);
+    body2.push(pt(23.0, 21.0));
+    draw_smooth_polyline(painter, &body2, stroke, false);
+}
+
+/// Web `<SettingsIcon />`: Feather 8-tooth gear contour + inner circle(12,12, r=3)
+pub fn draw_svg_settings_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+    let s = rect.size() / 24.0;
+    let center = rect.center();
+    let stroke = Stroke::new((1.9 * s.x).max(1.3), color);
+
+    // Inner circle r=3.2
+    painter.circle_stroke(center, 3.2 * s.x, stroke);
+
+    // Continuous 8-tooth gear contour
+    let r_inner = 7.4 * s.x;
+    let r_outer = 10.0 * s.x;
+    let mut gear_pts = Vec::with_capacity(64);
+    let num_teeth = 8;
+    for i in 0..num_teeth {
+        let base = (i as f32) * std::f32::consts::TAU / (num_teeth as f32);
+        let step = std::f32::consts::TAU / (num_teeth as f32);
+        let a0 = base - step * 0.18;
+        let a1 = base - step * 0.11;
+        let a2 = base + step * 0.11;
+        let a3 = base + step * 0.18;
+        gear_pts.push(center + vec2(a0.cos() * r_inner, a0.sin() * r_inner));
+        gear_pts.push(center + vec2(a1.cos() * r_outer, a1.sin() * r_outer));
+        gear_pts.push(center + vec2(a2.cos() * r_outer, a2.sin() * r_outer));
+        gear_pts.push(center + vec2(a3.cos() * r_inner, a3.sin() * r_inner));
+    }
+    draw_smooth_polyline(painter, &gear_pts, stroke, true);
+}
+
+/// Web `<LogoutIcon />`:
+/// `<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />`
+/// `<polyline points="16 17 21 12 16 7" />`
+/// `<line x1="21" y1="12" x2="9" y2="12" />`
+pub fn draw_svg_logout_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+    let s = rect.size() / 24.0;
+    let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
+    let r2 = vec2(2.0 * s.x, 2.0 * s.y);
+    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
+    let pi = std::f32::consts::PI;
+
+    // 1. Door frame with smooth radius-2 corners
+    let mut door = Vec::with_capacity(18);
+    door.push(pt(9.0, 21.0));
+    push_arc_points(&mut door, pt(5.0, 19.0), r2, pi * 0.5, pi, 5);
+    push_arc_points(&mut door, pt(5.0, 5.0), r2, pi, pi * 1.5, 5);
+    door.push(pt(9.0, 3.0));
+    draw_smooth_polyline(painter, &door, stroke, false);
+
+    // 2. Horizontal shaft (9,12 -> 21,12)
+    draw_smooth_polyline(painter, &[pt(9.0, 12.0), pt(21.0, 12.0)], stroke, false);
+
+    // 3. Arrow head (16,7 -> 21,12 -> 16,17)
+    draw_smooth_polyline(painter, &[pt(16.0, 7.0), pt(21.0, 12.0), pt(16.0, 17.0)], stroke, false);
+}
+
+/// Web `<EmojiIcon />`
+pub fn draw_svg_emoji_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+    let s = rect.size() / 24.0;
+    let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
+    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
+
+    painter.circle_stroke(pt(12.0, 12.0), 10.0 * s.x, stroke);
+    painter.circle_filled(pt(9.0, 9.0), (1.3 * s.x).max(1.2), color);
+    painter.circle_filled(pt(15.0, 9.0), (1.3 * s.x).max(1.2), color);
+
+    let mut smile = Vec::with_capacity(12);
+    push_arc_points(
+        &mut smile,
+        pt(12.0, 12.5),
+        vec2(4.2 * s.x, 3.5 * s.y),
+        std::f32::consts::PI * 0.15,
+        std::f32::consts::PI * 0.85,
+        10,
+    );
+    draw_smooth_polyline(painter, &smile, stroke, false);
+}
+
+/// Web `<SendIcon />`
 pub fn draw_svg_send_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     let s = rect.size() / 24.0;
     let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
+    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
 
     let poly = [
         pt(22.0, 2.0),
@@ -70,116 +193,39 @@ pub fn draw_svg_send_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
         pt(11.0, 13.0),
         pt(2.0, 9.0),
     ];
-    let stroke = Stroke::new((1.8 * s.x).max(1.2), color);
-    painter.line_segment([poly[0], poly[1]], stroke);
-    painter.line_segment([poly[1], poly[2]], stroke);
-    painter.line_segment([poly[2], poly[3]], stroke);
-    painter.line_segment([poly[3], poly[0]], stroke);
-    painter.line_segment([pt(22.0, 2.0), pt(11.0, 13.0)], stroke);
+    draw_smooth_polyline(painter, &poly, stroke, true);
+    draw_smooth_polyline(painter, &[pt(22.0, 2.0), pt(11.0, 13.0)], stroke, false);
 }
 
-pub fn draw_svg_menu_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
-    let s = rect.size() / 24.0;
-    let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
-    let stroke = Stroke::new((1.8 * s.x).max(1.2), color);
-    painter.line_segment([pt(3.0, 6.0), pt(21.0, 6.0)], stroke);
-    painter.line_segment([pt(3.0, 12.0), pt(21.0, 12.0)], stroke);
-    painter.line_segment([pt(3.0, 18.0), pt(21.0, 18.0)], stroke);
-}
-
-pub fn draw_svg_close_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
-    let stroke = Stroke::new(1.8_f32, color);
-    painter.line_segment([rect.left_top(), rect.right_bottom()], stroke);
-    painter.line_segment([rect.right_top(), rect.left_bottom()], stroke);
-}
-
+/// Web `<BackIcon />`
 pub fn draw_svg_back_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     let s = rect.size() / 24.0;
     let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
-    let stroke = Stroke::new((1.8 * s.x).max(1.2), color);
-    painter.line_segment([pt(19.0, 12.0), pt(5.0, 12.0)], stroke);
-    painter.line_segment([pt(12.0, 19.0), pt(5.0, 12.0)], stroke);
-    painter.line_segment([pt(5.0, 12.0), pt(12.0, 5.0)], stroke);
+    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
+
+    draw_smooth_polyline(painter, &[pt(19.0, 12.0), pt(5.0, 12.0)], stroke, false);
+    draw_smooth_polyline(painter, &[pt(12.0, 19.0), pt(5.0, 12.0), pt(12.0, 5.0)], stroke, false);
 }
 
-pub fn draw_svg_chat_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+/// Web `<MenuIcon />`
+pub fn draw_svg_menu_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     let s = rect.size() / 24.0;
     let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
-    let stroke = Stroke::new((1.8 * s.x).max(1.2), color);
-    let points = [
-        pt(21.0, 5.0),
-        pt(21.0, 15.0),
-        pt(19.0, 17.0),
-        pt(7.0, 17.0),
-        pt(3.0, 21.0),
-        pt(3.0, 5.0),
-        pt(5.0, 3.0),
-        pt(19.0, 3.0),
-        pt(21.0, 5.0),
-    ];
-    for i in 0..points.len() - 1 {
-        painter.line_segment([points[i], points[i + 1]], stroke);
-    }
+    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
+
+    draw_smooth_polyline(painter, &[pt(3.0, 6.0), pt(21.0, 6.0)], stroke, false);
+    draw_smooth_polyline(painter, &[pt(3.0, 12.0), pt(21.0, 12.0)], stroke, false);
+    draw_smooth_polyline(painter, &[pt(3.0, 18.0), pt(21.0, 18.0)], stroke, false);
 }
 
-pub fn draw_svg_friends_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+/// Web `<CloseIcon />`
+pub fn draw_svg_close_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     let s = rect.size() / 24.0;
     let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
-    let stroke = Stroke::new((1.8 * s.x).max(1.2), color);
-    // Primary person
-    painter.circle_stroke(pt(9.0, 7.0), 3.5 * s.x, stroke);
-    painter.line_segment([pt(4.0, 20.0), pt(4.0, 16.0)], stroke);
-    painter.line_segment([pt(4.0, 16.0), pt(14.0, 16.0)], stroke);
-    painter.line_segment([pt(14.0, 16.0), pt(14.0, 20.0)], stroke);
-    // Secondary person
-    painter.circle_stroke(pt(17.0, 8.0), 2.5 * s.x, stroke);
-    painter.line_segment([pt(16.0, 15.0), pt(20.0, 15.0)], stroke);
-    painter.line_segment([pt(20.0, 15.0), pt(20.0, 20.0)], stroke);
-}
+    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
 
-pub fn draw_svg_settings_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
-    let center = rect.center();
-    let r = rect.width() * 0.40;
-    let stroke = Stroke::new(1.8_f32, color);
-    painter.circle_stroke(center, r * 0.45, stroke);
-    for i in 0..8 {
-        let angle = (i as f32) * std::f32::consts::PI / 4.0;
-        let p1 = center + vec2(angle.cos() * (r * 0.55), angle.sin() * (r * 0.55));
-        let p2 = center + vec2(angle.cos() * r, angle.sin() * r);
-        painter.line_segment([p1, p2], stroke);
-    }
-}
-
-pub fn draw_svg_logout_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
-    let s = rect.size() / 24.0;
-    let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
-    let stroke = Stroke::new((1.8 * s.x).max(1.2), color);
-
-    // Door outline (left rounded)
-    painter.line_segment([pt(9.0, 4.0), pt(5.0, 4.0)], stroke);
-    painter.line_segment([pt(5.0, 4.0), pt(5.0, 20.0)], stroke);
-    painter.line_segment([pt(5.0, 20.0), pt(9.0, 20.0)], stroke);
-
-    // Exit arrow (well inside, from x=9 to x=18)
-    painter.line_segment([pt(9.0, 12.0), pt(18.0, 12.0)], stroke);
-    painter.line_segment([pt(14.5, 8.5), pt(18.0, 12.0)], stroke);
-    painter.line_segment([pt(18.0, 12.0), pt(14.5, 15.5)], stroke);
-}
-
-pub fn draw_svg_emoji_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
-    let center = rect.center();
-    let r = rect.width() * 0.42;
-    let stroke = Stroke::new(1.8_f32, color);
-    painter.circle_stroke(center, r, stroke);
-    // Eyes
-    painter.circle_filled(center + vec2(-r * 0.35, -r * 0.2), 1.5, color);
-    painter.circle_filled(center + vec2(r * 0.35, -r * 0.2), 1.5, color);
-    // Smile
-    let p_left = center + vec2(-r * 0.4, r * 0.18);
-    let p_mid = center + vec2(0.0, r * 0.44);
-    let p_right = center + vec2(r * 0.4, r * 0.18);
-    painter.line_segment([p_left, p_mid], stroke);
-    painter.line_segment([p_mid, p_right], stroke);
+    draw_smooth_polyline(painter, &[pt(18.0, 6.0), pt(6.0, 18.0)], stroke, false);
+    draw_smooth_polyline(painter, &[pt(6.0, 6.0), pt(18.0, 18.0)], stroke, false);
 }
 
 // ==========================================
@@ -210,38 +256,35 @@ impl ChatView {
         }
     }
 
-    /// Master render method leveraging standard egui SidePanel & CentralPanel show_inside
     pub fn show(&mut self, ui: &mut Ui) -> Option<ChatAction> {
         let mut triggered_action = None;
         let active_friend = self.friends.iter().find(|f| Some(f.id) == self.selected_friend_id).cloned();
         let show_right_sidebar = self.is_partner_info_open
             && active_friend.is_some()
             && !self.is_settings_open
-            && ui.available_width() >= 880.0;
+            && ui.available_width() >= 900.0;
 
-        // 1. LEFT SIDEBAR PANEL (320px, #F7F8FA background, 1px right border #E5E7EB)
+        // 1. LEFT SIDEBAR (320px, #F7F8FA background, no thick border matching web .sidebar)
         egui::SidePanel::left("chat_sidebar_panel")
             .exact_width(320.0)
             .resizable(false)
-            .frame(
-                egui::Frame::NONE
-                    .fill(Color32::from_rgb(247, 248, 250))
-                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235))),
-            )
+            .show_separator_line(false)
+            .frame(egui::Frame::NONE.fill(Color32::from_rgb(247, 248, 250)))
             .show_inside(ui, |ui| {
                 self.render_sidebar_content(ui, &mut triggered_action);
             });
 
-        // 2. RIGHT PARTNER INFO SIDEBAR (380px, #FFFFFF background, 1px left border #E5E7EB)
+        // 2. RIGHT PARTNER INFO SIDEBAR (380px, #FFFFFF background, 1px #ECEEF2 left border)
         if show_right_sidebar {
             if let Some(ref friend) = active_friend {
                 egui::SidePanel::right("partner_info_panel")
                     .exact_width(380.0)
                     .resizable(false)
+                    .show_separator_line(false)
                     .frame(
                         egui::Frame::NONE
                             .fill(Color32::WHITE)
-                            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235))),
+                            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(236, 238, 242))),
                     )
                     .show_inside(ui, |ui| {
                         self.render_partner_info_sidebar(ui, friend);
@@ -249,7 +292,7 @@ impl ChatView {
             }
         }
 
-        // 3. CENTER AREA (Fills 100% remaining space, #FFFFFF background)
+        // 3. CENTER MAIN VIEW (Fills 100% remaining space, #FFFFFF background)
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(Color32::WHITE))
             .show_inside(ui, |ui| {
@@ -270,84 +313,97 @@ impl ChatView {
         let total_rect = ui.available_rect_before_wrap();
         ui.painter().rect_filled(total_rect, 0.0, Color32::from_rgb(247, 248, 250));
 
-        // Header (58px) matching web .sidebar-header
-        let header_height = 58.0;
+        // .sidebar-header: padding 16px, height 68px (36px buttons + 32px padding), NO bottom border
+        let header_height = 68.0;
         let (header_rect, _) = ui.allocate_exact_size(Vec2::new(total_rect.width(), header_height), Sense::hover());
-        ui.painter().line_segment(
-            [header_rect.left_bottom(), header_rect.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+
+        // Exact mathematical coordinates for the 4 action buttons on the right (.sidebar-actions: gap 6px, 36x36 each)
+        // Total width of 4 buttons = 4 * 36 + 3 * 6 = 162px. Right padding = 16px.
+        // Buttons span from x = 320 - 16 - 162 = 142.0 to x = 304.0 (100% inside 320px!)
+        let btn_size = vec2(36.0, 36.0);
+        let btn_y = header_rect.center().y - 18.0;
+        let right_edge = header_rect.right() - 16.0;
+
+        let logout_rect = Rect::from_min_size(pos2(right_edge - 36.0, btn_y), btn_size);
+        let set_rect = Rect::from_min_size(pos2(logout_rect.left() - 6.0 - 36.0, btn_y), btn_size);
+        let fr_rect = Rect::from_min_size(pos2(set_rect.left() - 6.0 - 36.0, btn_y), btn_size);
+        let ch_rect = Rect::from_min_size(pos2(fr_rect.left() - 6.0 - 36.0, btn_y), btn_size);
+
+        // 1. Left brand (.app-brand: Avatar 28px + 8px gap + 16px semibold username)
+        let avatar_rect = Rect::from_center_size(
+            pos2(header_rect.left() + 16.0 + 14.0, header_rect.center().y),
+            vec2(28.0, 28.0),
+        );
+        paint_avatar_in_rect(ui.painter(), avatar_rect, &self.current_username);
+
+        let max_name_w = (ch_rect.left() - avatar_rect.right() - 14.0).max(40.0);
+        let name_galley = ui.painter().layout_no_wrap(
+            self.current_username.clone(),
+            font_semibold(16.0),
+            Color32::from_rgb(23, 23, 23),
+        );
+        let name_pos = pos2(
+            avatar_rect.right() + 8.0,
+            header_rect.center().y - name_galley.size().y * 0.5,
+        );
+        let name_clip = Rect::from_min_size(
+            pos2(name_pos.x, header_rect.top()),
+            vec2(max_name_w, header_height),
+        );
+        ui.painter().with_clip_rect(name_clip).galley(
+            name_pos,
+            name_galley,
+            Color32::from_rgb(23, 23, 23),
         );
 
-        // 1. User profile on the left (.app-brand)
-        // 4 action buttons: 4 * 28px + 3 * 3px = 121px + 10px margin = 131px
-        let brand_w = (header_rect.width() - 136.0).max(80.0);
-        let brand_rect = Rect::from_min_size(
-            pos2(header_rect.min.x + 12.0, header_rect.min.y),
-            Vec2::new(brand_w, header_height),
-        );
-        let mut brand_ui = ui.new_child(UiBuilder::new().max_rect(brand_rect).layout(Layout::left_to_right(Align::Center)));
-
-        render_avatar(&mut brand_ui, &self.current_username, 28.0);
-        brand_ui.add_space(8.0);
-
-        let display_name: String = if self.current_username.chars().count() > 10 {
-            self.current_username.chars().take(9).collect::<String>() + "..."
-        } else {
-            self.current_username.clone()
-        };
-        brand_ui.label(
-            RichText::new(display_name)
-                .size(14.0)
-                .strong()
-                .color(Color32::from_rgb(23, 23, 23)),
-        );
-
-        // 2. 4 Action Buttons on the right (.sidebar-actions)
-        let actions_w = 124.0;
-        let actions_rect = Rect::from_min_size(
-            pos2(header_rect.right() - actions_w - 8.0, header_rect.min.y),
-            Vec2::new(actions_w, header_height),
-        );
-        let mut actions_ui = ui.new_child(UiBuilder::new().max_rect(actions_rect).layout(Layout::left_to_right(Align::Center)));
-
-        let btn_sz = Vec2::new(28.0, 28.0);
-
-        // Button 1: Chats Tab
-        let (ch_rect, ch_resp) = actions_ui.allocate_exact_size(btn_sz, Sense::click());
+        // Button 1: Chats Tab (<LogoIcon size={18} />)
+        let ch_resp = ui.interact(ch_rect, ui.id().with("sb_btn_chats"), Sense::click());
         let is_ch_active = self.sidebar_tab == SidebarTab::Chats && !self.is_settings_open;
-        if is_ch_active {
-            actions_ui.painter().rect_filled(ch_rect, CornerRadius::same(6), Color32::from_rgb(239, 246, 255)); // Blue-50
-        } else if ch_resp.hovered() {
-            actions_ui.painter().rect_filled(ch_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
+        if is_ch_active || ch_resp.hovered() {
+            ui.painter().rect_filled(ch_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242)); // #ECEEF2
         }
-        let ch_color = if is_ch_active { Color32::from_rgb(37, 99, 235) } else { Color32::from_rgb(115, 115, 115) };
-        draw_svg_chat_icon(actions_ui.painter(), ch_rect.shrink(5.5), ch_color);
+        let ch_color = if is_ch_active {
+            Color32::from_rgb(37, 99, 235) // #2563EB
+        } else if ch_resp.hovered() {
+            Color32::from_rgb(23, 23, 23)
+        } else {
+            Color32::from_rgb(115, 115, 115) // #737373
+        };
+        draw_svg_chat_icon(ui.painter(), Rect::from_center_size(ch_rect.center(), vec2(18.0, 18.0)), ch_color);
         if ch_resp.clicked() {
             self.sidebar_tab = SidebarTab::Chats;
             self.is_settings_open = false;
         }
 
-        actions_ui.add_space(3.0);
-
-        // Button 2: Friends Tab (with notification badge)
-        let (fr_rect, fr_resp) = actions_ui.allocate_exact_size(btn_sz, Sense::click());
+        // Button 2: Friends Tab (<FriendsIcon /> 18x18 + .tab-badge)
+        let fr_resp = ui.interact(fr_rect, ui.id().with("sb_btn_friends"), Sense::click());
         let is_fr_active = self.sidebar_tab == SidebarTab::Friends && !self.is_settings_open;
-        if is_fr_active {
-            actions_ui.painter().rect_filled(fr_rect, CornerRadius::same(6), Color32::from_rgb(239, 246, 255));
-        } else if fr_resp.hovered() {
-            actions_ui.painter().rect_filled(fr_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
+        if is_fr_active || fr_resp.hovered() {
+            ui.painter().rect_filled(fr_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
         }
-        let fr_color = if is_fr_active { Color32::from_rgb(37, 99, 235) } else { Color32::from_rgb(115, 115, 115) };
-        draw_svg_friends_icon(actions_ui.painter(), fr_rect.shrink(5.5), fr_color);
+        let fr_color = if is_fr_active {
+            Color32::from_rgb(37, 99, 235)
+        } else if fr_resp.hovered() {
+            Color32::from_rgb(23, 23, 23)
+        } else {
+            Color32::from_rgb(115, 115, 115)
+        };
+        draw_svg_friends_icon(ui.painter(), Rect::from_center_size(fr_rect.center(), vec2(18.0, 18.0)), fr_color);
 
         if !self.pending_requests.is_empty() {
-            let badge_pos = pos2(fr_rect.right() - 2.0, fr_rect.top() + 2.0);
-            actions_ui.painter().circle_filled(badge_pos, 6.5, Color32::from_rgb(37, 99, 235));
-            actions_ui.painter().text(
-                badge_pos,
+            let badge_center = pos2(fr_rect.right() - 6.0, fr_rect.top() + 6.0);
+            let border_col = if is_fr_active || fr_resp.hovered() {
+                Color32::from_rgb(236, 238, 242)
+            } else {
+                Color32::from_rgb(247, 248, 250)
+            };
+            ui.painter().circle_filled(badge_center, 8.5, border_col);
+            ui.painter().circle_filled(badge_center, 7.0, Color32::from_rgb(37, 99, 235));
+            ui.painter().text(
+                badge_center,
                 Align2::CENTER_CENTER,
                 &format!("{}", self.pending_requests.len().min(99)),
-                egui::FontId::proportional(8.0),
+                font_semibold(9.5),
                 Color32::WHITE,
             );
         }
@@ -356,308 +412,278 @@ impl ChatView {
             self.is_settings_open = false;
         }
 
-        actions_ui.add_space(3.0);
-
-        // Button 3: Settings
-        let (set_rect, set_resp) = actions_ui.allocate_exact_size(btn_sz, Sense::click());
+        // Button 3: Settings (<SettingsIcon /> 18x18)
+        let set_resp = ui.interact(set_rect, ui.id().with("sb_btn_settings"), Sense::click());
         let is_set_active = self.is_settings_open;
-        if is_set_active {
-            actions_ui.painter().rect_filled(set_rect, CornerRadius::same(6), Color32::from_rgb(239, 246, 255));
+        if is_set_active || set_resp.hovered() {
+            ui.painter().rect_filled(set_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
+        }
+        let set_color = if is_set_active {
+            Color32::from_rgb(37, 99, 235)
         } else if set_resp.hovered() {
-            actions_ui.painter().rect_filled(set_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
-        }
-        let set_color = if is_set_active { Color32::from_rgb(37, 99, 235) } else { Color32::from_rgb(115, 115, 115) };
-        draw_svg_settings_icon(actions_ui.painter(), set_rect.shrink(5.5), set_color);
+            Color32::from_rgb(23, 23, 23)
+        } else {
+            Color32::from_rgb(115, 115, 115)
+        };
+        draw_svg_settings_icon(ui.painter(), Rect::from_center_size(set_rect.center(), vec2(18.0, 18.0)), set_color);
         if set_resp.clicked() {
-            self.is_settings_open = !self.is_settings_open;
+            let next_open = !self.is_settings_open;
+            self.is_settings_open = next_open;
+            if next_open {
+                self.selected_friend_id = None;
+            }
         }
 
-        actions_ui.add_space(3.0);
-
-        // Button 4: Logout (with red danger hover)
-        let (logout_rect, logout_resp) = actions_ui.allocate_exact_size(btn_sz, Sense::click());
-        let logout_bg = if logout_resp.hovered() { Color32::from_rgb(252, 232, 230) } else { Color32::TRANSPARENT };
-        actions_ui.painter().rect_filled(logout_rect, CornerRadius::same(6), logout_bg);
-        let logout_color = if logout_resp.hovered() { Color32::from_rgb(220, 38, 38) } else { Color32::from_rgb(115, 115, 115) };
-        draw_svg_logout_icon(actions_ui.painter(), logout_rect.shrink(5.5), logout_color);
+        // Button 4: Logout (.icon-btn.btn-danger: color ALWAYS #DC2626, hover bg #FCE8E6)
+        let logout_resp = ui.interact(logout_rect, ui.id().with("sb_btn_logout"), Sense::click());
+        if logout_resp.hovered() {
+            ui.painter().rect_filled(logout_rect, CornerRadius::same(6), Color32::from_rgb(252, 232, 230)); // #FCE8E6
+        }
+        draw_svg_logout_icon(
+            ui.painter(),
+            Rect::from_center_size(logout_rect.center(), vec2(18.0, 18.0)),
+            Color32::from_rgb(220, 38, 38), // #DC2626
+        );
         if logout_resp.clicked() {
             *action = Some(ChatAction::Logout);
         }
 
-        // 3. Tab Contents
+        // 2. Tab Body
+        match self.sidebar_tab {
+            SidebarTab::Chats => {
+                self.render_chats_tab(ui, action);
+            }
+            SidebarTab::Friends => {
+                self.render_friends_tab(ui, action);
+            }
+        }
+    }
+
+    // ==========================================
+    // TAB 1: CHATS LIST (Matches Chat.tsx lines 875-910)
+    // ==========================================
+    fn render_chats_tab(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
+        if self.friends.is_empty() {
+            let avail = ui.available_rect_before_wrap();
+            ui.painter().text(
+                avail.center(),
+                Align2::CENTER_CENTER,
+                "Chưa có bạn bè nào",
+                font_regular(14.0),
+                Color32::from_rgb(115, 115, 115),
+            );
+            return;
+        }
+
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                match self.sidebar_tab {
-                    SidebarTab::Chats => {
-                        self.render_chats_tab(ui, action);
-                    }
-                    SidebarTab::Friends => {
-                        self.render_friends_tab(ui, action);
+                let row_w = ui.available_width() - 16.0;
+                for friend in &self.friends {
+                    let is_selected = Some(friend.id) == self.selected_friend_id && !self.is_settings_open;
+                    let (outer_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 56.0), Sense::hover());
+                    let item_rect = Rect::from_center_size(outer_rect.center(), vec2(row_w, 54.0));
+                    let resp = ui.interact(item_rect, ui.id().with(("chat_item", friend.id)), Sense::click());
+
+                    let bg = if is_selected {
+                        Color32::from_rgb(230, 237, 254) // #E6EDFE (.chat-item.selected)
+                    } else if resp.hovered() {
+                        Color32::from_rgb(236, 238, 242) // #ECEEF2 (.chat-item:hover)
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(item_rect, CornerRadius::same(8), bg);
+
+                    // Avatar 38px
+                    let av_rect = Rect::from_center_size(
+                        pos2(item_rect.left() + 10.0 + 19.0, item_rect.center().y),
+                        vec2(38.0, 38.0),
+                    );
+                    paint_avatar_in_rect(ui.painter(), av_rect, &friend.username);
+
+                    let text_left = av_rect.right() + 12.0;
+                    ui.painter().text(
+                        pos2(text_left, item_rect.center().y - 9.0),
+                        Align2::LEFT_CENTER,
+                        &friend.username,
+                        font_semibold(14.0),
+                        Color32::from_rgb(23, 23, 23),
+                    );
+
+                    let preview_text = if let Some(msg) = self.messages.get(&friend.id).and_then(|m| m.last()) {
+                        msg.text.chars().take(28).collect::<String>()
+                    } else {
+                        "Bắt đầu trò chuyện".to_string()
+                    };
+
+                    ui.painter().text(
+                        pos2(text_left, item_rect.center().y + 10.0),
+                        Align2::LEFT_CENTER,
+                        &preview_text,
+                        font_regular(12.0),
+                        Color32::from_rgb(115, 115, 115),
+                    );
+
+                    if resp.clicked() {
+                        *action = Some(ChatAction::SelectFriend(friend.id));
+                        self.is_settings_open = false;
                     }
                 }
             });
     }
 
     // ==========================================
-    // TAB 1: CHATS LIST
-    // ==========================================
-    fn render_chats_tab(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
-        if self.friends.is_empty() {
-            ui.add_space(48.0);
-            ui.vertical_centered(|ui| {
-                ui.label(
-                    RichText::new("Chưa có bạn bè nào")
-                        .size(14.0)
-                        .color(Color32::from_rgb(115, 115, 115)),
-                );
-                ui.add_space(4.0);
-                ui.label(
-                    RichText::new("Bấm vào biểu tượng kết bạn ở trên")
-                        .size(12.0)
-                        .color(Color32::from_rgb(163, 163, 163)),
-                );
-            });
-            return;
-        }
-
-        ui.add_space(8.0);
-        let item_width = ui.available_width();
-
-        for friend in &self.friends {
-            let is_selected = Some(friend.id) == self.selected_friend_id;
-            let (item_rect, resp) = ui.allocate_exact_size(Vec2::new(item_width, 64.0), Sense::click());
-
-            let bg = if is_selected {
-                Color32::from_rgb(229, 231, 235) // #E5E7EB
-            } else if resp.hovered() {
-                Color32::from_rgb(236, 238, 242) // #ECEEF2
-            } else {
-                Color32::TRANSPARENT
-            };
-            ui.painter().rect_filled(item_rect, CornerRadius::same(8), bg);
-
-            let mut row_ui = ui.new_child(
-                UiBuilder::new()
-                    .max_rect(item_rect.shrink2(vec2(12.0, 8.0)))
-                    .layout(Layout::left_to_right(Align::Center)),
-            );
-
-            render_avatar(&mut row_ui, &friend.username, 40.0);
-            row_ui.add_space(10.0);
-
-            let last_msg = self.messages.get(&friend.id).and_then(|m| m.last());
-
-            row_ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(&friend.username)
-                            .size(14.0)
-                            .strong()
-                            .color(Color32::from_rgb(23, 23, 23)),
-                    );
-
-                    if let Some(msg) = last_msg {
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(&msg.time_str)
-                                    .size(11.0)
-                                    .color(Color32::from_rgb(115, 115, 115)),
-                            );
-                        });
-                    }
-                });
-
-                ui.add_space(2.0);
-
-                let preview_text = if let Some(msg) = last_msg {
-                    if msg.text.chars().count() > 24 {
-                        format!("{}...", msg.text.chars().take(22).collect::<String>())
-                    } else {
-                        msg.text.clone()
-                    }
-                } else {
-                    "Chưa có tin nhắn".to_string()
-                };
-
-                ui.label(
-                    RichText::new(preview_text)
-                        .size(12.5)
-                        .color(Color32::from_rgb(115, 115, 115)),
-                );
-            });
-
-            if resp.clicked() {
-                *action = Some(ChatAction::SelectFriend(friend.id));
-                self.is_settings_open = false;
-            }
-        }
-    }
-
-    // ==========================================
-    // TAB 2: FRIENDS & REQUESTS LIST
+    // TAB 2: FRIENDS & REQUESTS (Matches Chat.tsx lines 773-872)
     // ==========================================
     fn render_friends_tab(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
-        ui.add_space(12.0);
+        // .add-friend-container: padding 0 16px 12px
+        let total_w = ui.available_width();
+        let (form_outer, _) = ui.allocate_exact_size(Vec2::new(total_w, 48.0), Sense::hover());
 
-        // Add friend search box
-        ui.horizontal(|ui| {
-            ui.add_space(12.0);
-            let input_w = ui.available_width() - 68.0;
+        let btn_w = 68.0;
+        let gap = 8.0;
+        let inp_w = (total_w - 32.0 - btn_w - gap).max(100.0);
 
-            let (inp_rect, _) = ui.allocate_exact_size(Vec2::new(input_w, 36.0), Sense::hover());
-            ui.painter().rect_filled(inp_rect, CornerRadius::same(8), Color32::WHITE);
-            ui.painter().rect_stroke(
-                inp_rect,
-                CornerRadius::same(8),
-                Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-                StrokeKind::Inside,
-            );
+        let inp_rect = Rect::from_min_size(
+            pos2(form_outer.left() + 16.0, form_outer.top()),
+            vec2(inp_w, 38.0),
+        );
+        let btn_rect = Rect::from_min_size(
+            pos2(inp_rect.right() + gap, form_outer.top() + 4.0),
+            vec2(btn_w, 30.0),
+        );
 
-            let mut inp_ui = ui.new_child(
-                UiBuilder::new()
-                    .max_rect(inp_rect.shrink2(vec2(8.0, 4.0)))
-                    .layout(Layout::left_to_right(Align::Center)),
-            );
-            let inp = inp_ui.add(
-                egui::TextEdit::singleline(&mut self.add_friend_input)
-                    .hint_text("Tên bạn bè...")
-                    .frame(false)
-                    .desired_width(input_w - 16.0),
-            );
-
-            ui.add_space(4.0);
-
-            let (btn_rect, btn_resp) = ui.allocate_exact_size(Vec2::new(48.0, 36.0), Sense::click());
-            let btn_bg = if btn_resp.hovered() { Color32::from_rgb(30, 64, 175) } else { Color32::from_rgb(37, 99, 235) };
-            ui.painter().rect_filled(btn_rect, CornerRadius::same(8), btn_bg);
-            ui.painter().text(
-                btn_rect.center(),
-                Align2::CENTER_CENTER,
-                "Thêm",
-                egui::FontId::proportional(12.5),
-                Color32::WHITE,
-            );
-
-            let should_send = (btn_resp.clicked()
-                || (inp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                && !self.add_friend_input.trim().is_empty();
-
-            if should_send {
-                *action = Some(ChatAction::SendFriendRequest(
-                    self.add_friend_input.trim().to_string(),
-                ));
-                self.add_friend_input.clear();
-            }
-        });
-
-        // Status banner
-        if let Some(ref status) = self.status_message {
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.add_space(12.0);
-                ui.label(RichText::new(status).size(12.0).color(Color32::from_rgb(37, 99, 235)));
-            });
-        }
-
-        // Pending friend requests
-        if !self.pending_requests.is_empty() {
-            ui.add_space(16.0);
-            ui.horizontal(|ui| {
-                ui.add_space(12.0);
-                ui.label(
-                    RichText::new(format!("LỜI MỜI KẾT BẠN ({})", self.pending_requests.len()))
-                        .size(11.0)
-                        .strong()
+        // Input background (#FFFFFF inside #F7F8FA sidebar for clear contrast)
+        ui.painter().rect_filled(inp_rect, CornerRadius::same(8), Color32::WHITE);
+        let mut inp_ui = ui.new_child(
+            UiBuilder::new()
+                .max_rect(inp_rect.shrink2(vec2(14.0, 4.0)))
+                .layout(Layout::left_to_right(Align::Center)),
+        );
+        let inp = inp_ui.add(
+            egui::TextEdit::singleline(&mut self.add_friend_input)
+                .font(font_regular(14.0))
+                .hint_text(
+                    RichText::new("Tên tài khoản")
+                        .font(font_regular(14.0))
                         .color(Color32::from_rgb(115, 115, 115)),
-                );
-            });
+                )
+                .frame(false)
+                .desired_width(inp_w - 28.0),
+        );
 
-            for req in &self.pending_requests {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(12.0);
-                    render_avatar(ui, &req.sender_username, 32.0);
-                    ui.add_space(8.0);
-                    ui.label(RichText::new(&req.sender_username).size(13.5).strong().color(Color32::from_rgb(23, 23, 23)));
+        // Button "Kết bạn" (.btn-small-primary)
+        let has_input = !self.add_friend_input.trim().is_empty();
+        let btn_resp = ui.interact(
+            btn_rect,
+            ui.id().with("add_friend_submit_btn"),
+            if has_input { Sense::click() } else { Sense::hover() },
+        );
+        let btn_bg = if !has_input {
+            Color32::from_rgb(147, 180, 248) // disabled opacity 0.5 of #2563EB
+        } else if btn_resp.hovered() {
+            Color32::from_rgb(29, 78, 216)
+        } else {
+            Color32::from_rgb(37, 99, 235)
+        };
+        ui.painter().rect_filled(btn_rect, CornerRadius::same(6), btn_bg);
+        ui.painter().text(
+            btn_rect.center(),
+            Align2::CENTER_CENTER,
+            "Kết bạn",
+            font_semibold(12.0),
+            Color32::WHITE,
+        );
 
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.add_space(12.0);
-                        if ui.button(RichText::new("✕").size(13.0).color(Color32::from_rgb(220, 38, 38))).clicked() {
-                            *action = Some(ChatAction::RejectFriendRequest(req.id));
-                        }
-                        ui.add_space(6.0);
-                        if ui.button(RichText::new("✓").size(13.0).color(Color32::from_rgb(22, 101, 52))).clicked() {
-                            *action = Some(ChatAction::AcceptFriendRequest(req.id));
-                        }
-                    });
-                });
-            }
+        let should_send = (btn_resp.clicked()
+            || (inp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+            && has_input;
+
+        if should_send {
+            *action = Some(ChatAction::SendFriendRequest(
+                self.add_friend_input.trim().to_string(),
+            ));
+            self.add_friend_input.clear();
         }
 
-        // Friends list
-        ui.add_space(16.0);
-        ui.horizontal(|ui| {
-            ui.add_space(12.0);
-            ui.label(
-                RichText::new(format!("BẠN BÈ ({})", self.friends.len()))
-                    .size(11.0)
-                    .strong()
-                    .color(Color32::from_rgb(115, 115, 115)),
-            );
-        });
+        // Status badge (.status-badge)
+        if let Some(ref status) = self.status_message {
+            let is_err = status.starts_with("Lỗi") || status.starts_with("Không");
+            let (bg, fg) = if is_err {
+                (Color32::from_rgb(252, 232, 230), Color32::from_rgb(197, 34, 31))
+            } else {
+                (Color32::from_rgb(230, 244, 234), Color32::from_rgb(19, 115, 51))
+            };
+            let (st_outer, _) = ui.allocate_exact_size(Vec2::new(total_w, 34.0), Sense::hover());
+            let st_rect = Rect::from_min_size(pos2(st_outer.left() + 16.0, st_outer.top()), vec2(total_w - 32.0, 28.0));
+            ui.painter().rect_filled(st_rect, CornerRadius::same(6), bg);
+            ui.painter().text(st_rect.center(), Align2::CENTER_CENTER, status, font_regular(12.0), fg);
+        }
 
-        if self.friends.is_empty() {
-            ui.add_space(16.0);
-            ui.horizontal(|ui| {
-                ui.add_space(12.0);
-                ui.label(
-                    RichText::new("Chưa có bạn bè nào trong danh bạ")
-                        .size(13.0)
-                        .color(Color32::from_rgb(163, 163, 163)),
-                );
-            });
+        // Scrollable list of pending requests (or empty state "Không có lời mời nào")
+        if self.pending_requests.is_empty() {
+            let avail = ui.available_rect_before_wrap();
+            ui.painter().text(
+                avail.center(),
+                Align2::CENTER_CENTER,
+                "Không có lời mời nào",
+                font_regular(14.0),
+                Color32::from_rgb(115, 115, 115),
+            );
             return;
         }
 
-        let item_width = ui.available_width();
-        for friend in &self.friends {
-            ui.add_space(4.0);
-            let (rect, resp) = ui.allocate_exact_size(Vec2::new(item_width, 50.0), Sense::click());
-            if resp.hovered() {
-                ui.painter().rect_filled(rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
-            }
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let card_w = ui.available_width() - 16.0;
+                for req in &self.pending_requests {
+                    let (outer, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 56.0), Sense::hover());
+                    let card_rect = Rect::from_center_size(outer.center(), vec2(card_w, 52.0));
+                    ui.painter().rect_filled(card_rect, CornerRadius::same(8), Color32::WHITE);
 
-            let mut row = ui.new_child(
-                UiBuilder::new()
-                    .max_rect(rect.shrink2(vec2(12.0, 6.0)))
-                    .layout(Layout::left_to_right(Align::Center)),
-            );
+                    let av_rect = Rect::from_center_size(
+                        pos2(card_rect.left() + 12.0 + 16.0, card_rect.center().y),
+                        vec2(32.0, 32.0),
+                    );
+                    paint_avatar_in_rect(ui.painter(), av_rect, &req.sender_username);
 
-            render_avatar(&mut row, &friend.username, 36.0);
-            row.add_space(10.0);
+                    ui.painter().text(
+                        pos2(av_rect.right() + 10.0, card_rect.center().y),
+                        Align2::LEFT_CENTER,
+                        &req.sender_username,
+                        font_semibold(14.0),
+                        Color32::from_rgb(23, 23, 23),
+                    );
 
-            // Online indicator green dot
-            let dot_pos = pos2(rect.left() + 42.0, rect.top() + 36.0);
-            ui.painter().circle_filled(dot_pos, 4.0, Color32::from_rgb(34, 197, 94)); // Green-500
-            ui.painter().circle_stroke(dot_pos, 4.0, Stroke::new(1.5_f32, Color32::WHITE));
-
-            row.label(
-                RichText::new(&friend.username)
-                    .size(14.0)
-                    .color(Color32::from_rgb(23, 23, 23)),
-            );
-
-            if resp.clicked() {
-                *action = Some(ChatAction::SelectFriend(friend.id));
-                self.sidebar_tab = SidebarTab::Chats;
-                self.is_settings_open = false;
-            }
-        }
+                    // "Chấp nhận" button (.btn-small-primary)
+                    let acc_rect = Rect::from_center_size(
+                        pos2(card_rect.right() - 12.0 - 40.0, card_rect.center().y),
+                        vec2(80.0, 28.0),
+                    );
+                    let acc_resp = ui.interact(acc_rect, ui.id().with(("accept_req", req.id)), Sense::click());
+                    let acc_bg = if acc_resp.hovered() {
+                        Color32::from_rgb(29, 78, 216)
+                    } else {
+                        Color32::from_rgb(37, 99, 235)
+                    };
+                    ui.painter().rect_filled(acc_rect, CornerRadius::same(6), acc_bg);
+                    ui.painter().text(
+                        acc_rect.center(),
+                        Align2::CENTER_CENTER,
+                        "Chấp nhận",
+                        font_semibold(12.0),
+                        Color32::WHITE,
+                    );
+                    if acc_resp.clicked() {
+                        *action = Some(ChatAction::AcceptFriendRequest(req.id));
+                    }
+                }
+            });
     }
 
     // ==========================================
-    // CENTER CHAT AREA RENDERING
+    // CENTER CHAT AREA (Matches Chat.tsx lines 1014-1114)
     // ==========================================
     pub fn render_chat_area(
         &mut self,
@@ -666,139 +692,142 @@ impl ChatView {
         active_friend: Option<&FriendItem>,
     ) {
         let total_rect = ui.available_rect_before_wrap();
+        ui.painter().rect_filled(total_rect, 0.0, Color32::WHITE);
 
         let Some(friend) = active_friend else {
-            ui.vertical_centered(|ui| {
-                ui.add_space(ui.available_height() * 0.42);
-                ui.label(
-                    RichText::new("Chọn một cuộc trò chuyện để bắt đầu")
-                        .size(14.0)
-                        .color(Color32::from_rgb(115, 115, 115)),
-                );
-            });
+            ui.painter().text(
+                total_rect.center(),
+                Align2::CENTER_CENTER,
+                "Chọn một cuộc trò chuyện để bắt đầu",
+                font_regular(14.0),
+                Color32::from_rgb(115, 115, 115),
+            );
             return;
         };
 
-        let header_height = 54.0;
-        let input_bar_height = 60.0;
+        let header_height = 64.0;
+        let input_bar_height = 68.0;
 
-        // 1. TOP HEADER (54px)
+        // 1. TOP HEADER (.chat-header: padding 14px 20px, gap 12px, NO bottom border)
         let header_rect = Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
         ui.painter().rect_filled(header_rect, 0.0, Color32::WHITE);
-        ui.painter().line_segment(
-            [header_rect.left_bottom(), header_rect.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+
+        let av_rect = Rect::from_center_size(
+            pos2(header_rect.left() + 20.0 + 17.0, header_rect.center().y),
+            vec2(34.0, 34.0),
+        );
+        paint_avatar_in_rect(ui.painter(), av_rect, &friend.username);
+
+        ui.painter().text(
+            pos2(av_rect.right() + 12.0, header_rect.center().y),
+            Align2::LEFT_CENTER,
+            &friend.username,
+            font_semibold(15.0),
+            Color32::from_rgb(23, 23, 23),
         );
 
-        let mut header_ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(header_rect.shrink2(vec2(16.0, 8.0)))
-                .layout(Layout::left_to_right(Align::Center)),
+        // Right MenuIcon toggle button (36x36)
+        let menu_rect = Rect::from_center_size(
+            pos2(header_rect.right() - 20.0 - 18.0, header_rect.center().y),
+            vec2(36.0, 36.0),
         );
+        let menu_resp = ui.interact(menu_rect, ui.id().with("chat_header_menu_btn"), Sense::click());
+        if self.is_partner_info_open || menu_resp.hovered() {
+            ui.painter().rect_filled(menu_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
+        }
+        let menu_color = if self.is_partner_info_open {
+            Color32::from_rgb(37, 99, 235)
+        } else if menu_resp.hovered() {
+            Color32::from_rgb(23, 23, 23)
+        } else {
+            Color32::from_rgb(115, 115, 115)
+        };
+        draw_svg_menu_icon(
+            ui.painter(),
+            Rect::from_center_size(menu_rect.center(), vec2(20.0, 20.0)),
+            menu_color,
+        );
+        if menu_resp.clicked() {
+            self.is_partner_info_open = !self.is_partner_info_open;
+        }
 
-        render_avatar(&mut header_ui, &friend.username, 32.0);
-        header_ui.add_space(10.0);
-
-        header_ui.vertical(|ui| {
-            ui.label(
-                RichText::new(&friend.username)
-                    .size(15.0)
-                    .strong()
-                    .color(Color32::from_rgb(23, 23, 23)),
-            );
-            ui.horizontal(|ui| {
-                let dot_center = pos2(ui.cursor().min.x + 3.0, ui.cursor().min.y + 6.0);
-                ui.painter().circle_filled(dot_center, 3.5, Color32::from_rgb(34, 197, 94));
-                ui.add_space(10.0);
-                ui.label(
-                    RichText::new("Trực tuyến")
-                        .size(11.0)
-                        .color(Color32::from_rgb(34, 197, 94)),
-                );
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new("•  🔒 Mã hóa đầu cuối")
-                        .size(11.0)
-                        .color(Color32::from_rgb(115, 115, 115)),
-                );
-            });
-        });
-
-        // Toggle info button on header right
-        header_ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let (info_rect, info_resp) = ui.allocate_exact_size(Vec2::new(32.0, 32.0), Sense::click());
-            if info_resp.hovered() {
-                ui.painter().rect_filled(info_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
-            }
-            let info_color = if self.is_partner_info_open {
-                Color32::from_rgb(37, 99, 235)
-            } else {
-                Color32::from_rgb(115, 115, 115)
-            };
-            draw_svg_menu_icon(ui.painter(), info_rect.shrink(7.0), info_color);
-            if info_resp.clicked() {
-                self.is_partner_info_open = !self.is_partner_info_open;
-            }
-        });
-
-        // 2. BOTTOM INPUT BAR (60px)
+        // 2. BOTTOM INPUT BAR (.chat-input-bar: padding 14px 20px, gap 10px, NO top border)
         let input_bar_rect = Rect::from_min_size(
             pos2(total_rect.min.x, total_rect.max.y - input_bar_height),
             Vec2::new(total_rect.width(), input_bar_height),
         );
         ui.painter().rect_filled(input_bar_rect, 0.0, Color32::WHITE);
-        ui.painter().line_segment(
-            [input_bar_rect.left_top(), input_bar_rect.right_top()],
-            Stroke::new(1.0_f32, Color32::from_rgb(241, 243, 245)),
-        );
 
-        let mut input_ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(input_bar_rect.shrink2(vec2(16.0, 10.0)))
-                .layout(Layout::left_to_right(Align::Center)),
+        let emoji_btn_rect = Rect::from_center_size(
+            pos2(input_bar_rect.left() + 20.0 + 18.0, input_bar_rect.center().y),
+            vec2(36.0, 36.0),
         );
-
-        // Emoji Button
-        let (emoji_rect, emoji_resp) = input_ui.allocate_exact_size(Vec2::new(36.0, 36.0), Sense::click());
+        let emoji_resp = ui.interact(emoji_btn_rect, ui.id().with("chat_emoji_btn"), Sense::click());
         if emoji_resp.hovered() {
-            input_ui.painter().rect_filled(emoji_rect, CornerRadius::same(8), Color32::from_rgb(236, 238, 242));
+            ui.painter().rect_filled(emoji_btn_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
         }
-        draw_svg_emoji_icon(input_ui.painter(), emoji_rect.shrink(8.0), Color32::from_rgb(115, 115, 115));
+        draw_svg_emoji_icon(
+            ui.painter(),
+            Rect::from_center_size(emoji_btn_rect.center(), vec2(20.0, 20.0)),
+            Color32::from_rgb(115, 115, 115),
+        );
         if emoji_resp.clicked() {
             self.is_emoji_picker_open = !self.is_emoji_picker_open;
         }
 
-        input_ui.add_space(8.0);
+        let send_btn_rect = Rect::from_center_size(
+            pos2(input_bar_rect.right() - 20.0 - 20.0, input_bar_rect.center().y),
+            vec2(40.0, 40.0),
+        );
 
-        // Message text input
-        let available_input_w = input_ui.available_width() - 48.0;
-        let (text_box_rect, _) = input_ui.allocate_exact_size(Vec2::new(available_input_w, 40.0), Sense::hover());
-        input_ui.painter().rect_filled(text_box_rect, CornerRadius::same(8), Color32::from_rgb(247, 248, 250));
+        let text_box_rect = Rect::from_min_max(
+            pos2(emoji_btn_rect.right() + 10.0, input_bar_rect.center().y - 20.0),
+            pos2(send_btn_rect.left() - 10.0, input_bar_rect.center().y + 20.0),
+        );
+        ui.painter().rect_filled(text_box_rect, CornerRadius::same(8), Color32::from_rgb(247, 248, 250));
 
-        let mut text_child = input_ui.new_child(
+        let mut text_child = ui.new_child(
             UiBuilder::new()
-                .max_rect(text_box_rect.shrink2(vec2(12.0, 4.0)))
+                .max_rect(text_box_rect.shrink2(vec2(16.0, 4.0)))
                 .layout(Layout::left_to_right(Align::Center)),
         );
         let msg_edit = egui::TextEdit::singleline(&mut self.message_input)
-            .hint_text("Nhập tin nhắn...")
+            .font(font_regular(14.0))
+            .hint_text(
+                RichText::new("Nhập tin nhắn")
+                    .font(font_regular(14.0))
+                    .color(Color32::from_rgb(115, 115, 115)),
+            )
             .frame(false)
-            .desired_width(available_input_w - 24.0);
+            .desired_width(text_box_rect.width() - 32.0);
         let msg_resp = text_child.add(msg_edit);
 
-        input_ui.add_space(8.0);
-
-        // Send Button
-        let (send_rect, send_resp) = input_ui.allocate_exact_size(Vec2::new(38.0, 38.0), Sense::click());
         let can_send = !self.message_input.trim().is_empty();
+        let send_resp = ui.interact(
+            send_btn_rect,
+            ui.id().with("chat_send_btn"),
+            if can_send { Sense::click() } else { Sense::hover() },
+        );
         let send_bg = if can_send {
-            if send_resp.hovered() { Color32::from_rgb(30, 64, 175) } else { Color32::from_rgb(37, 99, 235) }
+            if send_resp.hovered() {
+                Color32::from_rgb(29, 78, 216)
+            } else {
+                Color32::from_rgb(37, 99, 235)
+            }
         } else {
             Color32::from_rgb(236, 238, 242)
         };
-        input_ui.painter().rect_filled(send_rect, CornerRadius::same(8), send_bg);
-        let icon_color = if can_send { Color32::WHITE } else { Color32::from_rgb(163, 163, 163) };
-        draw_svg_send_icon(input_ui.painter(), send_rect.shrink(10.0), icon_color);
+        ui.painter().rect_filled(send_btn_rect, CornerRadius::same(8), send_bg);
+        let send_icon_col = if can_send {
+            Color32::WHITE
+        } else {
+            Color32::from_rgb(115, 115, 115)
+        };
+        draw_svg_send_icon(
+            ui.painter(),
+            Rect::from_center_size(send_btn_rect.center(), vec2(18.0, 18.0)),
+            send_icon_col,
+        );
 
         let should_send = (send_resp.clicked()
             || (msg_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
@@ -807,14 +836,58 @@ impl ChatView {
         if should_send {
             *action = Some(ChatAction::SendMessage(self.message_input.trim().to_string()));
             self.message_input.clear();
+            self.is_emoji_picker_open = false;
         }
 
-        // Emoji Picker Popup
+        // 3. MIDDLE MESSAGES AREA
+        let msgs_rect = Rect::from_min_max(
+            pos2(total_rect.min.x, total_rect.min.y + header_height),
+            pos2(total_rect.max.x, total_rect.max.y - input_bar_height),
+        );
+
+        let dummy = Vec::new();
+        let msg_list = self.messages.get(&friend.id).unwrap_or(&dummy);
+
+        if msg_list.is_empty() {
+            ui.painter().text(
+                msgs_rect.center(),
+                Align2::CENTER_CENTER,
+                "Chưa có tin nhắn",
+                font_regular(14.0),
+                Color32::from_rgb(115, 115, 115),
+            );
+        } else {
+            let mut msgs_ui = ui.new_child(UiBuilder::new().max_rect(msgs_rect).layout(Layout::top_down(Align::Min)));
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .stick_to_bottom(true)
+                .show(&mut msgs_ui, |ui| {
+                    ui.add_space(16.0);
+                    for msg in msg_list {
+                        render_message_bubble(ui, msg, &friend.username);
+                    }
+                    if self.typing_users.contains(&friend.id) {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(20.0);
+                            ui.label(
+                                RichText::new("Đang nhập")
+                                    .font(font_regular(12.0))
+                                    .italics()
+                                    .color(Color32::from_rgb(115, 115, 115)),
+                            );
+                        });
+                    }
+                    ui.add_space(12.0);
+                });
+        }
+
+        // Emoji Picker Popup (drawn on top of messages)
         if self.is_emoji_picker_open {
-            let picker_w = 260.0;
-            let picker_h = 180.0;
+            let picker_w = 250.0;
+            let picker_h = 176.0;
             let picker_rect = Rect::from_min_size(
-                pos2(input_bar_rect.min.x + 16.0, input_bar_rect.min.y - picker_h - 8.0),
+                pos2(input_bar_rect.left() + 20.0, input_bar_rect.top() - picker_h - 8.0),
                 Vec2::new(picker_w, picker_h),
             );
 
@@ -851,100 +924,50 @@ impl ChatView {
                 }
             });
         }
-
-        // 3. MIDDLE MESSAGES AREA
-        let msgs_rect = Rect::from_min_max(
-            pos2(total_rect.min.x, total_rect.min.y + header_height),
-            pos2(total_rect.max.x, total_rect.max.y - input_bar_height),
-        );
-
-        let mut msgs_ui = ui.new_child(UiBuilder::new().max_rect(msgs_rect).layout(Layout::top_down(Align::Min)));
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .stick_to_bottom(true)
-            .show(&mut msgs_ui, |ui| {
-                ui.add_space(14.0);
-
-                let dummy = Vec::new();
-                let msg_list = self.messages.get(&friend.id).unwrap_or(&dummy);
-
-                if msg_list.is_empty() {
-                    ui.add_space(msgs_rect.height() * 0.35);
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            RichText::new("Chưa có tin nhắn nào trong cuộc trò chuyện")
-                                .size(13.5)
-                                .color(Color32::from_rgb(163, 163, 163)),
-                        );
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new("Gửi tin nhắn đầu tiên được mã hóa E2EE an toàn")
-                                .size(12.0)
-                                .color(Color32::from_rgb(180, 180, 180)),
-                        );
-                    });
-                } else {
-                    for msg in msg_list {
-                        render_message_bubble(ui, msg, &friend.username);
-                    }
-                }
-
-                if self.typing_users.contains(&friend.id) {
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(24.0);
-                        ui.label(
-                            RichText::new("Đang nhập...")
-                                .size(12.0)
-                                .italics()
-                                .color(Color32::from_rgb(115, 115, 115)),
-                        );
-                    });
-                }
-
-                ui.add_space(12.0);
-            });
     }
 
     // ==========================================
-    // SETTINGS VIEW (Replaces center chat area matching web)
+    // SETTINGS VIEW (Matches Chat.tsx lines 926-1010 & main.css lines 843-996)
     // ==========================================
     pub fn render_settings_view(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
         let total_rect = ui.available_rect_before_wrap();
         ui.painter().rect_filled(total_rect, 0.0, Color32::WHITE);
 
-        let header_height = 54.0;
+        // .chat-header: padding 14px 20px, gap 12px, height 64px, NO bottom border
+        let header_height = 64.0;
         let header_rect = Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
-        ui.painter().line_segment(
-            [header_rect.left_bottom(), header_rect.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-        );
 
-        let mut header_ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(header_rect.shrink2(vec2(16.0, 8.0)))
-                .layout(Layout::left_to_right(Align::Center)),
+        let back_rect = Rect::from_center_size(
+            pos2(header_rect.left() + 20.0 + 18.0, header_rect.center().y),
+            vec2(36.0, 36.0),
         );
-
-        // Back button
-        let (back_rect, back_resp) = header_ui.allocate_exact_size(Vec2::new(32.0, 32.0), Sense::click());
+        let back_resp = ui.interact(back_rect, ui.id().with("settings_back_btn"), Sense::click());
         if back_resp.hovered() {
-            header_ui.painter().rect_filled(back_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
+            ui.painter().rect_filled(back_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
         }
-        draw_svg_back_icon(header_ui.painter(), back_rect.shrink(6.0), Color32::from_rgb(23, 23, 23));
+        let back_col = if back_resp.hovered() {
+            Color32::from_rgb(23, 23, 23)
+        } else {
+            Color32::from_rgb(115, 115, 115)
+        };
+        draw_svg_back_icon(
+            ui.painter(),
+            Rect::from_center_size(back_rect.center(), vec2(20.0, 20.0)),
+            back_col,
+        );
         if back_resp.clicked() {
             self.is_settings_open = false;
         }
 
-        header_ui.add_space(10.0);
-        header_ui.label(
-            RichText::new("Cài đặt")
-                .size(16.0)
-                .strong()
-                .color(Color32::from_rgb(23, 23, 23)),
+        ui.painter().text(
+            pos2(back_rect.right() + 12.0, header_rect.center().y),
+            Align2::LEFT_CENTER,
+            "Cài đặt",
+            font_semibold(15.0),
+            Color32::from_rgb(23, 23, 23),
         );
 
-        // Content Area (ScrollArea)
+        // .settings-content: padding 24px, max-width 600px, gap 24px
         let content_rect = Rect::from_min_max(
             pos2(total_rect.min.x, total_rect.min.y + header_height),
             total_rect.max,
@@ -954,157 +977,176 @@ impl ChatView {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(&mut content_ui, |ui| {
-                ui.add_space(20.0);
+                ui.add_space(24.0);
 
-                let max_w = 560.0_f32.min(ui.available_width() - 40.0);
+                // max-width: 600px with 24px padding -> content width = 552px max
+                let max_w = 552.0_f32.min(ui.available_width() - 48.0);
                 ui.horizontal(|ui| {
-                    ui.add_space(20.0);
+                    ui.add_space(24.0);
                     ui.vertical(|ui| {
                         ui.set_max_width(max_w);
+                        ui.spacing_mut().item_spacing.y = 0.0;
 
-                        // Profile Card (.settings-profile-card)
-                        let (card_rect, _) = ui.allocate_exact_size(Vec2::new(max_w, 76.0), Sense::hover());
+                        // 1. Profile Card (.settings-profile-card: #F7F8FA bg, 10px radius, padding 16px 20px, NO border)
+                        let (card_rect, _) = ui.allocate_exact_size(Vec2::new(max_w, 88.0), Sense::hover());
                         ui.painter().rect_filled(card_rect, CornerRadius::same(10), Color32::from_rgb(247, 248, 250));
-                        ui.painter().rect_stroke(
-                            card_rect,
-                            CornerRadius::same(10),
-                            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-                            StrokeKind::Inside,
+
+                        // Avatar 56px
+                        let av_rect = Rect::from_center_size(
+                            pos2(card_rect.left() + 20.0 + 28.0, card_rect.center().y),
+                            vec2(56.0, 56.0),
+                        );
+                        paint_avatar_in_rect(ui.painter(), av_rect, &self.current_username);
+
+                        let info_x = av_rect.right() + 16.0;
+                        ui.painter().text(
+                            pos2(info_x, card_rect.center().y - 10.0),
+                            Align2::LEFT_CENTER,
+                            &self.current_username,
+                            font_semibold(16.0),
+                            Color32::from_rgb(23, 23, 23),
+                        );
+                        ui.painter().text(
+                            pos2(info_x, card_rect.center().y + 11.0),
+                            Align2::LEFT_CENTER,
+                            "Tài khoản cá nhân",
+                            font_regular(13.0),
+                            Color32::from_rgb(115, 115, 115),
                         );
 
-                        let mut card_ui = ui.new_child(
-                            UiBuilder::new()
-                                .max_rect(card_rect.shrink2(vec2(16.0, 12.0)))
-                                .layout(Layout::left_to_right(Align::Center)),
+                        // "Đổi ảnh đại diện" button (.btn-avatar-upload: #FFFFFF bg, #2563EB text, 6px radius)
+                        let upload_btn_w = 128.0;
+                        let upload_btn_rect = Rect::from_center_size(
+                            pos2(card_rect.right() - 20.0 - upload_btn_w * 0.5, card_rect.center().y),
+                            vec2(upload_btn_w, 34.0),
+                        );
+                        let upload_resp = ui.interact(upload_btn_rect, ui.id().with("btn_avatar_upload"), Sense::click());
+                        let upload_bg = if upload_resp.hovered() {
+                            Color32::from_rgb(236, 238, 242)
+                        } else {
+                            Color32::WHITE
+                        };
+                        ui.painter().rect_filled(upload_btn_rect, CornerRadius::same(6), upload_bg);
+                        ui.painter().text(
+                            upload_btn_rect.center(),
+                            Align2::CENTER_CENTER,
+                            "Đổi ảnh đại diện",
+                            font_semibold(13.0),
+                            Color32::from_rgb(37, 99, 235),
                         );
 
-                        render_avatar(&mut card_ui, &self.current_username, 48.0);
-                        card_ui.add_space(14.0);
-                        card_ui.vertical(|ui| {
-                            ui.label(RichText::new(&self.current_username).size(16.0).strong().color(Color32::from_rgb(23, 23, 23)));
-                            ui.label(RichText::new("Tài khoản cá nhân").size(13.0).color(Color32::from_rgb(115, 115, 115)));
-                        });
+                        ui.add_space(24.0);
 
-                        ui.add_space(20.0);
+                        // 2. Group: Tài khoản (.settings-group: gap 12px)
+                        ui.label(
+                            RichText::new("Tài khoản")
+                                .font(font_semibold(14.0))
+                                .color(Color32::from_rgb(23, 23, 23)),
+                        );
+                        ui.add_space(12.0);
+                        render_settings_row_flat(ui, max_w, "Tên người dùng", &self.current_username, false);
+                        ui.add_space(12.0);
+                        render_settings_column_row_flat(ui, max_w, "Mã định danh", &self.current_user_id.to_string(), false);
 
-                        // Group: Tài khoản
-                        ui.label(RichText::new("Tài khoản").size(14.0).strong().color(Color32::from_rgb(23, 23, 23)));
-                        ui.add_space(6.0);
-                        render_settings_row(ui, max_w, "Tên người dùng", &self.current_username, false);
-                        render_settings_row(ui, max_w, "Mã định danh", &self.current_user_id.to_string(), true);
+                        ui.add_space(24.0);
 
-                        ui.add_space(18.0);
-
-                        // Group: Mã hóa đầu cuối
-                        ui.label(RichText::new("Mã hóa đầu cuối").size(14.0).strong().color(Color32::from_rgb(23, 23, 23)));
-                        ui.add_space(6.0);
-                        render_settings_row(ui, max_w, "Giao thức", "ECDH P-256 / AES-256-GCM", false);
-                        render_settings_row(ui, max_w, "Chữ ký số", "ECDSA P-256 / SHA-256", false);
-                        render_settings_tag_row(ui, max_w, "Trạng thái khóa", "Đã kích hoạt trên thiết bị");
+                        // 3. Group: Mã hóa đầu cuối
+                        ui.label(
+                            RichText::new("Mã hóa đầu cuối")
+                                .font(font_semibold(14.0))
+                                .color(Color32::from_rgb(23, 23, 23)),
+                        );
+                        ui.add_space(12.0);
+                        render_settings_row_flat(ui, max_w, "Giao thức", "ECDH P-256 / AES-256-GCM", false);
+                        ui.add_space(12.0);
+                        render_settings_row_flat(ui, max_w, "Chữ ký số", "ECDSA P-256 / SHA-256", false);
+                        ui.add_space(12.0);
+                        render_settings_tag_row_flat(ui, max_w, "Trạng thái khóa", "Đã kích hoạt trên thiết bị", false);
 
                         if let Some((_, my_fp, _)) = self.cached_keys.get(&self.current_user_id) {
                             let fp_b64 = URL_SAFE_NO_PAD.encode(my_fp);
-                            render_settings_row(ui, max_w, "Vân tay khóa của bạn", &fp_b64, true);
+                            ui.add_space(12.0);
+                            render_settings_column_row_flat(ui, max_w, "Vân tay khóa", &fp_b64, false);
                         }
 
-                        ui.add_space(18.0);
+                        ui.add_space(24.0);
 
-                        // Group: Máy chủ
-                        ui.label(RichText::new("Máy chủ & Kết nối").size(14.0).strong().color(Color32::from_rgb(23, 23, 23)));
-                        ui.add_space(6.0);
-
-                        let (srv_rect, _) = ui.allocate_exact_size(Vec2::new(max_w, 46.0), Sense::hover());
-                        ui.painter().rect_filled(srv_rect, CornerRadius::same(8), Color32::from_rgb(247, 248, 250));
-                        ui.painter().rect_stroke(
-                            srv_rect,
-                            CornerRadius::same(8),
-                            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-                            StrokeKind::Inside,
+                        // 4. Group: Phiên đăng nhập
+                        ui.label(
+                            RichText::new("Phiên đăng nhập")
+                                .font(font_semibold(14.0))
+                                .color(Color32::from_rgb(23, 23, 23)),
                         );
+                        ui.add_space(12.0);
 
-                        let mut srv_ui = ui.new_child(
-                            UiBuilder::new()
-                                .max_rect(srv_rect.shrink2(vec2(14.0, 6.0)))
-                                .layout(Layout::left_to_right(Align::Center)),
-                        );
-
-                        srv_ui.label(RichText::new("URL Máy chủ:").size(13.0).color(Color32::from_rgb(115, 115, 115)));
-                        srv_ui.add_space(8.0);
-                        let inp = srv_ui.add(egui::TextEdit::singleline(&mut self.server_url_input).desired_width(max_w - 200.0));
-                        srv_ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button(RichText::new("Lưu").size(12.0)).clicked()
-                                || (inp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
-                            {
-                                *action = Some(ChatAction::ChangeServerUrl(self.server_url_input.trim().to_string()));
-                            }
-                        });
-
-                        ui.add_space(20.0);
-
-                        // Group: Phiên đăng nhập
-                        ui.label(RichText::new("Phiên đăng nhập").size(14.0).strong().color(Color32::from_rgb(23, 23, 23)));
-                        ui.add_space(8.0);
-
-                        let (logout_btn_rect, logout_btn_resp) = ui.allocate_exact_size(Vec2::new(120.0, 36.0), Sense::click());
-                        let logout_bg = if logout_btn_resp.hovered() { Color32::from_rgb(254, 202, 202) } else { Color32::from_rgb(252, 232, 230) };
+                        // .btn-danger-outline: padding 10px 16px, #FCE8E6 bg, #DC2626 text, 8px radius
+                        let (logout_btn_rect, logout_btn_resp) = ui.allocate_exact_size(Vec2::new(104.0, 40.0), Sense::click());
+                        let logout_bg = if logout_btn_resp.hovered() {
+                            Color32::from_rgb(250, 215, 212)
+                        } else {
+                            Color32::from_rgb(252, 232, 230) // #FCE8E6
+                        };
                         ui.painter().rect_filled(logout_btn_rect, CornerRadius::same(8), logout_bg);
                         ui.painter().text(
                             logout_btn_rect.center(),
                             Align2::CENTER_CENTER,
                             "Đăng xuất",
-                            egui::FontId::proportional(13.5),
-                            Color32::from_rgb(220, 38, 38),
+                            font_semibold(14.0),
+                            Color32::from_rgb(220, 38, 38), // #DC2626
                         );
 
                         if logout_btn_resp.clicked() {
                             *action = Some(ChatAction::Logout);
                         }
 
-                        ui.add_space(28.0);
+                        ui.add_space(32.0);
                     });
                 });
             });
     }
 
     // ==========================================
-    // RIGHT PARTNER INFO SIDEBAR (380px)
+    // RIGHT PARTNER INFO SIDEBAR (Matches Chat.tsx lines 1118-1170)
     // ==========================================
     pub fn render_partner_info_sidebar(&mut self, ui: &mut Ui, friend: &FriendItem) {
         let total_rect = ui.available_rect_before_wrap();
         ui.painter().rect_filled(total_rect, 0.0, Color32::WHITE);
 
-        let header_height = 54.0;
+        // .partner-info-header: padding 16px 20px, NO bottom border
+        let header_height = 68.0;
         let header_rect = Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
-        ui.painter().line_segment(
-            [header_rect.left_bottom(), header_rect.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+
+        ui.painter().text(
+            pos2(header_rect.left() + 20.0, header_rect.center().y),
+            Align2::LEFT_CENTER,
+            "Thông tin",
+            font_semibold(15.0),
+            Color32::from_rgb(23, 23, 23),
         );
 
-        let mut header_ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(header_rect.shrink2(vec2(16.0, 8.0)))
-                .layout(Layout::left_to_right(Align::Center)),
+        let close_rect = Rect::from_center_size(
+            pos2(header_rect.right() - 20.0 - 18.0, header_rect.center().y),
+            vec2(36.0, 36.0),
         );
-
-        header_ui.label(
-            RichText::new("Thông tin")
-                .size(15.0)
-                .strong()
-                .color(Color32::from_rgb(23, 23, 23)),
+        let close_resp = ui.interact(close_rect, ui.id().with("partner_info_close_btn"), Sense::click());
+        if close_resp.hovered() {
+            ui.painter().rect_filled(close_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
+        }
+        let close_col = if close_resp.hovered() {
+            Color32::from_rgb(23, 23, 23)
+        } else {
+            Color32::from_rgb(115, 115, 115)
+        };
+        draw_svg_close_icon(
+            ui.painter(),
+            Rect::from_center_size(close_rect.center(), vec2(18.0, 18.0)),
+            close_col,
         );
+        if close_resp.clicked() {
+            self.is_partner_info_open = false;
+        }
 
-        header_ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let (close_rect, close_resp) = ui.allocate_exact_size(Vec2::new(28.0, 28.0), Sense::click());
-            if close_resp.hovered() {
-                ui.painter().rect_filled(close_rect, CornerRadius::same(6), Color32::from_rgb(236, 238, 242));
-            }
-            draw_svg_close_icon(ui.painter(), close_rect.shrink(7.0), Color32::from_rgb(115, 115, 115));
-            if close_resp.clicked() {
-                self.is_partner_info_open = false;
-            }
-        });
-
-        // Content Area (ScrollArea)
+        // .partner-info-content: padding 0 20px 24px, gap 16px
         let content_rect = Rect::from_min_max(
             pos2(total_rect.min.x, total_rect.min.y + header_height),
             total_rect.max,
@@ -1114,58 +1156,76 @@ impl ChatView {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(&mut content_ui, |ui| {
-                ui.add_space(20.0);
-
-                let card_w = ui.available_width() - 32.0;
+                let card_w = ui.available_width() - 40.0;
                 ui.horizontal(|ui| {
-                    ui.add_space(16.0);
+                    ui.add_space(20.0);
                     ui.vertical(|ui| {
                         ui.set_max_width(card_w);
+                        ui.spacing_mut().item_spacing.y = 0.0;
 
-                        // Avatar card (.partner-info-card)
-                        ui.vertical_centered(|ui| {
-                            render_avatar(ui, &friend.username, 64.0);
-                            ui.add_space(10.0);
-                            ui.label(
-                                RichText::new(&friend.username)
-                                    .size(17.0)
-                                    .strong()
-                                    .color(Color32::from_rgb(23, 23, 23)),
-                            );
-                            ui.label(
-                                RichText::new("Tài khoản bạn bè")
-                                    .size(13.0)
-                                    .color(Color32::from_rgb(115, 115, 115)),
-                            );
-                        });
+                        // .partner-info-card: padding 24px 20px, centered Avatar(64) + name(17px semibold) + sub(13px)
+                        let (pcard_rect, _) = ui.allocate_exact_size(Vec2::new(card_w, 156.0), Sense::hover());
+                        let av_rect = Rect::from_center_size(
+                            pos2(pcard_rect.center().x, pcard_rect.top() + 24.0 + 32.0),
+                            vec2(64.0, 64.0),
+                        );
+                        paint_avatar_in_rect(ui.painter(), av_rect, &friend.username);
 
-                        ui.add_space(24.0);
+                        ui.painter().text(
+                            pos2(pcard_rect.center().x, av_rect.bottom() + 18.0),
+                            Align2::CENTER_CENTER,
+                            &friend.username,
+                            font_semibold(17.0),
+                            Color32::from_rgb(23, 23, 23),
+                        );
+                        ui.painter().text(
+                            pos2(pcard_rect.center().x, av_rect.bottom() + 40.0),
+                            Align2::CENTER_CENTER,
+                            "Tài khoản bạn bè",
+                            font_regular(13.0),
+                            Color32::from_rgb(115, 115, 115),
+                        );
 
-                        // Group: Tài khoản
-                        ui.label(RichText::new("Tài khoản").size(14.0).strong().color(Color32::from_rgb(23, 23, 23)));
-                        ui.add_space(6.0);
-                        render_settings_row(ui, card_w, "Tên người dùng", &friend.username, false);
-                        render_settings_row(ui, card_w, "Mã định danh", &friend.id.to_string(), true);
+                        ui.add_space(16.0);
 
-                        ui.add_space(20.0);
+                        // Group: Tài khoản (inside partner-info-sidebar, rows have #FFFFFF bg and 1px #ECEEF2 border)
+                        ui.label(
+                            RichText::new("Tài khoản")
+                                .font(font_semibold(14.0))
+                                .color(Color32::from_rgb(23, 23, 23)),
+                        );
+                        ui.add_space(12.0);
+                        render_settings_row_flat(ui, card_w, "Tên người dùng", &friend.username, true);
+                        ui.add_space(12.0);
+                        render_settings_column_row_flat(ui, card_w, "Mã định danh", &friend.id.to_string(), true);
+
+                        ui.add_space(16.0);
 
                         // Group: Mã hóa đầu cuối
-                        ui.label(RichText::new("Mã hóa đầu cuối").size(14.0).strong().color(Color32::from_rgb(23, 23, 23)));
-                        ui.add_space(6.0);
-                        render_settings_row(ui, card_w, "Giao thức", "ECDH P-256 / AES-256-GCM", false);
-                        render_settings_row(ui, card_w, "Chữ ký số", "ECDSA P-256 / SHA-256", false);
+                        ui.label(
+                            RichText::new("Mã hóa đầu cuối")
+                                .font(font_semibold(14.0))
+                                .color(Color32::from_rgb(23, 23, 23)),
+                        );
+                        ui.add_space(12.0);
+                        render_settings_row_flat(ui, card_w, "Giao thức", "ECDH P-256 / AES-256-GCM", true);
+                        ui.add_space(12.0);
+                        render_settings_row_flat(ui, card_w, "Chữ ký số", "ECDSA P-256 / SHA-256", true);
+                        ui.add_space(12.0);
 
                         let has_key = self.cached_keys.contains_key(&friend.id);
-                        render_settings_tag_row(
+                        render_settings_tag_row_flat(
                             ui,
                             card_w,
                             "Trạng thái khóa",
-                            if has_key { "Đã kích hoạt trên thiết bị" } else { "Đang đồng bộ..." },
+                            if has_key { "Đã kích hoạt trên thiết bị" } else { "Đang tải" },
+                            true,
                         );
 
                         if let Some((_, fp, _)) = self.cached_keys.get(&friend.id) {
                             let fp_b64 = URL_SAFE_NO_PAD.encode(fp);
-                            render_settings_row(ui, card_w, "Vân tay khóa", &fp_b64, true);
+                            ui.add_space(12.0);
+                            render_settings_column_row_flat(ui, card_w, "Vân tay khóa", &fp_b64, true);
                         }
 
                         ui.add_space(24.0);
@@ -1176,7 +1236,7 @@ impl ChatView {
 }
 
 // ==========================================
-// MESSAGE BUBBLE & HELPER ROW DRAWING
+// MESSAGE BUBBLE & SETTINGS ROW HELPERS
 // ==========================================
 
 fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str) {
@@ -1184,7 +1244,6 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
 
     ui.horizontal(|ui| {
         if msg.is_me {
-            // Sent Message: Align Right, Blue bubble #2563EB, White text, corners (14, 14, 14, 2)
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 ui.add_space(20.0);
                 ui.vertical(|ui| {
@@ -1194,26 +1253,31 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                             nw: 14,
                             ne: 14,
                             sw: 14,
-                            se: 2,
+                            se: 4,
                         })
                         .inner_margin(egui::Margin::symmetric(14, 10))
                         .show(ui, |ui| {
                             ui.set_max_width(max_bubble_width);
-                            ui.label(RichText::new(&msg.text).size(14.0).color(Color32::WHITE));
+                            ui.label(
+                                RichText::new(&msg.text)
+                                    .font(font_regular(14.0))
+                                    .color(Color32::WHITE),
+                            );
                         });
 
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                        ui.add_space(2.0);
-                        ui.label(RichText::new(&msg.time_str).size(11.0).color(Color32::from_rgb(115, 115, 115)));
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(&msg.time_str)
+                                .font(font_regular(11.0))
+                                .color(Color32::from_rgb(115, 115, 115)),
+                        );
                     });
                 });
             });
         } else {
-            // Received Message: Align Left, 28px Avatar on left, Gray bubble #F1F3F5, corners (14, 14, 2, 14)
             ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
                 ui.add_space(20.0);
-
-                // 28px Avatar matching web
                 render_avatar(ui, friend_name, 28.0);
                 ui.add_space(8.0);
 
@@ -1223,103 +1287,199 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         .corner_radius(CornerRadius {
                             nw: 14,
                             ne: 14,
-                            sw: 2,
+                            sw: 4,
                             se: 14,
                         })
                         .inner_margin(egui::Margin::symmetric(14, 10))
                         .show(ui, |ui| {
                             ui.set_max_width(max_bubble_width);
-                            ui.label(RichText::new(&msg.text).size(14.0).color(Color32::from_rgb(23, 23, 23)));
+                            ui.label(
+                                RichText::new(&msg.text)
+                                    .font(font_regular(14.0))
+                                    .color(Color32::from_rgb(23, 23, 23)),
+                            );
                         });
 
                     ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                        ui.add_space(2.0);
-                        ui.label(RichText::new(&msg.time_str).size(11.0).color(Color32::from_rgb(115, 115, 115)));
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(&msg.time_str)
+                                .font(font_regular(11.0))
+                                .color(Color32::from_rgb(115, 115, 115)),
+                        );
                     });
                 });
             });
         }
     });
 
-    ui.add_space(6.0);
+    ui.add_space(8.0);
 }
 
-fn render_settings_row(ui: &mut Ui, width: f32, label: &str, value: &str, is_mono: bool) {
-    let (row_rect, _) = ui.allocate_exact_size(Vec2::new(width, 42.0), Sense::hover());
-    ui.painter().rect_filled(row_rect, CornerRadius::same(8), Color32::from_rgb(247, 248, 250));
-    ui.painter().rect_stroke(
-        row_rect,
-        CornerRadius::same(8),
-        Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-        StrokeKind::Inside,
-    );
-
-    let mut row_ui = ui.new_child(
-        UiBuilder::new()
-            .max_rect(row_rect.shrink2(vec2(14.0, 4.0)))
-            .layout(Layout::left_to_right(Align::Center)),
-    );
-
-    row_ui.label(RichText::new(label).size(13.0).color(Color32::from_rgb(115, 115, 115)));
-    row_ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        let text = if is_mono {
-            RichText::new(value).size(11.5).monospace().color(Color32::from_rgb(23, 23, 23))
-        } else {
-            RichText::new(value).size(13.0).strong().color(Color32::from_rgb(23, 23, 23))
-        };
-        ui.label(text);
-    });
-}
-
-fn render_settings_tag_row(ui: &mut Ui, width: f32, label: &str, tag_text: &str) {
-    let (row_rect, _) = ui.allocate_exact_size(Vec2::new(width, 42.0), Sense::hover());
-    ui.painter().rect_filled(row_rect, CornerRadius::same(8), Color32::from_rgb(247, 248, 250));
-    ui.painter().rect_stroke(
-        row_rect,
-        CornerRadius::same(8),
-        Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-        StrokeKind::Inside,
-    );
-
-    let mut row_ui = ui.new_child(
-        UiBuilder::new()
-            .max_rect(row_rect.shrink2(vec2(14.0, 4.0)))
-            .layout(Layout::left_to_right(Align::Center)),
-    );
-
-    row_ui.label(RichText::new(label).size(13.0).color(Color32::from_rgb(115, 115, 115)));
-    row_ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        let (tag_rect, _) = ui.allocate_exact_size(Vec2::new(150.0, 24.0), Sense::hover());
-        ui.painter().rect_filled(tag_rect, CornerRadius::same(4), Color32::from_rgb(230, 244, 234));
-        ui.painter().text(
-            tag_rect.center(),
-            Align2::CENTER_CENTER,
-            tag_text,
-            egui::FontId::proportional(11.5),
-            Color32::from_rgb(19, 115, 51),
+/// Horizontal `.settings-row`:
+/// - In Settings (`bordered == false`): `#F7F8FA` background, NO border, `8px` radius, `padding: 12px 16px`
+/// - In Partner Info (`bordered == true`): `#FFFFFF` background, `1px solid #ECEEF2` border
+fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, bordered: bool) {
+    let (row_rect, _) = ui.allocate_exact_size(Vec2::new(width, 45.0), Sense::hover());
+    let bg = if bordered {
+        Color32::WHITE
+    } else {
+        Color32::from_rgb(247, 248, 250) // #F7F8FA
+    };
+    ui.painter().rect_filled(row_rect, CornerRadius::same(8), bg);
+    if bordered {
+        ui.painter().rect_stroke(
+            row_rect,
+            CornerRadius::same(8),
+            Stroke::new(1.0_f32, Color32::from_rgb(236, 238, 242)),
+            StrokeKind::Inside,
         );
-    });
+    }
+
+    ui.painter().text(
+        pos2(row_rect.left() + 16.0, row_rect.center().y),
+        Align2::LEFT_CENTER,
+        label,
+        font_regular(14.0),
+        Color32::from_rgb(115, 115, 115),
+    );
+    ui.painter().text(
+        pos2(row_rect.right() - 16.0, row_rect.center().y),
+        Align2::RIGHT_CENTER,
+        value,
+        font_semibold(14.0),
+        Color32::from_rgb(23, 23, 23),
+    );
+}
+
+/// Vertical 2-line `.settings-row.column-layout` for UUID (`Mã định danh`) and Fingerprint (`Vân tay khóa`)
+fn render_settings_column_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, bordered: bool) {
+    let (row_rect, _) = ui.allocate_exact_size(Vec2::new(width, 64.0), Sense::hover());
+    let bg = if bordered {
+        Color32::WHITE
+    } else {
+        Color32::from_rgb(247, 248, 250) // #F7F8FA
+    };
+    ui.painter().rect_filled(row_rect, CornerRadius::same(8), bg);
+    if bordered {
+        ui.painter().rect_stroke(
+            row_rect,
+            CornerRadius::same(8),
+            Stroke::new(1.0_f32, Color32::from_rgb(236, 238, 242)),
+            StrokeKind::Inside,
+        );
+    }
+
+    ui.painter().text(
+        pos2(row_rect.left() + 16.0, row_rect.top() + 21.0),
+        Align2::LEFT_CENTER,
+        label,
+        font_regular(14.0),
+        Color32::from_rgb(115, 115, 115),
+    );
+    ui.painter().text(
+        pos2(row_rect.left() + 16.0, row_rect.top() + 44.0),
+        Align2::LEFT_CENTER,
+        value,
+        font_mono(12.0),
+        Color32::from_rgb(23, 23, 23),
+    );
+}
+
+/// Horizontal `.settings-row` with `.tag-active` green badge
+fn render_settings_tag_row_flat(ui: &mut Ui, width: f32, label: &str, tag_text: &str, bordered: bool) {
+    let (row_rect, _) = ui.allocate_exact_size(Vec2::new(width, 45.0), Sense::hover());
+    let bg = if bordered {
+        Color32::WHITE
+    } else {
+        Color32::from_rgb(247, 248, 250) // #F7F8FA
+    };
+    ui.painter().rect_filled(row_rect, CornerRadius::same(8), bg);
+    if bordered {
+        ui.painter().rect_stroke(
+            row_rect,
+            CornerRadius::same(8),
+            Stroke::new(1.0_f32, Color32::from_rgb(236, 238, 242)),
+            StrokeKind::Inside,
+        );
+    }
+
+    ui.painter().text(
+        pos2(row_rect.left() + 16.0, row_rect.center().y),
+        Align2::LEFT_CENTER,
+        label,
+        font_regular(14.0),
+        Color32::from_rgb(115, 115, 115),
+    );
+
+    let galley = ui.painter().layout_no_wrap(
+        tag_text.to_string(),
+        font_semibold(12.0),
+        Color32::from_rgb(19, 115, 51),
+    );
+    let tag_w = galley.size().x + 20.0;
+    let tag_rect = Rect::from_center_size(
+        pos2(row_rect.right() - 16.0 - tag_w * 0.5, row_rect.center().y),
+        vec2(tag_w, 26.0),
+    );
+    ui.painter().rect_filled(tag_rect, CornerRadius::same(6), Color32::from_rgb(230, 244, 234)); // #E6F4EA
+    ui.painter().galley(
+        pos2(tag_rect.center().x - galley.size().x * 0.5, tag_rect.center().y - galley.size().y * 0.5),
+        galley,
+        Color32::from_rgb(19, 115, 51), // #137333
+    );
+}
+
+/// Exact Web `Avatar.tsx` color hash, 8-color palette, and font size rules
+pub fn paint_avatar_in_rect(painter: &egui::Painter, rect: Rect, name: &str) {
+    let trimmed = name.trim();
+    let initial = trimmed
+        .chars()
+        .next()
+        .unwrap_or('?')
+        .to_uppercase()
+        .to_string();
+
+    let palette = [
+        Color32::from_rgb(37, 99, 235),  // #2563EB Blue
+        Color32::from_rgb(124, 58, 237), // #7C3AED Violet
+        Color32::from_rgb(5, 150, 105),  // #059669 Emerald
+        Color32::from_rgb(217, 119, 6),  // #D97706 Amber
+        Color32::from_rgb(225, 29, 72),  // #E11D48 Rose
+        Color32::from_rgb(8, 145, 178),  // #0891B2 Cyan
+        Color32::from_rgb(79, 70, 229),  // #4F46E5 Indigo
+        Color32::from_rgb(13, 148, 136), // #0D9488 Teal
+    ];
+
+    let mut hash: i32 = 0;
+    for ch in name.encode_utf16() {
+        hash = (hash.wrapping_shl(5)).wrapping_sub(hash).wrapping_add(ch as i32);
+    }
+    let idx = (hash.unsigned_abs() as usize) % palette.len();
+    let bg_color = palette[idx];
+
+    let size = rect.width();
+    let font_sz = if size <= 28.0 {
+        11.0
+    } else if size <= 36.0 {
+        14.0
+    } else if size <= 42.0 {
+        16.0
+    } else {
+        24.0
+    };
+
+    painter.circle_filled(rect.center(), size * 0.5, bg_color);
+    painter.text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        initial,
+        font_semibold(font_sz),
+        Color32::WHITE,
+    );
 }
 
 pub fn render_avatar(ui: &mut Ui, name: &str, size: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(size, size), Sense::hover());
-    let initial = name.chars().next().unwrap_or('?').to_uppercase().to_string();
-
-    let bg_color = match name.bytes().next().unwrap_or(0) % 6 {
-        0 => Color32::from_rgb(37, 99, 235),  // Blue
-        1 => Color32::from_rgb(13, 148, 136), // Teal
-        2 => Color32::from_rgb(217, 119, 6),  // Amber
-        3 => Color32::from_rgb(220, 38, 38),  // Red
-        4 => Color32::from_rgb(147, 51, 234), // Purple
-        _ => Color32::from_rgb(5, 150, 105),  // Emerald
-    };
-
-    ui.painter().circle_filled(rect.center(), size / 2.0, bg_color);
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        initial,
-        egui::FontId::proportional(size * 0.44),
-        Color32::WHITE,
-    );
+    paint_avatar_in_rect(ui.painter(), rect, name);
 }
