@@ -28,3 +28,10 @@
 - [x] Task 6.1: Chạy kiểm thử tự động toàn diện (`cargo test -p chatw-client`), đảm bảo tất cả các test case đều pass.
 - [x] Task 6.2: Biên dịch bản Release `cargo build --release -p chatw-client` và cập nhật `dist-desktop/chatw.exe`.
 - [x] Task 6.3: Tự động commit và đẩy toàn bộ thay đổi lên GitHub `origin main` theo quy định Rule 1 trong `AGENTS.md`.
+
+## Nhóm 7: Sửa lỗi hình học Layout, Glyph font và Vector Icons (Pixel-Perfect Matching)
+- [x] Task 7.1: Sửa triệt để lỗi ô vuông font `□` bằng cách ưu tiên Arial và vẽ icon vector SVG thuần (`Painter`) cho Send, Close, Menu, Back, Chats, Friends, Settings, Logout.
+- [x] Task 7.2: Khắc phục lỗi thanh input chat bị trôi lơ lửng giữa màn hình bằng bố cục 3 vùng hình học cố định (`header_rect`, `msgs_rect`, `input_bar_rect`) và `auto_shrink([false, false])`.
+- [x] Task 7.3: Loại bỏ thanh tab con thừa thãi trong sidebar, chuẩn hóa 4 icon điều hướng trên header sidebar giống 100% web.
+- [x] Task 7.4: Hiển thị avatar đối tác 28px cạnh bong bóng tin nhắn nhận.
+

@@ -100,7 +100,21 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     let fonts_dir = std::path::Path::new(&windir).join("Fonts");
 
-    // 1. Segoe UI (Standard Windows UI font with full Vietnamese diacritics support)
+    // 1. Arial (Highest priority: 100% full Vietnamese precomposed glyphs)
+    let arial_path = fonts_dir.join("arial.ttf");
+    if let Ok(bytes) = std::fs::read(&arial_path) {
+        fonts.font_data.insert(
+            "arial".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "arial".to_owned());
+    }
+
+    // 2. Segoe UI (Standard Windows modern typography)
     let segoe_path = fonts_dir.join("segoeui.ttf");
     if let Ok(bytes) = std::fs::read(&segoe_path) {
         fonts.font_data.insert(
@@ -111,10 +125,24 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .insert(0, "segoe_ui".to_owned());
+            .push("segoe_ui".to_owned());
     }
 
-    // 2. Segoe UI Emoji (for symbols and emojis)
+    // 3. Tahoma (Windows UI fallback)
+    let tahoma_path = fonts_dir.join("tahoma.ttf");
+    if let Ok(bytes) = std::fs::read(&tahoma_path) {
+        fonts.font_data.insert(
+            "tahoma".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("tahoma".to_owned());
+    }
+
+    // 4. Segoe UI Emoji (for symbols and emojis)
     let emoji_path = fonts_dir.join("seguiemj.ttf");
     if let Ok(bytes) = std::fs::read(&emoji_path) {
         fonts.font_data.insert(
@@ -128,26 +156,27 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .push("segoe_emoji".to_owned());
     }
 
-    // 3. Arial (Fallback)
-    let arial_path = fonts_dir.join("arial.ttf");
-    if let Ok(bytes) = std::fs::read(&arial_path) {
-        fonts.font_data.insert(
-            "arial".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-        fonts
-            .families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .push("arial".to_owned());
-    }
-
     ctx.set_fonts(fonts);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_vietnamese_font_glyphs() {
+        let ctx = egui::Context::default();
+        setup_vietnamese_fonts(&ctx);
+        let sample = "Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE Tiếp tục với Google Đăng nhập chế độ thử nghiệm";
+        let _ = ctx.run(Default::default(), |ctx| {
+            ctx.fonts(|f| {
+                for c in sample.chars() {
+                    let has = f.has_glyph(&egui::FontId::proportional(14.0), c);
+                    assert!(has, "Character '{}' (U+{:04X}) must have glyph", c, c as u32);
+                }
+            });
+        });
+    }
 
     #[test]
     fn test_vietnamese_font_loading() {
