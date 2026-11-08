@@ -130,7 +130,12 @@ pub async fn google_login_handler(
     ticket: Option<Uuid>,
     custom_redirect: Option<String>,
 ) -> AppResult<Response> {
-    let state = generate_random_token();
+    let token = generate_random_token();
+    let state = if config.bind_addr.ip().is_loopback() {
+        format!("local8082_{token}")
+    } else {
+        token
+    };
     let nonce = generate_random_token();
     let (code_verifier, code_challenge) = generate_pkce();
 

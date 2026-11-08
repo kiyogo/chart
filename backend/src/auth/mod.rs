@@ -5,7 +5,7 @@ use axum::{
     Json, Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use serde::Serialize;
@@ -138,7 +138,20 @@ async fn handle_google_callback(
     let code = query.code.ok_or(AppError::BadRequest("missing_code"))?;
     let state_param = query.state.ok_or(AppError::BadRequest("missing_state"))?;
 
-    let oauth_cookie = parse_cookie(&headers, OAUTH_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let oauth_cookie = match parse_cookie(&headers, OAUTH_COOKIE_NAME) {
+        Some(c) => c,
+        None => {
+            if state_param.starts_with("local8082_") {
+                let local_url = format!(
+                    "http://127.0.0.1:8082/api/auth/google/callback?code={}&state={}",
+                    urlencoding::encode(&code),
+                    urlencoding::encode(&state_param)
+                );
+                return Ok(Redirect::temporary(&local_url).into_response());
+            }
+            return Err(AppError::Unauthorized);
+        }
+    };
 
     let saved = google::verify_oauth_cookie(&state.config.session_secret, oauth_cookie)
         .ok_or(AppError::Unauthorized)?;
