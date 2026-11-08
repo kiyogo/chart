@@ -91,8 +91,86 @@ fn drain_decrypt_queue(
     *queue = still_pending;
 }
 
+fn setup_vietnamese_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+
+    let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
+    let fonts_dir = std::path::Path::new(&windir).join("Fonts");
+
+    // 1. Segoe UI (Standard Windows UI font with full Vietnamese diacritics support)
+    let segoe_path = fonts_dir.join("segoeui.ttf");
+    if let Ok(bytes) = std::fs::read(&segoe_path) {
+        fonts.font_data.insert(
+            "segoe_ui".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "segoe_ui".to_owned());
+    }
+
+    // 2. Segoe UI Emoji (for symbols and emojis)
+    let emoji_path = fonts_dir.join("seguiemj.ttf");
+    if let Ok(bytes) = std::fs::read(&emoji_path) {
+        fonts.font_data.insert(
+            "segoe_emoji".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("segoe_emoji".to_owned());
+    }
+
+    // 3. Arial (Fallback)
+    let arial_path = fonts_dir.join("arial.ttf");
+    if let Ok(bytes) = std::fs::read(&arial_path) {
+        fonts.font_data.insert(
+            "arial".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("arial".to_owned());
+    }
+
+    ctx.set_fonts(fonts);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vietnamese_font_loading() {
+        let ctx = egui::Context::default();
+        setup_vietnamese_fonts(&ctx);
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.label("Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE Tiếp tục với Google Đăng nhập");
+            });
+        });
+    }
+
+    #[tokio::test]
+    async fn test_dev_login_live() {
+        let http = HttpClient::new("http://127.0.0.1:8082".to_string());
+        let res = http.dev_login(Some("Alice")).await;
+        assert!(res.is_ok(), "Dev login failed: {:?}", res);
+        let me = http.get_me().await;
+        assert!(me.is_ok(), "Get me failed: {:?}", me);
+    }
+}
+
 impl ChatApp {
     pub fn new(cc: &eframe::CreationContext) -> Self {
+        setup_vietnamese_fonts(&cc.egui_ctx);
+
         // Set visual styling to pure flat dark minimalist
         let mut visuals = egui::Visuals::dark();
         visuals.window_shadow = egui::epaint::Shadow::NONE;
@@ -368,6 +446,7 @@ impl eframe::App for ChatApp {
                         Err(e) => {
                             if let AppState::Login(ref mut view) = self.state {
                                 view.is_loading = false;
+                                view.is_google_pending = false;
                                 view.error_msg = Some(e);
                             }
                         }
@@ -600,13 +679,19 @@ impl eframe::App for ChatApp {
                             match action {
                                 LoginAction::GoogleLogin => {
                                     login_view.is_loading = true;
+                                    login_view.is_google_pending = true;
                                     login_view.error_msg = None;
                                     self.trigger_google_login(ctx);
                                 }
                                 LoginAction::DevLogin(username) => {
                                     login_view.is_loading = true;
+                                    login_view.is_google_pending = false;
                                     login_view.error_msg = None;
                                     self.trigger_dev_login(username, ctx);
+                                }
+                                LoginAction::CancelGoogleLogin => {
+                                    login_view.is_loading = false;
+                                    login_view.is_google_pending = false;
                                 }
                                 LoginAction::ChangeServer(new_url) => {
                                     storage::save_server_url(&new_url);
@@ -614,6 +699,7 @@ impl eframe::App for ChatApp {
                                     login_view.server_url_input = new_url;
                                     login_view.error_msg = None;
                                     login_view.is_loading = false;
+                                    login_view.is_google_pending = false;
                                     self.check_auth(ctx);
                                 }
                             }

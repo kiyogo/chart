@@ -5,6 +5,7 @@ pub struct LoginView {
     pub server_url_input: String,
     pub show_server_config: bool,
     pub is_loading: bool,
+    pub is_google_pending: bool,
     pub error_msg: Option<String>,
 }
 
@@ -15,6 +16,7 @@ impl Default for LoginView {
             server_url_input: "http://127.0.0.1:8082".to_string(),
             show_server_config: false,
             is_loading: false,
+            is_google_pending: false,
             error_msg: None,
         }
     }
@@ -24,6 +26,7 @@ pub enum LoginAction {
     GoogleLogin,
     DevLogin(String),
     ChangeServer(String),
+    CancelGoogleLogin,
 }
 
 impl LoginView {
@@ -59,18 +62,34 @@ impl LoginView {
 
             ui.add_space(24.0);
 
-            // Google Login Button
-            let google_btn = egui::Button::new(
-                RichText::new("Tiếp tục với Google")
-                    .size(14.0)
-                    .color(Color32::WHITE)
-                    .strong(),
-            )
-            .fill(Color32::from_rgb(37, 99, 235))
-            .min_size(Vec2::new(card_width, 42.0));
+            // Google Login Button / Pending state
+            if self.is_google_pending {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(
+                        RichText::new("Đang chờ xác thực Google trên trình duyệt...")
+                            .size(12.0)
+                            .color(Color32::from_rgb(250, 204, 21)),
+                    );
+                    if ui.button(RichText::new("Hủy").size(11.0).color(Color32::from_rgb(248, 113, 113))).clicked() {
+                        self.is_google_pending = false;
+                        self.is_loading = false;
+                        action = Some(LoginAction::CancelGoogleLogin);
+                    }
+                });
+            } else {
+                let google_btn = egui::Button::new(
+                    RichText::new("Tiếp tục với Google")
+                        .size(14.0)
+                        .color(Color32::WHITE)
+                        .strong(),
+                )
+                .fill(Color32::from_rgb(37, 99, 235))
+                .min_size(Vec2::new(card_width, 42.0));
 
-            if ui.add_enabled(!self.is_loading, google_btn).clicked() {
-                action = Some(LoginAction::GoogleLogin);
+                if ui.add_enabled(!self.is_loading, google_btn).clicked() {
+                    action = Some(LoginAction::GoogleLogin);
+                }
             }
 
             ui.add_space(16.0);
@@ -110,8 +129,8 @@ impl LoginView {
 
             // Dev Login Button
             let dev_btn = egui::Button::new(
-                RichText::new(if self.is_loading {
-                    "Đang đăng nhập"
+                RichText::new(if self.is_loading && !self.is_google_pending {
+                    "Đang đăng nhập..."
                 } else {
                     "Đăng nhập nhanh (Dev / Demo)"
                 })

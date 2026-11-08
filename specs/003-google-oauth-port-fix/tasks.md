@@ -8,3 +8,6 @@
 - [x] Task 6: Compile `chatw-client` release build and deploy to `dist-desktop/chatw.exe`
 - [x] Task 7: Verify endpoints with curl and launch tests
 - [x] Task 8: Git commit and push all changes to `origin main`
+- [x] Task 9: Configure native Segoe UI & Segoe UI Emoji fonts to fix Vietnamese text glyph rendering (no more tofu boxes)
+- [x] Task 10: Fix Google OAuth redirect URL mismatch for local dev (point to 127.0.0.1:8082) and add cancel mechanism
+- [x] Task 11: Rebuild release executable `dist-desktop/chatw.exe` and push to GitHub origin main
