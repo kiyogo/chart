@@ -240,7 +240,7 @@ impl HttpClient {
     }
 
     pub fn set_session_token(&self, token: &str) {
-        let cookie_str = format!("chatw_session={token}; Domain=127.0.0.1; Path=/; HttpOnly");
+        let cookie_str = format!("chatw_session={token}; Path=/; HttpOnly");
         if let Ok(url) = self.base_url.parse::<reqwest::Url>() {
             self.cookie_jar.add_cookie_str(&cookie_str, &url);
         }

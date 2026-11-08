@@ -13,6 +13,7 @@ pub struct WsManager {
 
 impl WsManager {
     pub fn start(
+        runtime: tokio::runtime::Handle,
         base_http_url: String,
         cookie_jar: Arc<Jar>,
         ctx: egui::Context,
@@ -30,7 +31,7 @@ impl WsManager {
         };
         let cookie_target_url = format!("{}/api/ws", http_base).parse::<reqwest::Url>().ok();
 
-        tokio::spawn(async move {
+        runtime.spawn(async move {
             let mut retry_delay = std::time::Duration::from_millis(1000);
 
             loop {
@@ -49,10 +50,9 @@ impl WsManager {
 
                 if let Some(cookie_val) = cookie_header {
                     if let Ok(hdr) = cookie_val.to_str() {
-                        req.headers_mut().insert(
-                            "Cookie",
-                            hdr.parse().unwrap(),
-                        );
+                        if let Ok(header_val) = hdr.parse() {
+                            req.headers_mut().insert("Cookie", header_val);
+                        }
                     }
                 }
 

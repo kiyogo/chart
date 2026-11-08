@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use egui::{Align, Align2, Color32, CornerRadius, Layout, Rect, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
+use egui::{Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Stroke, Ui, Vec2};
 use uuid::Uuid;
 use chatw_core::{FriendItem, PendingRequestItem, UserSearchResult};
 
@@ -65,20 +65,18 @@ impl ChatView {
         let mut triggered_action = None;
 
         let total_rect = ui.available_rect_before_wrap();
-        let sidebar_width = 280.0;
+        let sidebar_width = 280.0_f32.min(total_rect.width() * 0.4);
+        let chat_width = (total_rect.width() - sidebar_width - 1.0).max(100.0);
 
         ui.horizontal(|ui| {
             // LEFT SIDEBAR
-            let sidebar_rect = Rect::from_min_size(
-                total_rect.min,
+            ui.allocate_ui_with_layout(
                 Vec2::new(sidebar_width, total_rect.height()),
+                Layout::top_down(Align::Min),
+                |ui| {
+                    self.render_sidebar(ui, &mut triggered_action);
+                },
             );
-            let mut sidebar_ui = ui.new_child(
-                UiBuilder::new()
-                    .max_rect(sidebar_rect)
-                    .layout(Layout::top_down(Align::Min)),
-            );
-            self.render_sidebar(&mut sidebar_ui, &mut triggered_action);
 
             // SEPARATOR LINE
             let line_x = total_rect.min.x + sidebar_width;
@@ -91,16 +89,13 @@ impl ChatView {
             );
 
             // RIGHT CHAT AREA
-            let chat_rect = Rect::from_min_max(
-                egui::pos2(line_x + 1.0, total_rect.min.y),
-                total_rect.max,
+            ui.allocate_ui_with_layout(
+                Vec2::new(chat_width, total_rect.height()),
+                Layout::top_down(Align::Min),
+                |ui| {
+                    self.render_chat_area(ui, &mut triggered_action);
+                },
             );
-            let mut chat_ui = ui.new_child(
-                UiBuilder::new()
-                    .max_rect(chat_rect)
-                    .layout(Layout::top_down(Align::Min)),
-            );
-            self.render_chat_area(&mut chat_ui, &mut triggered_action);
         });
 
         triggered_action
@@ -297,144 +292,138 @@ impl ChatView {
             Some(friend) => {
                 // Top Chat Header
                 let header_height = 48.0;
-                let (header_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), header_height), Sense::hover());
-                ui.painter().rect_filled(header_rect, 0.0, Color32::from_rgb(18, 18, 21));
-                ui.painter().line_segment(
-                    [header_rect.left_bottom(), header_rect.right_bottom()],
-                    Stroke::new(1.0_f32, Color32::from_rgb(39, 39, 42)),
-                );
+                ui.allocate_ui_with_layout(
+                    Vec2::new(ui.available_width(), header_height),
+                    Layout::left_to_right(Align::Center),
+                    |header_ui| {
+                        let header_rect = header_ui.max_rect();
+                        header_ui.painter().rect_filled(header_rect, 0.0, Color32::from_rgb(18, 18, 21));
+                        header_ui.painter().line_segment(
+                            [header_rect.left_bottom(), header_rect.right_bottom()],
+                            Stroke::new(1.0_f32, Color32::from_rgb(39, 39, 42)),
+                        );
 
-                let mut header_ui = ui.new_child(
-                    UiBuilder::new()
-                        .max_rect(header_rect)
-                        .layout(Layout::left_to_right(Align::Center)),
-                );
-                header_ui.add_space(16.0);
+                        header_ui.add_space(16.0);
 
-                let (av_rect, _) = header_ui.allocate_exact_size(Vec2::new(30.0, 30.0), Sense::hover());
-                header_ui.painter().circle_filled(av_rect.center(), 15.0, Color32::from_rgb(14, 165, 233));
-                let initial = friend.username.chars().next().unwrap_or('F').to_uppercase().to_string();
-                header_ui.painter().text(
-                    av_rect.center(),
-                    Align2::CENTER_CENTER,
-                    &initial,
-                    egui::FontId::proportional(13.0),
-                    Color32::WHITE,
-                );
+                        let (av_rect, _) = header_ui.allocate_exact_size(Vec2::new(30.0, 30.0), Sense::hover());
+                        header_ui.painter().circle_filled(av_rect.center(), 15.0, Color32::from_rgb(14, 165, 233));
+                        let initial = friend.username.chars().next().unwrap_or('F').to_uppercase().to_string();
+                        header_ui.painter().text(
+                            av_rect.center(),
+                            Align2::CENTER_CENTER,
+                            &initial,
+                            egui::FontId::proportional(13.0),
+                            Color32::WHITE,
+                        );
 
-                header_ui.add_space(10.0);
-                header_ui.vertical(|ui| {
-                    ui.label(RichText::new(&friend.username).strong().size(14.0).color(Color32::WHITE));
-                    ui.label(
-                        RichText::new("🔒 E2EE P-256 + AES-GCM (Bảo mật tuyệt đối)")
-                            .size(10.0)
-                            .color(Color32::from_rgb(34, 197, 94)),
-                    );
-                });
+                        header_ui.add_space(10.0);
+                        header_ui.vertical(|ui| {
+                            ui.label(RichText::new(&friend.username).strong().size(14.0).color(Color32::WHITE));
+                            ui.label(
+                                RichText::new("🔒 E2EE P-256 + AES-GCM (Bảo mật tuyệt đối)")
+                                    .size(10.0)
+                                    .color(Color32::from_rgb(34, 197, 94)),
+                            );
+                        });
+                    },
+                );
 
                 // Messages View
                 let input_bar_height = 56.0;
-                let messages_height = ui.available_height() - input_bar_height;
-                let msgs_rect = Rect::from_min_size(
-                    ui.cursor().min,
+                let messages_height = (ui.available_height() - input_bar_height).max(50.0);
+
+                ui.allocate_ui_with_layout(
                     Vec2::new(ui.available_width(), messages_height),
-                );
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .stick_to_bottom(true)
+                            .show(ui, |ui| {
+                                ui.add_space(12.0);
 
-                let mut msgs_ui = ui.new_child(
-                    UiBuilder::new()
-                        .max_rect(msgs_rect)
-                        .layout(Layout::top_down(Align::Min)),
-                );
-                egui::ScrollArea::vertical()
-                    .stick_to_bottom(true)
-                    .show(&mut msgs_ui, |ui| {
-                        ui.add_space(12.0);
+                                let empty_vec = Vec::new();
+                                let msg_list = self.messages.get(&friend.id).unwrap_or(&empty_vec);
 
-                        let empty_vec = Vec::new();
-                        let msg_list = self.messages.get(&friend.id).unwrap_or(&empty_vec);
+                                if msg_list.is_empty() {
+                                    ui.vertical_centered(|ui| {
+                                        ui.add_space(40.0);
+                                        ui.label(
+                                            RichText::new("Chưa có tin nhắn nào trong cuộc trò chuyện này.")
+                                                .size(12.0)
+                                                .color(Color32::from_rgb(82, 82, 91)),
+                                        );
+                                        ui.label(
+                                            RichText::new("Gửi lời chào đầu tiên an toàn bằng mã hóa E2EE!")
+                                                .size(11.0)
+                                                .color(Color32::from_rgb(113, 113, 122)),
+                                        );
+                                    });
+                                } else {
+                                    for m in msg_list {
+                                        render_message_bubble(ui, m);
+                                    }
+                                }
 
-                        if msg_list.is_empty() {
-                            ui.vertical_centered(|ui| {
-                                ui.add_space(40.0);
-                                ui.label(
-                                    RichText::new("Chưa có tin nhắn nào trong cuộc trò chuyện này.")
-                                        .size(12.0)
-                                        .color(Color32::from_rgb(82, 82, 91)),
-                                );
-                                ui.label(
-                                    RichText::new("Gửi lời chào đầu tiên an toàn bằng mã hóa E2EE!")
-                                        .size(11.0)
-                                        .color(Color32::from_rgb(113, 113, 122)),
-                                );
+                                // Typing indicator
+                                if self.typing_users.contains(&friend.id) {
+                                    ui.add_space(6.0);
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(16.0);
+                                        ui.label(
+                                            RichText::new(format!("{} đang soạn tin nhắn", friend.username))
+                                                .size(11.0)
+                                                .italics()
+                                                .color(Color32::from_rgb(96, 165, 250)),
+                                        );
+                                    });
+                                }
+
+                                ui.add_space(10.0);
                             });
-                        } else {
-                            for m in msg_list {
-                                render_message_bubble(ui, m);
-                            }
-                        }
-
-                        // Typing indicator
-                        if self.typing_users.contains(&friend.id) {
-                            ui.add_space(6.0);
-                            ui.horizontal(|ui| {
-                                ui.add_space(16.0);
-                                ui.label(
-                                    RichText::new(format!("{} đang soạn tin nhắn", friend.username))
-                                        .size(11.0)
-                                        .italics()
-                                        .color(Color32::from_rgb(96, 165, 250)),
-                                );
-                            });
-                        }
-
-                        ui.add_space(10.0);
-                    });
+                    },
+                );
 
                 // Bottom Input Bar
                 ui.separator();
-                let input_rect = ui.available_rect_before_wrap();
-                let mut input_ui = ui.new_child(
-                    UiBuilder::new()
-                        .max_rect(input_rect)
-                        .layout(Layout::left_to_right(Align::Center)),
-                );
-                input_ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
 
-                // Quick Emojis
-                for emoji in &["😀", "👍", "❤️", "🎉", "🔥"] {
-                    if input_ui.button(RichText::new(*emoji).size(15.0)).clicked() {
-                        self.message_input.push_str(emoji);
+                    // Quick Emojis
+                    for emoji in &["😀", "👍", "❤️", "🎉", "🔥"] {
+                        if ui.button(RichText::new(*emoji).size(15.0)).clicked() {
+                            self.message_input.push_str(emoji);
+                        }
                     }
-                }
 
-                input_ui.add_space(6.0);
+                    ui.add_space(6.0);
 
-                let text_edit = egui::TextEdit::singleline(&mut self.message_input)
-                    .hint_text("Nhập tin nhắn bảo mật E2EE")
-                    .desired_width(input_ui.available_width() - 80.0);
-                let edit_resp = input_ui.add(text_edit);
+                    let text_edit = egui::TextEdit::singleline(&mut self.message_input)
+                        .hint_text("Nhập tin nhắn bảo mật E2EE")
+                        .desired_width((ui.available_width() - 80.0).max(100.0));
+                    let edit_resp = ui.add(text_edit);
 
-                if edit_resp.changed() {
-                    if !self.message_input.is_empty() {
-                        *action = Some(ChatAction::TypingStarted);
-                    } else {
-                        *action = Some(ChatAction::TypingStopped);
+                    if edit_resp.changed() {
+                        if !self.message_input.is_empty() {
+                            *action = Some(ChatAction::TypingStarted);
+                        } else {
+                            *action = Some(ChatAction::TypingStopped);
+                        }
                     }
-                }
 
-                let send_btn = egui::Button::new(RichText::new("Gửi 📤").strong().color(Color32::WHITE))
-                    .fill(Color32::from_rgb(37, 99, 235))
-                    .min_size(Vec2::new(60.0, 32.0));
+                    let send_btn = egui::Button::new(RichText::new("Gửi 📤").strong().color(Color32::WHITE))
+                        .fill(Color32::from_rgb(37, 99, 235))
+                        .min_size(Vec2::new(60.0, 32.0));
 
-                let should_send = (input_ui.add(send_btn).clicked()
-                    || (edit_resp.lost_focus() && input_ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                    && !self.message_input.trim().is_empty();
+                    let should_send = (ui.add(send_btn).clicked()
+                        || (edit_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+                        && !self.message_input.trim().is_empty();
 
-                if should_send {
-                    let text = self.message_input.trim().to_string();
-                    self.message_input.clear();
-                    *action = Some(ChatAction::SendMessage(text));
-                }
+                    if should_send {
+                        let text = self.message_input.trim().to_string();
+                        self.message_input.clear();
+                        *action = Some(ChatAction::SendMessage(text));
+                    }
+                });
             }
         }
     }

@@ -54,6 +54,7 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         http_client,
         jwks_cache,
         ws_hub,
+        oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     };
 
     axum::Router::new()

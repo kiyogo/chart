@@ -10,6 +10,7 @@ pub struct LocalStore {
     pub ecdsa_hex: Option<String>,
     pub last_user_id: Option<Uuid>,
     pub last_username: Option<String>,
+    pub session_token: Option<String>,
     pub server_url: Option<String>,
 }
 
@@ -51,7 +52,7 @@ pub fn load_or_create_keys() -> ClientKeys {
     keys
 }
 
-pub fn save_user_session(user_id: Uuid, username: Option<String>) {
+pub fn save_user_session(user_id: Uuid, username: Option<String>, session_token: Option<String>) {
     let path = get_storage_path();
     let mut store = if let Ok(content) = fs::read_to_string(&path) {
         serde_json::from_str::<LocalStore>(&content).unwrap_or_default()
@@ -60,9 +61,22 @@ pub fn save_user_session(user_id: Uuid, username: Option<String>) {
     };
     store.last_user_id = Some(user_id);
     store.last_username = username;
+    if session_token.is_some() {
+        store.session_token = session_token;
+    }
     if let Ok(json) = serde_json::to_string_pretty(&store) {
         let _ = fs::write(path, json);
     }
+}
+
+pub fn load_session_token() -> Option<String> {
+    let path = get_storage_path();
+    if let Ok(content) = fs::read_to_string(&path) {
+        if let Ok(store) = serde_json::from_str::<LocalStore>(&content) {
+            return store.session_token;
+        }
+    }
+    None
 }
 
 pub fn clear_user_session() {
@@ -71,6 +85,7 @@ pub fn clear_user_session() {
         if let Ok(mut store) = serde_json::from_str::<LocalStore>(&content) {
             store.last_user_id = None;
             store.last_username = None;
+            store.session_token = None;
             if let Ok(json) = serde_json::to_string_pretty(&store) {
                 let _ = fs::write(path, json);
             }

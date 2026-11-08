@@ -16,7 +16,10 @@ use crate::views::{ChatAction, ChatView, DecryptedMessage, LoginAction, LoginVie
 #[allow(dead_code)]
 pub enum GuiEvent {
     AuthResult(Result<MeResponse, String>),
-    DevLoginResult(Result<MeResponse, String>),
+    DevLoginResult {
+        result: Result<MeResponse, String>,
+        token: Option<String>,
+    },
     SetNameResult(Result<(), String>),
     FriendsList(Result<Vec<FriendItem>, String>),
     PendingList(Result<Vec<PendingRequestItem>, String>),
@@ -157,6 +160,152 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_chat_view_render_all_states() {
+        let ctx = egui::Context::default();
+        setup_vietnamese_fonts(&ctx);
+
+        let my_id = Uuid::new_v4();
+        let friend_id = Uuid::new_v4();
+        let mut chat_view = ChatView::new(my_id, "123dá".to_string());
+
+        // 1. Initial empty state
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                chat_view.show(ui);
+            });
+        });
+
+        // 2. Friend added and selected
+        chat_view.friends.push(FriendItem {
+            id: friend_id,
+            username: "Nguyễn Văn A".to_string(),
+            avatar_url: None,
+        });
+        chat_view.selected_friend_id = Some(friend_id);
+
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                chat_view.show(ui);
+            });
+        });
+
+        // 3. Messages present
+        chat_view.messages.insert(
+            friend_id,
+            vec![
+                DecryptedMessage {
+                    id: Uuid::new_v4(),
+                    sender_id: my_id,
+                    is_me: true,
+                    text: "Xin chào bạn nhé!".to_string(),
+                    time_str: "19:30".to_string(),
+                },
+                DecryptedMessage {
+                    id: Uuid::new_v4(),
+                    sender_id: friend_id,
+                    is_me: false,
+                    text: "Chào bạn, mã hóa E2EE hoạt động tốt!".to_string(),
+                    time_str: "19:31".to_string(),
+                },
+            ],
+        );
+
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                chat_view.show(ui);
+            });
+        });
+    }
+
+    #[test]
+    fn test_cookie_jar_for_websocket() {
+        use reqwest::cookie::CookieStore;
+        let http = HttpClient::new("http://127.0.0.1:8082".to_string());
+        http.set_session_token("test_token_abc_123");
+        let ws_url = "http://127.0.0.1:8082/api/ws".parse::<reqwest::Url>().unwrap();
+        let cookie = http.cookie_jar.cookies(&ws_url);
+        println!("Cookie header: {:?}", cookie);
+    }
+
+    #[test]
+    fn test_full_login_transition_flow() {
+        let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap());
+        let http = HttpClient::new("http://127.0.0.1:8082".to_string());
+
+        let me = runtime.block_on(async {
+            let res = http.dev_login(Some("FlowTester")).await;
+            assert!(res.is_ok());
+            http.get_me().await.expect("get_me failed")
+        });
+        
+        // Now simulate the full app transition
+        let ctx = egui::Context::default();
+        setup_vietnamese_fonts(&ctx);
+
+        let keys = storage::load_or_create_keys();
+        let (tx_gui, rx_gui) = mpsc::channel();
+
+        let mut app = ChatApp {
+            runtime: runtime.clone(),
+            http: http.clone(),
+            ws: None,
+            keys,
+            state: AppState::CheckingAuth,
+            tx_gui,
+            rx_gui,
+            is_maximized: false,
+            pending_decrypt_queue: Vec::new(),
+        };
+
+        // Transition to logged in user
+        app.handle_logged_in_user(me, None, &ctx);
+
+        match &app.state {
+            AppState::SetName(_) => {
+                // Run GUI frames in SetName view
+                for _ in 0..5 {
+                    let _ = ctx.run(Default::default(), |ctx| {
+                        app.update_ui(ctx);
+                    });
+                }
+
+                // Set username and transition to Chat
+                let me_named = runtime.block_on(async {
+                    let _ = http.set_name("FlowTester").await;
+                    http.get_me().await.expect("get_me named failed")
+                });
+                app.handle_logged_in_user(me_named, None, &ctx);
+            }
+            AppState::Chat(_) => {
+                // User already has username set
+            }
+            _ => panic!("Unexpected app state after login"),
+        }
+
+        // Verify state is now Chat
+        assert!(matches!(app.state, AppState::Chat(_)));
+
+        // Run GUI frames in Chat view
+        for _ in 0..5 {
+            let _ = ctx.run(Default::default(), |ctx| {
+                app.update_ui(ctx);
+            });
+        }
+    }
+
+    #[tokio::test]
+    async fn test_live_ws_connection() {
+        let http = HttpClient::new("http://127.0.0.1:8082".to_string());
+        let res = http.dev_login(Some("WsTester")).await;
+        assert!(res.is_ok());
+        let ctx = egui::Context::default();
+        let ws = WsManager::start(tokio::runtime::Handle::current(), http.base_url.clone(), http.cookie_jar.clone(), ctx);
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let _ = ws.tx_commands.send(WsClientCommand::TypingStart { recipient_id: Uuid::new_v4() });
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
     #[tokio::test]
     async fn test_dev_login_live() {
         let http = HttpClient::new("http://127.0.0.1:8082".to_string());
@@ -191,6 +340,9 @@ impl ChatApp {
 
         let server_url = storage::load_server_url();
         let http = HttpClient::new(server_url);
+        if let Some(token) = storage::load_session_token() {
+            http.set_session_token(&token);
+        }
         let keys = storage::load_or_create_keys();
         let (tx_gui, rx_gui) = mpsc::channel();
 
@@ -250,16 +402,25 @@ impl ChatApp {
                     if let Some(token) = found_token {
                         http.set_session_token(&token);
                         let me_res = http.get_me().await;
-                        let _ = tx.send(GuiEvent::DevLoginResult(me_res));
+                        let _ = tx.send(GuiEvent::DevLoginResult {
+                            result: me_res,
+                            token: Some(token),
+                        });
                     } else {
-                        let _ = tx.send(GuiEvent::DevLoginResult(Err("Hết thời gian chờ đăng nhập Google".into())));
+                        let _ = tx.send(GuiEvent::DevLoginResult {
+                            result: Err("Hết thời gian chờ đăng nhập Google".into()),
+                            token: None,
+                        });
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(GuiEvent::DevLoginResult(Err(format!(
-                        "Không thể kết nối đến máy chủ {}. Vui lòng kiểm tra backend đang chạy hoặc đổi sang máy chủ khác. (Chi tiết: {})",
-                        http.base_url, e
-                    ))));
+                    let _ = tx.send(GuiEvent::DevLoginResult {
+                        result: Err(format!(
+                            "Không thể kết nối đến máy chủ {}. Vui lòng kiểm tra backend đang chạy hoặc đổi sang máy chủ khác. (Chi tiết: {})",
+                            http.base_url, e
+                        )),
+                        token: None,
+                    });
                 }
             }
             ctx.request_repaint();
@@ -281,10 +442,16 @@ impl ChatApp {
             match login_res {
                 Ok(_) => {
                     let me_res = http.get_me().await;
-                    let _ = tx.send(GuiEvent::DevLoginResult(me_res));
+                    let _ = tx.send(GuiEvent::DevLoginResult {
+                        result: me_res,
+                        token: None,
+                    });
                 }
                 Err(e) => {
-                    let _ = tx.send(GuiEvent::DevLoginResult(Err(e)));
+                    let _ = tx.send(GuiEvent::DevLoginResult {
+                        result: Err(e),
+                        token: None,
+                    });
                 }
             }
             ctx.request_repaint();
@@ -373,6 +540,7 @@ impl ChatApp {
 
     fn start_websocket_and_connect(&mut self, ctx: &egui::Context) {
         let ws = WsManager::start(
+            self.runtime.handle().clone(),
             self.http.base_url.clone(),
             self.http.cookie_jar.clone(),
             ctx.clone(),
@@ -380,14 +548,14 @@ impl ChatApp {
         self.ws = Some(ws);
     }
 
-    fn handle_logged_in_user(&mut self, me: MeResponse, ctx: &egui::Context) {
+    fn handle_logged_in_user(&mut self, me: MeResponse, token_opt: Option<String>, ctx: &egui::Context) {
         let http = self.http.clone();
         let keys = self.keys.clone();
         let user_id = me.id;
         let username_opt = me.username.clone();
 
         // Save session locally
-        storage::save_user_session(user_id, username_opt.clone());
+        storage::save_user_session(user_id, username_opt.clone(), token_opt);
 
         // Register E2EE keys if not registered
         if !me.has_keys {
@@ -412,10 +580,8 @@ impl ChatApp {
             self.state = AppState::SetName(SetNameView::default());
         }
     }
-}
 
-impl eframe::App for ChatApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    pub fn update_ui(&mut self, ctx: &egui::Context) {
         // Track maximization state for titlebar icon
         self.is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
 
@@ -429,7 +595,7 @@ impl eframe::App for ChatApp {
                 GuiEvent::AuthResult(res) => {
                     match res {
                         Ok(me) => {
-                            self.handle_logged_in_user(me, ctx);
+                            self.handle_logged_in_user(me, None, ctx);
                         }
                         Err(_) => {
                             let mut login_view = LoginView::default();
@@ -438,10 +604,10 @@ impl eframe::App for ChatApp {
                         }
                     }
                 }
-                GuiEvent::DevLoginResult(res) => {
-                    match res {
+                GuiEvent::DevLoginResult { result, token } => {
+                    match result {
                         Ok(me) => {
-                            self.handle_logged_in_user(me, ctx);
+                            self.handle_logged_in_user(me, token, ctx);
                         }
                         Err(e) => {
                             if let AppState::Login(ref mut view) = self.state {
@@ -816,5 +982,11 @@ impl eframe::App for ChatApp {
                     }
                 }
             });
+    }
+}
+
+impl eframe::App for ChatApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.update_ui(ctx);
     }
 }
