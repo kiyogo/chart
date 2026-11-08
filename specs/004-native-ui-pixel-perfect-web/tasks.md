@@ -57,4 +57,12 @@
 - [x] Task 10.5: Khởi chạy Desktop App với nhân WebView2, kiểm thử hiển thị giao diện khớp 100% bản Web.
 - [x] Task 10.6: Tự động commit và đẩy toàn bộ mã nguồn lên nhánh chính `origin main` theo đúng Rule 1 trong `AGENTS.md`.
 
+## Nhóm 11: Khắc phục Triệt để Lỗi Văng App & Chống Crash Single-Instance
+- [x] Task 11.1: Tích hợp `tauri-plugin-single-instance` vào `frontend/src-tauri` ngăn ngừa lỗi `0x800700AA (The requested resource is in use)` khi mở app nhiều lần.
+- [x] Task 11.2: Chuẩn hóa `DESKTOP_BACKEND_ORIGIN` sang IPv4 `http://127.0.0.1:8082` trong `frontend/src/api/client.ts`.
+- [x] Task 11.3: Thêm cơ chế tự động thử lại kết nối backend (retry loop 6 lần) trong `App.tsx`.
+- [x] Task 11.4: Nâng cấp `run-desktop.bat` và `start-all.bat` tự động kiểm tra PostgreSQL (port 55432) và Backend (port 8082) trước khi mở App.
+- [x] Task 11.5: Biên dịch bản phát hành Tauri v2 và cập nhật `dist-desktop/chatw.exe` hoàn chỉnh.
+- [x] Task 11.6: Kiểm thử thực tế chống crash và tự động đẩy mã nguồn lên GitHub theo Rule 1.
+
 

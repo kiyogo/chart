@@ -55,15 +55,23 @@ export function App() {
    * reachable we load the app from it; otherwise we stay here and show a retry screen
    * (the custom titlebar keeps the window movable/closable).
    */
-  const connectDesktopBackend = async () => {
+  const connectDesktopBackend = async (retries = 6) => {
     setStatus('loading');
-    try {
-      const res = await fetch(`${DESKTOP_BACKEND_ORIGIN}/api/auth/providers`, { cache: 'no-store' });
-      if (!res.ok) throw new Error('backend_unavailable');
-      window.location.replace(`${DESKTOP_BACKEND_ORIGIN}/`);
-    } catch {
-      setStatus('offline');
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await fetch(`${DESKTOP_BACKEND_ORIGIN}/api/auth/providers`, { cache: 'no-store' });
+        if (res.ok) {
+          window.location.replace(`${DESKTOP_BACKEND_ORIGIN}/`);
+          return;
+        }
+      } catch {
+        // Retry after delay
+      }
+      if (i < retries - 1) {
+        await new Promise((r) => setTimeout(r, 600));
+      }
     }
+    setStatus('offline');
   };
 
   onMount(() => {
@@ -97,7 +105,7 @@ export function App() {
                 <p class="auth-subtitle">
                   Hãy khởi động backend chatw tại {DESKTOP_BACKEND_ORIGIN} rồi thử lại.
                 </p>
-                <button type="button" class="auth-btn-primary" onClick={connectDesktopBackend}>
+                <button type="button" class="auth-btn-primary" onClick={() => connectDesktopBackend()}>
                   Thử lại
                 </button>
               </div>

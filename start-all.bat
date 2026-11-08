@@ -15,10 +15,15 @@ if %errorlevel% neq 0 (
     echo PostgreSQL is already running on port 55432.
 )
 
-echo 2. Starting Rust Backend (Port 8082)...
-start "chatw-backend" cmd /k "cd /d %~dp0backend && set DATABASE_URL=postgres://chatw:chatw_dev_password@127.0.0.1:55432/chatw&& cargo run"
-
-timeout /t 3 /nobreak >nul
+echo 2. Ensuring Rust Backend is running on port 8082...
+netstat -ano | findstr 8082 >nul
+if %errorlevel% neq 0 (
+    echo Starting Rust Backend (Port 8082)...
+    start "chatw-backend" cmd /k "cd /d %~dp0backend && set DATABASE_URL=postgres://chatw:chatw_dev_password@127.0.0.1:55432/chatw&& cargo run"
+    timeout /t 3 /nobreak >nul
+) else (
+    echo Rust Backend is already running on port 8082.
+)
 
 echo 3. Launching Standalone Desktop App...
 start "" "%~dp0dist-desktop\chatw.exe"
