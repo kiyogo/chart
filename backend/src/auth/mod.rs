@@ -52,6 +52,7 @@ pub struct DevLoginRequest {
 #[derive(serde::Deserialize)]
 pub struct GoogleLoginQuery {
     pub ticket: Option<Uuid>,
+    pub redirect_uri: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -121,7 +122,7 @@ async fn handle_google_login(
     State(state): State<AppState>,
     Query(query): Query<GoogleLoginQuery>,
 ) -> AppResult<Response> {
-    google_login_handler(&state.config, query.ticket).await
+    google_login_handler(&state.config, query.ticket, query.redirect_uri).await
 }
 
 async fn handle_google_callback(
@@ -148,12 +149,18 @@ async fn handle_google_callback(
         return Err(AppError::Unauthorized);
     }
 
+    let redirect_uri = saved
+        .redirect_uri
+        .as_deref()
+        .unwrap_or(&state.config.google_redirect_url);
+
     // Exchange authorization code for ID token
     let id_token = exchange_code_for_token(
         &state.http_client,
         &state.config,
         &code,
         &saved.code_verifier,
+        redirect_uri,
     )
     .await?;
 

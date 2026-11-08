@@ -2,6 +2,8 @@ use egui::{Align2, Color32, RichText, Sense, Ui, Vec2};
 
 pub struct LoginView {
     pub username_input: String,
+    pub server_url_input: String,
+    pub show_server_config: bool,
     pub is_loading: bool,
     pub error_msg: Option<String>,
 }
@@ -10,6 +12,8 @@ impl Default for LoginView {
     fn default() -> Self {
         Self {
             username_input: String::new(),
+            server_url_input: "http://127.0.0.1:8082".to_string(),
+            show_server_config: false,
             is_loading: false,
             error_msg: None,
         }
@@ -19,6 +23,7 @@ impl Default for LoginView {
 pub enum LoginAction {
     GoogleLogin,
     DevLogin(String),
+    ChangeServer(String),
 }
 
 impl LoginView {
@@ -127,6 +132,49 @@ impl LoginView {
             if let Some(ref err) = self.error_msg {
                 ui.add_space(12.0);
                 ui.label(RichText::new(err).color(Color32::from_rgb(248, 113, 113)).size(12.0));
+            }
+
+            // Server configuration section
+            ui.add_space(20.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Máy chủ:").size(11.0).color(Color32::from_rgb(113, 113, 122)));
+                let current_label = if self.server_url_input.contains("127.0.0.1") || self.server_url_input.contains("localhost") {
+                    "Local (127.0.0.1:8082)"
+                } else if self.server_url_input.contains("chat.kiyo.vn") {
+                    "Cloud (api.chat.kiyo.vn)"
+                } else {
+                    "Tùy chỉnh"
+                };
+                if ui.button(RichText::new(current_label).size(11.0).color(Color32::from_rgb(96, 165, 250))).clicked() {
+                    self.show_server_config = !self.show_server_config;
+                }
+            });
+
+            if self.show_server_config {
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let input = egui::TextEdit::singleline(&mut self.server_url_input)
+                        .hint_text("http://127.0.0.1:8082")
+                        .desired_width(220.0);
+                    ui.add(input);
+                    if ui.button(RichText::new("Lưu").size(11.0)).clicked() {
+                        action = Some(LoginAction::ChangeServer(self.server_url_input.trim().to_string()));
+                        self.show_server_config = false;
+                    }
+                });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new("Dùng Local: 8082").size(11.0)).clicked() {
+                        self.server_url_input = "http://127.0.0.1:8082".to_string();
+                        action = Some(LoginAction::ChangeServer(self.server_url_input.clone()));
+                        self.show_server_config = false;
+                    }
+                    if ui.button(RichText::new("Dùng api.chat.kiyo.vn").size(11.0)).clicked() {
+                        self.server_url_input = "https://api.chat.kiyo.vn".to_string();
+                        action = Some(LoginAction::ChangeServer(self.server_url_input.clone()));
+                        self.show_server_config = false;
+                    }
+                });
             }
         });
 

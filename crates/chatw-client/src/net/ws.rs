@@ -13,20 +13,31 @@ pub struct WsManager {
 
 impl WsManager {
     pub fn start(
-        ws_url: String,
+        base_http_url: String,
         cookie_jar: Arc<Jar>,
         ctx: egui::Context,
     ) -> Self {
         let (tx_events, rx_events) = mpsc::unbounded_channel();
         let (tx_commands, mut rx_commands) = mpsc::unbounded_channel::<WsClientCommand>();
 
+        let http_base = base_http_url.trim_end_matches('/').to_string();
+        let ws_url = if http_base.starts_with("https://") {
+            format!("wss://{}/api/ws", &http_base["https://".len()..])
+        } else if http_base.starts_with("http://") {
+            format!("ws://{}/api/ws", &http_base["http://".len()..])
+        } else {
+            format!("ws://{}/api/ws", http_base)
+        };
+        let cookie_target_url = format!("{}/api/ws", http_base).parse::<reqwest::Url>().ok();
+
         tokio::spawn(async move {
             let mut retry_delay = std::time::Duration::from_millis(1000);
 
             loop {
                 // Build HTTP request for WebSocket with cookies
-                let dummy_url = "http://127.0.0.1:8082/api/ws".parse::<reqwest::Url>().unwrap();
-                let cookie_header = cookie_jar.cookies(&dummy_url);
+                let cookie_header = cookie_target_url
+                    .as_ref()
+                    .and_then(|u| cookie_jar.cookies(u));
 
                 let mut req = match ws_url.clone().into_client_request() {
                     Ok(r) => r,

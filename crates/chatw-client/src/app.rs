@@ -111,7 +111,8 @@ impl ChatApp {
                 .expect("Failed to initialize Tokio runtime"),
         );
 
-        let http = HttpClient::new("http://127.0.0.1:8082".to_string());
+        let server_url = storage::load_server_url();
+        let http = HttpClient::new(server_url);
         let keys = storage::load_or_create_keys();
         let (tx_gui, rx_gui) = mpsc::channel();
 
@@ -177,7 +178,10 @@ impl ChatApp {
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(GuiEvent::DevLoginResult(Err(format!("Lỗi kết nối máy chủ: {e}"))));
+                    let _ = tx.send(GuiEvent::DevLoginResult(Err(format!(
+                        "Không thể kết nối đến máy chủ {}. Vui lòng kiểm tra backend đang chạy hoặc đổi sang máy chủ khác. (Chi tiết: {})",
+                        http.base_url, e
+                    ))));
                 }
             }
             ctx.request_repaint();
@@ -291,7 +295,7 @@ impl ChatApp {
 
     fn start_websocket_and_connect(&mut self, ctx: &egui::Context) {
         let ws = WsManager::start(
-            "ws://127.0.0.1:8082/api/ws".to_string(),
+            self.http.base_url.clone(),
             self.http.cookie_jar.clone(),
             ctx.clone(),
         );
@@ -350,7 +354,9 @@ impl eframe::App for ChatApp {
                             self.handle_logged_in_user(me, ctx);
                         }
                         Err(_) => {
-                            self.state = AppState::Login(LoginView::default());
+                            let mut login_view = LoginView::default();
+                            login_view.server_url_input = self.http.base_url.clone();
+                            self.state = AppState::Login(login_view);
                         }
                     }
                 }
@@ -601,6 +607,14 @@ impl eframe::App for ChatApp {
                                     login_view.is_loading = true;
                                     login_view.error_msg = None;
                                     self.trigger_dev_login(username, ctx);
+                                }
+                                LoginAction::ChangeServer(new_url) => {
+                                    storage::save_server_url(&new_url);
+                                    self.http = HttpClient::new(new_url.clone());
+                                    login_view.server_url_input = new_url;
+                                    login_view.error_msg = None;
+                                    login_view.is_loading = false;
+                                    self.check_auth(ctx);
                                 }
                             }
                         }

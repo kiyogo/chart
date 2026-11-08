@@ -30,6 +30,8 @@ pub struct OAuthStatePayload {
     pub exp: i64,
     #[serde(default)]
     pub ticket: Option<Uuid>,
+    #[serde(default)]
+    pub redirect_uri: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -123,10 +125,18 @@ pub fn verify_oauth_cookie(secret: &[u8], cookie_val: &str) -> Option<OAuthState
 }
 
 /// GET /api/auth/google
-pub async fn google_login_handler(config: &Config, ticket: Option<Uuid>) -> AppResult<Response> {
+pub async fn google_login_handler(
+    config: &Config,
+    ticket: Option<Uuid>,
+    custom_redirect: Option<String>,
+) -> AppResult<Response> {
     let state = generate_random_token();
     let nonce = generate_random_token();
     let (code_verifier, code_challenge) = generate_pkce();
+
+    let redirect_uri = custom_redirect
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or_else(|| config.google_redirect_url.clone());
 
     let oauth_payload = OAuthStatePayload {
         state: state.clone(),
@@ -134,6 +144,7 @@ pub async fn google_login_handler(config: &Config, ticket: Option<Uuid>) -> AppR
         code_verifier,
         exp: Utc::now().timestamp() + 600, // 10 minutes
         ticket,
+        redirect_uri: Some(redirect_uri.clone()),
     };
 
     let cookie_val = sign_oauth_cookie(&config.session_secret, &oauth_payload);
@@ -146,7 +157,7 @@ pub async fn google_login_handler(config: &Config, ticket: Option<Uuid>) -> AppR
         "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20profile&state={}&nonce={}&code_challenge={}&code_challenge_method=S256",
         GOOGLE_AUTH_URL,
         urlencoding::encode(&config.google_client_id),
-        urlencoding::encode(&config.google_redirect_url),
+        urlencoding::encode(&redirect_uri),
         urlencoding::encode(&state),
         urlencoding::encode(&nonce),
         urlencoding::encode(&code_challenge),
@@ -239,12 +250,13 @@ pub async fn exchange_code_for_token(
     config: &Config,
     code: &str,
     code_verifier: &str,
+    redirect_uri: &str,
 ) -> AppResult<String> {
     let params = [
         ("code", code),
         ("client_id", &config.google_client_id),
         ("client_secret", &config.google_client_secret),
-        ("redirect_uri", &config.google_redirect_url),
+        ("redirect_uri", redirect_uri),
         ("grant_type", "authorization_code"),
         ("code_verifier", code_verifier),
     ];
