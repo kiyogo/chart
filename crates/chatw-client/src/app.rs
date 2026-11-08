@@ -386,7 +386,11 @@ impl ChatApp {
         // Set visual styling to pure flat light minimalist matching web CSS
         let mut visuals = egui::Visuals::light();
         visuals.window_shadow = egui::epaint::Shadow::NONE;
+        visuals.window_fill = Color32::from_rgb(255, 255, 255);
+        visuals.window_stroke = egui::Stroke::NONE;
         visuals.panel_fill = Color32::from_rgb(255, 255, 255); // #FFFFFF
+        visuals.extreme_bg_color = Color32::from_rgb(255, 255, 255);
+        visuals.faint_bg_color = Color32::from_rgb(247, 248, 250);
         visuals.override_text_color = Some(Color32::from_rgb(23, 23, 23)); // #171717
         visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
         visuals.widgets.inactive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA

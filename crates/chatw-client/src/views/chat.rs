@@ -259,49 +259,72 @@ impl ChatView {
     pub fn show(&mut self, ui: &mut Ui) -> Option<ChatAction> {
         let mut triggered_action = None;
         let active_friend = self.friends.iter().find(|f| Some(f.id) == self.selected_friend_id).cloned();
+
+        let avail = ui.available_rect_before_wrap();
+        if avail.width() < 100.0 || avail.height() < 100.0 {
+            return None;
+        }
+
+        let total_w = avail.width();
+        let total_h = avail.height();
+
+        let sidebar_w = 320.0_f32;
         let show_right_sidebar = self.is_partner_info_open
             && active_friend.is_some()
             && !self.is_settings_open
-            && ui.available_width() >= 900.0;
+            && total_w >= 1024.0;
+        let partner_w = if show_right_sidebar { 380.0_f32 } else { 0.0_f32 };
+        let center_w = (total_w - sidebar_w - partner_w).max(200.0);
 
-        // 1. LEFT SIDEBAR (320px, #F7F8FA background, no thick border matching web .sidebar)
-        egui::SidePanel::left("chat_sidebar_panel")
-            .exact_width(320.0)
-            .resizable(false)
-            .show_separator_line(false)
-            .frame(egui::Frame::NONE.fill(Color32::from_rgb(247, 248, 250)))
-            .show_inside(ui, |ui| {
-                self.render_sidebar_content(ui, &mut triggered_action);
-            });
+        let sidebar_rect = Rect::from_min_size(avail.min, vec2(sidebar_w, total_h));
+        let center_rect = Rect::from_min_size(pos2(sidebar_rect.right(), avail.top()), vec2(center_w, total_h));
+        let partner_rect = if show_right_sidebar {
+            Rect::from_min_size(pos2(center_rect.right(), avail.top()), vec2(partner_w, total_h))
+        } else {
+            Rect::ZERO
+        };
 
-        // 2. RIGHT PARTNER INFO SIDEBAR (380px, #FFFFFF background, 1px #ECEEF2 left border)
-        if show_right_sidebar {
-            if let Some(ref friend) = active_friend {
-                egui::SidePanel::right("partner_info_panel")
-                    .exact_width(380.0)
-                    .resizable(false)
-                    .show_separator_line(false)
-                    .frame(
-                        egui::Frame::NONE
-                            .fill(Color32::WHITE)
-                            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(236, 238, 242))),
-                    )
-                    .show_inside(ui, |ui| {
-                        self.render_partner_info_sidebar(ui, friend);
-                    });
-            }
+        // 1. RENDER LEFT SIDEBAR (320px, #F7F8FA background)
+        let mut sidebar_ui = ui.new_child(
+            UiBuilder::new()
+                .max_rect(sidebar_rect)
+                .layout(Layout::top_down(Align::Min)),
+        );
+        self.render_sidebar_content(&mut sidebar_ui, &mut triggered_action);
+
+        // 1px solid #E5E7EB border between sidebar and center view
+        ui.painter().line_segment(
+            [sidebar_rect.right_top(), sidebar_rect.right_bottom()],
+            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+        );
+
+        // 2. RENDER CENTER MAIN VIEW
+        let mut center_ui = ui.new_child(
+            UiBuilder::new()
+                .max_rect(center_rect)
+                .layout(Layout::top_down(Align::Min)),
+        );
+        if self.is_settings_open {
+            self.render_settings_view(&mut center_ui, &mut triggered_action);
+        } else {
+            self.render_chat_area(&mut center_ui, &mut triggered_action, active_friend.as_ref());
         }
 
-        // 3. CENTER MAIN VIEW (Fills 100% remaining space, #FFFFFF background)
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(Color32::WHITE))
-            .show_inside(ui, |ui| {
-                if self.is_settings_open {
-                    self.render_settings_view(ui, &mut triggered_action);
-                } else {
-                    self.render_chat_area(ui, &mut triggered_action, active_friend.as_ref());
-                }
-            });
+        // 3. RENDER RIGHT PARTNER INFO SIDEBAR (if shown)
+        if show_right_sidebar {
+            if let Some(ref friend) = active_friend {
+                ui.painter().line_segment(
+                    [partner_rect.left_top(), partner_rect.left_bottom()],
+                    Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+                );
+                let mut partner_ui = ui.new_child(
+                    UiBuilder::new()
+                        .max_rect(partner_rect)
+                        .layout(Layout::top_down(Align::Min)),
+                );
+                self.render_partner_info_sidebar(&mut partner_ui, friend);
+            }
+        }
 
         triggered_action
     }
@@ -317,17 +340,17 @@ impl ChatView {
         let header_height = 68.0;
         let (header_rect, _) = ui.allocate_exact_size(Vec2::new(total_rect.width(), header_height), Sense::hover());
 
-        // Exact mathematical coordinates for the 4 action buttons on the right (.sidebar-actions: gap 6px, 36x36 each)
-        // Total width of 4 buttons = 4 * 36 + 3 * 6 = 162px. Right padding = 16px.
-        // Buttons span from x = 320 - 16 - 162 = 142.0 to x = 304.0 (100% inside 320px!)
-        let btn_size = vec2(36.0, 36.0);
-        let btn_y = header_rect.center().y - 18.0;
+        // Exact coordinates for 4 action buttons: size 34x34, gap 4px
+        // Total width = 4 * 34 + 3 * 4 = 148px. Right padding = 16px.
+        // Logout right edge is at 304px, exactly 16px away from 320px sidebar border.
+        let btn_size = vec2(34.0, 34.0);
+        let btn_y = header_rect.center().y - 17.0;
         let right_edge = header_rect.right() - 16.0;
 
-        let logout_rect = Rect::from_min_size(pos2(right_edge - 36.0, btn_y), btn_size);
-        let set_rect = Rect::from_min_size(pos2(logout_rect.left() - 6.0 - 36.0, btn_y), btn_size);
-        let fr_rect = Rect::from_min_size(pos2(set_rect.left() - 6.0 - 36.0, btn_y), btn_size);
-        let ch_rect = Rect::from_min_size(pos2(fr_rect.left() - 6.0 - 36.0, btn_y), btn_size);
+        let logout_rect = Rect::from_min_size(pos2(right_edge - 34.0, btn_y), btn_size);
+        let set_rect = Rect::from_min_size(pos2(logout_rect.left() - 4.0 - 34.0, btn_y), btn_size);
+        let fr_rect = Rect::from_min_size(pos2(set_rect.left() - 4.0 - 34.0, btn_y), btn_size);
+        let ch_rect = Rect::from_min_size(pos2(fr_rect.left() - 4.0 - 34.0, btn_y), btn_size);
 
         // 1. Left brand (.app-brand: Avatar 28px + 8px gap + 16px semibold username)
         let avatar_rect = Rect::from_center_size(
@@ -705,12 +728,15 @@ impl ChatView {
             return;
         };
 
-        let header_height = 64.0;
-        let input_bar_height = 68.0;
-
-        // 1. TOP HEADER (.chat-header: padding 14px 20px, gap 12px, NO bottom border)
+        // 1. TOP HEADER (.chat-header: height 54px, border-bottom 1px solid #E5E7EB)
+        let header_height = 54.0;
+        let input_bar_height = 60.0;
         let header_rect = Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
         ui.painter().rect_filled(header_rect, 0.0, Color32::WHITE);
+        ui.painter().line_segment(
+            [header_rect.left_bottom(), header_rect.right_bottom()],
+            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+        );
 
         let av_rect = Rect::from_center_size(
             pos2(header_rect.left() + 20.0 + 17.0, header_rect.center().y),
@@ -751,12 +777,16 @@ impl ChatView {
             self.is_partner_info_open = !self.is_partner_info_open;
         }
 
-        // 2. BOTTOM INPUT BAR (.chat-input-bar: padding 14px 20px, gap 10px, NO top border)
+        // 2. BOTTOM INPUT BAR (height 60px, border-top 1px solid #E5E7EB)
         let input_bar_rect = Rect::from_min_size(
             pos2(total_rect.min.x, total_rect.max.y - input_bar_height),
             Vec2::new(total_rect.width(), input_bar_height),
         );
         ui.painter().rect_filled(input_bar_rect, 0.0, Color32::WHITE);
+        ui.painter().line_segment(
+            [input_bar_rect.left_top(), input_bar_rect.right_top()],
+            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+        );
 
         let emoji_btn_rect = Rect::from_center_size(
             pos2(input_bar_rect.left() + 20.0 + 18.0, input_bar_rect.center().y),
@@ -933,9 +963,13 @@ impl ChatView {
         let total_rect = ui.available_rect_before_wrap();
         ui.painter().rect_filled(total_rect, 0.0, Color32::WHITE);
 
-        // .chat-header: padding 14px 20px, gap 12px, height 64px, NO bottom border
-        let header_height = 64.0;
+        // .chat-header: height 54px, border-bottom 1px solid #E5E7EB
+        let header_height = 54.0;
         let header_rect = Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
+        ui.painter().line_segment(
+            [header_rect.left_bottom(), header_rect.right_bottom()],
+            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+        );
 
         let back_rect = Rect::from_center_size(
             pos2(header_rect.left() + 20.0 + 18.0, header_rect.center().y),
@@ -1112,9 +1146,13 @@ impl ChatView {
         let total_rect = ui.available_rect_before_wrap();
         ui.painter().rect_filled(total_rect, 0.0, Color32::WHITE);
 
-        // .partner-info-header: padding 16px 20px, NO bottom border
-        let header_height = 68.0;
+        // .partner-info-header: height 54px, border-bottom 1px solid #E5E7EB
+        let header_height = 54.0;
         let header_rect = Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
+        ui.painter().line_segment(
+            [header_rect.left_bottom(), header_rect.right_bottom()],
+            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+        );
 
         ui.painter().text(
             pos2(header_rect.left() + 20.0, header_rect.center().y),
