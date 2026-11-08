@@ -320,15 +320,16 @@ impl ChatApp {
     pub fn new(cc: &eframe::CreationContext) -> Self {
         setup_vietnamese_fonts(&cc.egui_ctx);
 
-        // Set visual styling to pure flat dark minimalist
-        let mut visuals = egui::Visuals::dark();
+        // Set visual styling to pure flat light minimalist matching web CSS
+        let mut visuals = egui::Visuals::light();
         visuals.window_shadow = egui::epaint::Shadow::NONE;
-        visuals.panel_fill = Color32::from_rgb(9, 9, 11); // Zinc 950
-        visuals.override_text_color = Some(Color32::from_rgb(250, 250, 250));
-        visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(24, 24, 27); // Zinc 900
-        visuals.widgets.inactive.bg_fill = Color32::from_rgb(39, 39, 42); // Zinc 800
-        visuals.widgets.hovered.bg_fill = Color32::from_rgb(63, 63, 70); // Zinc 700
-        visuals.widgets.active.bg_fill = Color32::from_rgb(37, 99, 235); // Blue 600
+        visuals.panel_fill = Color32::from_rgb(255, 255, 255); // #FFFFFF
+        visuals.override_text_color = Some(Color32::from_rgb(23, 23, 23)); // #171717
+        visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
+        visuals.widgets.inactive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
+        visuals.widgets.hovered.bg_fill = Color32::from_rgb(236, 238, 242); // #ECEEF2
+        visuals.widgets.active.bg_fill = Color32::from_rgb(37, 99, 235); // #2563EB
+        visuals.selection.bg_fill = Color32::from_rgb(37, 99, 235);
         cc.egui_ctx.set_visuals(visuals);
 
         let runtime = Arc::new(
@@ -573,6 +574,7 @@ impl ChatApp {
                 user_id,
                 (self.keys.ecdh_pub_bytes, self.keys.fingerprint, self.keys.ecdsa_pub_bytes),
             );
+            chat_view.server_url_input = self.http.base_url.clone();
             self.state = AppState::Chat(chat_view);
             self.start_websocket_and_connect(ctx);
             self.refresh_friends_and_pending(ctx);
@@ -825,7 +827,7 @@ impl ChatApp {
 
         // 4. Render Active View
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(Color32::from_rgb(9, 9, 11)))
+            .frame(egui::Frame::NONE.fill(Color32::from_rgb(255, 255, 255)))
             .show(ctx, |ui| {
                 match &mut self.state {
                     AppState::CheckingAuth => {
@@ -836,7 +838,7 @@ impl ChatApp {
                             ui.label(
                                 RichText::new("Đang kiểm tra phiên đăng nhập")
                                     .size(14.0)
-                                    .color(Color32::from_rgb(161, 161, 170)),
+                                    .color(Color32::from_rgb(115, 115, 115)),
                             );
                         });
                     }
@@ -976,6 +978,12 @@ impl ChatApp {
                                     storage::clear_user_session();
                                     self.ws = None;
                                     self.state = AppState::Login(LoginView::default());
+                                }
+                                ChatAction::ChangeServerUrl(new_url) => {
+                                    storage::save_server_url(&new_url);
+                                    self.http = HttpClient::new(new_url.clone());
+                                    chat_view.server_url_input = new_url;
+                                    self.refresh_friends_and_pending(ctx);
                                 }
                             }
                         }
