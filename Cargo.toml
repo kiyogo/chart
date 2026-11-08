@@ -3,5 +3,6 @@ members = [
     "crates/chatw-core",
     "crates/chatw-client",
     "backend",
+    "frontend/src-tauri",
 ]
 resolver = "2"

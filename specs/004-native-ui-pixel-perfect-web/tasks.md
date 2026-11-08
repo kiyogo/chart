@@ -49,4 +49,12 @@
 - [x] Task 9.4: Đồng bộ hóa toàn bộ bảng màu Avatar 8 màu, kích thước font chữ (11px, 14px, 16px, 24px) theo `Avatar.tsx`.
 - [x] Task 9.5: Kiểm thử tự động `cargo test -p chatw-client` (7/7 passed), biên dịch release và chạy ứng dụng thực tế.
 
+## Nhóm 10: Khôi phục và Hoàn thiện Kiến trúc Desktop Tauri v2 (Chạy 100% Giao diện SolidJS Gốc)
+- [x] Task 10.1: Khôi phục toàn bộ mã nguồn frontend SolidJS + TypeScript (`frontend/src/`) và cấu hình Tauri v2 (`frontend/src-tauri`).
+- [x] Task 10.2: Cập nhật fallback tĩnh `STATIC_DIR` trong `backend/src/config.rs` tự động phục vụ `frontend/dist` tại `http://127.0.0.1:8082`.
+- [x] Task 10.3: Biên dịch toàn bộ gói giao diện Vite SolidJS sang `frontend/dist` và kiểm thử `tsc --noEmit` đạt 0 lỗi.
+- [x] Task 10.4: Biên dịch bản phát hành Tauri v2 Release `chatw-desktop.exe` và đóng gói thành `dist-desktop/chatw.exe`.
+- [x] Task 10.5: Khởi chạy Desktop App với nhân WebView2, kiểm thử hiển thị giao diện khớp 100% bản Web.
+- [x] Task 10.6: Tự động commit và đẩy toàn bộ mã nguồn lên nhánh chính `origin main` theo đúng Rule 1 trong `AGENTS.md`.
+
 

@@ -65,31 +65,38 @@ impl Config {
         let google_redirect_url = env::var("GOOGLE_REDIRECT_URL")
             .unwrap_or_else(|_| format!("{public_origin}/api/auth/google/callback"));
 
-        let static_dir = env::var("STATIC_DIR").ok().map(|s| {
-            let p = PathBuf::from(&s);
-            if p.exists() {
-                p
-            } else if let Ok(cwd) = env::current_dir() {
-                let candidate1 = cwd.join(&s);
-                if candidate1.exists() {
-                    candidate1
-                } else {
-                    let candidate2 = cwd.join("frontend/dist");
-                    if candidate2.exists() {
-                        candidate2
+        let static_dir = env::var("STATIC_DIR")
+            .ok()
+            .map(|s| {
+                let p = PathBuf::from(&s);
+                if p.exists() {
+                    p
+                } else if let Ok(cwd) = env::current_dir() {
+                    let candidate1 = cwd.join(&s);
+                    if candidate1.exists() {
+                        candidate1
                     } else {
-                        let candidate3 = cwd.join("../frontend/dist");
-                        if candidate3.exists() {
-                            candidate3
-                        } else {
-                            p
-                        }
+                        p
+                    }
+                } else {
+                    p
+                }
+            })
+            .or_else(|| {
+                let cwd = env::current_dir().ok()?;
+                let candidate1 = cwd.join("frontend/dist");
+                if candidate1.exists() {
+                    Some(candidate1)
+                } else {
+                    let candidate2 = cwd.join("../frontend/dist");
+                    if candidate2.exists() {
+                        Some(candidate2)
+                    } else {
+                        None
                     }
                 }
-            } else {
-                p
-            }
-        });
+            })
+            .filter(|p| p.exists());
 
         let uploads_dir = if let Ok(custom) = env::var("UPLOADS_DIR") {
             PathBuf::from(custom)

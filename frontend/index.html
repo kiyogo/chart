@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>chatw - Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="chatw - Ứng dụng nhắn tin cá nhân bảo mật cao, mã hóa đầu cuối (E2EE) chuẩn ECDH P-256 và AES-256-GCM. Không thể nghe lén, hiệu năng cao với Rust và SolidJS." />
+    <meta name="keywords" content="chatw, chart, nhắn tin bảo mật, mã hóa đầu cuối, e2ee chat, private messenger, end-to-end encryption, rust, solidjs" />
+    <meta name="author" content="chatw" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#2563EB" />
+    <link rel="canonical" href="https://github.com/kiyogo/chart" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://github.com/kiyogo/chart" />
+    <meta property="og:title" content="chatw - Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE" />
+    <meta property="og:description" content="Trải nghiệm nhắn tin riêng tư tức thì với mã hóa đầu cuối chuẩn quân sự Web Crypto API, hiệu năng cao và giao diện tối giản." />
+    <meta property="og:image" content="/og-image.svg" />
+    <meta property="og:image:type" content="image/svg+xml" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="chatw" />
+    <meta property="og:locale" content="vi_VN" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="chatw - Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE" />
+    <meta name="twitter:description" content="Nhắn tin cá nhân an toàn, riêng tư tuyệt đối với mã hóa E2EE không thể bị xâm phạm." />
+    <meta name="twitter:image" content="/og-image.svg" />
+
+    <!-- Favicon & Icons -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563EB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3C/svg%3E" />
+    <link rel="alternate icon" type="image/svg+xml" href="/app-logo.svg?v=6" />
+    <link rel="apple-touch-icon" href="/app-logo.svg?v=6" />
+
+    <!-- Structured Data (JSON-LD) for SEO Rich Results -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "chatw",
+        "alternateName": "chatw Messenger",
+        "url": "https://github.com/kiyogo/chart",
+        "applicationCategory": "CommunicationApplication",
+        "operatingSystem": "All",
+        "browserRequirements": "Requires JavaScript and modern browser with Web Crypto API",
+        "description": "Ứng dụng nhắn tin cá nhân MVP tối giản, hiệu năng cao, mã hóa đầu cuối E2EE chuẩn ECDH P-256 và AES-256-GCM.",
+        "featureList": [
+          "Mã hóa đầu cuối E2EE (ECDH P-256 & AES-256-GCM)",
+          "Chữ ký số chống mạo danh (ECDSA P-256)",
+          "Đăng nhập an toàn qua Google OAuth 2.0 PKCE",
+          "Giao tiếp thời gian thực qua WebSocket hiệu năng cao",
+          "Lưu trữ khóa cục bộ trong IndexedDB client-side",
+          "Tự động nén và chuẩn hóa ảnh đại diện AVIF"
+        ],
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
