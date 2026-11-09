@@ -60,7 +60,7 @@ fn main() -> eframe::Result<()> {
         .with_title("chatw – Secure Messaging")
         .with_inner_size([1100.0, 720.0])
         .with_min_inner_size([850.0, 560.0])
-        .with_decorations(true)
+        .with_decorations(false) // Seamless custom Windows Titlebar
         .with_transparent(false);
 
     if let Some(icon) = load_app_icon() {

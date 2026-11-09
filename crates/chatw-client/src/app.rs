@@ -55,6 +55,7 @@ pub struct ChatApp {
     pub tx_gui: mpsc::Sender<GuiEvent>,
     pub rx_gui: mpsc::Receiver<GuiEvent>,
     pub is_maximized: bool,
+    pub dwm_applied: bool,
     pub pending_decrypt_queue: Vec<(Uuid, MessageWireItem)>,
 }
 
@@ -522,6 +523,7 @@ mod tests {
             tx_gui,
             rx_gui,
             is_maximized: false,
+            dwm_applied: false,
             pending_decrypt_queue: Vec::new(),
         };
 
@@ -649,6 +651,7 @@ impl ChatApp {
             tx_gui,
             rx_gui,
             is_maximized: false,
+            dwm_applied: false,
             pending_decrypt_queue: Vec::new(),
         };
 
@@ -892,6 +895,11 @@ impl ChatApp {
     }
 
     pub fn update_ui(&mut self, ctx: &egui::Context) {
+        if !self.dwm_applied {
+            titlebar::apply_windows_dwm_effects();
+            self.dwm_applied = true;
+        }
+
         // Track maximization state for titlebar icon
         self.is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
 
@@ -1142,7 +1150,16 @@ impl ChatApp {
             self.load_friend_keys(uid, ctx);
         }
 
-        // 3. Render Active View (Native Windows Titlebar with rounded corners & drop shadow)
+        // 3. Render Custom Windows 11 Titlebar (Seamless White with Windows controls)
+        egui::TopBottomPanel::top("top_titlebar")
+            .exact_height(34.0)
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| {
+                let is_chat = matches!(self.state, AppState::Chat(_));
+                titlebar::render_titlebar(ui, self.is_maximized, is_chat);
+            });
+
+        // 4. Render Active View
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(Color32::from_rgb(255, 255, 255)))
             .show(ctx, |ui| {
@@ -1334,6 +1351,21 @@ impl ChatApp {
                     }
                 }
             });
+
+        // 5. Subtle dark border on borderless window (when not maximized)
+        if !self.is_maximized {
+            let screen_rect = ctx.screen_rect();
+            ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("window_border"),
+            ))
+            .rect_stroke(
+                screen_rect,
+                egui::CornerRadius::same(8),
+                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 35)),
+                egui::StrokeKind::Inside,
+            );
+        }
     }
 }
 
