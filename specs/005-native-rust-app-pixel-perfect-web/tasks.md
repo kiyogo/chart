@@ -27,3 +27,9 @@
 - [x] Task 5.3: Chuẩn hóa icon Google G đa sắc 18x18 vẽ trực tiếp trên nút xanh `#2563EB` (loại bỏ hoàn toàn khung tròn màu trắng).
 - [x] Task 5.4: Chuẩn hóa icon Cài đặt (`SettingsIcon`) 8 răng chuẩn Feather/Lucide, bán kính trong 3.0px.
 - [x] Task 5.5: Kiểm thử tự động 10/10 test cases, biên dịch bản release `dist-desktop/chatw.exe` và tự động push lên GitHub.
+
+## Nhóm 6: Tối ưu hóa Bộ Phông chữ & Typography Chuẩn Web Egui (Font Rendering Overhaul)
+- [x] Task 6.1: Nhúng trực tiếp tĩnh (compile-time `include_bytes!`) bộ font Inter chuẩn quốc tế (`Inter-Regular.ttf`, `Inter-SemiBold.ttf`, `Inter-Bold.ttf`) loại bỏ hoàn toàn phụ thuộc vào font hệ thống Windows và loại bỏ fallback Ubuntu-Light lỗi thời.
+- [x] Task 6.2: Viết kiểm thử `test_inter_vietnamese_glyphs` và mở rộng `test_vietnamese_font_glyphs` đối soát 100% tất cả ký tự có dấu tiếng Việt (thường và hoa) cùng các họ font proportional, semibold và bold.
+- [x] Task 6.3: Tinh chỉnh `Visuals` trong `ChatApp::new`: gỡ bỏ `override_text_color = Some(...)`, cấu hình `fg_stroke` và bảng `text_styles` (`Heading`, `Body`, `Button`, `Small`, `Monospace`) chuẩn phẳng sắc nét.
+- [x] Task 6.4: Biên dịch lại bản phát hành `cargo build --release -p chatw-client`, cập nhật `dist-desktop/chatw.exe` và tự động commit, push toàn bộ lên GitHub `origin main`.

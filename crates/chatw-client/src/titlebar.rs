@@ -11,6 +11,11 @@ pub fn font_semibold(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("semibold".into()))
 }
 
+#[allow(dead_code)]
+pub fn font_bold(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name("bold".into()))
+}
+
 pub fn font_mono(size: f32) -> FontId {
     FontId::new(size, FontFamily::Monospace)
 }

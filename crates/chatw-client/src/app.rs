@@ -97,101 +97,102 @@ fn drain_decrypt_queue(
     *queue = still_pending;
 }
 
-fn setup_vietnamese_fonts(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
+static INTER_REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+static INTER_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
+static INTER_BOLD: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
 
+fn setup_vietnamese_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::empty();
+
+    // 1. Embedded Inter font family (world-class screen typography, full Vietnamese diacritics)
+    fonts.font_data.insert(
+        "inter_regular".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_REGULAR)),
+    );
+    fonts.font_data.insert(
+        "inter_semibold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_SEMIBOLD)),
+    );
+    fonts.font_data.insert(
+        "inter_bold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_BOLD)),
+    );
+
+    // 2. Windows Fallbacks (Segoe UI, Consolas, Segoe UI Emoji)
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     let fonts_dir = std::path::Path::new(&windir).join("Fonts");
 
-    let semibold_family = egui::FontFamily::Name("semibold".into());
-
-    // 1. Segoe UI Regular (Primary Web UI font on Windows)
     let segoe_path = fonts_dir.join("segoeui.ttf");
     if let Ok(bytes) = std::fs::read(&segoe_path) {
         fonts.font_data.insert(
             "segoe_ui".to_owned(),
             std::sync::Arc::new(egui::FontData::from_owned(bytes)),
         );
-        fonts
-            .families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .insert(0, "segoe_ui".to_owned());
     }
 
-    // 2. Segoe UI Semibold (font-weight: 500/600 in Web CSS)
-    let seguisb_path = fonts_dir.join("seguisb.ttf");
-    let segoeuib_path = fonts_dir.join("segoeuib.ttf");
-    if let Ok(bytes) = std::fs::read(&seguisb_path).or_else(|_| std::fs::read(&segoeuib_path)) {
-        fonts.font_data.insert(
-            "segoe_ui_semibold".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-        fonts
-            .families
-            .entry(semibold_family.clone())
-            .or_default()
-            .push("segoe_ui_semibold".to_owned());
-    }
-    if fonts.font_data.contains_key("segoe_ui") {
-        fonts
-            .families
-            .entry(semibold_family.clone())
-            .or_default()
-            .push("segoe_ui".to_owned());
-    }
-
-    // 3. Consolas (Monospace font for UUID & Fingerprints matching Web CSS)
     let consola_path = fonts_dir.join("consola.ttf");
     if let Ok(bytes) = std::fs::read(&consola_path) {
         fonts.font_data.insert(
             "consolas".to_owned(),
             std::sync::Arc::new(egui::FontData::from_owned(bytes)),
         );
-        fonts
-            .families
-            .entry(egui::FontFamily::Monospace)
-            .or_default()
-            .insert(0, "consolas".to_owned());
     }
 
-    // 4. Arial (Fallback)
-    let arial_path = fonts_dir.join("arial.ttf");
-    if let Ok(bytes) = std::fs::read(&arial_path) {
-        fonts.font_data.insert(
-            "arial".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-        fonts
-            .families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .push("arial".to_owned());
-        fonts
-            .families
-            .entry(semibold_family.clone())
-            .or_default()
-            .push("arial".to_owned());
-    }
-
-    // 5. Segoe UI Emoji (for emojis)
     let emoji_path = fonts_dir.join("seguiemj.ttf");
     if let Ok(bytes) = std::fs::read(&emoji_path) {
         fonts.font_data.insert(
             "segoe_emoji".to_owned(),
             std::sync::Arc::new(egui::FontData::from_owned(bytes)),
         );
-        fonts
-            .families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .push("segoe_emoji".to_owned());
-        fonts
-            .families
-            .entry(semibold_family)
-            .or_default()
-            .push("segoe_emoji".to_owned());
     }
+
+    // 3. Proportional family: Inter-Regular is #1
+    let mut prop = vec!["inter_regular".to_owned()];
+    if fonts.font_data.contains_key("segoe_ui") {
+        prop.push("segoe_ui".to_owned());
+    }
+    if fonts.font_data.contains_key("segoe_emoji") {
+        prop.push("segoe_emoji".to_owned());
+    }
+    fonts.families.insert(egui::FontFamily::Proportional, prop);
+
+    // 4. Semibold family: Inter-SemiBold is #1
+    let semibold_family = egui::FontFamily::Name("semibold".into());
+    let mut semi = vec![
+        "inter_semibold".to_owned(),
+        "inter_bold".to_owned(),
+        "inter_regular".to_owned(),
+    ];
+    if fonts.font_data.contains_key("segoe_ui") {
+        semi.push("segoe_ui".to_owned());
+    }
+    if fonts.font_data.contains_key("segoe_emoji") {
+        semi.push("segoe_emoji".to_owned());
+    }
+    fonts.families.insert(semibold_family, semi);
+
+    // 5. Bold family: Inter-Bold is #1
+    let bold_family = egui::FontFamily::Name("bold".into());
+    let mut bold = vec![
+        "inter_bold".to_owned(),
+        "inter_semibold".to_owned(),
+        "inter_regular".to_owned(),
+    ];
+    if fonts.font_data.contains_key("segoe_ui") {
+        bold.push("segoe_ui".to_owned());
+    }
+    if fonts.font_data.contains_key("segoe_emoji") {
+        bold.push("segoe_emoji".to_owned());
+    }
+    fonts.families.insert(bold_family, bold);
+
+    // 6. Monospace family: Consolas -> Inter-Regular
+    let mut mono = Vec::new();
+    if fonts.font_data.contains_key("consolas") {
+        mono.push("consolas".to_owned());
+    }
+    mono.push("inter_regular".to_owned());
+    fonts.families.insert(egui::FontFamily::Monospace, mono);
 
     ctx.set_fonts(fonts);
 }
@@ -201,15 +202,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_vietnamese_font_glyphs() {
+    fn test_inter_vietnamese_glyphs() {
+        let mut fonts = egui::FontDefinitions::empty();
+        let bytes = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+        fonts.font_data.insert("inter".into(), std::sync::Arc::new(egui::FontData::from_static(bytes)));
+        fonts.families.entry(egui::FontFamily::Proportional).or_default().push("inter".into());
         let ctx = egui::Context::default();
-        setup_vietnamese_fonts(&ctx);
-        let sample = "Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE Tiếp tục với Google Đăng nhập chế độ thử nghiệm";
+        ctx.set_fonts(fonts);
+        let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ";
         let _ = ctx.run(Default::default(), |ctx| {
             ctx.fonts(|f| {
                 for c in sample.chars() {
                     let has = f.has_glyph(&egui::FontId::proportional(14.0), c);
-                    assert!(has, "Character '{}' (U+{:04X}) must have glyph", c, c as u32);
+                    assert!(has, "Character '{}' (U+{:04X}) missing in Inter", c, c as u32);
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn test_vietnamese_font_glyphs() {
+        let ctx = egui::Context::default();
+        setup_vietnamese_fonts(&ctx);
+        let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE Tiếp tục với Google Đăng nhập chế độ thử nghiệm";
+        let _ = ctx.run(Default::default(), |ctx| {
+            ctx.fonts(|f| {
+                for c in sample.chars() {
+                    assert!(f.has_glyph(&egui::FontId::proportional(14.0), c), "Missing prop glyph for '{}'", c);
+                    assert!(f.has_glyph(&titlebar::font_semibold(14.0), c), "Missing semibold glyph for '{}'", c);
+                    assert!(f.has_glyph(&titlebar::font_bold(14.0), c), "Missing bold glyph for '{}'", c);
                 }
             });
         });
@@ -394,13 +415,27 @@ impl ChatApp {
         visuals.panel_fill = Color32::from_rgb(255, 255, 255); // #FFFFFF
         visuals.extreme_bg_color = Color32::from_rgb(255, 255, 255);
         visuals.faint_bg_color = Color32::from_rgb(247, 248, 250);
-        visuals.override_text_color = Some(Color32::from_rgb(23, 23, 23)); // #171717
+        visuals.override_text_color = None;
+        visuals.widgets.noninteractive.fg_stroke.color = Color32::from_rgb(23, 23, 23); // #171717
         visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
+        visuals.widgets.inactive.fg_stroke.color = Color32::from_rgb(23, 23, 23); // #171717
         visuals.widgets.inactive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
+        visuals.widgets.hovered.fg_stroke.color = Color32::from_rgb(23, 23, 23);
         visuals.widgets.hovered.bg_fill = Color32::from_rgb(236, 238, 242); // #ECEEF2
+        visuals.widgets.active.fg_stroke.color = Color32::WHITE;
         visuals.widgets.active.bg_fill = Color32::from_rgb(37, 99, 235); // #2563EB
         visuals.selection.bg_fill = Color32::from_rgb(37, 99, 235);
         cc.egui_ctx.set_visuals(visuals);
+
+        let mut style = (*cc.egui_ctx.style()).clone();
+        style.text_styles = [
+            (egui::TextStyle::Heading, titlebar::font_semibold(18.0)),
+            (egui::TextStyle::Body, titlebar::font_regular(14.0)),
+            (egui::TextStyle::Button, titlebar::font_semibold(14.0)),
+            (egui::TextStyle::Small, titlebar::font_regular(12.0)),
+            (egui::TextStyle::Monospace, titlebar::font_mono(12.0)),
+        ].into();
+        cc.egui_ctx.set_style(style);
 
         let runtime = Arc::new(
             tokio::runtime::Builder::new_multi_thread()
