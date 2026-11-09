@@ -1,5 +1,5 @@
 use crate::titlebar::{
-    draw_smooth_polyline, draw_svg_logo_icon, font_mono, font_regular, font_semibold,
+    draw_smooth_polyline, draw_svg_logo_icon, font_medium, font_mono, font_regular,
     push_arc_points, snap_pos, snap_xy,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -419,7 +419,7 @@ impl ChatView {
         let max_name_w = (ch_rect.left() - avatar_rect.right() - 14.0).max(40.0);
         let name_galley = ui.painter().layout_no_wrap(
             self.current_username.clone(),
-            font_regular(14.0),
+            font_medium(14.0),
             Color32::from_rgb(23, 23, 23),
         );
         let name_pos = snap_xy(
@@ -961,7 +961,7 @@ impl ChatView {
             snap_xy(av_rect.right() + 12.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             &friend.username,
-            font_regular(14.5),
+            font_medium(14.0),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1268,7 +1268,7 @@ impl ChatView {
             snap_xy(back_rect.right() + 12.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             "Cài đặt",
-            font_regular(15.0),
+            font_medium(14.5),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1317,14 +1317,14 @@ impl ChatView {
                             snap_xy(info_x, card_rect.center().y - 10.0, ppp),
                             Align2::LEFT_CENTER,
                             &self.current_username,
-                            font_regular(15.0),
+                            font_medium(14.5),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
                             snap_xy(info_x, card_rect.center().y + 11.0, ppp),
                             Align2::LEFT_CENTER,
                             "Tài khoản cá nhân",
-                            font_regular(13.0),
+                            font_regular(12.5),
                             Color32::from_rgb(115, 115, 115),
                         );
 
@@ -1362,7 +1362,7 @@ impl ChatView {
                         // 2. Group: Tài khoản (.settings-group: gap 12px)
                         ui.label(
                             RichText::new("Tài khoản")
-                                .font(font_regular(13.5))
+                                .font(font_medium(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1387,7 +1387,7 @@ impl ChatView {
                         // 3. Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_regular(14.0))
+                                .font(font_medium(13.5))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1432,7 +1432,7 @@ impl ChatView {
                         // 4. Group: Phiên đăng nhập
                         ui.label(
                             RichText::new("Phiên đăng nhập")
-                                .font(font_regular(14.0))
+                                .font(font_medium(13.5))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1486,7 +1486,7 @@ impl ChatView {
             snap_xy(header_rect.left() + 20.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             "Thông tin",
-            font_semibold(15.0),
+            font_medium(14.5),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1554,14 +1554,14 @@ impl ChatView {
                             snap_xy(pcard_rect.center().x, av_rect.bottom() + 18.0, ppp),
                             Align2::CENTER_CENTER,
                             &friend.username,
-                            font_regular(15.0),
+                            font_medium(14.5),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
                             snap_xy(pcard_rect.center().x, av_rect.bottom() + 40.0, ppp),
                             Align2::CENTER_CENTER,
                             "Tài khoản bạn bè",
-                            font_regular(13.0),
+                            font_regular(12.5),
                             Color32::from_rgb(115, 115, 115),
                         );
 
@@ -1570,7 +1570,7 @@ impl ChatView {
                         // Group: Tài khoản (inside partner-info-sidebar, rows have #FFFFFF bg and 1px #ECEEF2 border)
                         ui.label(
                             RichText::new("Tài khoản")
-                                .font(font_regular(13.5))
+                                .font(font_medium(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1595,7 +1595,7 @@ impl ChatView {
                         // Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_regular(14.0))
+                                .font(font_medium(13.5))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1673,7 +1673,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                             ui.set_max_width(max_bubble_width);
                             ui.label(
                                 RichText::new(&msg.text)
-                                    .font(font_regular(14.0))
+                                    .font(font_regular(13.5))
                                     .color(Color32::WHITE),
                             );
                         });
@@ -1708,7 +1708,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                             ui.set_max_width(max_bubble_width);
                             ui.label(
                                 RichText::new(&msg.text)
-                                    .font(font_regular(14.0))
+                                    .font(font_regular(13.5))
                                     .color(Color32::from_rgb(23, 23, 23)),
                             );
                         });
@@ -1755,14 +1755,14 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
         snap_xy(row_rect.left() + 16.0, row_rect.center().y, ppp),
         Align2::LEFT_CENTER,
         label,
-        font_regular(14.0),
+        font_regular(13.0),
         Color32::from_rgb(115, 115, 115),
     );
     ui.painter().text(
         snap_xy(row_rect.right() - 16.0, row_rect.center().y, ppp),
         Align2::RIGHT_CENTER,
         value,
-        font_regular(14.0),
+        font_regular(13.5),
         Color32::from_rgb(23, 23, 23),
     );
 }
@@ -1797,14 +1797,14 @@ fn render_settings_column_row_flat(
         snap_xy(row_rect.left() + 16.0, row_rect.top() + 21.0, ppp),
         Align2::LEFT_CENTER,
         label,
-        font_regular(14.0),
+        font_regular(13.0),
         Color32::from_rgb(115, 115, 115),
     );
     ui.painter().text(
         snap_xy(row_rect.left() + 16.0, row_rect.top() + 44.0, ppp),
         Align2::LEFT_CENTER,
         value,
-        font_mono(12.0),
+        font_mono(11.5),
         Color32::from_rgb(23, 23, 23),
     );
 }
@@ -1839,13 +1839,13 @@ fn render_settings_tag_row_flat(
         snap_xy(row_rect.left() + 16.0, row_rect.center().y, ppp),
         Align2::LEFT_CENTER,
         label,
-        font_regular(14.0),
+        font_regular(13.0),
         Color32::from_rgb(115, 115, 115),
     );
 
     let galley = ui.painter().layout_no_wrap(
         tag_text.to_string(),
-        font_regular(12.0),
+        font_regular(11.5),
         Color32::from_rgb(19, 115, 51),
     );
     let tag_w = galley.size().x + 20.0;

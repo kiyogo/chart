@@ -8,6 +8,11 @@ pub fn font_regular(size: f32) -> FontId {
     FontId::new(size, FontFamily::Proportional)
 }
 
+pub fn font_medium(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name("semibold".into()))
+}
+
+#[allow(dead_code)]
 pub fn font_semibold(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("semibold".into()))
 }

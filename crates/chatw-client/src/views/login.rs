@@ -1,6 +1,6 @@
 use crate::titlebar::{
-    draw_smooth_polyline, draw_svg_logo_icon, font_regular, font_semibold, push_arc_points,
-    snap_pos, snap_xy,
+    draw_smooth_polyline, draw_svg_logo_icon, font_medium, font_regular, push_arc_points, snap_pos,
+    snap_xy,
 };
 use egui::{
     Align, Align2, Color32, CornerRadius, Layout, Pos2, RichText, Sense, Stroke, StrokeKind, Ui,
@@ -110,19 +110,19 @@ impl LoginView {
 
             ui.add_space(12.0);
 
-            // 2. Title: chatw (20px, font-weight 600, color #171717)
+            // 2. Title: chatw (18px, font-weight 500, color #171717)
             ui.label(
                 RichText::new("chatw")
-                    .font(font_semibold(20.0))
+                    .font(font_medium(18.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 
             ui.add_space(2.0);
 
-            // 3. Subtitle: Ứng dụng nhắn tin bảo mật E2EE (13px, color #737373)
+            // 3. Subtitle: Ứng dụng nhắn tin bảo mật E2EE (12.5px, color #737373)
             ui.label(
                 RichText::new("Ứng dụng nhắn tin bảo mật E2EE")
-                    .font(font_regular(13.0))
+                    .font(font_regular(12.5))
                     .color(Color32::from_rgb(115, 115, 115)),
             );
 

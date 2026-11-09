@@ -103,7 +103,9 @@ fn drain_decrypt_queue(
     *queue = still_pending;
 }
 
+static INTER_LIGHT: &[u8] = include_bytes!("../assets/fonts/Inter-Light.ttf");
 static INTER_REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+static INTER_MEDIUM: &[u8] = include_bytes!("../assets/fonts/Inter-Medium.ttf");
 static INTER_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
 static INTER_BOLD: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
 
@@ -112,8 +114,16 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
 
     // 1. Embedded Inter font family (world-class screen typography, full Vietnamese diacritics)
     fonts.font_data.insert(
+        "inter_light".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_LIGHT)),
+    );
+    fonts.font_data.insert(
         "inter_regular".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(INTER_REGULAR)),
+    );
+    fonts.font_data.insert(
+        "inter_medium".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_MEDIUM)),
     );
     fonts.font_data.insert(
         "inter_semibold".to_owned(),
@@ -160,8 +170,8 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Inter-Regular (crisp, modern, slender) -> Segoe UI -> Segoe Emoji
-    let mut prop = vec!["inter_regular".to_owned()];
+    // 3. Proportional family: Inter-Light (slender, elegant, delicate, crisp) -> Inter-Regular -> Segoe UI
+    let mut prop = vec!["inter_light".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_ui") {
         prop.push("segoe_ui".to_owned());
     }
@@ -170,9 +180,9 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     }
     fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Semibold family: Inter-SemiBold -> Inter-Regular -> Segoe UI Semibold
+    // 4. Semibold family: Inter-Medium (refined, not overly thick) -> Inter-Regular
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec!["inter_semibold".to_owned(), "inter_regular".to_owned()];
+    let mut semi = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_ui_semibold") {
         semi.push("segoe_ui_semibold".to_owned());
     } else if fonts.font_data.contains_key("segoe_ui") {
@@ -183,9 +193,9 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 5. Bold family: Inter-Bold -> Inter-SemiBold -> Segoe UI
+    // 5. Bold family: Inter-Regular (keeps strokes restrained) -> Inter-Medium -> Inter-Bold
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec!["inter_bold".to_owned(), "inter_semibold".to_owned()];
+    let mut bold = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_ui") {
         bold.push("segoe_ui".to_owned());
     }
@@ -194,12 +204,12 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     }
     fonts.families.insert(bold_family, bold);
 
-    // 6. Monospace family: Consolas -> Inter-Regular
+    // 6. Monospace family: Consolas -> Inter-Light
     let mut mono = Vec::new();
     if fonts.font_data.contains_key("consolas") {
         mono.push("consolas".to_owned());
     }
-    mono.push("inter_regular".to_owned());
+    mono.push("inter_light".to_owned());
     fonts.families.insert(egui::FontFamily::Monospace, mono);
 
     ctx.set_fonts(fonts);
@@ -211,17 +221,17 @@ mod tests {
 
     #[test]
     fn test_inter_vietnamese_glyphs() {
-        let inter_bytes = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+        let inter_bytes = include_bytes!("../assets/fonts/Inter-Light.ttf");
         let mut fonts = egui::FontDefinitions::empty();
         fonts.font_data.insert(
-            "inter".into(),
+            "inter_light".into(),
             std::sync::Arc::new(egui::FontData::from_static(inter_bytes)),
         );
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .push("inter".into());
+            .push("inter_light".into());
         let ctx = egui::Context::default();
         ctx.set_fonts(fonts);
         let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ Mã hóa đầu cuối Tài khoản Tên người dùng Mã định danh Giao thức Chữ ký số Ứng dụng nhắn tin bảo mật";
@@ -234,11 +244,15 @@ mod tests {
                     }
                 }
                 println!(
-                    "Inter missing count: {}, missing: {:?}",
+                    "Inter Light missing count: {}, missing: {:?}",
                     missing.len(),
                     missing
                 );
-                assert!(missing.is_empty(), "Inter missing glyphs: {:?}", missing);
+                assert!(
+                    missing.is_empty(),
+                    "Inter Light missing glyphs: {:?}",
+                    missing
+                );
             });
         });
     }
@@ -247,39 +261,43 @@ mod tests {
     fn test_inter_weights_glyphs() {
         let mut fonts = egui::FontDefinitions::empty();
         fonts.font_data.insert(
+            "light".into(),
+            std::sync::Arc::new(egui::FontData::from_static(INTER_LIGHT)),
+        );
+        fonts.font_data.insert(
             "regular".into(),
             std::sync::Arc::new(egui::FontData::from_static(INTER_REGULAR)),
         );
         fonts.font_data.insert(
-            "semibold".into(),
-            std::sync::Arc::new(egui::FontData::from_static(INTER_SEMIBOLD)),
+            "medium".into(),
+            std::sync::Arc::new(egui::FontData::from_static(INTER_MEDIUM)),
         );
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .push("regular".into());
+            .push("light".into());
         fonts
             .families
             .entry(egui::FontFamily::Name("semibold".into()))
             .or_default()
-            .push("semibold".into());
+            .push("medium".into());
         let ctx = egui::Context::default();
         ctx.set_fonts(fonts);
         let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ";
         let _ = ctx.run(Default::default(), |ctx| {
             ctx.fonts(|f| {
                 for c in sample.chars() {
-                    let has_reg = f.has_glyph(&egui::FontId::proportional(14.0), c);
+                    let has_light = f.has_glyph(&egui::FontId::proportional(14.0), c);
                     assert!(
-                        has_reg,
-                        "Character '{}' (U+{:04X}) missing in Inter-Regular",
+                        has_light,
+                        "Character '{}' (U+{:04X}) missing in Inter-Light",
                         c, c as u32
                     );
                     let has_semi = f.has_glyph(&titlebar::font_semibold(14.0), c);
                     assert!(
                         has_semi,
-                        "Character '{}' (U+{:04X}) missing in Inter-SemiBold",
+                        "Character '{}' (U+{:04X}) missing in Inter-Medium",
                         c, c as u32
                     );
                 }
@@ -598,7 +616,7 @@ impl ChatApp {
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
-            (egui::TextStyle::Heading, titlebar::font_semibold(16.0)),
+            (egui::TextStyle::Heading, titlebar::font_medium(15.5)),
             (egui::TextStyle::Body, titlebar::font_regular(14.0)),
             (egui::TextStyle::Button, titlebar::font_regular(13.5)),
             (egui::TextStyle::Small, titlebar::font_regular(12.0)),
