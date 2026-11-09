@@ -146,32 +146,31 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Inter-Regular is #1
-    let mut prop = vec!["inter_regular".to_owned()];
+    // 3. Proportional family: Segoe UI (Windows native web font) is #1, Inter-Regular is fallback
+    let mut prop = Vec::new();
     if fonts.font_data.contains_key("segoe_ui") {
         prop.push("segoe_ui".to_owned());
     }
+    prop.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         prop.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Semibold family: Inter-SemiBold is #1
+    // 4. Semibold family: Clean, slender Segoe UI to prevent excessive boldness
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec![
-        "inter_semibold".to_owned(),
-        "inter_bold".to_owned(),
-        "inter_regular".to_owned(),
-    ];
+    let mut semi = Vec::new();
     if fonts.font_data.contains_key("segoe_ui") {
         semi.push("segoe_ui".to_owned());
     }
+    semi.push("inter_regular".to_owned());
+    semi.push("inter_semibold".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 5. Bold family: Inter-Bold is #1
+    // 5. Bold family: Used for badges and avatar initials
     let bold_family = egui::FontFamily::Name("bold".into());
     let mut bold = vec![
         "inter_bold".to_owned(),
@@ -429,9 +428,9 @@ impl ChatApp {
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
-            (egui::TextStyle::Heading, titlebar::font_semibold(18.0)),
+            (egui::TextStyle::Heading, titlebar::font_regular(16.0)),
             (egui::TextStyle::Body, titlebar::font_regular(14.0)),
-            (egui::TextStyle::Button, titlebar::font_semibold(14.0)),
+            (egui::TextStyle::Button, titlebar::font_regular(14.0)),
             (egui::TextStyle::Small, titlebar::font_regular(12.0)),
             (egui::TextStyle::Monospace, titlebar::font_mono(12.0)),
         ].into();

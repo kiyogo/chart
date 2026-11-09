@@ -110,7 +110,7 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
         pos2(icon_rect.right() + 8.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
         "chatw – Secure Messaging",
-        font_semibold(12.0),
+        font_regular(12.0),
         title_color,
     );
 

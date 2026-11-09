@@ -33,3 +33,9 @@
 - [x] Task 6.2: Viết kiểm thử `test_inter_vietnamese_glyphs` và mở rộng `test_vietnamese_font_glyphs` đối soát 100% tất cả ký tự có dấu tiếng Việt (thường và hoa) cùng các họ font proportional, semibold và bold.
 - [x] Task 6.3: Tinh chỉnh `Visuals` trong `ChatApp::new`: gỡ bỏ `override_text_color = Some(...)`, cấu hình `fg_stroke` và bảng `text_styles` (`Heading`, `Body`, `Button`, `Small`, `Monospace`) chuẩn phẳng sắc nét.
 - [x] Task 6.4: Biên dịch lại bản phát hành `cargo build --release -p chatw-client`, cập nhật `dist-desktop/chatw.exe` và tự động commit, push toàn bộ lên GitHub `origin main`.
+
+## Nhóm 7: Khắc phục Triệt để Hiện tượng In Đậm Quá Mức (Slim & Crisp Typography)
+- [x] Task 7.1: Ưu tiên font gốc Segoe UI chuẩn mảnh của Windows cho họ `Proportional` và `semibold`, Inter-Regular làm fallback, loại bỏ việc cưỡng ép `Inter-SemiBold` (600) dày cộm trên toàn bộ nhãn văn bản.
+- [x] Task 7.2: Chuyển tên tài khoản người dùng (`123`), danh sách bạn bè, tiêu đề chat, nút bấm và các dòng cài đặt từ `font_semibold` sang `font_regular(14.0/15.0)` thanh mảnh, tinh tế giống 100% web.
+- [x] Task 7.3: Rà soát và chuẩn hóa văn bản rỗng ("Chưa có bạn bè nào", "Chọn một cuộc trò chuyện để bắt đầu") về kích cỡ 14px regular mảnh màu `#737373` chuẩn CSS `.empty-chat`.
+- [x] Task 7.4: Biên dịch lại bản phát hành `dist-desktop/chatw.exe`, kiểm thử 8/8 unit tests thành công và tự động commit, push lên GitHub `origin main` theo Rule 1.

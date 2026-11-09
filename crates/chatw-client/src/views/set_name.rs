@@ -1,5 +1,5 @@
 use egui::{pos2, vec2, Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Ui, Vec2};
-use crate::titlebar::{draw_svg_logo_icon, font_regular, font_semibold};
+use crate::titlebar::{draw_svg_logo_icon, font_regular};
 
 pub struct SetNameView {
     pub name_input: String,
@@ -41,7 +41,7 @@ impl SetNameView {
             // 2. Title: Đặt tên của bạn (20px, font-weight 600, color #171717)
             ui.label(
                 RichText::new("Đặt tên của bạn")
-                    .font(font_semibold(20.0))
+                    .font(font_regular(20.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 
@@ -100,7 +100,7 @@ impl SetNameView {
                 pos2(btn_rect.center().x, btn_rect.center().y),
                 Align2::CENTER_CENTER,
                 btn_text,
-                font_semibold(14.0),
+                font_regular(14.0),
                 Color32::WHITE,
             );
 

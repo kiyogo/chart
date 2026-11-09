@@ -2,7 +2,7 @@ use egui::{
     pos2, vec2, Align, Align2, Color32, CornerRadius, Layout, Pos2, RichText, Sense, Stroke,
     StrokeKind, Ui, Vec2,
 };
-use crate::titlebar::{draw_smooth_polyline, draw_svg_logo_icon, font_regular, font_semibold, push_arc_points};
+use crate::titlebar::{draw_smooth_polyline, draw_svg_logo_icon, font_regular, push_arc_points};
 
 pub struct LoginView {
     pub username_input: String,
@@ -89,7 +89,7 @@ impl LoginView {
             // 2. Title: chatw (20px, font-weight 600, color #171717)
             ui.label(
                 RichText::new("chatw")
-                    .font(font_semibold(20.0))
+                    .font(font_regular(20.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 
@@ -124,7 +124,7 @@ impl LoginView {
                                 if ui
                                     .button(
                                         RichText::new("Hủy")
-                                            .font(font_semibold(12.0))
+                                            .font(font_regular(12.0))
                                             .color(Color32::from_rgb(220, 38, 38)),
                                     )
                                     .clicked()
@@ -156,7 +156,7 @@ impl LoginView {
                 let label_text = "Tiếp tục với Google";
                 let galley = ui.painter().layout_no_wrap(
                     label_text.to_string(),
-                    font_semibold(14.0),
+                    font_regular(14.0),
                     Color32::WHITE,
                 );
                 let icon_size = 18.0;
@@ -271,7 +271,7 @@ impl LoginView {
                 dev_rect.center(),
                 Align2::CENTER_CENTER,
                 dev_text,
-                font_semibold(14.0),
+                font_regular(14.0),
                 Color32::from_rgb(23, 23, 23), // #171717
             );
 
