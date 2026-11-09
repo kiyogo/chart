@@ -103,33 +103,28 @@ fn drain_decrypt_queue(
     *queue = still_pending;
 }
 
-static BE_VIETNAM_LIGHT: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro-Light.ttf");
-static BE_VIETNAM_REGULAR: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro-Regular.ttf");
-static BE_VIETNAM_MEDIUM: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro-Medium.ttf");
-static BE_VIETNAM_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro-SemiBold.ttf");
+static INTER_REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+static INTER_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
+static INTER_BOLD: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
 
 fn setup_vietnamese_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::empty();
 
-    // 1. Embedded Be Vietnam Pro family (Light weight 300, Regular 400, Medium 500, SemiBold 600)
+    // 1. Embedded Inter font family (world-class screen typography, full Vietnamese diacritics)
     fonts.font_data.insert(
-        "be_vietnam_light".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_LIGHT)),
+        "inter_regular".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_REGULAR)),
     );
     fonts.font_data.insert(
-        "be_vietnam_regular".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_REGULAR)),
+        "inter_semibold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_SEMIBOLD)),
     );
     fonts.font_data.insert(
-        "be_vietnam_medium".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_MEDIUM)),
-    );
-    fonts.font_data.insert(
-        "be_vietnam_semibold".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_SEMIBOLD)),
+        "inter_bold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_BOLD)),
     );
 
-    // 2. Windows Native Fonts: Segoe UI (exact system font used by Chrome/Edge on Windows)
+    // 2. Windows Fallbacks (Segoe UI, Consolas, Segoe UI Emoji)
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     let fonts_dir = std::path::Path::new(&windir).join("Fonts");
 
@@ -145,14 +140,6 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     if let Ok(bytes) = std::fs::read(&segoe_semi_path) {
         fonts.font_data.insert(
             "segoe_ui_semibold".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-    }
-
-    let segoe_bold_path = fonts_dir.join("segoeuib.ttf");
-    if let Ok(bytes) = std::fs::read(&segoe_bold_path) {
-        fonts.font_data.insert(
-            "segoe_ui_bold".to_owned(),
             std::sync::Arc::new(egui::FontData::from_owned(bytes)),
         );
     }
@@ -173,57 +160,46 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Segoe UI (Windows native, slim, crisp, matches browser 100%) -> BeVietnamPro-Light
-    let mut prop = Vec::new();
+    // 3. Proportional family: Inter-Regular (crisp, modern, slender) -> Segoe UI -> Segoe Emoji
+    let mut prop = vec!["inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_ui") {
         prop.push("segoe_ui".to_owned());
     }
-    prop.push("be_vietnam_light".to_owned());
-    prop.push("be_vietnam_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         prop.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Semibold family: Segoe UI Semibold -> BeVietnamPro-Medium
+    // 4. Semibold family: Inter-SemiBold -> Inter-Regular -> Segoe UI Semibold
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = Vec::new();
+    let mut semi = vec!["inter_semibold".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_ui_semibold") {
         semi.push("segoe_ui_semibold".to_owned());
     } else if fonts.font_data.contains_key("segoe_ui") {
         semi.push("segoe_ui".to_owned());
     }
-    semi.push("be_vietnam_medium".to_owned());
-    semi.push("be_vietnam_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 5. Bold family: Segoe UI Bold -> Segoe UI Semibold -> BeVietnamPro-SemiBold
+    // 5. Bold family: Inter-Bold -> Inter-SemiBold -> Segoe UI
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = Vec::new();
-    if fonts.font_data.contains_key("segoe_ui_bold") {
-        bold.push("segoe_ui_bold".to_owned());
-    } else if fonts.font_data.contains_key("segoe_ui_semibold") {
-        bold.push("segoe_ui_semibold".to_owned());
+    let mut bold = vec!["inter_bold".to_owned(), "inter_semibold".to_owned()];
+    if fonts.font_data.contains_key("segoe_ui") {
+        bold.push("segoe_ui".to_owned());
     }
-    bold.push("be_vietnam_semibold".to_owned());
-    bold.push("be_vietnam_medium".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(bold_family, bold);
 
-    // 6. Monospace family: Consolas -> Segoe UI -> BeVietnamPro-Regular
+    // 6. Monospace family: Consolas -> Inter-Regular
     let mut mono = Vec::new();
     if fonts.font_data.contains_key("consolas") {
         mono.push("consolas".to_owned());
     }
-    if fonts.font_data.contains_key("segoe_ui") {
-        mono.push("segoe_ui".to_owned());
-    }
-    mono.push("be_vietnam_regular".to_owned());
+    mono.push("inter_regular".to_owned());
     fonts.families.insert(egui::FontFamily::Monospace, mono);
 
     ctx.set_fonts(fonts);
@@ -234,59 +210,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bevietnam_pro_vietnamese_glyphs() {
+    fn test_inter_vietnamese_glyphs() {
+        let inter_bytes = include_bytes!("../assets/fonts/Inter-Regular.ttf");
         let mut fonts = egui::FontDefinitions::empty();
         fonts.font_data.insert(
-            "light".into(),
-            std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_LIGHT)),
-        );
-        fonts.font_data.insert(
-            "regular".into(),
-            std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_REGULAR)),
+            "inter".into(),
+            std::sync::Arc::new(egui::FontData::from_static(inter_bytes)),
         );
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .push("light".into());
-        fonts
-            .families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .push("regular".into());
+            .push("inter".into());
         let ctx = egui::Context::default();
         ctx.set_fonts(fonts);
-        let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE";
+        let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ Mã hóa đầu cuối Tài khoản Tên người dùng Mã định danh Giao thức Chữ ký số Ứng dụng nhắn tin bảo mật";
         let _ = ctx.run(Default::default(), |ctx| {
             ctx.fonts(|f| {
+                let mut missing = Vec::new();
                 for c in sample.chars() {
-                    let has = f.has_glyph(&egui::FontId::proportional(14.0), c);
-                    assert!(
-                        has,
-                        "Character '{}' (U+{:04X}) missing in BeVietnamPro",
-                        c, c as u32
-                    );
+                    if !f.has_glyph(&egui::FontId::proportional(14.0), c) {
+                        missing.push(c);
+                    }
                 }
+                println!(
+                    "Inter missing count: {}, missing: {:?}",
+                    missing.len(),
+                    missing
+                );
+                assert!(missing.is_empty(), "Inter missing glyphs: {:?}", missing);
             });
         });
     }
 
     #[test]
-    fn test_bevietnam_pro_weights_glyphs() {
+    fn test_inter_weights_glyphs() {
         let mut fonts = egui::FontDefinitions::empty();
         fonts.font_data.insert(
-            "medium".into(),
-            std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_MEDIUM)),
+            "regular".into(),
+            std::sync::Arc::new(egui::FontData::from_static(INTER_REGULAR)),
         );
         fonts.font_data.insert(
             "semibold".into(),
-            std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_SEMIBOLD)),
+            std::sync::Arc::new(egui::FontData::from_static(INTER_SEMIBOLD)),
         );
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .push("medium".into());
+            .push("regular".into());
         fonts
             .families
             .entry(egui::FontFamily::Name("semibold".into()))
@@ -298,16 +270,16 @@ mod tests {
         let _ = ctx.run(Default::default(), |ctx| {
             ctx.fonts(|f| {
                 for c in sample.chars() {
-                    let has_med = f.has_glyph(&egui::FontId::proportional(14.0), c);
+                    let has_reg = f.has_glyph(&egui::FontId::proportional(14.0), c);
                     assert!(
-                        has_med,
-                        "Character '{}' (U+{:04X}) missing in BeVietnamPro-Medium",
+                        has_reg,
+                        "Character '{}' (U+{:04X}) missing in Inter-Regular",
                         c, c as u32
                     );
                     let has_semi = f.has_glyph(&titlebar::font_semibold(14.0), c);
                     assert!(
                         has_semi,
-                        "Character '{}' (U+{:04X}) missing in BeVietnamPro-SemiBold",
+                        "Character '{}' (U+{:04X}) missing in Inter-SemiBold",
                         c, c as u32
                     );
                 }
@@ -339,44 +311,6 @@ mod tests {
                         c
                     );
                 }
-            });
-        });
-    }
-
-    #[test]
-    fn test_segoe_ui_specifically() {
-        let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
-        let segoe_path = std::path::Path::new(&windir)
-            .join("Fonts")
-            .join("segoeui.ttf");
-        let bytes = std::fs::read(&segoe_path).expect("segoeui.ttf must exist on Windows");
-        let mut fonts = egui::FontDefinitions::empty();
-        fonts.font_data.insert(
-            "segoe_only".into(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-        fonts
-            .families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .push("segoe_only".into());
-        let ctx = egui::Context::default();
-        ctx.set_fonts(fonts);
-        let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE Tiếp tục với Google Đăng nhập chế độ phát triển";
-        let _ = ctx.run(Default::default(), |ctx| {
-            ctx.fonts(|f| {
-                let mut missing = Vec::new();
-                for c in sample.chars() {
-                    if !f.has_glyph(&egui::FontId::proportional(14.0), c) {
-                        missing.push(c);
-                    }
-                }
-                println!(
-                    "Segoe UI missing count: {}, missing: {:?}",
-                    missing.len(),
-                    missing
-                );
-                assert!(missing.is_empty(), "Segoe UI missing glyphs: {:?}", missing);
             });
         });
     }

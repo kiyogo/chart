@@ -419,7 +419,7 @@ impl ChatView {
         let max_name_w = (ch_rect.left() - avatar_rect.right() - 14.0).max(40.0);
         let name_galley = ui.painter().layout_no_wrap(
             self.current_username.clone(),
-            font_semibold(15.0),
+            font_regular(14.0),
             Color32::from_rgb(23, 23, 23),
         );
         let name_pos = snap_xy(
@@ -480,7 +480,7 @@ impl ChatView {
                 snap_pos(badge_center, ppp),
                 Align2::CENTER_CENTER,
                 &badge_text,
-                font_semibold(10.0),
+                font_regular(10.0),
                 Color32::WHITE,
             );
         }
@@ -532,7 +532,7 @@ impl ChatView {
                 snap_pos(badge_center, ppp),
                 Align2::CENTER_CENTER,
                 &badge_text,
-                font_semibold(10.0),
+                font_regular(10.0),
                 Color32::WHITE,
             );
         }
@@ -669,7 +669,7 @@ impl ChatView {
                         };
                         let galley = ui.painter().layout_no_wrap(
                             badge_text,
-                            font_semibold(11.0),
+                            font_regular(11.0),
                             Color32::WHITE,
                         );
                         let badge_w = (galley.size().x + 10.0).max(18.0);
@@ -961,7 +961,7 @@ impl ChatView {
             snap_xy(av_rect.right() + 12.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             &friend.username,
-            font_semibold(15.0),
+            font_regular(14.5),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1268,7 +1268,7 @@ impl ChatView {
             snap_xy(back_rect.right() + 12.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             "Cài đặt",
-            font_semibold(15.0),
+            font_regular(15.0),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1317,7 +1317,7 @@ impl ChatView {
                             snap_xy(info_x, card_rect.center().y - 10.0, ppp),
                             Align2::LEFT_CENTER,
                             &self.current_username,
-                            font_semibold(16.0),
+                            font_regular(15.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
@@ -1362,7 +1362,7 @@ impl ChatView {
                         // 2. Group: Tài khoản (.settings-group: gap 12px)
                         ui.label(
                             RichText::new("Tài khoản")
-                                .font(font_semibold(13.0))
+                                .font(font_regular(13.5))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1387,7 +1387,7 @@ impl ChatView {
                         // 3. Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_semibold(14.0))
+                                .font(font_regular(14.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1432,7 +1432,7 @@ impl ChatView {
                         // 4. Group: Phiên đăng nhập
                         ui.label(
                             RichText::new("Phiên đăng nhập")
-                                .font(font_semibold(14.0))
+                                .font(font_regular(14.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1554,7 +1554,7 @@ impl ChatView {
                             snap_xy(pcard_rect.center().x, av_rect.bottom() + 18.0, ppp),
                             Align2::CENTER_CENTER,
                             &friend.username,
-                            font_semibold(17.0),
+                            font_regular(15.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
@@ -1570,7 +1570,7 @@ impl ChatView {
                         // Group: Tài khoản (inside partner-info-sidebar, rows have #FFFFFF bg and 1px #ECEEF2 border)
                         ui.label(
                             RichText::new("Tài khoản")
-                                .font(font_semibold(14.0))
+                                .font(font_regular(13.5))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1595,7 +1595,7 @@ impl ChatView {
                         // Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_semibold(14.0))
+                                .font(font_regular(14.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1916,7 +1916,7 @@ pub fn paint_avatar_in_rect(painter: &egui::Painter, rect: Rect, name: &str) {
         snap_pos(rect.center(), ppp),
         Align2::CENTER_CENTER,
         initial,
-        font_semibold(font_sz),
+        font_regular(font_sz),
         Color32::WHITE,
     );
 }
