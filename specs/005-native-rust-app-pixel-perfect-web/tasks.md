@@ -45,3 +45,9 @@
 - [x] Task 8.2: Viết kiểm thử `test_bevietnam_pro_vietnamese_glyphs` và `test_bevietnam_pro_weights_glyphs` kiểm chứng toàn bộ 134 ký tự tiếng Việt có dấu ở các độ đậm khác nhau.
 - [x] Task 8.3: Bổ sung các hàm helper làm tròn toạ độ `snap_pos` và `snap_xy` trong `titlebar.rs`, áp dụng cho toàn bộ các điểm vẽ chữ và huy hiệu `painter().text` / `painter().galley` trong `chat.rs`, `login.rs`, `set_name.rs`, và `titlebar.rs` để loại bỏ hiện tượng nội suy làm dày/mờ chữ (bilinear filtering blur).
 - [x] Task 8.4: Kiểm thử toàn bộ 9/9 unit tests `chatw-client` và 3/3 `chatw-core`, biên dịch bản phát hành `dist-desktop/chatw.exe` và tự động commit, push lên GitHub `origin main` theo Rule 1.
+
+## Nhóm 9: Thu gọn Kích thước Font & Tinh chỉnh Nét Chữ Mảnh Chuẩn Tuyệt Đối Web (Slim Typography Scaling)
+- [x] Task 9.1: Nạp trực tiếp bộ font Segoe UI và Segoe UI Semibold từ hệ điều hành Windows (`segoeui.ttf`, `seguisb.ttf`), kết hợp fallback nhúng tĩnh `BeVietnamPro-Light.ttf` (weight 300 cực mảnh) để nét chữ luôn thanh mảnh, không bị thô dày.
+- [x] Task 9.2: Thu nhỏ quy chuẩn cỡ chữ toàn bộ ứng dụng (giảm 1.5 - 2.0 pt) để bù trừ độ phân giải logic của Egui, khớp tỷ lệ quang học 1:1 với kích cỡ CSS px trên trình duyệt Chrome/Edge: các trạng thái rỗng ("Chọn một cuộc trò chuyện để bắt đầu", "Không có lời mời nào", "Chưa có bạn bè nào") về 12.5 pt; tên người dùng về 14.0 pt; input và tin nhắn về 13.0 pt.
+- [x] Task 9.3: Kiểm thử toàn bộ 9/9 unit tests, biên dịch nhị phân release mới nhất vào `dist-desktop/chatw.exe`.
+- [x] Task 9.4: Tự động commit và push toàn bộ lên GitHub `origin main` theo Rule 1 trong `AGENTS.md`.

@@ -365,7 +365,7 @@ impl ChatView {
         let max_name_w = (ch_rect.left() - avatar_rect.right() - 14.0).max(40.0);
         let name_galley = ui.painter().layout_no_wrap(
             self.current_username.clone(),
-            font_regular(15.0),
+            font_regular(14.0),
             Color32::from_rgb(23, 23, 23),
         );
         let name_pos = snap_xy(
@@ -517,7 +517,7 @@ impl ChatView {
                 snap_pos(avail.center()),
                 Align2::CENTER_CENTER,
                 "Chưa có bạn bè nào",
-                font_regular(14.0),
+                font_regular(12.5),
                 Color32::from_rgb(115, 115, 115),
             );
             return;
@@ -555,14 +555,14 @@ impl ChatView {
                         snap_xy(text_left, item_rect.center().y - 9.0),
                         Align2::LEFT_CENTER,
                         &friend.username,
-                        font_regular(14.0),
+                        font_regular(13.5),
                         Color32::from_rgb(23, 23, 23),
                     );
 
                     // Unread badge pill on item header matching web .chat-item-badge
                     if unread > 0 {
                         let badge_text = if unread > 99 { "99+".to_string() } else { format!("{}", unread) };
-                        let galley = ui.painter().layout_no_wrap(badge_text, font_semibold(11.0), Color32::WHITE);
+                        let galley = ui.painter().layout_no_wrap(badge_text, font_semibold(10.5), Color32::WHITE);
                         let badge_w = (galley.size().x + 10.0).max(18.0);
                         let badge_rect = Rect::from_center_size(
                             pos2(item_rect.right() - 12.0 - badge_w * 0.5, item_rect.center().y - 9.0),
@@ -591,7 +591,7 @@ impl ChatView {
                         snap_xy(text_left, item_rect.center().y + 10.0),
                         Align2::LEFT_CENTER,
                         &preview_text,
-                        font_regular(12.0),
+                        font_regular(11.5),
                         preview_col,
                     );
 
@@ -634,10 +634,10 @@ impl ChatView {
         );
         let inp = inp_ui.add(
             egui::TextEdit::singleline(&mut self.add_friend_input)
-                .font(font_regular(14.0))
+                .font(font_regular(13.0))
                 .hint_text(
                     RichText::new("Tên tài khoản")
-                        .font(font_regular(14.0))
+                        .font(font_regular(13.0))
                         .color(Color32::from_rgb(115, 115, 115)),
                 )
                 .frame(false)
@@ -701,7 +701,7 @@ impl ChatView {
             let (st_outer, _) = ui.allocate_exact_size(Vec2::new(total_w, 34.0), Sense::hover());
             let st_rect = Rect::from_min_size(pos2(st_outer.left() + 16.0, st_outer.top()), vec2(total_w - 32.0, 28.0));
             ui.painter().rect_filled(st_rect, CornerRadius::same(6), bg);
-            ui.painter().text(snap_pos(st_rect.center()), Align2::CENTER_CENTER, status, font_regular(12.0), fg);
+            ui.painter().text(snap_pos(st_rect.center()), Align2::CENTER_CENTER, status, font_regular(11.5), fg);
         }
 
         // Scrollable list of pending requests (or empty state "Không có lời mời nào")
@@ -711,7 +711,7 @@ impl ChatView {
                 snap_pos(avail.center()),
                 Align2::CENTER_CENTER,
                 "Không có lời mời nào",
-                font_regular(14.0),
+                font_regular(12.5),
                 Color32::from_rgb(115, 115, 115),
             );
             return;
@@ -736,7 +736,7 @@ impl ChatView {
                         snap_xy(av_rect.right() + 10.0, card_rect.center().y),
                         Align2::LEFT_CENTER,
                         &req.sender_username,
-                        font_regular(14.0),
+                        font_regular(13.5),
                         Color32::from_rgb(23, 23, 23),
                     );
 
@@ -756,7 +756,7 @@ impl ChatView {
                         snap_pos(acc_rect.center()),
                         Align2::CENTER_CENTER,
                         "Chấp nhận",
-                        font_regular(12.0),
+                        font_regular(11.5),
                         Color32::WHITE,
                     );
                     if acc_resp.clicked() {
@@ -783,7 +783,7 @@ impl ChatView {
                 snap_pos(total_rect.center()),
                 Align2::CENTER_CENTER,
                 "Chọn một cuộc trò chuyện để bắt đầu",
-                font_regular(14.0),
+                font_regular(12.5),
                 Color32::from_rgb(115, 115, 115),
             );
             return;
@@ -809,7 +809,7 @@ impl ChatView {
             snap_xy(av_rect.right() + 12.0, header_rect.center().y),
             Align2::LEFT_CENTER,
             &friend.username,
-            font_regular(15.0),
+            font_semibold(14.0),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -944,7 +944,7 @@ impl ChatView {
                 snap_pos(msgs_rect.center()),
                 Align2::CENTER_CENTER,
                 "Chưa có tin nhắn",
-                font_regular(14.0),
+                font_regular(12.5),
                 Color32::from_rgb(115, 115, 115),
             );
         } else {
@@ -963,7 +963,7 @@ impl ChatView {
                             ui.add_space(20.0);
                             ui.label(
                                 RichText::new("Đang nhập")
-                                    .font(font_regular(12.0))
+                                    .font(font_regular(11.0))
                                     .italics()
                                     .color(Color32::from_rgb(115, 115, 115)),
                             );
@@ -1098,14 +1098,14 @@ impl ChatView {
                             snap_xy(info_x, card_rect.center().y - 10.0),
                             Align2::LEFT_CENTER,
                             &self.current_username,
-                            font_regular(16.0),
+                            font_semibold(15.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
                             snap_xy(info_x, card_rect.center().y + 11.0),
                             Align2::LEFT_CENTER,
                             "Tài khoản cá nhân",
-                            font_regular(13.0),
+                            font_regular(12.0),
                             Color32::from_rgb(115, 115, 115),
                         );
 
@@ -1126,7 +1126,7 @@ impl ChatView {
                             snap_pos(upload_btn_rect.center()),
                             Align2::CENTER_CENTER,
                             "Đổi ảnh đại diện",
-                            font_regular(13.0),
+                            font_regular(12.0),
                             Color32::from_rgb(37, 99, 235),
                         );
 
@@ -1135,7 +1135,7 @@ impl ChatView {
                         // 2. Group: Tài khoản (.settings-group: gap 12px)
                         ui.label(
                             RichText::new("Tài khoản")
-                                .font(font_regular(14.0))
+                                .font(font_semibold(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1148,7 +1148,7 @@ impl ChatView {
                         // 3. Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_regular(14.0))
+                                .font(font_semibold(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1169,7 +1169,7 @@ impl ChatView {
                         // 4. Group: Phiên đăng nhập
                         ui.label(
                             RichText::new("Phiên đăng nhập")
-                                .font(font_regular(14.0))
+                                .font(font_semibold(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1186,7 +1186,7 @@ impl ChatView {
                             snap_pos(logout_btn_rect.center()),
                             Align2::CENTER_CENTER,
                             "Đăng xuất",
-                            font_regular(14.0),
+                            font_regular(12.5),
                             Color32::from_rgb(220, 38, 38), // #DC2626
                         );
 
@@ -1219,7 +1219,7 @@ impl ChatView {
             snap_xy(header_rect.left() + 20.0, header_rect.center().y),
             Align2::LEFT_CENTER,
             "Thông tin",
-            font_regular(15.0),
+            font_semibold(14.5),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1274,14 +1274,14 @@ impl ChatView {
                             snap_xy(pcard_rect.center().x, av_rect.bottom() + 18.0),
                             Align2::CENTER_CENTER,
                             &friend.username,
-                            font_regular(16.0),
+                            font_semibold(15.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
                             snap_xy(pcard_rect.center().x, av_rect.bottom() + 40.0),
                             Align2::CENTER_CENTER,
                             "Tài khoản bạn bè",
-                            font_regular(13.0),
+                            font_regular(12.0),
                             Color32::from_rgb(115, 115, 115),
                         );
 
@@ -1359,7 +1359,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                             ui.set_max_width(max_bubble_width);
                             ui.label(
                                 RichText::new(&msg.text)
-                                    .font(font_regular(14.0))
+                                    .font(font_regular(13.0))
                                     .color(Color32::WHITE),
                             );
                         });
@@ -1368,7 +1368,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(&msg.time_str)
-                                .font(font_regular(11.0))
+                                .font(font_regular(10.5))
                                 .color(Color32::from_rgb(115, 115, 115)),
                         );
                     });
@@ -1394,7 +1394,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                             ui.set_max_width(max_bubble_width);
                             ui.label(
                                 RichText::new(&msg.text)
-                                    .font(font_regular(14.0))
+                                    .font(font_regular(13.0))
                                     .color(Color32::from_rgb(23, 23, 23)),
                             );
                         });
@@ -1403,7 +1403,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(&msg.time_str)
-                                .font(font_regular(11.0))
+                                .font(font_regular(10.5))
                                 .color(Color32::from_rgb(115, 115, 115)),
                         );
                     });
@@ -1439,14 +1439,14 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
         snap_xy(row_rect.left() + 16.0, row_rect.center().y),
         Align2::LEFT_CENTER,
         label,
-        font_regular(14.0),
+        font_regular(12.5),
         Color32::from_rgb(115, 115, 115),
     );
     ui.painter().text(
         snap_xy(row_rect.right() - 16.0, row_rect.center().y),
         Align2::RIGHT_CENTER,
         value,
-        font_regular(14.0),
+        font_regular(12.5),
         Color32::from_rgb(23, 23, 23),
     );
 }
@@ -1473,14 +1473,14 @@ fn render_settings_column_row_flat(ui: &mut Ui, width: f32, label: &str, value: 
         snap_xy(row_rect.left() + 16.0, row_rect.top() + 21.0),
         Align2::LEFT_CENTER,
         label,
-        font_regular(14.0),
+        font_regular(12.5),
         Color32::from_rgb(115, 115, 115),
     );
     ui.painter().text(
         snap_xy(row_rect.left() + 16.0, row_rect.top() + 44.0),
         Align2::LEFT_CENTER,
         value,
-        font_mono(12.0),
+        font_mono(11.0),
         Color32::from_rgb(23, 23, 23),
     );
 }
@@ -1507,13 +1507,13 @@ fn render_settings_tag_row_flat(ui: &mut Ui, width: f32, label: &str, tag_text: 
         snap_xy(row_rect.left() + 16.0, row_rect.center().y),
         Align2::LEFT_CENTER,
         label,
-        font_regular(14.0),
+        font_regular(12.5),
         Color32::from_rgb(115, 115, 115),
     );
 
     let galley = ui.painter().layout_no_wrap(
         tag_text.to_string(),
-        font_regular(12.0),
+        font_regular(11.0),
         Color32::from_rgb(19, 115, 51),
     );
     let tag_w = galley.size().x + 20.0;

@@ -97,6 +97,7 @@ fn drain_decrypt_queue(
     *queue = still_pending;
 }
 
+static BE_VIETNAM_LIGHT: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro-Light.ttf");
 static BE_VIETNAM_REGULAR: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro-Regular.ttf");
 static BE_VIETNAM_MEDIUM: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro-Medium.ttf");
 static BE_VIETNAM_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro-SemiBold.ttf");
@@ -104,7 +105,11 @@ static BE_VIETNAM_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/BeVietnamPro
 fn setup_vietnamese_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::empty();
 
-    // 1. Embedded Be Vietnam Pro font family - #1 Vietnamese digital UI typography (slim, refined, perfectly positioned diacritics)
+    // 1. Embedded Be Vietnam Pro family (Light weight 300, Regular 400, Medium 500, SemiBold 600)
+    fonts.font_data.insert(
+        "be_vietnam_light".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_LIGHT)),
+    );
     fonts.font_data.insert(
         "be_vietnam_regular".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_REGULAR)),
@@ -118,9 +123,25 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_SEMIBOLD)),
     );
 
-    // 2. Windows Fallbacks (Consolas, Segoe UI Emoji)
+    // 2. Windows Native Fonts: Segoe UI (exact system font used by Chrome/Edge on Windows)
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     let fonts_dir = std::path::Path::new(&windir).join("Fonts");
+
+    let segoe_path = fonts_dir.join("segoeui.ttf");
+    if let Ok(bytes) = std::fs::read(&segoe_path) {
+        fonts.font_data.insert(
+            "segoe_ui".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+    }
+
+    let segoe_semi_path = fonts_dir.join("seguisb.ttf");
+    if let Ok(bytes) = std::fs::read(&segoe_semi_path) {
+        fonts.font_data.insert(
+            "segoe_ui_semibold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+    }
 
     let consola_path = fonts_dir.join("consola.ttf");
     if let Ok(bytes) = std::fs::read(&consola_path) {
@@ -138,40 +159,53 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: BeVietnamPro-Regular (slender, elegant, perfect Vietnamese diacritics)
-    let mut prop = vec!["be_vietnam_regular".to_owned()];
+    // 3. Proportional family: Segoe UI (Windows native, slim, crisp, matches browser 100%) -> BeVietnamPro-Light
+    let mut prop = Vec::new();
+    if fonts.font_data.contains_key("segoe_ui") {
+        prop.push("segoe_ui".to_owned());
+    }
+    prop.push("be_vietnam_light".to_owned());
+    prop.push("be_vietnam_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         prop.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Semibold family: BeVietnamPro-Medium (weight 500, perfectly balanced, not overly thick)
+    // 4. Semibold family: Segoe UI Semibold -> BeVietnamPro-Medium
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec![
-        "be_vietnam_medium".to_owned(),
-        "be_vietnam_regular".to_owned(),
-    ];
+    let mut semi = Vec::new();
+    if fonts.font_data.contains_key("segoe_ui_semibold") {
+        semi.push("segoe_ui_semibold".to_owned());
+    } else if fonts.font_data.contains_key("segoe_ui") {
+        semi.push("segoe_ui".to_owned());
+    }
+    semi.push("be_vietnam_medium".to_owned());
+    semi.push("be_vietnam_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 5. Bold family: BeVietnamPro-SemiBold (weight 600) for badges and initials
+    // 5. Bold family: Segoe UI Semibold / Bold -> BeVietnamPro-SemiBold
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec![
-        "be_vietnam_semibold".to_owned(),
-        "be_vietnam_medium".to_owned(),
-        "be_vietnam_regular".to_owned(),
-    ];
+    let mut bold = Vec::new();
+    if fonts.font_data.contains_key("segoe_ui_semibold") {
+        bold.push("segoe_ui_semibold".to_owned());
+    }
+    bold.push("be_vietnam_semibold".to_owned());
+    bold.push("be_vietnam_medium".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(bold_family, bold);
 
-    // 6. Monospace family: Consolas -> BeVietnamPro-Regular
+    // 6. Monospace family: Consolas -> Segoe UI -> BeVietnamPro-Regular
     let mut mono = Vec::new();
     if fonts.font_data.contains_key("consolas") {
         mono.push("consolas".to_owned());
+    }
+    if fonts.font_data.contains_key("segoe_ui") {
+        mono.push("segoe_ui".to_owned());
     }
     mono.push("be_vietnam_regular".to_owned());
     fonts.families.insert(egui::FontFamily::Monospace, mono);
@@ -186,9 +220,10 @@ mod tests {
     #[test]
     fn test_bevietnam_pro_vietnamese_glyphs() {
         let mut fonts = egui::FontDefinitions::empty();
-        let bytes = include_bytes!("../assets/fonts/BeVietnamPro-Regular.ttf");
-        fonts.font_data.insert("bevietnam".into(), std::sync::Arc::new(egui::FontData::from_static(bytes)));
-        fonts.families.entry(egui::FontFamily::Proportional).or_default().push("bevietnam".into());
+        fonts.font_data.insert("light".into(), std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_LIGHT)));
+        fonts.font_data.insert("regular".into(), std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_REGULAR)));
+        fonts.families.entry(egui::FontFamily::Proportional).or_default().push("light".into());
+        fonts.families.entry(egui::FontFamily::Proportional).or_default().push("regular".into());
         let ctx = egui::Context::default();
         ctx.set_fonts(fonts);
         let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE";
@@ -433,11 +468,11 @@ impl ChatApp {
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
-            (egui::TextStyle::Heading, titlebar::font_regular(16.0)),
-            (egui::TextStyle::Body, titlebar::font_regular(14.0)),
-            (egui::TextStyle::Button, titlebar::font_regular(14.0)),
-            (egui::TextStyle::Small, titlebar::font_regular(12.0)),
-            (egui::TextStyle::Monospace, titlebar::font_mono(12.0)),
+            (egui::TextStyle::Heading, titlebar::font_regular(15.0)),
+            (egui::TextStyle::Body, titlebar::font_regular(13.0)),
+            (egui::TextStyle::Button, titlebar::font_regular(12.0)),
+            (egui::TextStyle::Small, titlebar::font_regular(11.0)),
+            (egui::TextStyle::Monospace, titlebar::font_mono(11.5)),
         ].into();
         cc.egui_ctx.set_style(style);
 

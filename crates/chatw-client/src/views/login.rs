@@ -89,7 +89,7 @@ impl LoginView {
             // 2. Title: chatw (20px, font-weight 600, color #171717)
             ui.label(
                 RichText::new("chatw")
-                    .font(font_regular(20.0))
+                    .font(font_regular(18.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 
@@ -98,7 +98,7 @@ impl LoginView {
             // 3. Subtitle: Ứng dụng nhắn tin bảo mật E2EE (13px, color #737373)
             ui.label(
                 RichText::new("Ứng dụng nhắn tin bảo mật E2EE")
-                    .font(font_regular(13.0))
+                    .font(font_regular(12.5))
                     .color(Color32::from_rgb(115, 115, 115)),
             );
 
@@ -156,7 +156,7 @@ impl LoginView {
                 let label_text = "Tiếp tục với Google";
                 let galley = ui.painter().layout_no_wrap(
                     label_text.to_string(),
-                    font_regular(14.0),
+                    font_regular(13.0),
                     Color32::WHITE,
                 );
                 let icon_size = 18.0;
@@ -184,7 +184,7 @@ impl LoginView {
             let (div_rect, _) = ui.allocate_exact_size(Vec2::new(card_width, 20.0), Sense::hover());
             let div_galley = ui.painter().layout_no_wrap(
                 "chế độ phát triển cục bộ".to_string(),
-                font_regular(12.0),
+                font_regular(11.5),
                 Color32::from_rgb(115, 115, 115),
             );
             let text_half = div_galley.size().x * 0.5 + 10.0;
@@ -217,10 +217,10 @@ impl LoginView {
                     .layout(Layout::left_to_right(Align::Center)),
             );
             let input_edit = egui::TextEdit::singleline(&mut self.username_input)
-                .font(font_regular(14.0))
+                .font(font_regular(13.0))
                 .hint_text(
                     RichText::new("Tên tài khoản thử (ví dụ: alice)")
-                        .font(font_regular(14.0))
+                        .font(font_regular(13.0))
                         .color(Color32::from_rgb(115, 115, 115)),
                 )
                 .frame(false)
@@ -271,7 +271,7 @@ impl LoginView {
                 snap_pos(dev_rect.center()),
                 Align2::CENTER_CENTER,
                 dev_text,
-                font_regular(14.0),
+                font_regular(13.0),
                 Color32::from_rgb(23, 23, 23), // #171717
             );
 

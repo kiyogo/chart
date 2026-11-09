@@ -41,7 +41,7 @@ impl SetNameView {
             // 2. Title: Đặt tên của bạn (20px, font-weight 600, color #171717)
             ui.label(
                 RichText::new("Đặt tên của bạn")
-                    .font(font_regular(20.0))
+                    .font(font_regular(18.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 
@@ -57,10 +57,10 @@ impl SetNameView {
                     .layout(Layout::left_to_right(Align::Center)),
             );
             let input_edit = egui::TextEdit::singleline(&mut self.name_input)
-                .font(font_regular(14.0))
+                .font(font_regular(13.0))
                 .hint_text(
                     RichText::new("Nhập tên người dùng")
-                        .font(font_regular(14.0))
+                        .font(font_regular(13.0))
                         .color(Color32::from_rgb(115, 115, 115)),
                 )
                 .frame(false)
@@ -72,7 +72,7 @@ impl SetNameView {
                 ui.add_space(8.0);
                 ui.label(
                     RichText::new(err)
-                        .font(font_regular(13.0))
+                        .font(font_regular(12.0))
                         .color(Color32::from_rgb(220, 38, 38)), // #DC2626
                 );
             }
@@ -100,7 +100,7 @@ impl SetNameView {
                 snap_pos(btn_rect.center()),
                 Align2::CENTER_CENTER,
                 btn_text,
-                font_regular(14.0),
+                font_regular(13.0),
                 Color32::WHITE,
             );
 
