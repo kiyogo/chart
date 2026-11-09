@@ -80,6 +80,9 @@ fn drain_decrypt_queue(
                             text,
                             time_str: wire.created_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
                         });
+                        if chat.selected_friend_id != Some(sender_id) || chat.is_settings_open {
+                            *chat.unread_counts.entry(sender_id).or_insert(0) += 1;
+                        }
                     }
                     if let Some(ws_mgr) = ws {
                         let _ = ws_mgr.tx_commands.send(WsClientCommand::Ack { message_id: wire.id });
@@ -842,6 +845,9 @@ impl ChatApp {
                                             text,
                                             time_str: wire.created_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
                                         });
+                                        if chat.selected_friend_id != Some(sender_id) || chat.is_settings_open {
+                                            *chat.unread_counts.entry(sender_id).or_insert(0) += 1;
+                                        }
                                     }
                                     if let Some(ref ws) = self.ws {
                                         let _ = ws.tx_commands.send(WsClientCommand::Ack { message_id: wire.id });
@@ -951,6 +957,7 @@ impl ChatApp {
                         if let Some(action) = chat_view.show(ui) {
                             match action {
                                 ChatAction::SelectFriend(friend_id) => {
+                                    chat_view.unread_counts.remove(&friend_id);
                                     chat_view.selected_friend_id = Some(friend_id);
                                     if !chat_view.cached_keys.contains_key(&friend_id) {
                                         self.load_friend_keys(friend_id, ctx);

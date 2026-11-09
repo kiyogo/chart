@@ -159,14 +159,13 @@ impl LoginView {
                     font_semibold(14.0),
                     Color32::WHITE,
                 );
-                let icon_size = 20.0;
+                let icon_size = 18.0;
                 let gap = 10.0;
                 let total_content_w = icon_size + gap + galley.size().x;
                 let start_x = btn_rect.center().x - total_content_w * 0.5;
 
-                let badge_center = pos2(start_x + icon_size * 0.5, btn_rect.center().y);
-                ui.painter().circle_filled(badge_center, 10.0, Color32::WHITE);
-                draw_svg_google_g_icon(ui.painter(), badge_center, 7.2);
+                let icon_center = pos2(start_x + icon_size * 0.5, btn_rect.center().y);
+                draw_svg_google_g_icon(ui.painter(), icon_center, 9.0);
 
                 ui.painter().galley(
                     pos2(start_x + icon_size + gap, btn_rect.center().y - galley.size().y * 0.5),

@@ -45,6 +45,7 @@ pub struct ChatView {
     pub is_settings_open: bool,
     pub is_partner_info_open: bool,
     pub is_emoji_picker_open: bool,
+    pub unread_counts: HashMap<Uuid, usize>,
     pub server_url_input: String,
 }
 
@@ -108,22 +109,22 @@ pub fn draw_svg_friends_icon(painter: &egui::Painter, rect: Rect, color: Color32
 pub fn draw_svg_settings_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     let s = rect.size() / 24.0;
     let center = rect.center();
-    let stroke = Stroke::new((1.9 * s.x).max(1.3), color);
+    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
 
-    // Inner circle r=3.2
-    painter.circle_stroke(center, 3.2 * s.x, stroke);
+    // Inner circle r=3.0 matching web SVG <circle cx="12" cy="12" r="3" />
+    painter.circle_stroke(center, 3.0 * s.x, stroke);
 
-    // Continuous 8-tooth gear contour
-    let r_inner = 7.4 * s.x;
+    // Continuous 8-tooth gear contour matching Feather / Lucide settings icon
+    let r_inner = 7.2 * s.x;
     let r_outer = 10.0 * s.x;
-    let mut gear_pts = Vec::with_capacity(64);
+    let mut gear_pts = Vec::with_capacity(32);
     let num_teeth = 8;
     for i in 0..num_teeth {
         let base = (i as f32) * std::f32::consts::TAU / (num_teeth as f32);
         let step = std::f32::consts::TAU / (num_teeth as f32);
         let a0 = base - step * 0.18;
-        let a1 = base - step * 0.11;
-        let a2 = base + step * 0.11;
+        let a1 = base - step * 0.10;
+        let a2 = base + step * 0.10;
         let a3 = base + step * 0.18;
         gear_pts.push(center + vec2(a0.cos() * r_inner, a0.sin() * r_inner));
         gear_pts.push(center + vec2(a1.cos() * r_outer, a1.sin() * r_outer));
@@ -252,6 +253,7 @@ impl ChatView {
             is_settings_open: false,
             is_partner_info_open: true,
             is_emoji_picker_open: false,
+            unread_counts: HashMap::new(),
             server_url_input: "http://127.0.0.1:8082".to_string(),
         }
     }
@@ -340,17 +342,18 @@ impl ChatView {
         let header_height = 68.0;
         let (header_rect, _) = ui.allocate_exact_size(Vec2::new(total_rect.width(), header_height), Sense::hover());
 
-        // Exact coordinates for 4 action buttons: size 34x34, gap 4px
-        // Total width = 4 * 34 + 3 * 4 = 148px. Right padding = 16px.
+        // Exact coordinates for 4 action buttons matching web CSS (.sidebar-actions { gap: 6px; }, .icon-btn { width: 36px; height: 36px; }):
+        // Total width = 4 * 36 + 3 * 6 = 162px. Right padding = 16px.
         // Logout right edge is at 304px, exactly 16px away from 320px sidebar border.
-        let btn_size = vec2(34.0, 34.0);
-        let btn_y = header_rect.center().y - 17.0;
+        let btn_size = vec2(36.0, 36.0);
+        let btn_y = header_rect.center().y - 18.0;
         let right_edge = header_rect.right() - 16.0;
+        let gap = 6.0;
 
-        let logout_rect = Rect::from_min_size(pos2(right_edge - 34.0, btn_y), btn_size);
-        let set_rect = Rect::from_min_size(pos2(logout_rect.left() - 4.0 - 34.0, btn_y), btn_size);
-        let fr_rect = Rect::from_min_size(pos2(set_rect.left() - 4.0 - 34.0, btn_y), btn_size);
-        let ch_rect = Rect::from_min_size(pos2(fr_rect.left() - 4.0 - 34.0, btn_y), btn_size);
+        let logout_rect = Rect::from_min_size(pos2(right_edge - 36.0, btn_y), btn_size);
+        let set_rect = Rect::from_min_size(pos2(logout_rect.left() - gap - 36.0, btn_y), btn_size);
+        let fr_rect = Rect::from_min_size(pos2(set_rect.left() - gap - 36.0, btn_y), btn_size);
+        let ch_rect = Rect::from_min_size(pos2(fr_rect.left() - gap - 36.0, btn_y), btn_size);
 
         // 1. Left brand (.app-brand: Avatar 28px + 8px gap + 16px semibold username)
         let avatar_rect = Rect::from_center_size(
@@ -393,6 +396,27 @@ impl ChatView {
             Color32::from_rgb(115, 115, 115) // #737373
         };
         draw_svg_chat_icon(ui.painter(), Rect::from_center_size(ch_rect.center(), vec2(18.0, 18.0)), ch_color);
+
+        let total_unread: usize = self.unread_counts.values().sum();
+        if total_unread > 0 {
+            let badge_center = pos2(ch_rect.right() - 8.5, ch_rect.top() + 8.5);
+            let border_col = if is_ch_active || ch_resp.hovered() {
+                Color32::from_rgb(236, 238, 242)
+            } else {
+                Color32::from_rgb(247, 248, 250)
+            };
+            ui.painter().circle_filled(badge_center, 8.5, border_col);
+            ui.painter().circle_filled(badge_center, 6.5, Color32::from_rgb(37, 99, 235));
+            let badge_text = if total_unread > 99 { "99+".to_string() } else { format!("{}", total_unread) };
+            ui.painter().text(
+                badge_center,
+                Align2::CENTER_CENTER,
+                &badge_text,
+                font_semibold(9.5),
+                Color32::WHITE,
+            );
+        }
+
         if ch_resp.clicked() {
             self.sidebar_tab = SidebarTab::Chats;
             self.is_settings_open = false;
@@ -414,18 +438,19 @@ impl ChatView {
         draw_svg_friends_icon(ui.painter(), Rect::from_center_size(fr_rect.center(), vec2(18.0, 18.0)), fr_color);
 
         if !self.pending_requests.is_empty() {
-            let badge_center = pos2(fr_rect.right() - 6.0, fr_rect.top() + 6.0);
+            let badge_center = pos2(fr_rect.right() - 8.5, fr_rect.top() + 8.5);
             let border_col = if is_fr_active || fr_resp.hovered() {
                 Color32::from_rgb(236, 238, 242)
             } else {
                 Color32::from_rgb(247, 248, 250)
             };
             ui.painter().circle_filled(badge_center, 8.5, border_col);
-            ui.painter().circle_filled(badge_center, 7.0, Color32::from_rgb(37, 99, 235));
+            ui.painter().circle_filled(badge_center, 6.5, Color32::from_rgb(37, 99, 235));
+            let badge_text = if self.pending_requests.len() > 99 { "99+".to_string() } else { format!("{}", self.pending_requests.len()) };
             ui.painter().text(
                 badge_center,
                 Align2::CENTER_CENTER,
-                &format!("{}", self.pending_requests.len().min(99)),
+                &badge_text,
                 font_semibold(9.5),
                 Color32::WHITE,
             );
@@ -504,6 +529,7 @@ impl ChatView {
                 let row_w = ui.available_width() - 16.0;
                 for friend in &self.friends {
                     let is_selected = Some(friend.id) == self.selected_friend_id && !self.is_settings_open;
+                    let unread = self.unread_counts.get(&friend.id).copied().unwrap_or(0);
                     let (outer_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 56.0), Sense::hover());
                     let item_rect = Rect::from_center_size(outer_rect.center(), vec2(row_w, 54.0));
                     let resp = ui.interact(item_rect, ui.id().with(("chat_item", friend.id)), Sense::click());
@@ -533,21 +559,44 @@ impl ChatView {
                         Color32::from_rgb(23, 23, 23),
                     );
 
+                    // Unread badge pill on item header matching web .chat-item-badge
+                    if unread > 0 {
+                        let badge_text = if unread > 99 { "99+".to_string() } else { format!("{}", unread) };
+                        let galley = ui.painter().layout_no_wrap(badge_text, font_semibold(11.0), Color32::WHITE);
+                        let badge_w = (galley.size().x + 10.0).max(18.0);
+                        let badge_rect = Rect::from_center_size(
+                            pos2(item_rect.right() - 12.0 - badge_w * 0.5, item_rect.center().y - 9.0),
+                            vec2(badge_w, 18.0),
+                        );
+                        ui.painter().rect_filled(badge_rect, CornerRadius::same(9), Color32::from_rgb(37, 99, 235));
+                        ui.painter().galley(
+                            pos2(badge_rect.center().x - galley.size().x * 0.5, badge_rect.center().y - galley.size().y * 0.5),
+                            galley,
+                            Color32::WHITE,
+                        );
+                    }
+
                     let preview_text = if let Some(msg) = self.messages.get(&friend.id).and_then(|m| m.last()) {
                         msg.text.chars().take(28).collect::<String>()
                     } else {
                         "Bắt đầu trò chuyện".to_string()
                     };
 
+                    let preview_col = if unread > 0 {
+                        Color32::from_rgb(23, 23, 23)
+                    } else {
+                        Color32::from_rgb(115, 115, 115)
+                    };
                     ui.painter().text(
                         pos2(text_left, item_rect.center().y + 10.0),
                         Align2::LEFT_CENTER,
                         &preview_text,
                         font_regular(12.0),
-                        Color32::from_rgb(115, 115, 115),
+                        preview_col,
                     );
 
                     if resp.clicked() {
+                        self.unread_counts.remove(&friend.id);
                         *action = Some(ChatAction::SelectFriend(friend.id));
                         self.is_settings_open = false;
                     }
@@ -593,6 +642,18 @@ impl ChatView {
                 )
                 .frame(false)
                 .desired_width(inp_w - 28.0),
+        );
+
+        let border_col = if inp.has_focus() {
+            Color32::from_rgb(37, 99, 235) // #2563EB
+        } else {
+            Color32::from_rgb(229, 231, 235) // #E5E7EB
+        };
+        ui.painter().rect_stroke(
+            inp_rect,
+            CornerRadius::same(8),
+            Stroke::new(1.0_f32, border_col),
+            StrokeKind::Inside,
         );
 
         // Button "Kết bạn" (.btn-small-primary)

@@ -20,3 +20,10 @@
 - [x] Task 4.2: Chạy kiểm thử tự động `cargo test -p chatw-client` và `cargo test -p chatw-core`.
 - [x] Task 4.3: Biên dịch bản phát hành Native Rust `cargo build --release -p chatw-client` và copy vào `dist-desktop/chatw.exe`.
 - [x] Task 4.4: Kiểm tra chạy thử thực tế và tự động commit, push lên nhánh chính GitHub theo Rule 1 trong `AGENTS.md`.
+
+## Nhóm 5: Tinh chỉnh Chi tiết Từng Pixel Khớp 1000% Web & Icon Vector
+- [x] Task 5.1: Chuẩn hóa khoảng cách sidebar header buttons: `btn_size = vec2(36.0, 36.0)`, `gap = 6.0` khớp chính xác `.sidebar-actions { gap: 6px; }` và `.icon-btn { width: 36px; height: 36px; }` trong CSS.
+- [x] Task 5.2: Bổ sung huy hiệu thông báo chưa đọc (`.tab-badge`) cho tab Trò chuyện (`LogoIcon`) và huy hiệu tin nhắn chưa đọc (`.chat-item-badge`) trong danh sách cuộc trò chuyện.
+- [x] Task 5.3: Chuẩn hóa icon Google G đa sắc 18x18 vẽ trực tiếp trên nút xanh `#2563EB` (loại bỏ hoàn toàn khung tròn màu trắng).
+- [x] Task 5.4: Chuẩn hóa icon Cài đặt (`SettingsIcon`) 8 răng chuẩn Feather/Lucide, bán kính trong 3.0px.
+- [x] Task 5.5: Kiểm thử tự động 10/10 test cases, biên dịch bản release `dist-desktop/chatw.exe` và tự động push lên GitHub.
