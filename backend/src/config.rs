@@ -73,11 +73,7 @@ impl Config {
                     p
                 } else if let Ok(cwd) = env::current_dir() {
                     let candidate1 = cwd.join(&s);
-                    if candidate1.exists() {
-                        candidate1
-                    } else {
-                        p
-                    }
+                    if candidate1.exists() { candidate1 } else { p }
                 } else {
                     p
                 }
@@ -115,7 +111,9 @@ impl Config {
             .any(|p| public_origin == *p || public_origin.starts_with(&format!("{p}:")));
         let dev_login_requested: bool = parse("DEV_LOGIN", "false")?;
         if dev_login_requested && !is_loopback_origin {
-            return Err("DEV_LOGIN=true is only allowed when PUBLIC_URL is a loopback origin".into());
+            return Err(
+                "DEV_LOGIN=true is only allowed when PUBLIC_URL is a loopback origin".into(),
+            );
         }
 
         let google_client_id = var("GOOGLE_CLIENT_ID")?;

@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use chatw_core::{WsClientCommand, WsServerEvent};
 use futures_util::{SinkExt, StreamExt};
 use reqwest::cookie::{CookieStore, Jar};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use chatw_core::{WsClientCommand, WsServerEvent};
 
 pub struct WsManager {
     pub rx_events: mpsc::UnboundedReceiver<WsServerEvent>,

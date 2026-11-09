@@ -1,8 +1,8 @@
+use chatw_core::ClientKeys;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chatw_core::ClientKeys;
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct LocalStore {

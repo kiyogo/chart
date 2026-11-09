@@ -228,7 +228,11 @@ async fn handle_google_callback(
     let (raw_token, session_cookie) = create_session_raw(&state.db, &state.config, user_id).await?;
 
     if let Some(ticket_id) = saved.ticket {
-        state.oauth_tickets.write().await.insert(ticket_id, Some(raw_token));
+        state
+            .oauth_tickets
+            .write()
+            .await
+            .insert(ticket_id, Some(raw_token));
     }
 
     // Clear oauth cookie

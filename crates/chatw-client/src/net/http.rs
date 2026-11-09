@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use reqwest::cookie::Jar;
-use uuid::Uuid;
 use chatw_core::{
-    FriendItem, MeResponse, MessageWireItem, PendingRequestItem,
-    PublicKeysResponse, UserSearchResult,
+    FriendItem, MeResponse, MessageWireItem, PendingRequestItem, PublicKeysResponse,
+    UserSearchResult,
 };
+use reqwest::cookie::Jar;
+use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct HttpClient {
@@ -34,7 +34,9 @@ impl HttpClient {
         let body = serde_json::json!({
             "username": username
         });
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .json(&body)
             .send()
             .await
@@ -48,7 +50,9 @@ impl HttpClient {
 
     pub async fn get_me(&self) -> Result<MeResponse, String> {
         let url = format!("{}/api/auth/me", self.base_url);
-        let res = self.client.get(&url)
+        let res = self
+            .client
+            .get(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi kết nối: {e}"))?;
@@ -68,7 +72,9 @@ impl HttpClient {
             "ecdh_public": ecdh_b64,
             "ecdsa_public": ecdsa_b64,
         });
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .json(&body)
             .send()
             .await
@@ -83,7 +89,9 @@ impl HttpClient {
     pub async fn set_name(&self, name: &str) -> Result<(), String> {
         let url = format!("{}/api/users/name", self.base_url);
         let body = serde_json::json!({ "name": name });
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .json(&body)
             .send()
             .await
@@ -101,8 +109,14 @@ impl HttpClient {
 
     #[allow(dead_code)]
     pub async fn search_users(&self, query: &str) -> Result<Vec<UserSearchResult>, String> {
-        let url = format!("{}/api/users/search?q={}", self.base_url, urlencoding::encode(query));
-        let res = self.client.get(&url)
+        let url = format!(
+            "{}/api/users/search?q={}",
+            self.base_url,
+            urlencoding::encode(query)
+        );
+        let res = self
+            .client
+            .get(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi tìm kiếm: {e}"))?;
@@ -117,7 +131,9 @@ impl HttpClient {
 
     pub async fn get_user_keys(&self, user_id: Uuid) -> Result<PublicKeysResponse, String> {
         let url = format!("{}/api/keys/{}", self.base_url, user_id);
-        let res = self.client.get(&url)
+        let res = self
+            .client
+            .get(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi lấy khóa công khai: {e}"))?;
@@ -132,7 +148,9 @@ impl HttpClient {
 
     pub async fn list_friends(&self) -> Result<Vec<FriendItem>, String> {
         let url = format!("{}/api/friends", self.base_url);
-        let res = self.client.get(&url)
+        let res = self
+            .client
+            .get(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi tải danh bạ bạn bè: {e}"))?;
@@ -147,7 +165,9 @@ impl HttpClient {
 
     pub async fn list_pending_requests(&self) -> Result<Vec<PendingRequestItem>, String> {
         let url = format!("{}/api/friends/requests", self.base_url);
-        let res = self.client.get(&url)
+        let res = self
+            .client
+            .get(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi tải lời mời kết bạn: {e}"))?;
@@ -163,7 +183,9 @@ impl HttpClient {
     pub async fn send_friend_request(&self, username: &str) -> Result<(), String> {
         let url = format!("{}/api/friends/requests", self.base_url);
         let body = serde_json::json!({ "username": username });
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .json(&body)
             .send()
             .await
@@ -176,8 +198,13 @@ impl HttpClient {
     }
 
     pub async fn accept_friend_request(&self, request_id: Uuid) -> Result<(), String> {
-        let url = format!("{}/api/friends/requests/{}/accept", self.base_url, request_id);
-        let res = self.client.post(&url)
+        let url = format!(
+            "{}/api/friends/requests/{}/accept",
+            self.base_url, request_id
+        );
+        let res = self
+            .client
+            .post(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi đồng ý kết bạn: {e}"))?;
@@ -199,8 +226,13 @@ impl HttpClient {
         friend_id: Uuid,
         limit: i64,
     ) -> Result<Vec<MessageWireItem>, String> {
-        let url = format!("{}/api/messages/{}?limit={}", self.base_url, friend_id, limit);
-        let res = self.client.get(&url)
+        let url = format!(
+            "{}/api/messages/{}?limit={}",
+            self.base_url, friend_id, limit
+        );
+        let res = self
+            .client
+            .get(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi tải lịch sử tin nhắn: {e}"))?;
@@ -227,7 +259,9 @@ impl HttpClient {
             "recipient_envelope": recipient_envelope,
             "sender_envelope": sender_envelope,
         });
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .json(&payload)
             .send()
             .await
@@ -248,7 +282,9 @@ impl HttpClient {
 
     pub async fn create_oauth_ticket(&self) -> Result<Uuid, String> {
         let url = format!("{}/api/auth/oauth-ticket", self.base_url);
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi tạo phiên xác thực: {e}"))?;
@@ -257,14 +293,19 @@ impl HttpClient {
             return Err("Không thể tạo phiên xác thực".into());
         }
 
-        let val = res.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+        let val = res
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())?;
         let ticket_str = val["ticket"].as_str().ok_or("Thiếu mã xác thực")?;
         Uuid::parse_str(ticket_str).map_err(|e| e.to_string())
     }
 
     pub async fn check_oauth_ticket(&self, ticket: Uuid) -> Result<Option<String>, String> {
         let url = format!("{}/api/auth/oauth-ticket/{}", self.base_url, ticket);
-        let res = self.client.get(&url)
+        let res = self
+            .client
+            .get(&url)
             .send()
             .await
             .map_err(|e| format!("Lỗi kiểm tra xác thực: {e}"))?;
@@ -273,7 +314,10 @@ impl HttpClient {
             return Ok(None);
         }
 
-        let val = res.json::<serde_json::Value>().await.map_err(|e| e.to_string())?;
+        let val = res
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())?;
         if val["ready"].as_bool().unwrap_or(false) {
             if let Some(tok) = val["token"].as_str() {
                 return Ok(Some(tok.to_string()));

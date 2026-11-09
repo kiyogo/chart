@@ -1,5 +1,5 @@
-use egui::{vec2, Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Ui, Vec2};
-use crate::titlebar::{draw_svg_logo_icon, font_regular, snap_pos};
+use crate::titlebar::{draw_svg_logo_icon, font_regular, font_semibold, snap_pos};
+use egui::{Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Ui, Vec2, vec2};
 
 pub struct SetNameView {
     pub name_input: String,
@@ -23,7 +23,8 @@ impl SetNameView {
 
         // Container: White background (#FFFFFF)
         let avail = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(avail, 0.0, Color32::from_rgb(255, 255, 255));
+        ui.painter()
+            .rect_filled(avail, 0.0, Color32::from_rgb(255, 255, 255));
 
         let card_width = 320.0;
         let top_pad = ((avail.height() - 250.0) * 0.5).max(32.0);
@@ -41,7 +42,7 @@ impl SetNameView {
             // 2. Title: Đặt tên của bạn (20px, font-weight 600, color #171717)
             ui.label(
                 RichText::new("Đặt tên của bạn")
-                    .font(font_regular(18.0))
+                    .font(font_semibold(20.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 
@@ -49,7 +50,11 @@ impl SetNameView {
 
             // 3. Input matching web input (#F7F8FA background, 8px radius, padding 10px 14px)
             let (inp_rect, _) = ui.allocate_exact_size(Vec2::new(card_width, 40.0), Sense::hover());
-            ui.painter().rect_filled(inp_rect, CornerRadius::same(8), Color32::from_rgb(247, 248, 250));
+            ui.painter().rect_filled(
+                inp_rect,
+                CornerRadius::same(8),
+                Color32::from_rgb(247, 248, 250),
+            );
 
             let mut inp_child = ui.new_child(
                 egui::UiBuilder::new()
@@ -57,10 +62,10 @@ impl SetNameView {
                     .layout(Layout::left_to_right(Align::Center)),
             );
             let input_edit = egui::TextEdit::singleline(&mut self.name_input)
-                .font(font_regular(13.0))
+                .font(font_regular(14.0))
                 .hint_text(
                     RichText::new("Nhập tên người dùng")
-                        .font(font_regular(13.0))
+                        .font(font_regular(14.0))
                         .color(Color32::from_rgb(115, 115, 115)),
                 )
                 .frame(false)
@@ -72,7 +77,7 @@ impl SetNameView {
                 ui.add_space(8.0);
                 ui.label(
                     RichText::new(err)
-                        .font(font_regular(12.0))
+                        .font(font_regular(13.0))
                         .color(Color32::from_rgb(220, 38, 38)), // #DC2626
                 );
             }
@@ -82,7 +87,11 @@ impl SetNameView {
             // 5. Submit Button matching web .auth-btn-primary
             let (btn_rect, btn_resp) = ui.allocate_exact_size(
                 Vec2::new(card_width, 44.0),
-                if self.is_loading { Sense::hover() } else { Sense::click() },
+                if self.is_loading {
+                    Sense::hover()
+                } else {
+                    Sense::click()
+                },
             );
 
             let btn_bg = if btn_resp.is_pointer_button_down_on() {
@@ -93,14 +102,19 @@ impl SetNameView {
                 Color32::from_rgb(37, 99, 235) // #2563EB
             };
 
-            ui.painter().rect_filled(btn_rect, CornerRadius::same(8), btn_bg);
+            ui.painter()
+                .rect_filled(btn_rect, CornerRadius::same(8), btn_bg);
 
-            let btn_text = if self.is_loading { "Đang lưu" } else { "Tiếp tục" };
+            let btn_text = if self.is_loading {
+                "Đang lưu"
+            } else {
+                "Tiếp tục"
+            };
             ui.painter().text(
-                snap_pos(btn_rect.center()),
+                snap_pos(btn_rect.center(), ui.pixels_per_point()),
                 Align2::CENTER_CENTER,
                 btn_text,
-                font_regular(13.0),
+                font_regular(14.0),
                 Color32::WHITE,
             );
 

@@ -1,8 +1,11 @@
-use egui::{
-    pos2, vec2, Align, Align2, Color32, CornerRadius, Layout, Pos2, RichText, Sense, Stroke,
-    StrokeKind, Ui, Vec2,
+use crate::titlebar::{
+    draw_smooth_polyline, draw_svg_logo_icon, font_regular, font_semibold, push_arc_points,
+    snap_pos, snap_xy,
 };
-use crate::titlebar::{draw_smooth_polyline, draw_svg_logo_icon, font_regular, push_arc_points, snap_pos, snap_xy};
+use egui::{
+    Align, Align2, Color32, CornerRadius, Layout, Pos2, RichText, Sense, Stroke, StrokeKind, Ui,
+    Vec2, pos2, vec2,
+};
 
 pub struct LoginView {
     pub username_input: String,
@@ -44,24 +47,44 @@ fn draw_svg_google_g_icon(painter: &egui::Painter, center: Pos2, radius: f32) {
     // 1. Red top arc (220° to 318°)
     let mut red_pts = Vec::with_capacity(16);
     push_arc_points(&mut red_pts, center, r, pi * 1.22, pi * 1.77, 14);
-    draw_smooth_polyline(painter, &red_pts, Stroke::new(stroke_w, Color32::from_rgb(234, 67, 53)), false);
+    draw_smooth_polyline(
+        painter,
+        &red_pts,
+        Stroke::new(stroke_w, Color32::from_rgb(234, 67, 53)),
+        false,
+    );
 
     // 2. Yellow left arc (140° to 220°)
     let mut yellow_pts = Vec::with_capacity(16);
     push_arc_points(&mut yellow_pts, center, r, pi * 0.78, pi * 1.22, 12);
-    draw_smooth_polyline(painter, &yellow_pts, Stroke::new(stroke_w, Color32::from_rgb(251, 188, 5)), false);
+    draw_smooth_polyline(
+        painter,
+        &yellow_pts,
+        Stroke::new(stroke_w, Color32::from_rgb(251, 188, 5)),
+        false,
+    );
 
     // 3. Green bottom arc (42° to 140°)
     let mut green_pts = Vec::with_capacity(16);
     push_arc_points(&mut green_pts, center, r, pi * 0.23, pi * 0.78, 14);
-    draw_smooth_polyline(painter, &green_pts, Stroke::new(stroke_w, Color32::from_rgb(52, 168, 83)), false);
+    draw_smooth_polyline(
+        painter,
+        &green_pts,
+        Stroke::new(stroke_w, Color32::from_rgb(52, 168, 83)),
+        false,
+    );
 
     // 4. Blue right arc (-8° to 42°) & horizontal crossbar
     let mut blue_pts = Vec::with_capacity(16);
     blue_pts.push(center);
     blue_pts.push(pos2(center.x + r.x, center.y));
     push_arc_points(&mut blue_pts, center, r, 0.0, pi * 0.23, 8);
-    draw_smooth_polyline(painter, &blue_pts, Stroke::new(stroke_w, Color32::from_rgb(66, 133, 244)), false);
+    draw_smooth_polyline(
+        painter,
+        &blue_pts,
+        Stroke::new(stroke_w, Color32::from_rgb(66, 133, 244)),
+        false,
+    );
 }
 
 impl LoginView {
@@ -70,7 +93,8 @@ impl LoginView {
 
         // Container: White background (#FFFFFF)
         let avail = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(avail, 0.0, Color32::from_rgb(255, 255, 255));
+        ui.painter()
+            .rect_filled(avail, 0.0, Color32::from_rgb(255, 255, 255));
 
         // Vertically & horizontally centered .auth-box (max-width: 320px)
         let card_width = 320.0;
@@ -89,7 +113,7 @@ impl LoginView {
             // 2. Title: chatw (20px, font-weight 600, color #171717)
             ui.label(
                 RichText::new("chatw")
-                    .font(font_regular(18.0))
+                    .font(font_semibold(20.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 
@@ -98,11 +122,13 @@ impl LoginView {
             // 3. Subtitle: Ứng dụng nhắn tin bảo mật E2EE (13px, color #737373)
             ui.label(
                 RichText::new("Ứng dụng nhắn tin bảo mật E2EE")
-                    .font(font_regular(12.5))
+                    .font(font_regular(13.0))
                     .color(Color32::from_rgb(115, 115, 115)),
             );
 
             ui.add_space(16.0);
+
+            let ppp = ui.pixels_per_point();
 
             // 4. Google Login Button (.auth-btn-primary)
             if self.is_google_pending {
@@ -117,14 +143,14 @@ impl LoginView {
                             ui.add_space(6.0);
                             ui.label(
                                 RichText::new("Đang xác thực với Google")
-                                    .font(font_regular(13.0))
+                                    .font(font_regular(14.0))
                                     .color(Color32::from_rgb(23, 23, 23)),
                             );
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui
                                     .button(
                                         RichText::new("Hủy")
-                                            .font(font_regular(12.0))
+                                            .font(font_regular(13.0))
                                             .color(Color32::from_rgb(220, 38, 38)),
                                     )
                                     .clicked()
@@ -139,7 +165,11 @@ impl LoginView {
             } else {
                 let (btn_rect, btn_resp) = ui.allocate_exact_size(
                     Vec2::new(card_width, 44.0),
-                    if self.is_loading { Sense::hover() } else { Sense::click() },
+                    if self.is_loading {
+                        Sense::hover()
+                    } else {
+                        Sense::click()
+                    },
                 );
 
                 let btn_bg = if btn_resp.is_pointer_button_down_on() {
@@ -150,13 +180,14 @@ impl LoginView {
                     Color32::from_rgb(37, 99, 235) // #2563EB
                 };
 
-                ui.painter().rect_filled(btn_rect, CornerRadius::same(8), btn_bg);
+                ui.painter()
+                    .rect_filled(btn_rect, CornerRadius::same(8), btn_bg);
 
                 // Center [GoogleIcon (18px) + 10px gap + "Tiếp tục với Google"] together matching flex justify-content: center
                 let label_text = "Tiếp tục với Google";
                 let galley = ui.painter().layout_no_wrap(
                     label_text.to_string(),
-                    font_regular(13.0),
+                    font_regular(14.0),
                     Color32::WHITE,
                 );
                 let icon_size = 18.0;
@@ -164,11 +195,15 @@ impl LoginView {
                 let total_content_w = icon_size + gap + galley.size().x;
                 let start_x = btn_rect.center().x - total_content_w * 0.5;
 
-                let icon_center = snap_xy(start_x + icon_size * 0.5, btn_rect.center().y);
+                let icon_center = snap_xy(start_x + icon_size * 0.5, btn_rect.center().y, ppp);
                 draw_svg_google_g_icon(ui.painter(), icon_center, 9.0);
 
                 ui.painter().galley(
-                    snap_xy(start_x + icon_size + gap, btn_rect.center().y - galley.size().y * 0.5),
+                    snap_xy(
+                        start_x + icon_size + gap,
+                        btn_rect.center().y - galley.size().y * 0.5,
+                        ppp,
+                    ),
                     galley,
                     Color32::WHITE,
                 );
@@ -184,7 +219,7 @@ impl LoginView {
             let (div_rect, _) = ui.allocate_exact_size(Vec2::new(card_width, 20.0), Sense::hover());
             let div_galley = ui.painter().layout_no_wrap(
                 "chế độ phát triển cục bộ".to_string(),
-                font_regular(11.5),
+                font_regular(12.0),
                 Color32::from_rgb(115, 115, 115),
             );
             let text_half = div_galley.size().x * 0.5 + 10.0;
@@ -192,15 +227,25 @@ impl LoginView {
             let line_stroke = Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235));
 
             ui.painter().line_segment(
-                [pos2(div_rect.left(), line_y), pos2(div_rect.center().x - text_half, line_y)],
+                [
+                    pos2(div_rect.left(), line_y),
+                    pos2(div_rect.center().x - text_half, line_y),
+                ],
                 line_stroke,
             );
             ui.painter().line_segment(
-                [pos2(div_rect.center().x + text_half, line_y), pos2(div_rect.right(), line_y)],
+                [
+                    pos2(div_rect.center().x + text_half, line_y),
+                    pos2(div_rect.right(), line_y),
+                ],
                 line_stroke,
             );
             ui.painter().galley(
-                snap_xy(div_rect.center().x - div_galley.size().x * 0.5, line_y - div_galley.size().y * 0.5),
+                snap_xy(
+                    div_rect.center().x - div_galley.size().x * 0.5,
+                    line_y - div_galley.size().y * 0.5,
+                    ppp,
+                ),
                 div_galley,
                 Color32::from_rgb(115, 115, 115),
             );
@@ -208,8 +253,10 @@ impl LoginView {
             ui.add_space(12.0);
 
             // 6. Dev input matching web .auth-input (1px solid #E5E7EB, focus #2563EB, 8px radius, #FFFFFF bg)
-            let (input_box_rect, _) = ui.allocate_exact_size(Vec2::new(card_width, 40.0), Sense::hover());
-            ui.painter().rect_filled(input_box_rect, CornerRadius::same(8), Color32::WHITE);
+            let (input_box_rect, _) =
+                ui.allocate_exact_size(Vec2::new(card_width, 40.0), Sense::hover());
+            ui.painter()
+                .rect_filled(input_box_rect, CornerRadius::same(8), Color32::WHITE);
 
             let mut input_child = ui.new_child(
                 egui::UiBuilder::new()
@@ -217,10 +264,10 @@ impl LoginView {
                     .layout(Layout::left_to_right(Align::Center)),
             );
             let input_edit = egui::TextEdit::singleline(&mut self.username_input)
-                .font(font_regular(13.0))
+                .font(font_regular(14.0))
                 .hint_text(
                     RichText::new("Tên tài khoản thử (ví dụ: alice)")
-                        .font(font_regular(13.0))
+                        .font(font_regular(14.0))
                         .color(Color32::from_rgb(115, 115, 115)),
                 )
                 .frame(false)
@@ -244,7 +291,11 @@ impl LoginView {
             // 7. Dev login button matching web .auth-btn-secondary
             let (dev_rect, dev_resp) = ui.allocate_exact_size(
                 Vec2::new(card_width, 40.0),
-                if self.is_loading { Sense::hover() } else { Sense::click() },
+                if self.is_loading {
+                    Sense::hover()
+                } else {
+                    Sense::click()
+                },
             );
 
             let dev_bg = if dev_resp.hovered() {
@@ -253,7 +304,8 @@ impl LoginView {
                 Color32::from_rgb(247, 248, 250) // #F7F8FA
             };
 
-            ui.painter().rect_filled(dev_rect, CornerRadius::same(8), dev_bg);
+            ui.painter()
+                .rect_filled(dev_rect, CornerRadius::same(8), dev_bg);
             ui.painter().rect_stroke(
                 dev_rect,
                 CornerRadius::same(8),
@@ -268,10 +320,10 @@ impl LoginView {
             };
 
             ui.painter().text(
-                snap_pos(dev_rect.center()),
+                snap_pos(dev_rect.center(), ppp),
                 Align2::CENTER_CENTER,
                 dev_text,
-                font_regular(13.0),
+                font_regular(14.0),
                 Color32::from_rgb(23, 23, 23), // #171717
             );
 
@@ -280,7 +332,9 @@ impl LoginView {
                 && !self.username_input.trim().is_empty();
 
             if should_dev_login && !self.is_loading {
-                action = Some(LoginAction::DevLogin(self.username_input.trim().to_string()));
+                action = Some(LoginAction::DevLogin(
+                    self.username_input.trim().to_string(),
+                ));
             }
 
             // 8. Error display matching web .auth-error

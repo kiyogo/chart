@@ -1,6 +1,7 @@
+use egui::emath::GuiRounding as _;
 use egui::{
-    pos2, vec2, Color32, FontFamily, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui,
-    Vec2, ViewportCommand,
+    Color32, FontFamily, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2,
+    ViewportCommand, pos2, vec2,
 };
 
 pub fn font_regular(size: f32) -> FontId {
@@ -21,17 +22,22 @@ pub fn font_mono(size: f32) -> FontId {
 }
 
 #[inline]
-pub fn snap_pos(p: Pos2) -> Pos2 {
-    pos2(p.x.round(), p.y.round())
+pub fn snap_pos(p: Pos2, ppp: f32) -> Pos2 {
+    p.round_to_pixels(ppp)
 }
 
 #[inline]
-pub fn snap_xy(x: f32, y: f32) -> Pos2 {
-    pos2(x.round(), y.round())
+pub fn snap_xy(x: f32, y: f32, ppp: f32) -> Pos2 {
+    pos2(x.round_to_pixels(ppp), y.round_to_pixels(ppp))
 }
 
 /// Draws a connected polyline with round caps and round joins (`stroke-linecap="round"`, `stroke-linejoin="round"`)
-pub fn draw_smooth_polyline(painter: &egui::Painter, points: &[Pos2], stroke: Stroke, closed: bool) {
+pub fn draw_smooth_polyline(
+    painter: &egui::Painter,
+    points: &[Pos2],
+    stroke: Stroke,
+    closed: bool,
+) {
     if points.is_empty() {
         return;
     }
@@ -98,7 +104,8 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     );
 
     // Background of titlebar: Dark #18181B matching web .custom-titlebar
-    ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(24, 24, 27));
+    ui.painter()
+        .rect_filled(rect, 0.0, Color32::from_rgb(24, 24, 27));
 
     // Bottom border #27272A
     ui.painter().line_segment(
@@ -116,11 +123,12 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     );
     draw_svg_logo_icon(ui.painter(), icon_rect, logo_color);
 
+    let ppp = ui.pixels_per_point();
     ui.painter().text(
-        snap_xy(icon_rect.right() + 8.0, rect.center().y),
+        snap_xy(icon_rect.right() + 8.0, rect.center().y, ppp),
         egui::Align2::LEFT_CENTER,
         "chatw – Secure Messaging",
-        font_regular(11.5),
+        font_regular(12.0),
         title_color,
     );
 
@@ -133,16 +141,19 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     );
 
     // Draggable area: entire titlebar except right controls
-    let drag_rect = Rect::from_min_max(
-        rect.min,
-        pos2(rect.right() - controls_width, rect.bottom()),
+    let drag_rect =
+        Rect::from_min_max(rect.min, pos2(rect.right() - controls_width, rect.bottom()));
+    let drag_resp = ui.interact(
+        drag_rect,
+        ui.id().with("titlebar_drag"),
+        Sense::click_and_drag(),
     );
-    let drag_resp = ui.interact(drag_rect, ui.id().with("titlebar_drag"), Sense::click_and_drag());
     if drag_resp.drag_started() {
         ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
     }
     if drag_resp.double_clicked() {
-        ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
+        ui.ctx()
+            .send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
     }
 
     // Render Window control buttons at exact rects (no item_spacing shift)
@@ -161,7 +172,8 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
         WindowButtonKind::Maximize
     };
     if window_control_button(ui, max_rect, "titlebar_max", max_kind).clicked() {
-        ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
+        ui.ctx()
+            .send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
     }
 
     let close_rect = Rect::from_min_size(

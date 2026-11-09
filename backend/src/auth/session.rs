@@ -44,7 +44,11 @@ pub fn generate_session_token() -> [u8; 32] {
 }
 
 /// Create a new session in PostgreSQL and return both the raw hex token and the Set-Cookie header value.
-pub async fn create_session_raw(pool: &PgPool, config: &Config, user_id: Uuid) -> AppResult<(String, String)> {
+pub async fn create_session_raw(
+    pool: &PgPool,
+    config: &Config,
+    user_id: Uuid,
+) -> AppResult<(String, String)> {
     let token = generate_session_token();
     let token_hash = hash_session_token(&config.session_secret, &token);
     let expires_at = Utc::now() + chrono::Duration::from_std(config.session_ttl).unwrap();

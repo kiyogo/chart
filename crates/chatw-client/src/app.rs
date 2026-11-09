@@ -1,17 +1,17 @@
-use std::sync::{Arc, mpsc};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use egui::{Color32, RichText};
+use std::sync::{Arc, mpsc};
 use uuid::Uuid;
 
-use chatw_core::{
-    ClientKeys, FriendItem, MeResponse, MessageWireItem, PendingRequestItem,
-    PublicKeysResponse, UserSearchResult, WsClientCommand, WsServerEvent,
-    compute_fingerprint, decrypt_message, encrypt_message,
-};
 use crate::net::{HttpClient, WsManager};
 use crate::storage;
 use crate::titlebar;
 use crate::views::{ChatAction, ChatView, DecryptedMessage, LoginAction, LoginView, SetNameView};
+use chatw_core::{
+    ClientKeys, FriendItem, MeResponse, MessageWireItem, PendingRequestItem, PublicKeysResponse,
+    UserSearchResult, WsClientCommand, WsServerEvent, compute_fingerprint, decrypt_message,
+    encrypt_message,
+};
 
 #[allow(dead_code)]
 pub enum GuiEvent {
@@ -78,14 +78,20 @@ fn drain_decrypt_queue(
                             sender_id,
                             is_me: false,
                             text,
-                            time_str: wire.created_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+                            time_str: wire
+                                .created_at
+                                .with_timezone(&chrono::Local)
+                                .format("%H:%M")
+                                .to_string(),
                         });
                         if chat.selected_friend_id != Some(sender_id) || chat.is_settings_open {
                             *chat.unread_counts.entry(sender_id).or_insert(0) += 1;
                         }
                     }
                     if let Some(ws_mgr) = ws {
-                        let _ = ws_mgr.tx_commands.send(WsClientCommand::Ack { message_id: wire.id });
+                        let _ = ws_mgr.tx_commands.send(WsClientCommand::Ack {
+                            message_id: wire.id,
+                        });
                     }
                     continue;
                 }
@@ -143,6 +149,14 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
+    let segoe_bold_path = fonts_dir.join("segoeuib.ttf");
+    if let Ok(bytes) = std::fs::read(&segoe_bold_path) {
+        fonts.font_data.insert(
+            "segoe_ui_bold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+    }
+
     let consola_path = fonts_dir.join("consola.ttf");
     if let Ok(bytes) = std::fs::read(&consola_path) {
         fonts.font_data.insert(
@@ -186,10 +200,12 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 5. Bold family: Segoe UI Semibold / Bold -> BeVietnamPro-SemiBold
+    // 5. Bold family: Segoe UI Bold -> Segoe UI Semibold -> BeVietnamPro-SemiBold
     let bold_family = egui::FontFamily::Name("bold".into());
     let mut bold = Vec::new();
-    if fonts.font_data.contains_key("segoe_ui_semibold") {
+    if fonts.font_data.contains_key("segoe_ui_bold") {
+        bold.push("segoe_ui_bold".to_owned());
+    } else if fonts.font_data.contains_key("segoe_ui_semibold") {
         bold.push("segoe_ui_semibold".to_owned());
     }
     bold.push("be_vietnam_semibold".to_owned());
@@ -220,10 +236,24 @@ mod tests {
     #[test]
     fn test_bevietnam_pro_vietnamese_glyphs() {
         let mut fonts = egui::FontDefinitions::empty();
-        fonts.font_data.insert("light".into(), std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_LIGHT)));
-        fonts.font_data.insert("regular".into(), std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_REGULAR)));
-        fonts.families.entry(egui::FontFamily::Proportional).or_default().push("light".into());
-        fonts.families.entry(egui::FontFamily::Proportional).or_default().push("regular".into());
+        fonts.font_data.insert(
+            "light".into(),
+            std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_LIGHT)),
+        );
+        fonts.font_data.insert(
+            "regular".into(),
+            std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_REGULAR)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("light".into());
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("regular".into());
         let ctx = egui::Context::default();
         ctx.set_fonts(fonts);
         let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE";
@@ -231,7 +261,11 @@ mod tests {
             ctx.fonts(|f| {
                 for c in sample.chars() {
                     let has = f.has_glyph(&egui::FontId::proportional(14.0), c);
-                    assert!(has, "Character '{}' (U+{:04X}) missing in BeVietnamPro", c, c as u32);
+                    assert!(
+                        has,
+                        "Character '{}' (U+{:04X}) missing in BeVietnamPro",
+                        c, c as u32
+                    );
                 }
             });
         });
@@ -240,10 +274,24 @@ mod tests {
     #[test]
     fn test_bevietnam_pro_weights_glyphs() {
         let mut fonts = egui::FontDefinitions::empty();
-        fonts.font_data.insert("medium".into(), std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_MEDIUM)));
-        fonts.font_data.insert("semibold".into(), std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_SEMIBOLD)));
-        fonts.families.entry(egui::FontFamily::Proportional).or_default().push("medium".into());
-        fonts.families.entry(egui::FontFamily::Name("semibold".into())).or_default().push("semibold".into());
+        fonts.font_data.insert(
+            "medium".into(),
+            std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_MEDIUM)),
+        );
+        fonts.font_data.insert(
+            "semibold".into(),
+            std::sync::Arc::new(egui::FontData::from_static(BE_VIETNAM_SEMIBOLD)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("medium".into());
+        fonts
+            .families
+            .entry(egui::FontFamily::Name("semibold".into()))
+            .or_default()
+            .push("semibold".into());
         let ctx = egui::Context::default();
         ctx.set_fonts(fonts);
         let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ";
@@ -251,9 +299,17 @@ mod tests {
             ctx.fonts(|f| {
                 for c in sample.chars() {
                     let has_med = f.has_glyph(&egui::FontId::proportional(14.0), c);
-                    assert!(has_med, "Character '{}' (U+{:04X}) missing in BeVietnamPro-Medium", c, c as u32);
+                    assert!(
+                        has_med,
+                        "Character '{}' (U+{:04X}) missing in BeVietnamPro-Medium",
+                        c, c as u32
+                    );
                     let has_semi = f.has_glyph(&titlebar::font_semibold(14.0), c);
-                    assert!(has_semi, "Character '{}' (U+{:04X}) missing in BeVietnamPro-SemiBold", c, c as u32);
+                    assert!(
+                        has_semi,
+                        "Character '{}' (U+{:04X}) missing in BeVietnamPro-SemiBold",
+                        c, c as u32
+                    );
                 }
             });
         });
@@ -267,23 +323,149 @@ mod tests {
         let _ = ctx.run(Default::default(), |ctx| {
             ctx.fonts(|f| {
                 for c in sample.chars() {
-                    assert!(f.has_glyph(&egui::FontId::proportional(14.0), c), "Missing prop glyph for '{}'", c);
-                    assert!(f.has_glyph(&titlebar::font_semibold(14.0), c), "Missing semibold glyph for '{}'", c);
-                    assert!(f.has_glyph(&titlebar::font_bold(14.0), c), "Missing bold glyph for '{}'", c);
+                    assert!(
+                        f.has_glyph(&egui::FontId::proportional(14.0), c),
+                        "Missing prop glyph for '{}'",
+                        c
+                    );
+                    assert!(
+                        f.has_glyph(&titlebar::font_semibold(14.0), c),
+                        "Missing semibold glyph for '{}'",
+                        c
+                    );
+                    assert!(
+                        f.has_glyph(&titlebar::font_bold(14.0), c),
+                        "Missing bold glyph for '{}'",
+                        c
+                    );
                 }
             });
         });
     }
 
     #[test]
-    fn test_vietnamese_font_loading() {
+    fn test_segoe_ui_specifically() {
+        let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
+        let segoe_path = std::path::Path::new(&windir)
+            .join("Fonts")
+            .join("segoeui.ttf");
+        let bytes = std::fs::read(&segoe_path).expect("segoeui.ttf must exist on Windows");
+        let mut fonts = egui::FontDefinitions::empty();
+        fonts.font_data.insert(
+            "segoe_only".into(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("segoe_only".into());
         let ctx = egui::Context::default();
-        setup_vietnamese_fonts(&ctx);
+        ctx.set_fonts(fonts);
+        let sample = "AÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬEÉÈẺẼẸÊẾỀỂỄỆIÍÌỈĨỊOÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢUÚÙỦŨỤƯỨỪỬỮỰYÝỲỶỸỴĐ aáàảãạăắằẳẵặâấầẩẫậeéèẻẽẹêếềểễệiíìỉĩịoóòỏõọôốồổỗộơớờởỡợuúùủũụưứừửữựyýỳỷỹỵđ Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE Tiếp tục với Google Đăng nhập chế độ phát triển";
         let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.label("Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE Tiếp tục với Google Đăng nhập");
+            ctx.fonts(|f| {
+                let mut missing = Vec::new();
+                for c in sample.chars() {
+                    if !f.has_glyph(&egui::FontId::proportional(14.0), c) {
+                        missing.push(c);
+                    }
+                }
+                println!(
+                    "Segoe UI missing count: {}, missing: {:?}",
+                    missing.len(),
+                    missing
+                );
+                assert!(missing.is_empty(), "Segoe UI missing glyphs: {:?}", missing);
             });
         });
+    }
+
+    #[test]
+    fn test_section_8_typography_and_multi_dpi() {
+        let test_strings = [
+            "Tiếng Việt có dấu: ă â ê ô ơ ư đ",
+            "Chỉnh sửa cài đặt và quản lý dữ liệu",
+            "Ứng dụng hoạt động ổn định",
+            "Settings and Preferences",
+            "Application Dashboard",
+            "Modern Typography 1234567890",
+        ];
+
+        let font_sizes = [11.0, 12.0, 13.5, 14.0, 16.0, 18.0, 20.0, 24.0];
+        let dpi_scales = [1.0, 1.25, 1.5, 2.0];
+
+        for &dpi in &dpi_scales {
+            let ctx = egui::Context::default();
+            setup_vietnamese_fonts(&ctx);
+            ctx.set_zoom_factor(dpi);
+
+            // Test snap_pos across DPIs
+            for raw_val in [10.1, 15.33, 22.75, 48.49] {
+                let snapped = titlebar::snap_xy(raw_val, raw_val, dpi);
+                // The physical pixel must be an integer: (coord * ppp).round()
+                let phys_x = snapped.x * dpi;
+                let phys_y = snapped.y * dpi;
+                assert!(
+                    (phys_x - phys_x.round()).abs() < 1e-4,
+                    "phys_x {} not on integer pixel at dpi {}",
+                    phys_x,
+                    dpi
+                );
+                assert!(
+                    (phys_y - phys_y.round()).abs() < 1e-4,
+                    "phys_y {} not on integer pixel at dpi {}",
+                    phys_y,
+                    dpi
+                );
+            }
+
+            // Test glyph availability across all sizes and weights and widget rendering
+            let _ = ctx.run(Default::default(), |ctx| {
+                let ppp = ctx.pixels_per_point();
+                assert_eq!(ppp, dpi);
+
+                ctx.fonts(|f| {
+                    for &text in &test_strings {
+                        for &size in &font_sizes {
+                            for c in text.chars() {
+                                assert!(
+                                    f.has_glyph(&egui::FontId::proportional(size), c),
+                                    "Missing proportional glyph '{}' at size {} at dpi {}",
+                                    c,
+                                    size,
+                                    dpi
+                                );
+                                assert!(
+                                    f.has_glyph(&titlebar::font_semibold(size), c),
+                                    "Missing semibold glyph '{}' at size {} at dpi {}",
+                                    c,
+                                    size,
+                                    dpi
+                                );
+                                assert!(
+                                    f.has_glyph(&titlebar::font_bold(size), c),
+                                    "Missing bold glyph '{}' at size {} at dpi {}",
+                                    c,
+                                    size,
+                                    dpi
+                                );
+                            }
+                        }
+                    }
+                });
+
+                // Render widgets with these strings: Label, Button, TextEdit
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    for &text in &test_strings {
+                        ui.label(text);
+                        let _ = ui.button(text);
+                        let mut edit_buf = text.to_string();
+                        ui.text_edit_singleline(&mut edit_buf);
+                    }
+                });
+            });
+        }
     }
 
     #[test]
@@ -349,14 +531,21 @@ mod tests {
         use reqwest::cookie::CookieStore;
         let http = HttpClient::new("http://127.0.0.1:8082".to_string());
         http.set_session_token("test_token_abc_123");
-        let ws_url = "http://127.0.0.1:8082/api/ws".parse::<reqwest::Url>().unwrap();
+        let ws_url = "http://127.0.0.1:8082/api/ws"
+            .parse::<reqwest::Url>()
+            .unwrap();
         let cookie = http.cookie_jar.cookies(&ws_url);
         println!("Cookie header: {:?}", cookie);
     }
 
     #[test]
     fn test_full_login_transition_flow() {
-        let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap());
+        let runtime = Arc::new(
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        );
         let http = HttpClient::new("http://127.0.0.1:8082".to_string());
 
         let me = runtime.block_on(async {
@@ -364,7 +553,7 @@ mod tests {
             assert!(res.is_ok());
             http.get_me().await.expect("get_me failed")
         });
-        
+
         // Now simulate the full app transition
         let ctx = egui::Context::default();
         setup_vietnamese_fonts(&ctx);
@@ -426,9 +615,16 @@ mod tests {
         let res = http.dev_login(Some("WsTester")).await;
         assert!(res.is_ok());
         let ctx = egui::Context::default();
-        let ws = WsManager::start(tokio::runtime::Handle::current(), http.base_url.clone(), http.cookie_jar.clone(), ctx);
+        let ws = WsManager::start(
+            tokio::runtime::Handle::current(),
+            http.base_url.clone(),
+            http.cookie_jar.clone(),
+            ctx,
+        );
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let _ = ws.tx_commands.send(WsClientCommand::TypingStart { recipient_id: Uuid::new_v4() });
+        let _ = ws.tx_commands.send(WsClientCommand::TypingStart {
+            recipient_id: Uuid::new_v4(),
+        });
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 
@@ -468,12 +664,13 @@ impl ChatApp {
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
-            (egui::TextStyle::Heading, titlebar::font_regular(15.0)),
-            (egui::TextStyle::Body, titlebar::font_regular(13.0)),
-            (egui::TextStyle::Button, titlebar::font_regular(12.0)),
-            (egui::TextStyle::Small, titlebar::font_regular(11.0)),
-            (egui::TextStyle::Monospace, titlebar::font_mono(11.5)),
-        ].into();
+            (egui::TextStyle::Heading, titlebar::font_semibold(16.0)),
+            (egui::TextStyle::Body, titlebar::font_regular(14.0)),
+            (egui::TextStyle::Button, titlebar::font_regular(13.5)),
+            (egui::TextStyle::Small, titlebar::font_regular(12.0)),
+            (egui::TextStyle::Monospace, titlebar::font_mono(12.0)),
+        ]
+        .into();
         cc.egui_ctx.set_style(style);
 
         let runtime = Arc::new(
@@ -642,7 +839,10 @@ impl ChatApp {
 
         self.runtime.spawn(async move {
             let res = http.get_user_keys(user_id).await;
-            let _ = tx.send(GuiEvent::FriendKeysLoaded { user_id, result: res });
+            let _ = tx.send(GuiEvent::FriendKeysLoaded {
+                user_id,
+                result: res,
+            });
             ctx.request_repaint();
         });
     }
@@ -654,7 +854,10 @@ impl ChatApp {
 
         self.runtime.spawn(async move {
             let res = http.get_message_history(friend_id, 50).await;
-            let _ = tx.send(GuiEvent::HistoryLoaded { friend_id, result: res });
+            let _ = tx.send(GuiEvent::HistoryLoaded {
+                friend_id,
+                result: res,
+            });
             ctx.request_repaint();
         });
     }
@@ -693,7 +896,12 @@ impl ChatApp {
         self.ws = Some(ws);
     }
 
-    fn handle_logged_in_user(&mut self, me: MeResponse, token_opt: Option<String>, ctx: &egui::Context) {
+    fn handle_logged_in_user(
+        &mut self,
+        me: MeResponse,
+        token_opt: Option<String>,
+        ctx: &egui::Context,
+    ) {
         let http = self.http.clone();
         let keys = self.keys.clone();
         let user_id = me.id;
@@ -716,7 +924,11 @@ impl ChatApp {
             // Insert my own keys in cache
             chat_view.cached_keys.insert(
                 user_id,
-                (self.keys.ecdh_pub_bytes, self.keys.fingerprint, self.keys.ecdsa_pub_bytes),
+                (
+                    self.keys.ecdh_pub_bytes,
+                    self.keys.fingerprint,
+                    self.keys.ecdsa_pub_bytes,
+                ),
             );
             chat_view.server_url_input = self.http.base_url.clone();
             self.state = AppState::Chat(chat_view);
@@ -738,45 +950,39 @@ impl ChatApp {
         // 1. Drain background GUI events
         while let Ok(event) = self.rx_gui.try_recv() {
             match event {
-                GuiEvent::AuthResult(res) => {
-                    match res {
-                        Ok(me) => {
-                            self.handle_logged_in_user(me, None, ctx);
-                        }
-                        Err(_) => {
-                            let mut login_view = LoginView::default();
-                            login_view.server_url_input = self.http.base_url.clone();
-                            self.state = AppState::Login(login_view);
+                GuiEvent::AuthResult(res) => match res {
+                    Ok(me) => {
+                        self.handle_logged_in_user(me, None, ctx);
+                    }
+                    Err(_) => {
+                        let mut login_view = LoginView::default();
+                        login_view.server_url_input = self.http.base_url.clone();
+                        self.state = AppState::Login(login_view);
+                    }
+                },
+                GuiEvent::DevLoginResult { result, token } => match result {
+                    Ok(me) => {
+                        self.handle_logged_in_user(me, token, ctx);
+                    }
+                    Err(e) => {
+                        if let AppState::Login(ref mut view) = self.state {
+                            view.is_loading = false;
+                            view.is_google_pending = false;
+                            view.error_msg = Some(e);
                         }
                     }
-                }
-                GuiEvent::DevLoginResult { result, token } => {
-                    match result {
-                        Ok(me) => {
-                            self.handle_logged_in_user(me, token, ctx);
-                        }
-                        Err(e) => {
-                            if let AppState::Login(ref mut view) = self.state {
-                                view.is_loading = false;
-                                view.is_google_pending = false;
-                                view.error_msg = Some(e);
-                            }
+                },
+                GuiEvent::SetNameResult(res) => match res {
+                    Ok(_) => {
+                        should_recheck_auth = true;
+                    }
+                    Err(e) => {
+                        if let AppState::SetName(ref mut view) = self.state {
+                            view.is_loading = false;
+                            view.error_msg = Some(e);
                         }
                     }
-                }
-                GuiEvent::SetNameResult(res) => {
-                    match res {
-                        Ok(_) => {
-                            should_recheck_auth = true;
-                        }
-                        Err(e) => {
-                            if let AppState::SetName(ref mut view) = self.state {
-                                view.is_loading = false;
-                                view.error_msg = Some(e);
-                            }
-                        }
-                    }
-                }
+                },
                 GuiEvent::FriendsList(res) => {
                     if let AppState::Chat(ref mut chat) = self.state {
                         if let Ok(friends) = res {
@@ -812,7 +1018,12 @@ impl ChatApp {
                                     ecdsa.copy_from_slice(&ecdsa_vec);
                                     let fp = compute_fingerprint(&ecdh);
                                     chat.cached_keys.insert(user_id, (ecdh, fp, ecdsa));
-                                    drain_decrypt_queue(&mut self.pending_decrypt_queue, chat, &self.keys, &self.ws);
+                                    drain_decrypt_queue(
+                                        &mut self.pending_decrypt_queue,
+                                        chat,
+                                        &self.keys,
+                                        &self.ws,
+                                    );
                                 }
                             }
                         }
@@ -832,13 +1043,19 @@ impl ChatApp {
 
                                 if let Some(ecdsa_pub) = signer_pub {
                                     if let Ok(raw_env) = URL_SAFE_NO_PAD.decode(&item.envelope) {
-                                        if let Ok(text) = decrypt_message(&self.keys, &ecdsa_pub, &raw_env) {
+                                        if let Ok(text) =
+                                            decrypt_message(&self.keys, &ecdsa_pub, &raw_env)
+                                        {
                                             decrypted_list.push(DecryptedMessage {
                                                 id: item.id,
                                                 sender_id: item.sender_id,
                                                 is_me,
                                                 text,
-                                                time_str: item.created_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+                                                time_str: item
+                                                    .created_at
+                                                    .with_timezone(&chrono::Local)
+                                                    .format("%H:%M")
+                                                    .to_string(),
                                             });
                                         }
                                     }
@@ -862,7 +1079,8 @@ impl ChatApp {
                     if let AppState::Chat(ref mut chat) = self.state {
                         match res {
                             Ok(_) => {
-                                chat.status_message = Some("Đã gửi lời mời kết bạn thành công".into());
+                                chat.status_message =
+                                    Some("Đã gửi lời mời kết bạn thành công".into());
                                 should_refresh_data = true;
                             }
                             Err(e) => {
@@ -917,14 +1135,22 @@ impl ChatApp {
                                             sender_id,
                                             is_me: false,
                                             text,
-                                            time_str: wire.created_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+                                            time_str: wire
+                                                .created_at
+                                                .with_timezone(&chrono::Local)
+                                                .format("%H:%M")
+                                                .to_string(),
                                         });
-                                        if chat.selected_friend_id != Some(sender_id) || chat.is_settings_open {
+                                        if chat.selected_friend_id != Some(sender_id)
+                                            || chat.is_settings_open
+                                        {
                                             *chat.unread_counts.entry(sender_id).or_insert(0) += 1;
                                         }
                                     }
                                     if let Some(ref ws) = self.ws {
-                                        let _ = ws.tx_commands.send(WsClientCommand::Ack { message_id: wire.id });
+                                        let _ = ws.tx_commands.send(WsClientCommand::Ack {
+                                            message_id: wire.id,
+                                        });
                                     }
                                 }
                             }
@@ -1041,7 +1267,9 @@ impl ChatApp {
                                 ChatAction::SendMessage(text) => {
                                     if let Some(friend_id) = chat_view.selected_friend_id {
                                         let my_id = chat_view.current_user_id;
-                                        if let Some((friend_ecdh, friend_fp, _)) = chat_view.cached_keys.get(&friend_id).copied() {
+                                        if let Some((friend_ecdh, friend_fp, _)) =
+                                            chat_view.cached_keys.get(&friend_id).copied()
+                                        {
                                             let msg_id = Uuid::new_v4();
                                             // 1. Recipient envelope (for friend)
                                             let recip_res = encrypt_message(
@@ -1064,18 +1292,26 @@ impl ChatApp {
                                                 &text,
                                             );
 
-                                            if let (Ok(recip_bytes), Ok(sender_bytes)) = (recip_res, sender_res) {
+                                            if let (Ok(recip_bytes), Ok(sender_bytes)) =
+                                                (recip_res, sender_res)
+                                            {
                                                 let recip_b64 = URL_SAFE_NO_PAD.encode(recip_bytes);
-                                                let sender_b64 = URL_SAFE_NO_PAD.encode(sender_bytes);
+                                                let sender_b64 =
+                                                    URL_SAFE_NO_PAD.encode(sender_bytes);
 
                                                 // Optimistic add to UI
-                                                let msgs = chat_view.messages.entry(friend_id).or_default();
+                                                let msgs = chat_view
+                                                    .messages
+                                                    .entry(friend_id)
+                                                    .or_default();
                                                 msgs.push(DecryptedMessage {
                                                     id: msg_id,
                                                     sender_id: my_id,
                                                     is_me: true,
                                                     text: text.clone(),
-                                                    time_str: chrono::Local::now().format("%H:%M").to_string(),
+                                                    time_str: chrono::Local::now()
+                                                        .format("%H:%M")
+                                                        .to_string(),
                                                 });
 
                                                 // Dispatch HTTP send task
@@ -1083,13 +1319,23 @@ impl ChatApp {
                                                 let tx = self.tx_gui.clone();
                                                 let ctx = ctx.clone();
                                                 self.runtime.spawn(async move {
-                                                    let res = http.send_message(msg_id, friend_id, &recip_b64, &sender_b64).await;
-                                                    let _ = tx.send(GuiEvent::MessageSendResult { result: res });
+                                                    let res = http
+                                                        .send_message(
+                                                            msg_id,
+                                                            friend_id,
+                                                            &recip_b64,
+                                                            &sender_b64,
+                                                        )
+                                                        .await;
+                                                    let _ = tx.send(GuiEvent::MessageSendResult {
+                                                        result: res,
+                                                    });
                                                     ctx.request_repaint();
                                                 });
                                             }
                                         } else {
-                                            chat_view.status_message = Some("Đang tải khóa mã hóa của bạn bè".into());
+                                            chat_view.status_message =
+                                                Some("Đang tải khóa mã hóa của bạn bè".into());
                                             self.load_friend_keys(friend_id, ctx);
                                         }
                                     }
@@ -1104,14 +1350,20 @@ impl ChatApp {
                                 ChatAction::TypingStarted => {
                                     if let Some(friend_id) = chat_view.selected_friend_id {
                                         if let Some(ws) = &self.ws {
-                                            let _ = ws.tx_commands.send(WsClientCommand::TypingStart { recipient_id: friend_id });
+                                            let _ =
+                                                ws.tx_commands.send(WsClientCommand::TypingStart {
+                                                    recipient_id: friend_id,
+                                                });
                                         }
                                     }
                                 }
                                 ChatAction::TypingStopped => {
                                     if let Some(friend_id) = chat_view.selected_friend_id {
                                         if let Some(ws) = &self.ws {
-                                            let _ = ws.tx_commands.send(WsClientCommand::TypingStop { recipient_id: friend_id });
+                                            let _ =
+                                                ws.tx_commands.send(WsClientCommand::TypingStop {
+                                                    recipient_id: friend_id,
+                                                });
                                         }
                                     }
                                 }

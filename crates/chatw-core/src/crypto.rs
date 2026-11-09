@@ -6,8 +6,8 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use hkdf::Hkdf;
 use p256::{
     PublicKey, SecretKey,
-    elliptic_curve::sec1::ToEncodedPoint,
     ecdsa::{Signature, SigningKey, VerifyingKey, signature::Signer, signature::Verifier},
+    elliptic_curve::sec1::ToEncodedPoint,
 };
 use rand_core::OsRng;
 use sha2::{Digest, Sha256};
@@ -185,10 +185,10 @@ impl ClientKeys {
 
     /// Import keys from hex strings.
     pub fn import_raw(ecdh_hex: &str, ecdsa_hex: &str) -> Result<Self> {
-        let ecdh_bytes = hex::decode(ecdh_hex)
-            .map_err(|_| CoreError::BadRequest("invalid_ecdh_hex"))?;
-        let ecdsa_bytes = hex::decode(ecdsa_hex)
-            .map_err(|_| CoreError::BadRequest("invalid_ecdsa_hex"))?;
+        let ecdh_bytes =
+            hex::decode(ecdh_hex).map_err(|_| CoreError::BadRequest("invalid_ecdh_hex"))?;
+        let ecdsa_bytes =
+            hex::decode(ecdsa_hex).map_err(|_| CoreError::BadRequest("invalid_ecdsa_hex"))?;
 
         let ecdh_secret = SecretKey::from_slice(&ecdh_bytes)
             .map_err(|_| CoreError::BadRequest("invalid_ecdh_secret"))?;
@@ -325,8 +325,7 @@ pub fn decrypt_message(
         )
         .map_err(|_| CoreError::DecryptionFailed)?;
 
-    String::from_utf8(plaintext_bytes)
-        .map_err(|_| CoreError::BadRequest("invalid_utf8_plaintext"))
+    String::from_utf8(plaintext_bytes).map_err(|_| CoreError::BadRequest("invalid_utf8_plaintext"))
 }
 
 #[cfg(test)]
@@ -381,7 +380,10 @@ mod tests {
         envelope[tamper_idx] ^= 0xFF;
 
         let res = decrypt_message(&bob, &alice.ecdsa_pub_bytes, &envelope);
-        assert!(res.is_err(), "Tampered message must be rejected by signature or MAC");
+        assert!(
+            res.is_err(),
+            "Tampered message must be rejected by signature or MAC"
+        );
     }
 
     #[test]
@@ -389,7 +391,8 @@ mod tests {
         let original = ClientKeys::generate();
         let (ecdh_hex, ecdsa_hex) = original.export_raw();
 
-        let restored = ClientKeys::import_raw(&ecdh_hex, &ecdsa_hex).expect("import should succeed");
+        let restored =
+            ClientKeys::import_raw(&ecdh_hex, &ecdsa_hex).expect("import should succeed");
         assert_eq!(original.ecdh_pub_bytes, restored.ecdh_pub_bytes);
         assert_eq!(original.ecdsa_pub_bytes, restored.ecdsa_pub_bytes);
         assert_eq!(original.fingerprint, restored.fingerprint);

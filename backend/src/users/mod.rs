@@ -221,22 +221,18 @@ async fn handle_upload_avatar(
     }
 
     let avatar_dir = state.config.uploads_dir.join("avatars");
-    tokio::fs::create_dir_all(&avatar_dir)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to create avatar directory");
-            AppError::Internal
-        })?;
+    tokio::fs::create_dir_all(&avatar_dir).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to create avatar directory");
+        AppError::Internal
+    })?;
 
     let filename = format!("{}.avif", user.id);
     let filepath = avatar_dir.join(&filename);
 
-    tokio::fs::write(&filepath, &body)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to write avatar file");
-            AppError::Internal
-        })?;
+    tokio::fs::write(&filepath, &body).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to write avatar file");
+        AppError::Internal
+    })?;
 
     let now_ts = chrono::Utc::now().timestamp_millis();
     let avatar_url = format!("/uploads/avatars/{}?t={}", filename, now_ts);
