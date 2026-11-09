@@ -8,7 +8,7 @@ use uuid::Uuid;
 use chatw_core::{FriendItem, PendingRequestItem, UserSearchResult};
 use crate::titlebar::{
     draw_smooth_polyline, draw_svg_logo_icon, font_mono, font_regular, font_semibold,
-    push_arc_points,
+    push_arc_points, snap_pos, snap_xy,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -368,7 +368,7 @@ impl ChatView {
             font_regular(15.0),
             Color32::from_rgb(23, 23, 23),
         );
-        let name_pos = pos2(
+        let name_pos = snap_xy(
             avatar_rect.right() + 8.0,
             header_rect.center().y - name_galley.size().y * 0.5,
         );
@@ -409,7 +409,7 @@ impl ChatView {
             ui.painter().circle_filled(badge_center, 6.5, Color32::from_rgb(37, 99, 235));
             let badge_text = if total_unread > 99 { "99+".to_string() } else { format!("{}", total_unread) };
             ui.painter().text(
-                badge_center,
+                snap_pos(badge_center),
                 Align2::CENTER_CENTER,
                 &badge_text,
                 font_semibold(9.5),
@@ -448,7 +448,7 @@ impl ChatView {
             ui.painter().circle_filled(badge_center, 6.5, Color32::from_rgb(37, 99, 235));
             let badge_text = if self.pending_requests.len() > 99 { "99+".to_string() } else { format!("{}", self.pending_requests.len()) };
             ui.painter().text(
-                badge_center,
+                snap_pos(badge_center),
                 Align2::CENTER_CENTER,
                 &badge_text,
                 font_semibold(9.5),
@@ -514,7 +514,7 @@ impl ChatView {
         if self.friends.is_empty() {
             let avail = ui.available_rect_before_wrap();
             ui.painter().text(
-                avail.center(),
+                snap_pos(avail.center()),
                 Align2::CENTER_CENTER,
                 "Chưa có bạn bè nào",
                 font_regular(14.0),
@@ -552,7 +552,7 @@ impl ChatView {
 
                     let text_left = av_rect.right() + 12.0;
                     ui.painter().text(
-                        pos2(text_left, item_rect.center().y - 9.0),
+                        snap_xy(text_left, item_rect.center().y - 9.0),
                         Align2::LEFT_CENTER,
                         &friend.username,
                         font_regular(14.0),
@@ -570,7 +570,7 @@ impl ChatView {
                         );
                         ui.painter().rect_filled(badge_rect, CornerRadius::same(9), Color32::from_rgb(37, 99, 235));
                         ui.painter().galley(
-                            pos2(badge_rect.center().x - galley.size().x * 0.5, badge_rect.center().y - galley.size().y * 0.5),
+                            snap_xy(badge_rect.center().x - galley.size().x * 0.5, badge_rect.center().y - galley.size().y * 0.5),
                             galley,
                             Color32::WHITE,
                         );
@@ -588,7 +588,7 @@ impl ChatView {
                         Color32::from_rgb(115, 115, 115)
                     };
                     ui.painter().text(
-                        pos2(text_left, item_rect.center().y + 10.0),
+                        snap_xy(text_left, item_rect.center().y + 10.0),
                         Align2::LEFT_CENTER,
                         &preview_text,
                         font_regular(12.0),
@@ -672,7 +672,7 @@ impl ChatView {
         };
         ui.painter().rect_filled(btn_rect, CornerRadius::same(6), btn_bg);
         ui.painter().text(
-            btn_rect.center(),
+            snap_pos(btn_rect.center()),
             Align2::CENTER_CENTER,
             "Kết bạn",
             font_regular(12.0),
@@ -701,14 +701,14 @@ impl ChatView {
             let (st_outer, _) = ui.allocate_exact_size(Vec2::new(total_w, 34.0), Sense::hover());
             let st_rect = Rect::from_min_size(pos2(st_outer.left() + 16.0, st_outer.top()), vec2(total_w - 32.0, 28.0));
             ui.painter().rect_filled(st_rect, CornerRadius::same(6), bg);
-            ui.painter().text(st_rect.center(), Align2::CENTER_CENTER, status, font_regular(12.0), fg);
+            ui.painter().text(snap_pos(st_rect.center()), Align2::CENTER_CENTER, status, font_regular(12.0), fg);
         }
 
         // Scrollable list of pending requests (or empty state "Không có lời mời nào")
         if self.pending_requests.is_empty() {
             let avail = ui.available_rect_before_wrap();
             ui.painter().text(
-                avail.center(),
+                snap_pos(avail.center()),
                 Align2::CENTER_CENTER,
                 "Không có lời mời nào",
                 font_regular(14.0),
@@ -733,7 +733,7 @@ impl ChatView {
                     paint_avatar_in_rect(ui.painter(), av_rect, &req.sender_username);
 
                     ui.painter().text(
-                        pos2(av_rect.right() + 10.0, card_rect.center().y),
+                        snap_xy(av_rect.right() + 10.0, card_rect.center().y),
                         Align2::LEFT_CENTER,
                         &req.sender_username,
                         font_regular(14.0),
@@ -753,7 +753,7 @@ impl ChatView {
                     };
                     ui.painter().rect_filled(acc_rect, CornerRadius::same(6), acc_bg);
                     ui.painter().text(
-                        acc_rect.center(),
+                        snap_pos(acc_rect.center()),
                         Align2::CENTER_CENTER,
                         "Chấp nhận",
                         font_regular(12.0),
@@ -780,7 +780,7 @@ impl ChatView {
 
         let Some(friend) = active_friend else {
             ui.painter().text(
-                total_rect.center(),
+                snap_pos(total_rect.center()),
                 Align2::CENTER_CENTER,
                 "Chọn một cuộc trò chuyện để bắt đầu",
                 font_regular(14.0),
@@ -806,7 +806,7 @@ impl ChatView {
         paint_avatar_in_rect(ui.painter(), av_rect, &friend.username);
 
         ui.painter().text(
-            pos2(av_rect.right() + 12.0, header_rect.center().y),
+            snap_xy(av_rect.right() + 12.0, header_rect.center().y),
             Align2::LEFT_CENTER,
             &friend.username,
             font_regular(15.0),
@@ -941,7 +941,7 @@ impl ChatView {
 
         if msg_list.is_empty() {
             ui.painter().text(
-                msgs_rect.center(),
+                snap_pos(msgs_rect.center()),
                 Align2::CENTER_CENTER,
                 "Chưa có tin nhắn",
                 font_regular(14.0),
@@ -1055,7 +1055,7 @@ impl ChatView {
         }
 
         ui.painter().text(
-            pos2(back_rect.right() + 12.0, header_rect.center().y),
+            snap_xy(back_rect.right() + 12.0, header_rect.center().y),
             Align2::LEFT_CENTER,
             "Cài đặt",
             font_semibold(15.0),
@@ -1095,14 +1095,14 @@ impl ChatView {
 
                         let info_x = av_rect.right() + 16.0;
                         ui.painter().text(
-                            pos2(info_x, card_rect.center().y - 10.0),
+                            snap_xy(info_x, card_rect.center().y - 10.0),
                             Align2::LEFT_CENTER,
                             &self.current_username,
                             font_regular(16.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
-                            pos2(info_x, card_rect.center().y + 11.0),
+                            snap_xy(info_x, card_rect.center().y + 11.0),
                             Align2::LEFT_CENTER,
                             "Tài khoản cá nhân",
                             font_regular(13.0),
@@ -1123,7 +1123,7 @@ impl ChatView {
                         };
                         ui.painter().rect_filled(upload_btn_rect, CornerRadius::same(6), upload_bg);
                         ui.painter().text(
-                            upload_btn_rect.center(),
+                            snap_pos(upload_btn_rect.center()),
                             Align2::CENTER_CENTER,
                             "Đổi ảnh đại diện",
                             font_regular(13.0),
@@ -1183,7 +1183,7 @@ impl ChatView {
                         };
                         ui.painter().rect_filled(logout_btn_rect, CornerRadius::same(8), logout_bg);
                         ui.painter().text(
-                            logout_btn_rect.center(),
+                            snap_pos(logout_btn_rect.center()),
                             Align2::CENTER_CENTER,
                             "Đăng xuất",
                             font_regular(14.0),
@@ -1216,7 +1216,7 @@ impl ChatView {
         );
 
         ui.painter().text(
-            pos2(header_rect.left() + 20.0, header_rect.center().y),
+            snap_xy(header_rect.left() + 20.0, header_rect.center().y),
             Align2::LEFT_CENTER,
             "Thông tin",
             font_regular(15.0),
@@ -1271,14 +1271,14 @@ impl ChatView {
                         paint_avatar_in_rect(ui.painter(), av_rect, &friend.username);
 
                         ui.painter().text(
-                            pos2(pcard_rect.center().x, av_rect.bottom() + 18.0),
+                            snap_xy(pcard_rect.center().x, av_rect.bottom() + 18.0),
                             Align2::CENTER_CENTER,
                             &friend.username,
                             font_regular(16.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
-                            pos2(pcard_rect.center().x, av_rect.bottom() + 40.0),
+                            snap_xy(pcard_rect.center().x, av_rect.bottom() + 40.0),
                             Align2::CENTER_CENTER,
                             "Tài khoản bạn bè",
                             font_regular(13.0),
@@ -1436,14 +1436,14 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
     }
 
     ui.painter().text(
-        pos2(row_rect.left() + 16.0, row_rect.center().y),
+        snap_xy(row_rect.left() + 16.0, row_rect.center().y),
         Align2::LEFT_CENTER,
         label,
         font_regular(14.0),
         Color32::from_rgb(115, 115, 115),
     );
     ui.painter().text(
-        pos2(row_rect.right() - 16.0, row_rect.center().y),
+        snap_xy(row_rect.right() - 16.0, row_rect.center().y),
         Align2::RIGHT_CENTER,
         value,
         font_regular(14.0),
@@ -1470,14 +1470,14 @@ fn render_settings_column_row_flat(ui: &mut Ui, width: f32, label: &str, value: 
     }
 
     ui.painter().text(
-        pos2(row_rect.left() + 16.0, row_rect.top() + 21.0),
+        snap_xy(row_rect.left() + 16.0, row_rect.top() + 21.0),
         Align2::LEFT_CENTER,
         label,
         font_regular(14.0),
         Color32::from_rgb(115, 115, 115),
     );
     ui.painter().text(
-        pos2(row_rect.left() + 16.0, row_rect.top() + 44.0),
+        snap_xy(row_rect.left() + 16.0, row_rect.top() + 44.0),
         Align2::LEFT_CENTER,
         value,
         font_mono(12.0),
@@ -1504,7 +1504,7 @@ fn render_settings_tag_row_flat(ui: &mut Ui, width: f32, label: &str, tag_text: 
     }
 
     ui.painter().text(
-        pos2(row_rect.left() + 16.0, row_rect.center().y),
+        snap_xy(row_rect.left() + 16.0, row_rect.center().y),
         Align2::LEFT_CENTER,
         label,
         font_regular(14.0),
@@ -1523,7 +1523,7 @@ fn render_settings_tag_row_flat(ui: &mut Ui, width: f32, label: &str, tag_text: 
     );
     ui.painter().rect_filled(tag_rect, CornerRadius::same(6), Color32::from_rgb(230, 244, 234)); // #E6F4EA
     ui.painter().galley(
-        pos2(tag_rect.center().x - galley.size().x * 0.5, tag_rect.center().y - galley.size().y * 0.5),
+        snap_xy(tag_rect.center().x - galley.size().x * 0.5, tag_rect.center().y - galley.size().y * 0.5),
         galley,
         Color32::from_rgb(19, 115, 51), // #137333
     );
@@ -1568,9 +1568,9 @@ pub fn paint_avatar_in_rect(painter: &egui::Painter, rect: Rect, name: &str) {
         24.0
     };
 
-    painter.circle_filled(rect.center(), size * 0.5, bg_color);
+    painter.circle_filled(snap_pos(rect.center()), size * 0.5, bg_color);
     painter.text(
-        rect.center(),
+        snap_pos(rect.center()),
         Align2::CENTER_CENTER,
         initial,
         font_semibold(font_sz),

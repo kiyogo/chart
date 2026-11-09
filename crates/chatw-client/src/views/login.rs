@@ -2,7 +2,7 @@ use egui::{
     pos2, vec2, Align, Align2, Color32, CornerRadius, Layout, Pos2, RichText, Sense, Stroke,
     StrokeKind, Ui, Vec2,
 };
-use crate::titlebar::{draw_smooth_polyline, draw_svg_logo_icon, font_regular, push_arc_points};
+use crate::titlebar::{draw_smooth_polyline, draw_svg_logo_icon, font_regular, push_arc_points, snap_pos, snap_xy};
 
 pub struct LoginView {
     pub username_input: String,
@@ -164,11 +164,11 @@ impl LoginView {
                 let total_content_w = icon_size + gap + galley.size().x;
                 let start_x = btn_rect.center().x - total_content_w * 0.5;
 
-                let icon_center = pos2(start_x + icon_size * 0.5, btn_rect.center().y);
+                let icon_center = snap_xy(start_x + icon_size * 0.5, btn_rect.center().y);
                 draw_svg_google_g_icon(ui.painter(), icon_center, 9.0);
 
                 ui.painter().galley(
-                    pos2(start_x + icon_size + gap, btn_rect.center().y - galley.size().y * 0.5),
+                    snap_xy(start_x + icon_size + gap, btn_rect.center().y - galley.size().y * 0.5),
                     galley,
                     Color32::WHITE,
                 );
@@ -200,7 +200,7 @@ impl LoginView {
                 line_stroke,
             );
             ui.painter().galley(
-                pos2(div_rect.center().x - div_galley.size().x * 0.5, line_y - div_galley.size().y * 0.5),
+                snap_xy(div_rect.center().x - div_galley.size().x * 0.5, line_y - div_galley.size().y * 0.5),
                 div_galley,
                 Color32::from_rgb(115, 115, 115),
             );
@@ -268,7 +268,7 @@ impl LoginView {
             };
 
             ui.painter().text(
-                dev_rect.center(),
+                snap_pos(dev_rect.center()),
                 Align2::CENTER_CENTER,
                 dev_text,
                 font_regular(14.0),

@@ -39,3 +39,9 @@
 - [x] Task 7.2: Chuyển tên tài khoản người dùng (`123`), danh sách bạn bè, tiêu đề chat, nút bấm và các dòng cài đặt từ `font_semibold` sang `font_regular(14.0/15.0)` thanh mảnh, tinh tế giống 100% web.
 - [x] Task 7.3: Rà soát và chuẩn hóa văn bản rỗng ("Chưa có bạn bè nào", "Chọn một cuộc trò chuyện để bắt đầu") về kích cỡ 14px regular mảnh màu `#737373` chuẩn CSS `.empty-chat`.
 - [x] Task 7.4: Biên dịch lại bản phát hành `dist-desktop/chatw.exe`, kiểm thử 8/8 unit tests thành công và tự động commit, push lên GitHub `origin main` theo Rule 1.
+
+## Nhóm 8: Tích hợp Bộ Phông Be Vietnam Pro & Khử Răng Cưa/Làm Mờ Pixel (Be Vietnam Pro Typography & Pixel Snapping)
+- [x] Task 8.1: Nhúng trực tiếp tĩnh (`include_bytes!`) bộ font Be Vietnam Pro (`BeVietnamPro-Regular.ttf`, `BeVietnamPro-Medium.ttf`, `BeVietnamPro-SemiBold.ttf`) - chuẩn typography thiết kế riêng cho màn hình kỹ thuật số tiếng Việt, nét thanh mảnh, dấu thanh tinh tế, không dày cộm.
+- [x] Task 8.2: Viết kiểm thử `test_bevietnam_pro_vietnamese_glyphs` và `test_bevietnam_pro_weights_glyphs` kiểm chứng toàn bộ 134 ký tự tiếng Việt có dấu ở các độ đậm khác nhau.
+- [x] Task 8.3: Bổ sung các hàm helper làm tròn toạ độ `snap_pos` và `snap_xy` trong `titlebar.rs`, áp dụng cho toàn bộ các điểm vẽ chữ và huy hiệu `painter().text` / `painter().galley` trong `chat.rs`, `login.rs`, `set_name.rs`, và `titlebar.rs` để loại bỏ hiện tượng nội suy làm dày/mờ chữ (bilinear filtering blur).
+- [x] Task 8.4: Kiểm thử toàn bộ 9/9 unit tests `chatw-client` và 3/3 `chatw-core`, biên dịch bản phát hành `dist-desktop/chatw.exe` và tự động commit, push lên GitHub `origin main` theo Rule 1.

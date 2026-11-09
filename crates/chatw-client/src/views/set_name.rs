@@ -1,5 +1,5 @@
-use egui::{pos2, vec2, Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Ui, Vec2};
-use crate::titlebar::{draw_svg_logo_icon, font_regular};
+use egui::{vec2, Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Ui, Vec2};
+use crate::titlebar::{draw_svg_logo_icon, font_regular, snap_pos};
 
 pub struct SetNameView {
     pub name_input: String,
@@ -97,7 +97,7 @@ impl SetNameView {
 
             let btn_text = if self.is_loading { "Đang lưu" } else { "Tiếp tục" };
             ui.painter().text(
-                pos2(btn_rect.center().x, btn_rect.center().y),
+                snap_pos(btn_rect.center()),
                 Align2::CENTER_CENTER,
                 btn_text,
                 font_regular(14.0),

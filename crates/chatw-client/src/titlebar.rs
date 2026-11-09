@@ -20,6 +20,16 @@ pub fn font_mono(size: f32) -> FontId {
     FontId::new(size, FontFamily::Monospace)
 }
 
+#[inline]
+pub fn snap_pos(p: Pos2) -> Pos2 {
+    pos2(p.x.round(), p.y.round())
+}
+
+#[inline]
+pub fn snap_xy(x: f32, y: f32) -> Pos2 {
+    pos2(x.round(), y.round())
+}
+
 /// Draws a connected polyline with round caps and round joins (`stroke-linecap="round"`, `stroke-linejoin="round"`)
 pub fn draw_smooth_polyline(painter: &egui::Painter, points: &[Pos2], stroke: Stroke, closed: bool) {
     if points.is_empty() {
@@ -107,7 +117,7 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     draw_svg_logo_icon(ui.painter(), icon_rect, logo_color);
 
     ui.painter().text(
-        pos2(icon_rect.right() + 8.0, rect.center().y),
+        snap_xy(icon_rect.right() + 8.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
         "chatw – Secure Messaging",
         font_regular(12.0),
