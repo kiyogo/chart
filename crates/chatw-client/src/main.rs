@@ -9,6 +9,17 @@ mod views;
 use app::ChatApp;
 use eframe::egui::ViewportBuilder;
 
+fn load_app_icon() -> Option<egui::IconData> {
+    let icon_bytes = include_bytes!("../assets/icon-128.png");
+    let img = image::load_from_memory(icon_bytes).ok()?.into_rgba8();
+    let (width, height) = img.dimensions();
+    Some(egui::IconData {
+        rgba: img.into_raw(),
+        width,
+        height,
+    })
+}
+
 fn log_app(msg: &str) {
     let line = format!(
         "[{}] {}\n",
@@ -45,13 +56,19 @@ fn main() -> eframe::Result<()> {
         let _ = std::fs::write("chatw_crash.log", &msg);
     }));
 
+    let mut viewport = ViewportBuilder::default()
+        .with_title("chatw – Secure Messaging")
+        .with_inner_size([1100.0, 720.0])
+        .with_min_inner_size([850.0, 560.0])
+        .with_decorations(true)
+        .with_transparent(false);
+
+    if let Some(icon) = load_app_icon() {
+        viewport = viewport.with_icon(std::sync::Arc::new(icon));
+    }
+
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default()
-            .with_title("chatw")
-            .with_inner_size([1100.0, 720.0])
-            .with_min_inner_size([850.0, 560.0])
-            .with_decorations(false) // Seamless custom Windows Titlebar
-            .with_transparent(false),
+        viewport,
         ..Default::default()
     };
 

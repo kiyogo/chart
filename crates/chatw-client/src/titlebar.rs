@@ -101,6 +101,7 @@ pub fn draw_svg_logo_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     draw_smooth_polyline(painter, &pts, stroke, true);
 }
 
+#[allow(dead_code)]
 pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     let titlebar_height = 32.0;
     let (rect, _) = ui.allocate_exact_size(

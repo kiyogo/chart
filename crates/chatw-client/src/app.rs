@@ -1142,15 +1142,7 @@ impl ChatApp {
             self.load_friend_keys(uid, ctx);
         }
 
-        // 3. Render Custom Windows Titlebar (No OS decorations)
-        egui::TopBottomPanel::top("top_titlebar")
-            .exact_height(32.0)
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                titlebar::render_titlebar(ui, self.is_maximized);
-            });
-
-        // 4. Render Active View
+        // 3. Render Active View (Native Windows Titlebar with rounded corners & drop shadow)
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(Color32::from_rgb(255, 255, 255)))
             .show(ctx, |ui| {
