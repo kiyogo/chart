@@ -101,31 +101,25 @@ pub fn draw_svg_logo_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     draw_smooth_polyline(painter, &pts, stroke, true);
 }
 
-pub fn render_titlebar(ui: &mut Ui, is_maximized: bool, is_chat_view: bool) {
+pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     let titlebar_height = 34.0;
     let (rect, _) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), titlebar_height),
         Sense::hover(),
     );
 
-    // 1. Background: Clean White (#FFFFFF) matching modern light Windows 11 app
-    ui.painter()
-        .rect_filled(rect, 0.0, Color32::from_rgb(255, 255, 255));
-
-    // 2. Sidebar column background and vertical divider matching sidebar below
-    if is_chat_view {
-        let sidebar_width = 260.0;
-        let sidebar_top_rect = Rect::from_min_size(rect.min, vec2(sidebar_width, titlebar_height));
-        ui.painter()
-            .rect_filled(sidebar_top_rect, 0.0, Color32::from_rgb(255, 255, 255));
-        ui.painter().line_segment(
-            [
-                sidebar_top_rect.right_top(),
-                sidebar_top_rect.right_bottom(),
-            ],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)), // #E5E7EB
-        );
-    }
+    // 1. Background: Clean White (#FFFFFF) with rounded top corners when not maximized
+    let corner_top = if is_maximized { 0 } else { 8 };
+    ui.painter().rect_filled(
+        rect,
+        egui::CornerRadius {
+            nw: corner_top,
+            ne: corner_top,
+            sw: 0,
+            se: 0,
+        },
+        Color32::from_rgb(255, 255, 255),
+    );
 
     // 3. Bottom border: 1px #E5E7EB
     ui.painter().line_segment(
@@ -223,7 +217,15 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool, is_chat_view: bool) {
 
     // 6. Right Window Controls (Windows 11 exact style)
     let min_rect = Rect::from_min_size(controls_rect.min, vec2(btn_width, titlebar_height));
-    if window_control_button(ui, min_rect, "titlebar_min", WindowButtonKind::Minimize).clicked() {
+    if window_control_button(
+        ui,
+        min_rect,
+        "titlebar_min",
+        WindowButtonKind::Minimize,
+        false,
+    )
+    .clicked()
+    {
         ui.ctx().send_viewport_cmd(ViewportCommand::Minimized(true));
     }
 
@@ -236,7 +238,7 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool, is_chat_view: bool) {
     } else {
         WindowButtonKind::Maximize
     };
-    if window_control_button(ui, max_rect, "titlebar_max", max_kind).clicked() {
+    if window_control_button(ui, max_rect, "titlebar_max", max_kind, false).clicked() {
         ui.ctx()
             .send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
     }
@@ -245,7 +247,16 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool, is_chat_view: bool) {
         pos2(controls_rect.min.x + btn_width * 2.0, controls_rect.min.y),
         vec2(btn_width, titlebar_height),
     );
-    if window_control_button(ui, close_rect, "titlebar_close", WindowButtonKind::Close).clicked() {
+    // Close button has top-right corner rounded when not maximized
+    if window_control_button(
+        ui,
+        close_rect,
+        "titlebar_close",
+        WindowButtonKind::Close,
+        !is_maximized,
+    )
+    .clicked()
+    {
         ui.ctx().send_viewport_cmd(ViewportCommand::Close);
     }
 }
@@ -262,6 +273,7 @@ fn window_control_button(
     rect: Rect,
     id_str: &str,
     kind: WindowButtonKind,
+    round_ne: bool,
 ) -> Response {
     let resp = ui.interact(rect, ui.id().with(id_str), Sense::click());
     let is_close = matches!(kind, WindowButtonKind::Close);
@@ -282,7 +294,18 @@ fn window_control_button(
         Color32::TRANSPARENT
     };
 
-    ui.painter().rect_filled(rect, 0.0, bg_color);
+    let corner = if round_ne {
+        egui::CornerRadius {
+            nw: 0,
+            ne: 8,
+            sw: 0,
+            se: 0,
+        }
+    } else {
+        egui::CornerRadius::ZERO
+    };
+
+    ui.painter().rect_filled(rect, corner, bg_color);
 
     let icon_color = if resp.hovered() && is_close {
         Color32::WHITE
@@ -348,7 +371,7 @@ fn window_control_button(
 }
 
 #[cfg(windows)]
-pub fn apply_windows_dwm_effects() {
+pub fn apply_windows_dwm_effects() -> bool {
     #[repr(C)]
     struct Margins {
         cx_left: i32,
@@ -380,33 +403,61 @@ pub fn apply_windows_dwm_effects() {
             lp_enum_func: Option<unsafe extern "system" fn(Hwnd, isize) -> i32>,
             l_param: isize,
         ) -> i32;
-        fn IsWindowVisible(hwnd: Hwnd) -> i32;
+        fn GetWindowLongW(hwnd: Hwnd, n_index: i32) -> i32;
+        fn SetWindowLongW(hwnd: Hwnd, n_index: i32, new_long: i32) -> i32;
+        fn SetWindowPos(
+            hwnd: Hwnd,
+            hwnd_insert_after: Hwnd,
+            x: i32,
+            y: i32,
+            cx: i32,
+            cy: i32,
+            u_flags: u32,
+        ) -> i32;
+        fn GetClassLongPtrW(hwnd: Hwnd, n_index: i32) -> usize;
+        fn SetClassLongPtrW(hwnd: Hwnd, n_index: i32, dw_new_long: usize) -> usize;
     }
+
+    static mut FOUND: bool = false;
 
     unsafe extern "system" fn enum_proc(hwnd: Hwnd, target_pid: isize) -> i32 {
         let mut pid: u32 = 0;
         unsafe {
             GetWindowThreadProcessId(hwnd, &mut pid);
-            if pid == target_pid as u32 && IsWindowVisible(hwnd) != 0 {
-                // 1. DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2 (Windows 11 Rounded Corners)
+            if pid == target_pid as u32 {
+                FOUND = true;
+
+                // 1. Add CS_DROPSHADOW (0x00020000) to class style
+                let old_class_style = GetClassLongPtrW(hwnd, -26);
+                let _ = SetClassLongPtrW(hwnd, -26, old_class_style | 0x00020000);
+
+                // 2. Add WS_THICKFRAME (0x00040000) so DWM enables rounded corners and dropshadow
+                let cur_style = GetWindowLongW(hwnd, -16);
+                let new_style = cur_style | 0x00040000;
+                SetWindowLongW(hwnd, -16, new_style);
+
+                // SWP_NOMOVE(2) | SWP_NOSIZE(1) | SWP_NOZORDER(4) | SWP_FRAMECHANGED(0x20)
+                SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, 0, 0, 0x0027);
+
+                // 3. DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2 (Windows 11 Rounded Corners)
                 let corner_pref: u32 = 2; // DWMWCP_ROUND
-                let _ = DwmSetWindowAttribute(
+                let res_corner = DwmSetWindowAttribute(
                     hwnd,
                     33,
                     &corner_pref as *const _ as *const std::ffi::c_void,
                     std::mem::size_of::<u32>() as u32,
                 );
 
-                // 2. DwmExtendFrameIntoClientArea to enable native DWM drop shadow blur on borderless window
+                // 4. DwmExtendFrameIntoClientArea to enable native DWM drop shadow blur on borderless window
                 let margins = Margins {
                     cx_left: 1,
                     cx_right: 1,
                     cy_top: 1,
                     cy_bottom: 1,
                 };
-                let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+                let res_margins = DwmExtendFrameIntoClientArea(hwnd, &margins);
 
-                // 3. DWMWA_USE_IMMERSIVE_DARK_MODE = 20 -> 0 (Light mode)
+                // 5. DWMWA_USE_IMMERSIVE_DARK_MODE = 20 -> 0 (Light mode)
                 let dark_mode: u32 = 0;
                 let _ = DwmSetWindowAttribute(
                     hwnd,
@@ -414,16 +465,25 @@ pub fn apply_windows_dwm_effects() {
                     &dark_mode as *const _ as *const std::ffi::c_void,
                     std::mem::size_of::<u32>() as u32,
                 );
+
+                crate::log_app(&format!(
+                    "apply_windows_dwm_effects: hwnd={:?}, cur_style={:#X}, res_corner={}, res_margins={}",
+                    hwnd, cur_style, res_corner, res_margins
+                ));
             }
         }
         1
     }
 
     unsafe {
+        FOUND = false;
         let pid = GetCurrentProcessId();
         let _ = EnumWindows(Some(enum_proc), pid as isize);
+        FOUND
     }
 }
 
 #[cfg(not(windows))]
-pub fn apply_windows_dwm_effects() {}
+pub fn apply_windows_dwm_effects() -> bool {
+    true
+}

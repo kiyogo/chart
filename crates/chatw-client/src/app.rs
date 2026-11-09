@@ -895,8 +895,7 @@ impl ChatApp {
     }
 
     pub fn update_ui(&mut self, ctx: &egui::Context) {
-        if !self.dwm_applied {
-            titlebar::apply_windows_dwm_effects();
+        if !self.dwm_applied && titlebar::apply_windows_dwm_effects() {
             self.dwm_applied = true;
         }
 
@@ -1155,13 +1154,22 @@ impl ChatApp {
             .exact_height(34.0)
             .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
-                let is_chat = matches!(self.state, AppState::Chat(_));
-                titlebar::render_titlebar(ui, self.is_maximized, is_chat);
+                titlebar::render_titlebar(ui, self.is_maximized);
             });
 
-        // 4. Render Active View
+        // 4. Render Active View with rounded bottom corners when not maximized
+        let corner_bottom = if self.is_maximized { 0 } else { 8 };
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(Color32::from_rgb(255, 255, 255)))
+            .frame(
+                egui::Frame::NONE
+                    .fill(Color32::from_rgb(255, 255, 255))
+                    .corner_radius(egui::CornerRadius {
+                        nw: 0,
+                        ne: 0,
+                        sw: corner_bottom,
+                        se: corner_bottom,
+                    }),
+            )
             .show(ctx, |ui| {
                 match &mut self.state {
                     AppState::CheckingAuth => {

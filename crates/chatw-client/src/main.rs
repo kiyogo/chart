@@ -20,7 +20,7 @@ fn load_app_icon() -> Option<egui::IconData> {
     })
 }
 
-fn log_app(msg: &str) {
+pub fn log_app(msg: &str) {
     let line = format!(
         "[{}] {}\n",
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
