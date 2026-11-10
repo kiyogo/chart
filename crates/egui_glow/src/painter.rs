@@ -541,8 +541,11 @@ impl Painter {
 
                 let data: Vec<u8> = {
                     profiling::scope!("font -> sRGBA");
+                    // On light theme (dark text on white background), standard egui gamma=0.55
+                    // causes severe 300% dark edge expansion ("in đậm quá nhiều, nhòe mờ").
+                    // Using optical gamma=1.20 produces crisp, slender, un-blurred letter stems.
                     image
-                        .srgba_pixels(None)
+                        .srgba_pixels(Some(1.20))
                         .flat_map(|a| a.to_array())
                         .collect()
                 };

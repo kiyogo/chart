@@ -419,7 +419,7 @@ impl ChatView {
         let max_name_w = (ch_rect.left() - avatar_rect.right() - 14.0).max(40.0);
         let name_galley = ui.painter().layout_no_wrap(
             self.current_username.clone(),
-            font_medium(14.0),
+            font_regular(14.0),
             Color32::from_rgb(23, 23, 23),
         );
         let name_pos = snap_xy(

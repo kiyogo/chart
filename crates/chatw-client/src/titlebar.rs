@@ -137,7 +137,7 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     let ppp = ui.pixels_per_point();
     let name_galley = ui.painter().layout_no_wrap(
         "chatw".to_string(),
-        font_medium(13.0),
+        font_regular(13.5),
         Color32::from_rgb(17, 24, 39), // #111827
     );
     let top_y = (rect.center().y - name_galley.size().y * 0.5).round();
