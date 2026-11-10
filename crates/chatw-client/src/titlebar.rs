@@ -107,25 +107,63 @@ pub fn draw_svg_logo_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     ));
 }
 
-pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
+pub fn render_titlebar(ui: &mut Ui, is_maximized: bool, sidebar_width: Option<f32>) {
     let titlebar_height = 34.0;
     let (rect, _) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), titlebar_height),
         Sense::hover(),
     );
 
-    // 1. Background: Clean White (#FFFFFF) with rounded top corners when not maximized
     let corner_top = if is_maximized { 0 } else { 8 };
-    ui.painter().rect_filled(
-        rect,
-        egui::CornerRadius {
-            nw: corner_top,
-            ne: corner_top,
-            sw: 0,
-            se: 0,
-        },
-        Color32::from_rgb(255, 255, 255),
-    );
+
+    // 1. Dual-tone Background: Left (#F7F8FA) for sidebar, Right (#FFFFFF) for main content
+    if let Some(sw) = sidebar_width {
+        let split_x = (rect.left() + sw).min(rect.right());
+        let left_rect = Rect::from_min_max(rect.min, pos2(split_x, rect.bottom()));
+        let right_rect = Rect::from_min_max(pos2(split_x, rect.top()), rect.max);
+
+        // Left sidebar titlebar background (#F7F8FA)
+        ui.painter().rect_filled(
+            left_rect,
+            egui::CornerRadius {
+                nw: corner_top,
+                ne: 0,
+                sw: 0,
+                se: 0,
+            },
+            Color32::from_rgb(247, 248, 250),
+        );
+
+        // Right content titlebar background (#FFFFFF)
+        ui.painter().rect_filled(
+            right_rect,
+            egui::CornerRadius {
+                nw: 0,
+                ne: corner_top,
+                sw: 0,
+                se: 0,
+            },
+            Color32::from_rgb(255, 255, 255),
+        );
+
+        // 1px vertical divider connecting smoothly to sidebar divider below
+        ui.painter().line_segment(
+            [pos2(split_x, rect.top()), pos2(split_x, rect.bottom())],
+            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+        );
+    } else {
+        // Full width White (#FFFFFF) when no sidebar (e.g. login, onboarding)
+        ui.painter().rect_filled(
+            rect,
+            egui::CornerRadius {
+                nw: corner_top,
+                ne: corner_top,
+                sw: 0,
+                se: 0,
+            },
+            Color32::from_rgb(255, 255, 255),
+        );
+    }
 
     // 4. Left Brand Section: logo + "chatw" only (clean, minimal)
     let logo_color = Color32::from_rgb(37, 99, 235); // #2563EB

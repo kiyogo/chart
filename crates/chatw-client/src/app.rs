@@ -1183,13 +1183,15 @@ impl ChatApp {
             self.load_friend_keys(uid, ctx);
         }
 
-        // 3. Render Custom Windows 11 Titlebar (Seamless White with Windows controls)
+        // 3. Render Custom Windows 11 Titlebar (Dual-tone: Gray above sidebar, White above content)
+        let has_sidebar = matches!(self.state, AppState::Chat(_));
+        let sidebar_width = if has_sidebar { Some(320.0_f32) } else { None };
         egui::TopBottomPanel::top("top_titlebar")
             .exact_height(34.0)
             .frame(egui::Frame::NONE)
             .show_separator_line(false)
             .show(ctx, |ui| {
-                titlebar::render_titlebar(ui, self.is_maximized);
+                titlebar::render_titlebar(ui, self.is_maximized, sidebar_width);
             });
 
         // 4. Render Active View with rounded bottom corners when not maximized
