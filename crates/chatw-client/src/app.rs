@@ -111,13 +111,9 @@ static INTER_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Inter-SemiBold.tt
 static INTER_BOLD: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
 
 fn setup_vietnamese_fonts(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::empty();
+    let mut fonts = egui::FontDefinitions::default();
 
-    // 1. Embedded Inter font family (world-class screen typography, full Vietnamese diacritics)
-    fonts.font_data.insert(
-        "inter_light".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_static(INTER_LIGHT)),
-    );
+    // 1. Embedded Inter font family (exact Inter typography as requested)
     fonts.font_data.insert(
         "inter_regular".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(INTER_REGULAR)),
@@ -134,34 +130,14 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         "inter_bold".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(INTER_BOLD)),
     );
+    fonts.font_data.insert(
+        "inter_light".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER_LIGHT)),
+    );
 
-    // 2. Windows Fallbacks (Segoe UI, Consolas, Segoe UI Emoji)
+    // 2. Windows Fallbacks (Consolas, Segoe UI Emoji)
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     let fonts_dir = std::path::Path::new(&windir).join("Fonts");
-
-    let segoe_path = fonts_dir.join("segoeui.ttf");
-    if let Ok(bytes) = std::fs::read(&segoe_path) {
-        fonts.font_data.insert(
-            "segoe_ui".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-    }
-
-    let segoe_semi_path = fonts_dir.join("seguisb.ttf");
-    if let Ok(bytes) = std::fs::read(&segoe_semi_path) {
-        fonts.font_data.insert(
-            "segoe_ui_semibold".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-    }
-
-    let segoe_bold_path = fonts_dir.join("segoeuib.ttf");
-    if let Ok(bytes) = std::fs::read(&segoe_bold_path) {
-        fonts.font_data.insert(
-            "segoe_ui_bold".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
-    }
 
     let consola_path = fonts_dir.join("consola.ttf");
     if let Ok(bytes) = std::fs::read(&consola_path) {
@@ -179,72 +155,56 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Segoe UI (native Windows, clean, crisp stems) -> Inter-Medium -> Inter-Regular -> Emoji
-    let mut prop = Vec::new();
-    if fonts.font_data.contains_key("segoe_ui") {
-        prop.push("segoe_ui".to_owned());
-    }
-    prop.push("inter_medium".to_owned());
-    prop.push("inter_regular".to_owned());
+    // 3. Proportional family: Inter-Regular is FIRST and PRIMARY (slender, modern, crisp)
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
-        prop.push("segoe_emoji".to_owned());
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("segoe_emoji".to_owned());
     }
-    fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Medium family: Segoe UI Semibold -> Segoe UI -> Inter-Medium -> Inter-SemiBold -> Emoji
+    // 4. Medium family: Inter-Medium (weight 500)
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = Vec::new();
-    if fonts.font_data.contains_key("segoe_ui_semibold") {
-        med.push("segoe_ui_semibold".to_owned());
-    } else if fonts.font_data.contains_key("segoe_ui") {
-        med.push("segoe_ui".to_owned());
-    }
-    med.push("inter_medium".to_owned());
-    med.push("inter_semibold".to_owned());
-    med.push("inter_regular".to_owned());
+    let mut med = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: Segoe UI Semibold -> Segoe UI Bold -> Inter-SemiBold -> Inter-Bold -> Emoji
+    // 5. Semibold family: Inter-SemiBold (weight 600)
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = Vec::new();
-    if fonts.font_data.contains_key("segoe_ui_semibold") {
-        semi.push("segoe_ui_semibold".to_owned());
-    } else if fonts.font_data.contains_key("segoe_ui") {
-        semi.push("segoe_ui".to_owned());
-    }
-    semi.push("inter_semibold".to_owned());
-    semi.push("inter_bold".to_owned());
-    semi.push("inter_medium".to_owned());
+    let mut semi = vec![
+        "inter_semibold".to_owned(),
+        "inter_medium".to_owned(),
+        "inter_regular".to_owned(),
+    ];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family: Segoe UI Bold -> Segoe UI Semibold -> Inter-Bold -> Inter-SemiBold -> Emoji
+    // 6. Bold family: Inter-Bold (weight 700)
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = Vec::new();
-    if fonts.font_data.contains_key("segoe_ui_bold") {
-        bold.push("segoe_ui_bold".to_owned());
-    } else if fonts.font_data.contains_key("segoe_ui_semibold") {
-        bold.push("segoe_ui_semibold".to_owned());
-    }
-    bold.push("inter_bold".to_owned());
-    bold.push("inter_semibold".to_owned());
+    let mut bold = vec![
+        "inter_bold".to_owned(),
+        "inter_semibold".to_owned(),
+        "inter_regular".to_owned(),
+    ];
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(bold_family, bold);
 
-    // 7. Monospace family: Consolas -> Segoe UI -> Inter-Regular
+    // 7. Monospace family: Consolas -> Inter-Regular
     let mut mono = Vec::new();
     if fonts.font_data.contains_key("consolas") {
         mono.push("consolas".to_owned());
-    }
-    if fonts.font_data.contains_key("segoe_ui") {
-        mono.push("segoe_ui".to_owned());
     }
     mono.push("inter_regular".to_owned());
     fonts.families.insert(egui::FontFamily::Monospace, mono);

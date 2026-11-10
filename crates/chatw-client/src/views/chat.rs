@@ -854,8 +854,8 @@ impl ChatView {
                 snap_pos(avail.center(), ppp),
                 Align2::CENTER_CENTER,
                 "Không có lời mời nào",
-                font_medium(14.5),
-                Color32::from_rgb(75, 85, 99),
+                font_regular(14.0),
+                Color32::from_rgb(115, 115, 115),
             );
             return;
         }
@@ -934,8 +934,8 @@ impl ChatView {
                 snap_pos(total_rect.center(), ppp),
                 Align2::CENTER_CENTER,
                 "Chọn một cuộc trò chuyện để bắt đầu",
-                font_medium(15.0),
-                Color32::from_rgb(75, 85, 99),
+                font_regular(14.0),
+                Color32::from_rgb(115, 115, 115),
             );
             return;
         };
