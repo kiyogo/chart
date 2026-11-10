@@ -2,7 +2,11 @@
 members = [
     "crates/chatw-core",
     "crates/chatw-client",
+    "crates/egui_glow",
     "backend",
     "frontend/src-tauri",
 ]
 resolver = "2"
+
+[patch.crates-io]
+egui_glow = { path = "crates/egui_glow" }
