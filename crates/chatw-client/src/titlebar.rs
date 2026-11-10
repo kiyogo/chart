@@ -83,7 +83,9 @@ pub fn draw_svg_logo_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     let s = rect.size() / 24.0;
     let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
     let r2 = vec2(2.0 * s.x, 2.0 * s.y);
-    let stroke = Stroke::new((2.0 * s.x).max(1.35), color);
+    // Stroke width: 1.5px tại size 18px → nét thanh, không quá dày
+    let stroke_w = (1.5 * s.x).clamp(0.9, 1.5);
+    let stroke = Stroke::new(stroke_w, color);
 
     let mut pts = Vec::with_capacity(32);
     let pi = std::f32::consts::PI;
@@ -121,17 +123,11 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
         Color32::from_rgb(255, 255, 255),
     );
 
-    // 3. Bottom border: 1px #E5E7EB
-    ui.painter().line_segment(
-        [rect.left_bottom(), rect.right_bottom()],
-        Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-    );
-
-    // 4. Left Brand Section: 16x16 SVG logo, chatw, •, Secure Messaging, E2EE badge
+    // 4. Left Brand Section: logo + chatw + Secure Messaging (no border, no E2EE badge)
     let logo_color = Color32::from_rgb(37, 99, 235); // #2563EB
     let icon_rect = Rect::from_center_size(
-        pos2(rect.left() + 14.0 + 8.0, rect.center().y),
-        vec2(16.0, 16.0),
+        pos2(rect.left() + 14.0 + 9.0, rect.center().y),
+        vec2(18.0, 18.0),
     );
     draw_svg_logo_icon(ui.painter(), icon_rect, logo_color);
 
@@ -146,9 +142,9 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     ui.painter()
         .galley(name_rect.min, name_galley, Color32::from_rgb(17, 24, 39));
 
-    let dot_pos = snap_xy(name_rect.right() + 8.0, rect.center().y, ppp);
+    let dot_pos = snap_xy(name_rect.right() + 7.0, rect.center().y, ppp);
     let dot_galley = ui.painter().layout_no_wrap(
-        "•".to_string(),
+        "·".to_string(),
         font_regular(12.0),
         Color32::from_rgb(209, 213, 219), // #D1D5DB
     );
@@ -156,41 +152,16 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     ui.painter()
         .galley(dot_rect.min, dot_galley, Color32::from_rgb(209, 213, 219));
 
-    let sub_pos = snap_xy(dot_rect.right() + 8.0, rect.center().y, ppp);
+    let sub_pos = snap_xy(dot_rect.right() + 7.0, rect.center().y, ppp);
     let sub_galley = ui.painter().layout_no_wrap(
         "Secure Messaging".to_string(),
         font_regular(12.0),
-        Color32::from_rgb(107, 114, 128), // #6B7280
+        Color32::from_rgb(156, 163, 175), // #9CA3AF lighter
     );
     let sub_rect = egui::Align2::LEFT_CENTER.anchor_size(sub_pos, sub_galley.size());
     ui.painter()
-        .galley(sub_rect.min, sub_galley, Color32::from_rgb(107, 114, 128));
-
-    // E2EE Pill Badge
-    let badge_rect = Rect::from_center_size(
-        pos2(sub_rect.right() + 10.0 + 24.0, rect.center().y),
-        vec2(48.0, 18.0),
-    );
-    ui.painter().rect(
-        badge_rect,
-        egui::CornerRadius::same(4),
-        Color32::from_rgb(240, 253, 244), // #F0FDF4
-        Stroke::new(1.0_f32, Color32::from_rgb(187, 247, 208)), // #BBF7D0
-        StrokeKind::Inside,
-    );
-    // Green dot
-    ui.painter().circle_filled(
-        pos2(badge_rect.left() + 7.0, badge_rect.center().y),
-        2.5,
-        Color32::from_rgb(22, 163, 74), // #16A34A
-    );
-    ui.painter().text(
-        snap_xy(badge_rect.left() + 14.0, badge_rect.center().y, ppp),
-        egui::Align2::LEFT_CENTER,
-        "E2EE",
-        font_medium(10.0),
-        Color32::from_rgb(21, 128, 61), // #15803D
-    );
+        .galley(sub_rect.min, sub_galley, Color32::from_rgb(156, 163, 175));
+    let _ = sub_rect; // suppress unused warning
 
     // 5. Draggable Region
     let btn_width = 46.0;
