@@ -1,4 +1,4 @@
-use crate::titlebar::{draw_svg_logo_icon, font_medium, font_regular, snap_pos};
+use crate::titlebar::{draw_svg_logo_icon, font_regular, snap_pos};
 use egui::{Align, Align2, Color32, CornerRadius, Layout, RichText, Sense, Ui, Vec2, vec2};
 
 pub struct SetNameView {
@@ -42,7 +42,7 @@ impl SetNameView {
             // 2. Title: Đặt tên của bạn (18px, font-weight 500, color #171717)
             ui.label(
                 RichText::new("Đặt tên của bạn")
-                    .font(font_medium(18.0))
+                    .font(font_regular(18.0))
                     .color(Color32::from_rgb(23, 23, 23)),
             );
 

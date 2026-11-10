@@ -1,6 +1,6 @@
 use crate::titlebar::{
-    draw_smooth_polyline, draw_svg_logo_icon, font_medium, font_mono, font_regular,
-    push_arc_points, snap_pos, snap_xy,
+    draw_smooth_polyline, draw_svg_logo_icon, font_mono, font_regular, push_arc_points, snap_pos,
+    snap_xy,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chatw_core::{FriendItem, PendingRequestItem, UserSearchResult};
@@ -480,7 +480,7 @@ impl ChatView {
                 snap_pos(badge_center, ppp),
                 Align2::CENTER_CENTER,
                 &badge_text,
-                font_medium(11.0),
+                font_regular(11.0),
                 Color32::WHITE,
             );
         }
@@ -532,7 +532,7 @@ impl ChatView {
                 snap_pos(badge_center, ppp),
                 Align2::CENTER_CENTER,
                 &badge_text,
-                font_medium(11.0),
+                font_regular(11.0),
                 Color32::WHITE,
             );
         }
@@ -669,7 +669,7 @@ impl ChatView {
                         };
                         let galley = ui.painter().layout_no_wrap(
                             badge_text,
-                            font_medium(11.0),
+                            font_regular(11.0),
                             Color32::WHITE,
                         );
                         let badge_w = (galley.size().x + 10.0).max(18.0);
@@ -961,7 +961,7 @@ impl ChatView {
             snap_xy(av_rect.right() + 12.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             &friend.username,
-            font_medium(14.0),
+            font_regular(14.0),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1268,7 +1268,7 @@ impl ChatView {
             snap_xy(back_rect.right() + 12.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             "Cài đặt",
-            font_medium(14.0),
+            font_regular(14.0),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1317,7 +1317,7 @@ impl ChatView {
                             snap_xy(info_x, card_rect.center().y - 10.0, ppp),
                             Align2::LEFT_CENTER,
                             &self.current_username,
-                            font_medium(14.0),
+                            font_regular(14.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
@@ -1362,7 +1362,7 @@ impl ChatView {
                         // 2. Group: Tài khoản (.settings-group: gap 12px)
                         ui.label(
                             RichText::new("Tài khoản")
-                                .font(font_medium(13.0))
+                                .font(font_regular(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1387,7 +1387,7 @@ impl ChatView {
                         // 3. Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_medium(13.0))
+                                .font(font_regular(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1432,7 +1432,7 @@ impl ChatView {
                         // 4. Group: Phiên đăng nhập
                         ui.label(
                             RichText::new("Phiên đăng nhập")
-                                .font(font_medium(13.0))
+                                .font(font_regular(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1486,7 +1486,7 @@ impl ChatView {
             snap_xy(header_rect.left() + 20.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             "Thông tin",
-            font_medium(14.0),
+            font_regular(14.0),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1554,7 +1554,7 @@ impl ChatView {
                             snap_xy(pcard_rect.center().x, av_rect.bottom() + 18.0, ppp),
                             Align2::CENTER_CENTER,
                             &friend.username,
-                            font_medium(14.0),
+                            font_regular(14.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
@@ -1570,7 +1570,7 @@ impl ChatView {
                         // Group: Tài khoản (inside partner-info-sidebar, rows have #FFFFFF bg and 1px #ECEEF2 border)
                         ui.label(
                             RichText::new("Tài khoản")
-                                .font(font_medium(13.0))
+                                .font(font_regular(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1595,7 +1595,7 @@ impl ChatView {
                         // Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_medium(13.0))
+                                .font(font_regular(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1845,7 +1845,7 @@ fn render_settings_tag_row_flat(
 
     let galley = ui.painter().layout_no_wrap(
         tag_text.to_string(),
-        font_medium(12.0),
+        font_regular(12.0),
         Color32::from_rgb(19, 115, 51),
     );
     let tag_w = galley.size().x + 20.0;
@@ -1913,7 +1913,7 @@ pub fn paint_avatar_in_rect(painter: &egui::Painter, rect: Rect, name: &str) {
 
     let initial_galley = painter.layout_no_wrap(
         initial,
-        font_medium(font_sz),
+        font_regular(font_sz),
         Color32::WHITE,
     );
     let text_x = (rect.center().x - initial_galley.size().x * 0.5).round();

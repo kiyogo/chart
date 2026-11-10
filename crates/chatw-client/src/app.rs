@@ -169,33 +169,25 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .push("segoe_emoji".to_owned());
     }
 
-    // 4. Medium family: Inter-Medium (weight 500)
+    // 4. Medium family: mapped strictly to Inter-Regular (no bold/medium weights)
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
+    let mut med = vec!["inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: Inter-SemiBold (weight 600)
+    // 5. Semibold family: mapped strictly to Inter-Regular (no bold/medium weights)
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec![
-        "inter_semibold".to_owned(),
-        "inter_medium".to_owned(),
-        "inter_regular".to_owned(),
-    ];
+    let mut semi = vec!["inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family: Inter-Bold (weight 700)
+    // 6. Bold family: mapped strictly to Inter-Regular (no bold/medium weights)
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec![
-        "inter_bold".to_owned(),
-        "inter_semibold".to_owned(),
-        "inter_regular".to_owned(),
-    ];
+    let mut bold = vec!["inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
@@ -636,7 +628,7 @@ impl ChatApp {
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
-            (egui::TextStyle::Heading, titlebar::font_medium(15.0)),
+            (egui::TextStyle::Heading, titlebar::font_regular(15.0)),
             (egui::TextStyle::Body, titlebar::font_regular(14.0)),
             (egui::TextStyle::Button, titlebar::font_regular(13.0)),
             (egui::TextStyle::Small, titlebar::font_regular(12.0)),
