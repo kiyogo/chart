@@ -543,14 +543,14 @@ impl Painter {
                     profiling::scope!("font -> sRGBA");
                     let mut bytes = Vec::with_capacity(image.pixels.len() * 4);
                     for &coverage in &image.pixels {
-                        // Standard egui applies `coverage.powf(0.55)` which severely bloats low-coverage
-                        // edges into thick dark smudges ("nòe đen") on bright backgrounds.
-                        // Here we use high-contrast linear mapping with cut-off for crystal-sharp glyph stems.
+                        // Cut off stray noise (< 0.04) to avoid muddy halos outside glyphs.
+                        // Gently boost mid-coverage (gamma 0.82) to give thicker, richer, more solid strokes
+                        // without making edges blurry.
                         let a_f = if coverage < 0.04 {
                             0.0
                         } else {
                             let norm = (coverage - 0.04) / 0.96;
-                            norm.powf(1.10)
+                            norm.powf(0.82)
                         };
                         let a = (a_f * 255.0).round().clamp(0.0, 255.0) as u8;
                         bytes.extend_from_slice(&[a, a, a, a]);

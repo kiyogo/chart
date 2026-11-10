@@ -179,8 +179,9 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Inter-Regular (designed specifically for screen UI) → Segoe UI → Emoji
+    // 3. Proportional family: Inter-Medium (fuller, thicker weight 500) → Inter-Regular → Segoe UI → Emoji
     let mut prop = Vec::new();
+    prop.push("inter_medium".to_owned());
     prop.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_ui") {
         prop.push("segoe_ui".to_owned());
@@ -190,10 +191,11 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     }
     fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Medium family: Inter-Medium → Segoe UI
+    // 4. Medium family: Inter-Medium → Inter-SemiBold → Segoe UI
     let medium_family = egui::FontFamily::Name("medium".into());
     let mut med = Vec::new();
     med.push("inter_medium".to_owned());
+    med.push("inter_semibold".to_owned());
     med.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_ui") {
         med.push("segoe_ui".to_owned());
@@ -203,10 +205,11 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: Inter-SemiBold → Segoe UI Semibold
+    // 5. Semibold family: Inter-SemiBold → Inter-Bold → Segoe UI Semibold
     let semibold_family = egui::FontFamily::Name("semibold".into());
     let mut semi = Vec::new();
     semi.push("inter_semibold".to_owned());
+    semi.push("inter_bold".to_owned());
     semi.push("inter_medium".to_owned());
     if fonts.font_data.contains_key("segoe_ui_semibold") {
         semi.push("segoe_ui_semibold".to_owned());
@@ -676,8 +679,8 @@ impl ChatApp {
         ]
         .into();
         cc.egui_ctx.set_style(style);
-        // Default comfortable UI scale (120%) for modern high-resolution displays
-        cc.egui_ctx.set_zoom_factor(1.20);
+        // Standard 100% UI scale
+        cc.egui_ctx.set_zoom_factor(1.0);
 
         // Log DPI for debugging
         {
@@ -971,7 +974,7 @@ impl ChatApp {
                 } else if i.key_pressed(egui::Key::Minus) {
                     egui::gui_zoom::zoom_out(ctx);
                 } else if i.key_pressed(egui::Key::Num0) {
-                    ctx.set_zoom_factor(1.20);
+                    ctx.set_zoom_factor(1.0);
                 }
             }
         });

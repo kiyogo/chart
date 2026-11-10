@@ -66,8 +66,8 @@ void main() {
     bool is_font_glyph = (abs(tex.r - tex.g) < 0.02 && abs(tex.g - tex.b) < 0.02);
 
     if (is_font_glyph && a > 0.002 && a < 0.998) {
-        // High-contrast edge clamp for crisp rendering:
-        a = smoothstep(0.04, 0.92, a);
+        // High-contrast edge clamp for crisp, solid rendering:
+        a = smoothstep(0.02, 0.90, a);
         tex.a = a;
         tex.rgb = vec3(a);
     }
