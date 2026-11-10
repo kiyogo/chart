@@ -1911,12 +1911,17 @@ pub fn paint_avatar_in_rect(painter: &egui::Painter, rect: Rect, name: &str) {
         24.0
     };
 
-    painter.circle_filled(snap_pos(rect.center(), ppp), size * 0.5, bg_color);
-    painter.text(
-        snap_pos(rect.center(), ppp),
-        Align2::CENTER_CENTER,
+    let initial_galley = painter.layout_no_wrap(
         initial,
-        font_regular(font_sz),
+        font_medium(font_sz),
+        Color32::WHITE,
+    );
+    let text_x = (rect.center().x - initial_galley.size().x * 0.5).round();
+    let text_y = (rect.center().y - initial_galley.size().y * 0.5).round();
+    painter.circle_filled(snap_pos(rect.center(), ppp), size * 0.5, bg_color);
+    painter.galley(
+        snap_xy(text_x, text_y, ppp),
+        initial_galley,
         Color32::WHITE,
     );
 }

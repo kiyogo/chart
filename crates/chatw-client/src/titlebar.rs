@@ -9,7 +9,7 @@ pub fn font_regular(size: f32) -> FontId {
 }
 
 pub fn font_medium(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("semibold".into()))
+    FontId::new(size, FontFamily::Name("medium".into()))
 }
 
 #[allow(dead_code)]
@@ -135,16 +135,15 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     draw_svg_logo_icon(ui.painter(), icon_rect, logo_color);
 
     let ppp = ui.pixels_per_point();
-    let name_pos = snap_xy(icon_rect.right() + 7.0, rect.center().y, ppp);
     let name_galley = ui.painter().layout_no_wrap(
         "chatw".to_string(),
         font_medium(13.0),
         Color32::from_rgb(17, 24, 39), // #111827
     );
-    let name_rect = egui::Align2::LEFT_CENTER.anchor_size(name_pos, name_galley.size());
+    let top_y = (rect.center().y - name_galley.size().y * 0.5).round();
+    let name_pos = snap_xy(icon_rect.right() + 7.0, top_y, ppp);
     ui.painter()
-        .galley(name_rect.min, name_galley, Color32::from_rgb(17, 24, 39));
-    let _ = name_rect;
+        .galley(name_pos, name_galley, Color32::from_rgb(17, 24, 39));
 
     // 5. Draggable Region
     let btn_width = 46.0;

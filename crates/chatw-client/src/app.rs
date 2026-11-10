@@ -155,6 +155,14 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
+    let segoe_bold_path = fonts_dir.join("segoeuib.ttf");
+    if let Ok(bytes) = std::fs::read(&segoe_bold_path) {
+        fonts.font_data.insert(
+            "segoe_ui_bold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+    }
+
     let consola_path = fonts_dir.join("consola.ttf");
     if let Ok(bytes) = std::fs::read(&consola_path) {
         fonts.font_data.insert(
@@ -171,46 +179,66 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Inter-Light (slender, elegant, delicate, crisp) -> Inter-Regular -> Segoe UI
-    let mut prop = vec!["inter_light".to_owned(), "inter_regular".to_owned()];
+    // 3. Proportional family: Segoe UI (Windows native, slim, crisp, high contrast) → Inter-Regular
+    let mut prop = Vec::new();
     if fonts.font_data.contains_key("segoe_ui") {
         prop.push("segoe_ui".to_owned());
     }
+    prop.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         prop.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Semibold family: Inter-Medium (refined, not overly thick) -> Inter-Regular
+    // 4. Medium family: Segoe UI Regular / Inter-Medium (slender, not overly thick)
+    let medium_family = egui::FontFamily::Name("medium".into());
+    let mut med = Vec::new();
+    if fonts.font_data.contains_key("segoe_ui") {
+        med.push("segoe_ui".to_owned());
+    }
+    med.push("inter_medium".to_owned());
+    med.push("inter_regular".to_owned());
+    if fonts.font_data.contains_key("segoe_emoji") {
+        med.push("segoe_emoji".to_owned());
+    }
+    fonts.families.insert(medium_family, med);
+
+    // 5. Semibold family: Segoe UI Semibold → Inter-Medium
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
+    let mut semi = Vec::new();
     if fonts.font_data.contains_key("segoe_ui_semibold") {
         semi.push("segoe_ui_semibold".to_owned());
     } else if fonts.font_data.contains_key("segoe_ui") {
         semi.push("segoe_ui".to_owned());
     }
+    semi.push("inter_medium".to_owned());
+    semi.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 5. Bold family: Inter-Regular (keeps strokes restrained) -> Inter-Medium -> Inter-Bold
+    // 6. Bold family: Segoe UI Bold → Inter-Bold
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
-    if fonts.font_data.contains_key("segoe_ui") {
-        bold.push("segoe_ui".to_owned());
+    let mut bold = Vec::new();
+    if fonts.font_data.contains_key("segoe_ui_bold") {
+        bold.push("segoe_ui_bold".to_owned());
+    } else if fonts.font_data.contains_key("segoe_ui_semibold") {
+        bold.push("segoe_ui_semibold".to_owned());
     }
+    bold.push("inter_bold".to_owned());
+    bold.push("inter_semibold".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(bold_family, bold);
 
-    // 6. Monospace family: Consolas -> Inter-Light
+    // 7. Monospace family: Consolas → Inter-Regular
     let mut mono = Vec::new();
     if fonts.font_data.contains_key("consolas") {
         mono.push("consolas".to_owned());
     }
-    mono.push("inter_light".to_owned());
+    mono.push("inter_regular".to_owned());
     fonts.families.insert(egui::FontFamily::Monospace, mono);
 
     ctx.set_fonts(fonts);
@@ -278,6 +306,11 @@ mod tests {
             .entry(egui::FontFamily::Proportional)
             .or_default()
             .push("light".into());
+        fonts
+            .families
+            .entry(egui::FontFamily::Name("medium".into()))
+            .or_default()
+            .push("medium".into());
         fonts
             .families
             .entry(egui::FontFamily::Name("semibold".into()))
@@ -643,6 +676,15 @@ impl ChatApp {
         ]
         .into();
         cc.egui_ctx.set_style(style);
+
+        // Log DPI for debugging
+        {
+            let ppp = cc.egui_ctx.pixels_per_point();
+            crate::log_app(&format!(
+                "startup pixels_per_point={:.3} (monitor DPI scale)",
+                ppp
+            ));
+        }
 
         let runtime = Arc::new(
             tokio::runtime::Builder::new_multi_thread()
