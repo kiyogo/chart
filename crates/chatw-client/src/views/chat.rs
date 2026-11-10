@@ -287,7 +287,7 @@ impl ChatView {
             is_partner_info_open: true,
             is_emoji_picker_open: false,
             unread_counts: HashMap::new(),
-            server_url_input: "http://127.0.0.1:8082".to_string(),
+            server_url_input: "http://127.0.0.1:8085".to_string(),
         }
     }
 

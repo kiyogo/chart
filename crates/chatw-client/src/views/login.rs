@@ -21,7 +21,7 @@ impl Default for LoginView {
     fn default() -> Self {
         Self {
             username_input: String::new(),
-            server_url_input: "http://127.0.0.1:8082".to_string(),
+            server_url_input: "http://127.0.0.1:8085".to_string(),
             show_server_config: false,
             is_loading: false,
             is_google_pending: false,
@@ -353,6 +353,93 @@ impl LoginView {
                                 .color(Color32::from_rgb(220, 38, 38)),
                         );
                     });
+            }
+
+            // 9. Server configuration switcher
+            ui.add_space(12.0);
+            if self.show_server_config {
+                egui::Frame::NONE
+                    .fill(Color32::from_rgb(249, 250, 251))
+                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)))
+                    .corner_radius(CornerRadius::same(8))
+                    .inner_margin(egui::Margin::symmetric(10, 8))
+                    .show(ui, |ui| {
+                        ui.set_max_width(card_width);
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new("Cài đặt máy chủ:")
+                                    .font(font_medium(12.0))
+                                    .color(Color32::from_rgb(75, 85, 99)),
+                            );
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui
+                                    .button(
+                                        RichText::new("✕")
+                                            .font(font_regular(11.0))
+                                            .color(Color32::from_rgb(156, 163, 175)),
+                                    )
+                                    .clicked()
+                                {
+                                    self.show_server_config = false;
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+                        let srv_edit = egui::TextEdit::singleline(&mut self.server_url_input)
+                            .font(font_regular(12.5))
+                            .desired_width(card_width - 24.0);
+                        ui.add(srv_edit);
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            if ui
+                                .button(
+                                    RichText::new("Cục bộ (8085)")
+                                        .font(font_regular(11.5))
+                                        .color(Color32::from_rgb(37, 99, 235)),
+                                )
+                                .clicked()
+                            {
+                                self.server_url_input = "http://127.0.0.1:8085".to_string();
+                                action =
+                                    Some(LoginAction::ChangeServer(self.server_url_input.clone()));
+                            }
+                            if ui
+                                .button(
+                                    RichText::new("Cloud (kiyo.vn)")
+                                        .font(font_regular(11.5))
+                                        .color(Color32::from_rgb(75, 85, 99)),
+                                )
+                                .clicked()
+                            {
+                                self.server_url_input = "https://api.chat.kiyo.vn".to_string();
+                                action =
+                                    Some(LoginAction::ChangeServer(self.server_url_input.clone()));
+                            }
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui
+                                    .button(
+                                        RichText::new("Áp dụng")
+                                            .font(font_medium(11.5))
+                                            .color(Color32::from_rgb(37, 99, 235)),
+                                    )
+                                    .clicked()
+                                {
+                                    action = Some(LoginAction::ChangeServer(
+                                        self.server_url_input.trim().to_string(),
+                                    ));
+                                }
+                            });
+                        });
+                    });
+            } else {
+                let srv_btn = ui.button(
+                    RichText::new(format!("⚙ {}", self.server_url_input))
+                        .font(font_regular(11.5))
+                        .color(Color32::from_rgb(156, 163, 175)),
+                );
+                if srv_btn.clicked() {
+                    self.show_server_config = true;
+                }
             }
         });
 

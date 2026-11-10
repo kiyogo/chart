@@ -28,7 +28,7 @@ export function isBundledTauriOrigin(): boolean {
 
 /** Backend origin used by the desktop app. Must match the backend PUBLIC_URL so cookies stay first-party. */
 export const DESKTOP_BACKEND_ORIGIN =
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8082';
+  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8085';
 
 export function getApiBase(): string {
   return isBundledTauriOrigin() ? DESKTOP_BACKEND_ORIGIN : '';

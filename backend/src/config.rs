@@ -124,7 +124,7 @@ impl Config {
         Ok(Self {
             database_url: var("DATABASE_URL")?,
             db_max_connections: parse("DB_MAX_CONNECTIONS", "10")?,
-            bind_addr: parse("BIND_ADDR", "127.0.0.1:8080")?,
+            bind_addr: parse("BIND_ADDR", "127.0.0.1:8085")?,
             public_origin,
             google_client_id,
             google_client_secret: var("GOOGLE_CLIENT_SECRET")?,

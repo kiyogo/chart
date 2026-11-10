@@ -141,9 +141,14 @@ async fn handle_google_callback(
     let oauth_cookie = match parse_cookie(&headers, OAUTH_COOKIE_NAME) {
         Some(c) => c,
         None => {
-            if state_param.starts_with("local8082_") {
+            if state_param.starts_with("local") {
+                let port: u16 = state_param
+                    .strip_prefix("local")
+                    .and_then(|s| s.split('_').next())
+                    .and_then(|p| p.parse().ok())
+                    .unwrap_or(state.config.bind_addr.port());
                 let local_url = format!(
-                    "http://127.0.0.1:8082/api/auth/google/callback?code={}&state={}",
+                    "http://127.0.0.1:{port}/api/auth/google/callback?code={}&state={}",
                     urlencoding::encode(&code),
                     urlencoding::encode(&state_param)
                 );

@@ -132,7 +132,7 @@ pub async fn google_login_handler(
 ) -> AppResult<Response> {
     let token = generate_random_token();
     let state = if config.bind_addr.ip().is_loopback() {
-        format!("local8082_{token}")
+        format!("local{}_{token}", config.bind_addr.port())
     } else {
         token
     };

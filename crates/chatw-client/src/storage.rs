@@ -109,8 +109,8 @@ pub fn load_server_url() -> String {
             }
         }
     }
-    // Default to local port 8082
-    "http://127.0.0.1:8082".to_string()
+    // Default to local port 8085
+    "http://127.0.0.1:8085".to_string()
 }
 
 pub fn save_server_url(url: &str) {
