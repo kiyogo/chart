@@ -77,30 +77,33 @@ pub fn push_arc_points(
     }
 }
 
-/// Draws the authentic web LogoIcon:
-/// `<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>`
+/// Draws a clean, crisp chat-bubble logo using filled shapes (no polyline/arc artifacts).
+/// Mimics Lucide MessageSquare: rounded rect body + bottom-left tail triangle.
 pub fn draw_svg_logo_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
-    let s = rect.size() / 24.0;
-    let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
-    let r2 = vec2(2.0 * s.x, 2.0 * s.y);
-    // Stroke width: 1.5px tại size 18px → nét thanh, không quá dày
-    let stroke_w = (1.5 * s.x).clamp(0.9, 1.5);
-    let stroke = Stroke::new(stroke_w, color);
+    let w = rect.width();
+    let h = rect.height();
 
-    let mut pts = Vec::with_capacity(32);
-    let pi = std::f32::consts::PI;
+    // Body: rounded rectangle occupying top 80% of icon
+    let body = Rect::from_min_size(
+        rect.min,
+        vec2(w, h * 0.78),
+    );
+    painter.rect_filled(body, egui::CornerRadius::same((w * 0.18) as u8), color);
 
-    // Top-right corner arc (center 19,5, angle -pi/2 to 0)
-    push_arc_points(&mut pts, pt(19.0, 5.0), r2, -pi * 0.5, 0.0, 6);
-    // Bottom-right corner arc (center 19,15, angle 0 to pi/2)
-    push_arc_points(&mut pts, pt(19.0, 15.0), r2, 0.0, pi * 0.5, 6);
-    // Bottom edge to tail
-    pts.push(pt(7.0, 17.0));
-    pts.push(pt(3.0, 21.0));
-    // Left edge up to top-left corner arc (center 5,5, angle pi to 1.5*pi)
-    push_arc_points(&mut pts, pt(5.0, 5.0), r2, pi, pi * 1.5, 6);
-
-    draw_smooth_polyline(painter, &pts, stroke, true);
+    // Tail: small downward-left triangle below body-left
+    let tail_x = rect.min.x + w * 0.18;
+    let tail_top = rect.min.y + h * 0.72;
+    let tail_bot = rect.min.y + h;
+    let tail_right = rect.min.x + w * 0.46;
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            pos2(tail_x, tail_top),
+            pos2(tail_right, tail_top),
+            pos2(tail_x, tail_bot),
+        ],
+        color,
+        Stroke::NONE,
+    ));
 }
 
 pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
@@ -123,7 +126,7 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
         Color32::from_rgb(255, 255, 255),
     );
 
-    // 4. Left Brand Section: logo + chatw + Secure Messaging (no border, no E2EE badge)
+    // 4. Left Brand Section: logo + "chatw" only (clean, minimal)
     let logo_color = Color32::from_rgb(37, 99, 235); // #2563EB
     let icon_rect = Rect::from_center_size(
         pos2(rect.left() + 14.0 + 9.0, rect.center().y),
@@ -132,7 +135,7 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     draw_svg_logo_icon(ui.painter(), icon_rect, logo_color);
 
     let ppp = ui.pixels_per_point();
-    let name_pos = snap_xy(icon_rect.right() + 8.0, rect.center().y, ppp);
+    let name_pos = snap_xy(icon_rect.right() + 7.0, rect.center().y, ppp);
     let name_galley = ui.painter().layout_no_wrap(
         "chatw".to_string(),
         font_medium(13.0),
@@ -141,27 +144,7 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool) {
     let name_rect = egui::Align2::LEFT_CENTER.anchor_size(name_pos, name_galley.size());
     ui.painter()
         .galley(name_rect.min, name_galley, Color32::from_rgb(17, 24, 39));
-
-    let dot_pos = snap_xy(name_rect.right() + 7.0, rect.center().y, ppp);
-    let dot_galley = ui.painter().layout_no_wrap(
-        "·".to_string(),
-        font_regular(12.0),
-        Color32::from_rgb(209, 213, 219), // #D1D5DB
-    );
-    let dot_rect = egui::Align2::LEFT_CENTER.anchor_size(dot_pos, dot_galley.size());
-    ui.painter()
-        .galley(dot_rect.min, dot_galley, Color32::from_rgb(209, 213, 219));
-
-    let sub_pos = snap_xy(dot_rect.right() + 7.0, rect.center().y, ppp);
-    let sub_galley = ui.painter().layout_no_wrap(
-        "Secure Messaging".to_string(),
-        font_regular(12.0),
-        Color32::from_rgb(156, 163, 175), // #9CA3AF lighter
-    );
-    let sub_rect = egui::Align2::LEFT_CENTER.anchor_size(sub_pos, sub_galley.size());
-    ui.painter()
-        .galley(sub_rect.min, sub_galley, Color32::from_rgb(156, 163, 175));
-    let _ = sub_rect; // suppress unused warning
+    let _ = name_rect;
 
     // 5. Draggable Region
     let btn_width = 46.0;

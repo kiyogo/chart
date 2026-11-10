@@ -1170,6 +1170,7 @@ impl ChatApp {
         egui::TopBottomPanel::top("top_titlebar")
             .exact_height(34.0)
             .frame(egui::Frame::NONE)
+            .show_separator_line(false)
             .show(ctx, |ui| {
                 titlebar::render_titlebar(ui, self.is_maximized);
             });
