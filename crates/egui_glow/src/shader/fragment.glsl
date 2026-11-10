@@ -57,23 +57,8 @@ void main() {
     vec4 texture_in_gamma = texture2D(u_sampler, v_tc);
 #endif
 
-    vec4 tex = texture_in_gamma;
-    float a = tex.a;
-
-    // Detect monochrome font glyph atlas pixels:
-    // In egui font atlas, glyphs are stored as pure white coverage (r == g == b).
-    // Color textures and user images have differing RGB channels and are preserved as-is.
-    bool is_font_glyph = (abs(tex.r - tex.g) < 0.02 && abs(tex.g - tex.b) < 0.02);
-
-    if (is_font_glyph && a > 0.002 && a < 0.998) {
-        // High-contrast edge clamp for crisp, solid rendering:
-        a = smoothstep(0.02, 0.90, a);
-        tex.a = a;
-        tex.rgb = vec3(a);
-    }
-
     // We multiply the colors in gamma space, because that's the only way to get text to look right.
-    vec4 frag_color_gamma = v_rgba_in_gamma * tex;
+    vec4 frag_color_gamma = v_rgba_in_gamma * texture_in_gamma;
 
     // Dither the float color down to eight bits to reduce banding.
     // This step is optional for egui backends.

@@ -543,14 +543,19 @@ impl Painter {
                     profiling::scope!("font -> sRGBA");
                     let mut bytes = Vec::with_capacity(image.pixels.len() * 4);
                     for &coverage in &image.pixels {
-                        // Cut off stray noise (< 0.04) to avoid muddy halos outside glyphs.
-                        // Gently boost mid-coverage (gamma 0.82) to give thicker, richer, more solid strokes
-                        // without making edges blurry.
-                        let a_f = if coverage < 0.04 {
+                        // Optical anti-aliased coverage mapping:
+                        // 1. Culls stray microscopic noise (<= 0.005) outside glyph boxes.
+                        // 2. Preserves all delicate sub-pixel edges, curves, and Vietnamese diacritics
+                        //    (without cutting off < 0.15 which caused broken/fragmented glyphs).
+                        // 3. Eliminates the muddy 0.55 concave expansion that caused dark smudges on light backgrounds.
+                        // 4. Solidifies glyph core (>= 0.82) to 100% ink density for rich, thick, sharp stems.
+                        let a_f = if coverage <= 0.005 {
                             0.0
+                        } else if coverage >= 0.82 {
+                            1.0
                         } else {
-                            let norm = (coverage - 0.04) / 0.96;
-                            norm.powf(0.82)
+                            let u = (coverage - 0.005) / 0.815;
+                            u.powf(1.10)
                         };
                         let a = (a_f * 255.0).round().clamp(0.0, 255.0) as u8;
                         bytes.extend_from_slice(&[a, a, a, a]);

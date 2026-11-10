@@ -480,7 +480,7 @@ impl ChatView {
                 snap_pos(badge_center, ppp),
                 Align2::CENTER_CENTER,
                 &badge_text,
-                font_regular(10.0),
+                font_medium(11.0),
                 Color32::WHITE,
             );
         }
@@ -532,7 +532,7 @@ impl ChatView {
                 snap_pos(badge_center, ppp),
                 Align2::CENTER_CENTER,
                 &badge_text,
-                font_regular(10.0),
+                font_medium(11.0),
                 Color32::WHITE,
             );
         }
@@ -669,7 +669,7 @@ impl ChatView {
                         };
                         let galley = ui.painter().layout_no_wrap(
                             badge_text,
-                            font_regular(11.0),
+                            font_medium(11.5),
                             Color32::WHITE,
                         );
                         let badge_w = (galley.size().x + 10.0).max(18.0);
@@ -1160,7 +1160,7 @@ impl ChatView {
                             ui.add_space(20.0);
                             ui.label(
                                 RichText::new("Đang nhập")
-                                    .font(font_regular(11.0))
+                                    .font(font_regular(12.0))
                                     .italics()
                                     .color(Color32::from_rgb(115, 115, 115)),
                             );
@@ -1682,7 +1682,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(&msg.time_str)
-                                .font(font_regular(11.0))
+                                .font(font_regular(12.0))
                                 .color(Color32::from_rgb(115, 115, 115)),
                         );
                     });
@@ -1717,7 +1717,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(&msg.time_str)
-                                .font(font_regular(11.0))
+                                .font(font_regular(12.0))
                                 .color(Color32::from_rgb(115, 115, 115)),
                         );
                     });
@@ -1845,7 +1845,7 @@ fn render_settings_tag_row_flat(
 
     let galley = ui.painter().layout_no_wrap(
         tag_text.to_string(),
-        font_regular(11.5),
+        font_medium(12.0),
         Color32::from_rgb(19, 115, 51),
     );
     let tag_w = galley.size().x + 20.0;
