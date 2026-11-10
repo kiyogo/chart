@@ -669,7 +669,7 @@ impl ChatView {
                         };
                         let galley = ui.painter().layout_no_wrap(
                             badge_text,
-                            font_medium(11.5),
+                            font_medium(11.0),
                             Color32::WHITE,
                         );
                         let badge_w = (galley.size().x + 10.0).max(18.0);
@@ -803,7 +803,7 @@ impl ChatView {
             snap_pos(btn_rect.center(), ppp),
             Align2::CENTER_CENTER,
             "Thêm",
-            font_regular(13.5),
+            font_regular(13.0),
             Color32::WHITE,
         );
 
@@ -906,7 +906,7 @@ impl ChatView {
                         snap_pos(acc_rect.center(), ppp),
                         Align2::CENTER_CENTER,
                         "Chấp nhận",
-                        font_regular(12.5),
+                        font_regular(12.0),
                         Color32::WHITE,
                     );
                     if acc_resp.clicked() {
@@ -1268,7 +1268,7 @@ impl ChatView {
             snap_xy(back_rect.right() + 12.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             "Cài đặt",
-            font_medium(14.5),
+            font_medium(14.0),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1317,14 +1317,14 @@ impl ChatView {
                             snap_xy(info_x, card_rect.center().y - 10.0, ppp),
                             Align2::LEFT_CENTER,
                             &self.current_username,
-                            font_medium(14.5),
+                            font_medium(14.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
                             snap_xy(info_x, card_rect.center().y + 11.0, ppp),
                             Align2::LEFT_CENTER,
                             "Tài khoản cá nhân",
-                            font_regular(12.5),
+                            font_regular(12.0),
                             Color32::from_rgb(115, 115, 115),
                         );
 
@@ -1387,7 +1387,7 @@ impl ChatView {
                         // 3. Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_medium(13.5))
+                                .font(font_medium(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1432,7 +1432,7 @@ impl ChatView {
                         // 4. Group: Phiên đăng nhập
                         ui.label(
                             RichText::new("Phiên đăng nhập")
-                                .font(font_medium(13.5))
+                                .font(font_medium(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1486,7 +1486,7 @@ impl ChatView {
             snap_xy(header_rect.left() + 20.0, header_rect.center().y, ppp),
             Align2::LEFT_CENTER,
             "Thông tin",
-            font_medium(14.5),
+            font_medium(14.0),
             Color32::from_rgb(23, 23, 23),
         );
 
@@ -1554,14 +1554,14 @@ impl ChatView {
                             snap_xy(pcard_rect.center().x, av_rect.bottom() + 18.0, ppp),
                             Align2::CENTER_CENTER,
                             &friend.username,
-                            font_medium(14.5),
+                            font_medium(14.0),
                             Color32::from_rgb(23, 23, 23),
                         );
                         ui.painter().text(
                             snap_xy(pcard_rect.center().x, av_rect.bottom() + 40.0, ppp),
                             Align2::CENTER_CENTER,
                             "Tài khoản bạn bè",
-                            font_regular(12.5),
+                            font_regular(12.0),
                             Color32::from_rgb(115, 115, 115),
                         );
 
@@ -1595,7 +1595,7 @@ impl ChatView {
                         // Group: Mã hóa đầu cuối
                         ui.label(
                             RichText::new("Mã hóa đầu cuối")
-                                .font(font_medium(13.5))
+                                .font(font_medium(13.0))
                                 .color(Color32::from_rgb(23, 23, 23)),
                         );
                         ui.add_space(12.0);
@@ -1673,7 +1673,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                             ui.set_max_width(max_bubble_width);
                             ui.label(
                                 RichText::new(&msg.text)
-                                    .font(font_regular(13.5))
+                                    .font(font_regular(14.0))
                                     .color(Color32::WHITE),
                             );
                         });
@@ -1708,7 +1708,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                             ui.set_max_width(max_bubble_width);
                             ui.label(
                                 RichText::new(&msg.text)
-                                    .font(font_regular(13.5))
+                                    .font(font_regular(14.0))
                                     .color(Color32::from_rgb(23, 23, 23)),
                             );
                         });
@@ -1762,7 +1762,7 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
         snap_xy(row_rect.right() - 16.0, row_rect.center().y, ppp),
         Align2::RIGHT_CENTER,
         value,
-        font_regular(13.5),
+        font_regular(13.0),
         Color32::from_rgb(23, 23, 23),
     );
 }
@@ -1804,7 +1804,7 @@ fn render_settings_column_row_flat(
         snap_xy(row_rect.left() + 16.0, row_rect.top() + 44.0, ppp),
         Align2::LEFT_CENTER,
         value,
-        font_mono(11.5),
+        font_mono(12.0),
         Color32::from_rgb(23, 23, 23),
     );
 }

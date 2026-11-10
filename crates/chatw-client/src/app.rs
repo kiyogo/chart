@@ -637,8 +637,8 @@ impl ChatApp {
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
             (egui::TextStyle::Heading, titlebar::font_medium(15.0)),
-            (egui::TextStyle::Body, titlebar::font_regular(13.5)),
-            (egui::TextStyle::Button, titlebar::font_regular(13.5)),
+            (egui::TextStyle::Body, titlebar::font_regular(14.0)),
+            (egui::TextStyle::Button, titlebar::font_regular(13.0)),
             (egui::TextStyle::Small, titlebar::font_regular(12.0)),
             (egui::TextStyle::Monospace, titlebar::font_mono(12.0)),
         ]

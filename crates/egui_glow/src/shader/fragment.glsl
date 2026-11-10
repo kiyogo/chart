@@ -61,9 +61,9 @@ void main() {
     vec4 frag_color_gamma = v_rgba_in_gamma * texture_in_gamma;
 
     // Dither the float color down to eight bits to reduce banding.
-    // This step is optional for egui backends.
-#if DITHERING
-    frag_color_gamma.rgb = dither_interleaved(frag_color_gamma.rgb, 256.);
-#endif
+    // Dithering is intentionally disabled to keep font edges noise-free and crystal-sharp.
+    // #if DITHERING
+    //     frag_color_gamma.rgb = dither_interleaved(frag_color_gamma.rgb, 256.);
+    // #endif
     gl_FragColor = frag_color_gamma;
 }
