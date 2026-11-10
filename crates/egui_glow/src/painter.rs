@@ -541,10 +541,21 @@ impl Painter {
 
                 let data: Vec<u8> = {
                     profiling::scope!("font -> sRGBA");
-                    image
-                        .srgba_pixels(None)
-                        .flat_map(|a| a.to_array())
-                        .collect()
+                    let mut bytes = Vec::with_capacity(image.pixels.len() * 4);
+                    for &coverage in &image.pixels {
+                        // Standard egui applies `coverage.powf(0.55)` which severely bloats low-coverage
+                        // edges into thick dark smudges ("nòe đen") on bright backgrounds.
+                        // Here we use high-contrast linear mapping with cut-off for crystal-sharp glyph stems.
+                        let a_f = if coverage < 0.04 {
+                            0.0
+                        } else {
+                            let norm = (coverage - 0.04) / 0.96;
+                            norm.powf(1.10)
+                        };
+                        let a = (a_f * 255.0).round().clamp(0.0, 255.0) as u8;
+                        bytes.extend_from_slice(&[a, a, a, a]);
+                    }
+                    bytes
                 };
 
                 self.upload_texture_srgb(delta.pos, image.size, delta.options, &data);

@@ -179,55 +179,55 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Segoe UI (Windows native, slim, crisp, high contrast) → Inter-Regular
+    // 3. Proportional family: Inter-Regular (designed specifically for screen UI) → Segoe UI → Emoji
     let mut prop = Vec::new();
+    prop.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_ui") {
         prop.push("segoe_ui".to_owned());
     }
-    prop.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         prop.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Medium family: Segoe UI Regular / Inter-Medium (slender, not overly thick)
+    // 4. Medium family: Inter-Medium → Segoe UI
     let medium_family = egui::FontFamily::Name("medium".into());
     let mut med = Vec::new();
+    med.push("inter_medium".to_owned());
+    med.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_ui") {
         med.push("segoe_ui".to_owned());
     }
-    med.push("inter_medium".to_owned());
-    med.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: Segoe UI Semibold → Inter-Medium
+    // 5. Semibold family: Inter-SemiBold → Segoe UI Semibold
     let semibold_family = egui::FontFamily::Name("semibold".into());
     let mut semi = Vec::new();
+    semi.push("inter_semibold".to_owned());
+    semi.push("inter_medium".to_owned());
     if fonts.font_data.contains_key("segoe_ui_semibold") {
         semi.push("segoe_ui_semibold".to_owned());
     } else if fonts.font_data.contains_key("segoe_ui") {
         semi.push("segoe_ui".to_owned());
     }
-    semi.push("inter_medium".to_owned());
-    semi.push("inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family: Segoe UI Bold → Inter-Bold
+    // 6. Bold family: Inter-Bold → Segoe UI Bold
     let bold_family = egui::FontFamily::Name("bold".into());
     let mut bold = Vec::new();
+    bold.push("inter_bold".to_owned());
+    bold.push("inter_semibold".to_owned());
     if fonts.font_data.contains_key("segoe_ui_bold") {
         bold.push("segoe_ui_bold".to_owned());
     } else if fonts.font_data.contains_key("segoe_ui_semibold") {
         bold.push("segoe_ui_semibold".to_owned());
     }
-    bold.push("inter_bold".to_owned());
-    bold.push("inter_semibold".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
@@ -668,14 +668,16 @@ impl ChatApp {
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
-            (egui::TextStyle::Heading, titlebar::font_medium(15.5)),
+            (egui::TextStyle::Heading, titlebar::font_medium(16.0)),
             (egui::TextStyle::Body, titlebar::font_regular(14.0)),
-            (egui::TextStyle::Button, titlebar::font_regular(13.5)),
+            (egui::TextStyle::Button, titlebar::font_medium(13.5)),
             (egui::TextStyle::Small, titlebar::font_regular(12.0)),
             (egui::TextStyle::Monospace, titlebar::font_mono(12.0)),
         ]
         .into();
         cc.egui_ctx.set_style(style);
+        // Default comfortable UI scale (120%) for modern high-resolution displays
+        cc.egui_ctx.set_zoom_factor(1.20);
 
         // Log DPI for debugging
         {
@@ -960,6 +962,19 @@ impl ChatApp {
 
         // Track maximization state for titlebar icon
         self.is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+
+        // Keyboard zoom shortcuts: Ctrl + Plus/Equals, Ctrl + Minus, Ctrl + 0
+        ctx.input(|i| {
+            if i.modifiers.command || i.modifiers.ctrl {
+                if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
+                    egui::gui_zoom::zoom_in(ctx);
+                } else if i.key_pressed(egui::Key::Minus) {
+                    egui::gui_zoom::zoom_out(ctx);
+                } else if i.key_pressed(egui::Key::Num0) {
+                    ctx.set_zoom_factor(1.20);
+                }
+            }
+        });
 
         let mut keys_to_load: Vec<Uuid> = Vec::new();
         let mut should_refresh_data = false;

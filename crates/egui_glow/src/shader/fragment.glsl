@@ -66,19 +66,10 @@ void main() {
     bool is_font_glyph = (abs(tex.r - tex.g) < 0.02 && abs(tex.g - tex.b) < 0.02);
 
     if (is_font_glyph && a > 0.002 && a < 0.998) {
-        // 1. Contrast sharpening:
-        // Cut off low-alpha rasterizer blur (< 0.08) that makes letters look smudgy and dirty.
-        // Ramp up solid coverage (> 0.88) so stems are clean, crisp, and slender.
-        a = smoothstep(0.08, 0.88, a);
-
-        // 2. Gamma correction for text anti-aliasing on white backgrounds:
-        // Non-linear sRGB blending in OpenGL darkens intermediate alpha values heavily (0.5 becomes 0.218 luminance).
-        // Raising alpha to power 1.35 compensates for this darkening effect,
-        // eliminating the dark muddy halos around letter edges on bright backgrounds.
-        a = pow(a, 1.35);
-
+        // High-contrast edge clamp for crisp rendering:
+        a = smoothstep(0.04, 0.92, a);
         tex.a = a;
-        tex.rgb = min(tex.rgb, vec3(a));
+        tex.rgb = vec3(a);
     }
 
     // We multiply the colors in gamma space, because that's the only way to get text to look right.
