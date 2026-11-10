@@ -452,7 +452,7 @@ impl ChatView {
         } else if ch_resp.hovered() {
             Color32::from_rgb(23, 23, 23)
         } else {
-            Color32::from_rgb(115, 115, 115) // #737373
+            Color32::from_rgb(75, 85, 99) // #4B5563
         };
         draw_svg_chat_icon(
             ui.painter(),
@@ -505,7 +505,7 @@ impl ChatView {
         } else if fr_resp.hovered() {
             Color32::from_rgb(23, 23, 23)
         } else {
-            Color32::from_rgb(115, 115, 115)
+            Color32::from_rgb(75, 85, 99)
         };
         draw_svg_friends_icon(
             ui.painter(),
@@ -556,7 +556,7 @@ impl ChatView {
         } else if set_resp.hovered() {
             Color32::from_rgb(23, 23, 23)
         } else {
-            Color32::from_rgb(115, 115, 115)
+            Color32::from_rgb(75, 85, 99)
         };
         draw_svg_settings_icon(
             ui.painter(),
@@ -612,7 +612,7 @@ impl ChatView {
                 Align2::CENTER_CENTER,
                 "Chưa có bạn bè nào trong danh bạ",
                 font_regular(14.0),
-                Color32::from_rgb(115, 115, 115),
+                Color32::from_rgb(75, 85, 99),
             );
             return;
         }
@@ -706,7 +706,7 @@ impl ChatView {
                     let preview_col = if unread > 0 {
                         Color32::from_rgb(23, 23, 23)
                     } else {
-                        Color32::from_rgb(115, 115, 115)
+                        Color32::from_rgb(75, 85, 99)
                     };
                     ui.painter().text(
                         snap_xy(text_left, item_rect.center().y + 10.0, ppp),
@@ -761,7 +761,7 @@ impl ChatView {
                 .hint_text(
                     RichText::new("Tên bạn bè")
                         .font(font_regular(14.0))
-                        .color(Color32::from_rgb(115, 115, 115)),
+                        .color(Color32::from_rgb(75, 85, 99)),
                 )
                 .frame(false)
                 .desired_width(inp_w - 28.0),
@@ -855,7 +855,7 @@ impl ChatView {
                 Align2::CENTER_CENTER,
                 "Không có lời mời nào",
                 font_regular(14.0),
-                Color32::from_rgb(115, 115, 115),
+                Color32::from_rgb(75, 85, 99),
             );
             return;
         }
@@ -935,7 +935,7 @@ impl ChatView {
                 Align2::CENTER_CENTER,
                 "Chọn một cuộc trò chuyện để bắt đầu",
                 font_regular(14.0),
-                Color32::from_rgb(115, 115, 115),
+                Color32::from_rgb(75, 85, 99),
             );
             return;
         };
@@ -987,7 +987,7 @@ impl ChatView {
         } else if menu_resp.hovered() {
             Color32::from_rgb(23, 23, 23)
         } else {
-            Color32::from_rgb(115, 115, 115)
+            Color32::from_rgb(75, 85, 99)
         };
         draw_svg_menu_icon(
             ui.painter(),
@@ -1032,7 +1032,7 @@ impl ChatView {
         draw_svg_emoji_icon(
             ui.painter(),
             Rect::from_center_size(emoji_btn_rect.center(), vec2(20.0, 20.0)),
-            Color32::from_rgb(115, 115, 115),
+            Color32::from_rgb(75, 85, 99),
         );
         if emoji_resp.clicked() {
             self.is_emoji_picker_open = !self.is_emoji_picker_open;
@@ -1072,7 +1072,7 @@ impl ChatView {
             .hint_text(
                 RichText::new("Nhập tin nhắn")
                     .font(font_regular(14.0))
-                    .color(Color32::from_rgb(115, 115, 115)),
+                    .color(Color32::from_rgb(75, 85, 99)),
             )
             .frame(false)
             .desired_width(text_box_rect.width() - 32.0);
@@ -1102,7 +1102,7 @@ impl ChatView {
         let send_icon_col = if can_send {
             Color32::WHITE
         } else {
-            Color32::from_rgb(115, 115, 115)
+            Color32::from_rgb(75, 85, 99)
         };
         draw_svg_send_icon(
             ui.painter(),
@@ -1138,7 +1138,7 @@ impl ChatView {
                 Align2::CENTER_CENTER,
                 "Chưa có tin nhắn",
                 font_regular(14.0),
-                Color32::from_rgb(115, 115, 115),
+                Color32::from_rgb(75, 85, 99),
             );
         } else {
             let mut msgs_ui = ui.new_child(
@@ -1162,7 +1162,7 @@ impl ChatView {
                                 RichText::new("Đang nhập")
                                     .font(font_regular(12.0))
                                     .italics()
-                                    .color(Color32::from_rgb(115, 115, 115)),
+                                    .color(Color32::from_rgb(75, 85, 99)),
                             );
                         });
                     }
@@ -1252,7 +1252,7 @@ impl ChatView {
         let back_col = if back_resp.hovered() {
             Color32::from_rgb(23, 23, 23)
         } else {
-            Color32::from_rgb(115, 115, 115)
+            Color32::from_rgb(75, 85, 99)
         };
         draw_svg_back_icon(
             ui.painter(),
@@ -1325,7 +1325,7 @@ impl ChatView {
                             Align2::LEFT_CENTER,
                             "Tài khoản cá nhân",
                             font_regular(12.0),
-                            Color32::from_rgb(115, 115, 115),
+                            Color32::from_rgb(75, 85, 99),
                         );
 
                         // "Đổi ảnh đại diện" button (.btn-avatar-upload: #FFFFFF bg, #2563EB text, 6px radius)
@@ -1509,7 +1509,7 @@ impl ChatView {
         let close_col = if close_resp.hovered() {
             Color32::from_rgb(23, 23, 23)
         } else {
-            Color32::from_rgb(115, 115, 115)
+            Color32::from_rgb(75, 85, 99)
         };
         draw_svg_close_icon(
             ui.painter(),
@@ -1562,7 +1562,7 @@ impl ChatView {
                             Align2::CENTER_CENTER,
                             "Tài khoản bạn bè",
                             font_regular(12.0),
-                            Color32::from_rgb(115, 115, 115),
+                            Color32::from_rgb(75, 85, 99),
                         );
 
                         ui.add_space(16.0);
@@ -1683,7 +1683,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         ui.label(
                             RichText::new(&msg.time_str)
                                 .font(font_regular(12.0))
-                                .color(Color32::from_rgb(115, 115, 115)),
+                                .color(Color32::from_rgb(75, 85, 99)),
                         );
                     });
                 });
@@ -1718,7 +1718,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         ui.label(
                             RichText::new(&msg.time_str)
                                 .font(font_regular(12.0))
-                                .color(Color32::from_rgb(115, 115, 115)),
+                                .color(Color32::from_rgb(75, 85, 99)),
                         );
                     });
                 });
@@ -1756,7 +1756,7 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
-        Color32::from_rgb(115, 115, 115),
+        Color32::from_rgb(75, 85, 99),
     );
     ui.painter().text(
         snap_xy(row_rect.right() - 16.0, row_rect.center().y, ppp),
@@ -1798,7 +1798,7 @@ fn render_settings_column_row_flat(
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
-        Color32::from_rgb(115, 115, 115),
+        Color32::from_rgb(75, 85, 99),
     );
     ui.painter().text(
         snap_xy(row_rect.left() + 16.0, row_rect.top() + 44.0, ppp),
@@ -1840,7 +1840,7 @@ fn render_settings_tag_row_flat(
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
-        Color32::from_rgb(115, 115, 115),
+        Color32::from_rgb(75, 85, 99),
     );
 
     let galley = ui.painter().layout_no_wrap(

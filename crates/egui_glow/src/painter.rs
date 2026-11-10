@@ -543,19 +543,16 @@ impl Painter {
                     profiling::scope!("font -> sRGBA");
                     let mut bytes = Vec::with_capacity(image.pixels.len() * 4);
                     for &coverage in &image.pixels {
-                        // Optical Hermite S-curve for razor-sharp typography at 96 DPI:
-                        // 1. Outer sub-pixel feather (coverage <= 0.06) is eliminated: zero gray haze on white backgrounds.
-                        // 2. High-contrast solid ink core: any stem pixel with coverage >= 0.58 reaches 100% solid opacity,
-                        //    preventing faint, washed-out or semi-transparent stems ("không bị mờ, nhòe").
-                        // 3. Smooth Hermite interpolation (3*t^2 - 2*t^3) preserves smooth curves and Vietnamese diacritics
-                        //    without artificial edge thickening or staircasing.
-                        let a_f = if coverage <= 0.06 {
+                        // High-fidelity balanced optical curve for Inter typography:
+                        // 1. Cull only sub-pixel raster noise (coverage <= 0.02) to keep white backgrounds pure.
+                        // 2. Smooth power curve (u^0.85) delivers rich, solid ink density without artificially
+                        //    inflating stroke widths or fusing adjacent letters (such as 't' and 'w').
+                        // 3. Perfectly preserves all Vietnamese diacritic dots, hooks, and subtle glyph curves.
+                        let a_f = if coverage <= 0.02 {
                             0.0
-                        } else if coverage >= 0.58 {
-                            1.0
                         } else {
-                            let t = (coverage - 0.06) / (0.58 - 0.06);
-                            3.0 * t * t - 2.0 * t * t * t
+                            let u = (coverage - 0.02) / 0.98;
+                            u.powf(0.85)
                         };
                         let a = (a_f * 255.0).round().clamp(0.0, 255.0) as u8;
                         bytes.extend_from_slice(&[a, a, a, a]);
