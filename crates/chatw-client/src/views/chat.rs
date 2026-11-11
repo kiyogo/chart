@@ -341,12 +341,6 @@ impl ChatView {
         );
         self.render_sidebar_content(&mut sidebar_ui, &mut triggered_action);
 
-        // 1px solid #E5E7EB border between sidebar and center view
-        ui.painter().line_segment(
-            [sidebar_rect.right_top(), sidebar_rect.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-        );
-
         // 2. RENDER CENTER MAIN VIEW
         let mut center_ui = ui.new_child(
             UiBuilder::new()

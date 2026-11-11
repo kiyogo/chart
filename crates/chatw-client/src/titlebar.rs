@@ -145,12 +145,6 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool, sidebar_width: Option<f3
             },
             Color32::from_rgb(255, 255, 255),
         );
-
-        // 1px vertical divider connecting smoothly to sidebar divider below
-        ui.painter().line_segment(
-            [pos2(split_x, rect.top()), pos2(split_x, rect.bottom())],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-        );
     } else {
         // Full width White (#FFFFFF) when no sidebar (e.g. login, onboarding)
         ui.painter().rect_filled(
