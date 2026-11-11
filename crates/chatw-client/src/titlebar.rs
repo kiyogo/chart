@@ -37,6 +37,24 @@ pub fn snap_xy(x: f32, y: f32, ppp: f32) -> Pos2 {
     pos2(x.round_to_pixels(ppp), y.round_to_pixels(ppp))
 }
 
+/// Paints text with exact physical-pixel aligned origin, eliminating any fractional blur.
+#[inline]
+pub fn paint_text_snapped(
+    painter: &egui::Painter,
+    pos: Pos2,
+    anchor: egui::Align2,
+    text: &str,
+    font_id: FontId,
+    color: Color32,
+    ppp: f32,
+) -> Rect {
+    let galley = painter.layout_no_wrap(text.to_string(), font_id, color);
+    let raw_rect = anchor.anchor_size(pos, galley.size());
+    let snapped_pos = snap_pos(raw_rect.min, ppp);
+    painter.galley(snapped_pos, galley, color);
+    Rect::from_min_size(snapped_pos, raw_rect.size())
+}
+
 /// Draws a connected polyline with round caps and round joins (`stroke-linecap="round"`, `stroke-linejoin="round"`)
 pub fn draw_smooth_polyline(
     painter: &egui::Painter,
@@ -116,48 +134,19 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool, sidebar_width: Option<f3
 
     let corner_top = if is_maximized { 0 } else { 8 };
 
-    // 1. Dual-tone Background: Left (#F7F8FA) for sidebar, Right (#FFFFFF) for main content
-    if let Some(sw) = sidebar_width {
-        let split_x = (rect.left() + sw).min(rect.right());
-        let left_rect = Rect::from_min_max(rect.min, pos2(split_x, rect.bottom()));
-        let right_rect = Rect::from_min_max(pos2(split_x, rect.top()), rect.max);
-
-        // Left sidebar titlebar background (#F7F8FA)
-        ui.painter().rect_filled(
-            left_rect,
-            egui::CornerRadius {
-                nw: corner_top,
-                ne: 0,
-                sw: 0,
-                se: 0,
-            },
-            Color32::from_rgb(247, 248, 250),
-        );
-
-        // Right content titlebar background (#FFFFFF)
-        ui.painter().rect_filled(
-            right_rect,
-            egui::CornerRadius {
-                nw: 0,
-                ne: corner_top,
-                sw: 0,
-                se: 0,
-            },
-            Color32::from_rgb(255, 255, 255),
-        );
-    } else {
-        // Full width White (#FFFFFF) when no sidebar (e.g. login, onboarding)
-        ui.painter().rect_filled(
-            rect,
-            egui::CornerRadius {
-                nw: corner_top,
-                ne: corner_top,
-                sw: 0,
-                se: 0,
-            },
-            Color32::from_rgb(255, 255, 255),
-        );
-    }
+    // Unified Clean Background: Solid White (#FFFFFF) across the entire titlebar.
+    // Completely eliminates any vertical seam, gray bar, or split line between sections.
+    let _ = sidebar_width;
+    ui.painter().rect_filled(
+        rect,
+        egui::CornerRadius {
+            nw: corner_top,
+            ne: corner_top,
+            sw: 0,
+            se: 0,
+        },
+        Color32::from_rgb(255, 255, 255),
+    );
 
     // 4. Left Brand Section: logo + "chatw" only (clean, minimal)
     let logo_color = Color32::from_rgb(37, 99, 235); // #2563EB

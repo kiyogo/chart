@@ -1,6 +1,6 @@
 use crate::titlebar::{
-    draw_smooth_polyline, draw_svg_logo_icon, font_mono, font_regular, push_arc_points, snap_pos,
-    snap_xy,
+    draw_smooth_polyline, draw_svg_logo_icon, font_mono, font_regular, paint_text_snapped,
+    push_arc_points, snap_pos, snap_xy,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chatw_core::{FriendItem, PendingRequestItem, UserSearchResult};
@@ -601,12 +601,14 @@ impl ChatView {
         let ppp = ui.pixels_per_point();
         if self.friends.is_empty() {
             let avail = ui.available_rect_before_wrap();
-            ui.painter().text(
-                snap_pos(avail.center(), ppp),
+            paint_text_snapped(
+                ui.painter(),
+                avail.center(),
                 Align2::CENTER_CENTER,
                 "Chưa có bạn bè nào trong danh bạ",
                 font_regular(14.0),
                 Color32::from_rgb(75, 85, 99),
+                ppp,
             );
             return;
         }
@@ -832,24 +834,28 @@ impl ChatView {
                 vec2(total_w - 32.0, 28.0),
             );
             ui.painter().rect_filled(st_rect, CornerRadius::same(6), bg);
-            ui.painter().text(
-                snap_pos(st_rect.center(), ppp),
+            paint_text_snapped(
+                ui.painter(),
+                st_rect.center(),
                 Align2::CENTER_CENTER,
                 status,
                 font_regular(12.0),
                 fg,
+                ppp,
             );
         }
 
         // Scrollable list of pending requests (or empty state "Không có lời mời nào")
         if self.pending_requests.is_empty() {
             let avail = ui.available_rect_before_wrap();
-            ui.painter().text(
-                snap_pos(avail.center(), ppp),
+            paint_text_snapped(
+                ui.painter(),
+                avail.center(),
                 Align2::CENTER_CENTER,
                 "Không có lời mời nào",
                 font_regular(14.0),
                 Color32::from_rgb(75, 85, 99),
+                ppp,
             );
             return;
         }
@@ -924,12 +930,14 @@ impl ChatView {
         let ppp = ui.pixels_per_point();
 
         let Some(friend) = active_friend else {
-            ui.painter().text(
-                snap_pos(total_rect.center(), ppp),
+            paint_text_snapped(
+                ui.painter(),
+                total_rect.center(),
                 Align2::CENTER_CENTER,
                 "Chọn một cuộc trò chuyện để bắt đầu",
                 font_regular(14.0),
                 Color32::from_rgb(75, 85, 99),
+                ppp,
             );
             return;
         };
@@ -1307,19 +1315,23 @@ impl ChatView {
                         paint_avatar_in_rect(ui.painter(), av_rect, &self.current_username);
 
                         let info_x = av_rect.right() + 16.0;
-                        ui.painter().text(
-                            snap_xy(info_x, card_rect.center().y - 10.0, ppp),
+                        paint_text_snapped(
+                            ui.painter(),
+                            pos2(info_x, card_rect.center().y - 10.0),
                             Align2::LEFT_CENTER,
                             &self.current_username,
                             font_regular(14.0),
-                            Color32::from_rgb(23, 23, 23),
+                            Color32::from_rgb(17, 24, 39),
+                            ppp,
                         );
-                        ui.painter().text(
-                            snap_xy(info_x, card_rect.center().y + 11.0, ppp),
+                        paint_text_snapped(
+                            ui.painter(),
+                            pos2(info_x, card_rect.center().y + 11.0),
                             Align2::LEFT_CENTER,
                             "Tài khoản cá nhân",
                             font_regular(12.0),
                             Color32::from_rgb(75, 85, 99),
+                            ppp,
                         );
 
                         // "Đổi ảnh đại diện" button (.btn-avatar-upload: #FFFFFF bg, #2563EB text, 6px radius)
@@ -1343,12 +1355,14 @@ impl ChatView {
                         };
                         ui.painter()
                             .rect_filled(upload_btn_rect, CornerRadius::same(6), upload_bg);
-                        ui.painter().text(
-                            snap_pos(upload_btn_rect.center(), ppp),
+                        paint_text_snapped(
+                            ui.painter(),
+                            upload_btn_rect.center(),
                             Align2::CENTER_CENTER,
                             "Đổi ảnh đại diện",
                             font_regular(13.0),
                             Color32::from_rgb(37, 99, 235),
+                            ppp,
                         );
 
                         ui.add_space(24.0);
@@ -1441,12 +1455,14 @@ impl ChatView {
                         };
                         ui.painter()
                             .rect_filled(logout_btn_rect, CornerRadius::same(8), logout_bg);
-                        ui.painter().text(
-                            snap_pos(logout_btn_rect.center(), ui.pixels_per_point()),
+                        paint_text_snapped(
+                            ui.painter(),
+                            logout_btn_rect.center(),
                             Align2::CENTER_CENTER,
                             "Đăng xuất",
                             font_regular(14.0),
                             Color32::from_rgb(220, 38, 38), // #DC2626
+                            ppp,
                         );
 
                         if logout_btn_resp.clicked() {
@@ -1745,19 +1761,23 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
         );
     }
 
-    ui.painter().text(
-        snap_xy(row_rect.left() + 16.0, row_rect.center().y, ppp),
+    paint_text_snapped(
+        ui.painter(),
+        pos2(row_rect.left() + 16.0, row_rect.center().y),
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
         Color32::from_rgb(75, 85, 99),
+        ppp,
     );
-    ui.painter().text(
-        snap_xy(row_rect.right() - 16.0, row_rect.center().y, ppp),
+    paint_text_snapped(
+        ui.painter(),
+        pos2(row_rect.right() - 16.0, row_rect.center().y),
         Align2::RIGHT_CENTER,
         value,
         font_regular(13.0),
-        Color32::from_rgb(23, 23, 23),
+        Color32::from_rgb(17, 24, 39),
+        ppp,
     );
 }
 
@@ -1787,19 +1807,23 @@ fn render_settings_column_row_flat(
         );
     }
 
-    ui.painter().text(
-        snap_xy(row_rect.left() + 16.0, row_rect.top() + 21.0, ppp),
+    paint_text_snapped(
+        ui.painter(),
+        pos2(row_rect.left() + 16.0, row_rect.top() + 21.0),
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
         Color32::from_rgb(75, 85, 99),
+        ppp,
     );
-    ui.painter().text(
-        snap_xy(row_rect.left() + 16.0, row_rect.top() + 44.0, ppp),
+    paint_text_snapped(
+        ui.painter(),
+        pos2(row_rect.left() + 16.0, row_rect.top() + 44.0),
         Align2::LEFT_CENTER,
         value,
         font_mono(12.0),
-        Color32::from_rgb(23, 23, 23),
+        Color32::from_rgb(17, 24, 39),
+        ppp,
     );
 }
 
@@ -1829,12 +1853,14 @@ fn render_settings_tag_row_flat(
         );
     }
 
-    ui.painter().text(
-        snap_xy(row_rect.left() + 16.0, row_rect.center().y, ppp),
+    paint_text_snapped(
+        ui.painter(),
+        pos2(row_rect.left() + 16.0, row_rect.center().y),
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
         Color32::from_rgb(75, 85, 99),
+        ppp,
     );
 
     let galley = ui.painter().layout_no_wrap(
