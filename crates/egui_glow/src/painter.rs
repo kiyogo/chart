@@ -87,6 +87,8 @@ pub struct Painter {
     program: glow::Program,
     u_screen_size: glow::UniformLocation,
     u_sampler: glow::UniformLocation,
+    u_pixels_per_point: Option<glow::UniformLocation>,
+    u_is_font: Option<glow::UniformLocation>,
     is_webgl_1: bool,
     vao: crate::vao::VertexArrayObject,
     srgb_textures: bool,
@@ -218,6 +220,8 @@ impl Painter {
             gl.delete_shader(frag);
             let u_screen_size = gl.get_uniform_location(program, "u_screen_size").unwrap();
             let u_sampler = gl.get_uniform_location(program, "u_sampler").unwrap();
+            let u_pixels_per_point = gl.get_uniform_location(program, "u_pixels_per_point");
+            let u_is_font = gl.get_uniform_location(program, "u_is_font");
 
             let vbo = gl.create_buffer()?;
 
@@ -264,6 +268,8 @@ impl Painter {
                 program,
                 u_screen_size,
                 u_sampler,
+                u_pixels_per_point,
+                u_is_font,
                 is_webgl_1,
                 vao,
                 srgb_textures,
@@ -343,6 +349,9 @@ impl Painter {
 
             self.gl
                 .uniform_2_f32(Some(&self.u_screen_size), width_in_points, height_in_points);
+            if let Some(loc) = &self.u_pixels_per_point {
+                self.gl.uniform_1_f32(Some(loc), pixels_per_point);
+            }
             self.gl.uniform_1_i32(Some(&self.u_sampler), 0);
             self.gl.active_texture(glow::TEXTURE0);
 
@@ -472,6 +481,15 @@ impl Painter {
         debug_assert!(mesh.is_valid());
         if let Some(texture) = self.texture(mesh.texture_id) {
             unsafe {
+                if let Some(loc) = &self.u_is_font {
+                    let is_font = if mesh.texture_id == egui::TextureId::default() {
+                        1
+                    } else {
+                        0
+                    };
+                    self.gl.uniform_1_i32(Some(loc), is_font);
+                }
+
                 self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
                 self.gl.buffer_data_u8_slice(
                     glow::ARRAY_BUFFER,

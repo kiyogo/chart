@@ -1,8 +1,12 @@
 #ifdef GL_ES
     precision mediump float;
+    #ifdef GL_OES_standard_derivatives
+        #extension GL_OES_standard_derivatives : enable
+    #endif
 #endif
 
 uniform sampler2D u_sampler;
+uniform int u_is_font;
 
 #if NEW_SHADER_INTERFACE
     in vec4 v_rgba_in_gamma;
@@ -56,6 +60,22 @@ void main() {
 #else
     vec4 texture_in_gamma = texture2D(u_sampler, v_tc);
 #endif
+
+    if (u_is_font != 0) {
+        // High-precision GPU hardware text sharpening:
+        // Calculates dynamic sub-pixel gradient across physical screen pixels to produce
+        // razor-sharp, steel-cut edges for text without artificial bolding.
+        vec2 dt = dFdx(v_tc);
+        float c = texture_in_gamma.a;
+        if (c > 0.01 && c < 0.99) {
+            float left = texture2D(u_sampler, v_tc - dt * 0.5).a;
+            float right = texture2D(u_sampler, v_tc + dt * 0.5).a;
+            float laplacian = c * 2.0 - (left + right);
+            float sharp_a = clamp(c + laplacian * 0.38, 0.0, 1.0);
+            sharp_a = smoothstep(0.03, 0.97, sharp_a);
+            texture_in_gamma = vec4(sharp_a, sharp_a, sharp_a, sharp_a);
+        }
+    }
 
     // We multiply the colors in gamma space, because that's the only way to get text to look right.
     vec4 frag_color_gamma = v_rgba_in_gamma * texture_in_gamma;

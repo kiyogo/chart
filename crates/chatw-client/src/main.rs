@@ -69,6 +69,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport,
+        hardware_acceleration: eframe::HardwareAcceleration::Required,
         ..Default::default()
     };
 
