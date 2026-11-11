@@ -109,23 +109,23 @@ impl LoginView {
 
             ui.add_space(12.0);
 
-            // 2. Title: chatw (18px, font-weight 500, color #171717)
+            // 2. Title: chatw (20px matching web .auth-title)
             ui.label(
                 RichText::new("chatw")
-                    .font(font_regular(18.0))
-                    .color(Color32::from_rgb(23, 23, 23)),
+                    .font(font_regular(20.0))
+                    .color(Color32::from_rgb(17, 24, 39)),
             );
 
-            ui.add_space(2.0);
+            ui.add_space(4.0);
 
-            // 3. Subtitle: Ứng dụng nhắn tin bảo mật E2EE (12.0px, color #737373)
+            // 3. Subtitle: Ứng dụng nhắn tin bảo mật E2EE (13px matching web .auth-subtitle)
             ui.label(
                 RichText::new("Ứng dụng nhắn tin bảo mật E2EE")
-                    .font(font_regular(12.0))
+                    .font(font_regular(13.0))
                     .color(Color32::from_rgb(75, 85, 99)),
             );
 
-            ui.add_space(16.0);
+            ui.add_space(20.0);
 
             let ppp = ui.pixels_per_point();
 
@@ -219,7 +219,7 @@ impl LoginView {
             let div_galley = ui.painter().layout_no_wrap(
                 "chế độ phát triển cục bộ".to_string(),
                 font_regular(12.0),
-                Color32::from_rgb(75, 85, 99),
+                Color32::from_rgb(107, 114, 128),
             );
             let text_half = div_galley.size().x * 0.5 + 10.0;
             let line_y = div_rect.center().y;
@@ -246,28 +246,29 @@ impl LoginView {
                     ppp,
                 ),
                 div_galley,
-                Color32::from_rgb(75, 85, 99),
+                Color32::from_rgb(107, 114, 128),
             );
 
-            ui.add_space(12.0);
+            ui.add_space(14.0);
 
-            // 6. Dev input matching web .auth-input (1px solid #E5E7EB, focus #2563EB, 8px radius, #FFFFFF bg)
+            // 6. Dev input matching web .auth-input (1px solid #E5E7EB, focus #2563EB, 8px radius, #FFFFFF bg, 42px height)
             let (input_box_rect, _) =
-                ui.allocate_exact_size(Vec2::new(card_width, 40.0), Sense::hover());
+                ui.allocate_exact_size(Vec2::new(card_width, 42.0), Sense::hover());
             ui.painter()
                 .rect_filled(input_box_rect, CornerRadius::same(8), Color32::WHITE);
 
             let mut input_child = ui.new_child(
                 egui::UiBuilder::new()
-                    .max_rect(input_box_rect.shrink2(vec2(14.0, 4.0)))
+                    .max_rect(input_box_rect.shrink2(vec2(14.0, 5.0)))
                     .layout(Layout::left_to_right(Align::Center)),
             );
             let input_edit = egui::TextEdit::singleline(&mut self.username_input)
                 .font(font_regular(14.0))
+                .text_color(Color32::from_rgb(17, 24, 39))
                 .hint_text(
                     RichText::new("Tên tài khoản thử (ví dụ: alice)")
                         .font(font_regular(14.0))
-                        .color(Color32::from_rgb(75, 85, 99)),
+                        .color(Color32::from_rgb(156, 163, 175)),
                 )
                 .frame(false)
                 .desired_width(card_width - 28.0);
@@ -285,11 +286,11 @@ impl LoginView {
                 StrokeKind::Inside,
             );
 
-            ui.add_space(10.0);
+            ui.add_space(12.0);
 
-            // 7. Dev login button matching web .auth-btn-secondary
+            // 7. Dev login button matching web .auth-btn-secondary (42px height)
             let (dev_rect, dev_resp) = ui.allocate_exact_size(
-                Vec2::new(card_width, 40.0),
+                Vec2::new(card_width, 42.0),
                 if self.is_loading {
                     Sense::hover()
                 } else {
@@ -323,7 +324,7 @@ impl LoginView {
                 Align2::CENTER_CENTER,
                 dev_text,
                 font_regular(14.0),
-                Color32::from_rgb(23, 23, 23), // #171717
+                Color32::from_rgb(17, 24, 39), // #111827
             );
 
             let should_dev_login = (dev_resp.clicked()

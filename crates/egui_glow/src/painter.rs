@@ -543,14 +543,15 @@ impl Painter {
                     profiling::scope!("font -> sRGBA");
                     let mut bytes = Vec::with_capacity(image.pixels.len() * 4);
                     for &coverage in &image.pixels {
-                        // High-fidelity natural optical curve for pure Inter-Regular typography:
-                        // 1. Cull sub-pixel raster noise (coverage <= 0.02) to keep white backgrounds pure.
-                        // 2. Linear coverage mapping (1.0) preserves authentic slender stem widths without bolding.
-                        // 3. Crisp glyph edges and accurate Vietnamese diacritics.
+                        // High-contrast, crystal-clear optical curve for Inter typography:
+                        // 1. Cull sub-pixel raster noise (coverage <= 0.02) to keep white backgrounds 100% pure.
+                        // 2. Optical curve u^0.78 delivers rich, solid ink density to letter stems and Vietnamese
+                        //    diacritics (dots, hooks, breves, horns) at 96 DPI without artificial bolding or blur.
                         let a_f = if coverage <= 0.02 {
                             0.0
                         } else {
-                            (coverage - 0.02) / 0.98
+                            let u = (coverage - 0.02) / 0.98;
+                            u.powf(0.78)
                         };
                         let a = (a_f * 255.0).round().clamp(0.0, 255.0) as u8;
                         bytes.extend_from_slice(&[a, a, a, a]);
