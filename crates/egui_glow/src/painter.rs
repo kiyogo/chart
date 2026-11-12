@@ -556,16 +556,17 @@ impl Painter {
                     profiling::scope!("font -> sRGBA");
                     let mut bytes = Vec::with_capacity(image.pixels.len() * 4);
                     for &coverage in &image.pixels {
-                        // High-contrast, razor-sharp optical curve for Inter typography at 96 DPI:
-                        // 1. Fringe suppression: cull faint raster halo (coverage <= 0.04) to 0.0
+                        // Perceptual gamma 1.80 pre-correction for sRGB gamma blending on light themes:
+                        // 1. Fringe suppression: cull faint raster halo (coverage <= 0.045) to 0.0
                         //    so white backgrounds stay 100% clean and free of dark smudges.
-                        // 2. High-contrast stem saturation: power curve keeps edge transitions thin
-                        //    while boosting stem core (>= 0.85) to pure solid ink.
-                        let a_f = if coverage <= 0.04 {
+                        // 2. Optical power curve (1.35 * u^1.80) maps anti-aliasing edges to slender, razor-sharp
+                        //    transitions, neutralizing nonlinear human eye darkness expansion in sRGB space.
+                        // 3. Stems with coverage >= 0.85 saturate smoothly to 100% solid, crisp black ink.
+                        let a_f = if coverage <= 0.045 {
                             0.0
                         } else {
-                            let u = (coverage - 0.04) / 0.96;
-                            (1.22 * u.powf(1.10)).clamp(0.0, 1.0)
+                            let u = (coverage - 0.045) / 0.955;
+                            (1.35 * u.powf(1.80)).clamp(0.0, 1.0)
                         };
                         let a = (a_f * 255.0).round().clamp(0.0, 255.0) as u8;
                         bytes.extend_from_slice(&[a, a, a, a]);
