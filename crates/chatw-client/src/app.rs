@@ -636,8 +636,11 @@ impl ChatApp {
         ]
         .into();
         cc.egui_ctx.set_style(style);
-        // Standard 100% UI scale
+        // Standard 100% UI scale & pixel-snapped text tessellation
         cc.egui_ctx.set_zoom_factor(1.0);
+        cc.egui_ctx.tessellation_options_mut(|opts| {
+            opts.round_text_to_pixels = true;
+        });
 
         // Log DPI for debugging
         {

@@ -70,6 +70,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport,
         hardware_acceleration: eframe::HardwareAcceleration::Required,
+        multisampling: 0, // Ensure MSAA is strictly disabled so it never blurs font textures
         ..Default::default()
     };
 

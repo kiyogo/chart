@@ -488,6 +488,19 @@ impl Painter {
                 );
 
                 self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+
+                if mesh.texture_id == egui::TextureId::default() {
+                    self.gl.tex_parameter_i32(
+                        glow::TEXTURE_2D,
+                        glow::TEXTURE_MAG_FILTER,
+                        glow::NEAREST as i32,
+                    );
+                    self.gl.tex_parameter_i32(
+                        glow::TEXTURE_2D,
+                        glow::TEXTURE_MIN_FILTER,
+                        glow::NEAREST as i32,
+                    );
+                }
             }
 
             unsafe {
@@ -543,15 +556,16 @@ impl Painter {
                     profiling::scope!("font -> sRGBA");
                     let mut bytes = Vec::with_capacity(image.pixels.len() * 4);
                     for &coverage in &image.pixels {
-                        // High-contrast, crystal-clear optical curve for Inter typography:
-                        // 1. Cull sub-pixel raster noise (coverage <= 0.02) to keep white backgrounds 100% pure.
-                        // 2. Optical curve u^0.78 delivers rich, solid ink density to letter stems and Vietnamese
-                        //    diacritics (dots, hooks, breves, horns) at 96 DPI without artificial bolding or blur.
-                        let a_f = if coverage <= 0.02 {
+                        // High-contrast, razor-sharp optical curve for Inter typography at 96 DPI:
+                        // 1. Fringe suppression: cull faint raster halo (coverage <= 0.04) to 0.0
+                        //    so white backgrounds stay 100% clean and free of dark smudges.
+                        // 2. High-contrast stem saturation: power curve keeps edge transitions thin
+                        //    while boosting stem core (>= 0.85) to pure solid ink.
+                        let a_f = if coverage <= 0.04 {
                             0.0
                         } else {
-                            let u = (coverage - 0.02) / 0.98;
-                            u.powf(0.78)
+                            let u = (coverage - 0.04) / 0.96;
+                            (1.22 * u.powf(1.10)).clamp(0.0, 1.0)
                         };
                         let a = (a_f * 255.0).round().clamp(0.0, 255.0) as u8;
                         bytes.extend_from_slice(&[a, a, a, a]);
@@ -559,7 +573,10 @@ impl Painter {
                     bytes
                 };
 
-                self.upload_texture_srgb(delta.pos, image.size, delta.options, &data);
+                let mut font_options = delta.options;
+                font_options.magnification = egui::TextureFilter::Nearest;
+                font_options.minification = egui::TextureFilter::Nearest;
+                self.upload_texture_srgb(delta.pos, image.size, font_options, &data);
             }
         };
     }
