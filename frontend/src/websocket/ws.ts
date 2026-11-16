@@ -63,6 +63,13 @@ export type WsEvent =
       };
     }
   | {
+      type: 'message.edited';
+      data: {
+        message_id: string;
+        envelope: string;
+      };
+    }
+  | {
       type: 'channel.message.new';
       data: import('../api/client').ChannelMessageItem;
     }

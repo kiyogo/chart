@@ -340,6 +340,43 @@ export function Chat(props: {
             return [...prev, event.data];
           });
         }
+      } else if (event.type === 'message.deleted') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === event.data.message_id
+              ? { ...m, text: '[Tin nhắn đã bị thu hồi]' }
+              : m
+          )
+        );
+      } else if (event.type === 'message.edited') {
+        const keys = userKeys();
+        const active = activeFriend();
+        if (keys && active) {
+          const peer = peerKeysCache.get(active.id);
+          const targetMsg = messages().find((m) => m.id === event.data.message_id);
+          const senderEcdsa =
+            targetMsg && targetMsg.isSelf
+              ? keys.ecdsaKeyPair.publicKey
+              : peer
+              ? peer.ecdsaKey
+              : null;
+          if (senderEcdsa) {
+            decryptChatMessage({
+              envelopeB64: event.data.envelope,
+              myUserId: props.currentUserId,
+              myKeys: keys,
+              senderEcdsaKey: senderEcdsa,
+            })
+              .then((dec) => {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === event.data.message_id ? { ...m, text: dec.text } : m
+                  )
+                );
+              })
+              .catch(() => {});
+          }
+        }
       } else if (event.type === 'friend.request') {
         await reloadRequests();
         playNotificationChime();
