@@ -90,10 +90,7 @@ impl LoginView {
     pub fn show(&mut self, ui: &mut Ui) -> Option<LoginAction> {
         let mut action = None;
 
-        // Container: White background (#FFFFFF)
         let avail = ui.available_rect_before_wrap();
-        ui.painter()
-            .rect_filled(avail, 0.0, Color32::from_rgb(255, 255, 255));
 
         // Vertically & horizontally centered .auth-box (max-width: 320px)
         let card_width = 320.0;

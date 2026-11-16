@@ -381,8 +381,18 @@ impl ChatView {
     // ==========================================
     pub fn render_sidebar_content(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
         let total_rect = ui.available_rect_before_wrap();
-        ui.painter()
-            .rect_filled(total_rect, 0.0, Color32::from_rgb(247, 248, 250));
+        let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+        let corner_bottom = if is_maximized { 0 } else { 8 };
+        ui.painter().rect_filled(
+            total_rect,
+            CornerRadius {
+                nw: 0,
+                ne: 0,
+                sw: corner_bottom,
+                se: 0,
+            },
+            Color32::from_rgb(247, 248, 250),
+        );
 
         // .sidebar-header: padding 16px, height 68px (36px buttons + 32px padding), NO bottom border
         let header_height = 68.0;
@@ -926,7 +936,6 @@ impl ChatView {
         active_friend: Option<&FriendItem>,
     ) {
         let total_rect = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(total_rect, 0.0, Color32::WHITE);
         let ppp = ui.pixels_per_point();
 
         let Some(friend) = active_friend else {
@@ -1005,8 +1014,6 @@ impl ChatView {
             pos2(total_rect.min.x, total_rect.max.y - input_bar_height),
             Vec2::new(total_rect.width(), input_bar_height),
         );
-        ui.painter()
-            .rect_filled(input_bar_rect, 0.0, Color32::WHITE);
         ui.painter().line_segment(
             [input_bar_rect.left_top(), input_bar_rect.right_top()],
             Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
@@ -1228,7 +1235,6 @@ impl ChatView {
     // ==========================================
     pub fn render_settings_view(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
         let total_rect = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(total_rect, 0.0, Color32::WHITE);
 
         // .chat-header: height 54px, border-bottom 1px solid #E5E7EB
         let header_height = 54.0;
@@ -1480,7 +1486,6 @@ impl ChatView {
     // ==========================================
     pub fn render_partner_info_sidebar(&mut self, ui: &mut Ui, friend: &FriendItem) {
         let total_rect = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(total_rect, 0.0, Color32::WHITE);
         let ppp = ui.pixels_per_point();
 
         // .partner-info-header: height 54px, border-bottom 1px solid #E5E7EB

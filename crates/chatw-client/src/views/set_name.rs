@@ -21,10 +21,7 @@ impl SetNameView {
     pub fn show(&mut self, ui: &mut Ui) -> Option<String> {
         let mut submitted_name = None;
 
-        // Container: White background (#FFFFFF)
         let avail = ui.available_rect_before_wrap();
-        ui.painter()
-            .rect_filled(avail, 0.0, Color32::from_rgb(255, 255, 255));
 
         let card_width = 320.0;
         let top_pad = ((avail.height() - 250.0) * 0.5).max(32.0);
