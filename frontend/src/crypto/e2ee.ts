@@ -99,14 +99,40 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export async function getUserKeys(): Promise<UserKeys | null> {
+export async function getUserKeys(userId?: string): Promise<UserKeys | null> {
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('keys', 'readonly');
+    const tx = db.transaction('keys', 'readwrite');
     const store = tx.objectStore('keys');
-    const req = store.get('current_keys');
+    const primaryKey = userId ? `current_keys_${userId}` : 'current_keys';
+    const req = store.get(primaryKey);
     req.onsuccess = () => {
-      const val = req.result;
+      let val = req.result;
+      if (!val && userId) {
+        // Backwards compatibility: fallback to legacy un-scoped current_keys
+        const legacyReq = store.get('current_keys');
+        legacyReq.onsuccess = () => {
+          val = legacyReq.result;
+          if (val) {
+            // Migrate legacy keys to user-scoped key
+            store.put(val, primaryKey);
+            resolve({
+              ecdhKeyPair: val.ecdhKeyPair,
+              ecdsaKeyPair: val.ecdsaKeyPair,
+              ecdhRaw: val.ecdhRaw,
+              ecdsaRaw: val.ecdsaRaw,
+              fingerprint: val.fingerprint,
+              ecdhRawB64: base64UrlEncode(val.ecdhRaw),
+              ecdsaRawB64: base64UrlEncode(val.ecdsaRaw),
+              fingerprintB64: base64UrlEncode(val.fingerprint),
+            });
+          } else {
+            resolve(null);
+          }
+        };
+        legacyReq.onerror = () => resolve(null);
+        return;
+      }
       if (!val) {
         resolve(null);
         return;
@@ -126,7 +152,7 @@ export async function getUserKeys(): Promise<UserKeys | null> {
   });
 }
 
-export async function createAndStoreUserKeys(): Promise<UserKeys> {
+export async function createAndStoreUserKeys(userId?: string): Promise<UserKeys> {
   // 1. Generate P-256 ECDH KeyPair
   const ecdhKeyPair = await crypto.subtle.generateKey(
     { name: 'ECDH', namedCurve: 'P-256' },
@@ -159,8 +185,11 @@ export async function createAndStoreUserKeys(): Promise<UserKeys> {
 
   // 5. Save in IndexedDB
   const db = await openDatabase();
+  const storageKey = userId ? `current_keys_${userId}` : 'current_keys';
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction('keys', 'readwrite');
+    tx.objectStore('keys').put(keysRecord, storageKey);
+    // Also update legacy key for single-user fallback
     tx.objectStore('keys').put(keysRecord, 'current_keys');
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
@@ -176,6 +205,20 @@ export async function createAndStoreUserKeys(): Promise<UserKeys> {
     ecdsaRawB64: base64UrlEncode(ecdsaRaw),
     fingerprintB64: base64UrlEncode(fingerprint),
   };
+}
+
+export async function clearUserKeys(userId?: string): Promise<void> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('keys', 'readwrite');
+    const store = tx.objectStore('keys');
+    if (userId) {
+      store.delete(`current_keys_${userId}`);
+    }
+    store.delete('current_keys');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
 export async function getOrVerifyPeerKeys(
@@ -215,7 +258,14 @@ export async function getOrVerifyPeerKeys(
       }
     }
     if (!match) {
-      throw new Error('Chìa khóa bảo mật của người này đã bị thay đổi bất thường!');
+      console.warn(`[E2EE TOFU] Chìa khóa bảo mật của peer ${peerId} đã được cập nhật lại.`);
+      // Update stored keys to reflect peer key rotation
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('peers', 'readwrite');
+        tx.objectStore('peers').put({ ecdhRaw, ecdsaRaw, fingerprint }, peerId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
     }
   } else {
     // Save to IndexedDB (First use)
@@ -416,7 +466,7 @@ export async function decryptChatMessage(params: {
   }
 
   const messageId = bytesToUuid(raw.subarray(1, 17));
-  const senderId = bytesToUuid(raw.subarray(1, 17 + 16));
+  const senderId = bytesToUuid(raw.subarray(17, 33));
   const recipientId = bytesToUuid(raw.subarray(33, 49));
   const fingerprint = raw.subarray(49, 81);
   const ephemeralPublicRaw = raw.subarray(81, 146);

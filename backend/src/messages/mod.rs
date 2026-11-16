@@ -182,6 +182,22 @@ async fn handle_send_message(
         )
         .await;
 
+    // Send real-time event to sender (for other active sessions / tabs of sender)
+    state
+        .ws_hub
+        .send_to_user(
+            &sender.id,
+            WsEvent::MessageNew {
+                id: payload.message_id,
+                seq: row.seq,
+                sender_id: sender.id,
+                recipient_id,
+                envelope: payload.sender_envelope,
+                created_at: row.created_at,
+            },
+        )
+        .await;
+
     Ok(Json(SendMessageResponse {
         id: payload.message_id,
         seq: row.seq,

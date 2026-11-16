@@ -68,37 +68,48 @@ fn drain_decrypt_queue(
     let mut still_pending = Vec::new();
     let current_queue = std::mem::take(queue);
 
-    for (sender_id, wire) in current_queue {
-        if let Some((_, _, ecdsa_pub)) = chat.cached_keys.get(&sender_id) {
+    for (conv_id, wire) in current_queue {
+        let is_me = wire.sender_id == chat.current_user_id;
+        let signer_pub = if is_me {
+            Some(my_keys.ecdsa_pub_bytes)
+        } else {
+            chat.cached_keys.get(&wire.sender_id).map(|k| k.2)
+        };
+
+        if let Some(ecdsa_pub) = signer_pub {
             if let Ok(raw_env) = URL_SAFE_NO_PAD.decode(&wire.envelope) {
-                if let Ok(text) = decrypt_message(my_keys, ecdsa_pub, &raw_env) {
-                    let msgs = chat.messages.entry(sender_id).or_default();
-                    if !msgs.iter().any(|m| m.id == wire.id) {
-                        msgs.push(DecryptedMessage {
-                            id: wire.id,
-                            sender_id,
-                            is_me: false,
-                            text,
-                            time_str: wire
-                                .created_at
-                                .with_timezone(&chrono::Local)
-                                .format("%H:%M")
-                                .to_string(),
-                        });
-                        if chat.selected_friend_id != Some(sender_id) || chat.is_settings_open {
-                            *chat.unread_counts.entry(sender_id).or_insert(0) += 1;
-                        }
+                let text = decrypt_message(my_keys, &ecdsa_pub, &raw_env)
+                    .unwrap_or_else(|_| "Không thể giải mã tin nhắn".to_string());
+                let msgs = chat.messages.entry(conv_id).or_default();
+                if !msgs.iter().any(|m| m.id == wire.id) {
+                    msgs.push(DecryptedMessage {
+                        id: wire.id,
+                        sender_id: wire.sender_id,
+                        is_me,
+                        text,
+                        time_str: wire
+                            .created_at
+                            .with_timezone(&chrono::Local)
+                            .format("%H:%M")
+                            .to_string(),
+                        created_at: wire.created_at,
+                    });
+                    msgs.sort_by_key(|m| m.created_at);
+                    if !is_me
+                        && (chat.selected_friend_id != Some(conv_id) || chat.is_settings_open)
+                    {
+                        *chat.unread_counts.entry(conv_id).or_insert(0) += 1;
                     }
-                    if let Some(ws_mgr) = ws {
-                        let _ = ws_mgr.tx_commands.send(WsClientCommand::Ack {
-                            message_id: wire.id,
-                        });
-                    }
-                    continue;
                 }
+                if let Some(ws_mgr) = ws {
+                    let _ = ws_mgr.tx_commands.send(WsClientCommand::Ack {
+                        message_id: wire.id,
+                    });
+                }
+                continue;
             }
         }
-        still_pending.push((sender_id, wire));
+        still_pending.push((conv_id, wire));
     }
 
     *queue = still_pending;
@@ -460,6 +471,7 @@ mod tests {
                     is_me: true,
                     text: "Xin chào bạn nhé!".to_string(),
                     time_str: "19:30".to_string(),
+                    created_at: chrono::Utc::now(),
                 },
                 DecryptedMessage {
                     id: Uuid::new_v4(),
@@ -467,6 +479,7 @@ mod tests {
                     is_me: false,
                     text: "Chào bạn, mã hóa E2EE hoạt động tốt!".to_string(),
                     time_str: "19:31".to_string(),
+                    created_at: chrono::Utc::now(),
                 },
             ],
         );
@@ -1045,28 +1058,33 @@ impl ChatApp {
 
                                 if let Some(ecdsa_pub) = signer_pub {
                                     if let Ok(raw_env) = URL_SAFE_NO_PAD.decode(&item.envelope) {
-                                        if let Ok(text) =
-                                            decrypt_message(&self.keys, &ecdsa_pub, &raw_env)
-                                        {
-                                            decrypted_list.push(DecryptedMessage {
-                                                id: item.id,
-                                                sender_id: item.sender_id,
-                                                is_me,
-                                                text,
-                                                time_str: item
-                                                    .created_at
-                                                    .with_timezone(&chrono::Local)
-                                                    .format("%H:%M")
-                                                    .to_string(),
-                                            });
-                                        }
+                                        let text = decrypt_message(&self.keys, &ecdsa_pub, &raw_env)
+                                            .unwrap_or_else(|_| "Không thể giải mã tin nhắn".to_string());
+                                        decrypted_list.push(DecryptedMessage {
+                                            id: item.id,
+                                            sender_id: item.sender_id,
+                                            is_me,
+                                            text,
+                                            time_str: item
+                                                .created_at
+                                                .with_timezone(&chrono::Local)
+                                                .format("%H:%M")
+                                                .to_string(),
+                                            created_at: item.created_at,
+                                        });
                                     }
                                 } else {
-                                    self.pending_decrypt_queue.push((item.sender_id, item));
+                                    self.pending_decrypt_queue.push((friend_id, item));
                                     keys_to_load.push(friend_id);
                                 }
                             }
-                            chat.messages.insert(friend_id, decrypted_list);
+                            let existing = chat.messages.entry(friend_id).or_default();
+                            for dec in decrypted_list {
+                                if !existing.iter().any(|m| m.id == dec.id) {
+                                    existing.push(dec);
+                                }
+                            }
+                            existing.sort_by_key(|m| m.created_at);
                         }
                     }
                 }
@@ -1126,39 +1144,49 @@ impl ChatApp {
             if let AppState::Chat(ref mut chat) = self.state {
                 match event {
                     WsServerEvent::MessageNew(wire) => {
-                        let sender_id = wire.sender_id;
-                        if let Some((_, _, ecdsa_pub)) = chat.cached_keys.get(&sender_id) {
+                        let is_me = wire.sender_id == chat.current_user_id;
+                        let conv_id = if is_me { wire.recipient_id } else { wire.sender_id };
+                        let signer_pub = if is_me {
+                            Some(self.keys.ecdsa_pub_bytes)
+                        } else {
+                            chat.cached_keys.get(&wire.sender_id).map(|k| k.2)
+                        };
+
+                        if let Some(ecdsa_pub) = signer_pub {
                             if let Ok(raw_env) = URL_SAFE_NO_PAD.decode(&wire.envelope) {
-                                if let Ok(text) = decrypt_message(&self.keys, ecdsa_pub, &raw_env) {
-                                    let msgs = chat.messages.entry(sender_id).or_default();
-                                    if !msgs.iter().any(|m| m.id == wire.id) {
-                                        msgs.push(DecryptedMessage {
-                                            id: wire.id,
-                                            sender_id,
-                                            is_me: false,
-                                            text,
-                                            time_str: wire
-                                                .created_at
-                                                .with_timezone(&chrono::Local)
-                                                .format("%H:%M")
-                                                .to_string(),
-                                        });
-                                        if chat.selected_friend_id != Some(sender_id)
-                                            || chat.is_settings_open
-                                        {
-                                            *chat.unread_counts.entry(sender_id).or_insert(0) += 1;
-                                        }
+                                let text = decrypt_message(&self.keys, &ecdsa_pub, &raw_env)
+                                    .unwrap_or_else(|_| "Không thể giải mã tin nhắn".to_string());
+                                let msgs = chat.messages.entry(conv_id).or_default();
+                                if !msgs.iter().any(|m| m.id == wire.id) {
+                                    msgs.push(DecryptedMessage {
+                                        id: wire.id,
+                                        sender_id: wire.sender_id,
+                                        is_me,
+                                        text,
+                                        time_str: wire
+                                            .created_at
+                                            .with_timezone(&chrono::Local)
+                                            .format("%H:%M")
+                                            .to_string(),
+                                        created_at: wire.created_at,
+                                    });
+                                    msgs.sort_by_key(|m| m.created_at);
+                                    if !is_me
+                                        && (chat.selected_friend_id != Some(conv_id)
+                                            || chat.is_settings_open)
+                                    {
+                                        *chat.unread_counts.entry(conv_id).or_insert(0) += 1;
                                     }
-                                    if let Some(ref ws) = self.ws {
-                                        let _ = ws.tx_commands.send(WsClientCommand::Ack {
-                                            message_id: wire.id,
-                                        });
-                                    }
+                                }
+                                if let Some(ref ws) = self.ws {
+                                    let _ = ws.tx_commands.send(WsClientCommand::Ack {
+                                        message_id: wire.id,
+                                    });
                                 }
                             }
                         } else {
-                            self.pending_decrypt_queue.push((sender_id, wire));
-                            keys_to_load.push(sender_id);
+                            self.pending_decrypt_queue.push((conv_id, wire));
+                            keys_to_load.push(conv_id);
                         }
                     }
                     WsServerEvent::FriendRequest(item) => {
@@ -1371,6 +1399,7 @@ impl ChatApp {
                                                     time_str: chrono::Local::now()
                                                         .format("%H:%M")
                                                         .to_string(),
+                                                    created_at: chrono::Utc::now(),
                                                 });
 
                                                 // Dispatch HTTP send task

@@ -25,12 +25,14 @@ export function App() {
       }
 
       // User has a username; ensure E2EE keys are set up
-      let keys = await getUserKeys();
+      let newlyGenerated = false;
+      let keys = await getUserKeys(me.id);
       if (!keys) {
-        keys = await createAndStoreUserKeys();
+        keys = await createAndStoreUserKeys(me.id);
+        newlyGenerated = true;
       }
 
-      if (!me.has_keys) {
+      if (!me.has_keys || newlyGenerated) {
         try {
           await api.keys.register(keys.ecdhRawB64, keys.ecdsaRawB64);
         } catch {

@@ -64,6 +64,11 @@ async fn handle_register_keys(
         r#"
         INSERT INTO device_keys (user_id, ecdh_public, ecdsa_public, fingerprint)
         VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id) DO UPDATE
+        SET ecdh_public = EXCLUDED.ecdh_public,
+            ecdsa_public = EXCLUDED.ecdsa_public,
+            fingerprint = EXCLUDED.fingerprint,
+            created_at = now()
         "#,
         user.id,
         &ecdh_bytes[..],
@@ -80,9 +85,6 @@ async fn handle_register_keys(
             ecdsa_public: payload.ecdsa_public,
             fingerprint: URL_SAFE_NO_PAD.encode(fingerprint),
         })),
-        Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
-            Err(AppError::Conflict("keys_already_registered"))
-        }
         Err(e) => Err(e.into()),
     }
 }

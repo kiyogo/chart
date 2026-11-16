@@ -360,6 +360,30 @@ mod tests {
     }
 
     #[test]
+    fn test_e2ee_self_envelope_decrypt_roundtrip() {
+        let alice = ClientKeys::generate();
+        let message_id = Uuid::new_v4();
+        let alice_id = Uuid::new_v4();
+        let original_text = "Tin nhắn của chính Alice gửi cho chính mình!";
+
+        let self_envelope = encrypt_message(
+            &alice,
+            &alice.ecdh_pub_bytes,
+            &alice.fingerprint,
+            message_id,
+            alice_id,
+            alice_id,
+            original_text,
+        )
+        .expect("self-encryption should succeed");
+
+        let decrypted = decrypt_message(&alice, &alice.ecdsa_pub_bytes, &self_envelope)
+            .expect("self-decryption should succeed");
+
+        assert_eq!(decrypted, original_text);
+    }
+
+    #[test]
     fn test_tampered_envelope_rejected() {
         let alice = ClientKeys::generate();
         let bob = ClientKeys::generate();

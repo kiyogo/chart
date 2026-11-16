@@ -25,6 +25,7 @@ pub struct DecryptedMessage {
     pub is_me: bool,
     pub text: String,
     pub time_str: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 pub struct ChatView {

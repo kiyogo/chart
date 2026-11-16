@@ -192,7 +192,7 @@ export function Chat(props: {
       document.addEventListener('keydown', unlockAudio, { once: true });
     }
 
-    const keys = await getUserKeys();
+    const keys = await getUserKeys(props.currentUserId);
     setUserKeys(keys);
 
     await reloadFriends();
@@ -234,23 +234,29 @@ export function Chat(props: {
 
         try {
           // Fetch or get sender peer keys for signature verification
-          let senderPeerKeys = peerKeysCache.get(msg.sender_id);
-          if (!senderPeerKeys) {
-            const pkResp = await api.keys.get(msg.sender_id);
-            senderPeerKeys = await getOrVerifyPeerKeys(
-              pkResp.user_id,
-              pkResp.ecdh_public,
-              pkResp.ecdsa_public,
-              pkResp.fingerprint
-            );
-            peerKeysCache.set(msg.sender_id, senderPeerKeys);
+          let senderEcdsaKey: CryptoKey;
+          if (isFromMe) {
+            senderEcdsaKey = keys.ecdsaKeyPair.publicKey;
+          } else {
+            let senderPeerKeys = peerKeysCache.get(msg.sender_id);
+            if (!senderPeerKeys) {
+              const pkResp = await api.keys.get(msg.sender_id);
+              senderPeerKeys = await getOrVerifyPeerKeys(
+                pkResp.user_id,
+                pkResp.ecdh_public,
+                pkResp.ecdsa_public,
+                pkResp.fingerprint
+              );
+              peerKeysCache.set(msg.sender_id, senderPeerKeys);
+            }
+            senderEcdsaKey = senderPeerKeys.ecdsaKey;
           }
 
           const decrypted = await decryptChatMessage({
             envelopeB64: msg.envelope,
             myUserId: props.currentUserId,
             myKeys: keys,
-            senderEcdsaKey: senderPeerKeys.ecdsaKey,
+            senderEcdsaKey,
           });
 
           // Always update preview for this partner
