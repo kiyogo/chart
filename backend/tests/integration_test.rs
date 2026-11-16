@@ -23,8 +23,11 @@ use chatw::{
 };
 
 fn create_test_config() -> Config {
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgres://chatw:chatw_dev_password@127.0.0.1:55432/chatw".into()
+    });
     Config {
-        database_url: "postgres://chatw:chatw_dev_password@127.0.0.1:55432/chatw".into(),
+        database_url,
         db_max_connections: 5,
         bind_addr: "127.0.0.1:8080".parse().unwrap(),
         public_origin: "http://localhost:8080".into(),
