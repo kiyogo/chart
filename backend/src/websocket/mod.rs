@@ -73,6 +73,11 @@ pub enum WsEvent {
     MessageDeleted {
         message_id: Uuid,
     },
+    #[serde(rename = "message.edited")]
+    MessageEdited {
+        message_id: Uuid,
+        envelope: String,
+    },
     #[serde(rename = "channel.message.new")]
     ChannelMessageNew {
         message: chatw_core::ChannelMessageItem,

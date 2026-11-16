@@ -294,6 +294,43 @@ export const api = {
       }
       return request<MessageWireItem[]>(q);
     },
+    edit: (
+      messageId: string,
+      payload: {
+        recipient_envelope: string;
+        sender_envelope: string;
+      }
+    ) =>
+      request<{ success: boolean; is_edited: boolean }>(
+        `/api/messages/${encodeURIComponent(messageId)}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }
+      ),
+    delete: (messageId: string) =>
+      request<{ success: boolean; deleted: boolean }>(
+        `/api/messages/${encodeURIComponent(messageId)}`,
+        { method: 'DELETE' }
+      ),
+    pin: (messageId: string) =>
+      request<{ success: boolean; is_pinned: boolean }>(
+        `/api/messages/${encodeURIComponent(messageId)}/pin`,
+        { method: 'POST' }
+      ),
+    unpin: (messageId: string) =>
+      request<{ success: boolean; is_pinned: boolean }>(
+        `/api/messages/${encodeURIComponent(messageId)}/pin`,
+        { method: 'DELETE' }
+      ),
+    react: (messageId: string, emoji: string) =>
+      request<ReactionSummary[]>(
+        `/api/messages/${encodeURIComponent(messageId)}/reactions`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ emoji }),
+        }
+      ),
   },
   typing: {
     send: (friendId: string, isTyping: boolean) =>

@@ -68,11 +68,22 @@ pub struct ReactionPayload {
     pub emoji: String,
 }
 
+#[derive(Deserialize)]
+pub struct EditMessagePayload {
+    pub recipient_envelope: String, // base64url
+    pub sender_envelope: String,    // base64url
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handle_send_message))
         .route("/pinned/{id}", get(handle_get_pinned_messages))
-        .route("/{id}", get(handle_get_messages).delete(handle_delete_message))
+        .route(
+            "/{id}",
+            get(handle_get_messages)
+                .delete(handle_delete_message)
+                .put(handle_edit_message),
+        )
         .route("/{id}/reactions", post(handle_toggle_reaction).get(handle_get_reactions))
         .route("/{id}/pin", post(handle_pin_message).delete(handle_unpin_message))
 }
@@ -548,6 +559,92 @@ async fn handle_delete_message(
     state.ws_hub.send_to_user(&msg.receiver_id, event).await;
 
     Ok(Json(serde_json::json!({ "success": true, "deleted": true })))
+}
+
+async fn handle_edit_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<Uuid>,
+    Json(payload): Json<EditMessagePayload>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let msg = sqlx::query!(
+        "SELECT sender_id, receiver_id, deleted_for_all FROM messages WHERE id = $1",
+        message_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
+
+    if msg.sender_id != user.id {
+        return Err(AppError::Forbidden("only_sender_can_edit"));
+    }
+    if msg.deleted_for_all {
+        return Err(AppError::BadRequest("cannot_edit_deleted_message"));
+    }
+
+    let recipient_env_raw = URL_SAFE_NO_PAD
+        .decode(&payload.recipient_envelope)
+        .map_err(|_| AppError::BadRequest("invalid_recipient_envelope_base64"))?;
+    let sender_env_raw = URL_SAFE_NO_PAD
+        .decode(&payload.sender_envelope)
+        .map_err(|_| AppError::BadRequest("invalid_sender_envelope_base64"))?;
+
+    let recipient_env = Envelope::parse(&recipient_env_raw)?;
+    let sender_env = Envelope::parse(&sender_env_raw)?;
+
+    if recipient_env.message_id != message_id || sender_env.message_id != message_id {
+        return Err(AppError::BadRequest("message_id_mismatch"));
+    }
+    if recipient_env.sender_id != user.id || sender_env.sender_id != user.id {
+        return Err(AppError::BadRequest("sender_id_mismatch"));
+    }
+
+    let sender_keys = sqlx::query!(
+        "SELECT ecdsa_public FROM device_keys WHERE user_id = $1",
+        user.id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::BadRequest("sender_has_no_keys"))?;
+
+    recipient_env.verify_signature(&sender_keys.ecdsa_public)?;
+    sender_env.verify_signature(&sender_keys.ecdsa_public)?;
+
+    sqlx::query!(
+        "UPDATE messages SET recipient_envelope = $1, sender_envelope = $2, is_edited = TRUE WHERE id = $3",
+        recipient_env_raw,
+        sender_env_raw,
+        message_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    state
+        .ws_hub
+        .send_to_user(
+            &msg.receiver_id,
+            WsEvent::MessageEdited {
+                message_id,
+                envelope: payload.recipient_envelope,
+            },
+        )
+        .await;
+    state
+        .ws_hub
+        .send_to_user(
+            &msg.sender_id,
+            WsEvent::MessageEdited {
+                message_id,
+                envelope: payload.sender_envelope,
+            },
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({ "success": true, "is_edited": true })))
 }
 
 async fn handle_get_pinned_messages(

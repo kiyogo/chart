@@ -392,6 +392,30 @@ impl HttpClient {
         Ok(())
     }
 
+    pub async fn edit_message(
+        &self,
+        message_id: Uuid,
+        recipient_envelope: &str,
+        sender_envelope: &str,
+    ) -> Result<(), String> {
+        let url = format!("{}/api/messages/{}", self.base_url, message_id);
+        let res = self
+            .client
+            .put(&url)
+            .json(&serde_json::json!({
+                "recipient_envelope": recipient_envelope,
+                "sender_envelope": sender_envelope,
+            }))
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi chỉnh sửa tin nhắn: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err("Không thể chỉnh sửa tin nhắn".into());
+        }
+        Ok(())
+    }
+
     pub async fn list_sessions(&self) -> Result<Vec<chatw_core::SessionItem>, String> {
         let url = format!("{}/api/auth/sessions", self.base_url);
         let res = self
