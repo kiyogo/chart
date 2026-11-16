@@ -63,7 +63,7 @@ impl SetNameView {
                 .hint_text(
                     RichText::new("Nhập tên người dùng")
                         .font(font_regular(14.0))
-                        .color(Color32::from_rgb(115, 115, 115)),
+                        .color(Color32::from_rgb(17, 24, 39)),
                 )
                 .frame(false)
                 .desired_width(card_width - 28.0);

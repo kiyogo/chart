@@ -119,7 +119,7 @@ impl LoginView {
             ui.label(
                 RichText::new("Ứng dụng nhắn tin bảo mật E2EE")
                     .font(font_regular(13.0))
-                    .color(Color32::from_rgb(75, 85, 99)),
+                    .color(Color32::from_rgb(17, 24, 39)),
             );
 
             ui.add_space(20.0);
@@ -216,7 +216,7 @@ impl LoginView {
             let div_galley = ui.painter().layout_no_wrap(
                 "chế độ phát triển cục bộ".to_string(),
                 font_regular(12.0),
-                Color32::from_rgb(107, 114, 128),
+                Color32::from_rgb(17, 24, 39),
             );
             let text_half = div_galley.size().x * 0.5 + 10.0;
             let line_y = div_rect.center().y;
@@ -243,7 +243,7 @@ impl LoginView {
                     ppp,
                 ),
                 div_galley,
-                Color32::from_rgb(107, 114, 128),
+                Color32::from_rgb(17, 24, 39),
             );
 
             ui.add_space(14.0);
@@ -265,7 +265,7 @@ impl LoginView {
                 .hint_text(
                     RichText::new("Tên tài khoản thử (ví dụ: alice)")
                         .font(font_regular(14.0))
-                        .color(Color32::from_rgb(156, 163, 175)),
+                        .color(Color32::from_rgb(17, 24, 39)),
                 )
                 .frame(false)
                 .desired_width(card_width - 28.0);
@@ -366,14 +366,14 @@ impl LoginView {
                             ui.label(
                                 RichText::new("Cài đặt máy chủ:")
                                     .font(font_regular(12.0))
-                                    .color(Color32::from_rgb(75, 85, 99)),
+                                    .color(Color32::from_rgb(17, 24, 39)),
                             );
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui
                                     .button(
                                         RichText::new("✕")
                                             .font(font_regular(11.0))
-                                            .color(Color32::from_rgb(156, 163, 175)),
+                                            .color(Color32::from_rgb(17, 24, 39)),
                                     )
                                     .clicked()
                                 {
@@ -404,7 +404,7 @@ impl LoginView {
                                 .button(
                                     RichText::new("Cloud (kiyo.vn)")
                                         .font(font_regular(12.0))
-                                        .color(Color32::from_rgb(75, 85, 99)),
+                                        .color(Color32::from_rgb(17, 24, 39)),
                                 )
                                 .clicked()
                             {
@@ -432,7 +432,7 @@ impl LoginView {
                 let srv_btn = ui.button(
                     RichText::new(format!("⚙ {}", self.server_url_input))
                         .font(font_regular(12.0))
-                        .color(Color32::from_rgb(156, 163, 175)),
+                        .color(Color32::from_rgb(17, 24, 39)),
                 );
                 if srv_btn.clicked() {
                     self.show_server_config = true;

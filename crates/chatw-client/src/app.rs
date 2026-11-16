@@ -155,12 +155,12 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Inter-Light is FIRST and PRIMARY (ultra-slender, refined, never thick or bold)
+    // 3. Proportional family: Inter-Regular is FIRST and PRIMARY (solid, crisp, sharp, no blurry gray fringe)
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, "inter_light".to_owned());
+        .insert(0, "inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         fonts
             .families
@@ -169,17 +169,17 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .push("segoe_emoji".to_owned());
     }
 
-    // 4. Medium family: mapped to Inter-Regular
+    // 4. Medium family: mapped to Inter-Medium
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = vec!["inter_regular".to_owned()];
+    let mut med = vec!["inter_medium".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: mapped to Inter-Medium
+    // 5. Semibold family: mapped to Inter-SemiBold
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec!["inter_medium".to_owned()];
+    let mut semi = vec!["inter_semibold".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
@@ -614,10 +614,10 @@ impl ChatApp {
         visuals.panel_fill = Color32::from_rgb(255, 255, 255); // #FFFFFF
         visuals.extreme_bg_color = Color32::from_rgb(255, 255, 255);
         visuals.faint_bg_color = Color32::from_rgb(247, 248, 250);
-        visuals.override_text_color = None;
-        visuals.widgets.noninteractive.fg_stroke.color = Color32::from_rgb(38, 38, 38); // #262626
+        visuals.override_text_color = Some(Color32::from_rgb(17, 24, 39));
+        visuals.widgets.noninteractive.fg_stroke.color = Color32::from_rgb(17, 24, 39); // #111827 Solid crisp dark
         visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
-        visuals.widgets.inactive.fg_stroke.color = Color32::from_rgb(38, 38, 38); // #262626
+        visuals.widgets.inactive.fg_stroke.color = Color32::from_rgb(17, 24, 39); // #111827 Solid crisp dark
         visuals.widgets.inactive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
         visuals.widgets.hovered.fg_stroke.color = Color32::from_rgb(23, 23, 23);
         visuals.widgets.hovered.bg_fill = Color32::from_rgb(236, 238, 242); // #ECEEF2
@@ -1265,7 +1265,7 @@ impl ChatApp {
                             ui.label(
                                 RichText::new("Đang kiểm tra phiên đăng nhập")
                                     .size(14.0)
-                                    .color(Color32::from_rgb(115, 115, 115)),
+                                    .color(Color32::from_rgb(17, 24, 39)),
                             );
                         });
                     }

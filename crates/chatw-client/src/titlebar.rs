@@ -284,10 +284,8 @@ fn window_control_button(
 
     let icon_color = if resp.hovered() && is_close {
         Color32::WHITE
-    } else if resp.hovered() {
-        Color32::from_rgb(17, 24, 39) // #111827 Dark icon on hover
     } else {
-        Color32::from_rgb(75, 85, 99) // #4B5563 Medium gray
+        Color32::from_rgb(17, 24, 39) // #111827 Solid dark
     };
 
     let center = rect.center();
