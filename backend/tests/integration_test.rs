@@ -114,6 +114,7 @@ impl TestClientKeys {
 }
 
 // Client helper: build envelope
+#[allow(deprecated)]
 fn client_build_envelope(
     sender_keys: &TestClientKeys,
     recipient_ecdh_pub_bytes: &[u8; 65],
@@ -178,6 +179,7 @@ fn client_build_envelope(
 }
 
 // Client helper: decrypt envelope
+#[allow(deprecated)]
 fn client_decrypt_envelope(
     recipient_keys: &TestClientKeys,
     sender_ecdsa_pub: &[u8; 65],

@@ -228,6 +228,7 @@ impl ClientKeys {
 }
 
 /// Encrypt a plaintext string into a full signed E2EE envelope.
+#[allow(deprecated)]
 pub fn encrypt_message(
     sender_keys: &ClientKeys,
     recipient_ecdh_pub_bytes: &[u8; 65],
@@ -291,6 +292,7 @@ pub fn encrypt_message(
 }
 
 /// Decrypt an incoming E2EE envelope and verify sender signature.
+#[allow(deprecated)]
 pub fn decrypt_message(
     recipient_keys: &ClientKeys,
     sender_ecdsa_pub_bytes: &[u8; 65],

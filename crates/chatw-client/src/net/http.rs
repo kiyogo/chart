@@ -16,6 +16,7 @@ pub struct HttpClient {
     pub cookie_jar: Arc<Jar>,
 }
 
+#[allow(dead_code)]
 impl HttpClient {
     pub fn new(base_url: String) -> Self {
         let cookie_jar = Arc::new(Jar::default());

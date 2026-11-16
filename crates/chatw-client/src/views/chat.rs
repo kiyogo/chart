@@ -26,9 +26,12 @@ pub struct DecryptedMessage {
     pub text: String,
     pub time_str: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    #[allow(dead_code)]
     pub reply_to_id: Option<Uuid>,
     pub is_pinned: bool,
+    #[allow(dead_code)]
     pub is_edited: bool,
+    #[allow(dead_code)]
     pub deleted_for_all: bool,
     pub reactions: Vec<chatw_core::ReactionSummary>,
 }

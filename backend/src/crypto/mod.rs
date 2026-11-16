@@ -149,6 +149,7 @@ mod tests {
     };
 
     #[test]
+    #[allow(deprecated)]
     fn test_envelope_construction_and_verification() {
         // Generate sender ECDSA key
         let signing_key = SigningKey::random(&mut OsRng);
