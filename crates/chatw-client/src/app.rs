@@ -155,12 +155,18 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: strictly Inter-Light (ultra-slender, refined, NEVER bold, NEVER thick)
+    // 3. Proportional family: Use egui's native Ubuntu-Light (slender, fine, zero blur, wide open counters)
+    let primary_font = "Ubuntu-Light".to_owned();
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, "inter_light".to_owned());
+        .insert(0, primary_font.clone());
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .push("inter_light".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         fonts
             .families
@@ -169,25 +175,25 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .push("segoe_emoji".to_owned());
     }
 
-    // 4. Medium family: mapped strictly to Inter-Light (never bold or thick)
+    // 4. Medium family: mapped to Ubuntu-Light (never bold or thick)
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = vec!["inter_light".to_owned()];
+    let mut med = vec![primary_font.clone(), "inter_light".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: mapped strictly to Inter-Light (never bold or thick)
+    // 5. Semibold family: mapped to Ubuntu-Light (never bold or thick)
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec!["inter_light".to_owned()];
+    let mut semi = vec![primary_font.clone(), "inter_light".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family: mapped strictly to Inter-Light (never bold or thick)
+    // 6. Bold family: mapped to Ubuntu-Light (never bold or thick)
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec!["inter_light".to_owned()];
+    let mut bold = vec![primary_font, "inter_light".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
