@@ -77,6 +77,22 @@ pub enum WsEvent {
     ChannelMessageNew {
         message: chatw_core::ChannelMessageItem,
     },
+    #[serde(rename = "webrtc.signal")]
+    WebRtcSignal {
+        sender_id: Uuid,
+        channel_id: Option<Uuid>,
+        signal_type: String,
+        data: serde_json::Value,
+    },
+    #[serde(rename = "voice.state.update")]
+    VoiceStateUpdate(chatw_core::VoiceStateItem),
+    #[serde(rename = "user.presence.update")]
+    UserPresenceUpdate {
+        user_id: Uuid,
+        presence: String,
+        status_text: Option<String>,
+        status_emoji: Option<String>,
+    },
 }
 
 pub struct WsHub {

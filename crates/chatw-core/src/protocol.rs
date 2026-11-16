@@ -128,6 +128,25 @@ pub enum WsServerEvent {
     #[serde(rename = "channel.message.new")]
     ChannelMessageNew(ChannelMessageItem),
 
+    #[serde(rename = "webrtc.signal")]
+    WebRtcSignal {
+        sender_id: Uuid,
+        channel_id: Option<Uuid>,
+        signal_type: String,
+        data: serde_json::Value,
+    },
+
+    #[serde(rename = "voice.state.update")]
+    VoiceStateUpdate(VoiceStateItem),
+
+    #[serde(rename = "user.presence.update")]
+    UserPresenceUpdate {
+        user_id: Uuid,
+        presence: String,
+        status_text: Option<String>,
+        status_emoji: Option<String>,
+    },
+
     #[serde(rename = "error")]
     Error { code: String, message: String },
 }
@@ -264,4 +283,47 @@ pub struct ChannelMessageItem {
 pub struct PostChannelMessageRequest {
     pub content: String,
     pub reply_to_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateProfileRequest {
+    pub bio: Option<String>,
+    pub status_text: Option<String>,
+    pub status_emoji: Option<String>,
+    pub presence: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserProfileResponse {
+    pub id: Uuid,
+    pub username: String,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub status_text: Option<String>,
+    pub status_emoji: Option<String>,
+    pub presence: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WebRtcSignalPayload {
+    pub target_user_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub signal_type: String, // "offer" | "answer" | "candidate" | "join" | "leave"
+    pub data: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VoiceStateItem {
+    pub channel_id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub avatar_url: Option<String>,
+    pub self_mute: bool,
+    pub self_deaf: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateVoiceStateRequest {
+    pub self_mute: Option<bool>,
+    pub self_deaf: Option<bool>,
 }

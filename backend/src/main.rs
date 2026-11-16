@@ -16,7 +16,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use chatw::{
     auth::{self, AppState, google::GoogleJwksCache},
     config::Config,
-    crypto, db, friends, messages, servers, typing, users,
+    crypto, db, friends, messages, servers, typing, users, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -104,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/messages", messages::routes())
         .nest("/servers", servers::server_routes())
         .nest("/channels", servers::channel_routes())
+        .nest("/webrtc", webrtc::routes())
         .nest("/typing", typing::routes())
         .merge(websocket::routes())
         .with_state(state);

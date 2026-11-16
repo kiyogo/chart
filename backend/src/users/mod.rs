@@ -78,6 +78,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/name", post(handle_set_name))
         .route("/search", get(handle_search))
+        .route("/profile", axum::routing::put(handle_update_profile))
+        .route("/{id}/profile", get(handle_get_profile))
         .route(
             "/avatar",
             post(handle_upload_avatar).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
@@ -250,6 +252,119 @@ async fn handle_upload_avatar(
     .await?;
 
     Ok(Json(AvatarUploadResponse { avatar_url }))
+}
+
+async fn handle_update_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<chatw_core::UpdateProfileRequest>,
+) -> AppResult<Json<chatw_core::UserProfileResponse>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    if let Some(ref bio) = payload.bio {
+        if bio.len() > 256 {
+            return Err(AppError::BadRequest("bio_too_long"));
+        }
+    }
+    if let Some(ref st) = payload.status_text {
+        if st.len() > 128 {
+            return Err(AppError::BadRequest("status_text_too_long"));
+        }
+    }
+    if let Some(ref se) = payload.status_emoji {
+        if se.len() > 32 {
+            return Err(AppError::BadRequest("status_emoji_too_long"));
+        }
+    }
+    if let Some(ref p) = payload.presence {
+        if !["online", "idle", "dnd", "offline"].contains(&p.as_str()) {
+            return Err(AppError::BadRequest("invalid_presence"));
+        }
+    }
+
+    let row = sqlx::query!(
+        r#"
+        UPDATE users
+        SET bio = COALESCE($1, bio),
+            status_text = COALESCE($2, status_text),
+            status_emoji = COALESCE($3, status_emoji),
+            presence = COALESCE($4, presence)
+        WHERE id = $5
+        RETURNING id, username, avatar_url, bio, status_text, status_emoji, presence
+        "#,
+        payload.bio,
+        payload.status_text,
+        payload.status_emoji,
+        payload.presence,
+        user.id
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    // Broadcast presence update to friends
+    let friend_ids: Vec<Uuid> = sqlx::query_scalar!(
+        r#"
+        SELECT CASE WHEN user_a = $1 THEN user_b ELSE user_a END as "fid!"
+        FROM friendships
+        WHERE user_a = $1 OR user_b = $1
+        "#,
+        user.id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    state
+        .ws_hub
+        .send_to_users(
+            &friend_ids,
+            crate::websocket::WsEvent::UserPresenceUpdate {
+                user_id: user.id,
+                presence: row.presence.clone(),
+                status_text: row.status_text.clone(),
+                status_emoji: row.status_emoji.clone(),
+            },
+        )
+        .await;
+
+    Ok(Json(chatw_core::UserProfileResponse {
+        id: row.id,
+        username: row.username.unwrap_or_default(),
+        avatar_url: row.avatar_url,
+        bio: row.bio,
+        status_text: row.status_text,
+        status_emoji: row.status_emoji,
+        presence: row.presence,
+    }))
+}
+
+async fn handle_get_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(target_id): axum::extract::Path<Uuid>,
+) -> AppResult<Json<chatw_core::UserProfileResponse>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let row = sqlx::query!(
+        "SELECT id, username, avatar_url, bio, status_text, status_emoji, presence FROM users WHERE id = $1",
+        target_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("user_not_found"))?;
+
+    Ok(Json(chatw_core::UserProfileResponse {
+        id: row.id,
+        username: row.username.unwrap_or_default(),
+        avatar_url: row.avatar_url,
+        bio: row.bio,
+        status_text: row.status_text,
+        status_emoji: row.status_emoji,
+        presence: row.presence,
+    }))
 }
 
 #[cfg(test)]

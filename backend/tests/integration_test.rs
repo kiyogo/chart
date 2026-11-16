@@ -18,7 +18,7 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache, session::create_session},
     config::Config,
     crypto::{self, Envelope, PROTOCOL_VERSION, compute_fingerprint},
-    db, friends, messages, servers, typing, users,
+    db, friends, messages, servers, typing, users, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -68,6 +68,7 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         .nest("/api/messages", messages::routes())
         .nest("/api/servers", servers::server_routes())
         .nest("/api/channels", servers::channel_routes())
+        .nest("/api/webrtc", webrtc::routes())
         .nest("/api/typing", typing::routes())
         .merge(websocket::routes())
         .with_state(state)
@@ -578,6 +579,9 @@ async fn test_full_e2ee_chat_flow() {
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let voice_ch: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let voice_ch_id = voice_ch["id"].as_str().unwrap().to_string();
 
     // 20. DISCORD-STYLE SERVERS: Create invite and have User B join
     let req = Request::post(format!("/api/servers/{server_id}/invites"))
@@ -638,4 +642,91 @@ async fn test_full_e2ee_chat_flow() {
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // 23. PROFILE CUSTOMIZATION: Update bio, status & presence
+    let req = Request::put("/api/users/profile")
+        .header(header::COOKIE, session_header_a)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "bio": "Principal Rust Engineer & Cryptography Architect",
+            "status_text": "Building E2EE chat",
+            "status_emoji": "⚡",
+            "presence": "dnd"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let prof: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(prof["bio"], "Principal Rust Engineer & Cryptography Architect");
+    assert_eq!(prof["status_text"], "Building E2EE chat");
+    assert_eq!(prof["presence"], "dnd");
+
+    // Fetch User A's profile via GET
+    let req = Request::get(format!("/api/users/{user_a_id}/profile"))
+        .header(header::COOKIE, session_header_b)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let prof_get: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(prof_get["bio"], "Principal Rust Engineer & Cryptography Architect");
+
+    // 24. WEBRTC SIGNALING: Relay P2P WebRTC signal
+    let req = Request::post("/api/webrtc/signal")
+        .header(header::COOKIE, session_header_a)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "target_user_id": user_b_id,
+            "signal_type": "offer",
+            "data": { "type": "offer", "sdp": "v=0\r\no=- 123456 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n" }
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // 25. WEBRTC VOICE CHANNELS: Join voice, state update, and leave
+    let req = Request::post(format!("/api/webrtc/voice/{voice_ch_id}/join"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let participants: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(participants.len(), 1);
+    assert_eq!(participants[0]["user_id"], user_a_id.to_string());
+    assert_eq!(participants[0]["self_mute"], false);
+
+    // User A mutes self
+    let req = Request::post(format!("/api/webrtc/voice/{voice_ch_id}/state"))
+        .header(header::COOKIE, session_header_a)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "self_mute": true }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let state_res: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(state_res["self_mute"], true);
+
+    // User A leaves voice channel
+    let req = Request::post(format!("/api/webrtc/voice/{voice_ch_id}/leave"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Check participants now empty
+    let req = Request::get(format!("/api/webrtc/voice/{voice_ch_id}/participants"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let participants_after: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(participants_after.len(), 0);
 }

@@ -8,4 +8,5 @@ pub mod messages;
 pub mod servers;
 pub mod typing;
 pub mod users;
+pub mod webrtc;
 pub mod websocket;
