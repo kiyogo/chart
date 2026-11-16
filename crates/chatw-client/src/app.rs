@@ -1419,17 +1419,35 @@ impl ChatApp {
                 }
             });
 
-        // 5. Subtle dark border on borderless window (when not maximized)
+        // 5. Multi-layer soft dark drop-shadow border on borderless window (when not maximized)
         if !self.is_maximized {
             let screen_rect = ctx.screen_rect();
-            ctx.layer_painter(egui::LayerId::new(
+            let painter = ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,
-                egui::Id::new("window_border"),
-            ))
-            .rect_stroke(
+                egui::Id::new("window_border_shadow"),
+            ));
+
+            // Layer 1: Crisp outer dark boundary (clearly defines the rounded window edge)
+            painter.rect_stroke(
                 screen_rect,
                 egui::CornerRadius::same(8),
-                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 75)),
+                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 180)),
+                egui::StrokeKind::Inside,
+            );
+
+            // Layer 2: Mid-tone soft shadow gradient
+            painter.rect_stroke(
+                screen_rect.shrink(1.0),
+                egui::CornerRadius::same(7),
+                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 85)),
+                egui::StrokeKind::Inside,
+            );
+
+            // Layer 3: Ambient soft shadow edge
+            painter.rect_stroke(
+                screen_rect.shrink(2.0),
+                egui::CornerRadius::same(6),
+                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 35)),
                 egui::StrokeKind::Inside,
             );
         }
