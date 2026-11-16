@@ -135,25 +135,7 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         std::sync::Arc::new(egui::FontData::from_static(INTER_LIGHT)),
     );
 
-    // 2. System Linux/Windows Fallbacks & Native Crisp Typography
-    let mut native_sans_name: Option<String> = None;
-
-    // On Linux, Noto Sans Regular is the gold standard: perfectly balanced, slender, non-bold, zero blur
-    for linux_path in [
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-        "/usr/share/fonts/opentype/noto/NotoSans-Regular.otf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ] {
-        if let Ok(bytes) = std::fs::read(linux_path) {
-            fonts.font_data.insert(
-                "native_sans".to_owned(),
-                std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-            );
-            native_sans_name = Some("native_sans".to_owned());
-            break;
-        }
-    }
-
+    // 2. Windows Fallbacks (Consolas, Segoe UI Emoji)
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     let fonts_dir = std::path::Path::new(&windir).join("Fonts");
 
@@ -173,13 +155,12 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Use native balanced sans if on Linux, fallback to Inter
-    let primary_font = native_sans_name.unwrap_or_else(|| "inter_regular".to_owned());
+    // 3. Proportional family: Inter-Light is FIRST and PRIMARY (ultra-slender, refined, never thick or bold)
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, primary_font.clone());
+        .insert(0, "inter_light".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         fonts
             .families
@@ -188,25 +169,25 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .push("segoe_emoji".to_owned());
     }
 
-    // 4. Medium family
+    // 4. Medium family: mapped to Inter-Regular
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = vec![primary_font.clone()];
+    let mut med = vec!["inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family
+    // 5. Semibold family: mapped to Inter-Medium
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec![primary_font.clone()];
+    let mut semi = vec!["inter_medium".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family
+    // 6. Bold family: mapped to Inter-SemiBold
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec![primary_font];
+    let mut bold = vec!["inter_semibold".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
