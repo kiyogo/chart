@@ -18,7 +18,7 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache, session::create_session},
     config::Config,
     crypto::{self, Envelope, PROTOCOL_VERSION, compute_fingerprint},
-    db, friends, messages, typing, users,
+    db, friends, messages, servers, typing, users,
     websocket::{self, WsHub},
 };
 
@@ -66,6 +66,8 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         .nest("/api/keys", crypto::keys::routes())
         .nest("/api/friends", friends::routes())
         .nest("/api/messages", messages::routes())
+        .nest("/api/servers", servers::server_routes())
+        .nest("/api/channels", servers::channel_routes())
         .nest("/api/typing", typing::routes())
         .merge(websocket::routes())
         .with_state(state)
@@ -523,4 +525,117 @@ async fn test_full_e2ee_chat_flow() {
     let sessions: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
     assert!(!sessions.is_empty());
     assert_eq!(sessions[0]["is_current"], true);
+
+    // 18. DISCORD-STYLE SERVERS: Create server & list
+    let req = Request::post("/api/servers")
+        .header(header::COOKIE, session_header_a)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "name": "Rust Community",
+            "description": "High performance Rust discussions"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let server: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let server_id = server["id"].as_str().unwrap().to_string();
+    assert_eq!(server["name"], "Rust Community");
+
+    // Verify default General category and general channel were auto-created
+    let req = Request::get(format!("/api/servers/{server_id}/channels"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let channels: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(channels.len(), 1);
+    assert_eq!(channels[0]["name"], "general");
+    let general_ch_id = channels[0]["id"].as_str().unwrap().to_string();
+
+    // 19. DISCORD-STYLE SERVERS: Create custom category and voice channel
+    let req = Request::post(format!("/api/servers/{server_id}/categories"))
+        .header(header::COOKIE, session_header_a)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "name": "Voice Rooms" }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let voice_cat: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let voice_cat_id = voice_cat["id"].as_str().unwrap().to_string();
+
+    let req = Request::post(format!("/api/servers/{server_id}/channels"))
+        .header(header::COOKIE, session_header_a)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({
+            "name": "Lounge",
+            "category_id": voice_cat_id,
+            "channel_type": "voice"
+        }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // 20. DISCORD-STYLE SERVERS: Create invite and have User B join
+    let req = Request::post(format!("/api/servers/{server_id}/invites"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let invite_obj: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let invite_code = invite_obj["code"].as_str().unwrap();
+
+    let req = Request::post(format!("/api/servers/join/{invite_code}"))
+        .header(header::COOKIE, session_header_b)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Verify User B is in server members list
+    let req = Request::get(format!("/api/servers/{server_id}/members"))
+        .header(header::COOKIE, session_header_b)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let members: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(members.len(), 2);
+
+    // 21. DISCORD-STYLE CHANNELS: Post channel message and fetch history
+    let req = Request::post(format!("/api/channels/{general_ch_id}/messages"))
+        .header(header::COOKIE, session_header_b)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "content": "Hello Rust server!" }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let post_msg: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(post_msg["content"], "Hello Rust server!");
+
+    let req = Request::get(format!("/api/channels/{general_ch_id}/messages"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let ch_msgs: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(ch_msgs.len(), 1);
+    assert_eq!(ch_msgs[0]["content"], "Hello Rust server!");
+
+    // 22. RBAC PERMISSIONS: Non-member cannot access channel messages
+    let req = Request::get(format!("/api/channels/{general_ch_id}/messages"))
+        .header(header::COOKIE, session_header_c)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
 }

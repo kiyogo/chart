@@ -125,6 +125,9 @@ pub enum WsServerEvent {
         message_id: Uuid,
     },
 
+    #[serde(rename = "channel.message.new")]
+    ChannelMessageNew(ChannelMessageItem),
+
     #[serde(rename = "error")]
     Error { code: String, message: String },
 }
@@ -138,6 +141,127 @@ pub enum WsClientCommand {
     #[serde(rename = "typing.stop")]
     TypingStop { recipient_id: Uuid },
 
+    #[serde(rename = "channel.subscribe")]
+    ChannelSubscribe { channel_id: Uuid },
+
+    #[serde(rename = "channel.unsubscribe")]
+    ChannelUnsubscribe { channel_id: Uuid },
+
     #[serde(rename = "ack")]
     Ack { message_id: Uuid },
+}
+
+pub mod permissions {
+    pub const VIEW_CHANNELS: i64 = 1 << 0;
+    pub const SEND_MESSAGES: i64 = 1 << 1;
+    pub const MANAGE_CHANNELS: i64 = 1 << 2;
+    pub const MANAGE_ROLES: i64 = 1 << 3;
+    pub const MANAGE_SERVER: i64 = 1 << 4;
+    pub const CREATE_INVITES: i64 = 1 << 5;
+    pub const ADMINISTRATOR: i64 = 1 << 6;
+    pub const DEFAULT_EVERYONE: i64 = VIEW_CHANNELS | SEND_MESSAGES | CREATE_INVITES;
+    pub const ALL: i64 = (1 << 7) - 1;
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerItem {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon_url: Option<String>,
+    pub owner_id: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateServerRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerCategoryItem {
+    pub id: Uuid,
+    pub server_id: Uuid,
+    pub name: String,
+    pub position: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateCategoryRequest {
+    pub name: String,
+    pub position: Option<i32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChannelItem {
+    pub id: Uuid,
+    pub server_id: Uuid,
+    pub category_id: Option<Uuid>,
+    pub name: String,
+    pub channel_type: String, // "text" | "voice" | "announcement" | "forum"
+    pub position: i32,
+    pub is_private: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateChannelRequest {
+    pub name: String,
+    pub category_id: Option<Uuid>,
+    pub channel_type: Option<String>,
+    pub position: Option<i32>,
+    pub is_private: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerRoleItem {
+    pub id: Uuid,
+    pub server_id: Uuid,
+    pub name: String,
+    pub color: String,
+    pub position: i32,
+    pub permissions: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateRoleRequest {
+    pub name: String,
+    pub color: Option<String>,
+    pub position: Option<i32>,
+    pub permissions: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerMemberItem {
+    pub server_id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub nickname: Option<String>,
+    pub avatar_url: Option<String>,
+    pub roles: Vec<Uuid>,
+    pub joined_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChannelMessageItem {
+    pub id: Uuid,
+    pub seq: i64,
+    pub channel_id: Uuid,
+    pub sender_id: Uuid,
+    pub sender_name: String,
+    pub sender_avatar_url: Option<String>,
+    pub content: String,
+    pub reply_to_id: Option<Uuid>,
+    pub is_pinned: bool,
+    pub is_edited: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PostChannelMessageRequest {
+    pub content: String,
+    pub reply_to_id: Option<Uuid>,
 }

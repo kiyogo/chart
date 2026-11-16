@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod friends;
 pub mod messages;
+pub mod servers;
 pub mod typing;
 pub mod users;
 pub mod websocket;

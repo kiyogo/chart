@@ -73,6 +73,10 @@ pub enum WsEvent {
     MessageDeleted {
         message_id: Uuid,
     },
+    #[serde(rename = "channel.message.new")]
+    ChannelMessageNew {
+        message: chatw_core::ChannelMessageItem,
+    },
 }
 
 pub struct WsHub {
@@ -124,6 +128,17 @@ impl WsHub {
             for tx in user_conns.values() {
                 // If channel is full or receiver is slow/closed, try_send drops or cleans up
                 let _ = tx.try_send(event.clone());
+            }
+        }
+    }
+
+    pub async fn send_to_users(&self, user_ids: &[Uuid], event: WsEvent) {
+        let clients = self.clients.read().await;
+        for uid in user_ids {
+            if let Some(user_conns) = clients.get(uid) {
+                for tx in user_conns.values() {
+                    let _ = tx.try_send(event.clone());
+                }
             }
         }
     }
