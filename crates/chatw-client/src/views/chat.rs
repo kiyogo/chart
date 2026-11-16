@@ -1662,13 +1662,23 @@ impl ChatView {
 fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str) {
     let max_bubble_width = (ui.available_width() * 0.65).max(180.0);
 
+    let display_text = if msg.deleted_for_all {
+        "[Tin nhắn đã bị thu hồi]"
+    } else {
+        &msg.text
+    };
+
     ui.horizontal(|ui| {
         if msg.is_me {
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 ui.add_space(20.0);
                 ui.vertical(|ui| {
                     egui::Frame::NONE
-                        .fill(Color32::from_rgb(37, 99, 235)) // #2563EB
+                        .fill(if msg.deleted_for_all {
+                            Color32::from_rgb(107, 114, 128)
+                        } else {
+                            Color32::from_rgb(37, 99, 235) // #2563EB
+                        })
                         .corner_radius(CornerRadius {
                             nw: 14,
                             ne: 14,
@@ -1678,17 +1688,42 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         .inner_margin(egui::Margin::symmetric(14, 10))
                         .show(ui, |ui| {
                             ui.set_max_width(max_bubble_width);
-                            ui.label(
-                                RichText::new(&msg.text)
+                            let text_style = if msg.deleted_for_all {
+                                RichText::new(display_text)
+                                    .font(font_regular(13.0))
+                                    .italics()
+                                    .color(Color32::from_rgb(229, 231, 235))
+                            } else {
+                                RichText::new(display_text)
                                     .font(font_regular(14.0))
-                                    .color(Color32::WHITE),
-                            );
+                                    .color(Color32::WHITE)
+                            };
+                            ui.label(text_style);
                         });
+
+                    if !msg.reactions.is_empty() {
+                        ui.horizontal(|ui| {
+                            for r in &msg.reactions {
+                                ui.label(
+                                    RichText::new(format!("{} {}", r.emoji, r.count))
+                                        .font(font_regular(11.0))
+                                        .color(Color32::from_rgb(55, 65, 81)),
+                                );
+                            }
+                        });
+                    }
 
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         ui.add_space(4.0);
+                        let mut time_label = msg.time_str.clone();
+                        if msg.is_edited {
+                            time_label.push_str(" (đã sửa)");
+                        }
+                        if msg.is_pinned {
+                            time_label.push_str(" 📌");
+                        }
                         ui.label(
-                            RichText::new(&msg.time_str)
+                            RichText::new(time_label)
                                 .font(font_regular(12.0))
                                 .color(Color32::from_rgb(115, 115, 115)),
                         );
@@ -1713,17 +1748,42 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         .inner_margin(egui::Margin::symmetric(14, 10))
                         .show(ui, |ui| {
                             ui.set_max_width(max_bubble_width);
-                            ui.label(
-                                RichText::new(&msg.text)
+                            let text_style = if msg.deleted_for_all {
+                                RichText::new(display_text)
+                                    .font(font_regular(13.0))
+                                    .italics()
+                                    .color(Color32::from_rgb(107, 114, 128))
+                            } else {
+                                RichText::new(display_text)
                                     .font(font_regular(14.0))
-                                    .color(Color32::from_rgb(23, 23, 23)),
-                            );
+                                    .color(Color32::from_rgb(23, 23, 23))
+                            };
+                            ui.label(text_style);
                         });
+
+                    if !msg.reactions.is_empty() {
+                        ui.horizontal(|ui| {
+                            for r in &msg.reactions {
+                                ui.label(
+                                    RichText::new(format!("{} {}", r.emoji, r.count))
+                                        .font(font_regular(11.0))
+                                        .color(Color32::from_rgb(55, 65, 81)),
+                                );
+                            }
+                        });
+                    }
 
                     ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
                         ui.add_space(4.0);
+                        let mut time_label = msg.time_str.clone();
+                        if msg.is_edited {
+                            time_label.push_str(" (đã sửa)");
+                        }
+                        if msg.is_pinned {
+                            time_label.push_str(" 📌");
+                        }
                         ui.label(
-                            RichText::new(&msg.time_str)
+                            RichText::new(time_label)
                                 .font(font_regular(12.0))
                                 .color(Color32::from_rgb(115, 115, 115)),
                         );
