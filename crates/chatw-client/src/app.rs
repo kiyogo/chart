@@ -155,8 +155,8 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Use egui's native Ubuntu-Light (slender, fine, zero blur, wide open counters)
-    let primary_font = "Ubuntu-Light".to_owned();
+    // 3. Proportional family: Use embedded Inter-Regular with Inter-Light fallback (full Vietnamese glyph set from single typeface)
+    let primary_font = "inter_regular".to_owned();
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
@@ -175,25 +175,25 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .push("segoe_emoji".to_owned());
     }
 
-    // 4. Medium family: mapped to Ubuntu-Light (never bold or thick)
+    // 4. Medium family: mapped to inter_medium -> inter_regular
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = vec![primary_font.clone(), "inter_light".to_owned()];
+    let mut med = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: mapped to Ubuntu-Light (never bold or thick)
+    // 5. Semibold family: mapped to inter_medium (slender, crisp, never thick or blurry)
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec![primary_font.clone(), "inter_light".to_owned()];
+    let mut semi = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family: mapped to Ubuntu-Light (never bold or thick)
+    // 6. Bold family: mapped to inter_medium (keeps text slender and clean)
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec![primary_font, "inter_light".to_owned()];
+    let mut bold = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
@@ -620,10 +620,10 @@ impl ChatApp {
         visuals.panel_fill = Color32::from_rgb(255, 255, 255); // #FFFFFF
         visuals.extreme_bg_color = Color32::from_rgb(255, 255, 255);
         visuals.faint_bg_color = Color32::from_rgb(247, 248, 250);
-        visuals.override_text_color = Some(Color32::from_rgb(17, 24, 39));
-        visuals.widgets.noninteractive.fg_stroke.color = Color32::from_rgb(17, 24, 39); // #111827 Solid crisp dark
+        visuals.override_text_color = None;
+        visuals.widgets.noninteractive.fg_stroke.color = Color32::from_rgb(23, 23, 23); // #171717
         visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
-        visuals.widgets.inactive.fg_stroke.color = Color32::from_rgb(17, 24, 39); // #111827 Solid crisp dark
+        visuals.widgets.inactive.fg_stroke.color = Color32::from_rgb(23, 23, 23); // #171717
         visuals.widgets.inactive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
         visuals.widgets.hovered.fg_stroke.color = Color32::from_rgb(23, 23, 23);
         visuals.widgets.hovered.bg_fill = Color32::from_rgb(236, 238, 242); // #ECEEF2
@@ -1192,37 +1192,14 @@ impl ChatApp {
             self.load_friend_keys(uid, ctx);
         }
 
-        // 3. Render Custom Windows 11 Titlebar and Active View with authentic drop shadow ("viền mờ đen")
+        // 3. Render Custom Windows 11 Titlebar and Active View
         let is_max = self.is_maximized;
-        let shadow_padding = if is_max { 0.0_f32 } else { 16.0_f32 };
         let corner_radius = if is_max { 0 } else { 10 };
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
-                let avail_rect = ui.available_rect_before_wrap();
-                let app_rect = avail_rect.shrink(shadow_padding);
-
-                // Outward soft dark drop shadow ("viền mờ đen" authentic desktop drop-shadow)
-                if !is_max {
-                    // Outer diffuse penumbra
-                    let ambient_shadow = egui::epaint::Shadow {
-                        offset: [0, 4],
-                        blur: 24,
-                        spread: 1,
-                        color: Color32::from_rgba_unmultiplied(0, 0, 0, 55),
-                    };
-                    ui.painter().add(ambient_shadow.as_shape(app_rect, egui::CornerRadius::same(corner_radius)));
-
-                    // Inner directional drop shadow
-                    let key_shadow = egui::epaint::Shadow {
-                        offset: [0, 8],
-                        blur: 16,
-                        spread: 0,
-                        color: Color32::from_rgba_unmultiplied(0, 0, 0, 75),
-                    };
-                    ui.painter().add(key_shadow.as_shape(app_rect, egui::CornerRadius::same(corner_radius)));
-                }
+                let app_rect = ui.available_rect_before_wrap();
 
                 // App card background (Pure white, rounded corners)
                 ui.painter().rect_filled(

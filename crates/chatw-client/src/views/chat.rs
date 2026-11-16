@@ -613,7 +613,7 @@ impl ChatView {
                 Align2::CENTER_CENTER,
                 "Chưa có bạn bè nào trong danh bạ",
                 font_regular(14.0),
-                Color32::from_rgb(17, 24, 39),
+                Color32::from_rgb(115, 115, 115),
                 ppp,
             );
             return;
@@ -763,7 +763,7 @@ impl ChatView {
                 .hint_text(
                     RichText::new("Tên bạn bè")
                         .font(font_regular(14.0))
-                        .color(Color32::from_rgb(17, 24, 39)),
+                        .color(Color32::from_rgb(156, 163, 175)),
                 )
                 .frame(false)
                 .desired_width(inp_w - 28.0),
@@ -860,7 +860,7 @@ impl ChatView {
                 Align2::CENTER_CENTER,
                 "Không có lời mời nào",
                 font_regular(14.0),
-                Color32::from_rgb(17, 24, 39),
+                Color32::from_rgb(115, 115, 115),
                 ppp,
             );
             return;
@@ -941,7 +941,7 @@ impl ChatView {
                 Align2::CENTER_CENTER,
                 "Chọn một cuộc trò chuyện để bắt đầu",
                 font_regular(14.0),
-                Color32::from_rgb(17, 24, 39),
+                Color32::from_rgb(115, 115, 115),
                 ppp,
             );
             return;
@@ -1069,7 +1069,7 @@ impl ChatView {
             .hint_text(
                 RichText::new("Nhập tin nhắn")
                     .font(font_regular(14.0))
-                    .color(Color32::from_rgb(17, 24, 39)),
+                    .color(Color32::from_rgb(156, 163, 175)),
             )
             .frame(false)
             .desired_width(text_box_rect.width() - 32.0);
@@ -1311,7 +1311,7 @@ impl ChatView {
                             Align2::LEFT_CENTER,
                             &self.current_username,
                             font_regular(14.0),
-                            Color32::from_rgb(17, 24, 39),
+                            Color32::from_rgb(23, 23, 23),
                             ppp,
                         );
                         paint_text_snapped(
@@ -1320,7 +1320,7 @@ impl ChatView {
                             Align2::LEFT_CENTER,
                             "Tài khoản cá nhân",
                             font_regular(12.0),
-                            Color32::from_rgb(17, 24, 39),
+                            Color32::from_rgb(115, 115, 115),
                             ppp,
                         );
 
@@ -1557,7 +1557,7 @@ impl ChatView {
                             Align2::CENTER_CENTER,
                             "Tài khoản bạn bè",
                             font_regular(12.0),
-                            Color32::from_rgb(17, 24, 39),
+                            Color32::from_rgb(115, 115, 115),
                         );
 
                         ui.add_space(16.0);
@@ -1678,7 +1678,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         ui.label(
                             RichText::new(&msg.time_str)
                                 .font(font_regular(12.0))
-                                .color(Color32::from_rgb(17, 24, 39)),
+                                .color(Color32::from_rgb(115, 115, 115)),
                         );
                     });
                 });
@@ -1713,7 +1713,7 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         ui.label(
                             RichText::new(&msg.time_str)
                                 .font(font_regular(12.0))
-                                .color(Color32::from_rgb(17, 24, 39)),
+                                .color(Color32::from_rgb(115, 115, 115)),
                         );
                     });
                 });
@@ -1752,7 +1752,7 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
-        Color32::from_rgb(17, 24, 39),
+        Color32::from_rgb(115, 115, 115),
         ppp,
     );
     paint_text_snapped(
@@ -1761,7 +1761,7 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
         Align2::RIGHT_CENTER,
         value,
         font_regular(13.0),
-        Color32::from_rgb(17, 24, 39),
+        Color32::from_rgb(23, 23, 23),
         ppp,
     );
 }
@@ -1798,7 +1798,7 @@ fn render_settings_column_row_flat(
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
-        Color32::from_rgb(17, 24, 39),
+        Color32::from_rgb(115, 115, 115),
         ppp,
     );
     paint_text_snapped(
@@ -1807,7 +1807,7 @@ fn render_settings_column_row_flat(
         Align2::LEFT_CENTER,
         value,
         font_mono(12.0),
-        Color32::from_rgb(17, 24, 39),
+        Color32::from_rgb(23, 23, 23),
         ppp,
     );
 }
@@ -1844,7 +1844,7 @@ fn render_settings_tag_row_flat(
         Align2::LEFT_CENTER,
         label,
         font_regular(13.0),
-        Color32::from_rgb(17, 24, 39),
+        Color32::from_rgb(115, 115, 115),
         ppp,
     );
 

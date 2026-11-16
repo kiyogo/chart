@@ -119,7 +119,7 @@ impl LoginView {
             ui.label(
                 RichText::new("Ứng dụng nhắn tin bảo mật E2EE")
                     .font(font_regular(13.0))
-                    .color(Color32::from_rgb(17, 24, 39)),
+                    .color(Color32::from_rgb(115, 115, 115)),
             );
 
             ui.add_space(20.0);
@@ -216,7 +216,7 @@ impl LoginView {
             let div_galley = ui.painter().layout_no_wrap(
                 "chế độ phát triển cục bộ".to_string(),
                 font_regular(12.0),
-                Color32::from_rgb(17, 24, 39),
+                Color32::from_rgb(115, 115, 115),
             );
             let line_y = div_rect.center().y;
 
@@ -227,7 +227,7 @@ impl LoginView {
                     ppp,
                 ),
                 div_galley,
-                Color32::from_rgb(17, 24, 39),
+                Color32::from_rgb(115, 115, 115),
             );
 
             ui.add_space(14.0);
