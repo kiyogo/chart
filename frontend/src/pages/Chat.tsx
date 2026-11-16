@@ -7,8 +7,11 @@ import {
   onMount,
 } from 'solid-js';
 import {
+  ChannelItem,
+  ChannelMessageItem,
   FriendItem,
   PendingRequestItem,
+  ServerItem,
   UserSearchResult,
   api,
 } from '../api/client';
@@ -23,6 +26,7 @@ import {
   LogoutIcon,
   MenuIcon,
   SendIcon,
+  ServerIcon,
   SettingsIcon,
 } from '../components/Icons';
 import {
@@ -80,8 +84,18 @@ export function Chat(props: {
   );
   const [partnerFingerprint, setPartnerFingerprint] = createSignal<string | null>(null);
 
-  // Sidebar Tabs: 'chats' | 'friends'
-  const [sidebarTab, setSidebarTab] = createSignal<'chats' | 'friends'>('chats');
+  // Sidebar Tabs: 'chats' | 'friends' | 'servers'
+  const [sidebarTab, setSidebarTab] = createSignal<'chats' | 'friends' | 'servers'>('chats');
+  const [servers, setServers] = createSignal<ServerItem[]>([]);
+  const [selectedServer, setSelectedServer] = createSignal<ServerItem | null>(null);
+  const [channels, setChannels] = createSignal<ChannelItem[]>([]);
+  const [selectedChannel, setSelectedChannel] = createSignal<ChannelItem | null>(null);
+  const [channelMessages, setChannelMessages] = createSignal<ChannelMessageItem[]>([]);
+  const [channelInput, setChannelInput] = createSignal('');
+  const [newServerName, setNewServerName] = createSignal('');
+  const [inviteCodeInput, setInviteCodeInput] = createSignal('');
+  const [activeVoiceChannel, setActiveVoiceChannel] = createSignal<ChannelItem | null>(null);
+  const [isVoiceMuted, setIsVoiceMuted] = createSignal(false);
   const [friendInput, setFriendInput] = createSignal('');
   const [searchResults, setSearchResults] = createSignal<UserSearchResult[]>([]);
   const [addFriendStatus, setAddFriendStatus] = createSignal<{
@@ -197,6 +211,7 @@ export function Chat(props: {
 
     await reloadFriends();
     await reloadRequests();
+    await loadServers();
 
     // Connect WebSocket
     wsClient.connect();
@@ -317,6 +332,14 @@ export function Chat(props: {
             ]);
           }
         }
+      } else if (event.type === 'channel.message.new') {
+        const currentCh = selectedChannel();
+        if (currentCh && currentCh.id === event.data.channel_id) {
+          setChannelMessages((prev) => {
+            if (prev.some((m) => m.id === event.data.id)) return prev;
+            return [...prev, event.data];
+          });
+        }
       } else if (event.type === 'friend.request') {
         await reloadRequests();
         playNotificationChime();
@@ -393,9 +416,117 @@ export function Chat(props: {
     }
   };
 
+  const loadServers = async () => {
+    try {
+      const list = await api.servers.list();
+      setServers(list);
+    } catch {
+      // ignore
+    }
+  };
+
+  const selectServer = async (srv: ServerItem) => {
+    setSelectedServer(srv);
+    try {
+      const chs = await api.servers.getChannels(srv.id);
+      setChannels(chs);
+      const firstText = chs.find((c) => c.channel_type === 'text');
+      if (firstText) {
+        await selectChannel(firstText);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const selectChannel = async (ch: ChannelItem) => {
+    setSelectedChannel(ch);
+    setActiveFriend(null);
+    if (ch.channel_type === 'text') {
+      try {
+        const msgs = await api.channels.getMessages(ch.id);
+        setChannelMessages(msgs);
+      } catch {
+        // ignore
+      }
+    } else if (ch.channel_type === 'voice') {
+      try {
+        await api.webrtc.joinVoice(ch.id);
+        setActiveVoiceChannel(ch);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const handleCreateServer = async (e?: Event) => {
+    if (e) e.preventDefault();
+    if (!newServerName().trim()) return;
+    try {
+      const created = await api.servers.create(newServerName().trim());
+      setNewServerName('');
+      await loadServers();
+      await selectServer(created);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleJoinServer = async (e?: Event) => {
+    if (e) e.preventDefault();
+    if (!inviteCodeInput().trim()) return;
+    try {
+      const srv = await api.servers.join(inviteCodeInput().trim());
+      setInviteCodeInput('');
+      await loadServers();
+      await selectServer(srv);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSendChannelMessage = async (e?: Event) => {
+    if (e) e.preventDefault();
+    const ch = selectedChannel();
+    if (!ch || !channelInput().trim()) return;
+    const content = channelInput().trim();
+    setChannelInput('');
+    try {
+      const posted = await api.channels.postMessage(ch.id, content);
+      setChannelMessages((prev) => [...prev, posted]);
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleMuteVoice = async () => {
+    const ch = activeVoiceChannel();
+    if (!ch) return;
+    const nextMuted = !isVoiceMuted();
+    setIsVoiceMuted(nextMuted);
+    try {
+      await api.webrtc.updateVoiceState(ch.id, { self_mute: nextMuted });
+    } catch {
+      // ignore
+    }
+  };
+
+  const leaveVoice = async () => {
+    const ch = activeVoiceChannel();
+    if (!ch) return;
+    try {
+      await api.webrtc.leaveVoice(ch.id);
+    } catch {
+      // ignore
+    } finally {
+      setActiveVoiceChannel(null);
+    }
+  };
+
   // Open a conversation with a friend
   const selectFriend = async (friend: FriendItem) => {
     setIsSettingsOpen(false);
+    setSelectedChannel(null);
     setActiveFriend(friend);
     setIsFriendTyping(false);
     setMessages([]);
@@ -749,12 +880,25 @@ export function Chat(props: {
             </button>
             <button
               type="button"
+              class={`icon-btn ${sidebarTab() === 'servers' && !isSettingsOpen() ? 'active' : ''}`}
+              onClick={() => {
+                setSidebarTab('servers');
+                setIsSettingsOpen(false);
+                loadServers();
+              }}
+              aria-label="Máy chủ"
+            >
+              <ServerIcon />
+            </button>
+            <button
+              type="button"
               class={`icon-btn ${isSettingsOpen() ? 'active' : ''}`}
               onClick={() => {
                 const nextOpen = !isSettingsOpen();
                 setIsSettingsOpen(nextOpen);
                 if (nextOpen) {
                   setActiveFriend(null);
+                  setSelectedChannel(null);
                 }
               }}
               aria-label="Cài đặt"
@@ -911,21 +1055,108 @@ export function Chat(props: {
             </For>
           </div>
         </Show>
+
+        {/* Tab: Servers (Discord-style) */}
+        <Show when={sidebarTab() === 'servers'}>
+          <div class="server-tab-container">
+            <div class="server-actions-bar">
+              <form onSubmit={handleCreateServer} style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  placeholder="Tên server mới"
+                  value={newServerName()}
+                  onInput={(e) => setNewServerName(e.currentTarget.value)}
+                />
+                <button type="submit" disabled={!newServerName().trim()}>
+                  Tạo
+                </button>
+              </form>
+              <form onSubmit={handleJoinServer} style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  placeholder="Mã mời tham gia"
+                  value={inviteCodeInput()}
+                  onInput={(e) => setInviteCodeInput(e.currentTarget.value)}
+                />
+                <button type="submit" disabled={!inviteCodeInput().trim()}>
+                  Vào
+                </button>
+              </form>
+            </div>
+
+            <div class="server-list-header">Danh sách máy chủ</div>
+            <For each={servers()} fallback={<div class="empty-chat">Chưa tham gia server nào</div>}>
+              {(srv) => (
+                <button
+                  type="button"
+                  class={`server-item ${selectedServer()?.id === srv.id ? 'selected' : ''}`}
+                  onClick={() => selectServer(srv)}
+                >
+                  <Avatar name={srv.name} avatarUrl={srv.icon_url} size={32} />
+                  <span>{srv.name}</span>
+                </button>
+              )}
+            </For>
+
+            <Show when={selectedServer()}>
+              <div class="server-list-header" style={{ "margin-top": '12px' }}>
+                Kênh ({selectedServer()!.name})
+              </div>
+              <For each={channels()}>
+                {(ch) => (
+                  <button
+                    type="button"
+                    class={`channel-item ${selectedChannel()?.id === ch.id ? 'selected' : ''}`}
+                    onClick={() => selectChannel(ch)}
+                  >
+                    <span>{ch.channel_type === 'voice' ? '🔊' : '#'}</span>
+                    <span>{ch.name}</span>
+                  </button>
+                )}
+              </For>
+            </Show>
+
+            <Show when={activeVoiceChannel()}>
+              <div class="voice-control-bar" style={{ "margin-top": "auto" }}>
+                <span>🔊 {activeVoiceChannel()!.name}</span>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <button
+                    type="button"
+                    class={`voice-btn ${isVoiceMuted() ? 'mute' : ''}`}
+                    onClick={toggleMuteVoice}
+                  >
+                    {isVoiceMuted() ? 'Bật mic' : 'Tắt mic'}
+                  </button>
+                  <button
+                    type="button"
+                    class="voice-btn disconnect"
+                    onClick={leaveVoice}
+                  >
+                    Rời phòng
+                  </button>
+                </div>
+              </div>
+            </Show>
+          </div>
+        </Show>
       </aside>
 
       {/* Main Chat View */}
-      <main class={`chat-view ${!activeFriend() && !isSettingsOpen() ? 'hidden-mobile' : ''}`}>
+      <main class={`chat-view ${!activeFriend() && !isSettingsOpen() && !selectedChannel() ? 'hidden-mobile' : ''}`}>
         <Show
           when={activeFriend()}
           fallback={
             <Show
-              when={isSettingsOpen()}
+              when={selectedChannel()}
               fallback={
-                <div class="empty-chat">
-                  <span>Chọn một cuộc trò chuyện để bắt đầu</span>
-                </div>
-              }
-            >
+                <Show
+                  when={isSettingsOpen()}
+                  fallback={
+                    <div class="empty-chat">
+                      <span>Chọn một cuộc trò chuyện để bắt đầu</span>
+                    </div>
+                  }
+                >
               {/* Settings View */}
               <header class="chat-header">
                 <button
@@ -1014,6 +1245,128 @@ export function Chat(props: {
             </Show>
           }
         >
+          {/* Channel View */}
+          <div class="chat-main-container">
+            <div class="chat-column">
+              {/* Channel Header */}
+              <header class="chat-header">
+                <button
+                  type="button"
+                  class="icon-btn back-btn"
+                  onClick={() => setSelectedChannel(null)}
+                  aria-label="Quay lại"
+                >
+                  <BackIcon />
+                </button>
+                <div style={{ "font-size": "17px", "font-weight": 600 }}>
+                  {selectedChannel()!.channel_type === 'voice' ? '🔊' : '#'} {selectedChannel()!.name}
+                </div>
+                <div class="chat-header-spacer" />
+                <Show when={selectedServer()}>
+                  <span style={{ "font-size": "12px", color: "var(--text-muted)" }}>
+                    {selectedServer()!.name}
+                  </span>
+                </Show>
+              </header>
+
+              <Show
+                when={selectedChannel()!.channel_type === 'text'}
+                fallback={
+                  /* Voice Channel Room View */
+                  <div class="empty-chat" style={{ "flex-direction": "column", gap: "12px" }}>
+                    <div style={{ "font-size": "42px" }}>🔊</div>
+                    <div style={{ "font-size": "18px", "font-weight": 600 }}>
+                      Kênh thoại: {selectedChannel()!.name}
+                    </div>
+                    <div style={{ "font-size": "13px", color: "var(--text-muted)" }}>
+                      {activeVoiceChannel()?.id === selectedChannel()!.id
+                        ? 'Đang kết nối phòng thoại WebRTC'
+                        : 'Nhấn vào kênh để kết nối'}
+                    </div>
+                    <Show when={activeVoiceChannel()?.id === selectedChannel()!.id}>
+                      <div style={{ display: "flex", gap: "10px", "margin-top": "8px" }}>
+                        <button
+                          type="button"
+                          class={`voice-btn ${isVoiceMuted() ? 'mute' : ''}`}
+                          onClick={toggleMuteVoice}
+                        >
+                          {isVoiceMuted() ? 'Bật mic' : 'Tắt mic (Mute)'}
+                        </button>
+                        <button
+                          type="button"
+                          class="voice-btn disconnect"
+                          onClick={leaveVoice}
+                        >
+                          Rời phòng
+                        </button>
+                      </div>
+                    </Show>
+                  </div>
+                }
+              >
+                {/* Channel Messages List */}
+                <div class="chat-messages" style={{ "overflow-y": "auto", display: "flex", "flex-direction": "column" }}>
+                  <For
+                    each={channelMessages()}
+                    fallback={<div class="empty-chat-inner">Chưa có tin nhắn trong kênh này</div>}
+                  >
+                    {(msg) => {
+                      const isSelf = msg.sender_id === props.currentUserId;
+                      return (
+                        <div class={`message-row ${isSelf ? 'sent' : 'received'}`}>
+                          <div class="message-content-wrapper">
+                            <Show when={!isSelf}>
+                              <Avatar name={msg.sender_username} avatarUrl={msg.sender_avatar_url} size={28} />
+                            </Show>
+                            <div class="message-bubble">
+                              <Show when={!isSelf}>
+                                <div style={{ "font-size": "11px", "font-weight": 600, "margin-bottom": "2px", opacity: 0.85 }}>
+                                  {msg.sender_username}
+                                </div>
+                              </Show>
+                              {msg.content}
+                            </div>
+                          </div>
+                          <Show when={msg.created_at}>
+                            <span class="message-time">{formatTime(msg.created_at)}</span>
+                          </Show>
+                        </div>
+                      );
+                    }}
+                  </For>
+                </div>
+
+                {/* Channel Input Bar */}
+                <form class="chat-input-bar" onSubmit={handleSendChannelMessage}>
+                  <input
+                    type="text"
+                    class="chat-input"
+                    placeholder={`Nhắn tin tại #${selectedChannel()!.name}`}
+                    value={channelInput()}
+                    onInput={(e) => setChannelInput(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendChannelMessage();
+                      }
+                    }}
+                    aria-label="Nội dung tin nhắn kênh"
+                  />
+                  <button
+                    type="submit"
+                    class="send-btn"
+                    disabled={!channelInput().trim()}
+                    aria-label="Gửi"
+                  >
+                    <SendIcon />
+                  </button>
+                </form>
+              </Show>
+            </div>
+          </div>
+        </Show>
+      }
+    >
           <div class="chat-main-container">
             <div class="chat-column">
               {/* Header */}

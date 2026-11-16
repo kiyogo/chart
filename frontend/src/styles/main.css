@@ -1047,3 +1047,124 @@ input::placeholder {
     right: 20px;
   }
 }
+
+/* Server & Channel Styling */
+.server-tab-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.server-actions-bar {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.server-actions-bar input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  background: #ffffff;
+}
+
+.server-actions-bar button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--primary-color, #2563eb);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.server-list-header {
+  padding: 10px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+}
+
+.server-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.server-item:hover {
+  background: #eceef2;
+}
+
+.server-item.selected {
+  background: #e6edfe;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.channel-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-size: 13.5px;
+  color: #374151;
+  border-radius: 4px;
+}
+
+.channel-item:hover {
+  background: #eceef2;
+}
+
+.channel-item.selected {
+  background: #e6edfe;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.voice-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #1e293b;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.voice-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.voice-btn.mute {
+  background: #475569;
+  color: #ffffff;
+}
+
+.voice-btn.disconnect {
+  background: #ef4444;
+  color: #ffffff;
+}
