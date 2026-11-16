@@ -1,6 +1,9 @@
 use chatw_core::{
-    FriendItem, MeResponse, MessageWireItem, PendingRequestItem, PublicKeysResponse,
-    UserSearchResult,
+    AttachmentItem, AuditLogItem, ChannelItem, ChannelMessageItem, CreateCategoryRequest,
+    CreateChannelRequest, CreateServerRequest, FriendItem, MeResponse, MessageWireItem,
+    PendingRequestItem, PostChannelMessageRequest, PublicKeysResponse, ServerCategoryItem,
+    ServerItem, ServerMemberItem, UpdateProfileRequest, UpdateVoiceStateRequest,
+    UserProfileResponse, UserSearchResult, VoiceStateItem, WebRtcSignalPayload,
 };
 use reqwest::cookie::Jar;
 use std::sync::Arc;
@@ -419,5 +422,313 @@ impl HttpClient {
             return Err("Không thể đăng xuất thiết bị".into());
         }
         Ok(())
+    }
+
+    pub async fn list_servers(&self) -> Result<Vec<ServerItem>, String> {
+        let url = format!("{}/api/servers", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tải danh sách server: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tải danh sách server".into());
+        }
+        res.json::<Vec<ServerItem>>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn create_server(&self, req: &CreateServerRequest) -> Result<ServerItem, String> {
+        let url = format!("{}/api/servers", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tạo server: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tạo server".into());
+        }
+        res.json::<ServerItem>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn list_channels(&self, server_id: Uuid) -> Result<Vec<ChannelItem>, String> {
+        let url = format!("{}/api/servers/{server_id}/channels", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tải kênh: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tải danh sách kênh".into());
+        }
+        res.json::<Vec<ChannelItem>>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn create_channel(
+        &self,
+        server_id: Uuid,
+        req: &CreateChannelRequest,
+    ) -> Result<ChannelItem, String> {
+        let url = format!("{}/api/servers/{server_id}/channels", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tạo kênh: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tạo kênh".into());
+        }
+        res.json::<ChannelItem>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn create_category(
+        &self,
+        server_id: Uuid,
+        req: &CreateCategoryRequest,
+    ) -> Result<ServerCategoryItem, String> {
+        let url = format!("{}/api/servers/{server_id}/categories", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tạo danh mục: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tạo danh mục".into());
+        }
+        res.json::<ServerCategoryItem>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn create_invite(&self, server_id: Uuid) -> Result<String, String> {
+        let url = format!("{}/api/servers/{server_id}/invites", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tạo lời mời: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tạo lời mời".into());
+        }
+        let v: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+        v["code"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| "Mã mời không hợp lệ".to_string())
+    }
+
+    pub async fn join_server(&self, invite_code: &str) -> Result<ServerItem, String> {
+        let url = format!("{}/api/servers/join/{invite_code}", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tham gia server: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tham gia server".into());
+        }
+        res.json::<ServerItem>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn list_server_members(
+        &self,
+        server_id: Uuid,
+    ) -> Result<Vec<ServerMemberItem>, String> {
+        let url = format!("{}/api/servers/{server_id}/members", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi lấy danh sách thành viên: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tải thành viên server".into());
+        }
+        res.json::<Vec<ServerMemberItem>>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn get_channel_messages(
+        &self,
+        channel_id: Uuid,
+    ) -> Result<Vec<ChannelMessageItem>, String> {
+        let url = format!("{}/api/channels/{channel_id}/messages", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tải tin nhắn kênh: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tải tin nhắn kênh".into());
+        }
+        res.json::<Vec<ChannelMessageItem>>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn post_channel_message(
+        &self,
+        channel_id: Uuid,
+        req: &PostChannelMessageRequest,
+    ) -> Result<ChannelMessageItem, String> {
+        let url = format!("{}/api/channels/{channel_id}/messages", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi gửi tin nhắn kênh: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể gửi tin nhắn kênh".into());
+        }
+        res.json::<ChannelMessageItem>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn update_profile(
+        &self,
+        req: &UpdateProfileRequest,
+    ) -> Result<UserProfileResponse, String> {
+        let url = format!("{}/api/users/profile", self.base_url);
+        let res = self
+            .client
+            .put(&url)
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi cập nhật hồ sơ: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể cập nhật hồ sơ".into());
+        }
+        res.json::<UserProfileResponse>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn get_user_profile(&self, user_id: Uuid) -> Result<UserProfileResponse, String> {
+        let url = format!("{}/api/users/{user_id}/profile", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi lấy thông tin hồ sơ: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể lấy hồ sơ người dùng".into());
+        }
+        res.json::<UserProfileResponse>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn webrtc_signal(&self, req: &WebRtcSignalPayload) -> Result<(), String> {
+        let url = format!("{}/api/webrtc/signal", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi gửi tín hiệu WebRTC: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể gửi tín hiệu WebRTC".into());
+        }
+        Ok(())
+    }
+
+    pub async fn join_voice(&self, channel_id: Uuid) -> Result<Vec<VoiceStateItem>, String> {
+        let url = format!("{}/api/webrtc/voice/{channel_id}/join", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tham gia thoại: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tham gia phòng thoại".into());
+        }
+        res.json::<Vec<VoiceStateItem>>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn update_voice_state(
+        &self,
+        channel_id: Uuid,
+        req: &UpdateVoiceStateRequest,
+    ) -> Result<VoiceStateItem, String> {
+        let url = format!("{}/api/webrtc/voice/{channel_id}/state", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi cập nhật thoại: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể cập nhật thoại".into());
+        }
+        res.json::<VoiceStateItem>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn leave_voice(&self, channel_id: Uuid) -> Result<(), String> {
+        let url = format!("{}/api/webrtc/voice/{channel_id}/leave", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi rời phòng thoại: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể rời phòng thoại".into());
+        }
+        Ok(())
+    }
+
+    pub async fn upload_attachment(
+        &self,
+        file_name: &str,
+        content_type: &str,
+        data: Vec<u8>,
+    ) -> Result<AttachmentItem, String> {
+        let url = format!("{}/api/attachments", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .header("x-file-name", file_name)
+            .header("content-type", content_type)
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tải tệp lên: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tải tệp lên".into());
+        }
+        res.json::<AttachmentItem>().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn get_audit_logs(&self) -> Result<Vec<AuditLogItem>, String> {
+        let url = format!("{}/api/audit/logs", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi tải nhật ký kiểm toán: {e}"))?;
+        if !res.status().is_success() {
+            return Err("Không thể tải nhật ký".into());
+        }
+        res.json::<Vec<AuditLogItem>>().await.map_err(|e| e.to_string())
     }
 }

@@ -74,6 +74,9 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         .nest("/api/webrtc", webrtc::routes())
         .nest("/api/typing", typing::routes())
         .merge(websocket::routes())
+        .route("/robots.txt", axum::routing::get(|| async { ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], "User-agent: *\nAllow: /\n\nSitemap: /sitemap.xml\n") }))
+        .route("/sitemap.xml", axum::routing::get(|| async { ([(header::CONTENT_TYPE, "application/xml; charset=utf-8")], "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>https://github.com/kiyogo/chart</loc>\n  </url>\n</urlset>") }))
+        .route("/llms.txt", axum::routing::get(|| async { ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], include_str!("../../frontend/public/llms.txt")) }))
         .with_state(state)
 }
 
@@ -812,4 +815,23 @@ async fn test_full_e2ee_chat_flow() {
     assert!(!audit_logs.is_empty());
     assert_eq!(audit_logs[0]["action"], "session_revoked");
     assert_eq!(audit_logs[0]["target_id"], session_to_delete);
+
+    // 28. SEO & MARKETING COMPLIANCE: robots.txt, sitemap.xml, llms.txt endpoints
+    let req = Request::get("/robots.txt").body(Body::empty()).unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("User-agent: *"));
+
+    let req = Request::get("/sitemap.xml").body(Body::empty()).unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("<urlset"));
+
+    let req = Request::get("/llms.txt").body(Body::empty()).unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("chatw"));
 }

@@ -80,6 +80,107 @@ export interface MessageWireItem {
   created_at: string;
 }
 
+export interface ServerItem {
+  id: string;
+  name: string;
+  description?: string | null;
+  icon_url?: string | null;
+  owner_id: string;
+  is_owner: boolean;
+  member_count: number;
+  created_at: string;
+}
+
+export interface ServerCategoryItem {
+  id: string;
+  server_id: string;
+  name: string;
+  position: number;
+}
+
+export interface ChannelItem {
+  id: string;
+  server_id: string;
+  category_id?: string | null;
+  name: string;
+  channel_type: 'text' | 'voice' | 'announcement';
+  position: number;
+}
+
+export interface ServerMemberItem {
+  server_id: string;
+  user_id: string;
+  username: string;
+  avatar_url?: string | null;
+  role: string;
+  joined_at: string;
+}
+
+export interface ChannelMessageItem {
+  id: string;
+  channel_id: string;
+  sender_id: string;
+  sender_username: string;
+  sender_avatar_url?: string | null;
+  content: string;
+  reply_to_id?: string | null;
+  created_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  avatar_url?: string | null;
+  bio?: string | null;
+  status_text?: string | null;
+  status_emoji?: string | null;
+  presence?: string | null;
+  created_at: string;
+}
+
+export interface VoiceStateItem {
+  channel_id: string;
+  user_id: string;
+  username: string;
+  avatar_url?: string | null;
+  self_mute: boolean;
+  self_deaf: boolean;
+  self_video: boolean;
+  joined_at: string;
+}
+
+export interface AttachmentItem {
+  id: string;
+  file_name: string;
+  file_size: number;
+  mime_type: string;
+  sha256_hash: string;
+  created_at: string;
+}
+
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  user_ids: string[];
+}
+
+export interface SessionItem {
+  id: string;
+  user_agent?: string | null;
+  ip_address?: string | null;
+  created_at: string;
+  expires_at: string;
+  is_current: boolean;
+}
+
+export interface AuditLogItem {
+  id: string;
+  action: string;
+  target_id?: string | null;
+  metadata?: any;
+  created_at: string;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   if (options.body && !(options.body instanceof FormData) && !(options.body instanceof Blob)) {
@@ -203,5 +304,140 @@ export const api = {
           is_typing: isTyping,
         }),
       }),
+  },
+  servers: {
+    list: () => request<ServerItem[]>('/api/servers'),
+    create: (name: string, description?: string) =>
+      request<ServerItem>('/api/servers', {
+        method: 'POST',
+        body: JSON.stringify({ name, description }),
+      }),
+    getCategories: (serverId: string) =>
+      request<ServerCategoryItem[]>(`/api/servers/${encodeURIComponent(serverId)}/categories`),
+    createCategory: (serverId: string, name: string) =>
+      request<ServerCategoryItem>(`/api/servers/${encodeURIComponent(serverId)}/categories`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+    getChannels: (serverId: string) =>
+      request<ChannelItem[]>(`/api/servers/${encodeURIComponent(serverId)}/channels`),
+    createChannel: (
+      serverId: string,
+      name: string,
+      categoryId?: string,
+      channelType: string = 'text'
+    ) =>
+      request<ChannelItem>(`/api/servers/${encodeURIComponent(serverId)}/channels`, {
+        method: 'POST',
+        body: JSON.stringify({ name, category_id: categoryId, channel_type: channelType }),
+      }),
+    createInvite: (serverId: string) =>
+      request<{ code: string }>(`/api/servers/${encodeURIComponent(serverId)}/invites`, {
+        method: 'POST',
+      }),
+    join: (code: string) =>
+      request<ServerItem>(`/api/servers/join/${encodeURIComponent(code)}`, {
+        method: 'POST',
+      }),
+    getMembers: (serverId: string) =>
+      request<ServerMemberItem[]>(`/api/servers/${encodeURIComponent(serverId)}/members`),
+  },
+  channels: {
+    getMessages: (channelId: string, limit: number = 50) =>
+      request<ChannelMessageItem[]>(
+        `/api/channels/${encodeURIComponent(channelId)}/messages?limit=${limit}`
+      ),
+    postMessage: (channelId: string, content: string, replyToId?: string) =>
+      request<ChannelMessageItem>(`/api/channels/${encodeURIComponent(channelId)}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ content, reply_to_id: replyToId }),
+      }),
+  },
+  profile: {
+    update: (profile: {
+      bio?: string;
+      status_text?: string;
+      status_emoji?: string;
+      presence?: string;
+    }) =>
+      request<UserProfile>('/api/users/profile', {
+        method: 'PUT',
+        body: JSON.stringify(profile),
+      }),
+    get: (userId: string) =>
+      request<UserProfile>(`/api/users/${encodeURIComponent(userId)}/profile`),
+  },
+  webrtc: {
+    signal: (targetUserId: string, signalType: string, data: any) =>
+      request<void>('/api/webrtc/signal', {
+        method: 'POST',
+        body: JSON.stringify({ target_user_id: targetUserId, signal_type: signalType, data }),
+      }),
+    joinVoice: (channelId: string) =>
+      request<VoiceStateItem[]>(`/api/webrtc/voice/${encodeURIComponent(channelId)}/join`, {
+        method: 'POST',
+      }),
+    updateVoiceState: (
+      channelId: string,
+      state: { self_mute?: boolean; self_deaf?: boolean; self_video?: boolean }
+    ) =>
+      request<VoiceStateItem>(`/api/webrtc/voice/${encodeURIComponent(channelId)}/state`, {
+        method: 'POST',
+        body: JSON.stringify(state),
+      }),
+    leaveVoice: (channelId: string) =>
+      request<void>(`/api/webrtc/voice/${encodeURIComponent(channelId)}/leave`, {
+        method: 'POST',
+      }),
+    getParticipants: (channelId: string) =>
+      request<VoiceStateItem[]>(
+        `/api/webrtc/voice/${encodeURIComponent(channelId)}/participants`
+      ),
+  },
+  attachments: {
+    upload: (fileName: string, contentType: string, data: Blob) =>
+      request<AttachmentItem>('/api/attachments', {
+        method: 'POST',
+        body: data,
+        headers: {
+          'x-file-name': fileName,
+          'Content-Type': contentType,
+        },
+      }),
+    getUrl: (id: string) => `${API_BASE}/api/attachments/${encodeURIComponent(id)}`,
+    delete: (id: string) =>
+      request<void>(`/api/attachments/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
+  },
+  reactions: {
+    toggle: (messageId: string, emoji: string) =>
+      request<ReactionSummary[]>(`/api/messages/${encodeURIComponent(messageId)}/reactions`, {
+        method: 'POST',
+        body: JSON.stringify({ emoji }),
+      }),
+  },
+  pins: {
+    pin: (messageId: string) =>
+      request<void>(`/api/messages/${encodeURIComponent(messageId)}/pin`, {
+        method: 'POST',
+      }),
+    unpin: (messageId: string) =>
+      request<void>(`/api/messages/${encodeURIComponent(messageId)}/pin`, {
+        method: 'DELETE',
+      }),
+    list: (friendId: string) =>
+      request<any[]>(`/api/messages/pinned/${encodeURIComponent(friendId)}`),
+  },
+  sessions: {
+    list: () => request<SessionItem[]>('/api/auth/sessions'),
+    revoke: (id: string) =>
+      request<void>(`/api/auth/sessions/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
+  },
+  audit: {
+    logs: (limit: number = 50) =>
+      request<AuditLogItem[]>(`/api/audit/logs?limit=${limit}`),
   },
 };

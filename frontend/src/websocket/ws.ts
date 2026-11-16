@@ -41,6 +41,49 @@ export type WsEvent =
       data: {
         user_id: string;
       };
+    }
+  | {
+      type: 'reaction.update';
+      data: {
+        message_id: string;
+        reactions: import('../api/client').ReactionSummary[];
+      };
+    }
+  | {
+      type: 'message.pinned';
+      data: {
+        message_id: string;
+        is_pinned: boolean;
+      };
+    }
+  | {
+      type: 'message.deleted';
+      data: {
+        message_id: string;
+      };
+    }
+  | {
+      type: 'channel.message.new';
+      data: import('../api/client').ChannelMessageItem;
+    }
+  | {
+      type: 'webrtc.signal';
+      data: {
+        from_user_id: string;
+        signal_type: string;
+        data: any;
+      };
+    }
+  | {
+      type: 'voice.state.update';
+      data: import('../api/client').VoiceStateItem;
+    }
+  | {
+      type: 'user.presence.update';
+      data: {
+        user_id: string;
+        presence: string;
+      };
     };
 
 type Listener = (event: WsEvent) => void;

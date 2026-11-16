@@ -48,6 +48,30 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
     response
 }
 
+async fn robots_txt() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        "User-agent: *\nAllow: /\n\nSitemap: /sitemap.xml\n",
+    )
+}
+
+async fn sitemap_xml() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/xml; charset=utf-8",
+        )],
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>https://github.com/kiyogo/chart</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>",
+    )
+}
+
+async fn llms_txt() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        include_str!("../../frontend/public/llms.txt"),
+    )
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Install ring crypto provider for rustls
@@ -117,6 +141,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = Router::new()
         .nest("/api", api_router)
+        .route("/robots.txt", axum::routing::get(robots_txt))
+        .route("/sitemap.xml", axum::routing::get(sitemap_xml))
+        .route("/llms.txt", axum::routing::get(llms_txt))
         .nest_service("/uploads", ServeDir::new(&config.uploads_dir));
 
     // 7. Static file serving (if frontend dist exists)
