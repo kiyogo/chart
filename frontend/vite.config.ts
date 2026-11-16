@@ -19,6 +19,9 @@ export default defineConfig({
     port: 1420,
     // Tauri expects a fixed port; fail if it's not available
     strictPort: true,
+    watch: {
+      ignored: ['**/src-tauri/**', '**/target/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8085',
