@@ -331,4 +331,93 @@ impl HttpClient {
         let _ = self.client.post(&url).send().await;
         Ok(())
     }
+
+    pub async fn toggle_reaction(
+        &self,
+        message_id: Uuid,
+        emoji: &str,
+    ) -> Result<Vec<chatw_core::ReactionSummary>, String> {
+        let url = format!("{}/api/messages/{}/reactions", self.base_url, message_id);
+        let res = self
+            .client
+            .post(&url)
+            .json(&serde_json::json!({ "emoji": emoji }))
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi cập nhật biểu cảm: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err("Không thể cập nhật biểu cảm".into());
+        }
+
+        res.json::<Vec<chatw_core::ReactionSummary>>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn pin_message(&self, message_id: Uuid, pin: bool) -> Result<(), String> {
+        let url = format!("{}/api/messages/{}/pin", self.base_url, message_id);
+        let req = if pin {
+            self.client.post(&url)
+        } else {
+            self.client.delete(&url)
+        };
+        let res = req
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi ghim tin nhắn: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err("Không thể ghim tin nhắn".into());
+        }
+        Ok(())
+    }
+
+    pub async fn delete_message(&self, message_id: Uuid) -> Result<(), String> {
+        let url = format!("{}/api/messages/{}", self.base_url, message_id);
+        let res = self
+            .client
+            .delete(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi xóa tin nhắn: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err("Không thể xóa tin nhắn".into());
+        }
+        Ok(())
+    }
+
+    pub async fn list_sessions(&self) -> Result<Vec<chatw_core::SessionItem>, String> {
+        let url = format!("{}/api/auth/sessions", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi lấy danh sách phiên: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err("Không thể lấy danh sách phiên".into());
+        }
+
+        res.json::<Vec<chatw_core::SessionItem>>()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn delete_session(&self, session_id: Uuid) -> Result<(), String> {
+        let url = format!("{}/api/auth/sessions/{}", self.base_url, session_id);
+        let res = self
+            .client
+            .delete(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Lỗi đăng xuất thiết bị: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err("Không thể đăng xuất thiết bị".into());
+        }
+        Ok(())
+    }
 }

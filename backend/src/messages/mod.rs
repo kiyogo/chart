@@ -25,6 +25,7 @@ pub struct SendMessagePayload {
     pub recipient_id: Uuid,
     pub recipient_envelope: String, // base64url
     pub sender_envelope: String,    // base64url
+    pub reply_to_id: Option<Uuid>,
 }
 
 #[derive(Serialize)]
@@ -40,6 +41,13 @@ pub struct MessagesQuery {
     pub limit: Option<i64>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ReactionSummaryItem {
+    pub emoji: String,
+    pub count: i64,
+    pub users: Vec<Uuid>,
+}
+
 #[derive(Serialize)]
 pub struct MessageItem {
     pub id: Uuid,
@@ -47,13 +55,26 @@ pub struct MessageItem {
     pub sender_id: Uuid,
     pub recipient_id: Uuid,
     pub envelope: String, // base64url
+    pub reply_to_id: Option<Uuid>,
+    pub is_pinned: bool,
+    pub is_edited: bool,
+    pub deleted_for_all: bool,
+    pub reactions: Vec<ReactionSummaryItem>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct ReactionPayload {
+    pub emoji: String,
 }
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handle_send_message))
-        .route("/{friendId}", get(handle_get_messages))
+        .route("/pinned/{id}", get(handle_get_pinned_messages))
+        .route("/{id}", get(handle_get_messages).delete(handle_delete_message))
+        .route("/{id}/reactions", post(handle_toggle_reaction).get(handle_get_reactions))
+        .route("/{id}/pin", post(handle_pin_message).delete(handle_unpin_message))
 }
 
 async fn handle_send_message(
@@ -152,8 +173,8 @@ async fn handle_send_message(
     // 10. Insert message into PostgreSQL (idempotent on message_id)
     let row = sqlx::query!(
         r#"
-        INSERT INTO messages (id, sender_id, receiver_id, recipient_envelope, sender_envelope)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO messages (id, sender_id, receiver_id, recipient_envelope, sender_envelope, reply_to_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
         RETURNING seq, created_at
         "#,
@@ -161,7 +182,8 @@ async fn handle_send_message(
         sender.id,
         recipient_id,
         &recipient_env_raw[..],
-        &sender_env_raw[..]
+        &sender_env_raw[..],
+        payload.reply_to_id
     )
     .fetch_one(&state.db)
     .await?;
@@ -236,10 +258,11 @@ async fn handle_get_messages(
 
     let rows = sqlx::query!(
         r#"
-        SELECT id, seq, sender_id, receiver_id, recipient_envelope, sender_envelope, created_at
+        SELECT id, seq, sender_id, receiver_id, recipient_envelope, sender_envelope, reply_to_id, is_pinned, is_edited, deleted_for_all, created_at
         FROM messages
         WHERE ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1))
           AND seq < $3
+          AND deleted_for_all = FALSE
         ORDER BY seq DESC
         LIMIT $4
         "#,
@@ -251,23 +274,361 @@ async fn handle_get_messages(
     .fetch_all(&state.db)
     .await?;
 
+    let msg_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    let reaction_rows = sqlx::query!(
+        r#"
+        SELECT message_id, emoji, user_id
+        FROM message_reactions
+        WHERE message_id = ANY($1)
+        ORDER BY created_at ASC
+        "#,
+        &msg_ids[..]
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut reactions_map: std::collections::HashMap<Uuid, Vec<ReactionSummaryItem>> =
+        std::collections::HashMap::new();
+    let mut intermediate: std::collections::HashMap<(Uuid, String), Vec<Uuid>> =
+        std::collections::HashMap::new();
+    for r in reaction_rows {
+        intermediate
+            .entry((r.message_id, r.emoji))
+            .or_default()
+            .push(r.user_id);
+    }
+    for ((msg_id, emoji), users) in intermediate {
+        let count = users.len() as i64;
+        reactions_map
+            .entry(msg_id)
+            .or_default()
+            .push(ReactionSummaryItem {
+                emoji,
+                count,
+                users,
+            });
+    }
+
     let messages = rows
         .into_iter()
         .map(|r| {
-            // Return appropriate envelope for current user:
-            // If current user is sender -> sender_envelope
-            // If current user is receiver -> recipient_envelope
             let raw_env = if r.sender_id == user.id {
                 r.sender_envelope
             } else {
                 r.recipient_envelope
             };
+            let reactions = reactions_map.remove(&r.id).unwrap_or_default();
             MessageItem {
                 id: r.id,
                 seq: r.seq,
                 sender_id: r.sender_id,
                 recipient_id: r.receiver_id,
                 envelope: URL_SAFE_NO_PAD.encode(raw_env),
+                reply_to_id: r.reply_to_id,
+                is_pinned: r.is_pinned,
+                is_edited: r.is_edited,
+                deleted_for_all: r.deleted_for_all,
+                reactions,
+                created_at: r.created_at,
+            }
+        })
+        .collect();
+
+    Ok(Json(messages))
+}
+
+async fn handle_toggle_reaction(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<Uuid>,
+    Json(payload): Json<ReactionPayload>,
+) -> AppResult<Json<Vec<ReactionSummaryItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let emoji = payload.emoji.trim();
+    if emoji.is_empty() || emoji.len() > 32 {
+        return Err(AppError::BadRequest("invalid_emoji"));
+    }
+
+    let msg = sqlx::query!(
+        "SELECT sender_id, receiver_id FROM messages WHERE id = $1",
+        message_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
+
+    if msg.sender_id != user.id && msg.receiver_id != user.id {
+        return Err(AppError::Forbidden("not_conversation_participant"));
+    }
+
+    let deleted = sqlx::query!(
+        "DELETE FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3",
+        message_id,
+        user.id,
+        emoji
+    )
+    .execute(&state.db)
+    .await?;
+
+    let action = if deleted.rows_affected() > 0 {
+        "removed"
+    } else {
+        sqlx::query!(
+            "INSERT INTO message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            message_id,
+            user.id,
+            emoji
+        )
+        .execute(&state.db)
+        .await?;
+        "added"
+    };
+
+    let event = WsEvent::ReactionUpdate {
+        message_id,
+        user_id: user.id,
+        emoji: emoji.to_string(),
+        action: action.to_string(),
+    };
+    state.ws_hub.send_to_user(&msg.sender_id, event.clone()).await;
+    state.ws_hub.send_to_user(&msg.receiver_id, event).await;
+
+    let current = fetch_reactions_for_message(&state.db, message_id).await?;
+    Ok(Json(current))
+}
+
+async fn handle_get_reactions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<Uuid>,
+) -> AppResult<Json<Vec<ReactionSummaryItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let reactions = fetch_reactions_for_message(&state.db, message_id).await?;
+    Ok(Json(reactions))
+}
+
+async fn fetch_reactions_for_message(
+    db: &sqlx::PgPool,
+    message_id: Uuid,
+) -> AppResult<Vec<ReactionSummaryItem>> {
+    let rows = sqlx::query!(
+        "SELECT emoji, user_id FROM message_reactions WHERE message_id = $1 ORDER BY created_at ASC",
+        message_id
+    )
+    .fetch_all(db)
+    .await?;
+
+    let mut map: std::collections::HashMap<String, Vec<Uuid>> = std::collections::HashMap::new();
+    for r in rows {
+        map.entry(r.emoji).or_default().push(r.user_id);
+    }
+    let list = map
+        .into_iter()
+        .map(|(emoji, users)| ReactionSummaryItem {
+            count: users.len() as i64,
+            emoji,
+            users,
+        })
+        .collect();
+    Ok(list)
+}
+
+async fn handle_pin_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let msg = sqlx::query!(
+        "SELECT sender_id, receiver_id FROM messages WHERE id = $1",
+        message_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
+
+    if msg.sender_id != user.id && msg.receiver_id != user.id {
+        return Err(AppError::Forbidden("not_conversation_participant"));
+    }
+
+    sqlx::query!(
+        "UPDATE messages SET is_pinned = TRUE WHERE id = $1",
+        message_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    let event = WsEvent::MessagePinned {
+        message_id,
+        is_pinned: true,
+    };
+    state.ws_hub.send_to_user(&msg.sender_id, event.clone()).await;
+    state.ws_hub.send_to_user(&msg.receiver_id, event).await;
+
+    Ok(Json(serde_json::json!({ "success": true, "is_pinned": true })))
+}
+
+async fn handle_unpin_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let msg = sqlx::query!(
+        "SELECT sender_id, receiver_id FROM messages WHERE id = $1",
+        message_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
+
+    if msg.sender_id != user.id && msg.receiver_id != user.id {
+        return Err(AppError::Forbidden("not_conversation_participant"));
+    }
+
+    sqlx::query!(
+        "UPDATE messages SET is_pinned = FALSE WHERE id = $1",
+        message_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    let event = WsEvent::MessagePinned {
+        message_id,
+        is_pinned: false,
+    };
+    state.ws_hub.send_to_user(&msg.sender_id, event.clone()).await;
+    state.ws_hub.send_to_user(&msg.receiver_id, event).await;
+
+    Ok(Json(serde_json::json!({ "success": true, "is_pinned": false })))
+}
+
+async fn handle_delete_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let msg = sqlx::query!(
+        "SELECT sender_id, receiver_id FROM messages WHERE id = $1",
+        message_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
+
+    if msg.sender_id != user.id {
+        return Err(AppError::Forbidden("only_sender_can_delete_for_all"));
+    }
+
+    sqlx::query!(
+        "UPDATE messages SET deleted_for_all = TRUE WHERE id = $1",
+        message_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    let event = WsEvent::MessageDeleted { message_id };
+    state.ws_hub.send_to_user(&msg.sender_id, event.clone()).await;
+    state.ws_hub.send_to_user(&msg.receiver_id, event).await;
+
+    Ok(Json(serde_json::json!({ "success": true, "deleted": true })))
+}
+
+async fn handle_get_pinned_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(friend_id): Path<Uuid>,
+) -> AppResult<Json<Vec<MessageItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, seq, sender_id, receiver_id, recipient_envelope, sender_envelope, reply_to_id, is_pinned, is_edited, deleted_for_all, created_at
+        FROM messages
+        WHERE ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1))
+          AND is_pinned = TRUE AND deleted_for_all = FALSE
+        ORDER BY seq DESC
+        LIMIT 50
+        "#,
+        user.id,
+        friend_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let msg_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    let reaction_rows = sqlx::query!(
+        r#"
+        SELECT message_id, emoji, user_id
+        FROM message_reactions
+        WHERE message_id = ANY($1)
+        ORDER BY created_at ASC
+        "#,
+        &msg_ids[..]
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut reactions_map: std::collections::HashMap<Uuid, Vec<ReactionSummaryItem>> =
+        std::collections::HashMap::new();
+    let mut intermediate: std::collections::HashMap<(Uuid, String), Vec<Uuid>> =
+        std::collections::HashMap::new();
+    for r in reaction_rows {
+        intermediate
+            .entry((r.message_id, r.emoji))
+            .or_default()
+            .push(r.user_id);
+    }
+    for ((msg_id, emoji), users) in intermediate {
+        let count = users.len() as i64;
+        reactions_map
+            .entry(msg_id)
+            .or_default()
+            .push(ReactionSummaryItem {
+                emoji,
+                count,
+                users,
+            });
+    }
+
+    let messages = rows
+        .into_iter()
+        .map(|r| {
+            let raw_env = if r.sender_id == user.id {
+                r.sender_envelope
+            } else {
+                r.recipient_envelope
+            };
+            let reactions = reactions_map.remove(&r.id).unwrap_or_default();
+            MessageItem {
+                id: r.id,
+                seq: r.seq,
+                sender_id: r.sender_id,
+                recipient_id: r.receiver_id,
+                envelope: URL_SAFE_NO_PAD.encode(raw_env),
+                reply_to_id: r.reply_to_id,
+                is_pinned: r.is_pinned,
+                is_edited: r.is_edited,
+                deleted_for_all: r.deleted_for_all,
+                reactions,
                 created_at: r.created_at,
             }
         })

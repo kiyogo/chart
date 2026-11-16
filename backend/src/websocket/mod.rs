@@ -57,6 +57,22 @@ pub enum WsEvent {
     TypingStart { user_id: Uuid },
     #[serde(rename = "typing.stop")]
     TypingStop { user_id: Uuid },
+    #[serde(rename = "reaction.update")]
+    ReactionUpdate {
+        message_id: Uuid,
+        user_id: Uuid,
+        emoji: String,
+        action: String,
+    },
+    #[serde(rename = "message.pinned")]
+    MessagePinned {
+        message_id: Uuid,
+        is_pinned: bool,
+    },
+    #[serde(rename = "message.deleted")]
+    MessageDeleted {
+        message_id: Uuid,
+    },
 }
 
 pub struct WsHub {

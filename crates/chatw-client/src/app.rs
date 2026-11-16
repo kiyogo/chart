@@ -93,6 +93,11 @@ fn drain_decrypt_queue(
                             .format("%H:%M")
                             .to_string(),
                         created_at: wire.created_at,
+                        reply_to_id: wire.reply_to_id,
+                        is_pinned: wire.is_pinned,
+                        is_edited: wire.is_edited,
+                        deleted_for_all: wire.deleted_for_all,
+                        reactions: wire.reactions,
                     });
                     msgs.sort_by_key(|m| m.created_at);
                     if !is_me
@@ -472,6 +477,11 @@ mod tests {
                     text: "Xin chào bạn nhé!".to_string(),
                     time_str: "19:30".to_string(),
                     created_at: chrono::Utc::now(),
+                    reply_to_id: None,
+                    is_pinned: false,
+                    is_edited: false,
+                    deleted_for_all: false,
+                    reactions: Vec::new(),
                 },
                 DecryptedMessage {
                     id: Uuid::new_v4(),
@@ -480,6 +490,11 @@ mod tests {
                     text: "Chào bạn, mã hóa E2EE hoạt động tốt!".to_string(),
                     time_str: "19:31".to_string(),
                     created_at: chrono::Utc::now(),
+                    reply_to_id: None,
+                    is_pinned: false,
+                    is_edited: false,
+                    deleted_for_all: false,
+                    reactions: Vec::new(),
                 },
             ],
         );
@@ -1071,6 +1086,11 @@ impl ChatApp {
                                                 .format("%H:%M")
                                                 .to_string(),
                                             created_at: item.created_at,
+                                            reply_to_id: item.reply_to_id,
+                                            is_pinned: item.is_pinned,
+                                            is_edited: item.is_edited,
+                                            deleted_for_all: item.deleted_for_all,
+                                            reactions: item.reactions,
                                         });
                                     }
                                 } else {
@@ -1169,6 +1189,11 @@ impl ChatApp {
                                             .format("%H:%M")
                                             .to_string(),
                                         created_at: wire.created_at,
+                                        reply_to_id: wire.reply_to_id,
+                                        is_pinned: wire.is_pinned,
+                                        is_edited: wire.is_edited,
+                                        deleted_for_all: wire.deleted_for_all,
+                                        reactions: wire.reactions,
                                     });
                                     msgs.sort_by_key(|m| m.created_at);
                                     if !is_me
@@ -1209,6 +1234,58 @@ impl ChatApp {
                     }
                     WsServerEvent::TypingStop { user_id } => {
                         chat.typing_users.remove(&user_id);
+                    }
+                    WsServerEvent::ReactionUpdate {
+                        message_id,
+                        user_id,
+                        emoji,
+                        action,
+                    } => {
+                        for msgs in chat.messages.values_mut() {
+                            if let Some(msg) = msgs.iter_mut().find(|m| m.id == message_id) {
+                                if action == "added" {
+                                    if let Some(rec) =
+                                        msg.reactions.iter_mut().find(|r| r.emoji == emoji)
+                                    {
+                                        if !rec.users.contains(&user_id) {
+                                            rec.users.push(user_id);
+                                            rec.count = rec.users.len() as i64;
+                                        }
+                                    } else {
+                                        msg.reactions.push(chatw_core::ReactionSummary {
+                                            emoji,
+                                            count: 1,
+                                            users: vec![user_id],
+                                        });
+                                    }
+                                } else if action == "removed" {
+                                    if let Some(rec) =
+                                        msg.reactions.iter_mut().find(|r| r.emoji == emoji)
+                                    {
+                                        rec.users.retain(|u| *u != user_id);
+                                        rec.count = rec.users.len() as i64;
+                                    }
+                                    msg.reactions.retain(|r| r.count > 0);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    WsServerEvent::MessagePinned {
+                        message_id,
+                        is_pinned,
+                    } => {
+                        for msgs in chat.messages.values_mut() {
+                            if let Some(msg) = msgs.iter_mut().find(|m| m.id == message_id) {
+                                msg.is_pinned = is_pinned;
+                                break;
+                            }
+                        }
+                    }
+                    WsServerEvent::MessageDeleted { message_id } => {
+                        for msgs in chat.messages.values_mut() {
+                            msgs.retain(|m| m.id != message_id);
+                        }
                     }
                     _ => {}
                 }
@@ -1400,6 +1477,11 @@ impl ChatApp {
                                                         .format("%H:%M")
                                                         .to_string(),
                                                     created_at: chrono::Utc::now(),
+                                                    reply_to_id: None,
+                                                    is_pinned: false,
+                                                    is_edited: false,
+                                                    deleted_for_all: false,
+                                                    reactions: Vec::new(),
                                                 });
 
                                                 // Dispatch HTTP send task
@@ -1472,6 +1554,24 @@ impl ChatApp {
                                     self.http = HttpClient::new(new_url.clone());
                                     chat_view.server_url_input = new_url;
                                     self.refresh_friends_and_pending(ctx);
+                                }
+                                ChatAction::ToggleReaction { message_id, emoji } => {
+                                    let http = self.http.clone();
+                                    self.runtime.spawn(async move {
+                                        let _ = http.toggle_reaction(message_id, &emoji).await;
+                                    });
+                                }
+                                ChatAction::TogglePin { message_id, is_pinned } => {
+                                    let http = self.http.clone();
+                                    self.runtime.spawn(async move {
+                                        let _ = http.pin_message(message_id, is_pinned).await;
+                                    });
+                                }
+                                ChatAction::DeleteMessage(message_id) => {
+                                    let http = self.http.clone();
+                                    self.runtime.spawn(async move {
+                                        let _ = http.delete_message(message_id).await;
+                                    });
                                 }
                             }
                         }

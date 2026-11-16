@@ -1,6 +1,7 @@
 pub mod google;
 pub mod session;
 
+use chrono::{DateTime, Utc};
 use axum::{
     Json, Router,
     extract::{Query, State},
@@ -75,6 +76,8 @@ pub fn routes() -> Router<AppState> {
         .route("/dev-login", post(handle_dev_login))
         .route("/providers", get(handle_providers))
         .route("/me", get(handle_me))
+        .route("/sessions", get(handle_list_sessions))
+        .route("/sessions/{session_id}", axum::routing::delete(handle_delete_session))
         .route("/logout", post(handle_logout))
 }
 
@@ -372,4 +375,76 @@ async fn handle_dev_login(
     );
 
     Ok(response)
+}
+
+#[derive(Serialize)]
+pub struct SessionResponseItem {
+    pub id: Uuid,
+    pub device_name: Option<String>,
+    pub ip_address: Option<String>,
+    pub last_active: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+async fn handle_list_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Vec<SessionResponseItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let token_bytes = hex::decode(session_token).map_err(|_| AppError::Unauthorized)?;
+    if token_bytes.len() != 32 {
+        return Err(AppError::Unauthorized);
+    }
+    let token_hash = session::hash_session_token(&state.config.session_secret, &token_bytes);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, device_name, ip_address, last_active, created_at, (token_hash = $2) as "is_current!"
+        FROM sessions
+        WHERE user_id = $1
+        ORDER BY last_active DESC
+        "#,
+        user.id,
+        &token_hash[..]
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let sessions = rows
+        .into_iter()
+        .map(|r| SessionResponseItem {
+            id: r.id.unwrap_or_else(Uuid::new_v4),
+            device_name: r.device_name,
+            ip_address: r.ip_address,
+            last_active: r.last_active,
+            created_at: r.created_at,
+            is_current: r.is_current,
+        })
+        .collect();
+
+    Ok(Json(sessions))
+}
+
+async fn handle_delete_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    sqlx::query!(
+        "DELETE FROM sessions WHERE id = $1 AND user_id = $2",
+        session_id,
+        user.id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }

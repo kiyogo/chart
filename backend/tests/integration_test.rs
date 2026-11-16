@@ -477,4 +477,50 @@ async fn test_full_e2ee_chat_flow() {
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // 15. ADVANCED MESSAGING: Emoji Reaction System
+    let req = Request::post(format!("/api/messages/{msg_id}/reactions"))
+        .header(header::COOKIE, session_header_b)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "emoji": "❤️" }).to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let reactions: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(reactions.len(), 1);
+    assert_eq!(reactions[0]["emoji"], "❤️");
+    assert_eq!(reactions[0]["count"], 1);
+
+    // 16. ADVANCED MESSAGING: Pinning System
+    let req = Request::post(format!("/api/messages/{msg_id}/pin"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let req = Request::get(format!("/api/messages/pinned/{user_b_id}"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let pinned: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(pinned.len(), 1);
+    assert_eq!(pinned[0]["id"], msg_id.to_string());
+    assert_eq!(pinned[0]["is_pinned"], true);
+
+    // 17. SESSION MANAGEMENT: List active sessions
+    let req = Request::get("/api/auth/sessions")
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let sessions: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert!(!sessions.is_empty());
+    assert_eq!(sessions[0]["is_current"], true);
 }

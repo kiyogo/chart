@@ -50,12 +50,38 @@ pub struct PendingRequestItem {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReactionSummary {
+    pub emoji: String,
+    pub count: i64,
+    pub users: Vec<Uuid>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionItem {
+    pub id: Uuid,
+    pub device_name: Option<String>,
+    pub ip_address: Option<String>,
+    pub last_active: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MessageWireItem {
     pub id: Uuid,
     pub seq: i64,
     pub sender_id: Uuid,
     pub recipient_id: Uuid,
     pub envelope: String, // base64 URL-safe unpadded
+    #[serde(default)]
+    pub reply_to_id: Option<Uuid>,
+    #[serde(default)]
+    pub is_pinned: bool,
+    #[serde(default)]
+    pub is_edited: bool,
+    #[serde(default)]
+    pub deleted_for_all: bool,
+    #[serde(default)]
+    pub reactions: Vec<ReactionSummary>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -79,6 +105,25 @@ pub enum WsServerEvent {
 
     #[serde(rename = "typing.stop")]
     TypingStop { user_id: Uuid },
+
+    #[serde(rename = "reaction.update")]
+    ReactionUpdate {
+        message_id: Uuid,
+        user_id: Uuid,
+        emoji: String,
+        action: String,
+    },
+
+    #[serde(rename = "message.pinned")]
+    MessagePinned {
+        message_id: Uuid,
+        is_pinned: bool,
+    },
+
+    #[serde(rename = "message.deleted")]
+    MessageDeleted {
+        message_id: Uuid,
+    },
 
     #[serde(rename = "error")]
     Error { code: String, message: String },

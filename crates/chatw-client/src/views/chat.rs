@@ -26,6 +26,11 @@ pub struct DecryptedMessage {
     pub text: String,
     pub time_str: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub reply_to_id: Option<Uuid>,
+    pub is_pinned: bool,
+    pub is_edited: bool,
+    pub deleted_for_all: bool,
+    pub reactions: Vec<chatw_core::ReactionSummary>,
 }
 
 pub struct ChatView {
@@ -62,6 +67,9 @@ pub enum ChatAction {
     RefreshData,
     Logout,
     ChangeServerUrl(String),
+    ToggleReaction { message_id: Uuid, emoji: String },
+    TogglePin { message_id: Uuid, is_pinned: bool },
+    DeleteMessage(Uuid),
 }
 
 // ==========================================
