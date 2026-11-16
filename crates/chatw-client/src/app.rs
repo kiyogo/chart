@@ -155,12 +155,12 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Inter-Light is FIRST and PRIMARY (slender, modern, crisp, non-bold)
+    // 3. Proportional family: Inter-Regular is FIRST and PRIMARY (solid core, crisp anti-aliasing)
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, "inter_light".to_owned());
+        .insert(0, "inter_regular".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         fonts
             .families
@@ -177,7 +177,7 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: mapped to Inter-Medium
+    // 5. Semibold family: mapped to Inter-Medium (slender, balanced weight - never bulky)
     let semibold_family = egui::FontFamily::Name("semibold".into());
     let mut semi = vec!["inter_medium".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
@@ -185,7 +185,7 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family: mapped to Inter-SemiBold
+    // 6. Bold family: mapped to Inter-SemiBold (refined contrast without bloat)
     let bold_family = egui::FontFamily::Name("bold".into());
     let mut bold = vec!["inter_semibold".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
@@ -615,9 +615,9 @@ impl ChatApp {
         visuals.extreme_bg_color = Color32::from_rgb(255, 255, 255);
         visuals.faint_bg_color = Color32::from_rgb(247, 248, 250);
         visuals.override_text_color = None;
-        visuals.widgets.noninteractive.fg_stroke.color = Color32::from_rgb(23, 23, 23); // #171717
+        visuals.widgets.noninteractive.fg_stroke.color = Color32::from_rgb(38, 38, 38); // #262626
         visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
-        visuals.widgets.inactive.fg_stroke.color = Color32::from_rgb(23, 23, 23); // #171717
+        visuals.widgets.inactive.fg_stroke.color = Color32::from_rgb(38, 38, 38); // #262626
         visuals.widgets.inactive.bg_fill = Color32::from_rgb(247, 248, 250); // #F7F8FA
         visuals.widgets.hovered.fg_stroke.color = Color32::from_rgb(23, 23, 23);
         visuals.widgets.hovered.bg_fill = Color32::from_rgb(236, 238, 242); // #ECEEF2
@@ -628,16 +628,19 @@ impl ChatApp {
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles = [
-            (egui::TextStyle::Heading, titlebar::font_regular(15.0)),
+            (egui::TextStyle::Heading, titlebar::font_medium(15.5)),
             (egui::TextStyle::Body, titlebar::font_regular(14.0)),
-            (egui::TextStyle::Button, titlebar::font_regular(13.0)),
-            (egui::TextStyle::Small, titlebar::font_regular(12.0)),
-            (egui::TextStyle::Monospace, titlebar::font_mono(12.0)),
+            (egui::TextStyle::Button, titlebar::font_regular(13.5)),
+            (egui::TextStyle::Small, titlebar::font_regular(12.5)),
+            (egui::TextStyle::Monospace, titlebar::font_mono(12.5)),
         ]
         .into();
         cc.egui_ctx.set_style(style);
-        // Standard 100% UI scale
+        // Standard 100% UI scale & pixel-snapped text tessellation for razor-sharp edges
         cc.egui_ctx.set_zoom_factor(1.0);
+        cc.egui_ctx.tessellation_options_mut(|opts| {
+            opts.round_text_to_pixels = true;
+        });
 
         // Log DPI for debugging
         {
