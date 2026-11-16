@@ -60,8 +60,8 @@ fn main() -> eframe::Result<()> {
         .with_title("chatw – Secure Messaging")
         .with_inner_size([1100.0, 720.0])
         .with_min_inner_size([850.0, 560.0])
-        .with_decorations(false) // Seamless custom Windows Titlebar
-        .with_transparent(false);
+        .with_decorations(false) // Seamless custom Titlebar
+        .with_transparent(true);
 
     if let Some(icon) = load_app_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));

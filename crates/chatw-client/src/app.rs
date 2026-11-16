@@ -169,25 +169,25 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .push("segoe_emoji".to_owned());
     }
 
-    // 4. Medium family: mapped strictly to Inter-Regular (no bold/medium weights)
+    // 4. Medium family
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = vec!["inter_regular".to_owned()];
+    let mut med = vec!["inter_medium".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: mapped strictly to Inter-Regular (no bold/medium weights)
+    // 5. Semibold family
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec!["inter_regular".to_owned()];
+    let mut semi = vec!["inter_semibold".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family: mapped strictly to Inter-Regular (no bold/medium weights)
+    // 6. Bold family
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec!["inter_regular".to_owned()];
+    let mut bold = vec!["inter_bold".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
@@ -636,11 +636,8 @@ impl ChatApp {
         ]
         .into();
         cc.egui_ctx.set_style(style);
-        // Standard 100% UI scale & pixel-snapped text tessellation
+        // Standard 100% UI scale
         cc.egui_ctx.set_zoom_factor(1.0);
-        cc.egui_ctx.tessellation_options_mut(|opts| {
-            opts.round_text_to_pixels = true;
-        });
 
         // Log DPI for debugging
         {
@@ -1410,7 +1407,7 @@ impl ChatApp {
             .rect_stroke(
                 screen_rect,
                 egui::CornerRadius::same(8),
-                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 35)),
+                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 75)),
                 egui::StrokeKind::Inside,
             );
         }
@@ -1418,6 +1415,10 @@ impl ChatApp {
 }
 
 impl eframe::App for ChatApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [0.0, 0.0, 0.0, 0.0]
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_ui(ctx);
     }
