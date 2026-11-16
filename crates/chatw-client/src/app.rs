@@ -1225,16 +1225,6 @@ impl ChatApp {
                     Color32::WHITE,
                 );
 
-                // Subtle hairline outline separating app card cleanly
-                if !is_max {
-                    ui.painter().rect_stroke(
-                        app_rect,
-                        egui::CornerRadius::same(corner_radius),
-                        egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 30)),
-                        egui::StrokeKind::Inside,
-                    );
-                }
-
                 // Clipped App Container
                 let mut app_ui = ui.new_child(
                     egui::UiBuilder::new()
