@@ -15,7 +15,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use chatw::{
-    attachments,
+    attachments, audit,
     auth::{self, AppState, google::GoogleJwksCache, session::create_session},
     config::Config,
     crypto::{self, Envelope, PROTOCOL_VERSION, compute_fingerprint},
@@ -68,6 +68,7 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         .nest("/api/friends", friends::routes())
         .nest("/api/messages", messages::routes())
         .nest("/api/attachments", attachments::routes())
+        .nest("/api/audit", audit::routes())
         .nest("/api/servers", servers::server_routes())
         .nest("/api/channels", servers::channel_routes())
         .nest("/api/webrtc", webrtc::routes())
@@ -774,4 +775,41 @@ async fn test_full_e2ee_chat_flow() {
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // 27. SECURITY HARDENING & AUDIT LOGGING: Session revocation creates audit log
+    let _cookie_a2 = create_session(&pool, &config, user_a_id).await.unwrap();
+
+    let req = Request::get("/api/auth/sessions")
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let user_a_sessions: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    let session_to_delete = user_a_sessions
+        .iter()
+        .find(|s| s["is_current"] == false)
+        .expect("find non-current session")["id"]
+        .as_str()
+        .unwrap();
+
+    let req = Request::delete(format!("/api/auth/sessions/{session_to_delete}"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let req = Request::get("/api/audit/logs")
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let audit_logs: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert!(!audit_logs.is_empty());
+    assert_eq!(audit_logs[0]["action"], "session_revoked");
+    assert_eq!(audit_logs[0]["target_id"], session_to_delete);
 }

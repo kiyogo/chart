@@ -338,3 +338,14 @@ pub struct AttachmentItem {
     pub download_url: String,
     pub created_at: DateTime<Utc>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AuditLogItem {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub action: String,
+    pub target_type: Option<String>,
+    pub target_id: Option<String>,
+    pub ip_address: Option<String>,
+    pub created_at: DateTime<Utc>,
+}

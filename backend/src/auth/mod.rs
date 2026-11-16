@@ -446,5 +446,17 @@ async fn handle_delete_session(
     .execute(&state.db)
     .await?;
 
+    let _ = crate::audit::log_audit_event(
+        &state.db,
+        user.id,
+        "session_revoked",
+        Some("session"),
+        Some(&session_id.to_string()),
+        None,
+        None,
+        None,
+    )
+    .await;
+
     Ok(Json(serde_json::json!({ "success": true })))
 }

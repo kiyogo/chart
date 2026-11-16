@@ -14,7 +14,7 @@ use tower_http::{
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use chatw::{
-    attachments,
+    attachments, audit,
     auth::{self, AppState, google::GoogleJwksCache},
     config::Config,
     crypto, db, friends, messages, servers, typing, users, webrtc,
@@ -104,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/friends", friends::routes())
         .nest("/messages", messages::routes())
         .nest("/attachments", attachments::routes())
+        .nest("/audit", audit::routes())
         .nest("/servers", servers::server_routes())
         .nest("/channels", servers::channel_routes())
         .nest("/webrtc", webrtc::routes())
