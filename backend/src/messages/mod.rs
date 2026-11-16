@@ -210,6 +210,7 @@ async fn handle_send_message(
                 sender_id: sender.id,
                 recipient_id,
                 envelope: payload.recipient_envelope,
+                reply_to_id: payload.reply_to_id,
                 created_at: row.created_at,
             },
         )
@@ -226,6 +227,7 @@ async fn handle_send_message(
                 sender_id: sender.id,
                 recipient_id,
                 envelope: payload.sender_envelope,
+                reply_to_id: payload.reply_to_id,
                 created_at: row.created_at,
             },
         )

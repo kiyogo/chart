@@ -42,6 +42,8 @@ pub enum WsEvent {
         sender_id: Uuid,
         recipient_id: Uuid,
         envelope: String, // Base64url encoded envelope
+        #[serde(default)]
+        reply_to_id: Option<Uuid>,
         created_at: chrono::DateTime<chrono::Utc>,
     },
     #[serde(rename = "friend.request")]

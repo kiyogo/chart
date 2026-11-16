@@ -50,6 +50,7 @@ export interface DisplayMessage {
   createdAt: string;
   isSelf: boolean;
   status: 'sent' | 'pending' | 'error';
+  replyToId?: string | null;
 }
 
 export function Chat(props: {
@@ -292,6 +293,7 @@ export function Chat(props: {
                   createdAt: msg.created_at,
                   isSelf: isFromMe,
                   status: 'sent',
+                  replyToId: msg.reply_to_id,
                 },
               ];
             });
@@ -631,6 +633,7 @@ export function Chat(props: {
             createdAt: wire.created_at,
             isSelf: wire.sender_id === props.currentUserId,
             status: 'sent',
+            replyToId: wire.reply_to_id,
           });
         } catch {
           decryptedList.push({
@@ -1442,7 +1445,14 @@ export function Chat(props: {
                         <Show when={!msg.isSelf}>
                           <Avatar name={activeFriend()?.username || ''} avatarUrl={activeFriend()?.avatar_url} size={28} />
                         </Show>
-                        <div class="message-bubble">{msg.text}</div>
+                        <div class="message-bubble">
+                          <Show when={msg.replyToId}>
+                            <div style={{ "font-size": "11.5px", "border-left": "2px solid currentColor", "padding-left": "6px", "margin-bottom": "4px", opacity: 0.75 }}>
+                              {messages().find((m) => m.id === msg.replyToId)?.text || 'Tin nhắn gốc'}
+                            </div>
+                          </Show>
+                          {msg.text}
+                        </div>
                       </div>
                       <Show when={msg.createdAt}>
                         <span class="message-time">{formatTime(msg.createdAt)}</span>

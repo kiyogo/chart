@@ -77,6 +77,11 @@ export interface MessageWireItem {
   sender_id: string;
   recipient_id: string;
   envelope: string;
+  reply_to_id?: string | null;
+  is_pinned?: boolean;
+  is_edited?: boolean;
+  deleted_for_all?: boolean;
+  reactions?: ReactionSummary[];
   created_at: string;
 }
 

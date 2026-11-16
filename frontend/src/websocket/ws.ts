@@ -11,6 +11,7 @@ export type WsEvent =
         sender_id: string;
         recipient_id: string;
         envelope: string;
+        reply_to_id?: string | null;
         created_at: string;
       };
     }
