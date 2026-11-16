@@ -218,24 +218,8 @@ impl LoginView {
                 font_regular(12.0),
                 Color32::from_rgb(17, 24, 39),
             );
-            let text_half = div_galley.size().x * 0.5 + 10.0;
             let line_y = div_rect.center().y;
-            let line_stroke = Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235));
 
-            ui.painter().line_segment(
-                [
-                    pos2(div_rect.left(), line_y),
-                    pos2(div_rect.center().x - text_half, line_y),
-                ],
-                line_stroke,
-            );
-            ui.painter().line_segment(
-                [
-                    pos2(div_rect.center().x + text_half, line_y),
-                    pos2(div_rect.right(), line_y),
-                ],
-                line_stroke,
-            );
             ui.painter().galley(
                 snap_xy(
                     div_rect.center().x - div_galley.size().x * 0.5,

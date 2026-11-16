@@ -155,12 +155,12 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Inter-Regular is FIRST and PRIMARY (solid, crisp, sharp, no blurry gray fringe)
+    // 3. Proportional family: Inter-Light is FIRST and PRIMARY (slender, fine, never thick or bold)
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, "inter_regular".to_owned());
+        .insert(0, "inter_light".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         fonts
             .families
@@ -639,7 +639,7 @@ impl ChatApp {
         // Standard 100% UI scale & pixel-snapped text tessellation for razor-sharp edges
         cc.egui_ctx.set_zoom_factor(1.0);
         cc.egui_ctx.tessellation_options_mut(|opts| {
-            opts.round_text_to_pixels = true;
+            opts.round_text_to_pixels = false;
         });
 
         // Log DPI for debugging

@@ -360,10 +360,6 @@ impl ChatView {
         // 3. RENDER RIGHT PARTNER INFO SIDEBAR (if shown)
         if show_right_sidebar {
             if let Some(ref friend) = active_friend {
-                ui.painter().line_segment(
-                    [partner_rect.left_top(), partner_rect.left_bottom()],
-                    Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-                );
                 let mut partner_ui = ui.new_child(
                     UiBuilder::new()
                         .max_rect(partner_rect)
@@ -957,10 +953,6 @@ impl ChatView {
         let header_rect =
             Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
         ui.painter().rect_filled(header_rect, 0.0, Color32::WHITE);
-        ui.painter().line_segment(
-            [header_rect.left_bottom(), header_rect.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-        );
 
         let av_rect = Rect::from_center_size(
             pos2(header_rect.left() + 20.0 + 17.0, header_rect.center().y),
@@ -1013,10 +1005,6 @@ impl ChatView {
         let input_bar_rect = Rect::from_min_size(
             pos2(total_rect.min.x, total_rect.max.y - input_bar_height),
             Vec2::new(total_rect.width(), input_bar_height),
-        );
-        ui.painter().line_segment(
-            [input_bar_rect.left_top(), input_bar_rect.right_top()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
         );
 
         let emoji_btn_rect = Rect::from_center_size(
@@ -1236,14 +1224,10 @@ impl ChatView {
     pub fn render_settings_view(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
         let total_rect = ui.available_rect_before_wrap();
 
-        // .chat-header: height 54px, border-bottom 1px solid #E5E7EB
+        // .chat-header: height 54px
         let header_height = 54.0;
         let header_rect =
             Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
-        ui.painter().line_segment(
-            [header_rect.left_bottom(), header_rect.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-        );
 
         let back_rect = Rect::from_center_size(
             pos2(header_rect.left() + 20.0 + 18.0, header_rect.center().y),
@@ -1488,14 +1472,10 @@ impl ChatView {
         let total_rect = ui.available_rect_before_wrap();
         let ppp = ui.pixels_per_point();
 
-        // .partner-info-header: height 54px, border-bottom 1px solid #E5E7EB
+        // .partner-info-header: height 54px
         let header_height = 54.0;
         let header_rect =
             Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
-        ui.painter().line_segment(
-            [header_rect.left_bottom(), header_rect.right_bottom()],
-            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
-        );
 
         ui.painter().text(
             snap_xy(header_rect.left() + 20.0, header_rect.center().y, ppp),
