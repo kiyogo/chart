@@ -155,12 +155,12 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Inter-Regular is FIRST and PRIMARY (slender, modern, crisp)
+    // 3. Proportional family: Inter-Light is FIRST and PRIMARY (slender, modern, crisp, non-bold)
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, "inter_regular".to_owned());
+        .insert(0, "inter_light".to_owned());
     if fonts.font_data.contains_key("segoe_emoji") {
         fonts
             .families
@@ -169,25 +169,25 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
             .push("segoe_emoji".to_owned());
     }
 
-    // 4. Medium family
+    // 4. Medium family: mapped to Inter-Regular
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = vec!["inter_medium".to_owned()];
+    let mut med = vec!["inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family
+    // 5. Semibold family: mapped to Inter-Medium
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec!["inter_semibold".to_owned()];
+    let mut semi = vec!["inter_medium".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family
+    // 6. Bold family: mapped to Inter-SemiBold
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec!["inter_bold".to_owned()];
+    let mut bold = vec!["inter_semibold".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }

@@ -10,17 +10,17 @@ pub fn font_regular(size: f32) -> FontId {
 
 #[allow(dead_code)]
 pub fn font_medium(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Proportional)
+    FontId::new(size, FontFamily::Name("medium".into()))
 }
 
 #[allow(dead_code)]
 pub fn font_semibold(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Proportional)
+    FontId::new(size, FontFamily::Name("semibold".into()))
 }
 
 #[allow(dead_code)]
 pub fn font_bold(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Proportional)
+    FontId::new(size, FontFamily::Name("bold".into()))
 }
 
 pub fn font_mono(size: f32) -> FontId {
