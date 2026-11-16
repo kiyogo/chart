@@ -25,7 +25,7 @@ use chatw::{
 
 fn create_test_config() -> Config {
     let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        "postgres://chatw:chatw_dev_password@127.0.0.1:55432/chatw".into()
+        "postgresql://chatw:chatw_dev_password@%2Ftmp%2Fkiyo-pg-run/chatw".into()
     });
     Config {
         database_url,

@@ -15,6 +15,7 @@ use uuid::Uuid;
 pub enum SidebarTab {
     Chats,
     Friends,
+    Servers,
 }
 
 #[derive(Clone, Debug)]
@@ -56,6 +57,17 @@ pub struct ChatView {
     pub is_emoji_picker_open: bool,
     pub unread_counts: HashMap<Uuid, usize>,
     pub server_url_input: String,
+
+    pub servers: Vec<chatw_core::ServerItem>,
+    pub selected_server_id: Option<Uuid>,
+    pub channels: Vec<chatw_core::ChannelItem>,
+    pub selected_channel_id: Option<Uuid>,
+    pub channel_messages: HashMap<Uuid, Vec<chatw_core::ChannelMessageItem>>,
+    pub new_server_input: String,
+    pub invite_code_input: String,
+    pub channel_message_input: String,
+    pub active_voice_channel_id: Option<Uuid>,
+    pub is_voice_muted: bool,
 }
 
 #[allow(dead_code)]
@@ -73,6 +85,14 @@ pub enum ChatAction {
     ToggleReaction { message_id: Uuid, emoji: String },
     TogglePin { message_id: Uuid, is_pinned: bool },
     DeleteMessage(Uuid),
+    LoadServers,
+    SelectServer(Uuid),
+    SelectChannel(Uuid),
+    CreateServer(String),
+    JoinServer(String),
+    SendChannelMessage { channel_id: Uuid, content: String },
+    ToggleVoiceMute(Uuid),
+    LeaveVoice(Uuid),
 }
 
 // ==========================================
@@ -81,6 +101,26 @@ pub enum ChatAction {
 
 pub fn draw_svg_chat_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
     draw_svg_logo_icon(painter, rect, color);
+}
+
+pub fn draw_svg_server_icon(painter: &egui::Painter, rect: Rect, color: Color32) {
+    let s = rect.size() / 24.0;
+    let pt = |x: f32, y: f32| pos2(rect.min.x + x * s.x, rect.min.y + y * s.y);
+    let stroke = Stroke::new((1.8 * s.x).max(1.2), color);
+    painter.rect_stroke(
+        Rect::from_min_max(pt(2.0, 2.0), pt(22.0, 10.0)),
+        CornerRadius::same(2),
+        stroke,
+        StrokeKind::Inside,
+    );
+    painter.rect_stroke(
+        Rect::from_min_max(pt(2.0, 14.0), pt(22.0, 22.0)),
+        CornerRadius::same(2),
+        stroke,
+        StrokeKind::Inside,
+    );
+    painter.circle_filled(pt(6.0, 6.0), 1.2 * s.x, color);
+    painter.circle_filled(pt(6.0, 18.0), 1.2 * s.x, color);
 }
 
 /// Web `<FriendsIcon />`:
@@ -300,6 +340,17 @@ impl ChatView {
             is_emoji_picker_open: false,
             unread_counts: HashMap::new(),
             server_url_input: "http://127.0.0.1:8085".to_string(),
+
+            servers: Vec::new(),
+            selected_server_id: None,
+            channels: Vec::new(),
+            selected_channel_id: None,
+            channel_messages: HashMap::new(),
+            new_server_input: String::new(),
+            invite_code_input: String::new(),
+            channel_message_input: String::new(),
+            active_voice_channel_id: None,
+            is_voice_muted: false,
         }
     }
 
@@ -361,6 +412,8 @@ impl ChatView {
         );
         if self.is_settings_open {
             self.render_settings_view(&mut center_ui, &mut triggered_action);
+        } else if self.selected_channel_id.is_some() {
+            self.render_channel_area(&mut center_ui, &mut triggered_action);
         } else {
             self.render_chat_area(
                 &mut center_ui,
@@ -407,18 +460,17 @@ impl ChatView {
         let (header_rect, _) =
             ui.allocate_exact_size(Vec2::new(total_rect.width(), header_height), Sense::hover());
 
-        // Exact coordinates for 4 action buttons matching web CSS (.sidebar-actions { gap: 6px; }, .icon-btn { width: 36px; height: 36px; }):
-        // Total width = 4 * 36 + 3 * 6 = 162px. Right padding = 16px.
-        // Logout right edge is at 304px, exactly 16px away from 320px sidebar border.
-        let btn_size = vec2(36.0, 36.0);
-        let btn_y = header_rect.center().y - 18.0;
-        let right_edge = header_rect.right() - 16.0;
-        let gap = 6.0;
+        // 5 action buttons (.sidebar-actions { gap: 4px; }, .icon-btn { width: 32px; height: 32px; })
+        let btn_size = vec2(32.0, 32.0);
+        let btn_y = header_rect.center().y - 16.0;
+        let right_edge = header_rect.right() - 12.0;
+        let gap = 4.0;
 
-        let logout_rect = Rect::from_min_size(pos2(right_edge - 36.0, btn_y), btn_size);
-        let set_rect = Rect::from_min_size(pos2(logout_rect.left() - gap - 36.0, btn_y), btn_size);
-        let fr_rect = Rect::from_min_size(pos2(set_rect.left() - gap - 36.0, btn_y), btn_size);
-        let ch_rect = Rect::from_min_size(pos2(fr_rect.left() - gap - 36.0, btn_y), btn_size);
+        let logout_rect = Rect::from_min_size(pos2(right_edge - 32.0, btn_y), btn_size);
+        let set_rect = Rect::from_min_size(pos2(logout_rect.left() - gap - 32.0, btn_y), btn_size);
+        let srv_rect = Rect::from_min_size(pos2(set_rect.left() - gap - 32.0, btn_y), btn_size);
+        let fr_rect = Rect::from_min_size(pos2(srv_rect.left() - gap - 32.0, btn_y), btn_size);
+        let ch_rect = Rect::from_min_size(pos2(fr_rect.left() - gap - 32.0, btn_y), btn_size);
 
         // 1. Left brand (.app-brand: Avatar 28px + 8px gap + 16px semibold username)
         let avatar_rect = Rect::from_center_size(
@@ -553,7 +605,35 @@ impl ChatView {
             self.is_settings_open = false;
         }
 
-        // Button 3: Settings (<SettingsIcon /> 18x18)
+        // Button 3: Servers (<ServerIcon /> 18x18)
+        let srv_resp = ui.interact(srv_rect, ui.id().with("sb_btn_servers"), Sense::click());
+        let is_srv_active = self.sidebar_tab == SidebarTab::Servers && !self.is_settings_open;
+        if is_srv_active || srv_resp.hovered() {
+            ui.painter().rect_filled(
+                srv_rect,
+                CornerRadius::same(6),
+                Color32::from_rgb(236, 238, 242),
+            );
+        }
+        let srv_color = if is_srv_active {
+            Color32::from_rgb(37, 99, 235)
+        } else if srv_resp.hovered() {
+            Color32::from_rgb(23, 23, 23)
+        } else {
+            Color32::from_rgb(17, 24, 39)
+        };
+        draw_svg_server_icon(
+            ui.painter(),
+            Rect::from_center_size(srv_rect.center(), vec2(18.0, 18.0)),
+            srv_color,
+        );
+        if srv_resp.clicked() {
+            self.sidebar_tab = SidebarTab::Servers;
+            self.is_settings_open = false;
+            *action = Some(ChatAction::LoadServers);
+        }
+
+        // Button 4: Settings (<SettingsIcon /> 18x18)
         let set_resp = ui.interact(set_rect, ui.id().with("sb_btn_settings"), Sense::click());
         let is_set_active = self.is_settings_open;
         if is_set_active || set_resp.hovered() {
@@ -608,6 +688,9 @@ impl ChatView {
             }
             SidebarTab::Friends => {
                 self.render_friends_tab(ui, action);
+            }
+            SidebarTab::Servers => {
+                self.render_servers_tab(ui, action);
             }
         }
     }
@@ -935,6 +1018,204 @@ impl ChatView {
     }
 
     // ==========================================
+    // TAB 3: SERVERS & CHANNELS (Discord-style)
+    // ==========================================
+    fn render_servers_tab(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
+        let total_w = ui.available_width();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.add_space(8.0);
+
+                // Create Server Form
+                ui.horizontal(|ui| {
+                    ui.add_space(16.0);
+                    let edit = egui::TextEdit::singleline(&mut self.new_server_input)
+                        .hint_text("Tên server mới")
+                        .font(font_regular(12.0))
+                        .desired_width((total_w - 90.0).max(80.0));
+                    ui.add(edit);
+                    if ui.button(RichText::new("Tạo").font(font_regular(12.0))).clicked() {
+                        let name = self.new_server_input.trim();
+                        if !name.is_empty() {
+                            *action = Some(ChatAction::CreateServer(name.to_string()));
+                            self.new_server_input.clear();
+                        }
+                    }
+                });
+
+                ui.add_space(6.0);
+                // Join Server Form
+                ui.horizontal(|ui| {
+                    ui.add_space(16.0);
+                    let edit = egui::TextEdit::singleline(&mut self.invite_code_input)
+                        .hint_text("Mã mời tham gia")
+                        .font(font_regular(12.0))
+                        .desired_width((total_w - 90.0).max(80.0));
+                    ui.add(edit);
+                    if ui.button(RichText::new("Vào").font(font_regular(12.0))).clicked() {
+                        let code = self.invite_code_input.trim();
+                        if !code.is_empty() {
+                            *action = Some(ChatAction::JoinServer(code.to_string()));
+                            self.invite_code_input.clear();
+                        }
+                    }
+                });
+
+                ui.add_space(14.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(16.0);
+                    ui.label(
+                        RichText::new("DANH SÁCH MÁY CHỦ")
+                            .font(font_regular(11.0))
+                            .color(Color32::from_rgb(107, 114, 128)),
+                    );
+                });
+                ui.add_space(4.0);
+
+                if self.servers.is_empty() {
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(16.0);
+                        ui.label(
+                            RichText::new("Chưa tham gia server nào")
+                                .font(font_regular(12.0))
+                                .color(Color32::from_rgb(156, 163, 175)),
+                        );
+                    });
+                } else {
+                    for srv in &self.servers {
+                        let is_sel = self.selected_server_id == Some(srv.id);
+                        let srv_id = srv.id;
+                        let srv_name = srv.name.clone();
+
+                        let (card_rect, resp) = ui.allocate_exact_size(
+                            vec2(total_w - 32.0, 44.0),
+                            Sense::click(),
+                        );
+                        let bg = if is_sel {
+                            Color32::from_rgb(230, 237, 254)
+                        } else if resp.hovered() {
+                            Color32::from_rgb(243, 244, 246)
+                        } else {
+                            Color32::TRANSPARENT
+                        };
+                        ui.painter().rect_filled(card_rect, CornerRadius::same(6), bg);
+
+                        let av_rect = Rect::from_center_size(
+                            pos2(card_rect.left() + 20.0, card_rect.center().y),
+                            vec2(30.0, 30.0),
+                        );
+                        paint_avatar_in_rect(ui.painter(), av_rect, &srv_name);
+
+                        let text_col = if is_sel {
+                            Color32::from_rgb(37, 99, 235)
+                        } else {
+                            Color32::from_rgb(17, 24, 39)
+                        };
+                        ui.painter().text(
+                            pos2(card_rect.left() + 42.0, card_rect.center().y - 7.0),
+                            Align2::LEFT_TOP,
+                            &srv_name,
+                            font_regular(13.0),
+                            text_col,
+                        );
+
+                        if resp.clicked() {
+                            *action = Some(ChatAction::SelectServer(srv_id));
+                        }
+                    }
+                }
+
+                // If a server is selected, show channels
+                if let Some(srv_id) = self.selected_server_id {
+                    let srv_name = self.servers.iter().find(|s| s.id == srv_id).map(|s| s.name.clone()).unwrap_or_default();
+                    ui.add_space(14.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(16.0);
+                        ui.label(
+                            RichText::new(format!("KÊNH ({srv_name})"))
+                                .font(font_regular(11.0))
+                                .color(Color32::from_rgb(107, 114, 128)),
+                        );
+                    });
+                    ui.add_space(4.0);
+
+                    for ch in &self.channels {
+                        let is_ch_sel = self.selected_channel_id == Some(ch.id);
+                        let ch_id = ch.id;
+                        let ch_name = ch.name.clone();
+                        let is_voice = ch.channel_type == "voice";
+                        let prefix = if is_voice { "🔊 " } else { "# " };
+
+                        let (ch_rect, resp) = ui.allocate_exact_size(
+                            vec2(total_w - 32.0, 32.0),
+                            Sense::click(),
+                        );
+                        let bg = if is_ch_sel {
+                            Color32::from_rgb(230, 237, 254)
+                        } else if resp.hovered() {
+                            Color32::from_rgb(243, 244, 246)
+                        } else {
+                            Color32::TRANSPARENT
+                        };
+                        ui.painter().rect_filled(ch_rect, CornerRadius::same(4), bg);
+
+                        let text_col = if is_ch_sel {
+                            Color32::from_rgb(37, 99, 235)
+                        } else {
+                            Color32::from_rgb(55, 65, 81)
+                        };
+                        ui.painter().text(
+                            pos2(ch_rect.left() + 16.0, ch_rect.center().y - 7.0),
+                            Align2::LEFT_TOP,
+                            format!("{prefix}{ch_name}"),
+                            font_regular(13.0),
+                            text_col,
+                        );
+
+                        if resp.clicked() {
+                            *action = Some(ChatAction::SelectChannel(ch_id));
+                        }
+                    }
+                }
+
+                // Persistent voice control bar
+                if let Some(voice_ch_id) = self.active_voice_channel_id {
+                    ui.add_space(16.0);
+                    let (v_rect, _) = ui.allocate_exact_size(
+                        vec2(total_w - 32.0, 42.0),
+                        Sense::hover(),
+                    );
+                    ui.painter().rect_filled(v_rect, CornerRadius::same(6), Color32::from_rgb(30, 41, 59));
+                    ui.painter().text(
+                        pos2(v_rect.left() + 10.0, v_rect.center().y - 6.0),
+                        Align2::LEFT_TOP,
+                        "🔊 Thoại WebRTC",
+                        font_regular(12.0),
+                        Color32::WHITE,
+                    );
+                    let mute_btn_rect = Rect::from_min_size(pos2(v_rect.right() - 110.0, v_rect.center().y - 12.0), vec2(48.0, 24.0));
+                    let mute_resp = ui.interact(mute_btn_rect, ui.id().with("btn_v_mute"), Sense::click());
+                    let mute_bg = if self.is_voice_muted { Color32::from_rgb(239, 68, 68) } else { Color32::from_rgb(71, 85, 105) };
+                    ui.painter().rect_filled(mute_btn_rect, CornerRadius::same(4), mute_bg);
+                    ui.painter().text(mute_btn_rect.center(), Align2::CENTER_CENTER, if self.is_voice_muted { "Bật" } else { "Tắt" }, font_regular(11.0), Color32::WHITE);
+                    if mute_resp.clicked() {
+                        *action = Some(ChatAction::ToggleVoiceMute(voice_ch_id));
+                    }
+
+                    let disc_btn_rect = Rect::from_min_size(pos2(v_rect.right() - 56.0, v_rect.center().y - 12.0), vec2(48.0, 24.0));
+                    let disc_resp = ui.interact(disc_btn_rect, ui.id().with("btn_v_disc"), Sense::click());
+                    ui.painter().rect_filled(disc_btn_rect, CornerRadius::same(4), Color32::from_rgb(220, 38, 38));
+                    ui.painter().text(disc_btn_rect.center(), Align2::CENTER_CENTER, "Rời", font_regular(11.0), Color32::WHITE);
+                    if disc_resp.clicked() {
+                        *action = Some(ChatAction::LeaveVoice(voice_ch_id));
+                    }
+                }
+            });
+    }
+
+    // ==========================================
     // CENTER CHAT AREA (Matches Chat.tsx lines 1014-1114)
     // ==========================================
     pub fn render_chat_area(
@@ -1227,6 +1508,225 @@ impl ChatView {
                         }
                     }
                 });
+        }
+    }
+
+    // ==========================================
+    // CHANNEL VIEW (Discord-style Text & Voice)
+    // ==========================================
+    pub fn render_channel_area(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
+        let total_rect = ui.available_rect_before_wrap();
+
+        let Some(ch_id) = self.selected_channel_id else {
+            return;
+        };
+        let Some(ch) = self.channels.iter().find(|c| c.id == ch_id).cloned() else {
+            return;
+        };
+
+        let header_height = 54.0;
+        let input_bar_height = 60.0;
+        let header_rect =
+            Rect::from_min_size(total_rect.min, Vec2::new(total_rect.width(), header_height));
+        ui.painter().rect_filled(header_rect, 0.0, Color32::WHITE);
+
+        let is_voice = ch.channel_type == "voice";
+        let title_prefix = if is_voice { "🔊 " } else { "# " };
+
+        ui.painter().text(
+            pos2(header_rect.left() + 20.0, header_rect.center().y - 7.0),
+            Align2::LEFT_TOP,
+            format!("{title_prefix}{}", ch.name),
+            font_regular(16.0),
+            Color32::from_rgb(23, 23, 23),
+        );
+
+        ui.painter().line_segment(
+            [
+                pos2(header_rect.left(), header_rect.bottom()),
+                pos2(header_rect.right(), header_rect.bottom()),
+            ],
+            Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+        );
+
+        if is_voice {
+            // Voice channel view
+            let center_pos = total_rect.center();
+            ui.painter().text(
+                pos2(center_pos.x, center_pos.y - 40.0),
+                Align2::CENTER_CENTER,
+                "🔊",
+                font_regular(48.0),
+                Color32::from_rgb(37, 99, 235),
+            );
+            ui.painter().text(
+                pos2(center_pos.x, center_pos.y + 10.0),
+                Align2::CENTER_CENTER,
+                format!("Kênh thoại: {}", ch.name),
+                font_regular(16.0),
+                Color32::from_rgb(17, 24, 39),
+            );
+
+            let is_connected = self.active_voice_channel_id == Some(ch.id);
+            let status_text = if is_connected {
+                "Đang kết nối phòng thoại WebRTC"
+            } else {
+                "Nhấn vào kênh để kết nối"
+            };
+            ui.painter().text(
+                pos2(center_pos.x, center_pos.y + 35.0),
+                Align2::CENTER_CENTER,
+                status_text,
+                font_regular(13.0),
+                Color32::from_rgb(107, 114, 128),
+            );
+
+            if is_connected {
+                let btn_rect = Rect::from_center_size(pos2(center_pos.x - 50.0, center_pos.y + 70.0), vec2(80.0, 32.0));
+                let resp = ui.interact(btn_rect, ui.id().with("voice_mute_center"), Sense::click());
+                let bg = if self.is_voice_muted { Color32::from_rgb(239, 68, 68) } else { Color32::from_rgb(71, 85, 105) };
+                ui.painter().rect_filled(btn_rect, CornerRadius::same(6), bg);
+                ui.painter().text(btn_rect.center(), Align2::CENTER_CENTER, if self.is_voice_muted { "Bật mic" } else { "Tắt mic" }, font_regular(12.0), Color32::WHITE);
+                if resp.clicked() {
+                    *action = Some(ChatAction::ToggleVoiceMute(ch.id));
+                }
+
+                let disc_rect = Rect::from_center_size(pos2(center_pos.x + 50.0, center_pos.y + 70.0), vec2(80.0, 32.0));
+                let resp_d = ui.interact(disc_rect, ui.id().with("voice_disc_center"), Sense::click());
+                ui.painter().rect_filled(disc_rect, CornerRadius::same(6), Color32::from_rgb(220, 38, 38));
+                ui.painter().text(disc_rect.center(), Align2::CENTER_CENTER, "Rời phòng", font_regular(12.0), Color32::WHITE);
+                if resp_d.clicked() {
+                    *action = Some(ChatAction::LeaveVoice(ch.id));
+                }
+            }
+        } else {
+            // Text channel view
+            let msg_area_rect = Rect::from_min_max(
+                pos2(total_rect.left(), header_rect.bottom()),
+                pos2(total_rect.right(), total_rect.bottom() - input_bar_height),
+            );
+            let input_bar_rect = Rect::from_min_max(
+                pos2(total_rect.left(), total_rect.bottom() - input_bar_height),
+                total_rect.max,
+            );
+
+            let msgs = self.channel_messages.get(&ch.id).cloned().unwrap_or_default();
+            let mut msg_ui = ui.new_child(
+                UiBuilder::new()
+                    .max_rect(msg_area_rect)
+                    .layout(Layout::top_down(Align::Min)),
+            );
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .stick_to_bottom(true)
+                .show(&mut msg_ui, |ui| {
+                    ui.add_space(10.0);
+                    if msgs.is_empty() {
+                        ui.label(
+                            RichText::new("Chưa có tin nhắn trong kênh này")
+                                .font(font_regular(13.0))
+                                .color(Color32::from_rgb(156, 163, 175)),
+                        );
+                    } else {
+                        for msg in &msgs {
+                            let is_self = msg.sender_id == self.current_user_id;
+                            let max_w = (ui.available_width() * 0.65).max(180.0);
+                            ui.horizontal(|ui| {
+                                if is_self {
+                                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                                        ui.add_space(20.0);
+                                        ui.vertical(|ui| {
+                                            egui::Frame::NONE
+                                                .fill(Color32::from_rgb(37, 99, 235))
+                                                .corner_radius(CornerRadius::same(12))
+                                                .inner_margin(egui::Margin::symmetric(14, 10))
+                                                .show(ui, |ui| {
+                                                    ui.set_max_width(max_w);
+                                                    ui.label(
+                                                        RichText::new(&msg.content)
+                                                            .font(font_regular(14.0))
+                                                            .color(Color32::WHITE),
+                                                    );
+                                                });
+                                        });
+                                    });
+                                } else {
+                                    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                                        ui.add_space(20.0);
+                                        render_avatar(ui, &msg.sender_name, 28.0);
+                                        ui.add_space(8.0);
+                                        ui.vertical(|ui| {
+                                            ui.label(
+                                                RichText::new(&msg.sender_name)
+                                                    .font(font_regular(11.0))
+                                                    .color(Color32::from_rgb(107, 114, 128)),
+                                            );
+                                            egui::Frame::NONE
+                                                .fill(Color32::from_rgb(241, 243, 245))
+                                                .corner_radius(CornerRadius::same(12))
+                                                .inner_margin(egui::Margin::symmetric(14, 10))
+                                                .show(ui, |ui| {
+                                                    ui.set_max_width(max_w);
+                                                    ui.label(
+                                                        RichText::new(&msg.content)
+                                                            .font(font_regular(14.0))
+                                                            .color(Color32::from_rgb(23, 23, 23)),
+                                                    );
+                                                });
+                                        });
+                                    });
+                                }
+                            });
+                            ui.add_space(8.0);
+                        }
+                    }
+                });
+
+            // Input bar
+            ui.painter().rect_filled(input_bar_rect, 0.0, Color32::WHITE);
+            ui.painter().line_segment(
+                [
+                    pos2(input_bar_rect.left(), input_bar_rect.top()),
+                    pos2(input_bar_rect.right(), input_bar_rect.top()),
+                ],
+                Stroke::new(1.0_f32, Color32::from_rgb(229, 231, 235)),
+            );
+
+            let inp_box = Rect::from_min_size(
+                pos2(input_bar_rect.left() + 20.0, input_bar_rect.top() + 10.0),
+                vec2(input_bar_rect.width() - 80.0, 40.0),
+            );
+            ui.painter().rect_filled(inp_box, CornerRadius::same(8), Color32::from_rgb(247, 248, 250));
+
+            let mut in_ui = ui.new_child(
+                UiBuilder::new()
+                    .max_rect(inp_box.shrink2(vec2(12.0, 4.0)))
+                    .layout(Layout::left_to_right(Align::Center)),
+            );
+            let hint = format!("Nhắn tin tại #{ch_name}", ch_name = ch.name);
+            let te = egui::TextEdit::singleline(&mut self.channel_message_input)
+                .hint_text(RichText::new(hint).font(font_regular(14.0)).color(Color32::from_rgb(156, 163, 175)))
+                .font(font_regular(14.0))
+                .frame(false)
+                .desired_width(inp_box.width() - 24.0);
+            let te_resp = in_ui.add(te);
+
+            let send_rect = Rect::from_center_size(
+                pos2(input_bar_rect.right() - 36.0, input_bar_rect.center().y),
+                vec2(36.0, 36.0),
+            );
+            let send_resp = ui.interact(send_rect, ui.id().with("ch_send_btn"), Sense::click());
+            let can_send = !self.channel_message_input.trim().is_empty();
+            let send_bg = if can_send { Color32::from_rgb(37, 99, 235) } else { Color32::from_rgb(229, 231, 235) };
+            ui.painter().rect_filled(send_rect, CornerRadius::same(8), send_bg);
+            draw_svg_send_icon(ui.painter(), Rect::from_center_size(send_rect.center(), vec2(16.0, 16.0)), Color32::WHITE);
+
+            let should_send = send_resp.clicked() || (te_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+            if should_send && can_send {
+                let content = self.channel_message_input.trim().to_string();
+                self.channel_message_input.clear();
+                *action = Some(ChatAction::SendChannelMessage { channel_id: ch.id, content });
+            }
         }
     }
 

@@ -37,6 +37,18 @@ pub enum GuiEvent {
     },
     FriendRequestSent(Result<(), String>),
     FriendRequestAccepted(Result<(), String>),
+    ServersLoaded(Result<Vec<chatw_core::ServerItem>, String>),
+    ChannelsLoaded {
+        server_id: Uuid,
+        result: Result<Vec<chatw_core::ChannelItem>, String>,
+    },
+    ChannelMessagesLoaded {
+        channel_id: Uuid,
+        result: Result<Vec<chatw_core::ChannelMessageItem>, String>,
+    },
+    ServerCreated(Result<chatw_core::ServerItem, String>),
+    ServerJoined(Result<chatw_core::ServerItem, String>),
+    ChannelMessagePosted(Result<chatw_core::ChannelMessageItem, String>),
 }
 
 pub enum AppState {
@@ -843,6 +855,15 @@ impl ChatApp {
             let _ = tx_pending.send(GuiEvent::PendingList(res));
             ctx_pending.request_repaint();
         });
+
+        let http3 = self.http.clone();
+        let tx_servers = self.tx_gui.clone();
+        let ctx_servers = ctx.clone();
+        self.runtime.spawn(async move {
+            let res = http3.list_servers().await;
+            let _ = tx_servers.send(GuiEvent::ServersLoaded(res));
+            ctx_servers.request_repaint();
+        });
     }
 
     fn load_friend_keys(&self, user_id: Uuid, ctx: &egui::Context) {
@@ -1139,6 +1160,62 @@ impl ChatApp {
                             Err(e) => {
                                 chat.status_message = Some(format!("Lỗi: {e}"));
                             }
+                        }
+                    }
+                }
+                GuiEvent::ServersLoaded(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(servers) = res {
+                            chat.servers = servers;
+                        }
+                    }
+                }
+                GuiEvent::ChannelsLoaded { server_id: _, result } => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(channels) = result {
+                            chat.channels = channels;
+                            if let Some(first_text) = chat.channels.iter().find(|c| c.channel_type == "text") {
+                                chat.selected_channel_id = Some(first_text.id);
+                                let http = self.http.clone();
+                                let tx = self.tx_gui.clone();
+                                let ctx_c = ctx.clone();
+                                let ch_id = first_text.id;
+                                self.runtime.spawn(async move {
+                                    let res = http.get_channel_messages(ch_id).await;
+                                    let _ = tx.send(GuiEvent::ChannelMessagesLoaded { channel_id: ch_id, result: res });
+                                    ctx_c.request_repaint();
+                                });
+                            }
+                        }
+                    }
+                }
+                GuiEvent::ChannelMessagesLoaded { channel_id, result } => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(msgs) = result {
+                            chat.channel_messages.insert(channel_id, msgs);
+                        }
+                    }
+                }
+                GuiEvent::ServerCreated(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(srv) = res {
+                            chat.servers.push(srv.clone());
+                            chat.selected_server_id = Some(srv.id);
+                        }
+                    }
+                }
+                GuiEvent::ServerJoined(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(srv) = res {
+                            chat.servers.push(srv.clone());
+                            chat.selected_server_id = Some(srv.id);
+                        }
+                    }
+                }
+                GuiEvent::ChannelMessagePosted(res) => {
+                    if let AppState::Chat(ref mut chat) = self.state {
+                        if let Ok(msg) = res {
+                            chat.channel_messages.entry(msg.channel_id).or_default().push(msg);
                         }
                     }
                 }
@@ -1596,6 +1673,95 @@ impl ChatApp {
                                     let http = self.http.clone();
                                     self.runtime.spawn(async move {
                                         let _ = http.delete_message(message_id).await;
+                                    });
+                                }
+                                ChatAction::LoadServers => {
+                                    let http = self.http.clone();
+                                    let tx = self.tx_gui.clone();
+                                    let ctx_c = ctx.clone();
+                                    self.runtime.spawn(async move {
+                                        let res = http.list_servers().await;
+                                        let _ = tx.send(GuiEvent::ServersLoaded(res));
+                                        ctx_c.request_repaint();
+                                    });
+                                }
+                                ChatAction::SelectServer(srv_id) => {
+                                    chat_view.selected_server_id = Some(srv_id);
+                                    let http = self.http.clone();
+                                    let tx = self.tx_gui.clone();
+                                    let ctx_c = ctx.clone();
+                                    self.runtime.spawn(async move {
+                                        let res = http.list_channels(srv_id).await;
+                                        let _ = tx.send(GuiEvent::ChannelsLoaded { server_id: srv_id, result: res });
+                                        ctx_c.request_repaint();
+                                    });
+                                }
+                                ChatAction::SelectChannel(ch_id) => {
+                                    chat_view.selected_channel_id = Some(ch_id);
+                                    chat_view.selected_friend_id = None;
+                                    let ch = chat_view.channels.iter().find(|c| c.id == ch_id).cloned();
+                                    if let Some(ch) = ch {
+                                        if ch.channel_type == "text" {
+                                            let http = self.http.clone();
+                                            let tx = self.tx_gui.clone();
+                                            let ctx_c = ctx.clone();
+                                            self.runtime.spawn(async move {
+                                                let res = http.get_channel_messages(ch_id).await;
+                                                let _ = tx.send(GuiEvent::ChannelMessagesLoaded { channel_id: ch_id, result: res });
+                                                ctx_c.request_repaint();
+                                            });
+                                        } else if ch.channel_type == "voice" {
+                                            chat_view.active_voice_channel_id = Some(ch_id);
+                                            let http = self.http.clone();
+                                            self.runtime.spawn(async move {
+                                                let _ = http.join_voice(ch_id).await;
+                                            });
+                                        }
+                                    }
+                                }
+                                ChatAction::CreateServer(name) => {
+                                    let http = self.http.clone();
+                                    let tx = self.tx_gui.clone();
+                                    let ctx_c = ctx.clone();
+                                    self.runtime.spawn(async move {
+                                        let res = http.create_server(&chatw_core::CreateServerRequest { name, description: None }).await;
+                                        let _ = tx.send(GuiEvent::ServerCreated(res));
+                                        ctx_c.request_repaint();
+                                    });
+                                }
+                                ChatAction::JoinServer(code) => {
+                                    let http = self.http.clone();
+                                    let tx = self.tx_gui.clone();
+                                    let ctx_c = ctx.clone();
+                                    self.runtime.spawn(async move {
+                                        let res = http.join_server(&code).await;
+                                        let _ = tx.send(GuiEvent::ServerJoined(res));
+                                        ctx_c.request_repaint();
+                                    });
+                                }
+                                ChatAction::SendChannelMessage { channel_id, content } => {
+                                    let http = self.http.clone();
+                                    let tx = self.tx_gui.clone();
+                                    let ctx_c = ctx.clone();
+                                    self.runtime.spawn(async move {
+                                        let res = http.post_channel_message(channel_id, &chatw_core::PostChannelMessageRequest { content, reply_to_id: None }).await;
+                                        let _ = tx.send(GuiEvent::ChannelMessagePosted(res));
+                                        ctx_c.request_repaint();
+                                    });
+                                }
+                                ChatAction::ToggleVoiceMute(ch_id) => {
+                                    chat_view.is_voice_muted = !chat_view.is_voice_muted;
+                                    let http = self.http.clone();
+                                    let muted = chat_view.is_voice_muted;
+                                    self.runtime.spawn(async move {
+                                        let _ = http.update_voice_state(ch_id, &chatw_core::UpdateVoiceStateRequest { self_mute: Some(muted), self_deaf: None }).await;
+                                    });
+                                }
+                                ChatAction::LeaveVoice(ch_id) => {
+                                    chat_view.active_voice_channel_id = None;
+                                    let http = self.http.clone();
+                                    self.runtime.spawn(async move {
+                                        let _ = http.leave_voice(ch_id).await;
                                     });
                                 }
                             }
