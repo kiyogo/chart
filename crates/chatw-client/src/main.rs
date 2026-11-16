@@ -58,8 +58,8 @@ fn main() -> eframe::Result<()> {
 
     let mut viewport = ViewportBuilder::default()
         .with_title("chatw – Secure Messaging")
-        .with_inner_size([1100.0, 720.0])
-        .with_min_inner_size([850.0, 560.0])
+        .with_inner_size([1132.0, 752.0])
+        .with_min_inner_size([882.0, 592.0])
         .with_decorations(false) // Seamless custom Titlebar
         .with_transparent(true);
 

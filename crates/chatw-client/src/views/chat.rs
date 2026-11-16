@@ -382,7 +382,7 @@ impl ChatView {
     pub fn render_sidebar_content(&mut self, ui: &mut Ui, action: &mut Option<ChatAction>) {
         let total_rect = ui.available_rect_before_wrap();
         let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-        let corner_bottom = if is_maximized { 0 } else { 8 };
+        let corner_bottom = if is_maximized { 0 } else { 10 };
         ui.painter().rect_filled(
             total_rect,
             CornerRadius {

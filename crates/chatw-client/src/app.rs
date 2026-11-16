@@ -1186,31 +1186,76 @@ impl ChatApp {
             self.load_friend_keys(uid, ctx);
         }
 
-        // 3. Render Custom Windows 11 Titlebar (Dual-tone: Gray above sidebar, White above content)
-        let has_sidebar = matches!(self.state, AppState::Chat(_));
-        let sidebar_width = if has_sidebar { Some(320.0_f32) } else { None };
-        egui::TopBottomPanel::top("top_titlebar")
-            .exact_height(34.0)
-            .frame(egui::Frame::NONE)
-            .show_separator_line(false)
-            .show(ctx, |ui| {
-                titlebar::render_titlebar(ui, self.is_maximized, sidebar_width);
-            });
+        // 3. Render Custom Windows 11 Titlebar and Active View with authentic drop shadow ("viền mờ đen")
+        let is_max = self.is_maximized;
+        let shadow_padding = if is_max { 0.0_f32 } else { 16.0_f32 };
+        let corner_radius = if is_max { 0 } else { 10 };
 
-        // 4. Render Active View with rounded bottom corners when not maximized
-        let corner_bottom = if self.is_maximized { 0 } else { 8 };
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::NONE
-                    .fill(Color32::from_rgb(255, 255, 255))
-                    .corner_radius(egui::CornerRadius {
-                        nw: 0,
-                        ne: 0,
-                        sw: corner_bottom,
-                        se: corner_bottom,
-                    }),
-            )
+            .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
+                let avail_rect = ui.available_rect_before_wrap();
+                let app_rect = avail_rect.shrink(shadow_padding);
+
+                // Outward soft dark drop shadow ("viền mờ đen" authentic desktop drop-shadow)
+                if !is_max {
+                    // Outer diffuse penumbra
+                    let ambient_shadow = egui::epaint::Shadow {
+                        offset: [0, 4],
+                        blur: 24,
+                        spread: 1,
+                        color: Color32::from_rgba_unmultiplied(0, 0, 0, 55),
+                    };
+                    ui.painter().add(ambient_shadow.as_shape(app_rect, egui::CornerRadius::same(corner_radius)));
+
+                    // Inner directional drop shadow
+                    let key_shadow = egui::epaint::Shadow {
+                        offset: [0, 8],
+                        blur: 16,
+                        spread: 0,
+                        color: Color32::from_rgba_unmultiplied(0, 0, 0, 75),
+                    };
+                    ui.painter().add(key_shadow.as_shape(app_rect, egui::CornerRadius::same(corner_radius)));
+                }
+
+                // App card background (Pure white, rounded corners)
+                ui.painter().rect_filled(
+                    app_rect,
+                    egui::CornerRadius::same(corner_radius),
+                    Color32::WHITE,
+                );
+
+                // Subtle hairline outline separating app card cleanly
+                if !is_max {
+                    ui.painter().rect_stroke(
+                        app_rect,
+                        egui::CornerRadius::same(corner_radius),
+                        egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 30)),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+
+                // Clipped App Container
+                let mut app_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(app_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                app_ui.set_clip_rect(app_rect);
+
+                // Titlebar
+                let has_sidebar = matches!(self.state, AppState::Chat(_));
+                let sidebar_width = if has_sidebar { Some(320.0_f32) } else { None };
+                titlebar::render_titlebar(&mut app_ui, self.is_maximized, sidebar_width);
+
+                // Content View
+                let content_rect = app_ui.available_rect_before_wrap();
+                let mut content_ui = app_ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(content_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                let ui = &mut content_ui;
                 match &mut self.state {
                     AppState::CheckingAuth => {
                         ui.vertical_centered(|ui| {
@@ -1399,31 +1444,6 @@ impl ChatApp {
                     }
                 }
             });
-
-        // 5. Soft dark border on borderless window (when not maximized)
-        if !self.is_maximized {
-            let screen_rect = ctx.screen_rect();
-            let painter = ctx.layer_painter(egui::LayerId::new(
-                egui::Order::Foreground,
-                egui::Id::new("window_border"),
-            ));
-
-            // Outer primary soft dark stroke
-            painter.rect_stroke(
-                screen_rect,
-                egui::CornerRadius::same(8),
-                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 85)),
-                egui::StrokeKind::Inside,
-            );
-
-            // Inner subtle ambient gradient (softens the border edge)
-            painter.rect_stroke(
-                screen_rect.shrink(1.0),
-                egui::CornerRadius::same(7),
-                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 30)),
-                egui::StrokeKind::Inside,
-            );
-        }
     }
 }
 

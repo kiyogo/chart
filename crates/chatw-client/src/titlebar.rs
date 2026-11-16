@@ -132,7 +132,7 @@ pub fn render_titlebar(ui: &mut Ui, is_maximized: bool, sidebar_width: Option<f3
         Sense::hover(),
     );
 
-    let corner_top = if is_maximized { 0 } else { 8 };
+    let corner_top = if is_maximized { 0 } else { 10 };
 
     // Unified Clean Background: Solid White (#FFFFFF) across the entire titlebar.
     // Completely eliminates any vertical seam, gray bar, or split line between sections.
