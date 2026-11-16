@@ -549,3 +549,59 @@ export async function decryptChatMessage(params: {
     text,
   };
 }
+
+// Encrypt file bytes with AES-256-GCM for blind-relay attachment storage
+export async function encryptAttachmentBlob(
+  fileBytes: Uint8Array
+): Promise<{ encryptedBytes: Uint8Array; keyHex: string; ivHex: string }> {
+  const key = await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: toBufferSource(iv) },
+    key,
+    toBufferSource(fileBytes)
+  );
+  const rawKey = await crypto.subtle.exportKey('raw', key);
+  const keyHex = Array.from(new Uint8Array(rawKey))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const ivHex = Array.from(iv)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  return {
+    encryptedBytes: new Uint8Array(ciphertext),
+    keyHex,
+    ivHex,
+  };
+}
+
+// Decrypt attachment file bytes using AES-256-GCM key and IV
+export async function decryptAttachmentBlob(
+  encryptedBytes: Uint8Array,
+  keyHex: string,
+  ivHex: string
+): Promise<Uint8Array> {
+  const keyBytes = new Uint8Array(
+    keyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+  );
+  const iv = new Uint8Array(
+    ivHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+  );
+  const key = await crypto.subtle.importKey(
+    'raw',
+    toBufferSource(keyBytes),
+    { name: 'AES-GCM' },
+    false,
+    ['decrypt']
+  );
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: toBufferSource(iv) },
+    key,
+    toBufferSource(encryptedBytes)
+  );
+  return new Uint8Array(plaintext);
+}
