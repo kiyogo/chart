@@ -14,3 +14,4 @@ frontend/src-tauri/target/
 frontend/src-tauri/gen/
 dist-desktop/
 
+chatw_data/
