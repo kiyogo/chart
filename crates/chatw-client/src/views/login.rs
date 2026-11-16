@@ -249,7 +249,7 @@ impl LoginView {
                 .hint_text(
                     RichText::new("Tên tài khoản thử (ví dụ: alice)")
                         .font(font_regular(14.0))
-                        .color(Color32::from_rgb(17, 24, 39)),
+                        .color(Color32::from_rgb(156, 163, 175)),
                 )
                 .frame(false)
                 .desired_width(card_width - 28.0);
