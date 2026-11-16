@@ -15,6 +15,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use chatw::{
+    attachments,
     auth::{self, AppState, google::GoogleJwksCache, session::create_session},
     config::Config,
     crypto::{self, Envelope, PROTOCOL_VERSION, compute_fingerprint},
@@ -66,6 +67,7 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         .nest("/api/keys", crypto::keys::routes())
         .nest("/api/friends", friends::routes())
         .nest("/api/messages", messages::routes())
+        .nest("/api/attachments", attachments::routes())
         .nest("/api/servers", servers::server_routes())
         .nest("/api/channels", servers::channel_routes())
         .nest("/api/webrtc", webrtc::routes())
@@ -729,4 +731,47 @@ async fn test_full_e2ee_chat_flow() {
     let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
     let participants_after: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
     assert_eq!(participants_after.len(), 0);
+
+    // 26. E2EE ATTACHMENTS: Upload encrypted media/audio note, download, and delete
+    let fake_encrypted_blob = b"encrypted_audio_voice_note_aes_gcm_payload_bytes_999";
+    let req = Request::post("/api/attachments")
+        .header(header::COOKIE, session_header_a)
+        .header("x-file-name", "voice_note.ogg.enc")
+        .header(header::CONTENT_TYPE, "audio/ogg")
+        .body(Body::from(fake_encrypted_blob.to_vec()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let attach_res: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let attach_id = attach_res["id"].as_str().unwrap().to_string();
+    assert_eq!(attach_res["file_name"], "voice_note.ogg.enc");
+    assert_eq!(attach_res["file_size"], fake_encrypted_blob.len() as i64);
+    assert_eq!(attach_res["mime_type"], "audio/ogg");
+
+    // User B downloads the encrypted attachment
+    let req = Request::get(format!("/api/attachments/{attach_id}"))
+        .header(header::COOKIE, session_header_b)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let downloaded_bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(downloaded_bytes.as_ref(), fake_encrypted_blob);
+
+    // User A deletes the attachment
+    let req = Request::delete(format!("/api/attachments/{attach_id}"))
+        .header(header::COOKIE, session_header_a)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Verifying it is gone (404)
+    let req = Request::get(format!("/api/attachments/{attach_id}"))
+        .header(header::COOKIE, session_header_b)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }

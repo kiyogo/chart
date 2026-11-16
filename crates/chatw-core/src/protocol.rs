@@ -327,3 +327,14 @@ pub struct UpdateVoiceStateRequest {
     pub self_mute: Option<bool>,
     pub self_deaf: Option<bool>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AttachmentItem {
+    pub id: Uuid,
+    pub uploader_id: Uuid,
+    pub file_name: String,
+    pub file_size: i64,
+    pub mime_type: String,
+    pub download_url: String,
+    pub created_at: DateTime<Utc>,
+}
