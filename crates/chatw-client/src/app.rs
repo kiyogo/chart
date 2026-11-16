@@ -1287,6 +1287,31 @@ impl ChatApp {
                             msgs.retain(|m| m.id != message_id);
                         }
                     }
+                    WsServerEvent::MessageEdited {
+                        message_id,
+                        envelope,
+                    } => {
+                        for msgs in chat.messages.values_mut() {
+                            if let Some(msg) = msgs.iter_mut().find(|m| m.id == message_id) {
+                                let signer_pub = if msg.is_me {
+                                    Some(self.keys.ecdsa_pub_bytes)
+                                } else {
+                                    chat.cached_keys.get(&msg.sender_id).map(|k| k.2)
+                                };
+                                if let Some(ecdsa_pub) = signer_pub {
+                                    if let Ok(raw_env) = URL_SAFE_NO_PAD.decode(&envelope) {
+                                        if let Ok(new_text) =
+                                            decrypt_message(&self.keys, &ecdsa_pub, &raw_env)
+                                        {
+                                            msg.text = new_text;
+                                            msg.is_edited = true;
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }

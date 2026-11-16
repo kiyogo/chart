@@ -125,6 +125,12 @@ pub enum WsServerEvent {
         message_id: Uuid,
     },
 
+    #[serde(rename = "message.edited")]
+    MessageEdited {
+        message_id: Uuid,
+        envelope: String,
+    },
+
     #[serde(rename = "channel.message.new")]
     ChannelMessageNew(ChannelMessageItem),
 
