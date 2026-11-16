@@ -1688,6 +1688,13 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         .inner_margin(egui::Margin::symmetric(14, 10))
                         .show(ui, |ui| {
                             ui.set_max_width(max_bubble_width);
+                            if msg.reply_to_id.is_some() {
+                                ui.label(
+                                    RichText::new("↩ Trả lời tin nhắn")
+                                        .font(font_regular(11.0))
+                                        .color(Color32::from_rgb(219, 234, 254)),
+                                );
+                            }
                             let text_style = if msg.deleted_for_all {
                                 RichText::new(display_text)
                                     .font(font_regular(13.0))
@@ -1748,6 +1755,13 @@ fn render_message_bubble(ui: &mut Ui, msg: &DecryptedMessage, friend_name: &str)
                         .inner_margin(egui::Margin::symmetric(14, 10))
                         .show(ui, |ui| {
                             ui.set_max_width(max_bubble_width);
+                            if msg.reply_to_id.is_some() {
+                                ui.label(
+                                    RichText::new("↩ Trả lời tin nhắn")
+                                        .font(font_regular(11.0))
+                                        .color(Color32::from_rgb(107, 114, 128)),
+                                );
+                            }
                             let text_style = if msg.deleted_for_all {
                                 RichText::new(display_text)
                                     .font(font_regular(13.0))
