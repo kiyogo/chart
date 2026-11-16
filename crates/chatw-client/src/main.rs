@@ -58,10 +58,10 @@ fn main() -> eframe::Result<()> {
 
     let mut viewport = ViewportBuilder::default()
         .with_title("chatw – Secure Messaging")
-        .with_inner_size([1100.0, 720.0])
-        .with_min_inner_size([850.0, 560.0])
+        .with_inner_size([1136.0, 756.0])
+        .with_min_inner_size([886.0, 596.0])
         .with_decorations(false) // Seamless custom Titlebar
-        .with_transparent(false);
+        .with_transparent(true);
 
     if let Some(icon) = load_app_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));

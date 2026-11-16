@@ -615,9 +615,9 @@ impl ChatApp {
         // Set visual styling to pure flat light minimalist matching web CSS
         let mut visuals = egui::Visuals::light();
         visuals.window_shadow = egui::epaint::Shadow::NONE;
-        visuals.window_fill = Color32::from_rgb(255, 255, 255);
+        visuals.window_fill = Color32::TRANSPARENT;
         visuals.window_stroke = egui::Stroke::NONE;
-        visuals.panel_fill = Color32::from_rgb(255, 255, 255); // #FFFFFF
+        visuals.panel_fill = Color32::TRANSPARENT;
         visuals.extreme_bg_color = Color32::from_rgb(255, 255, 255);
         visuals.faint_bg_color = Color32::from_rgb(247, 248, 250);
         visuals.override_text_color = None;
@@ -1192,14 +1192,36 @@ impl ChatApp {
             self.load_friend_keys(uid, ctx);
         }
 
-        // 3. Render Custom Windows 11 Titlebar and Active View
+        // 3. Render Custom Windows 11 Titlebar and Active View with authentic drop shadow ("viền mờ đen") and rounded corners ("bo góc")
         let is_max = self.is_maximized;
+        let shadow_padding = if is_max { 0.0_f32 } else { 18.0_f32 };
         let corner_radius = if is_max { 0 } else { 10 };
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
-                let app_rect = ui.available_rect_before_wrap();
+                let avail_rect = ui.available_rect_before_wrap();
+                let app_rect = avail_rect.shrink(shadow_padding);
+
+                if !is_max {
+                    // Outer diffuse penumbra ("viền mờ đen")
+                    let ambient_shadow = egui::epaint::Shadow {
+                        offset: [0, 4],
+                        blur: 16,
+                        spread: 1,
+                        color: Color32::from_rgba_unmultiplied(0, 0, 0, 45),
+                    };
+                    ui.painter().add(ambient_shadow.as_shape(app_rect, egui::CornerRadius::same(corner_radius)));
+
+                    // Key directional shadow ("viền mờ đen")
+                    let key_shadow = egui::epaint::Shadow {
+                        offset: [0, 8],
+                        blur: 12,
+                        spread: 0,
+                        color: Color32::from_rgba_unmultiplied(0, 0, 0, 65),
+                    };
+                    ui.painter().add(key_shadow.as_shape(app_rect, egui::CornerRadius::same(corner_radius)));
+                }
 
                 // App card background (Pure white, rounded corners)
                 ui.painter().rect_filled(
@@ -1207,6 +1229,16 @@ impl ChatApp {
                     egui::CornerRadius::same(corner_radius),
                     Color32::WHITE,
                 );
+
+                // Subtle hairline outline for crisp contrast
+                if !is_max {
+                    ui.painter().rect_stroke(
+                        app_rect,
+                        egui::CornerRadius::same(corner_radius),
+                        egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 25)),
+                        egui::StrokeKind::Inside,
+                    );
+                }
 
                 // Clipped App Container
                 let mut app_ui = ui.new_child(

@@ -272,7 +272,7 @@ fn window_control_button(
     let corner = if round_ne {
         egui::CornerRadius {
             nw: 0,
-            ne: 8,
+            ne: 10,
             sw: 0,
             se: 0,
         }
