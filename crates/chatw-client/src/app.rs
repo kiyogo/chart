@@ -1400,17 +1400,27 @@ impl ChatApp {
                 }
             });
 
-        // 5. Subtle refined border on borderless window (when not maximized)
+        // 5. Soft dark border on borderless window (when not maximized)
         if !self.is_maximized {
             let screen_rect = ctx.screen_rect();
-            ctx.layer_painter(egui::LayerId::new(
+            let painter = ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,
                 egui::Id::new("window_border"),
-            ))
-            .rect_stroke(
+            ));
+
+            // Outer primary soft dark stroke
+            painter.rect_stroke(
                 screen_rect,
                 egui::CornerRadius::same(8),
-                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 32)),
+                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 85)),
+                egui::StrokeKind::Inside,
+            );
+
+            // Inner subtle ambient gradient (softens the border edge)
+            painter.rect_stroke(
+                screen_rect.shrink(1.0),
+                egui::CornerRadius::same(7),
+                egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 30)),
                 egui::StrokeKind::Inside,
             );
         }
