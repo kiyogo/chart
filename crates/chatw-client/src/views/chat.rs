@@ -119,8 +119,8 @@ pub fn draw_svg_server_icon(painter: &egui::Painter, rect: Rect, color: Color32)
         stroke,
         StrokeKind::Inside,
     );
-    painter.circle_filled(pt(6.0, 6.0), 1.2 * s.x, color);
-    painter.circle_filled(pt(6.0, 18.0), 1.2 * s.x, color);
+    painter.circle_filled(pt(6.0, 6.0), (1.6 * s.x).max(1.5), color);
+    painter.circle_filled(pt(6.0, 18.0), (1.6 * s.x).max(1.5), color);
 }
 
 /// Web `<FriendsIcon />`:
@@ -803,7 +803,7 @@ impl ChatView {
                     let preview_col = if unread > 0 {
                         Color32::from_rgb(23, 23, 23)
                     } else {
-                        Color32::from_rgb(17, 24, 39)
+                        Color32::from_rgb(115, 115, 115)
                     };
                     ui.painter().text(
                         snap_xy(text_left, item_rect.center().y + 10.0, ppp),
@@ -2347,7 +2347,7 @@ fn render_settings_row_flat(ui: &mut Ui, width: f32, label: &str, value: &str, b
         Align2::RIGHT_CENTER,
         value,
         font_regular(13.0),
-        Color32::from_rgb(23, 23, 23),
+        Color32::from_rgb(31, 41, 55),
         ppp,
     );
 }
@@ -2393,7 +2393,7 @@ fn render_settings_column_row_flat(
         Align2::LEFT_CENTER,
         value,
         font_mono(12.0),
-        Color32::from_rgb(23, 23, 23),
+        Color32::from_rgb(55, 65, 81),
         ppp,
     );
 }

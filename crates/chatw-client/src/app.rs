@@ -183,45 +183,32 @@ fn setup_vietnamese_fonts(ctx: &egui::Context) {
         );
     }
 
-    // 3. Proportional family: Use embedded Inter-Regular with Inter-Light fallback (full Vietnamese glyph set from single typeface)
-    let primary_font = "inter_regular".to_owned();
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .insert(0, primary_font.clone());
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .push("inter_light".to_owned());
+    // 3. Proportional family: Use embedded Inter-Light as primary (slender, crisp typography, 100% Vietnamese glyphs)
+    let mut prop = vec!["inter_light".to_owned(), "inter_regular".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
-        fonts
-            .families
-            .entry(egui::FontFamily::Proportional)
-            .or_default()
-            .push("segoe_emoji".to_owned());
+        prop.push("segoe_emoji".to_owned());
     }
+    fonts.families.insert(egui::FontFamily::Proportional, prop);
 
-    // 4. Medium family: mapped to inter_medium -> inter_regular
+    // 4. Medium family: mapped to inter_regular -> inter_medium
     let medium_family = egui::FontFamily::Name("medium".into());
-    let mut med = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
+    let mut med = vec!["inter_regular".to_owned(), "inter_medium".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         med.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(medium_family, med);
 
-    // 5. Semibold family: mapped to inter_medium (slender, crisp, never thick or blurry)
+    // 5. Semibold family: mapped to inter_medium -> inter_semibold
     let semibold_family = egui::FontFamily::Name("semibold".into());
-    let mut semi = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
+    let mut semi = vec!["inter_medium".to_owned(), "inter_semibold".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         semi.push("segoe_emoji".to_owned());
     }
     fonts.families.insert(semibold_family, semi);
 
-    // 6. Bold family: mapped to inter_medium (keeps text slender and clean)
+    // 6. Bold family: mapped to inter_semibold -> inter_bold
     let bold_family = egui::FontFamily::Name("bold".into());
-    let mut bold = vec!["inter_medium".to_owned(), "inter_regular".to_owned()];
+    let mut bold = vec!["inter_semibold".to_owned(), "inter_bold".to_owned()];
     if fonts.font_data.contains_key("segoe_emoji") {
         bold.push("segoe_emoji".to_owned());
     }
@@ -682,10 +669,10 @@ impl ChatApp {
         ]
         .into();
         cc.egui_ctx.set_style(style);
-        // Standard 100% UI scale & pixel-snapped text tessellation for razor-sharp edges
+        // Standard 100% UI scale & natural subpixel kerning
         cc.egui_ctx.set_zoom_factor(1.0);
         cc.egui_ctx.tessellation_options_mut(|opts| {
-            opts.round_text_to_pixels = true;
+            opts.round_text_to_pixels = false;
         });
 
         // Log DPI for debugging
