@@ -14,14 +14,71 @@ pub const DECORATIONS: [(&str, &str); 6] = [
     ("cat", "Tai mèo"),
 ];
 
-pub const EFFECTS: [(&str, &str); 6] = [
+pub const EFFECTS: [(&str, &str); 7] = [
     ("none", "Không"),
     ("sparkle", "Lấp lánh"),
     ("snow", "Tuyết rơi"),
     ("aurora", "Cực quang"),
     ("bubbles", "Bong bóng"),
     ("confetti", "Pháo giấy"),
+    ("hearts", "Trái tim"),
 ];
+
+pub const AVATAR_EFFECTS: [(&str, &str); 6] = [
+    ("none", "Không"),
+    ("spin", "Xoay tròn"),
+    ("pulse", "Nhịp đập"),
+    ("float", "Lơ lửng"),
+    ("wobble", "Lắc lư"),
+    ("rainbow", "Viền cầu vồng"),
+];
+
+pub const NAME_EFFECTS: [(&str, &str); 6] = [
+    ("none", "Không"),
+    ("gradient", "Chuyển màu"),
+    ("shimmer", "Ánh kim"),
+    ("rainbow", "Cầu vồng"),
+    ("neon", "Neon"),
+    ("wave", "Gợn sóng"),
+];
+
+pub const NAMEPLATES: [(&str, &str); 7] = [
+    ("none", "Không"),
+    ("aurora", "Cực quang"),
+    ("sunset", "Hoàng hôn"),
+    ("ocean", "Đại dương"),
+    ("galaxy", "Thiên hà"),
+    ("sakura", "Hoa anh đào"),
+    ("forest", "Rừng xanh"),
+];
+
+pub const EFFECT_ANIMS: [(&str, &str); 6] = [
+    ("none", "Đứng yên"),
+    ("float", "Bồng bềnh"),
+    ("spin", "Xoay"),
+    ("pulse", "Phập phồng"),
+    ("drift", "Trôi ngang"),
+    ("sway", "Đung đưa"),
+];
+
+/// CSS class + inline style for a nameplate background (lists, cards).
+pub fn nameplate_style(nameplate: Option<&str>, custom_url: Option<&str>) -> (String, String) {
+    match nameplate.unwrap_or("none") {
+        "none" | "" => (String::new(), String::new()),
+        "custom" => match custom_url.filter(|u| !u.is_empty()) {
+            Some(u) => ("has-nameplate np-custom".into(), format!("--np-image: url('{}');", platform::resolve_asset_url(u))),
+            None => (String::new(), String::new()),
+        },
+        other => (format!("has-nameplate np-{other}"), String::new()),
+    }
+}
+
+pub fn name_effect_class(effect: Option<&str>) -> String {
+    match effect.unwrap_or("none") {
+        "none" | "" => String::new(),
+        e => format!("name-fx name-fx-{e}"),
+    }
+}
 
 /// Preset (primary, accent) pairs for the profile theme.
 pub const THEME_PRESETS: [(&str, &str, &str); 8] = [
@@ -68,11 +125,19 @@ pub fn DecoratedAvatar(
     avatar_url: Option<String>,
     size: u32,
     #[props(default)] decoration: Option<String>,
+    #[props(default)] avatar_effect: Option<String>,
+    #[props(default)] custom_decoration_url: Option<String>,
 ) -> Element {
     let deco = decoration.unwrap_or_else(|| "none".to_string());
+    let fx = avatar_effect.unwrap_or_else(|| "none".to_string());
     rsx! {
-        span { class: "deco-wrap deco-{deco}", style: "--deco-size: {size}px;",
-            Avatar { name, avatar_url, size }
+        span { class: "deco-wrap deco-{deco} avfx-{fx}", style: "--deco-size: {size}px;",
+            span { class: "avatar-motion", Avatar { name, avatar_url, size } }
+            if deco == "custom" {
+                if let Some(u) = custom_decoration_url.as_ref().filter(|u| !u.is_empty()) {
+                    img { class: "deco-custom", src: "{platform::resolve_asset_url(u)}", alt: "", aria_hidden: "true" }
+                }
+            }
             if deco == "crown" { span { class: "deco-badge deco-badge-top", aria_hidden: "true", "👑" } }
             if deco == "sprout" { span { class: "deco-badge deco-badge-side", aria_hidden: "true", "🌱" } }
             if deco == "stars" {
@@ -115,19 +180,37 @@ pub fn ProfileCard(
     rsx! {
         div { class: "{cls}", style: "--pc-1: {c1}; --pc-2: {c2};",
             div { class: "profile-card-banner", style: "{banner_img}",
-                if effects_enabled && effect != "none" {
+                if effects_enabled && effect != "none" && effect != "custom" {
                     div { class: "profile-effect effect-{effect}", aria_hidden: "true",
                         for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
                     }
                 }
             }
+            if effects_enabled && effect == "custom" {
+                if let Some(u) = p.custom_effect_url.as_ref().filter(|u| !u.is_empty()) {
+                    img { class: "custom-effect anim-{p.custom_effect_anim.clone().unwrap_or_else(|| \"none\".into())}", src: "{platform::resolve_asset_url(u)}", alt: "", aria_hidden: "true" }
+                }
+            }
             div { class: "profile-card-body",
                 div { class: "profile-card-avatar",
-                    DecoratedAvatar { name: p.username.clone(), avatar_url: p.avatar_url.clone(), size: avatar_size, decoration: p.avatar_decoration.clone() }
+                    DecoratedAvatar {
+                        name: p.username.clone(),
+                        avatar_url: p.avatar_url.clone(),
+                        size: avatar_size,
+                        decoration: p.avatar_decoration.clone(),
+                        avatar_effect: if effects_enabled { p.avatar_effect.clone() } else { None },
+                        custom_decoration_url: p.custom_decoration_url.clone(),
+                    }
                 }
-                div { class: "profile-card-names",
-                    div { class: "profile-card-name", "{name}" }
-                    div { class: "profile-card-username", "@{p.username}" }
+                {
+                    let (np_cls, np_style) = nameplate_style(p.nameplate.as_deref(), p.custom_nameplate_url.as_deref());
+                    let fx = name_effect_class(p.name_effect.as_deref());
+                    rsx! {
+                        div { class: "profile-card-names {np_cls}", style: "{np_style}",
+                            div { class: "profile-card-name {fx}", "{name}" }
+                            div { class: "profile-card-username", "@{p.username}" }
+                        }
+                    }
                 }
                 if !p.badges.is_empty() {
                     div { class: "profile-badges",

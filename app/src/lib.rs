@@ -123,6 +123,13 @@ pub fn App() -> Element {
                                     current_username: user.username,
                                     current_user_avatar_url: user.avatar_url,
                                     on_logout: handle_logout,
+                                    on_username_changed: move |name: String| {
+                                        current_user.with_mut(|u| {
+                                            if let Some(cur) = u {
+                                                cur.username = name;
+                                            }
+                                        });
+                                    },
                                     on_avatar_updated: move |new_url: String| {
                                         current_user.with_mut(|u| {
                                             if let Some(cur) = u {

@@ -21,6 +21,7 @@ use crate::{
             NavSection,
         },
         profile_modal::{ProfileModal, ProfilePopover},
+        guide::WelcomeTour,
         quick_switcher::QuickSwitcher,
         settings_view::SettingsView,
     },
@@ -65,6 +66,7 @@ pub fn Chat(
     current_user_avatar_url: Option<String>,
     on_logout: EventHandler<()>,
     on_avatar_updated: EventHandler<String>,
+    #[props(default)] on_username_changed: Option<EventHandler<String>>,
 ) -> Element {
     let preview_storage_key = format!("chatw_previews_{current_user_id}");
     let uid_for_prefs = current_user_id.clone();
@@ -74,6 +76,8 @@ pub fn Chat(
     });
     let prefs = prefs_ctx.prefs;
     let mut quick_switch_open = use_signal(|| false);
+    let tour_key = format!("chatw_tour_v1_{current_user_id}");
+    let mut tour_open = use_signal({ let k = tour_key.clone(); move || platform::storage_get(&k).is_none() });
     let mut profile_popover = use_signal(|| Option::<(String, f64, f64)>::None);
 
     let mut user_keys = use_signal(|| get_user_keys(Some(&current_user_id)));
@@ -1296,6 +1300,8 @@ pub fn Chat(
                             on_avatar_updated.call(url);
                         },
                         on_keys_imported: move |k| user_keys.set(Some(k)),
+                        on_username_changed: move |n: String| if let Some(h) = on_username_changed { h.call(n) },
+                        on_replay_tour: move |_| tour_open.set(true),
                         on_logout: move |_| on_logout.call(()),
                     }
                 } else if let Some(active) = active_friend() {
@@ -1942,6 +1948,12 @@ pub fn Chat(
                         select_friend.call(f);
                     }
                 },
+            }
+        }
+
+        if tour_open() {
+            WelcomeTour {
+                on_close: { let k = tour_key.clone(); move |_| { platform::storage_set(&k, "done"); tour_open.set(false); } },
             }
         }
 

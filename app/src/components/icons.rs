@@ -433,3 +433,68 @@ pub fn ClockIcon(#[props(default = 18)] size: u32) -> Element {
         path { d: "M12 7v5l3.2 2" }
     } }
 }
+
+#[component]
+pub fn GifIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "2.5", y: "5", width: "19", height: "14", rx: "4", fill: "currentColor", fill_opacity: "0.16" }
+        path { d: "M10 9.5H8.2A1.7 1.7 0 0 0 6.5 11.2v1.6a1.7 1.7 0 0 0 1.7 1.7H10V12H8.6" }
+        path { d: "M12.5 9.5v5M15.5 14.5v-5H18M15.5 12h2" }
+    } }
+}
+
+#[component]
+pub fn SmilePlusIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { fill: "currentColor", fill_opacity: "0.16", d: "M20.5 12a8.5 8.5 0 1 1-6.1-8.16" }
+        path { d: "M20.5 12a8.5 8.5 0 1 1-6.1-8.16" }
+        path { d: "M8.6 10q.8-1 1.6 0M13.8 10q.8-1 1.6 0M8.2 14q1.5 2.4 3.8 2.4t3.8-2.4" }
+        path { d: "M19 2.5v5M16.5 5h5" }
+    } }
+}
+
+#[component]
+pub fn SparkleIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { fill: "currentColor", fill_opacity: "0.2", d: "M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1z" }
+        path { d: "M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1z" }
+        path { d: "M19 17.5v3M17.5 19h3" }
+    } }
+}
+
+#[component]
+pub fn BrushIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { fill: "currentColor", fill_opacity: "0.16", d: "M8.5 14.5c-2 0-3.5 1.5-3.5 3.5 0 1-.5 2-1.5 2.5 3 .5 7-.5 7-4" }
+        path { d: "M8.5 14.5c-2 0-3.5 1.5-3.5 3.5 0 1-.5 2-1.5 2.5 3 .5 7-.5 7-4" }
+        path { d: "M9.5 13.5l9.8-9.8a1.8 1.8 0 0 1 2.5 2.5L12 16" }
+    } }
+}
+
+#[component]
+pub fn DevicesIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "2.5", y: "4", width: "14", height: "10", rx: "2.5", fill: "currentColor", fill_opacity: "0.16" }
+        path { d: "M6 18h7M9.5 14v4" }
+        rect { x: "16", y: "8", width: "5.5", height: "11", rx: "1.8" }
+    } }
+}
+
+#[component]
+pub fn BookIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { fill: "currentColor", fill_opacity: "0.16", d: "M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" }
+        path { d: "M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5" }
+        path { d: "M9 7.5h7M9 11h5" }
+    } }
+}
+
+#[component]
+pub fn LibraryIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "3", y: "3", width: "8", height: "8", rx: "2.5", fill: "currentColor", fill_opacity: "0.16" }
+        rect { x: "13", y: "3", width: "8", height: "8", rx: "2.5" }
+        rect { x: "3", y: "13", width: "8", height: "8", rx: "2.5" }
+        circle { cx: "17", cy: "17", r: "4", fill: "currentColor", fill_opacity: "0.16" }
+    } }
+}

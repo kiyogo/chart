@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::{models::StickerPackItem, platform, services::stickers::stickers_list_packs};
+use crate::{components::icons::SearchIcon, models::StickerPackItem, platform, services::stickers::stickers_list_packs};
 
 /// Sticker picker body (rendered inside a `.picker-popover`). Lists the user's
 /// real sticker packs from `/api/stickers`; selecting sends the sticker URL.
@@ -13,6 +13,7 @@ pub fn StickerPicker(
     let mut active_pack_id = use_signal(|| Option::<String>::None);
     let mut is_loading = use_signal(|| true);
     let mut load_error = use_signal(|| false);
+    let mut query = use_signal(String::new);
 
     use_effect(move || {
         spawn(async move {
@@ -37,7 +38,16 @@ pub fn StickerPicker(
             onclick: move |evt| evt.stop_propagation(),
             onkeydown: move |evt| if evt.key() == Key::Escape { if let Some(h) = _on_close { h.call(()) } },
             div { class: "picker-header",
-                span { class: "details-section-title", "Sticker" }
+                div { class: "search-field",
+                    SearchIcon { size: 16 }
+                    input {
+                        r#type: "search",
+                        placeholder: "Search stickers",
+                        aria_label: "Search stickers",
+                        value: "{query}",
+                        oninput: move |e| query.set(e.value()),
+                    }
+                }
             }
             if !packs.read().is_empty() {
                 div { class: "picker-tabs", role: "tablist",
@@ -63,6 +73,30 @@ pub fn StickerPicker(
                     div { class: "picker-empty", "Đang tải sticker" }
                 } else if load_error() {
                     div { class: "picker-empty", "Không tải được danh sách sticker" }
+                } else if !query().trim().is_empty() {
+                    {
+                        let q = query().trim().to_lowercase();
+                        let hits: Vec<crate::models::StickerItem> = packs().into_iter().flat_map(|p| p.stickers).filter(|s| s.name.to_lowercase().contains(&q)).collect();
+                        rsx! {
+                            if hits.is_empty() {
+                                div { class: "picker-empty", "No stickers found" }
+                            } else {
+                                div { class: "sticker-grid",
+                                    for st in hits {
+                                        {
+                                            let url = st.file_url.clone();
+                                            rsx! {
+                                                button { key: "{st.id}", r#type: "button", class: "sticker-cell", title: "{st.name}", aria_label: "Send sticker {st.name}",
+                                                    onclick: move |_| on_select.call(url.clone()),
+                                                    img { src: "{platform::resolve_asset_url(&st.file_url)}", alt: "{st.name}", loading: "lazy" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else if let Some(pack) = active_pack {
                     if pack.stickers.is_empty() {
                         div { class: "picker-empty", "Bộ sticker này chưa có sticker nào" }
@@ -79,7 +113,7 @@ pub fn StickerPicker(
                                             r#type: "button",
                                             class: "sticker-cell",
                                             title: "{title_str}",
-                                            aria_label: "Gửi sticker {title_str}",
+                                            aria_label: "Send sticker {title_str}",
                                             onclick: move |_| on_select.call(url.clone()),
                                             img { src: "{resolved}", alt: "{title_str}", loading: "lazy" }
                                         }

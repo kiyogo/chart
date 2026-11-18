@@ -77,6 +77,7 @@ pub fn validate_and_normalize_username(raw: &str) -> AppResult<(String, String)>
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/name", post(handle_set_name))
+        .route("/username", axum::routing::put(handle_change_username))
         .route("/search", get(handle_search))
         .route(
             "/profile",
@@ -140,6 +141,31 @@ async fn handle_set_name(
         Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
             Err(AppError::Conflict("username_taken"))
         }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Change an existing username (same rules as the first-time name).
+async fn handle_change_username(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<SetNameRequest>,
+) -> AppResult<Json<UserResponse>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let (display_name, search_norm) = validate_and_normalize_username(&payload.name)?;
+    let res = sqlx::query!(
+        "UPDATE users SET username = $1, username_norm = $2 WHERE id = $3",
+        display_name,
+        search_norm,
+        user.id
+    )
+    .execute(&state.db)
+    .await;
+    match res {
+        Ok(_) => Ok(Json(UserResponse { id: user.id, username: display_name })),
+        Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => Err(AppError::Conflict("username_taken")),
         Err(e) => Err(e.into()),
     }
 }
@@ -355,13 +381,29 @@ async fn handle_update_profile(
         }
     }
     if let Some(ref d) = payload.avatar_decoration {
-        if !["none", "halo", "crown", "sprout", "stars", "cat"].contains(&d.as_str()) {
+        if !["none", "halo", "crown", "sprout", "stars", "cat", "custom"].contains(&d.as_str()) {
             return Err(AppError::BadRequest("invalid_avatar_decoration"));
         }
     }
     if let Some(ref e) = payload.profile_effect {
-        if !["none", "sparkle", "snow", "aurora", "bubbles", "confetti"].contains(&e.as_str()) {
+        if !["none", "sparkle", "snow", "aurora", "bubbles", "confetti", "hearts", "custom"].contains(&e.as_str()) {
             return Err(AppError::BadRequest("invalid_profile_effect"));
+        }
+    }
+    let one_of = |v: &Option<String>, allowed: &[&str], code: &'static str| -> AppResult<()> {
+        match v {
+            Some(x) if !allowed.contains(&x.as_str()) => Err(AppError::BadRequest(code)),
+            _ => Ok(()),
+        }
+    };
+    one_of(&payload.avatar_effect, &["none", "spin", "pulse", "float", "wobble", "rainbow"], "invalid_avatar_effect")?;
+    one_of(&payload.name_effect, &["none", "gradient", "shimmer", "rainbow", "neon", "wave"], "invalid_name_effect")?;
+    one_of(&payload.nameplate, &["none", "aurora", "sunset", "ocean", "galaxy", "sakura", "forest", "custom"], "invalid_nameplate")?;
+    one_of(&payload.custom_effect_anim, &["none", "float", "spin", "pulse", "drift", "sway"], "invalid_effect_animation")?;
+    // Custom artwork must be our own uploads; empty string clears it.
+    for url in [&payload.custom_decoration_url, &payload.custom_nameplate_url, &payload.custom_effect_url].into_iter().flatten() {
+        if !url.is_empty() && (!url.starts_with("/uploads/media/") || url.contains("..")) {
+            return Err(AppError::BadRequest("invalid_custom_media_url"));
         }
     }
     // Empty string clears an optional color.
@@ -382,10 +424,18 @@ async fn handle_update_profile(
             profile_color = CASE WHEN $8::text IS NULL THEN profile_color WHEN $8 = '' THEN NULL ELSE $8 END,
             profile_accent = CASE WHEN $9::text IS NULL THEN profile_accent WHEN $9 = '' THEN NULL ELSE $9 END,
             avatar_decoration = COALESCE($10, avatar_decoration),
-            profile_effect = COALESCE($11, profile_effect)
+            profile_effect = COALESCE($11, profile_effect),
+            avatar_effect = COALESCE($13, avatar_effect),
+            name_effect = COALESCE($14, name_effect),
+            nameplate = COALESCE($15, nameplate),
+            custom_decoration_url = CASE WHEN $16::text IS NULL THEN custom_decoration_url WHEN $16 = '' THEN NULL ELSE $16 END,
+            custom_nameplate_url = CASE WHEN $17::text IS NULL THEN custom_nameplate_url WHEN $17 = '' THEN NULL ELSE $17 END,
+            custom_effect_url = CASE WHEN $18::text IS NULL THEN custom_effect_url WHEN $18 = '' THEN NULL ELSE $18 END,
+            custom_effect_anim = COALESCE($19, custom_effect_anim)
         WHERE id = $12
         RETURNING id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links,
-                  profile_color, profile_accent, avatar_decoration, profile_effect, created_at
+                  profile_color, profile_accent, avatar_decoration, profile_effect, created_at,
+                  avatar_effect, name_effect, nameplate, custom_decoration_url, custom_nameplate_url, custom_effect_url, custom_effect_anim
         "#,
         payload.bio,
         payload.status_text,
@@ -398,7 +448,14 @@ async fn handle_update_profile(
         profile_accent,
         payload.avatar_decoration,
         payload.profile_effect,
-        user.id
+        user.id,
+        payload.avatar_effect,
+        payload.name_effect,
+        payload.nameplate,
+        payload.custom_decoration_url,
+        payload.custom_nameplate_url,
+        payload.custom_effect_url,
+        payload.custom_effect_anim
     )
     .fetch_one(&state.db)
     .await?;
@@ -445,6 +502,13 @@ async fn handle_update_profile(
         avatar_decoration: row.avatar_decoration,
         profile_effect: row.profile_effect,
         member_since: row.created_at,
+        avatar_effect: row.avatar_effect,
+        name_effect: row.name_effect,
+        nameplate: row.nameplate,
+        custom_decoration_url: row.custom_decoration_url,
+        custom_nameplate_url: row.custom_nameplate_url,
+        custom_effect_url: row.custom_effect_url,
+        custom_effect_anim: row.custom_effect_anim,
     }))
 }
 
@@ -458,7 +522,7 @@ async fn handle_get_profile(
     let _user = authenticate_session(&state.db, &state.config, session_token).await?;
 
     let row = sqlx::query!(
-        "SELECT id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links, profile_color, profile_accent, avatar_decoration, profile_effect, created_at FROM users WHERE id = $1",
+        "SELECT id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links, profile_color, profile_accent, avatar_decoration, profile_effect, created_at, avatar_effect, name_effect, nameplate, custom_decoration_url, custom_nameplate_url, custom_effect_url, custom_effect_anim FROM users WHERE id = $1",
         target_id
     )
     .fetch_optional(&state.db)
@@ -482,6 +546,13 @@ async fn handle_get_profile(
         avatar_decoration: row.avatar_decoration,
         profile_effect: row.profile_effect,
         member_since: row.created_at,
+        avatar_effect: row.avatar_effect,
+        name_effect: row.name_effect,
+        nameplate: row.nameplate,
+        custom_decoration_url: row.custom_decoration_url,
+        custom_nameplate_url: row.custom_nameplate_url,
+        custom_effect_url: row.custom_effect_url,
+        custom_effect_anim: row.custom_effect_anim,
     }))
 }
 

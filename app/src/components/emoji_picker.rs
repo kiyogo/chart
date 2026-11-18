@@ -57,6 +57,10 @@ pub fn EmojiPicker(
     on_select: EventHandler<String>,
     #[props(default)] on_close: Option<EventHandler<()>>,
     #[props(default)] align_right: bool,
+    /// Render only the picker body (used inside the tabbed media picker).
+    #[props(default)] embedded: bool,
+    /// The user's custom emoji (name, image url); selecting inserts a `<:name:url>` token.
+    #[props(default)] custom_emojis: Vec<(String, String)>,
 ) -> Element {
     let mut query = use_signal(String::new);
     let mut recent = use_signal(load_recent);
@@ -89,7 +93,12 @@ pub fn EmojiPicker(
             .collect()
     };
 
-    let cls = if align_right { "picker-popover align-right" } else { "picker-popover" };
+    let cls = if embedded { "picker-pane" } else if align_right { "picker-popover align-right" } else { "picker-popover" };
+    let custom_shown: Vec<(String, String)> = custom_emojis
+        .iter()
+        .filter(|(n, _)| q.is_empty() || n.to_lowercase().contains(&q))
+        .cloned()
+        .collect();
 
     rsx! {
         div {
@@ -139,7 +148,7 @@ pub fn EmojiPicker(
                     input {
                         id: "emoji-search",
                         r#type: "search",
-                        placeholder: "Tìm emoji (ví dụ: cười, tim, ok)",
+                        placeholder: "Search emoji (smile, heart, ok)",
                         aria_label: "Tìm emoji",
                         autocomplete: "off",
                         value: "{query}",
@@ -167,8 +176,8 @@ pub fn EmojiPicker(
                     button {
                         r#type: "button",
                         class: if active_cat() == "recent" { "picker-tab active" } else { "picker-tab" },
-                        title: "Gần đây",
-                        aria_label: "Gần đây",
+                        title: "Recently used",
+                        aria_label: "Recently used",
                         onclick: move |_| {
                             active_cat.set("recent");
                             let _ = dioxus::document::eval("const el = document.getElementById('emoji-cat-recent'); if (el) el.scrollIntoView({block: 'start'});");
@@ -196,11 +205,37 @@ pub fn EmojiPicker(
             }
 
             div { class: "picker-body",
+                if !custom_shown.is_empty() {
+                    div { id: "emoji-cat-custom",
+                        div { class: "picker-section-title", "Custom" }
+                        div { class: "emoji-grid",
+                            for (name, url) in custom_shown {
+                                {
+                                    let token = format!("<:{name}:{url}>");
+                                    let label = format!(":{name}:");
+                                    let hover = (String::new(), label.clone());
+                                    rsx! {
+                                        button {
+                                            key: "c-{name}",
+                                            r#type: "button",
+                                            class: "emoji-btn custom",
+                                            title: "{label}",
+                                            aria_label: "{label}",
+                                            onmouseenter: move |_| hovered.set(Some(hover.clone())),
+                                            onclick: move |_| on_select.call(token.clone()),
+                                            img { src: "{platform::resolve_asset_url(&url)}", alt: "{label}", loading: "lazy" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if !q.is_empty() {
                     if results.is_empty() {
-                        div { class: "picker-empty", "Không tìm thấy emoji phù hợp" }
+                        div { class: "picker-empty", "No emoji found" }
                     } else {
-                        div { class: "picker-section-title", "Kết quả" }
+                        div { class: "picker-section-title", "Results" }
                         div { class: "emoji-grid",
                             for (em, kw) in results {
                                 {
@@ -224,9 +259,9 @@ pub fn EmojiPicker(
                     }
                 } else {
                     div { id: "emoji-cat-recent",
-                        div { class: "picker-section-title", "Gần đây" }
+                        div { class: "picker-section-title", "Recently used" }
                         if recent.read().is_empty() {
-                            div { class: "sidebar-empty", "Emoji bạn dùng sẽ xuất hiện ở đây" }
+                            div { class: "sidebar-empty", "Emoji you use will show up here" }
                         } else {
                             div { class: "emoji-grid",
                                 for em in recent() {
@@ -280,7 +315,7 @@ pub fn EmojiPicker(
                     span { class: "picker-footer-emoji", "{em}" }
                     span { class: "truncate", "{label}" }
                 } else {
-                    span { class: "muted", "Mũi tên để di chuyển, Enter để chọn" }
+                    span { class: "muted", "Arrow keys to move, Enter to pick" }
                 }
                 div { class: "skin-tones", role: "radiogroup", aria_label: "Màu da",
                     for (modifier, sample) in SKIN_TONES {

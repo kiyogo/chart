@@ -6,17 +6,26 @@ use serde_json::json;
 use crate::{
     components::{
         icons::{CloseIcon, MessageIcon},
-        profile_card::{DECORATIONS, DecoratedAvatar, EFFECTS, ProfileCard, THEME_PRESETS},
+        draw_studio::DrawStudio,
+        profile_card::{
+            AVATAR_EFFECTS, DECORATIONS, DecoratedAvatar, EFFECTS, EFFECT_ANIMS, NAME_EFFECTS, NAMEPLATES, ProfileCard,
+            THEME_PRESETS, name_effect_class, nameplate_style,
+        },
     },
     models::UserProfileResponse,
     platform,
-    services::api::{get_user_profile, update_my_profile_fields, users_upload_avatar, users_upload_banner},
+    services::{
+        api::{get_user_profile, update_my_profile_fields, users_upload_avatar, users_upload_banner},
+        library,
+    },
 };
 
 #[derive(Clone, Copy, PartialEq)]
 enum EditTab {
     Info,
     Style,
+    Effects,
+    Create,
 }
 
 #[component]
@@ -35,6 +44,7 @@ pub fn ProfileModal(
     let mut tab = use_signal(|| EditTab::Info);
     let mut saving = use_signal(|| false);
     let mut notice = use_signal(|| Option::<(bool, String)>::None);
+    let mut studio_target = use_signal(|| Option::<String>::None);
 
     let uid = user_id.clone();
     use_effect(move || {
@@ -75,6 +85,13 @@ pub fn ProfileModal(
                 "profile_accent": d.profile_accent.clone().unwrap_or_default(),
                 "avatar_decoration": d.avatar_decoration.clone().unwrap_or_else(|| "none".into()),
                 "profile_effect": d.profile_effect.clone().unwrap_or_else(|| "none".into()),
+                "avatar_effect": d.avatar_effect.clone().unwrap_or_else(|| "none".into()),
+                "name_effect": d.name_effect.clone().unwrap_or_else(|| "none".into()),
+                "nameplate": d.nameplate.clone().unwrap_or_else(|| "none".into()),
+                "custom_decoration_url": d.custom_decoration_url.clone().unwrap_or_default(),
+                "custom_nameplate_url": d.custom_nameplate_url.clone().unwrap_or_default(),
+                "custom_effect_url": d.custom_effect_url.clone().unwrap_or_default(),
+                "custom_effect_anim": d.custom_effect_anim.clone().unwrap_or_else(|| "none".into()),
             });
             match update_my_profile_fields(fields).await {
                 Ok(updated) => {
@@ -117,6 +134,8 @@ pub fn ProfileModal(
                             div { class: "segmented", style: "margin: 0 var(--space-5);", role: "tablist",
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Info { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Info), "Thông tin" }
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Style { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Style), "Trang trí" }
+                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Effects { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Effects), "Hiệu ứng" }
+                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Create { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Create), "Tự tạo" }
                             }
                             div { class: "modal-body",
                                 if tab() == EditTab::Info {
@@ -226,6 +245,150 @@ pub fn ProfileModal(
                                             placeholder: "Vài dòng về bạn",
                                             value: "{d.bio.clone().unwrap_or_default()}",
                                             oninput: move |e| { let v = e.value(); edit(&|p| p.bio = Some(v.clone())); },
+                                        }
+                                    }
+                                } else if tab() == EditTab::Effects {
+                                    div { class: "form-field",
+                                        span { class: "form-label", "Hiệu ứng ảnh đại diện" }
+                                        div { class: "option-tiles",
+                                            for (val, label) in AVATAR_EFFECTS {
+                                                button {
+                                                    key: "{val}",
+                                                    r#type: "button",
+                                                    class: if d.avatar_effect.as_deref().unwrap_or("none") == val { "option-tile active" } else { "option-tile" },
+                                                    onclick: move |_| edit(&|p| p.avatar_effect = Some(val.into())),
+                                                    DecoratedAvatar { name: d.username.clone(), avatar_url: d.avatar_url.clone(), size: 44, avatar_effect: Some(val.to_string()) }
+                                                    span { "{label}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    div { class: "form-field",
+                                        span { class: "form-label", "Hiệu ứng tên" }
+                                        div { class: "option-tiles",
+                                            for (val, label) in NAME_EFFECTS {
+                                                button {
+                                                    key: "{val}",
+                                                    r#type: "button",
+                                                    class: if d.name_effect.as_deref().unwrap_or("none") == val { "option-tile active" } else { "option-tile" },
+                                                    onclick: move |_| edit(&|p| p.name_effect = Some(val.into())),
+                                                    span { class: "name-sample {name_effect_class(Some(val))}", "{d.display_name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| d.username.clone())}" }
+                                                    span { "{label}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    div { class: "form-field",
+                                        span { class: "form-label", "Bảng tên" }
+                                        span { class: "form-hint", "Hiển thị sau tên bạn trong danh sách trò chuyện của bạn bè và trên hồ sơ." }
+                                        div { class: "option-tiles wide",
+                                            for (val, label) in NAMEPLATES {
+                                                {
+                                                    let (cls, style) = nameplate_style(Some(val), None);
+                                                    rsx! {
+                                                        button {
+                                                            key: "{val}",
+                                                            r#type: "button",
+                                                            class: if d.nameplate.as_deref().unwrap_or("none") == val { "option-tile active" } else { "option-tile" },
+                                                            onclick: move |_| edit(&|p| p.nameplate = Some(val.into())),
+                                                            span { class: "nameplate-sample {cls}", style: "{style}", "{d.username}" }
+                                                            span { "{label}" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else if tab() == EditTab::Create {
+                                    if let Some(t) = studio_target() {
+                                        DrawStudio {
+                                            key: "{t}",
+                                            target: t.clone(),
+                                            on_close: move |_| studio_target.set(None),
+                                            on_saved: { let t = t.clone(); move |url: String| {
+                                                let u = url.clone();
+                                                match t.as_str() {
+                                                    "nameplate" => edit(&|p| { p.nameplate = Some("custom".into()); p.custom_nameplate_url = Some(u.clone()); }),
+                                                    "effect" => edit(&|p| { p.profile_effect = Some("custom".into()); p.custom_effect_url = Some(u.clone()); if p.custom_effect_anim.as_deref().unwrap_or("none") == "none" { p.custom_effect_anim = Some("float".into()); } }),
+                                                    _ => edit(&|p| { p.avatar_decoration = Some("custom".into()); p.custom_decoration_url = Some(u.clone()); }),
+                                                }
+                                                studio_target.set(None);
+                                                notice.set(Some((false, "Đã lưu hình vẽ. Nhấn \"Lưu thay đổi\" để áp dụng.".into())));
+                                            }},
+                                        }
+                                    } else {
+                                        div { class: "form-hint", "Tải ảnh của bạn (PNG, GIF động, WebP, AVIF, JPEG ≤ 2 MB) hoặc vẽ ngay trong ChatW." }
+                                        for (target, title, current) in [
+                                            ("decoration", "Khung ảnh đại diện", d.custom_decoration_url.clone()),
+                                            ("nameplate", "Bảng tên", d.custom_nameplate_url.clone()),
+                                            ("effect", "Hiệu ứng hồ sơ", d.custom_effect_url.clone()),
+                                        ] {
+                                            div { key: "{target}", class: "create-card",
+                                                div { class: "create-preview create-{target}",
+                                                    if let Some(u) = current.as_ref().filter(|u| !u.is_empty()) {
+                                                        img { src: "{platform::resolve_asset_url(u)}", alt: "{title}" }
+                                                    } else {
+                                                        span { class: "muted", "Chưa có" }
+                                                    }
+                                                }
+                                                div { class: "create-body",
+                                                    div { class: "settings-label", "{title}" }
+                                                    div { class: "create-actions",
+                                                        label { class: "btn-avatar-upload",
+                                                            input {
+                                                                id: "custom-{target}-input",
+                                                                r#type: "file",
+                                                                accept: "image/png,image/gif,image/webp,image/avif,image/jpeg",
+                                                                style: "display: none;",
+                                                                onchange: move |_| {
+                                                                    notice.set(None);
+                                                                    spawn(async move {
+                                                                        let res: Result<String, String> = async {
+                                                                            let (bytes, mime) = platform::read_selected_file_raw(&format!("custom-{target}-input")).await?;
+                                                                            library::upload_media(bytes, &mime).await.map_err(|e| format!("Tải lên thất bại ({})", e.code))
+                                                                        }.await;
+                                                                        match res {
+                                                                            Ok(u) => {
+                                                                                match target {
+                                                                                    "nameplate" => edit(&|p| { p.nameplate = Some("custom".into()); p.custom_nameplate_url = Some(u.clone()); }),
+                                                                                    "effect" => edit(&|p| { p.profile_effect = Some("custom".into()); p.custom_effect_url = Some(u.clone()); }),
+                                                                                    _ => edit(&|p| { p.avatar_decoration = Some("custom".into()); p.custom_decoration_url = Some(u.clone()); }),
+                                                                                }
+                                                                                notice.set(Some((false, "Đã tải lên. Nhấn \"Lưu thay đổi\" để áp dụng.".into())));
+                                                                            }
+                                                                            Err(e) if e == "no_file" => {}
+                                                                            Err(e) if e == "too_large" => notice.set(Some((true, "Tệp lớn hơn 2 MB".into()))),
+                                                                            Err(e) => notice.set(Some((true, e))),
+                                                                        }
+                                                                    });
+                                                                },
+                                                            }
+                                                            "Tải ảnh lên"
+                                                        }
+                                                        button { r#type: "button", class: "btn-secondary", onclick: move |_| studio_target.set(Some(target.to_string())), "Vẽ trong app" }
+                                                        if current.as_ref().is_some_and(|u| !u.is_empty()) {
+                                                            button { r#type: "button", class: "btn-ghost",
+                                                                onclick: move |_| match target {
+                                                                    "nameplate" => edit(&|p| { p.custom_nameplate_url = Some(String::new()); if p.nameplate.as_deref() == Some("custom") { p.nameplate = Some("none".into()); } }),
+                                                                    "effect" => edit(&|p| { p.custom_effect_url = Some(String::new()); if p.profile_effect.as_deref() == Some("custom") { p.profile_effect = Some("none".into()); } }),
+                                                                    _ => edit(&|p| { p.custom_decoration_url = Some(String::new()); if p.avatar_decoration.as_deref() == Some("custom") { p.avatar_decoration = Some("none".into()); } }),
+                                                                },
+                                                                "Bỏ dùng"
+                                                            }
+                                                        }
+                                                    }
+                                                    if target == "effect" {
+                                                        label { class: "form-field",
+                                                            span { class: "form-label", "Chuyển động" }
+                                                            select {
+                                                                value: "{d.custom_effect_anim.clone().unwrap_or_else(|| \"none\".into())}",
+                                                                onchange: move |e| { let v = e.value(); edit(&|p| p.custom_effect_anim = Some(v.clone())); },
+                                                                for (val, label) in EFFECT_ANIMS { option { key: "{val}", value: "{val}", "{label}" } }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 } else {

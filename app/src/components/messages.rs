@@ -7,8 +7,8 @@ use crate::{
     components::{
         avatar::Avatar,
         emoji_picker::EmojiPicker,
-        icons::{CloseIcon, CopyIcon, EmojiIcon, ReplyIcon, SendIcon, ShieldIcon, StickerIcon},
-        sticker_picker::StickerPicker,
+        icons::{CloseIcon, CopyIcon, EmojiIcon, GifIcon, ReplyIcon, SendIcon, ShieldIcon, SmilePlusIcon, StickerIcon},
+        media_picker::{MediaPicker, MediaTab},
     },
     platform,
 };
@@ -31,6 +31,9 @@ pub struct ViewMessage {
 }
 
 const GROUP_WINDOW_SECS: i64 = 5 * 60;
+
+/// Reactions offered when hovering the single react button.
+const QUICK_REACTIONS: [&str; 8] = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "🙏"];
 
 fn parse_local(iso: &str) -> Option<DateTime<Local>> {
     DateTime::parse_from_rfc3339(iso).ok().map(|d| d.with_timezone(&Local))
@@ -73,9 +76,68 @@ pub fn sticker_url_of(text: &str) -> Option<String> {
     if is_image { Some(t.to_string()) } else { None }
 }
 
+/// `gif:<url>` messages are rendered as large animated media.
+pub fn gif_url_of(text: &str) -> Option<String> {
+    let t = text.trim().strip_prefix("gif:")?;
+    let ok = (t.starts_with("/uploads/media/") || t.starts_with("/stickers/")) && !t.contains("..") && !t.contains(char::is_whitespace);
+    if ok { Some(t.to_string()) } else { None }
+}
+
+/// Short preview text for lists and notifications.
+pub fn preview_text(text: &str) -> String {
+    if gif_url_of(text).is_some() {
+        return "Đã gửi một GIF".to_string();
+    }
+    if sticker_url_of(text).is_some() {
+        return "Đã gửi một sticker".to_string();
+    }
+    segments(text)
+        .into_iter()
+        .map(|s| match s {
+            Segment::Text(t) | Segment::Link(t) => t,
+            Segment::Emoji(name, _) => format!(":{name}:"),
+        })
+        .collect()
+}
+
 enum Segment {
     Text(String),
     Link(String),
+    /// Custom emoji token `<:name:/uploads/media/...>`
+    Emoji(String, String),
+}
+
+/// Split custom emoji tokens out of a text run.
+fn split_emoji(text: &str, out: &mut Vec<Segment>) {
+    let mut rest = text;
+    while let Some(start) = rest.find("<:") {
+        let after = &rest[start + 2..];
+        let parsed = after.find(':').and_then(|colon| {
+            let name = &after[..colon];
+            let tail = &after[colon + 1..];
+            let end = tail.find('>')?;
+            let url = &tail[..end];
+            let valid_name = (2..=32).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            let valid_url = url.starts_with("/uploads/media/") && !url.contains("..") && !url.contains(char::is_whitespace);
+            (valid_name && valid_url).then(|| (name.to_string(), url.to_string(), 2 + colon + 1 + end + 1))
+        });
+        match parsed {
+            Some((name, url, len)) => {
+                if start > 0 {
+                    out.push(Segment::Text(rest[..start].to_string()));
+                }
+                out.push(Segment::Emoji(name, url));
+                rest = &rest[start + len..];
+            }
+            None => {
+                out.push(Segment::Text(rest[..start + 2].to_string()));
+                rest = &rest[start + 2..];
+            }
+        }
+    }
+    if !rest.is_empty() {
+        out.push(Segment::Text(rest.to_string()));
+    }
 }
 
 /// Split text into plain and http(s) link segments (text is escaped by Dioxus).
@@ -95,7 +157,7 @@ fn segments(text: &str) -> Vec<Segment> {
                     link = &link[..link.len() - 1];
                 }
                 if !buf.is_empty() {
-                    out.push(Segment::Text(std::mem::take(&mut buf)));
+                    split_emoji(&std::mem::take(&mut buf), &mut out);
                 }
                 out.push(Segment::Link(link.to_string()));
                 rest = &tail[link.len()..];
@@ -107,7 +169,7 @@ fn segments(text: &str) -> Vec<Segment> {
         }
     }
     if !buf.is_empty() {
-        out.push(Segment::Text(buf));
+        split_emoji(&buf, &mut out);
     }
     out
 }
@@ -126,6 +188,7 @@ pub fn MessageList(
     #[props(default)] on_reply: Option<EventHandler<ViewMessage>>,
     #[props(default)] highlight_id: Option<String>,
 ) -> Element {
+    let mut full_picker_for = use_signal(|| Option::<String>::None);
     let count = messages.len();
     let parsed: Vec<Option<DateTime<Local>>> = messages.iter().map(|m| parse_local(&m.created_at)).collect();
 
@@ -172,7 +235,8 @@ pub fn MessageList(
                         if highlight_id.as_deref() == Some(msg.id.as_str()) { row_cls.push_str(" highlight"); }
                         let time_str = t.map(|d| d.format("%H:%M").to_string()).unwrap_or_default();
                         let full_time = t.map(|d| d.format("%H:%M, %d/%m/%Y").to_string()).unwrap_or_default();
-                        let sticker = if msg.is_error { None } else { sticker_url_of(&msg.text) };
+                        let gif = if msg.is_error { None } else { gif_url_of(&msg.text) };
+                        let sticker = if msg.is_error || gif.is_some() { None } else { sticker_url_of(&msg.text) };
                         let show_name = show_sender_names && !msg.is_self && !joins_prev;
                         let show_avatar = !msg.is_self && !joins_next;
                         let sender_for_avatar = msg.sender_id.clone();
@@ -215,7 +279,12 @@ pub fn MessageList(
                                             "{msg.sender_name}"
                                         }
                                     }
-                                    if let Some(url) = sticker {
+                                    if let Some(url) = gif {
+                                        div { class: "message-media gif", title: "{full_time}",
+                                            img { class: "gif-img", src: "{platform::resolve_asset_url(&url)}", alt: "GIF", loading: "lazy" }
+                                        }
+                                        span { class: "message-time-standalone", "{time_str}" }
+                                    } else if let Some(url) = sticker {
                                         div { class: "message-media", title: "{full_time}",
                                             img { class: "sticker-img", src: "{platform::resolve_asset_url(&url)}", alt: "Sticker", loading: "lazy" }
                                         }
@@ -233,6 +302,9 @@ pub fn MessageList(
                                                         Segment::Text(t) => rsx! { span { key: "{si}", "{t}" } },
                                                         Segment::Link(l) => rsx! {
                                                             a { key: "{si}", href: "{l}", target: "_blank", rel: "noopener noreferrer nofollow", "{l}" }
+                                                        },
+                                                        Segment::Emoji(name, url) => rsx! {
+                                                            img { key: "{si}", class: "inline-emoji", src: "{platform::resolve_asset_url(&url)}", alt: ":{name}:", title: ":{name}:", loading: "lazy" }
                                                         },
                                                     }
                                                 }
@@ -273,18 +345,50 @@ pub fn MessageList(
                                 if !msg.is_error {
                                     div { class: "message-actions", role: "toolbar", aria_label: "Thao tác tin nhắn",
                                         if on_react.is_some() {
-                                            for em in ["👍", "❤️", "😂"] {
-                                                {
-                                                    let mid_q = mid.clone();
-                                                    rsx! {
-                                                        button {
-                                                            key: "{em}",
-                                                            r#type: "button",
-                                                            class: "message-action-btn",
-                                                            title: "Thả {em}",
-                                                            aria_label: "Thả biểu cảm {em}",
-                                                            onclick: move |_| if let Some(h) = on_react { h.call((mid_q.clone(), em.to_string())) },
-                                                            "{em}"
+                                            div { class: "react-trigger",
+                                                button {
+                                                    r#type: "button",
+                                                    class: "message-action-btn",
+                                                    title: "Thả biểu cảm",
+                                                    aria_label: "Thả biểu cảm",
+                                                    aria_haspopup: "true",
+                                                    SmilePlusIcon {}
+                                                }
+                                                div { class: "react-tray", role: "group", aria_label: "Biểu cảm nhanh",
+                                                    for em in QUICK_REACTIONS {
+                                                        {
+                                                            let mid_q = mid.clone();
+                                                            rsx! {
+                                                                button {
+                                                                    key: "{em}",
+                                                                    r#type: "button",
+                                                                    class: "react-option",
+                                                                    title: "{em}",
+                                                                    aria_label: "Thả biểu cảm {em}",
+                                                                    onclick: move |_| if let Some(h) = on_react { h.call((mid_q.clone(), em.to_string())) },
+                                                                    "{em}"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "react-option more",
+                                                        title: "Thêm biểu cảm",
+                                                        aria_label: "Thêm biểu cảm",
+                                                        onclick: { let m = mid.clone(); move |_| full_picker_for.set(Some(m.clone())) },
+                                                        SmilePlusIcon { size: 16 }
+                                                    }
+                                                }
+                                                if full_picker_for().as_deref() == Some(mid.as_str()) {
+                                                    div { class: "react-picker",
+                                                        EmojiPicker {
+                                                            on_select: { let m = mid.clone(); move |e: String| {
+                                                                full_picker_for.set(None);
+                                                                if !e.starts_with("<:") { if let Some(h) = on_react { h.call((m.clone(), e)) } }
+                                                            }},
+                                                            on_close: move |_| full_picker_for.set(None),
+                                                            align_right: msg.is_self,
                                                         }
                                                     }
                                                 }
@@ -336,8 +440,7 @@ pub fn Composer(
     #[props(default)] on_sticker: Option<EventHandler<String>>,
     #[props(default)] disabled: bool,
 ) -> Element {
-    let mut emoji_open = use_signal(|| false);
-    let mut sticker_open = use_signal(|| false);
+    let mut picker = use_signal(|| Option::<MediaTab>::None);
     let can_send = !value.trim().is_empty() && !sending && !disabled;
     let id_for_emoji = input_id.clone();
     let value_for_emoji = value.clone();
@@ -345,9 +448,11 @@ pub fn Composer(
     rsx! {
         div { class: "composer",
             div { class: "composer-inner",
-                if emoji_open() {
-                    EmojiPicker {
-                        on_select: move |emoji: String| {
+                if let Some(t) = picker() {
+                    MediaPicker {
+                        key: "{t as u8}",
+                        initial_tab: t,
+                        on_emoji: move |emoji: String| {
                             let cur = value_for_emoji.clone();
                             let id = id_for_emoji.clone();
                             spawn(async move {
@@ -355,20 +460,9 @@ pub fn Composer(
                                 on_input.call(updated);
                             });
                         },
-                        on_close: move |_| emoji_open.set(false),
-                    }
-                }
-                if sticker_open() {
-                    if let Some(on_st) = on_sticker {
-                        div { class: "picker-popover align-right", style: "padding: 0;",
-                            StickerPicker {
-                                on_select: move |url: String| {
-                                    sticker_open.set(false);
-                                    on_st.call(url);
-                                },
-                                _on_close: Some(EventHandler::new(move |_| sticker_open.set(false))),
-                            }
-                        }
+                        on_sticker: on_sticker.map(|h| EventHandler::new(move |url: String| { picker.set(None); h.call(url); })),
+                        on_gif: on_sticker.map(|h| EventHandler::new(move |url: String| { picker.set(None); h.call(format!("gif:{url}")); })),
+                        on_close: move |_| picker.set(None),
                     }
                 }
                 if let Some(rt) = reply_to.as_ref() {
@@ -386,14 +480,13 @@ pub fn Composer(
                 div { class: "composer-box",
                     button {
                         r#type: "button",
-                        class: if emoji_open() { "icon-btn active" } else { "icon-btn" },
+                        class: if picker() == Some(MediaTab::Emoji) { "icon-btn active" } else { "icon-btn" },
                         title: "Emoji",
                         aria_label: "Chọn emoji",
-                        aria_expanded: "{emoji_open()}",
+                        aria_expanded: "{picker().is_some()}",
                         onclick: move |evt| {
                             evt.stop_propagation();
-                            sticker_open.set(false);
-                            emoji_open.set(!emoji_open());
+                            picker.set(if picker() == Some(MediaTab::Emoji) { None } else { Some(MediaTab::Emoji) });
                         },
                         EmojiIcon {}
                     }
@@ -412,21 +505,30 @@ pub fn Composer(
                                 evt.prevent_default();
                                 on_send.call(());
                             } else if key == Key::Escape {
-                                emoji_open.set(false);
-                                sticker_open.set(false);
+                                picker.set(None);
                             }
                         },
                     }
                     if on_sticker.is_some() {
                         button {
                             r#type: "button",
-                            class: if sticker_open() { "icon-btn active" } else { "icon-btn" },
+                            class: if picker() == Some(MediaTab::Gif) { "icon-btn active" } else { "icon-btn" },
+                            title: "GIF",
+                            aria_label: "Chọn GIF",
+                            onclick: move |evt| {
+                                evt.stop_propagation();
+                                picker.set(if picker() == Some(MediaTab::Gif) { None } else { Some(MediaTab::Gif) });
+                            },
+                            GifIcon {}
+                        }
+                        button {
+                            r#type: "button",
+                            class: if picker() == Some(MediaTab::Sticker) { "icon-btn active" } else { "icon-btn" },
                             title: "Sticker",
                             aria_label: "Chọn sticker",
                             onclick: move |evt| {
                                 evt.stop_propagation();
-                                emoji_open.set(false);
-                                sticker_open.set(!sticker_open());
+                                picker.set(if picker() == Some(MediaTab::Sticker) { None } else { Some(MediaTab::Sticker) });
                             },
                             StickerIcon {}
                         }

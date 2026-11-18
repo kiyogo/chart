@@ -76,7 +76,7 @@ pub fn routes() -> Router<AppState> {
         .route("/dev-login", post(handle_dev_login))
         .route("/providers", get(handle_providers))
         .route("/me", get(handle_me))
-        .route("/sessions", get(handle_list_sessions))
+        .route("/sessions", get(handle_list_sessions).delete(handle_delete_other_sessions))
         .route("/sessions/{session_id}", axum::routing::delete(handle_delete_session))
         .route("/logout", post(handle_logout))
 }
@@ -443,6 +443,40 @@ async fn handle_list_sessions(
         .collect();
 
     Ok(Json(sessions))
+}
+
+/// Sign out every other device of the current user (keeps this session).
+async fn handle_delete_other_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let token_bytes = hex::decode(session_token).map_err(|_| AppError::Unauthorized)?;
+    if token_bytes.len() != 32 {
+        return Err(AppError::Unauthorized);
+    }
+    let token_hash = session::hash_session_token(&state.config.session_secret, &token_bytes);
+    let res = sqlx::query!(
+        "DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2",
+        user.id,
+        &token_hash[..]
+    )
+    .execute(&state.db)
+    .await?;
+    let _ = crate::audit::log_audit_event(
+        &state.db,
+        user.id,
+        "sessions_revoked_others",
+        Some("session"),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await;
+    Ok(Json(serde_json::json!({ "revoked": res.rows_affected() })))
 }
 
 async fn handle_delete_session(

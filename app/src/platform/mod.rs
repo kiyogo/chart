@@ -507,3 +507,33 @@ pub async fn process_selected_sticker(input_id: &str) -> Result<(Vec<u8>, String
     let mime = val.get("mime").and_then(|v| v.as_str()).unwrap_or("image/webp").to_string();
     Ok((bytes, mime))
 }
+
+/// Read the raw bytes of the file picked in `<input type=file id=input_id>` (max 2 MB).
+/// Returns (bytes, mime). Used for profile artwork where animation (GIF) must be kept.
+pub async fn read_selected_file_raw(input_id: &str) -> Result<(Vec<u8>, String), String> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            const input = document.getElementById({id_json});
+            if (!input || !input.files || input.files.length === 0) {{ dioxus.send({{ error: 'no_file' }}); return; }}
+            const file = input.files[0];
+            if (file.size > 2 * 1024 * 1024) {{ dioxus.send({{ error: 'too_large' }}); input.value = ''; return; }}
+            const buf = new Uint8Array(await file.arrayBuffer());
+            let s = '';
+            for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+            dioxus.send({{ b64: btoa(s), mime: file.type || 'application/octet-stream' }});
+            input.value = '';
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.map_err(|_| "eval_failed".to_string())?;
+    if let Some(err) = val.get("error").and_then(|e| e.as_str()) {
+        return Err(err.to_string());
+    }
+    use base64::Engine;
+    let b64 = val.get("b64").and_then(|v| v.as_str()).ok_or("no_data")?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "decode_failed".to_string())?;
+    Ok((bytes, val.get("mime").and_then(|v| v.as_str()).unwrap_or("image/png").to_string()))
+}

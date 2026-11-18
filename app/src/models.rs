@@ -63,6 +63,20 @@ pub struct FriendItem {
     pub id: String,
     pub username: String,
     #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub nameplate: Option<String>,
+    #[serde(default)]
+    pub custom_nameplate_url: Option<String>,
+    #[serde(default)]
+    pub name_effect: Option<String>,
+    #[serde(default)]
+    pub profile_color: Option<String>,
+    #[serde(default)]
+    pub status_text: Option<String>,
+    #[serde(default)]
+    pub status_emoji: Option<String>,
+    #[serde(default)]
     pub avatar_url: Option<String>,
 }
 
@@ -466,6 +480,20 @@ pub struct UserProfileResponse {
     pub profile_effect: Option<String>,
     #[serde(default)]
     pub member_since: Option<String>,
+    #[serde(default)]
+    pub avatar_effect: Option<String>,
+    #[serde(default)]
+    pub name_effect: Option<String>,
+    #[serde(default)]
+    pub nameplate: Option<String>,
+    #[serde(default)]
+    pub custom_decoration_url: Option<String>,
+    #[serde(default)]
+    pub custom_nameplate_url: Option<String>,
+    #[serde(default)]
+    pub custom_effect_url: Option<String>,
+    #[serde(default)]
+    pub custom_effect_anim: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -574,3 +602,25 @@ impl std::fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LibraryItem {
+    pub id: String,
+    pub name: String,
+    pub file_url: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SessionItem {
+    pub id: String,
+    #[serde(default)]
+    pub device_name: Option<String>,
+    #[serde(default)]
+    pub ip_address: Option<String>,
+    #[serde(default)]
+    pub last_active: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub is_current: bool,
+}

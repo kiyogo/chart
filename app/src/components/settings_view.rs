@@ -4,10 +4,11 @@ use crate::{
     components::{
         avatar::Avatar,
         details_panel::format_fingerprint,
-        settings_extra::{CustomizationSettings, StickerSettings},
+        guide::GuideSettings,
+        settings_extra::{AccountSecurity, CustomizationSettings, LibrarySettings},
         icons::{
             BackIcon, CheckIcon, ChevronRightIcon, KeyIcon, LogoutIcon, MonitorIcon,
-            MoonIcon, PaletteIcon, ShieldIcon, SlidersIcon, StickerIcon, SunIcon, UserIcon,
+            MoonIcon, BookIcon, LibraryIcon, PaletteIcon, ShieldIcon, SlidersIcon, SunIcon, UserIcon,
         },
     },
     crypto::e2ee::{UserKeys, export_user_keys_json, import_user_keys_json},
@@ -21,6 +22,7 @@ enum SettingsTab {
     Appearance,
     Customize,
     Stickers,
+    Guide,
     Security,
     Session,
 }
@@ -36,7 +38,10 @@ pub fn SettingsView(
     on_avatar_updated: EventHandler<String>,
     on_keys_imported: EventHandler<UserKeys>,
     on_logout: EventHandler<()>,
+    #[props(default)] on_username_changed: Option<EventHandler<String>>,
+    #[props(default)] on_replay_tour: Option<EventHandler<()>>,
 ) -> Element {
+    let on_replay_tour = on_replay_tour.unwrap_or_else(|| EventHandler::new(|_| {}));
     let mut tab = use_signal(|| SettingsTab::Account);
     let mut has_detail = use_signal(|| false);
     let mut appearance = use_signal(platform::load_appearance);
@@ -87,9 +92,10 @@ pub fn SettingsView(
                         (SettingsTab::Account, "Tài khoản của tôi"),
                         (SettingsTab::Appearance, "Giao diện"),
                         (SettingsTab::Customize, "Tùy chỉnh"),
-                        (SettingsTab::Stickers, "Sticker"),
+                        (SettingsTab::Stickers, "Thư viện"),
                         (SettingsTab::Security, "Bảo mật và mã hóa"),
                         (SettingsTab::Session, "Phiên đăng nhập"),
+                        (SettingsTab::Guide, "Hướng dẫn"),
                     ] {
                         button {
                             key: "{label}",
@@ -103,7 +109,8 @@ pub fn SettingsView(
                                 SettingsTab::Security => rsx! { ShieldIcon { size: 18 } },
                                 SettingsTab::Session => rsx! { LogoutIcon {} },
                                 SettingsTab::Customize => rsx! { SlidersIcon {} },
-                                SettingsTab::Stickers => rsx! { StickerIcon {} },
+                                SettingsTab::Stickers => rsx! { LibraryIcon {} },
+                                SettingsTab::Guide => rsx! { BookIcon {} },
                             }
                             span { "{label}" }
                             span { class: "chevron", ChevronRightIcon { size: 16 } }
@@ -122,7 +129,8 @@ pub fn SettingsView(
                                     SettingsTab::Security => "Bảo mật và mã hóa",
                                     SettingsTab::Session => "Phiên đăng nhập",
                                     SettingsTab::Customize => "Tùy chỉnh",
-                                    SettingsTab::Stickers => "Sticker",
+                                    SettingsTab::Stickers => "Thư viện",
+                                    SettingsTab::Guide => "Hướng dẫn",
                                 }
                             }
                             p { class: "settings-page-desc",
@@ -132,7 +140,8 @@ pub fn SettingsView(
                                     SettingsTab::Security => "Khóa mã hóa đầu cuối của thiết bị, vân tay khóa, sao lưu và khôi phục.",
                                     SettingsTab::Session => "Quản lý phiên đăng nhập trên trình duyệt này.",
                                     SettingsTab::Customize => "Cột điều hướng, hình nền trò chuyện, âm báo và hiệu ứng. Lưu riêng cho tài khoản trên thiết bị này.",
-                                    SettingsTab::Stickers => "Tạo bộ sticker riêng và tải ảnh lên để gửi trong mọi cuộc trò chuyện.",
+                                    SettingsTab::Stickers => "Sticker, emoji và GIF của riêng bạn.",
+                                    SettingsTab::Guide => "Giới thiệu, hướng dẫn từng bước, phím tắt và câu hỏi thường gặp.",
                                 }
                             }
                         }
@@ -222,6 +231,10 @@ pub fn SettingsView(
                                   }
                                 }
 
+                                AccountSecurity {
+                                    current_username: current_username.clone(),
+                                    on_username_changed: move |n: String| if let Some(h) = on_username_changed { h.call(n) },
+                                }
                                 div { class: "settings-group",
                                     div { class: "settings-group-title", "Thông tin định danh" }
                                     div { class: "settings-list",
@@ -505,7 +518,8 @@ pub fn SettingsView(
                             },
 
                             SettingsTab::Customize => rsx! { CustomizationSettings {} },
-                            SettingsTab::Stickers => rsx! { StickerSettings { current_user_id: current_user_id.clone() } },
+                            SettingsTab::Stickers => rsx! { LibrarySettings { current_user_id: current_user_id.clone() } },
+                            SettingsTab::Guide => rsx! { GuideSettings { on_replay_tour: move |_| on_replay_tour.call(()) } },
                             SettingsTab::Session => rsx! {
                                 div { class: "settings-group",
                                     div { class: "settings-group-title", "Quản lý phiên" }

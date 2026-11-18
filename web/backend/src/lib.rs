@@ -8,6 +8,7 @@ pub mod db;
 pub mod error;
 pub mod friends;
 pub mod groups;
+pub mod library;
 pub mod messages;
 pub mod models;
 pub mod servers;

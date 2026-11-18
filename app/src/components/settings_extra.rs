@@ -3,11 +3,15 @@
 use dioxus::prelude::*;
 
 use crate::{
-    components::icons::{CloseIcon, PlusIcon},
-    models::StickerPackItem,
+    components::{
+        guide::Illustration,
+        icons::{ChevronRightIcon, CloseIcon, DevicesIcon, LockIcon, PlusIcon},
+        media_picker::BUILTIN_GIFS,
+    },
+    models::{LibraryItem, SessionItem, StickerPackItem},
     platform,
     prefs::PrefsCtx,
-    services::stickers,
+    services::{library, stickers},
 };
 
 #[component]
@@ -278,6 +282,455 @@ pub fn StickerSettings(current_user_id: String) -> Element {
                     }
                 }
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Account: username, email/phone policy, signed-in devices
+// ---------------------------------------------------------------------------
+
+fn relative_time(iso: &str) -> String {
+    let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) else { return String::new() };
+    let secs = (chrono::Utc::now() - dt.with_timezone(&chrono::Utc)).num_seconds().max(0);
+    match secs {
+        0..=59 => "vừa xong".into(),
+        60..=3599 => format!("{} phút trước", secs / 60),
+        3600..=86_399 => format!("{} giờ trước", secs / 3600),
+        _ => format!("{} ngày trước", secs / 86_400),
+    }
+}
+
+fn device_label(ua: Option<&str>) -> String {
+    let ua = ua.unwrap_or("");
+    let browser = if ua.contains("Edg/") { "Edge" } else if ua.contains("Firefox/") { "Firefox" } else if ua.contains("Chrome/") { "Chrome" } else if ua.contains("Safari/") { "Safari" } else if ua.is_empty() { "Thiết bị" } else { "Ứng dụng" };
+    let os = if ua.contains("Windows") { "Windows" } else if ua.contains("Android") { "Android" } else if ua.contains("iPhone") || ua.contains("iPad") { "iOS" } else if ua.contains("Mac OS") { "macOS" } else if ua.contains("Linux") { "Linux" } else { "" };
+    if os.is_empty() { browser.to_string() } else { format!("{browser} trên {os}") }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum UserStep { Edit, Confirm, Done }
+
+#[component]
+fn UsernameDialog(current: String, on_close: EventHandler<()>, on_changed: EventHandler<String>) -> Element {
+    let mut step = use_signal(|| UserStep::Edit);
+    let mut value = use_signal(|| current.clone());
+    let mut error = use_signal(|| Option::<String>::None);
+    let mut busy = use_signal(|| false);
+    let v = value().trim().to_string();
+    let valid = (2..=32).contains(&v.chars().count()) && v != current;
+    rsx! {
+        div { class: "modal-overlay", onclick: move |_| on_close.call(()),
+            div { class: "modal-dialog story-dialog", role: "dialog", aria_modal: "true", aria_label: "Đổi tên đăng nhập", onclick: move |e| e.stop_propagation(),
+                onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
+                div { class: "story-art",
+                    button { r#type: "button", class: "icon-btn story-close", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon {} }
+                    Illustration { kind: "user".to_string() }
+                }
+                match step() {
+                    UserStep::Edit => rsx! {
+                        div { class: "story-body",
+                            h2 { class: "story-title", "Đổi tên đăng nhập" }
+                            p { class: "story-text", "Bạn bè tìm và kết bạn với bạn bằng tên này. 2–32 ký tự, không trùng với người khác." }
+                            label { class: "form-field", style: "text-align: left;",
+                                span { class: "form-label", "Tên đăng nhập mới" }
+                                input { maxlength: "32", value: "{value}", autocomplete: "off", oninput: move |e| { value.set(e.value()); error.set(None); } }
+                            }
+                            if let Some(e) = error() { div { class: "status-badge error", "{e}" } }
+                        }
+                        div { class: "story-actions",
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Hủy bỏ" }
+                            button { r#type: "button", class: "btn-primary", disabled: !valid, onclick: move |_| step.set(UserStep::Confirm), "Tiếp tục" }
+                        }
+                    },
+                    UserStep::Confirm => rsx! {
+                        div { class: "story-body",
+                            h2 { class: "story-title", "Xác nhận đổi tên" }
+                            p { class: "story-text", "Tên đăng nhập sẽ đổi từ " strong { "{current}" } " thành " strong { "{v}" } ". Bạn bè hiện tại vẫn giữ kết nối với bạn." }
+                            if let Some(e) = error() { div { class: "status-badge error", "{e}" } }
+                        }
+                        div { class: "story-actions",
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| step.set(UserStep::Edit), "Quay lại" }
+                            button { r#type: "button", class: "btn-primary", disabled: busy(),
+                                onclick: move |_| {
+                                    let name = value().trim().to_string();
+                                    busy.set(true);
+                                    spawn(async move {
+                                        match library::change_username(&name).await {
+                                            Ok(_) => { step.set(UserStep::Done); on_changed.call(name); }
+                                            Err(e) => {
+                                                error.set(Some(match e.code.as_str() {
+                                                    "username_taken" => "Tên này đã có người dùng".to_string(),
+                                                    "invalid_username" | "username_invalid" => "Tên không hợp lệ".to_string(),
+                                                    other => format!("Không đổi được tên ({other})"),
+                                                }));
+                                                step.set(UserStep::Edit);
+                                            }
+                                        }
+                                        busy.set(false);
+                                    });
+                                },
+                                if busy() { span { class: "spinner" } } else { "Đổi tên" }
+                            }
+                        }
+                    },
+                    UserStep::Done => rsx! {
+                        div { class: "story-body",
+                            h2 { class: "story-title", "Đã đổi tên" }
+                            p { class: "story-text", "Tên đăng nhập mới của bạn là " strong { "{v}" } "." }
+                        }
+                        div { class: "story-actions single",
+                            button { r#type: "button", class: "btn-primary", onclick: move |_| on_close.call(()), "Xong" }
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> Element {
+    let mut sessions = use_signal(Vec::<SessionItem>::new);
+    let mut loading = use_signal(|| true);
+    let mut confirm_all = use_signal(|| false);
+    let mut confirm_one = use_signal(|| Option::<String>::None);
+    let mut notice = use_signal(|| Option::<(bool, String)>::None);
+    let reload = move || {
+        spawn(async move {
+            if let Ok(list) = library::sessions_list().await {
+                on_count.call(list.len());
+                sessions.set(list);
+            }
+            loading.set(false);
+        });
+    };
+    use_effect(move || reload());
+    let others = sessions.read().iter().filter(|s| !s.is_current).count();
+    rsx! {
+        div { class: "modal-overlay", onclick: move |_| on_close.call(()),
+            div { class: "modal-dialog story-dialog wide", role: "dialog", aria_modal: "true", aria_label: "Thiết bị đã đăng nhập", onclick: move |e| e.stop_propagation(),
+                onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
+                div { class: "story-art",
+                    button { r#type: "button", class: "icon-btn story-close", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon {} }
+                    Illustration { kind: "devices".to_string() }
+                }
+                div { class: "story-body",
+                    h2 { class: "story-title", "Thiết bị đã đăng nhập" }
+                    p { class: "story-text", "Đăng xuất những thiết bị bạn không nhận ra. Thiết bị bị đăng xuất cần đăng nhập lại." }
+                }
+                div { class: "device-list",
+                    if loading() { div { class: "empty-chat-inner", "Đang tải" } }
+                    for s in sessions() {
+                        div { key: "{s.id}", class: "device-row",
+                            span { class: "device-icon", DevicesIcon { size: 20 } }
+                            div { class: "settings-row-text",
+                                span { class: "settings-label",
+                                    "{device_label(s.device_name.as_deref())}"
+                                    if s.is_current { span { class: "chip-current", "Thiết bị này" } }
+                                }
+                                span { class: "settings-sublabel",
+                                    "{s.ip_address.clone().unwrap_or_else(|| \"IP không rõ\".into())} · hoạt động {s.last_active.as_deref().map(relative_time).unwrap_or_default()}"
+                                }
+                            }
+                            if !s.is_current {
+                                if confirm_one().as_deref() == Some(s.id.as_str()) {
+                                    div { class: "device-confirm",
+                                        button { r#type: "button", class: "btn-ghost", onclick: move |_| confirm_one.set(None), "Hủy" }
+                                        button { r#type: "button", class: "btn-danger",
+                                            onclick: { let id = s.id.clone(); move |_| {
+                                                let id = id.clone();
+                                                spawn(async move {
+                                                    match library::sessions_revoke(&id).await {
+                                                        Ok(_) => notice.set(Some((false, "Đã đăng xuất thiết bị".into()))),
+                                                        Err(_) => notice.set(Some((true, "Không đăng xuất được thiết bị".into()))),
+                                                    }
+                                                    confirm_one.set(None);
+                                                    reload();
+                                                });
+                                            }},
+                                            "Đăng xuất"
+                                        }
+                                    }
+                                } else {
+                                    button { r#type: "button", class: "btn-secondary", onclick: { let id = s.id.clone(); move |_| confirm_one.set(Some(id.clone())) }, "Đăng xuất" }
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Some((is_err, msg)) = notice() {
+                    div { style: "padding: 0 var(--space-5);", div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" } }
+                }
+                div { class: "story-actions",
+                    if confirm_all() {
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_all.set(false), "Hủy" }
+                        button { r#type: "button", class: "btn-danger",
+                            onclick: move |_| {
+                                spawn(async move {
+                                    match library::sessions_revoke_others().await {
+                                        Ok(_) => notice.set(Some((false, "Đã đăng xuất mọi thiết bị khác".into()))),
+                                        Err(_) => notice.set(Some((true, "Không thực hiện được".into()))),
+                                    }
+                                    confirm_all.set(false);
+                                    reload();
+                                });
+                            },
+                            "Xác nhận đăng xuất {others} thiết bị"
+                        }
+                    } else {
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Đóng" }
+                        button { r#type: "button", class: "btn-danger-outline", disabled: others == 0, onclick: move |_| confirm_all.set(true), "Đăng xuất tất cả thiết bị khác" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn AccountSecurity(current_username: String, on_username_changed: EventHandler<String>) -> Element {
+    let mut username = use_signal(|| current_username.clone());
+    let mut dialog = use_signal(|| Option::<&'static str>::None);
+    let mut device_count = use_signal(|| Option::<usize>::None);
+    use_effect(move || {
+        spawn(async move {
+            if let Ok(list) = library::sessions_list().await {
+                device_count.set(Some(list.len()));
+            }
+        });
+    });
+    rsx! {
+        div { class: "settings-group",
+            div { class: "settings-group-title", "Thông tin tài khoản" }
+            div { class: "settings-list",
+                div { class: "settings-row",
+                    div { class: "settings-row-text", span { class: "settings-label", "Tên đăng nhập" } span { class: "settings-sublabel", "{username}" } }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| dialog.set(Some("username")), "Chỉnh sửa" }
+                }
+                div { class: "settings-row",
+                    div { class: "settings-row-text",
+                        span { class: "settings-label", "Email" }
+                        span { class: "settings-sublabel", "ChatW không lưu email. Bạn đăng nhập bằng Google; máy chủ chỉ giữ mã định danh ẩn danh." }
+                    }
+                    span { class: "chip-privacy", LockIcon { size: 14 } "Không lưu" }
+                }
+                div { class: "settings-row",
+                    div { class: "settings-row-text",
+                        span { class: "settings-label", "Số điện thoại" }
+                        span { class: "settings-sublabel", "Không cần số điện thoại để dùng ChatW." }
+                    }
+                    span { class: "chip-privacy", LockIcon { size: 14 } "Không yêu cầu" }
+                }
+            }
+        }
+        div { class: "settings-group",
+            div { class: "settings-group-title", "Mật khẩu và bảo mật" }
+            div { class: "settings-list",
+                div { class: "settings-row",
+                    div { class: "settings-row-text",
+                        span { class: "settings-label", "Phương thức đăng nhập" }
+                        span { class: "settings-sublabel", "Google OAuth (PKCE). Bật xác minh 2 bước trên tài khoản Google để bảo vệ thêm." }
+                    }
+                }
+                button { r#type: "button", class: "settings-row row-button", onclick: move |_| dialog.set(Some("devices")),
+                    div { class: "settings-row-text",
+                        span { class: "settings-label", "Thiết bị đã đăng nhập" }
+                        span { class: "settings-sublabel", "Xem và đăng xuất từ xa" }
+                    }
+                    span { class: "row-trail",
+                        if let Some(n) = device_count() { "{n} thiết bị" }
+                        ChevronRightIcon { size: 16 }
+                    }
+                }
+            }
+        }
+        if dialog() == Some("username") {
+            UsernameDialog {
+                current: username(),
+                on_close: move |_| dialog.set(None),
+                on_changed: move |n: String| { username.set(n.clone()); on_username_changed.call(n); },
+            }
+        }
+        if dialog() == Some("devices") {
+            DevicesDialog { on_close: move |_| dialog.set(None), on_count: move |n| device_count.set(Some(n)) }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Library: custom emoji and GIFs
+// ---------------------------------------------------------------------------
+
+#[component]
+pub fn EmojiSettings() -> Element {
+    let mut items = use_signal(Vec::<LibraryItem>::new);
+    let mut name = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let mut notice = use_signal(|| Option::<(bool, String)>::None);
+    let reload = move || { spawn(async move { if let Ok(l) = library::emojis_list().await { items.set(l); } }); };
+    use_effect(move || reload());
+    let n = name().trim().to_string();
+    let valid = (2..=32).contains(&n.len()) && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    rsx! {
+        div { class: "settings-group",
+            div { class: "settings-group-title", "Custom emoji" }
+            div { class: "settings-group-desc", "Tên tiếng Anh gồm chữ, số, gạch dưới (ví dụ party_cat). Ảnh vuông PNG/GIF/WebP ≤ 2 MB, hiển thị như :party_cat: trong tin nhắn." }
+            div { class: "sticker-upload",
+                input { maxlength: "32", placeholder: "emoji_name", aria_label: "Tên emoji", value: "{name}", oninput: move |e| name.set(e.value()) }
+                label { class: if busy() || !valid { "btn-avatar-upload disabled" } else { "btn-avatar-upload" },
+                    input {
+                        id: "emoji-file-input", r#type: "file", accept: "image/png,image/gif,image/webp,image/avif", style: "display: none;",
+                        disabled: busy() || !valid,
+                        onchange: move |_| {
+                            let nm = name().trim().to_string();
+                            busy.set(true);
+                            notice.set(None);
+                            spawn(async move {
+                                let res: Result<(), String> = async {
+                                    let (bytes, mime) = platform::read_selected_file_raw("emoji-file-input").await?;
+                                    let url = library::upload_media(bytes, &mime).await.map_err(|e| format!("Upload failed ({})", e.code))?;
+                                    library::emojis_create(&nm, &url).await.map_err(|e| if e.code == "emoji_name_taken" { "Tên emoji đã tồn tại".to_string() } else { format!("Không thêm được emoji ({})", e.code) })?;
+                                    Ok(())
+                                }.await;
+                                match res {
+                                    Ok(()) => { name.set(String::new()); notice.set(Some((false, format!(":{nm}: đã sẵn sàng")))); reload(); }
+                                    Err(e) if e == "no_file" => {}
+                                    Err(e) if e == "too_large" => notice.set(Some((true, "Tệp lớn hơn 2 MB".into()))),
+                                    Err(e) => notice.set(Some((true, e))),
+                                }
+                                busy.set(false);
+                            });
+                        },
+                    }
+                    if busy() { span { class: "spinner" } } else { "Chọn ảnh và thêm" }
+                }
+            }
+            if let Some((is_err, msg)) = notice() { div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" } }
+            if items.read().is_empty() {
+                div { class: "sidebar-empty", "Chưa có emoji riêng." }
+            } else {
+                div { class: "library-grid",
+                    for it in items() {
+                        div { key: "{it.id}", class: "library-cell", title: ":{it.name}:",
+                            img { src: "{platform::resolve_asset_url(&it.file_url)}", alt: ":{it.name}:", loading: "lazy" }
+                            span { class: "library-name", ":{it.name}:" }
+                            button { r#type: "button", class: "sticker-remove", aria_label: "Delete :{it.name}:",
+                                onclick: { let id = it.id.clone(); move |_| { let id = id.clone(); spawn(async move { let _ = library::emojis_delete(&id).await; reload(); }); } },
+                                CloseIcon { size: 14 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn GifSettings() -> Element {
+    let mut items = use_signal(Vec::<LibraryItem>::new);
+    let mut name = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let mut notice = use_signal(|| Option::<(bool, String)>::None);
+    let reload = move || { spawn(async move { if let Ok(l) = library::gifs_list().await { items.set(l); } }); };
+    use_effect(move || reload());
+    rsx! {
+        div { class: "settings-group",
+            div { class: "settings-group-title", "My GIFs" }
+            div { class: "settings-group-desc", "Tải GIF động (≤ 2 MB) hoặc lưu ảnh động có sẵn của ChatW vào bộ sưu tập để gửi nhanh." }
+            div { class: "sticker-upload",
+                input { maxlength: "64", placeholder: "GIF name", aria_label: "Tên GIF", value: "{name}", oninput: move |e| name.set(e.value()) }
+                label { class: if busy() { "btn-avatar-upload disabled" } else { "btn-avatar-upload" },
+                    input {
+                        id: "gif-file-input", r#type: "file", accept: "image/gif,image/webp,image/png", style: "display: none;",
+                        disabled: busy(),
+                        onchange: move |_| {
+                            let nm = { let n = name().trim().to_string(); if n.is_empty() { "GIF".to_string() } else { n } };
+                            busy.set(true);
+                            notice.set(None);
+                            spawn(async move {
+                                let res: Result<(), String> = async {
+                                    let (bytes, mime) = platform::read_selected_file_raw("gif-file-input").await?;
+                                    let url = library::upload_media(bytes, &mime).await.map_err(|e| format!("Upload failed ({})", e.code))?;
+                                    library::gifs_create(&nm, &url).await.map_err(|e| format!("Không lưu được GIF ({})", e.code))?;
+                                    Ok(())
+                                }.await;
+                                match res {
+                                    Ok(()) => { name.set(String::new()); notice.set(Some((false, "Đã thêm GIF".into()))); reload(); }
+                                    Err(e) if e == "no_file" => {}
+                                    Err(e) if e == "too_large" => notice.set(Some((true, "Tệp lớn hơn 2 MB".into()))),
+                                    Err(e) => notice.set(Some((true, e))),
+                                }
+                                busy.set(false);
+                            });
+                        },
+                    }
+                    if busy() { span { class: "spinner" } } else { "Chọn GIF và tải lên" }
+                }
+            }
+            if let Some((is_err, msg)) = notice() { div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" } }
+            div { class: "library-grid gifs",
+                for it in items() {
+                    div { key: "{it.id}", class: "library-cell", title: "{it.name}",
+                        img { src: "{platform::resolve_asset_url(&it.file_url)}", alt: "{it.name}", loading: "lazy" }
+                        span { class: "library-name", "{it.name}" }
+                        button { r#type: "button", class: "sticker-remove", aria_label: "Delete {it.name}",
+                            onclick: { let id = it.id.clone(); move |_| { let id = id.clone(); spawn(async move { let _ = library::gifs_delete(&id).await; reload(); }); } },
+                            CloseIcon { size: 14 }
+                        }
+                    }
+                }
+            }
+        }
+        div { class: "settings-group",
+            div { class: "settings-group-title", "ChatW Motion" }
+            div { class: "library-grid gifs",
+                for (nm, url) in BUILTIN_GIFS {
+                    {
+                        let saved = items.read().iter().any(|g| g.file_url == url);
+                        rsx! {
+                            div { key: "{url}", class: "library-cell", title: "{nm}",
+                                img { src: "{url}", alt: "{nm}", loading: "lazy" }
+                                span { class: "library-name", "{nm}" }
+                                if !saved {
+                                    button { r#type: "button", class: "save-chip", aria_label: "Save {nm}",
+                                        onclick: move |_| { spawn(async move { let _ = library::gifs_create(nm, url).await; reload(); }); },
+                                        "Save"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum LibTab { Sticker, Emoji, Gif }
+
+#[component]
+pub fn LibrarySettings(current_user_id: String) -> Element {
+    let mut tab = use_signal(|| LibTab::Sticker);
+    rsx! {
+        div { class: "guide-hero compact",
+            Illustration { kind: "library".to_string() }
+            div {
+                div { class: "settings-group-title", "Thư viện của bạn" }
+                div { class: "settings-group-desc", "Sticker, emoji và GIF bạn thêm ở đây dùng được trong mọi cuộc trò chuyện. Tên luôn là tiếng Anh." }
+                div { class: "segmented", role: "tablist",
+                    button { r#type: "button", role: "tab", class: if tab() == LibTab::Sticker { "active" } else { "" }, onclick: move |_| tab.set(LibTab::Sticker), "Sticker" }
+                    button { r#type: "button", role: "tab", class: if tab() == LibTab::Emoji { "active" } else { "" }, onclick: move |_| tab.set(LibTab::Emoji), "Emoji" }
+                    button { r#type: "button", role: "tab", class: if tab() == LibTab::Gif { "active" } else { "" }, onclick: move |_| tab.set(LibTab::Gif), "GIF" }
+                }
+            }
+        }
+        match tab() {
+            LibTab::Sticker => rsx! { StickerSettings { current_user_id: current_user_id.clone() } },
+            LibTab::Emoji => rsx! { EmojiSettings {} },
+            LibTab::Gif => rsx! { GifSettings {} },
         }
     }
 }

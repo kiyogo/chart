@@ -204,14 +204,18 @@ pub fn NavigationSidebar(
                                     let unread = unread_counts.get(&friend.id).copied().unwrap_or(0);
                                     let preview = last_previews
                                         .get(&friend.id)
-                                        .map(|t| if crate::components::messages::sticker_url_of(t).is_some() { "Đã gửi một sticker".to_string() } else { t.clone() })
+                                        .map(|t| crate::components::messages::preview_text(t))
                                         .unwrap_or_else(|| "Bắt đầu trò chuyện".to_string());
                                     let f_click = friend.clone();
+                                    let (np_cls, np_style) = crate::components::profile_card::nameplate_style(friend.nameplate.as_deref(), friend.custom_nameplate_url.as_deref());
+                                    let name_fx = crate::components::profile_card::name_effect_class(friend.name_effect.as_deref());
+                                    let shown_name = friend.display_name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| friend.username.clone());
                                     rsx! {
                                         button {
                                             key: "{friend.id}",
                                             r#type: "button",
-                                            class: if is_selected { "chat-item selected" } else { "chat-item" },
+                                            class: if is_selected { "chat-item selected {np_cls}" } else { "chat-item {np_cls}" },
+                                            style: "{np_style}",
                                             onclick: move |_| on_select_friend.call(f_click.clone()),
                                             Avatar {
                                                 name: friend.username.clone(),
@@ -221,8 +225,8 @@ pub fn NavigationSidebar(
                                             div { class: "chat-item-info",
                                                 div { class: "chat-item-header",
                                                     span {
-                                                        class: if unread > 0 { "chat-item-name unread" } else { "chat-item-name" },
-                                                        "{friend.username}"
+                                                        class: if unread > 0 { "chat-item-name unread {name_fx}" } else { "chat-item-name {name_fx}" },
+                                                        "{shown_name}"
                                                     }
                                                     if unread > 0 {
                                                         span { class: "chat-item-badge", "{format_badge(unread)}" }

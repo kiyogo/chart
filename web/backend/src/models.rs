@@ -142,6 +142,20 @@ pub struct UpdateProfileRequest {
     pub avatar_decoration: Option<String>,
     #[serde(default)]
     pub profile_effect: Option<String>,
+    #[serde(default)]
+    pub avatar_effect: Option<String>,
+    #[serde(default)]
+    pub name_effect: Option<String>,
+    #[serde(default)]
+    pub nameplate: Option<String>,
+    #[serde(default)]
+    pub custom_decoration_url: Option<String>,
+    #[serde(default)]
+    pub custom_nameplate_url: Option<String>,
+    #[serde(default)]
+    pub custom_effect_url: Option<String>,
+    #[serde(default)]
+    pub custom_effect_anim: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -164,6 +178,13 @@ pub struct UserProfileResponse {
     pub avatar_decoration: String,
     pub profile_effect: String,
     pub member_since: DateTime<Utc>,
+    pub avatar_effect: String,
+    pub name_effect: String,
+    pub nameplate: String,
+    pub custom_decoration_url: Option<String>,
+    pub custom_nameplate_url: Option<String>,
+    pub custom_effect_url: Option<String>,
+    pub custom_effect_anim: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

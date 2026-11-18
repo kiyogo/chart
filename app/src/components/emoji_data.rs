@@ -45,7 +45,7 @@ pub fn with_skin_tone(emoji: &str, tone: &str) -> String {
 pub const CATEGORIES: &[EmojiCategory] = &[
     EmojiCategory {
         id: "smileys",
-        label: "Mặt cười & cảm xúc",
+        label: "Smileys & Emotion",
         icon: "😀",
         items: &[
             ("😀", "grinning smile happy cuoi vui"), ("😃", "smiley happy cuoi"), ("😄", "smile happy laugh cuoi"),
@@ -95,7 +95,7 @@ pub const CATEGORIES: &[EmojiCategory] = &[
     },
     EmojiCategory {
         id: "people",
-        label: "Con người & cơ thể",
+        label: "People & Body",
         icon: "👋",
         items: &[
             ("👋", "wave hello chao vay tay"), ("🤚", "raised back hand"), ("🖐️", "hand fingers splayed"), ("✋", "raised hand dung"),
@@ -135,7 +135,7 @@ pub const CATEGORIES: &[EmojiCategory] = &[
     },
     EmojiCategory {
         id: "nature",
-        label: "Động vật & thiên nhiên",
+        label: "Animals & Nature",
         icon: "🐶",
         items: &[
             ("🐶", "dog cho"), ("🐱", "cat meo"), ("🐭", "mouse chuot"), ("🐹", "hamster"), ("🐰", "rabbit tho"),
@@ -176,7 +176,7 @@ pub const CATEGORIES: &[EmojiCategory] = &[
     },
     EmojiCategory {
         id: "food",
-        label: "Đồ ăn & thức uống",
+        label: "Food & Drink",
         icon: "🍔",
         items: &[
             ("🍏", "green apple tao xanh"), ("🍎", "apple tao"), ("🍐", "pear le"), ("🍊", "orange cam"), ("🍋", "lemon chanh"),
@@ -206,7 +206,7 @@ pub const CATEGORIES: &[EmojiCategory] = &[
     },
     EmojiCategory {
         id: "activities",
-        label: "Hoạt động",
+        label: "Activities",
         icon: "⚽",
         items: &[
             ("⚽", "soccer bong da"), ("🏀", "basketball bong ro"), ("🏈", "american football"), ("⚾", "baseball"),
@@ -231,7 +231,7 @@ pub const CATEGORIES: &[EmojiCategory] = &[
     },
     EmojiCategory {
         id: "travel",
-        label: "Du lịch & địa điểm",
+        label: "Travel & Places",
         icon: "🚗",
         items: &[
             ("🚗", "car xe hoi"), ("🚕", "taxi"), ("🚙", "suv"), ("🚌", "bus xe buyt"), ("🚎", "trolleybus"), ("🏎️", "racing car"),
@@ -264,7 +264,7 @@ pub const CATEGORIES: &[EmojiCategory] = &[
     },
     EmojiCategory {
         id: "objects",
-        label: "Đồ vật",
+        label: "Objects",
         icon: "💡",
         items: &[
             ("⌚", "watch dong ho"), ("📱", "mobile phone dien thoai"), ("💻", "laptop may tinh"), ("⌨️", "keyboard ban phim"),
@@ -310,7 +310,7 @@ pub const CATEGORIES: &[EmojiCategory] = &[
     },
     EmojiCategory {
         id: "symbols",
-        label: "Biểu tượng",
+        label: "Symbols",
         icon: "❤️",
         items: &[
             ("✅", "check done xong dung"), ("☑️", "ballot check"), ("✔️", "check mark"), ("❌", "cross mark sai"), ("❎", "cross button"),

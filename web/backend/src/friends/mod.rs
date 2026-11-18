@@ -44,6 +44,14 @@ pub struct FriendItem {
     pub id: Uuid,
     pub username: String,
     pub avatar_url: Option<String>,
+    /// Public profile flair shown in lists (nameplate, name effect, status).
+    pub display_name: Option<String>,
+    pub nameplate: String,
+    pub custom_nameplate_url: Option<String>,
+    pub name_effect: String,
+    pub profile_color: Option<String>,
+    pub status_text: Option<String>,
+    pub status_emoji: Option<String>,
 }
 
 pub fn routes() -> Router<AppState> {
@@ -351,7 +359,9 @@ async fn handle_list_friends(
         SELECT
             CASE WHEN f.user_a = $1 THEN f.user_b ELSE f.user_a END AS "friend_id!",
             u.username as "username!",
-            u.avatar_url as "avatar_url"
+            u.avatar_url as "avatar_url",
+            u.display_name, u.nameplate, u.custom_nameplate_url, u.name_effect, u.profile_color,
+            u.status_text, u.status_emoji
         FROM friendships f
         JOIN users u ON u.id = (CASE WHEN f.user_a = $1 THEN f.user_b ELSE f.user_a END)
         WHERE f.user_a = $1 OR f.user_b = $1
@@ -368,6 +378,13 @@ async fn handle_list_friends(
             id: r.friend_id,
             username: r.username,
             avatar_url: r.avatar_url,
+            display_name: r.display_name,
+            nameplate: r.nameplate,
+            custom_nameplate_url: r.custom_nameplate_url,
+            name_effect: r.name_effect,
+            profile_color: r.profile_color,
+            status_text: r.status_text,
+            status_emoji: r.status_emoji,
         })
         .collect();
 
