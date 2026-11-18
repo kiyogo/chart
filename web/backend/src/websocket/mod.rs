@@ -181,6 +181,24 @@ pub enum WsEvent {
         muted: bool,
         camera_off: bool,
     },
+    /// Partner read DMs up to `seq` (only sent when the reader shares receipts).
+    #[serde(rename = "message.read")]
+    MessageRead(serde_json::Value),
+    /// A conversation's shared wallpaper changed.
+    #[serde(rename = "wallpaper.updated")]
+    WallpaperUpdated(serde_json::Value),
+    /// New message in a user <-> bot conversation.
+    #[serde(rename = "bot.message")]
+    BotMessage(serde_json::Value),
+    /// Someone asked to join a group that requires approval.
+    #[serde(rename = "group.join_request")]
+    GroupJoinRequest(serde_json::Value),
+    /// Group management settings changed.
+    #[serde(rename = "group.settings")]
+    GroupSettings(serde_json::Value),
+    /// Labels / pins / conversation preferences changed on another device.
+    #[serde(rename = "prefs.updated")]
+    PrefsUpdated(serde_json::Value),
 }
 
 pub struct WsHub {

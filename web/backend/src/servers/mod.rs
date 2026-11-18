@@ -32,6 +32,8 @@ pub struct ChannelMessagesQuery {
 
 pub fn server_routes() -> Router<AppState> {
     Router::new()
+        .route("/invite-preview/{code}", get(handle_invite_preview))
+        .route("/{id}/settings", get(handle_get_settings).put(handle_update_settings))
         .route("/", post(handle_create_server).get(handle_list_servers))
         .route("/discover", get(handle_discover_servers))
         .route("/join/{code}", post(handle_join_server_by_invite))
@@ -241,6 +243,7 @@ async fn handle_discover_servers(
         r#"
         SELECT s.id, s.name, s.description, s.icon_url, s.owner_id, s.created_at
         FROM servers s
+        WHERE s.is_public AND s.verification_status = 'verified'
         ORDER BY s.created_at DESC
         LIMIT 25
         "#
@@ -274,8 +277,9 @@ async fn handle_join_server_direct(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
+    // Direct join (without an invite) is only possible for verified public communities.
     let srv = sqlx::query!(
-        "SELECT id, name, description, icon_url, owner_id, created_at FROM servers WHERE id = $1",
+        "SELECT id, name, description, icon_url, owner_id, created_at FROM servers WHERE id = $1 AND is_public AND verification_status = 'verified'",
         server_id
     )
     .fetch_optional(&state.db)
@@ -1018,4 +1022,110 @@ async fn handle_post_channel_message(
         .await;
 
     Ok(Json(item))
+}
+
+
+#[derive(serde::Serialize)]
+struct ServerSettings {
+    is_public: bool,
+    public_index: bool,
+    verification_status: String,
+    banner_url: Option<String>,
+    is_owner: bool,
+}
+
+async fn handle_get_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(server_id): Path<Uuid>,
+) -> AppResult<Json<ServerSettings>> {
+    let uid = crate::privacy::auth_user(&state, &headers).await?;
+    let r = sqlx::query!(
+        r#"SELECT s.owner_id, s.is_public, s.public_index, s.verification_status, s.banner_url
+           FROM servers s JOIN server_members m ON m.server_id = s.id AND m.user_id = $2
+           WHERE s.id = $1"#,
+        server_id,
+        uid
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::Forbidden("not_a_member"))?;
+    Ok(Json(ServerSettings {
+        is_public: r.is_public,
+        public_index: r.public_index,
+        verification_status: r.verification_status,
+        banner_url: r.banner_url,
+        is_owner: r.owner_id == uid,
+    }))
+}
+
+#[derive(serde::Deserialize)]
+struct UpdateServerSettings {
+    is_public: Option<bool>,
+    public_index: Option<bool>,
+    banner_url: Option<String>,
+}
+
+async fn handle_update_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(server_id): Path<Uuid>,
+    Json(p): Json<UpdateServerSettings>,
+) -> AppResult<Json<ServerSettings>> {
+    let uid = crate::privacy::auth_user(&state, &headers).await?;
+    let owner = sqlx::query_scalar!("SELECT owner_id FROM servers WHERE id = $1", server_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(AppError::NotFound("server_not_found"))?;
+    if owner != uid {
+        return Err(AppError::Forbidden("owner_only"));
+    }
+    if let Some(ref b) = p.banner_url {
+        if !b.is_empty() && (!b.starts_with("/uploads/media/") || b.contains("..")) {
+            return Err(AppError::BadRequest("invalid_banner_url"));
+        }
+    }
+    sqlx::query!(
+        r#"UPDATE servers SET
+            is_public = COALESCE($1, is_public),
+            verification_status = CASE
+                WHEN $1 IS TRUE AND verification_status IN ('none', 'rejected') THEN 'pending'
+                WHEN $1 IS FALSE THEN 'none'
+                ELSE verification_status END,
+            public_index = COALESCE($2, public_index),
+            banner_url = CASE WHEN $3::text IS NULL THEN banner_url WHEN $3 = '' THEN NULL ELSE $3 END
+        WHERE id = $4"#,
+        p.is_public,
+        p.public_index,
+        p.banner_url,
+        server_id
+    )
+    .execute(&state.db)
+    .await?;
+    handle_get_settings(State(state), headers, Path(server_id)).await
+}
+
+/// Card shown before accepting a community invite link.
+async fn handle_invite_preview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(code): Path<String>,
+) -> AppResult<Json<serde_json::Value>> {
+    let uid = crate::privacy::auth_user(&state, &headers).await?;
+    let r = sqlx::query!(
+        r#"SELECT s.id, s.name, s.description, s.icon_url, s.banner_url,
+                  (SELECT COUNT(*) FROM server_members WHERE server_id = s.id) AS "members!",
+                  EXISTS (SELECT 1 FROM server_members WHERE server_id = s.id AND user_id = $2) AS "is_member!"
+           FROM server_invites i JOIN servers s ON s.id = i.server_id
+           WHERE i.code = $1"#,
+        code,
+        uid
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("invite_not_found"))?;
+    Ok(Json(serde_json::json!({
+        "kind": "server", "id": r.id, "name": r.name, "description": r.description, "avatar_url": r.icon_url,
+        "banner_url": r.banner_url, "member_count": r.members, "require_approval": false, "is_member": r.is_member,
+    })))
 }

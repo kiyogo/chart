@@ -1,3 +1,4 @@
+pub mod manage;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -33,6 +34,13 @@ pub struct MessagesQuery {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/invite-preview/{code}", get(manage::invite_preview))
+        .route("/{group_id}/settings", get(manage::get_settings).put(manage::update_settings))
+        .route("/{group_id}/join-requests", get(manage::list_join_requests))
+        .route("/{group_id}/join-requests/{user_id}/{decision}", post(manage::decide_join_request))
+        .route("/{group_id}/block", post(manage::block_group).delete(manage::unblock_group))
+        .route("/{group_id}/invite-link", get(manage::get_invite_link))
+        .route("/{group_id}/invite-link/regenerate", post(manage::regenerate_invite_link))
         .route("/", post(create_group).get(list_my_groups))
         .route("/join/{code}", post(join_by_invite))
         .route(
@@ -89,7 +97,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 // Helper: check group membership and return user role
-async fn get_member_role(
+pub(crate) async fn get_member_role(
     db: &sqlx::PgPool,
     group_id: Uuid,
     user_id: Uuid,
@@ -150,7 +158,7 @@ async fn create_group(
 
     // Add additional members
     for mid in payload.member_ids {
-        if mid != user.id {
+        if mid != user.id && crate::privacy::can_add_to_group(&state.db, user.id, mid, None).await? {
             sqlx::query!(
                 r#"
                 INSERT INTO group_members (group_id, user_id, role)
@@ -311,8 +319,16 @@ async fn update_group(
         .await?
         .ok_or(AppError::Forbidden("not_a_group_member"))?;
 
-    if role != "owner" && role != "admin" {
-        return Err(AppError::Forbidden("insufficient_permissions"));
+    if !manage::is_admin_role(&role) {
+        if payload.description.is_some() {
+            return Err(AppError::Forbidden("insufficient_permissions"));
+        }
+        if payload.name.is_some() {
+            manage::check_member_may(&state.db, group_id, &role, "rename").await?;
+        }
+        if payload.avatar_url.is_some() {
+            manage::check_member_may(&state.db, group_id, &role, "avatar").await?;
+        }
     }
 
     let row = sqlx::query!(
@@ -476,6 +492,9 @@ async fn add_member(
     } else {
         return Err(AppError::BadRequest("missing_user_id_or_username"));
     };
+    if !crate::privacy::can_add_to_group(&state.db, user.id, target_user_id, Some(group_id)).await? {
+        return Err(AppError::Forbidden("cannot_add_user"));
+    }
 
     sqlx::query!(
         r#"
@@ -740,6 +759,40 @@ async fn join_by_invite(
         }
     }
 
+    let settings = manage::load_settings(&state.db, invite.group_id).await?;
+    if !settings.allow_link_join {
+        return Err(AppError::Forbidden("link_join_disabled"));
+    }
+    let blocked = sqlx::query_scalar!(r#"SELECT 1 AS "one!" FROM group_blocks WHERE user_id = $1 AND group_id = $2"#, user.id, invite.group_id)
+        .fetch_optional(&state.db)
+        .await?;
+    if blocked.is_some() {
+        return Err(AppError::Forbidden("group_blocked"));
+    }
+    let already = get_member_role(&state.db, invite.group_id, user.id).await?.is_some();
+    if settings.require_approval && !already {
+        sqlx::query!(
+            "INSERT INTO group_join_requests (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            invite.group_id,
+            user.id
+        )
+        .execute(&state.db)
+        .await?;
+        let admins: Vec<Uuid> = sqlx::query_scalar!(
+            "SELECT user_id FROM group_members WHERE group_id = $1 AND role IN ('owner', 'admin')",
+            invite.group_id
+        )
+        .fetch_all(&state.db)
+        .await?;
+        state
+            .ws_hub
+            .send_to_users(
+                &admins,
+                WsEvent::GroupJoinRequest(serde_json::json!({ "group_id": invite.group_id, "user_id": user.id, "username": user.username })),
+            )
+            .await;
+        return Err(AppError::Conflict("join_request_pending"));
+    }
     let mut tx = state.db.begin().await?;
 
     // Increment invite usage
@@ -837,9 +890,11 @@ async fn list_messages(
         r#"
         SELECT m.id, m.seq, m.group_id, m.channel_id, m.sender_id, m.content, m.reply_to_id,
                m.is_pinned, m.is_edited, m.created_at,
-               u.username, u.avatar_url
+               u.username, u.avatar_url,
+               b.display_name AS "bot_name?", b.avatar_url AS "bot_avatar?"
         FROM group_messages m
         JOIN users u ON m.sender_id = u.id
+        LEFT JOIN bots b ON b.id = m.bot_id
         WHERE m.group_id = $1
           AND ($2::uuid IS NULL OR m.channel_id = $2)
           AND m.seq < $3
@@ -894,8 +949,9 @@ async fn list_messages(
                 group_id: r.group_id,
                 channel_id: r.channel_id,
                 sender_id: r.sender_id,
-                sender_name: r.username.unwrap_or_default(),
-                sender_avatar_url: r.avatar_url,
+                is_bot: r.bot_name.is_some(),
+                sender_name: r.bot_name.clone().unwrap_or_else(|| r.username.clone().unwrap_or_default()),
+                sender_avatar_url: if r.bot_name.is_some() { r.bot_avatar.clone() } else { r.avatar_url.clone() },
                 content: r.content,
                 reply_to_id: r.reply_to_id,
                 is_pinned: r.is_pinned,
@@ -921,9 +977,15 @@ async fn send_message(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
-    let role = get_member_role(&state.db, group_id, user.id).await?;
-    if role.is_none() {
-        return Err(AppError::Forbidden("not_a_group_member"));
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+    manage::check_member_may(&state.db, group_id, &role, "send").await?;
+    let body = payload.content.trim_start();
+    for (prefix, action) in [("poll:", "poll"), ("note:", "note"), ("reminder:", "reminder")] {
+        if body.starts_with(prefix) {
+            manage::check_member_may(&state.db, group_id, &role, action).await?;
+        }
     }
 
     if payload.content.trim().is_empty() {
@@ -960,6 +1022,7 @@ async fn send_message(
         is_pinned: false,
         is_edited: false,
         reactions: Vec::new(),
+        is_bot: false,
         created_at: row.created_at,
     };
 
@@ -975,6 +1038,7 @@ async fn send_message(
         .ws_hub
         .send_to_users(&member_ids, WsEvent::GroupMessageNew { message: item.clone() })
         .await;
+    crate::bots::on_group_message(&state.db, &item).await;
 
     Ok(Json(item))
 }
@@ -1065,9 +1129,7 @@ async fn pin_message(
         .await?
         .ok_or(AppError::Forbidden("not_a_group_member"))?;
 
-    if role != "owner" && role != "admin" {
-        return Err(AppError::Forbidden("insufficient_permissions"));
-    }
+    manage::check_member_may(&state.db, group_id, &role, "pin").await?;
 
     let updated = sqlx::query!(
         r#"

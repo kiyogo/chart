@@ -1,0 +1,12 @@
+# Tasks 007
+- [x] T1 Migration 0011 (devices, privacy, blocks, labels, prefs, reads, wallpapers, group mgmt, bots, business, admin)
+- [x] T2 privacy module + enforcement in messages / friends / calls / groups / user search
+- [x] T3 convo module (labels, prefs, reads, wallpapers, self chat) + device labels & rename
+- [x] T4 group management module + permission checks + join approval + invite links
+- [x] T5 bots module (management + Bot API)
+- [x] T6 business module + public pages + dynamic sitemap
+- [x] T7 directory + admin API + admin web + server discover/join fix
+- [ ] T8 Client: Chính mình, pins, labels, read receipts, block, reply, privacy settings
+- [ ] T9 Client: notifications, PIN lock, auto-reply, suggestions, paste, polls / notes / reminders
+- [ ] T10 Client: customization + wallpapers; group management UI; invite links; bots; business; search; i18n
+- [ ] T11 Tests, screenshots, reports, push

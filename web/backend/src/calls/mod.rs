@@ -138,6 +138,18 @@ async fn start_call(
         if receiver_id == user.id {
             return Err(AppError::BadRequest("cannot_call_self"));
         }
+        // Only friends can ring each other; blocks and "nobody can call me" are enforced here.
+        if !crate::privacy::are_friends(&state.db, user.id, receiver_id).await?
+            || crate::privacy::is_blocked_either(&state.db, user.id, receiver_id).await?
+        {
+            return Err(AppError::Forbidden("cannot_call_user"));
+        }
+        let accepts = sqlx::query_scalar!("SELECT privacy_calls FROM users WHERE id = $1", receiver_id)
+            .fetch_one(&state.db)
+            .await?;
+        if accepts == "nobody" {
+            return Err(AppError::Forbidden("calls_disabled"));
+        }
 
         let cid = Uuid::new_v4();
         sqlx::query!(

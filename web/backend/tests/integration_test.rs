@@ -262,9 +262,9 @@ async fn test_full_e2ee_chat_flow() {
     .unwrap();
 
     // 2. Create sessions for User A, User B, and User C
-    let cookie_a = create_session(&pool, &config, user_a_id).await.unwrap();
-    let cookie_b = create_session(&pool, &config, user_b_id).await.unwrap();
-    let cookie_c = create_session(&pool, &config, user_c_id).await.unwrap();
+    let cookie_a = create_session(&pool, &config, user_a_id, Some("Mozilla/5.0 (X11; Linux x86_64)")).await.unwrap();
+    let cookie_b = create_session(&pool, &config, user_b_id, None).await.unwrap();
+    let cookie_c = create_session(&pool, &config, user_c_id, None).await.unwrap();
 
     let session_header_a = cookie_a.split(';').next().unwrap();
     let session_header_b = cookie_b.split(';').next().unwrap();
@@ -787,7 +787,7 @@ async fn test_full_e2ee_chat_flow() {
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     // 27. SECURITY HARDENING & AUDIT LOGGING: Session revocation creates audit log
-    let _cookie_a2 = create_session(&pool, &config, user_a_id).await.unwrap();
+    let _cookie_a2 = create_session(&pool, &config, user_a_id, None).await.unwrap();
 
     let req = Request::get("/api/auth/sessions")
         .header(header::COOKIE, session_header_a)

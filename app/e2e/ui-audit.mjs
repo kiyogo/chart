@@ -86,6 +86,13 @@ async function api(user, method, url, data) {
 async function waitApp(page) {
   await page.waitForSelector('.chat-item, .empty-chat, .empty-chat-inner, .workspace-shell, .app-shell', { timeout: 30000 });
   await page.waitForTimeout(600);
+  // First run shows the welcome tour; record it once and dismiss it.
+  const skip = page.locator('button[aria-label="Bỏ qua giới thiệu"]');
+  if (await skip.isVisible().catch(() => false)) {
+    if (!results.tourSeen) { results.tourSeen = true; record('welcome tour shown to a new account', true, ''); }
+    await skip.click();
+    await page.waitForTimeout(300);
+  }
 }
 
 async function openDm(page, partner) {
@@ -234,6 +241,9 @@ async function main() {
   // DM reaction from Alice on Bob's "OK", seen by Bob in realtime
   const okRow = A.locator('.message-row.received', { hasText: 'OK' }).last();
   await okRow.hover();
+  await okRow.locator('.react-trigger').hover();
+  await A.waitForTimeout(250);
+  record('reaction tray expands on hover', await okRow.locator('.react-option').first().isVisible(), '');
   await okRow.locator('button[aria-label="Thả biểu cảm 👍"]').click();
   await B.waitForTimeout(1200);
   record('DM reaction syncs to the other side', await B.locator('.message-row.sent .reaction-pill', { hasText: '👍' }).count() > 0, '');
@@ -308,7 +318,7 @@ async function main() {
   record('pinned groups appear in rail', await A.locator('.rail-pin.group').count() > 0, '');
 
   // Settings › Sticker: create a pack and upload a real PNG
-  await A.locator('.settings-nav-item', { hasText: 'Sticker' }).click();
+  await A.locator('.settings-nav-item', { hasText: 'Thư viện' }).click();
   await A.waitForTimeout(600);
   await A.locator('input[aria-label="Tên bộ sticker mới"]').fill('Bộ thử nghiệm');
   await A.locator('.inline-form button[type="submit"]').click();

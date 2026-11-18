@@ -77,7 +77,7 @@ pub fn routes() -> Router<AppState> {
         .route("/providers", get(handle_providers))
         .route("/me", get(handle_me))
         .route("/sessions", get(handle_list_sessions).delete(handle_delete_other_sessions))
-        .route("/sessions/{session_id}", axum::routing::delete(handle_delete_session))
+        .route("/sessions/{session_id}", axum::routing::delete(handle_delete_session).patch(handle_rename_session))
         .route("/logout", post(handle_logout))
 }
 
@@ -233,7 +233,8 @@ async fn handle_google_callback(
     };
 
     // Create session cookie
-    let (raw_token, session_cookie) = create_session_raw(&state.db, &state.config, user_id).await?;
+    let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok());
+    let (raw_token, session_cookie) = create_session_raw(&state.db, &state.config, user_id, ua).await?;
 
     if let Some(ticket_id) = saved.ticket {
         state
@@ -330,6 +331,7 @@ async fn handle_logout(State(state): State<AppState>, headers: HeaderMap) -> App
 
 async fn handle_dev_login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     body: Option<Json<DevLoginRequest>>,
 ) -> AppResult<Response> {
     if !state.config.dev_login_enabled {
@@ -383,7 +385,8 @@ async fn handle_dev_login(
     };
     tx.commit().await?;
 
-    let session_cookie = create_session(&state.db, &state.config, user_id).await?;
+    let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok());
+    let session_cookie = create_session(&state.db, &state.config, user_id, ua).await?;
     let mut response = StatusCode::OK.into_response();
     response.headers_mut().insert(
         header::SET_COOKIE,
@@ -397,6 +400,7 @@ async fn handle_dev_login(
 pub struct SessionResponseItem {
     pub id: Uuid,
     pub device_name: Option<String>,
+    pub device_label: Option<String>,
     pub ip_address: Option<String>,
     pub last_active: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
@@ -419,7 +423,7 @@ async fn handle_list_sessions(
 
     let rows = sqlx::query!(
         r#"
-        SELECT id, device_name, ip_address, last_active, created_at, (token_hash = $2) as "is_current!"
+        SELECT id, device_name, device_label, ip_address, last_active, created_at, (token_hash = $2) as "is_current!"
         FROM sessions
         WHERE user_id = $1
         ORDER BY last_active DESC
@@ -435,6 +439,7 @@ async fn handle_list_sessions(
         .map(|r| SessionResponseItem {
             id: r.id.unwrap_or_else(Uuid::new_v4),
             device_name: r.device_name,
+            device_label: r.device_label,
             ip_address: r.ip_address,
             last_active: r.last_active,
             created_at: r.created_at,
@@ -443,6 +448,39 @@ async fn handle_list_sessions(
         .collect();
 
     Ok(Json(sessions))
+}
+
+#[derive(serde::Deserialize)]
+struct RenameSessionReq {
+    label: String,
+}
+
+/// Rename one of the caller's devices (shown in "Chính mình" and the device list).
+async fn handle_rename_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<Uuid>,
+    Json(p): Json<RenameSessionReq>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let label = p.label.trim().to_string();
+    if label.is_empty() || label.chars().count() > 40 {
+        return Err(AppError::BadRequest("invalid_device_label"));
+    }
+    let res = sqlx::query!(
+        "UPDATE sessions SET device_label = $1 WHERE id = $2 AND user_id = $3",
+        label,
+        session_id,
+        user.id
+    )
+    .execute(&state.db)
+    .await?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("session_not_found"));
+    }
+    Ok(Json(serde_json::json!({ "label": label })))
 }
 
 /// Sign out every other device of the current user (keeps this session).

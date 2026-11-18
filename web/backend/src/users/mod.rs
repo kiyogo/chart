@@ -212,6 +212,12 @@ async fn handle_search(
         WHERE u.id <> $1
           AND u.username IS NOT NULL
           AND u.username_norm LIKE $2 || '%'
+          AND u.suspended_at IS NULL
+          AND (u.privacy_discoverable OR EXISTS (
+                SELECT 1 FROM friendships f WHERE f.user_a = LEAST($1, u.id) AND f.user_b = GREATEST($1, u.id)))
+          AND NOT EXISTS (
+                SELECT 1 FROM user_blocks b
+                WHERE (b.blocker_id = u.id AND b.blocked_id = $1) OR (b.blocker_id = $1 AND b.blocked_id = u.id))
         ORDER BY u.username_norm ASC
         LIMIT 20
         "#,

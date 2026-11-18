@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>ChatW Admin</title>
+  <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="mark">A</span><span>ChatW Admin</span></div>
+    <nav id="tabs" class="tabs" role="tablist">
+      <button data-tab="overview" class="active" role="tab">Tổng quan</button>
+      <button data-tab="verify" role="tab">Xác minh <span id="pending-badge" class="badge" hidden></span></button>
+      <button data-tab="users" role="tab">Tài khoản</button>
+      <button data-tab="audit" role="tab">Nhật ký</button>
+    </nav>
+    <div id="who" class="who"></div>
+  </header>
+  <main id="main">
+    <section id="gate" class="panel" hidden>
+      <h1>Cần quyền quản trị</h1>
+      <p id="gate-text">Đăng nhập ChatW bằng tài khoản quản trị rồi quay lại trang này.</p>
+      <a class="btn" href="/">Mở ChatW để đăng nhập</a>
+    </section>
+    <section id="overview" class="panel tab-panel">
+      <h1>Tổng quan nền tảng</h1>
+      <div id="stats" class="stats"></div>
+    </section>
+    <section id="verify" class="panel tab-panel" hidden>
+      <h1>Hàng đợi xác minh</h1>
+      <p class="muted">Cộng đồng, nhóm, bot và trang Kinh doanh muốn hiện công khai phải được duyệt.</p>
+      <div id="verify-list" class="list"></div>
+    </section>
+    <section id="users" class="panel tab-panel" hidden>
+      <h1>Tài khoản</h1>
+      <input id="user-q" class="search" placeholder="Tìm theo tên đăng nhập" />
+      <div id="user-list" class="list"></div>
+    </section>
+    <section id="audit" class="panel tab-panel" hidden>
+      <h1>Nhật ký kiểm toán</h1>
+      <div id="audit-list" class="list"></div>
+    </section>
+  </main>
+  <div id="toast" class="toast" hidden></div>
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

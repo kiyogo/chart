@@ -18,7 +18,8 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache},
     calls,
     config::Config,
-    crypto, db, friends, groups, library, messages, servers, stickers, typing, users, webrtc,
+    admin, bots, business, convo, crypto, db, directory, friends, groups, library, messages, privacy, public_pages, servers,
+    stickers, typing, users, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -53,16 +54,6 @@ async fn robots_txt() -> ([(axum::http::header::HeaderName, &'static str); 1], &
     (
         [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
         "User-agent: *\nAllow: /\n\nSitemap: /sitemap.xml\n",
-    )
-}
-
-async fn sitemap_xml() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
-    (
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "application/xml; charset=utf-8",
-        )],
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>https://github.com/kiyogo/chart</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>",
     )
 }
 
@@ -136,10 +127,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/channels", servers::channel_routes())
         .nest("/stickers", stickers::routes())
         .nest("/media", library::routes())
+        .nest("/privacy", privacy::routes())
+        .nest("/bots", bots::routes())
+        .nest("/business", business::routes())
+        .nest("/directory", directory::routes())
+        .nest("/admin", admin::routes())
+        .nest("/bot", bots::api_routes())
+        .nest("/conversations", convo::routes())
         .nest("/webrtc", webrtc::routes())
         .nest("/typing", typing::routes())
         .merge(websocket::routes())
-        .with_state(state);
+        .with_state(state.clone());
+    let public_pages = public_pages::routes().with_state(state.clone());
+    admin::bootstrap_admins(&state.db).await;
 
     let _ = std::fs::create_dir_all(config.uploads_dir.join("avatars"));
     tracing::info!(dir = ?config.uploads_dir, "serving user uploaded files");
@@ -147,8 +147,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = Router::new()
         .nest("/api", api_router)
         .route("/robots.txt", axum::routing::get(robots_txt))
-        .route("/sitemap.xml", axum::routing::get(sitemap_xml))
         .route("/llms.txt", axum::routing::get(llms_txt))
+        .merge(public_pages)
         .nest_service("/uploads", ServeDir::new(&config.uploads_dir));
 
     // 7. Static file serving (if frontend dist exists)
@@ -168,6 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Method::POST,
             Method::PUT,
             Method::DELETE,
+            Method::PATCH,
             Method::OPTIONS,
         ])
         .allow_headers(AllowHeaders::list([

@@ -406,6 +406,9 @@ pub struct GroupMessageItem {
     #[serde(default)]
     pub reactions: Vec<GroupReactionItem>,
     pub created_at: DateTime<Utc>,
+    /// Message posted by a bot through the Bot API.
+    #[serde(default)]
+    pub is_bot: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

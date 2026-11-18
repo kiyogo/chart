@@ -103,6 +103,16 @@ async fn handle_send_request(
     if sender.id == receiver_id {
         return Err(AppError::BadRequest("cannot_friend_self"));
     }
+    if crate::privacy::is_blocked_either(&state.db, sender.id, receiver_id).await? {
+        // Same answer as "not found" so a block is not revealed.
+        return Err(AppError::NotFound("receiver_not_found"));
+    }
+    let accepts = sqlx::query_scalar!("SELECT privacy_friend_requests FROM users WHERE id = $1", receiver_id)
+        .fetch_one(&state.db)
+        .await?;
+    if accepts == "nobody" {
+        return Err(AppError::Forbidden("friend_requests_disabled"));
+    }
 
     let u_a = sender.id.min(receiver_id);
     let u_b = sender.id.max(receiver_id);

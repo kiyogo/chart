@@ -98,8 +98,17 @@ async fn handle_send_message(
     let sender = authenticate_session(&state.db, &state.config, session_token).await?;
 
     let recipient_id = payload.recipient_id;
-    if sender.id == recipient_id {
-        return Err(AppError::BadRequest("cannot_message_self"));
+    let is_self_chat = sender.id == recipient_id;
+    if is_self_chat {
+        // "Chính mình": notes to yourself, encrypted to your own key.
+        let enabled = sqlx::query_scalar!("SELECT self_chat FROM users WHERE id = $1", sender.id)
+            .fetch_one(&state.db)
+            .await?;
+        if !enabled {
+            return Err(AppError::Forbidden("self_chat_disabled"));
+        }
+    } else if crate::privacy::is_blocked_either(&state.db, sender.id, recipient_id).await? {
+        return Err(AppError::Forbidden("blocked"));
     }
 
     // 1. Verify friendship
@@ -114,7 +123,7 @@ async fn handle_send_message(
     .await?
     .is_some();
 
-    if !is_friend {
+    if !is_friend && !is_self_chat {
         return Err(AppError::Forbidden("not_friends"));
     }
 
@@ -217,6 +226,7 @@ async fn handle_send_message(
         .await;
 
     // Send real-time event to sender (for other active sessions / tabs of sender)
+    if !is_self_chat {
     state
         .ws_hub
         .send_to_user(
@@ -232,6 +242,7 @@ async fn handle_send_message(
             },
         )
         .await;
+    }
 
     Ok(Json(SendMessageResponse {
         id: payload.message_id,
@@ -250,6 +261,7 @@ async fn handle_get_messages(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
+    let is_self_chat = user.id == friend_id;
     // Verify friendship
     let u_a = user.id.min(friend_id);
     let u_b = user.id.max(friend_id);
@@ -262,7 +274,7 @@ async fn handle_get_messages(
     .await?
     .is_some();
 
-    if !is_friend {
+    if !is_friend && !is_self_chat {
         return Err(AppError::Forbidden("not_friends"));
     }
 
