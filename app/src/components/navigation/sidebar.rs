@@ -107,7 +107,6 @@ pub fn NavigationSidebar(
         .filter(|f| q.is_empty() || f.username.to_lowercase().contains(&q))
         .filter(|f| match filter {
             "unread" => unread_counts.get(&f.id).copied().unwrap_or(0) > 0,
-            "groups" => false,
             _ => true,
         })
         .cloned()
@@ -115,7 +114,7 @@ pub fn NavigationSidebar(
     let groups_shown: Vec<GroupItem> = unique_groups
         .iter()
         .filter(|g| q.is_empty() || g.name.to_lowercase().contains(&q))
-        .filter(|_| filter == "all" || filter == "groups")
+        .filter(|_| filter == "all")
         .cloned()
         .collect();
 
@@ -177,7 +176,7 @@ pub fn NavigationSidebar(
                         }
                     }
                     div { class: "sidebar-filters", role: "tablist", aria_label: "Lọc cuộc trò chuyện",
-                        for (val, label) in [("all", "Tất cả"), ("unread", "Chưa đọc"), ("direct", "Cá nhân"), ("groups", "Nhóm")] {
+                        for (val, label) in [("all", "Tất cả"), ("unread", "Chưa đọc")] {
                             button {
                                 key: "{val}",
                                 r#type: "button",
@@ -191,7 +190,6 @@ pub fn NavigationSidebar(
                     }
 
                     div { class: "sidebar-scrollable",
-                        if filter != "groups" {
                         div { class: "sidebar-section-header",
                             span { "Tin nhắn trực tiếp" }
                         }
@@ -241,10 +239,9 @@ pub fn NavigationSidebar(
                             }
                         }
 
-                        }
 
                         // Separated Group DMs section
-                        if filter == "all" || filter == "groups" {
+                        if filter == "all" {
                         div { class: "sidebar-section-header",
                             span { "Nhóm" }
                             button {
