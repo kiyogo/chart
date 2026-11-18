@@ -126,42 +126,64 @@ pub fn get_user_keys(user_id: Option<&str>) -> Option<UserKeys> {
         Some(uid) if !uid.is_empty() => format!("chatw_e2ee_keys_{uid}"),
         _ => "chatw_e2ee_keys_current".to_string(),
     };
-    let raw = platform::storage_get(&primary_key).or_else(|| {
-        if user_id.is_some() {
-            let legacy = platform::storage_get("chatw_e2ee_keys_current")?;
-            platform::storage_set(&primary_key, &legacy);
-            Some(legacy)
-        } else {
-            None
-        }
-    })?;
-    let stored: StoredUserKeys = serde_json::from_str(&raw).ok()?;
-    let ecdh_vec = base64url_decode(&stored.ecdh_secret_b64).ok()?;
-    let ecdsa_vec = base64url_decode(&stored.ecdsa_secret_b64).ok()?;
+    // Never fall back to chatw_e2ee_keys_current when user_id is specified;
+    // doing so leaks Account A's private key into Account B on the same browser.
+    let raw = platform::storage_get(&primary_key)?;
+    parse_stored_user_keys(&raw).ok()
+}
+
+fn parse_stored_user_keys(raw: &str) -> Result<UserKeys, String> {
+    let stored: StoredUserKeys = serde_json::from_str(raw).map_err(|_| "invalid_key_json")?;
+    let ecdh_vec = base64url_decode(&stored.ecdh_secret_b64)?;
+    let ecdsa_vec = base64url_decode(&stored.ecdsa_secret_b64)?;
     if ecdh_vec.len() != 32 || ecdsa_vec.len() != 32 {
-        return None;
+        return Err("invalid_key_length".into());
     }
     let mut ecdh_secret = [0u8; 32];
     ecdh_secret.copy_from_slice(&ecdh_vec);
     let mut ecdsa_secret = [0u8; 32];
     ecdsa_secret.copy_from_slice(&ecdsa_vec);
-    UserKeys::from_secrets(ecdh_secret, ecdsa_secret).ok()
+    UserKeys::from_secrets(ecdh_secret, ecdsa_secret)
 }
 
 pub fn create_and_store_user_keys(user_id: Option<&str>) -> UserKeys {
     let keys = UserKeys::generate();
+    store_user_keys(user_id, &keys);
+    keys
+}
+
+pub fn store_user_keys(user_id: Option<&str>, keys: &UserKeys) {
     let stored = StoredUserKeys {
         ecdh_secret_b64: base64url_encode(&keys.ecdh_secret),
         ecdsa_secret_b64: base64url_encode(&keys.ecdsa_secret),
     };
     if let Ok(json) = serde_json::to_string(&stored) {
         if let Some(uid) = user_id
-            && !uid.is_empty() {
-                platform::storage_set(&format!("chatw_e2ee_keys_{uid}"), &json);
-            }
-        platform::storage_set("chatw_e2ee_keys_current", &json);
+            && !uid.is_empty()
+        {
+            platform::storage_set(&format!("chatw_e2ee_keys_{uid}"), &json);
+        } else {
+            platform::storage_set("chatw_e2ee_keys_current", &json);
+        }
     }
-    keys
+}
+
+pub fn export_user_keys_json(keys: &UserKeys) -> String {
+    let stored = StoredUserKeys {
+        ecdh_secret_b64: base64url_encode(&keys.ecdh_secret),
+        ecdsa_secret_b64: base64url_encode(&keys.ecdsa_secret),
+    };
+    serde_json::to_string(&stored).unwrap_or_default()
+}
+
+pub fn import_user_keys_json(user_id: &str, raw_json: &str) -> Result<UserKeys, String> {
+    let keys = parse_stored_user_keys(raw_json.trim())?;
+    store_user_keys(Some(user_id), &keys);
+    Ok(keys)
+}
+
+pub fn clear_legacy_active_key() {
+    platform::storage_set("chatw_e2ee_keys_current", "");
 }
 
 pub fn get_or_verify_peer_keys(
@@ -327,23 +349,48 @@ pub struct DecryptedMessage {
     pub text: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DecryptError {
+    WrongDeviceKey,
+    SignatureMismatch,
+    Corrupted(String),
+}
+
+impl DecryptError {
+    pub fn user_message(&self) -> String {
+        match self {
+            DecryptError::WrongDeviceKey => {
+                "Tin nhắn được mã hóa bằng khóa thiết bị khác (nhập khóa sao lưu trong Cài đặt để giải mã)".to_string()
+            }
+            DecryptError::SignatureMismatch => {
+                "Không xác minh được chữ ký người gửi (khóa đối phương đã thay đổi)".to_string()
+            }
+            DecryptError::Corrupted(_) => "Dữ liệu mã hóa không hợp lệ".to_string(),
+        }
+    }
+}
+
 #[allow(deprecated)]
-pub fn decrypt_chat_message(
+pub fn decrypt_chat_message_detailed(
     envelope_b64: &str,
     my_keys: &UserKeys,
     sender_ecdsa_raw: &[u8; 65],
-) -> Result<DecryptedMessage, String> {
-    let raw = base64url_decode(envelope_b64)?;
+) -> Result<DecryptedMessage, DecryptError> {
+    let raw = base64url_decode(envelope_b64).map_err(DecryptError::Corrupted)?;
     if raw.len() < 255 {
-        return Err("Envelope too short".into());
+        return Err(DecryptError::Corrupted("Envelope too short".into()));
     }
     if raw[0] != PROTOCOL_VERSION {
-        return Err("Unsupported protocol version".into());
+        return Err(DecryptError::Corrupted("Unsupported protocol version".into()));
     }
 
-    let message_id = Uuid::from_slice(&raw[1..17]).map_err(|_| "invalid_msg_uuid")?;
-    let sender_id = Uuid::from_slice(&raw[17..33]).map_err(|_| "invalid_sender_uuid")?;
-    let recipient_id = Uuid::from_slice(&raw[33..49]).map_err(|_| "invalid_recip_uuid")?;
+    let message_id =
+        Uuid::from_slice(&raw[1..17]).map_err(|_| DecryptError::Corrupted("invalid_msg_uuid".into()))?;
+    let sender_id = Uuid::from_slice(&raw[17..33])
+        .map_err(|_| DecryptError::Corrupted("invalid_sender_uuid".into()))?;
+    let recipient_id = Uuid::from_slice(&raw[33..49])
+        .map_err(|_| DecryptError::Corrupted("invalid_recip_uuid".into()))?;
+    let recipient_fp = &raw[49..81];
     let aad = &raw[0..81];
     let ephemeral_pub_raw = &raw[81..146];
     let salt = &raw[146..162];
@@ -353,19 +400,25 @@ pub fn decrypt_chat_message(
     let sig_bytes = &raw[sig_start..];
     let body = &raw[0..sig_start];
 
+    // Check recipient fingerprint first so we distinguish old/other device key honestly
+    if recipient_fp != my_keys.fingerprint {
+        return Err(DecryptError::WrongDeviceKey);
+    }
+
     // 1. Verify ECDSA signature
-    let verifying_key =
-        VerifyingKey::from_sec1_bytes(sender_ecdsa_raw).map_err(|_| "invalid_sender_ecdsa")?;
-    let signature = Signature::from_slice(sig_bytes).map_err(|_| "invalid_signature_format")?;
+    let verifying_key = VerifyingKey::from_sec1_bytes(sender_ecdsa_raw)
+        .map_err(|_| DecryptError::Corrupted("invalid_sender_ecdsa".into()))?;
+    let signature = Signature::from_slice(sig_bytes)
+        .map_err(|_| DecryptError::Corrupted("invalid_signature_format".into()))?;
     verifying_key
         .verify(body, &signature)
-        .map_err(|_| "Signature verification failed")?;
+        .map_err(|_| DecryptError::SignatureMismatch)?;
 
     // 2. ECDH shared secret
-    let ephem_pk =
-        PublicKey::from_sec1_bytes(ephemeral_pub_raw).map_err(|_| "invalid_ephemeral_key")?;
-    let my_sk =
-        SecretKey::from_slice(&my_keys.ecdh_secret).map_err(|_| "invalid_my_ecdh_secret")?;
+    let ephem_pk = PublicKey::from_sec1_bytes(ephemeral_pub_raw)
+        .map_err(|_| DecryptError::Corrupted("invalid_ephemeral_key".into()))?;
+    let my_sk = SecretKey::from_slice(&my_keys.ecdh_secret)
+        .map_err(|_| DecryptError::Corrupted("invalid_my_ecdh_secret".into()))?;
     let shared = p256::ecdh::diffie_hellman(my_sk.to_nonzero_scalar(), ephem_pk.as_affine());
 
     // 3. HKDF-SHA-256
@@ -373,10 +426,11 @@ pub fn decrypt_chat_message(
     let hk = Hkdf::<Sha256>::new(Some(salt), shared.raw_secret_bytes());
     let mut aes_key = [0u8; 32];
     hk.expand(info.as_bytes(), &mut aes_key)
-        .map_err(|_| "hkdf_expand_failed")?;
+        .map_err(|_| DecryptError::Corrupted("hkdf_expand_failed".into()))?;
 
     // 4. AES-256-GCM decrypt
-    let cipher = Aes256Gcm::new_from_slice(&aes_key).map_err(|_| "aes_init_failed")?;
+    let cipher = Aes256Gcm::new_from_slice(&aes_key)
+        .map_err(|_| DecryptError::Corrupted("aes_init_failed".into()))?;
     let plaintext = cipher
         .decrypt(
             Nonce::from_slice(nonce_bytes),
@@ -385,14 +439,27 @@ pub fn decrypt_chat_message(
                 aad,
             },
         )
-        .map_err(|_| "aes_decrypt_failed")?;
+        .map_err(|_| DecryptError::Corrupted("aes_decrypt_failed".into()))?;
 
-    let text = String::from_utf8(plaintext).map_err(|_| "invalid_utf8")?;
+    let text = String::from_utf8(plaintext)
+        .map_err(|_| DecryptError::Corrupted("invalid_utf8".into()))?;
     Ok(DecryptedMessage {
         message_id: message_id.to_string(),
         sender_id: sender_id.to_string(),
         recipient_id: recipient_id.to_string(),
         text,
+    })
+}
+
+pub fn decrypt_chat_message(
+    envelope_b64: &str,
+    my_keys: &UserKeys,
+    sender_ecdsa_raw: &[u8; 65],
+) -> Result<DecryptedMessage, String> {
+    decrypt_chat_message_detailed(envelope_b64, my_keys, sender_ecdsa_raw).map_err(|e| match e {
+        DecryptError::WrongDeviceKey => "Wrong device key".into(),
+        DecryptError::SignatureMismatch => "Signature verification failed".into(),
+        DecryptError::Corrupted(s) => s,
     })
 }
 
@@ -441,7 +508,58 @@ mod tests {
         let tampered_b64 = base64url_encode(&tampered);
         assert!(decrypt_chat_message(&tampered_b64, &bob, &alice.ecdsa_raw).is_err());
 
-        // Wrong sender key must fail
-        assert!(decrypt_chat_message(&recip_env, &bob, &bob.ecdsa_raw).is_err());
+        // Wrong sender key must fail with SignatureMismatch
+        assert_eq!(
+            decrypt_chat_message_detailed(&recip_env, &bob, &bob.ecdsa_raw),
+            Err(DecryptError::SignatureMismatch)
+        );
+    }
+
+    #[test]
+    fn test_e2ee_wrong_device_key_and_backup_recovery() {
+        let alice = UserKeys::generate();
+        let bob_old = UserKeys::generate();
+        let bob_new = UserKeys::generate();
+
+        let bob_peer = get_or_verify_peer_keys(
+            "bob-old-peer",
+            &bob_old.ecdh_raw_b64,
+            &bob_old.ecdsa_raw_b64,
+            &bob_old.fingerprint_b64,
+        )
+        .unwrap();
+
+        let (recip_env, _) = encrypt_chat_message(
+            &Uuid::new_v4().to_string(),
+            &Uuid::new_v4().to_string(),
+            &Uuid::new_v4().to_string(),
+            &alice,
+            &bob_peer,
+            "Tin nhắn bảo mật cần khôi phục",
+        )
+        .unwrap();
+
+        // New device key cannot decrypt envelope meant for old device key
+        assert_eq!(
+            decrypt_chat_message_detailed(&recip_env, &bob_new, &alice.ecdsa_raw),
+            Err(DecryptError::WrongDeviceKey)
+        );
+
+        // Exporting old key and importing it restores decryption cleanly
+        let backup = export_user_keys_json(&bob_old);
+        let restored = import_user_keys_json("bob-restore-test", &backup).expect("import keys");
+        let dec = decrypt_chat_message_detailed(&recip_env, &restored, &alice.ecdsa_raw)
+            .expect("decrypt with restored key");
+        assert_eq!(dec.text, "Tin nhắn bảo mật cần khôi phục");
+    }
+
+    #[test]
+    fn test_e2ee_cross_account_isolation() {
+        let uid_a = format!("iso_a_{}", Uuid::new_v4());
+        let uid_b = format!("iso_b_{}", Uuid::new_v4());
+        let keys_a = create_and_store_user_keys(Some(&uid_a));
+        assert_eq!(get_user_keys(Some(&uid_a)).unwrap().fingerprint, keys_a.fingerprint);
+        // Account B must NEVER inherit Account A's keys
+        assert!(get_user_keys(Some(&uid_b)).is_none());
     }
 }

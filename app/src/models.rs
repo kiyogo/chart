@@ -124,6 +124,29 @@ pub struct ServerItem {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ServerCategoryItem {
+    pub id: String,
+    pub server_id: String,
+    pub name: String,
+    pub position: i32,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ServerMemberItem {
+    pub server_id: String,
+    pub user_id: String,
+    pub username: String,
+    #[serde(default)]
+    pub nickname: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub roles: Vec<String>,
+    pub joined_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChannelItem {
     pub id: String,
     pub server_id: String,

@@ -383,4 +383,213 @@ pub fn InfoIcon(#[props(default = 18)] size: u32) -> Element {
     }
 }
 
+#[component]
+pub fn HashIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            line { x1: "4", y1: "9", x2: "20", y2: "9" }
+            line { x1: "4", y1: "15", x2: "20", y2: "15" }
+            line { x1: "10", y1: "3", x2: "8", y2: "21" }
+            line { x1: "16", y1: "3", x2: "14", y2: "21" }
+        }
+    }
+}
+
+#[component]
+pub fn VolumeIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            polygon { points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" }
+            path { d: "M15.54 8.46a5 5 0 0 1 0 7.07" }
+            path { d: "M19.07 4.93a10 10 0 0 1 0 14.14" }
+        }
+    }
+}
+
+#[component]
+pub fn MegaphoneIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            path { d: "M3 11l18-5v12L3 14v-3z" }
+            path { d: "M11.6 16.8a3 3 0 1 1-5.8-1.6" }
+        }
+    }
+}
+
+#[component]
+pub fn ChevronDownIcon(#[props(default = 14)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            polyline { points: "6 9 12 15 18 9" }
+        }
+    }
+}
+
+#[component]
+pub fn ChevronRightIcon(#[props(default = 14)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            polyline { points: "9 18 15 12 9 6" }
+        }
+    }
+}
+
+#[component]
+pub fn StickerIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            path { d: "M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z" }
+            path { d: "M15 3v6h6" }
+            path { d: "M10 16s.8 1 2 1c1.3 0 2-1 2-1" }
+            line { x1: "9", y1: "12", x2: "9.01", y2: "12" }
+            line { x1: "15", y1: "12", x2: "15.01", y2: "12" }
+        }
+    }
+}
+
+#[component]
+pub fn ShieldIcon(#[props(default = 14)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            path { d: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" }
+        }
+    }
+}
+
+#[component]
+pub fn UserPlusIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            path { d: "M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }
+            circle { cx: "8.5", cy: "7", r: "4" }
+            line { x1: "20", y1: "8", x2: "20", y2: "14" }
+            line { x1: "23", y1: "11", x2: "17", y2: "11" }
+        }
+    }
+}
+
+#[component]
+pub fn SunIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            circle { cx: "12", cy: "12", r: "5" }
+            line { x1: "12", y1: "1", x2: "12", y2: "3" }
+            line { x1: "12", y1: "21", x2: "12", y2: "23" }
+            line { x1: "4.22", y1: "4.22", x2: "5.64", y2: "5.64" }
+            line { x1: "18.36", y1: "18.36", x2: "19.78", y2: "19.78" }
+            line { x1: "1", y1: "12", x2: "3", y2: "12" }
+            line { x1: "21", y1: "12", x2: "23", y2: "12" }
+            line { x1: "4.22", y1: "19.78", x2: "5.64", y2: "18.36" }
+            line { x1: "18.36", y1: "5.64", x2: "19.78", y2: "4.22" }
+        }
+    }
+}
+
+#[component]
+pub fn MoonIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            path { d: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" }
+        }
+    }
+}
+
+#[component]
+pub fn KeyIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            path { d: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" }
+        }
+    }
+}
+
+
 

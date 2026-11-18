@@ -228,3 +228,4 @@ async fn add_sticker(
         created_at: row.created_at,
     }))
 }
+

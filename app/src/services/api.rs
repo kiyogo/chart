@@ -75,6 +75,39 @@ pub async fn users_upload_avatar(avif_bytes: Vec<u8>) -> Result<AvatarUploadResp
     })
 }
 
+pub async fn users_upload_banner(avif_bytes: Vec<u8>) -> Result<String, ApiError> {
+    let (_, body) =
+        platform::http_request("POST", "/api/users/banner", None, Some((avif_bytes, "image/avif")))
+            .await?;
+    let v: serde_json::Value = serde_json::from_str(&body).map_err(|_| ApiError {
+        code: "invalid_json".into(),
+        status: 200,
+    })?;
+    v.get("banner_url")
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string())
+        .ok_or(ApiError {
+            code: "missing_banner_url".into(),
+            status: 200,
+        })
+}
+
+pub async fn attachments_upload(bytes: Vec<u8>, mime_type: &str) -> Result<String, ApiError> {
+    let (_, body) =
+        platform::http_request("POST", "/api/attachments", None, Some((bytes, mime_type))).await?;
+    let v: serde_json::Value = serde_json::from_str(&body).map_err(|_| ApiError {
+        code: "invalid_json".into(),
+        status: 200,
+    })?;
+    v.get("download_url")
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string())
+        .ok_or(ApiError {
+            code: "missing_download_url".into(),
+            status: 200,
+        })
+}
+
 // --- Keys ---
 
 pub async fn keys_register(
@@ -188,9 +221,81 @@ pub async fn servers_join(code: &str) -> Result<ServerItem, ApiError> {
     post_json(&format!("/api/servers/join/{encoded}"), json!({})).await
 }
 
+pub async fn servers_get_categories(server_id: &str) -> Result<Vec<crate::models::ServerCategoryItem>, ApiError> {
+    let encoded = urlencoding::encode(server_id);
+    get_json(&format!("/api/servers/{encoded}/categories")).await
+}
+
+pub async fn servers_create_category(
+    server_id: &str,
+    name: &str,
+) -> Result<crate::models::ServerCategoryItem, ApiError> {
+    let encoded = urlencoding::encode(server_id);
+    post_json(&format!("/api/servers/{encoded}/categories"), json!({ "name": name })).await
+}
+
 pub async fn servers_get_channels(server_id: &str) -> Result<Vec<ChannelItem>, ApiError> {
     let encoded = urlencoding::encode(server_id);
     get_json(&format!("/api/servers/{encoded}/channels")).await
+}
+
+pub async fn servers_create_channel(
+    server_id: &str,
+    name: &str,
+    category_id: Option<&str>,
+    channel_type: &str,
+) -> Result<ChannelItem, ApiError> {
+    let encoded = urlencoding::encode(server_id);
+    post_json(
+        &format!("/api/servers/{encoded}/channels"),
+        json!({
+            "name": name,
+            "category_id": category_id,
+            "channel_type": channel_type
+        }),
+    )
+    .await
+}
+
+pub async fn servers_get_members(server_id: &str) -> Result<Vec<crate::models::ServerMemberItem>, ApiError> {
+    let encoded = urlencoding::encode(server_id);
+    get_json(&format!("/api/servers/{encoded}/members")).await
+}
+
+pub async fn servers_create_invite(server_id: &str) -> Result<String, ApiError> {
+    let encoded = urlencoding::encode(server_id);
+    let v: serde_json::Value =
+        post_json(&format!("/api/servers/{encoded}/invites"), json!({})).await?;
+    v.get("code")
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_string())
+        .ok_or(ApiError {
+            code: "missing_invite_code".into(),
+            status: 200,
+        })
+}
+
+pub async fn servers_discover() -> Result<Vec<ServerItem>, ApiError> {
+    get_json("/api/servers/discover").await
+}
+
+pub async fn servers_join_direct(server_id: &str) -> Result<ServerItem, ApiError> {
+    let encoded = urlencoding::encode(server_id);
+    post_json(&format!("/api/servers/{encoded}/join"), json!({})).await
+}
+
+pub async fn webrtc_get_voice_participants(channel_id: &str) -> Result<Vec<VoiceStateItem>, ApiError> {
+    let encoded = urlencoding::encode(channel_id);
+    get_json(&format!("/api/webrtc/voice/{encoded}/participants")).await
+}
+
+pub async fn messages_toggle_reaction(message_id: &str, emoji: &str) -> Result<(), ApiError> {
+    let encoded = urlencoding::encode(message_id);
+    post_empty(
+        &format!("/api/messages/{encoded}/reactions"),
+        Some(json!({ "emoji": emoji })),
+    )
+    .await
 }
 
 pub async fn channels_get_messages(

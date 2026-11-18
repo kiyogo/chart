@@ -222,3 +222,147 @@ pub async fn get_viewport_width() -> u32 {
     let mut eval = dioxus::document::eval("dioxus.send(window.innerWidth || 0);");
     eval.recv::<u32>().await.unwrap_or(0)
 }
+
+/// Apply theme ("light" | "dark") to `<html data-theme="...">` and persist locally.
+pub fn apply_theme(theme: &str) {
+    let t = if theme == "dark" { "dark" } else { "light" };
+    storage_set("chatw_theme", t);
+    let _ = dioxus::document::eval(&format!(
+        "document.documentElement.setAttribute('data-theme', '{t}');"
+    ));
+}
+
+pub fn load_saved_theme() -> String {
+    match storage_get("chatw_theme").as_deref() {
+        Some("dark") => "dark".to_string(),
+        _ => "light".to_string(),
+    }
+}
+
+pub fn copy_to_clipboard(text: &str) {
+    let escaped = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
+    let _ = dioxus::document::eval(&format!(
+        "navigator.clipboard && navigator.clipboard.writeText({escaped}).catch(() => {{}});"
+    ));
+}
+
+/// Process a banner image selected from `#banner-file-input` to 960x320 AVIF/WebP/JPEG.
+pub async fn process_selected_banner_bytes() -> Result<Vec<u8>, String> {
+    let js = r#"
+        (async () => {
+            const input = document.getElementById('banner-file-input');
+            if (!input || !input.files || input.files.length === 0) {
+                dioxus.send({ error: 'no_file' });
+                return;
+            }
+            const file = input.files[0];
+            try {
+                const bitmap = await createImageBitmap(file);
+                const w = 960, h = 320;
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) throw new Error('no_canvas');
+                const scale = Math.max(w / bitmap.width, h / bitmap.height);
+                const sw = w / scale, sh = h / scale;
+                const sx = (bitmap.width - sw) / 2, sy = (bitmap.height - sh) / 2;
+                ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, w, h);
+                let blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/avif', 0.8));
+                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/webp', 0.8));
+                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/jpeg', 0.85));
+                if (!blob) throw new Error('encode_failed');
+                const buf = new Uint8Array(await blob.arrayBuffer());
+                let bin = '';
+                for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+                input.value = '';
+                dioxus.send({ b64: btoa(bin) });
+            } catch (e) {
+                input.value = '';
+                dioxus.send({ error: String(e && e.message ? e.message : e) });
+            }
+        })();
+    "#;
+    let mut eval = dioxus::document::eval(js);
+    let val: serde_json::Value = eval.recv().await.map_err(|_| "banner_eval_failed".to_string())?;
+    if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+        return Err(err.to_string());
+    }
+    let b64 = val
+        .get("b64")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "missing_banner_b64".to_string())?;
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|_| "invalid_banner_b64".to_string())
+}
+
+/// Start real browser microphone recording using MediaRecorder.
+pub async fn start_voice_recording() -> Result<(), String> {
+    let js = r#"
+        (async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const chunks = [];
+                const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus' : 'audio/webm';
+                const rec = new MediaRecorder(stream, { mimeType: mime });
+                rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+                window.__chatwVoiceRec = { rec, stream, chunks, mime };
+                rec.start();
+                dioxus.send({ ok: true });
+            } catch (e) {
+                dioxus.send({ error: String(e && e.message ? e.message : e) });
+            }
+        })();
+    "#;
+    let mut eval = dioxus::document::eval(js);
+    let val: serde_json::Value = eval.recv().await.map_err(|_| "rec_start_failed".to_string())?;
+    if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+        return Err(err.to_string());
+    }
+    Ok(())
+}
+
+/// Stop active MediaRecorder and return recorded audio bytes + mime type.
+pub async fn stop_voice_recording() -> Result<(Vec<u8>, String), String> {
+    let js = r#"
+        (async () => {
+            const state = window.__chatwVoiceRec;
+            if (!state) { dioxus.send({ error: 'no_recorder' }); return; }
+            window.__chatwVoiceRec = null;
+            try {
+                await new Promise((resolve) => {
+                    state.rec.onstop = resolve;
+                    if (state.rec.state !== 'inactive') state.rec.stop();
+                    else resolve();
+                });
+                state.stream.getTracks().forEach((t) => t.stop());
+                const blob = new Blob(state.chunks, { type: state.mime || 'audio/webm' });
+                const buf = new Uint8Array(await blob.arrayBuffer());
+                let bin = '';
+                for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+                dioxus.send({ b64: btoa(bin), mime: blob.type || 'audio/webm' });
+            } catch (e) {
+                dioxus.send({ error: String(e && e.message ? e.message : e) });
+            }
+        })();
+    "#;
+    let mut eval = dioxus::document::eval(js);
+    let val: serde_json::Value = eval.recv().await.map_err(|_| "rec_stop_failed".to_string())?;
+    if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+        return Err(err.to_string());
+    }
+    let b64 = val.get("b64").and_then(|v| v.as_str()).ok_or("missing_audio")?;
+    let mime = val
+        .get("mime")
+        .and_then(|v| v.as_str())
+        .unwrap_or("audio/webm")
+        .to_string();
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|_| "invalid_audio_b64".to_string())?;
+    Ok((bytes, mime))
+}

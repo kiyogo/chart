@@ -14,6 +14,12 @@ use crate::{
             LogoutIcon, MenuIcon, PhoneIcon, PlusIcon, SendIcon, ServerIcon, SettingsIcon,
             VideoIcon,
         },
+        navigation::{
+            modals::{CommunityModal, CreateCategoryModal, CreateChannelModal, ServerInviteModal},
+            rail::NavigationRail,
+            sidebar::NavigationSidebar,
+            NavSection,
+        },
         profile_modal::ProfileModal,
         sticker_picker::StickerPicker,
     },

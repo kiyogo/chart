@@ -3,6 +3,7 @@ pub mod calls;
 pub mod emoji_picker;
 pub mod groups;
 pub mod icons;
+pub mod navigation;
 pub mod profile_modal;
+pub mod settings_view;
 pub mod sticker_picker;
-

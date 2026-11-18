@@ -91,6 +91,10 @@ pub fn routes() -> Router<AppState> {
             "/avatar",
             post(handle_upload_avatar).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
         )
+        .route(
+            "/banner",
+            post(handle_upload_banner).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
 }
 
 async fn handle_set_name(
@@ -259,6 +263,49 @@ async fn handle_upload_avatar(
     .await?;
 
     Ok(Json(AvatarUploadResponse { avatar_url }))
+}
+
+async fn handle_upload_banner(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    if body.is_empty() {
+        return Err(AppError::BadRequest("empty_banner_payload"));
+    }
+    if body.len() > 8 * 1024 * 1024 {
+        return Err(AppError::BadRequest("banner_too_large"));
+    }
+
+    let banner_dir = state.config.uploads_dir.join("banners");
+    tokio::fs::create_dir_all(&banner_dir).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to create banner directory");
+        AppError::Internal
+    })?;
+
+    let filename = format!("{}.avif", user.id);
+    let filepath = banner_dir.join(&filename);
+    tokio::fs::write(&filepath, &body).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to write banner file");
+        AppError::Internal
+    })?;
+
+    let now_ts = chrono::Utc::now().timestamp_millis();
+    let banner_url = format!("/uploads/banners/{}?t={}", filename, now_ts);
+
+    sqlx::query!(
+        "UPDATE users SET custom_banner_url = $1 WHERE id = $2",
+        banner_url,
+        user.id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "banner_url": banner_url })))
 }
 
 async fn handle_update_profile(

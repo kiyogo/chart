@@ -9,7 +9,7 @@ pub mod services;
 use dioxus::prelude::*;
 
 use crate::{
-    crypto::e2ee::{create_and_store_user_keys, get_user_keys},
+    crypto::e2ee::{clear_legacy_active_key, create_and_store_user_keys, get_user_keys},
     models::CurrentUser,
     pages::{chat::Chat, login::Login, setup_username::SetupUsername},
     services::api,
@@ -53,7 +53,17 @@ pub fn App() -> Element {
                         None => (create_and_store_user_keys(Some(&me.id)), true),
                     };
 
-                    if !me.has_keys || newly_generated {
+                    // Verify server key matches local active key so peers encrypt to this device's key
+                    let server_key_matches = if me.has_keys && !newly_generated {
+                        api::keys_get(&me.id)
+                            .await
+                            .map(|srv| srv.fingerprint == keys.fingerprint_b64)
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    };
+
+                    if !me.has_keys || newly_generated || !server_key_matches {
                         let _ = api::keys_register(&keys.ecdh_raw_b64, &keys.ecdsa_raw_b64).await;
                     }
 
@@ -72,12 +82,15 @@ pub fn App() -> Element {
     };
 
     use_effect(move || {
+        let saved_theme = platform::load_saved_theme();
+        platform::apply_theme(&saved_theme);
         check_auth();
     });
 
     let handle_logout = move |_| {
         spawn(async move {
             let _ = api::auth_logout().await;
+            clear_legacy_active_key();
             current_user.set(None);
             status.set(AuthStatus::Unauthenticated);
         });
@@ -87,10 +100,12 @@ pub fn App() -> Element {
         document::Style { {THEME_CSS} }
         document::Style { {MAIN_CSS} }
         div { class: "app-layout",
-            main { class: "app-content",
+            div { class: "app-content",
                 match status() {
                     AuthStatus::Loading => rsx! {
-                        div { class: "empty-chat" }
+                        div { class: "auth-container",
+                            div { class: "empty-chat-sub", "Đang khởi tạo phiên làm việc" }
+                        }
                     },
                     AuthStatus::Unauthenticated => rsx! {
                         Login { on_login_success: move |_| check_auth() }
@@ -102,6 +117,7 @@ pub fn App() -> Element {
                         if let Some(user) = current_user() {
                             rsx! {
                                 Chat {
+                                    key: "{user.id}",
                                     current_user_id: user.id,
                                     current_username: user.username,
                                     current_user_avatar_url: user.avatar_url,
@@ -116,7 +132,7 @@ pub fn App() -> Element {
                                 }
                             }
                         } else {
-                            rsx! { div { class: "empty-chat" } }
+                            rsx! { div { class: "auth-container" } }
                         }
                     }
                 }

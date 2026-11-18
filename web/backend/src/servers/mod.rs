@@ -33,8 +33,10 @@ pub struct ChannelMessagesQuery {
 pub fn server_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handle_create_server).get(handle_list_servers))
+        .route("/discover", get(handle_discover_servers))
         .route("/join/{code}", post(handle_join_server_by_invite))
         .route("/{id}", get(handle_get_server).delete(handle_delete_server))
+        .route("/{id}/join", post(handle_join_server_direct))
         .route(
             "/{id}/categories",
             get(handle_list_categories).post(handle_create_category),
@@ -136,6 +138,32 @@ async fn handle_create_server(
     .execute(&mut *tx)
     .await?;
 
+    // Default Voice category & voice channel
+    let voice_cat_id = Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO server_categories (id, server_id, name, position)
+        VALUES ($1, $2, 'Giọng nói', 1)
+        "#,
+        voice_cat_id,
+        server_id
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    let voice_ch_id = Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO channels (id, server_id, category_id, name, channel_type, position, is_private)
+        VALUES ($1, $2, $3, 'Tổng quát', 'voice', 0, FALSE)
+        "#,
+        voice_ch_id,
+        server_id,
+        voice_cat_id
+    )
+    .execute(&mut *tx)
+    .await?;
+
     // Add owner as server member
     sqlx::query!(
         r#"
@@ -194,6 +222,75 @@ async fn handle_list_servers(
         .collect();
 
     Ok(Json(servers))
+}
+
+async fn handle_discover_servers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Vec<ServerItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT s.id, s.name, s.description, s.icon_url, s.owner_id, s.created_at
+        FROM servers s
+        ORDER BY s.created_at DESC
+        LIMIT 25
+        "#
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let servers = rows
+        .into_iter()
+        .map(|r| ServerItem {
+            id: r.id,
+            name: r.name,
+            description: r.description,
+            icon_url: r.icon_url,
+            owner_id: r.owner_id,
+            created_at: r.created_at,
+        })
+        .collect();
+
+    Ok(Json(servers))
+}
+
+async fn handle_join_server_direct(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(server_id): Path<Uuid>,
+) -> AppResult<Json<ServerItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let srv = sqlx::query!(
+        "SELECT id, name, description, icon_url, owner_id, created_at FROM servers WHERE id = $1",
+        server_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("server_not_found"))?;
+
+    sqlx::query!(
+        "INSERT INTO server_members (server_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        server_id,
+        user.id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(ServerItem {
+        id: srv.id,
+        name: srv.name,
+        description: srv.description,
+        icon_url: srv.icon_url,
+        owner_id: srv.owner_id,
+        created_at: srv.created_at,
+    }))
 }
 
 async fn handle_get_server(
