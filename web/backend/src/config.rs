@@ -80,25 +80,20 @@ impl Config {
             })
             .or_else(|| {
                 let cwd = env::current_dir().ok()?;
-                let candidate1 = cwd.join("frontend/dist");
-                if candidate1.exists() {
-                    Some(candidate1)
-                } else {
-                    let candidate2 = cwd.join("../frontend/dist");
-                    if candidate2.exists() {
-                        Some(candidate2)
-                    } else {
-                        None
-                    }
-                }
+                ["web/frontend/dist", "frontend/dist", "../frontend/dist"]
+                    .into_iter()
+                    .map(|p| cwd.join(p))
+                    .find(|p| p.exists())
             })
             .filter(|p| p.exists());
 
         let uploads_dir = if let Ok(custom) = env::var("UPLOADS_DIR") {
             PathBuf::from(custom)
         } else if let Ok(cwd) = env::current_dir() {
-            if cwd.join("backend").exists() {
-                cwd.join("backend").join("uploads")
+            if cwd.join("web/backend").exists() {
+                cwd.join("web/backend/uploads")
+            } else if cwd.join("backend").exists() {
+                cwd.join("backend/uploads")
             } else {
                 cwd.join("uploads")
             }

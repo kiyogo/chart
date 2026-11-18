@@ -181,3 +181,4 @@ pub struct AuditLogItem {
     pub ip_address: Option<String>,
     pub created_at: DateTime<Utc>,
 }
+

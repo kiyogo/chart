@@ -20,7 +20,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'cargo run -p chatw',
-    cwd: '..',
+    cwd: '../..',
     url: 'http://127.0.0.1:8085',
     reuseExistingServer: true,
     timeout: 60000,

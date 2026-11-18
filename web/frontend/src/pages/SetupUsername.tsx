@@ -79,3 +79,4 @@ export function SetupUsername(props: { onComplete: () => void }) {
     </div>
   );
 }
+
