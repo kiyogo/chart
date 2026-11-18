@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use chatw_core::permissions;
+use crate::models::permissions;
 
 pub async fn has_server_permission(
     pool: &PgPool,

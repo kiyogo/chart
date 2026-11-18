@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: false,
   timeout: 30000,
   use: {
-    baseURL: 'http://127.0.0.1:8081',
+    baseURL: 'http://127.0.0.1:8085',
     trace: 'on-first-retry',
   },
   projects: [
@@ -19,10 +19,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: '..\\backend\\target\\release\\chatw.exe',
-    cwd: '..\\backend',
-    url: 'http://127.0.0.1:8081',
+    command: 'cargo run -p chatw',
+    cwd: '..',
+    url: 'http://127.0.0.1:8085',
     reuseExistingServer: true,
-    timeout: 10000,
+    timeout: 60000,
   },
 });

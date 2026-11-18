@@ -211,78 +211,6 @@ input::placeholder {
   margin-top: 4px;
 }
 
-/* Custom Windows Titlebar (Image 2 style) */
-.custom-titlebar {
-  height: 32px;
-  background-color: #18181B;
-  color: #E4E4E7;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  user-select: none;
-  font-size: 12px;
-  font-weight: 500;
-  width: 100%;
-  flex-shrink: 0;
-  border-bottom: 1px solid #27272A;
-  z-index: 9999;
-}
-
-.titlebar-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 12px;
-  height: 100%;
-}
-
-.titlebar-icon {
-  display: flex;
-  align-items: center;
-  color: #3B82F6;
-}
-
-.titlebar-text {
-  font-size: 12px;
-  color: #A1A1AA;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
-}
-
-.titlebar-spacer {
-  flex: 1;
-  height: 100%;
-}
-
-.titlebar-controls {
-  display: flex;
-  height: 100%;
-}
-
-.titlebar-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  height: 100%;
-  background: transparent;
-  color: #D4D4D8;
-  border: none;
-  border-radius: 0;
-  cursor: pointer;
-  transition: background-color 100ms ease, color 100ms ease;
-}
-
-.titlebar-btn:hover {
-  background-color: #27272A;
-  color: #FFFFFF;
-}
-
-.titlebar-btn-close:hover {
-  background-color: #E81123 !important;
-  color: #FFFFFF !important;
-}
-
 /* App Main Layout */
 .app-layout {
   display: flex;
@@ -296,7 +224,7 @@ input::placeholder {
   flex: 1;
   display: flex;
   width: 100%;
-  height: calc(100% - 32px);
+  height: 100%;
   overflow: hidden;
   position: relative;
 }

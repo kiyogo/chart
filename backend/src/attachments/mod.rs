@@ -15,7 +15,7 @@ use crate::{
     },
     error::{AppError, AppResult},
 };
-use chatw_core::AttachmentItem;
+use crate::models::AttachmentItem;
 
 pub fn routes() -> Router<AppState> {
     Router::new()

@@ -8,10 +8,3 @@ uploads/
 Thumbs.db
 test-results/
 playwright-report/
-
-# Tauri desktop build outputs
-frontend/src-tauri/target/
-frontend/src-tauri/gen/
-dist-desktop/
-
-chatw_data/

@@ -7,6 +7,7 @@ pub mod db;
 pub mod error;
 pub mod friends;
 pub mod messages;
+pub mod models;
 pub mod servers;
 pub mod typing;
 pub mod users;

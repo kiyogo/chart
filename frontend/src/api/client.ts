@@ -1,40 +1,5 @@
-// Typed HTTP API Client for chatw
-
-/**
- * Detect the backend base URL.
- * - In the browser (web app): use relative paths (proxied by Vite → backend).
- * - In Tauri desktop app: the webview loads from a tauri:// origin so we need
- *   an absolute URL. Read from VITE_API_BASE env var, or default to the
- *   local backend port used in production.
- */
-/** True when running inside the Tauri desktop shell (bundled or navigated to the backend). */
-export function isTauri(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
-  );
-}
-
-/**
- * True when the page is served from the bundled Tauri asset origin
- * (`tauri://localhost` on macOS/Linux, `http://tauri.localhost` on Windows).
- * Relative `/api` URLs do not exist there, which caused the blank-screen login bug.
- */
-export function isBundledTauriOrigin(): boolean {
-  if (typeof window === 'undefined') return false;
-  const { protocol, hostname } = window.location;
-  return protocol === 'tauri:' || hostname === 'tauri.localhost';
-}
-
-/** Backend origin used by the desktop app. Must match the backend PUBLIC_URL so cookies stay first-party. */
-export const DESKTOP_BACKEND_ORIGIN =
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8085';
-
-export function getApiBase(): string {
-  return isBundledTauriOrigin() ? DESKTOP_BACKEND_ORIGIN : '';
-}
-
-export const API_BASE = getApiBase();
+// Typed HTTP API Client for chatw (relative paths proxied by Vite in dev, same-origin in prod)
+export const API_BASE = '';
 
 export interface MeResponse {
   id: string;

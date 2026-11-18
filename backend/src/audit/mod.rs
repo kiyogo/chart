@@ -13,7 +13,7 @@ use crate::{
     },
     error::{AppError, AppResult},
 };
-use chatw_core::AuditLogItem;
+use crate::models::AuditLogItem;
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/logs", get(handle_get_audit_logs))

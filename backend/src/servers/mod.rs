@@ -18,7 +18,7 @@ use crate::{
     error::{AppError, AppResult},
     websocket::WsEvent,
 };
-use chatw_core::{
+use crate::models::{
     ChannelItem, ChannelMessageItem, CreateCategoryRequest, CreateChannelRequest,
     CreateRoleRequest, CreateServerRequest, PostChannelMessageRequest, ServerCategoryItem,
     ServerItem, ServerMemberItem, ServerRoleItem, permissions as perm_flags,

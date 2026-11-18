@@ -1,7 +1,5 @@
 // WebSocket client with exponential backoff reconnect and typed dispatch
 
-import { DESKTOP_BACKEND_ORIGIN, isBundledTauriOrigin } from '../api/client';
-
 export type WsEvent =
   | {
       type: 'message.new';
@@ -110,15 +108,8 @@ class WebSocketClient {
       return;
     }
 
-    // From the bundled Tauri origin, connect directly to the backend server.
-    // Otherwise use the current host (Vite proxy in dev, same-origin backend in prod/desktop).
-    let wsUrl: string;
-    if (isBundledTauriOrigin()) {
-      wsUrl = DESKTOP_BACKEND_ORIGIN.replace(/^http/, 'ws') + '/api/ws';
-    } else {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      wsUrl = `${protocol}//${window.location.host}/api/ws`;
-    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/ws`;
 
     try {
       this.ws = new WebSocket(wsUrl);

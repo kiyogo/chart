@@ -156,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(dir = ?static_dir, "serving static frontend assets");
     }
 
-    // 7b. CORS layer – allow Tauri desktop origins alongside the web origin
+    // 7b. CORS layer for web development and same-origin requests
     let cors = CorsLayer::new()
         .allow_methods([
             Method::GET,
@@ -175,12 +175,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_credentials(true)
         .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
             let s = origin.to_str().unwrap_or("");
-            // Allow same-origin web app, Tauri desktop schemes (Windows/Linux/macOS)
-            s.starts_with("http://localhost")
-                || s.starts_with("http://127.0.0.1")
-                || s == "tauri://localhost"
-                || s.starts_with("https://tauri.localhost")
-                || s.starts_with("http://tauri.localhost")
+            s.starts_with("http://localhost") || s.starts_with("http://127.0.0.1")
         }));
 
     let app = app

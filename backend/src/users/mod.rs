@@ -257,8 +257,8 @@ async fn handle_upload_avatar(
 async fn handle_update_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(payload): Json<chatw_core::UpdateProfileRequest>,
-) -> AppResult<Json<chatw_core::UserProfileResponse>> {
+    Json(payload): Json<crate::models::UpdateProfileRequest>,
+) -> AppResult<Json<crate::models::UserProfileResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
@@ -328,7 +328,7 @@ async fn handle_update_profile(
         )
         .await;
 
-    Ok(Json(chatw_core::UserProfileResponse {
+    Ok(Json(crate::models::UserProfileResponse {
         id: row.id,
         username: row.username.unwrap_or_default(),
         avatar_url: row.avatar_url,
@@ -343,7 +343,7 @@ async fn handle_get_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
     axum::extract::Path(target_id): axum::extract::Path<Uuid>,
-) -> AppResult<Json<chatw_core::UserProfileResponse>> {
+) -> AppResult<Json<crate::models::UserProfileResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let _user = authenticate_session(&state.db, &state.config, session_token).await?;
@@ -356,7 +356,7 @@ async fn handle_get_profile(
     .await?
     .ok_or(AppError::NotFound("user_not_found"))?;
 
-    Ok(Json(chatw_core::UserProfileResponse {
+    Ok(Json(crate::models::UserProfileResponse {
         id: row.id,
         username: row.username.unwrap_or_default(),
         avatar_url: row.avatar_url,

@@ -15,7 +15,7 @@ use crate::{
     servers::permissions,
     websocket::WsEvent,
 };
-use chatw_core::{
+use crate::models::{
     UpdateVoiceStateRequest, VoiceStateItem, WebRtcSignalPayload, permissions as perm_flags,
 };
 

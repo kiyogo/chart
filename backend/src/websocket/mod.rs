@@ -82,7 +82,7 @@ pub enum WsEvent {
     },
     #[serde(rename = "channel.message.new")]
     ChannelMessageNew {
-        message: chatw_core::ChannelMessageItem,
+        message: crate::models::ChannelMessageItem,
     },
     #[serde(rename = "webrtc.signal")]
     WebRtcSignal {
@@ -92,7 +92,7 @@ pub enum WsEvent {
         data: serde_json::Value,
     },
     #[serde(rename = "voice.state.update")]
-    VoiceStateUpdate(chatw_core::VoiceStateItem),
+    VoiceStateUpdate(crate::models::VoiceStateItem),
     #[serde(rename = "user.presence.update")]
     UserPresenceUpdate {
         user_id: Uuid,

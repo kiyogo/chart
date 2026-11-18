@@ -1,8 +1,3 @@
 [workspace]
-members = [
-    "crates/chatw-core",
-    "crates/chatw-client",
-    "backend",
-    "frontend/src-tauri",
-]
+members = ["backend"]
 resolver = "2"
