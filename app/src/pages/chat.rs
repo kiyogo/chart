@@ -16,7 +16,6 @@ use crate::{
         messages::{Composer, MessageList, ViewMessage},
         navigation::{
             modals::{CommunityModal, CreateCategoryModal, CreateChannelModal, ServerInviteModal},
-            rail::NavigationRail,
             sidebar::NavigationSidebar,
             NavSection,
         },
@@ -1092,41 +1091,40 @@ pub fn Chat(
 
     rsx! {
         div { class: "workspace-shell",
-            NavigationRail {
-                active_section: section.clone(),
-                servers: servers(),
-                unread_dm_count: total_unread,
-                pending_friend_count: pending_len,
-                current_username: current_username.clone(),
-                current_avatar_url: my_avatar_url(),
-                hidden_mobile: is_chat_selected,
-                on_select_dm: move |_| {
-                    is_settings_open.set(false);
-                    nav_section.set(NavSection::DirectMessages);
-                },
-                on_select_friends: move |_| {
-                    is_settings_open.set(false);
-                    nav_section.set(NavSection::Friends);
-                    active_friend.set(None);
-                    active_group.set(None);
-                    selected_channel.set(None);
-                },
-                on_select_server: move |srv: ServerItem| select_server(srv),
-                on_open_create_server: move |_| is_community_modal_open.set(true),
-                on_open_settings: move |_| is_settings_open.set(true),
-                on_open_profile: {
-                    let me = current_user_id.clone();
-                    move |_| viewing_profile_user_id.set(Some(me.clone()))
-                },
-                on_logout: move |_| on_logout.call(()),
-            }
-
             if section != NavSection::Settings {
                 NavigationSidebar {
                     active_section: section.clone(),
                     current_username: current_username.clone(),
                     current_avatar_url: my_avatar_url(),
                     hidden_mobile: is_chat_selected,
+                    unread_dm_count: total_unread,
+                    pending_friend_count: pending_len,
+                    on_select_dm: move |_| {
+                        is_settings_open.set(false);
+                        nav_section.set(NavSection::DirectMessages);
+                    },
+                    on_select_friends: move |_| {
+                        is_settings_open.set(false);
+                        nav_section.set(NavSection::Friends);
+                    },
+                    on_select_communities: move |_| {
+                        is_settings_open.set(false);
+                        nav_section.set(NavSection::Communities);
+                        spawn(async move {
+                            if let Ok(list) = api::servers_list().await {
+                                servers.set(list);
+                            }
+                        });
+                    },
+                    on_open_profile: {
+                        let me = current_user_id.clone();
+                        move |_| viewing_profile_user_id.set(Some(me.clone()))
+                    },
+                    on_open_settings: move |_| is_settings_open.set(true),
+                    on_logout: move |_| on_logout.call(()),
+                    servers: servers(),
+                    on_select_server: move |srv: ServerItem| select_server(srv),
+                    on_open_create_server: move |_| is_community_modal_open.set(true),
                     friends: friends(),
                     active_friend_id: active_friend().map(|f| f.id),
                     groups: groups(),
@@ -1651,7 +1649,16 @@ pub fn Chat(
                 } else {
                     div { class: "empty-state",
                         div { class: "empty-state-icon", MessageIcon { size: 28 } }
-                        if matches!(section, NavSection::Server(_)) {
+                        if matches!(section, NavSection::Communities) {
+                            div { class: "empty-state-title", "Chọn một cộng đồng" }
+                            div { class: "empty-state-sub", "Mỗi cộng đồng có nhiều kênh văn bản và kênh thoại theo danh mục. Tạo mới hoặc tham gia bằng mã mời." }
+                            button {
+                                r#type: "button",
+                                class: "btn-primary",
+                                onclick: move |_| is_community_modal_open.set(true),
+                                span { "Tạo hoặc tham gia cộng đồng" }
+                            }
+                        } else if matches!(section, NavSection::Server(_)) {
                             div { class: "empty-state-title", "Chọn một kênh" }
                             div { class: "empty-state-sub", "Chọn kênh văn bản để đọc tin nhắn, hoặc kênh thoại để tham gia trò chuyện." }
                         } else {

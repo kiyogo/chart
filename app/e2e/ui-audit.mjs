@@ -254,7 +254,9 @@ async function main() {
       // On mobile the chat view hides navigation: go back to the list first.
       const backBtn = alice.page.locator('.main-stage .back-btn').first();
       if (await backBtn.isVisible().catch(() => false)) { await backBtn.click(); await alice.page.waitForTimeout(250); }
-      const settingsBtn = alice.page.locator('button[aria-label="Cài đặt"], button[aria-label="Mở cài đặt"]').first();
+      const accountBtn = alice.page.locator('.account-btn').first();
+      if (await accountBtn.isVisible().catch(() => false)) { await accountBtn.click(); await alice.page.waitForTimeout(200); }
+      const settingsBtn = alice.page.locator('.account-menu button[aria-label="Cài đặt"]').first();
       if (await settingsBtn.isVisible().catch(() => false)) {
         await settingsBtn.click();
         await alice.page.waitForTimeout(500);
@@ -288,21 +290,25 @@ async function main() {
   }
 
   await alice.page.setViewportSize({ width: 1366, height: 768 });
+  await alice.page.locator('.section-tab', { hasText: 'Cộng đồng' }).first().click();
+  await alice.page.waitForTimeout(500);
+  await shot(alice.page, 'communities_list_light_1366x768');
+  record('no left server rail rendered', await alice.page.locator('.nav-rail').count() === 0, '');
   const srvBtn = alice.page.locator(`button[aria-label="Cộng đồng ChatW Studio ${RUN}"]`).first();
   if (await srvBtn.isVisible().catch(() => false)) {
     await srvBtn.click();
     await alice.page.waitForTimeout(900);
     await shot(alice.page, 'community_light_1366x768');
-    record('community opens from rail', await alice.page.locator('.channel-row').count() > 0, '');
+    record('community opens from sidebar list', await alice.page.locator('.channel-row').count() > 0, '');
   } else {
-    record('community button in rail', false, 'not visible');
+    record('community listed in sidebar', false, 'not visible');
   }
 
   // Group DM, emoji picker and mobile list views
   for (const theme of ['light', 'dark']) {
     await alice.page.evaluate((t) => { localStorage.setItem('chatw_theme', t); document.documentElement.setAttribute('data-theme', t); }, theme);
     await alice.page.setViewportSize({ width: 1366, height: 768 });
-    await alice.page.locator('button[aria-label="Tin nhắn riêng"]').first().click();
+    await alice.page.locator('.section-tab', { hasText: 'Tin nhắn' }).first().click();
     await alice.page.waitForTimeout(400);
     const grpItem = alice.page.locator('.chat-item', { hasText: `Nhóm dự án ${RUN}` }).first();
     if (await grpItem.isVisible().catch(() => false)) {

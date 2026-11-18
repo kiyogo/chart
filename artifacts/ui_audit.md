@@ -58,3 +58,15 @@ Phản hồi: "giao diện quá giống Discord, phải có phong cách riêng, 
 Kiểm tra: `grep` không còn khai báo `border: …solid` nào trong `main.css` ngoài vòng xoay loading; trong component Rust
 chỉ còn vòng viền cùng màu nền quanh avatar hồ sơ (không nhìn thấy). Trên điện thoại các khối phủ kín màn hình
 (không bo, không khe). UI audit vẫn 442/442.
+
+## Vòng 3 — Bỏ cột server bên trái (theo phản hồi người dùng)
+Phản hồi: "không có cột server ở bên trái nữa, phải luôn luôn có phong cách riêng".
+
+- Xóa hẳn `NavigationRail` (`navigation/rail.rs`) và toàn bộ CSS `.nav-rail`/`.rail-*`.
+- Điều hướng nằm trong sidebar:
+  - Đầu sidebar là nút tài khoản (avatar, tên). Bấm vào mở menu Hồ sơ / Cài đặt / Đăng xuất.
+  - Bộ chuyển ba mục Tin nhắn · Bạn bè · Cộng đồng có badge chưa đọc / lời mời.
+- **Cộng đồng:** danh sách dạng hàng (biểu tượng vuông bo, tên, số thành viên, vai trò chủ sở hữu) cùng ô tìm kiếm và nút "Tạo hoặc tham gia cộng đồng". Chọn một cộng đồng thì sidebar hiện danh mục và kênh, có nút quay lại danh sách.
+- **Sửa dữ liệu sai:** danh sách server trước đây luôn hiện "0 thành viên" vì backend không trả `member_count` / `is_owner`.
+  - `GET /api/servers` nay trả thêm hai trường này (chỉ bổ sung, các endpoint khác không đổi).
+- UI audit có thêm kiểm tra `no left server rail rendered`: 443/443 đạt. `cargo test --workspace` đạt.

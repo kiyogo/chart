@@ -185,6 +185,8 @@ async fn handle_create_server(
         icon_url: server_row.icon_url,
         owner_id: server_row.owner_id,
         created_at: server_row.created_at,
+        member_count: None,
+        is_owner: None,
     }))
 }
 
@@ -198,7 +200,8 @@ async fn handle_list_servers(
 
     let rows = sqlx::query!(
         r#"
-        SELECT s.id, s.name, s.description, s.icon_url, s.owner_id, s.created_at
+        SELECT s.id, s.name, s.description, s.icon_url, s.owner_id, s.created_at,
+               (SELECT COUNT(*) FROM server_members sm WHERE sm.server_id = s.id) AS "member_count!"
         FROM servers s
         JOIN server_members m ON s.id = m.server_id
         WHERE m.user_id = $1
@@ -216,8 +219,10 @@ async fn handle_list_servers(
             name: r.name,
             description: r.description,
             icon_url: r.icon_url,
+            is_owner: Some(r.owner_id == user.id),
             owner_id: r.owner_id,
             created_at: r.created_at,
+            member_count: Some(r.member_count),
         })
         .collect();
 
@@ -252,6 +257,8 @@ async fn handle_discover_servers(
             icon_url: r.icon_url,
             owner_id: r.owner_id,
             created_at: r.created_at,
+            member_count: None,
+            is_owner: None,
         })
         .collect();
 
@@ -290,6 +297,8 @@ async fn handle_join_server_direct(
         icon_url: srv.icon_url,
         owner_id: srv.owner_id,
         created_at: srv.created_at,
+        member_count: None,
+        is_owner: None,
     }))
 }
 
@@ -331,6 +340,8 @@ async fn handle_get_server(
         icon_url: r.icon_url,
         owner_id: r.owner_id,
         created_at: r.created_at,
+        member_count: None,
+        is_owner: None,
     }))
 }
 
@@ -850,6 +861,8 @@ async fn handle_join_server_by_invite(
         icon_url: server_row.icon_url,
         owner_id: server_row.owner_id,
         created_at: server_row.created_at,
+        member_count: None,
+        is_owner: None,
     }))
 }
 

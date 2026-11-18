@@ -5,8 +5,9 @@ use crate::{
     components::{
         avatar::Avatar,
         icons::{
-            ChevronDownIcon, ChevronRightIcon, HashIcon, MegaphoneIcon, MicIcon, MicOffIcon,
-            PhoneOffIcon, PlusIcon, SearchIcon, UserPlusIcon, VolumeIcon,
+            ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CompassIcon, FriendsIcon,
+            HashIcon, LogoutIcon, MegaphoneIcon, MessageIcon, MicIcon, MicOffIcon, PhoneOffIcon,
+            PlusIcon, SearchIcon, SettingsIcon, UserIcon, UserPlusIcon, VolumeIcon,
         },
         navigation::NavSection,
     },
@@ -14,7 +15,19 @@ use crate::{
         ChannelItem, FriendItem, GroupItem, PendingRequestItem, ServerCategoryItem, ServerItem,
         UserSearchResult, VoiceStateItem,
     },
+    platform,
 };
+
+fn server_initials(name: &str) -> String {
+    let parts: Vec<&str> = name.split_whitespace().collect();
+    if parts.len() >= 2 {
+        let a = parts[0].chars().next().unwrap_or('C');
+        let b = parts[1].chars().next().unwrap_or(' ');
+        format!("{a}{b}").to_uppercase()
+    } else {
+        name.chars().take(2).collect::<String>().to_uppercase()
+    }
+}
 
 fn format_badge(count: usize) -> String {
     if count > 99 {
@@ -30,6 +43,19 @@ pub fn NavigationSidebar(
     current_username: String,
     current_avatar_url: Option<String>,
     hidden_mobile: bool,
+    // Section switcher + account (replaces the old server rail)
+    unread_dm_count: usize,
+    pending_friend_count: usize,
+    on_select_dm: EventHandler<()>,
+    on_select_friends: EventHandler<()>,
+    on_select_communities: EventHandler<()>,
+    on_open_profile: EventHandler<()>,
+    on_open_settings: EventHandler<()>,
+    on_logout: EventHandler<()>,
+    // Communities list
+    servers: Vec<ServerItem>,
+    on_select_server: EventHandler<ServerItem>,
+    on_open_create_server: EventHandler<()>,
     // DM + Group DM
     friends: Vec<FriendItem>,
     active_friend_id: Option<String>,
@@ -68,6 +94,8 @@ pub fn NavigationSidebar(
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
     let mut dm_query = use_signal(String::new);
     let mut dm_filter = use_signal(|| "all");
+    let mut account_open = use_signal(|| false);
+    let mut community_query = use_signal(String::new);
 
     let sidebar_cls = if hidden_mobile {
         "nav-sidebar hidden-mobile"
@@ -101,21 +129,115 @@ pub fn NavigationSidebar(
         .cloned()
         .collect();
 
+    let in_dm = active_section == NavSection::DirectMessages;
+    let in_friends = active_section == NavSection::Friends;
+    let in_communities = matches!(active_section, NavSection::Communities | NavSection::Server(_));
+    let cq = community_query().trim().to_lowercase();
+    let mut seen_srv = HashSet::new();
+    let servers_shown: Vec<ServerItem> = servers
+        .into_iter()
+        .filter(|s| seen_srv.insert(s.id.clone()))
+        .filter(|s| cq.is_empty() || s.name.to_lowercase().contains(&cq))
+        .collect();
+
     rsx! {
         aside { class: "{sidebar_cls}", aria_label: "Danh sách điều hướng",
-            match active_section {
-                NavSection::DirectMessages => rsx! {
-                    div { class: "sidebar-top-header",
-                        span { class: "sidebar-title", "Tin nhắn" }
-                        button {
-                            r#type: "button",
-                            class: "icon-btn",
-                            title: "Tạo nhóm mới",
-                            aria_label: "Tạo nhóm mới",
-                            onclick: move |_| on_open_create_group.call(()),
-                            PlusIcon { size: 20 }
+            // App header: account menu + contextual create action
+            div { class: "sidebar-app-header",
+                button {
+                    r#type: "button",
+                    class: "account-btn",
+                    aria_label: "Tài khoản của tôi",
+                    aria_haspopup: "menu",
+                    aria_expanded: "{account_open()}",
+                    onclick: move |_| account_open.set(!account_open()),
+                    Avatar { name: current_username.clone(), avatar_url: current_avatar_url.clone(), size: 36 }
+                    span { class: "account-meta",
+                        span { class: "account-name", "{current_username}" }
+                        span { class: "account-sub", "Tài khoản của bạn" }
+                    }
+                    ChevronDownIcon { size: 14 }
+                }
+                if in_dm {
+                    button {
+                        r#type: "button",
+                        class: "icon-btn",
+                        title: "Tạo nhóm mới",
+                        aria_label: "Tạo nhóm mới",
+                        onclick: move |_| on_open_create_group.call(()),
+                        PlusIcon { size: 20 }
+                    }
+                } else if in_communities {
+                    button {
+                        r#type: "button",
+                        class: "icon-btn",
+                        title: "Tạo hoặc tham gia cộng đồng",
+                        aria_label: "Tạo hoặc tham gia cộng đồng",
+                        onclick: move |_| on_open_create_server.call(()),
+                        PlusIcon { size: 20 }
+                    }
+                }
+                if account_open() {
+                    button {
+                        r#type: "button",
+                        class: "menu-dismiss",
+                        aria_label: "Đóng menu",
+                        tabindex: "-1",
+                        onclick: move |_| account_open.set(false),
+                    }
+                    div { class: "account-menu", role: "menu",
+                        button { r#type: "button", class: "menu-item", role: "menuitem",
+                            onclick: move |_| { account_open.set(false); on_open_profile.call(()); },
+                            UserIcon {} span { "Hồ sơ của tôi" }
+                        }
+                        button { r#type: "button", class: "menu-item", role: "menuitem",
+                            aria_label: "Cài đặt",
+                            onclick: move |_| { account_open.set(false); on_open_settings.call(()); },
+                            SettingsIcon {} span { "Cài đặt" }
+                        }
+                        button { r#type: "button", class: "menu-item danger", role: "menuitem",
+                            onclick: move |_| { account_open.set(false); on_logout.call(()); },
+                            LogoutIcon {} span { "Đăng xuất" }
                         }
                     }
+                }
+            }
+
+            // Section switcher
+            nav { class: "section-switch", role: "tablist", aria_label: "Chuyển mục",
+                button {
+                    r#type: "button",
+                    role: "tab",
+                    aria_selected: "{in_dm}",
+                    class: if in_dm { "section-tab active" } else { "section-tab" },
+                    onclick: move |_| on_select_dm.call(()),
+                    MessageIcon { size: 17 }
+                    span { "Tin nhắn" }
+                    if unread_dm_count > 0 { span { class: "section-badge", "{format_badge(unread_dm_count)}" } }
+                }
+                button {
+                    r#type: "button",
+                    role: "tab",
+                    aria_selected: "{in_friends}",
+                    class: if in_friends { "section-tab active" } else { "section-tab" },
+                    onclick: move |_| on_select_friends.call(()),
+                    FriendsIcon {}
+                    span { "Bạn bè" }
+                    if pending_friend_count > 0 { span { class: "section-badge", "{format_badge(pending_friend_count)}" } }
+                }
+                button {
+                    r#type: "button",
+                    role: "tab",
+                    aria_selected: "{in_communities}",
+                    class: if in_communities { "section-tab active" } else { "section-tab" },
+                    onclick: move |_| on_select_communities.call(()),
+                    CompassIcon { size: 17 }
+                    span { "Cộng đồng" }
+                }
+            }
+
+            match active_section {
+                NavSection::DirectMessages => rsx! {
                     div { class: "sidebar-search",
                         div { class: "search-field",
                             SearchIcon { size: 16 }
@@ -242,9 +364,6 @@ pub fn NavigationSidebar(
                 },
 
                 NavSection::Friends => rsx! {
-                    div { class: "sidebar-top-header",
-                        span { class: "sidebar-title", "Bạn bè" }
-                    }
                     div { class: "add-friend-container",
                         form {
                             class: "add-friend-form",
@@ -386,6 +505,14 @@ pub fn NavigationSidebar(
                 NavSection::Server(_) => rsx! {
                     if let Some(srv) = selected_server {
                         div { class: "sidebar-top-header",
+                            button {
+                                r#type: "button",
+                                class: "icon-btn",
+                                title: "Tất cả cộng đồng",
+                                aria_label: "Quay lại danh sách cộng đồng",
+                                onclick: move |_| on_select_communities.call(()),
+                                ChevronLeftIcon { size: 18 }
+                            }
                             span { class: "sidebar-title", title: "{srv.name}", "{srv.name}" }
                             div { style: "display: flex; align-items: center; gap: 2px;",
                                 button {
@@ -495,7 +622,72 @@ pub fn NavigationSidebar(
                             }
                         }
                     } else {
-                        div { class: "empty-chat-inner", "Chọn cộng đồng từ thanh bên trái" }
+                        div { class: "empty-chat-inner", "Chọn một cộng đồng trong danh sách" }
+                    }
+                },
+
+                NavSection::Communities => rsx! {
+                    div { class: "sidebar-search",
+                        div { class: "search-field",
+                            SearchIcon { size: 16 }
+                            input {
+                                r#type: "search",
+                                placeholder: "Tìm cộng đồng",
+                                aria_label: "Tìm cộng đồng",
+                                value: "{community_query}",
+                                oninput: move |e| community_query.set(e.value()),
+                            }
+                        }
+                    }
+                    div { class: "sidebar-scrollable",
+                        div { class: "sidebar-section-header", span { "Cộng đồng của bạn" } }
+                        if servers_shown.is_empty() {
+                            div { class: "sidebar-empty",
+                                if cq.is_empty() { "Bạn chưa tham gia cộng đồng nào." } else { "Không có cộng đồng phù hợp" }
+                            }
+                        } else {
+                            for srv in servers_shown {
+                                {
+                                    let is_sel = selected_server.as_ref().map(|s| s.id == srv.id).unwrap_or(false);
+                                    let s_click = srv.clone();
+                                    let initials = server_initials(&srv.name);
+                                    rsx! {
+                                        button {
+                                            key: "{srv.id}",
+                                            r#type: "button",
+                                            class: if is_sel { "chat-item community-item selected" } else { "chat-item community-item" },
+                                            aria_label: "Cộng đồng {srv.name}",
+                                            onclick: move |_| on_select_server.call(s_click.clone()),
+                                            span { class: "community-icon",
+                                                if let Some(icon) = srv.icon_url.as_ref().filter(|u| !u.is_empty()) {
+                                                    img { src: "{platform::resolve_asset_url(icon)}", alt: "" }
+                                                } else {
+                                                    "{initials}"
+                                                }
+                                            }
+                                            div { class: "chat-item-info",
+                                                span { class: "chat-item-name", "{srv.name}" }
+                                                span { class: "chat-item-preview",
+                                                    "{srv.member_count} thành viên"
+                                                    if srv.is_owner { " · Bạn là chủ sở hữu" }
+                                                }
+                                            }
+                                            ChevronRightIcon { size: 16 }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        button {
+                            r#type: "button",
+                            class: "create-community-btn",
+                            onclick: move |_| on_open_create_server.call(()),
+                            span { class: "community-icon add", PlusIcon { size: 18 } }
+                            span { class: "chat-item-info",
+                                span { class: "chat-item-name", "Tạo hoặc tham gia cộng đồng" }
+                                span { class: "chat-item-preview", "Bằng tên mới hoặc mã mời" }
+                            }
+                        }
                     }
                 },
 

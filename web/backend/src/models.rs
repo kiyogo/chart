@@ -22,6 +22,11 @@ pub struct ServerItem {
     pub icon_url: Option<String>,
     pub owner_id: Uuid,
     pub created_at: DateTime<Utc>,
+    /// Filled by the list endpoint; omitted elsewhere (additive, backwards compatible).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub member_count: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_owner: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
