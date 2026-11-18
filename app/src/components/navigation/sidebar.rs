@@ -6,7 +6,7 @@ use crate::{
         avatar::Avatar,
         icons::{
             ChevronDownIcon, ChevronRightIcon, HashIcon, MegaphoneIcon, MicIcon, MicOffIcon,
-            PhoneOffIcon, PlusIcon, SettingsIcon, UserPlusIcon, VolumeIcon,
+            PhoneOffIcon, PlusIcon, SearchIcon, SettingsIcon, UserPlusIcon, VolumeIcon,
         },
         navigation::NavSection,
     },
@@ -69,6 +69,8 @@ pub fn NavigationSidebar(
     on_open_settings: EventHandler<()>,
 ) -> Element {
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
+    let mut dm_query = use_signal(String::new);
+    let mut dm_filter = use_signal(|| "all");
 
     let sidebar_cls = if hidden_mobile {
         "nav-sidebar hidden-mobile"
@@ -83,6 +85,25 @@ pub fn NavigationSidebar(
         .filter(|g| seen_groups.insert(g.id.clone()))
         .collect();
 
+    let q = dm_query().trim().to_lowercase();
+    let filter = dm_filter();
+    let friends_shown: Vec<FriendItem> = friends
+        .iter()
+        .filter(|f| q.is_empty() || f.username.to_lowercase().contains(&q))
+        .filter(|f| match filter {
+            "unread" => unread_counts.get(&f.id).copied().unwrap_or(0) > 0,
+            "groups" => false,
+            _ => true,
+        })
+        .cloned()
+        .collect();
+    let groups_shown: Vec<GroupItem> = unique_groups
+        .iter()
+        .filter(|g| q.is_empty() || g.name.to_lowercase().contains(&q))
+        .filter(|_| filter == "all" || filter == "groups")
+        .cloned()
+        .collect();
+
     rsx! {
         aside { class: "{sidebar_cls}", aria_label: "Danh sách điều hướng",
             match active_section {
@@ -92,21 +113,49 @@ pub fn NavigationSidebar(
                         button {
                             r#type: "button",
                             class: "icon-btn",
-                            title: "Tạo nhóm DM mới",
-                            aria_label: "Tạo nhóm DM mới",
+                            title: "Tạo nhóm mới",
+                            aria_label: "Tạo nhóm mới",
                             onclick: move |_| on_open_create_group.call(()),
-                            PlusIcon { size: 17 }
+                            PlusIcon { size: 20 }
+                        }
+                    }
+                    div { class: "sidebar-search",
+                        div { class: "search-field",
+                            SearchIcon { size: 16 }
+                            input {
+                                r#type: "search",
+                                placeholder: "Tìm cuộc trò chuyện",
+                                aria_label: "Tìm cuộc trò chuyện",
+                                value: "{dm_query}",
+                                oninput: move |e| dm_query.set(e.value()),
+                            }
+                        }
+                    }
+                    div { class: "sidebar-filters", role: "tablist", aria_label: "Lọc cuộc trò chuyện",
+                        for (val, label) in [("all", "Tất cả"), ("unread", "Chưa đọc"), ("direct", "Cá nhân"), ("groups", "Nhóm")] {
+                            button {
+                                key: "{val}",
+                                r#type: "button",
+                                role: "tab",
+                                aria_selected: "{filter == val}",
+                                class: if filter == val { "filter-chip active" } else { "filter-chip" },
+                                onclick: move |_| dm_filter.set(val),
+                                "{label}"
+                            }
                         }
                     }
 
                     div { class: "sidebar-scrollable",
+                        if filter != "groups" {
                         div { class: "sidebar-section-header",
                             span { "Tin nhắn trực tiếp" }
                         }
-                        if friends.is_empty() {
-                            div { class: "empty-chat-inner", "Chưa có bạn bè nào" }
+                        if friends_shown.is_empty() {
+                            div { class: "sidebar-empty",
+                                if friends.is_empty() { "Chưa có bạn bè. Mở mục Bạn bè để kết bạn." } else { "Không có cuộc trò chuyện phù hợp" }
+                            }
                         } else {
-                            for friend in friends {
+                            for friend in friends_shown {
                                 {
                                     let is_selected = active_friend_id.as_deref() == Some(friend.id.as_str());
                                     let unread = unread_counts.get(&friend.id).copied().unwrap_or(0);
@@ -124,7 +173,7 @@ pub fn NavigationSidebar(
                                             Avatar {
                                                 name: friend.username.clone(),
                                                 avatar_url: friend.avatar_url.clone(),
-                                                size: 36,
+                                                size: 44,
                                             }
                                             div { class: "chat-item-info",
                                                 div { class: "chat-item-header",
@@ -147,9 +196,12 @@ pub fn NavigationSidebar(
                             }
                         }
 
+                        }
+
                         // Separated Group DMs section
+                        if filter == "all" || filter == "groups" {
                         div { class: "sidebar-section-header",
-                            span { "Nhóm DM" }
+                            span { "Nhóm" }
                             button {
                                 r#type: "button",
                                 class: "sidebar-section-btn",
@@ -159,10 +211,10 @@ pub fn NavigationSidebar(
                                 PlusIcon { size: 14 }
                             }
                         }
-                        if unique_groups.is_empty() {
-                            div { style: "padding: 6px 10px; font-size: 12px; color: var(--text-muted);", "Chưa có nhóm DM" }
+                        if groups_shown.is_empty() {
+                            div { class: "sidebar-empty", "Chưa có nhóm" }
                         } else {
-                            for grp in unique_groups {
+                            for grp in groups_shown {
                                 {
                                     let is_selected = active_group_id.as_deref() == Some(grp.id.as_str());
                                     let g_click = grp.clone();
@@ -175,7 +227,7 @@ pub fn NavigationSidebar(
                                             Avatar {
                                                 name: grp.name.clone(),
                                                 avatar_url: grp.avatar_url.clone(),
-                                                size: 34,
+                                                size: 44,
                                             }
                                             div { class: "chat-item-info",
                                                 div { class: "chat-item-header",
@@ -187,6 +239,7 @@ pub fn NavigationSidebar(
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 },
@@ -281,7 +334,7 @@ pub fn NavigationSidebar(
                             span { "Lời mời kết bạn ({pending_requests.len()})" }
                         }
                         if pending_requests.is_empty() {
-                            div { style: "padding: 6px 10px; font-size: 12px; color: var(--text-muted);", "Không có lời mời nào" }
+                            div { class: "sidebar-empty", "Không có lời mời nào" }
                         } else {
                             for req in pending_requests {
                                 div { class: "request-card", key: "{req.id}",

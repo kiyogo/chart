@@ -1,104 +1,252 @@
+/* ==========================================================================
+   ChatW Design System — tokens
+   Applied on <html> through data attributes set by platform::apply_appearance():
+     data-theme   = light | dark            (system mode resolves to one of these)
+     data-accent  = blue | violet | green | orange | rose
+     data-density = compact | comfortable | spacious
+     --font-size-root (px) — user text size; "auto" adapts to large displays
+   All sizes below are rem-based so the text-size setting scales typography and
+   control sizes together without CSS zoom.
+   ========================================================================== */
+
 :root {
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", system-ui, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Typography */
+  --font-family: "Inter", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Noto Sans", "Helvetica Neue", Roboto, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Noto Color Emoji";
+  --font-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-size-root: 15px;
 
-  /* Core Surfaces (Light Mode Default) */
-  --bg-app: #FFFFFF;
-  --bg-rail: #E8ECF2;
-  --bg-sidebar: #F3F5F8;
-  --bg-primary: #FFFFFF;
-  --bg-secondary: #F6F7F9;
-  --bg-chat: #FFFFFF;
-  --bg-surface: #FFFFFF;
-  --bg-surface-hover: #E9EDF3;
-  --bg-hover: #EAECEF;
-  --bg-selected: #E6EEFF;
-  --bg-input: #F1F3F6;
-  --bg-error: #FEF2F2;
-  --bg-success: #ECFDF5;
-  --bg-warning: #FFFBEB;
+  --text-xs: 0.75rem;      /* 11.25 @15 — metadata only */
+  --text-sm: 0.8125rem;    /* 12.2  — labels, timestamps */
+  --text-md: 0.9333rem;    /* 14    — lists, body */
+  --text-base: 1rem;       /* 15    — messages */
+  --text-lg: 1.0667rem;    /* 16    — header names */
+  --text-xl: 1.2rem;       /* 18    — section headings */
+  --text-2xl: 1.4667rem;   /* 22    — page headings */
+  --text-3xl: 2rem;        /* 30    — hero */
 
-  /* Text Hierarchy */
-  --text: #111827;
-  --text-primary: #111827;
-  --text-secondary: #525B6B;
-  --text-muted: #848E9F;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --leading-tight: 1.25;
+  --leading-normal: 1.45;
+  --leading-relaxed: 1.55;
 
-  /* Brand & Accents */
-  --primary: #2563EB;
-  --primary-hover: #1D4ED8;
-  --accent-primary: #2563EB;
-  --accent-hover: #1D4ED8;
+  /* Spacing scale 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 (px at 16px root) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
 
-  /* Messages */
-  --msg-sent: #2563EB;
-  --msg-sent-text: #FFFFFF;
-  --msg-recv: #F1F3F6;
-  --msg-recv-text: #111827;
-
-  /* Borders */
-  --border: #E2E6ED;
-  --border-subtle: #E5E7EB;
-  --border-color: #E2E6ED;
-
-  /* Status */
-  --status-success: #10B981;
-  --status-warning: #F59E0B;
-  --status-danger: #DC2626;
-  --status-error: #DC2626;
-  --danger: #DC2626;
-
-  /* Radii & Spacing */
+  /* Radius */
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
-  --radius-bubble: 14px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+  --radius-bubble: 1.125rem;
+  --radius-bubble-tail: 0.375rem;
+
+  /* Layout */
+  --rail-width: 4.5rem;              /* 72 @16 */
+  --sidebar-width: clamp(16.5rem, 20vw, 21rem);
+  --details-width: clamp(19rem, 22vw, 23rem);
+  --header-height: 3.5rem;
+  --bubble-max: min(40rem, 72%);
+  --control-height: 2.5rem;
+  --icon-btn: 2.25rem;
+  --avatar-list: 2.5rem;
+  --list-item-py: 0.5rem;
+  --message-gap: 0.125rem;
+  --message-group-gap: 0.875rem;
+
+  /* Motion */
+  --dur-fast: 100ms;
+  --dur-hover: 120ms;
+  --dur-menu: 140ms;
+  --dur-dialog: 160ms;
+  --dur-panel: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Z-index */
+  --z-rail: 20;
+  --z-drawer: 60;
+  --z-popover: 100;
+  --z-modal: 1000;
+  --z-call: 1100;
+  --z-toast: 1200;
+
+  /* Accent (overridden by data-accent) */
+  --accent-h: 222;
+  --accent: #2764E7;
+  --accent-hover: #1853D2;
+  --accent-soft: #EAF0FD;
+  --accent-soft-strong: #D6E2FB;
+  --accent-text: #1B4FC4;
+  --on-accent: #FFFFFF;
+
+  /* ---------- Light theme ---------- */
+  color-scheme: light;
+  --bg-app: #F7F8FA;
+  --bg-rail: #EEF0F4;
+  --bg-sidebar: #F7F8FA;
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F7F8FA;
+  --bg-chat: #FFFFFF;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-surface-hover: #F1F3F6;
+  --bg-hover: #EDF0F4;
+  --bg-active: #E4E8EE;
+  --bg-selected: var(--accent-soft);
+  --bg-input: #F1F3F6;
+  --bg-input-focus: #FFFFFF;
+  --bg-overlay: rgba(16, 22, 34, 0.42);
+  --bg-error: #FDEDEE;
+  --bg-success: #E7F6EE;
+  --bg-warning: #FDF4E3;
+
+  --text: #171C26;
+  --text-primary: #171C26;
+  --text-secondary: #5B6475;
+  --text-muted: #868E9C;
+  --text-selected: var(--accent-text);
+  --text-link: var(--accent-text);
+
+  --border: #E5E9EF;
+  --border-subtle: #EEF1F5;
+  --border-strong: #D3D9E2;
+  --border-color: var(--border);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, transparent);
+
+  --msg-sent: var(--accent);
+  --msg-sent-text: var(--on-accent);
+  --msg-sent-meta: rgba(255, 255, 255, 0.78);
+  --msg-recv: #F0F2F5;
+  --msg-recv-text: #171C26;
+  --msg-recv-meta: #7C8492;
+  --msg-reply-bar: var(--accent);
+
+  --status-success: #169B62;
+  --status-warning: #D48A10;
+  --status-danger: #E5484D;
+  --status-error: var(--status-danger);
+  --danger: var(--status-danger);
+  --danger-hover: #D13A3F;
+  --online: #23A55A;
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 16px rgba(16, 24, 40, 0.08), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.14), 0 2px 6px rgba(16, 24, 40, 0.06);
+
+  /* Legacy aliases kept for older components */
+  --primary: var(--accent);
+  --primary-hover: var(--accent-hover);
+  --accent-primary: var(--accent);
 }
 
+/* ---------- Dark theme ---------- */
 [data-theme="dark"] {
-  --bg-app: #0F141D;
-  --bg-rail: #0B0F17;
-  --bg-sidebar: #141A24;
-  --bg-primary: #181F2B;
-  --bg-secondary: #141A24;
-  --bg-chat: #181F2B;
-  --bg-surface: #1E2736;
-  --bg-surface-hover: #273244;
-  --bg-hover: #252F40;
-  --bg-selected: #1E3256;
-  --bg-input: #222B3B;
-  --bg-error: #3B1219;
-  --bg-success: #0C3528;
-  --bg-warning: #3B280D;
+  color-scheme: dark;
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, #1A1F29);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 30%, #1A1F29);
+  --accent-text: color-mix(in srgb, var(--accent) 55%, #FFFFFF);
 
-  --text: #F1F5F9;
-  --text-primary: #F1F5F9;
-  --text-secondary: #9BA6B8;
-  --text-muted: #6C778A;
+  --bg-app: #111419;
+  --bg-rail: #0D1014;
+  --bg-sidebar: #15191F;
+  --bg-primary: #1A1E25;
+  --bg-secondary: #15191F;
+  --bg-chat: #1A1E25;
+  --bg-surface: #1F242C;
+  --bg-elevated: #242A33;
+  --bg-surface-hover: #262C35;
+  --bg-hover: #242A33;
+  --bg-active: #2C333D;
+  --bg-input: #232930;
+  --bg-input-focus: #262C34;
+  --bg-overlay: rgba(0, 0, 0, 0.56);
+  --bg-error: #3A1D20;
+  --bg-success: #15301F;
+  --bg-warning: #382A12;
 
-  --primary: #3B82F6;
-  --primary-hover: #2563EB;
-  --accent-primary: #3B82F6;
-  --accent-hover: #2563EB;
+  --text: #E8EAED;
+  --text-primary: #E8EAED;
+  --text-secondary: #A4ABB6;
+  --text-muted: #7B838F;
 
-  --msg-sent: #2563EB;
-  --msg-sent-text: #FFFFFF;
-  --msg-recv: #232C3D;
-  --msg-recv-text: #F1F5F9;
+  --border: #2A3039;
+  --border-subtle: #22272F;
+  --border-strong: #38404B;
 
-  --border: #263144;
-  --border-subtle: #263144;
-  --border-color: #263144;
+  --msg-recv: #262C35;
+  --msg-recv-text: #E8EAED;
+  --msg-recv-meta: #8B939E;
 
-  --status-success: #10B981;
-  --status-warning: #F59E0B;
-  --status-danger: #EF4444;
-  --status-error: #EF4444;
-  --danger: #EF4444;
+  --status-success: #3DBE7E;
+  --status-warning: #F0AE3C;
+  --status-danger: #F2555A;
+  --danger-hover: #FF6B70;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- Accent palettes ---------- */
+[data-accent="violet"] { --accent: #6D4AE0; --accent-hover: #5A37CF; --accent-soft: #F0ECFD; --accent-soft-strong: #E1D8FB; --accent-text: #5530C4; }
+[data-accent="green"]  { --accent: #138A5A; --accent-hover: #0E764C; --accent-soft: #E6F5EE; --accent-soft-strong: #CBEBDB; --accent-text: #0E6E47; }
+[data-accent="orange"] { --accent: #D9620F; --accent-hover: #BF530A; --accent-soft: #FDF0E6; --accent-soft-strong: #FADDC6; --accent-text: #A84A08; }
+[data-accent="rose"]   { --accent: #D6336C; --accent-hover: #BE2659; --accent-soft: #FCEBF1; --accent-soft-strong: #F8D2E0; --accent-text: #B0204F; }
+[data-theme="dark"][data-accent="violet"],
+[data-theme="dark"][data-accent="green"],
+[data-theme="dark"][data-accent="orange"],
+[data-theme="dark"][data-accent="rose"] {
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, #1A1F29);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 30%, #1A1F29);
+  --accent-text: color-mix(in srgb, var(--accent) 50%, #FFFFFF);
+}
+
+/* ---------- Density ---------- */
+[data-density="compact"] {
+  --header-height: 3rem;
+  --control-height: 2.25rem;
+  --icon-btn: 2rem;
+  --avatar-list: 2.125rem;
+  --list-item-py: 0.3125rem;
+  --message-group-gap: 0.5rem;
+  --radius-bubble: 0.875rem;
+}
+[data-density="spacious"] {
+  --header-height: 4rem;
+  --control-height: 2.75rem;
+  --icon-btn: 2.5rem;
+  --avatar-list: 2.875rem;
+  --list-item-py: 0.6875rem;
+  --message-gap: 0.25rem;
+  --message-group-gap: 1.125rem;
+}
+
+/* ---------- Root text size (auto adapts to large displays, no zoom) ---------- */
+html { font-size: var(--font-size-root); }
+html[data-font-size="auto"] { --font-size-root: 15px; }
+@media (min-width: 1680px) { html[data-font-size="auto"] { --font-size-root: 16px; } }
+@media (min-width: 2400px) { html[data-font-size="auto"] { --font-size-root: 17px; } }
+@media (min-width: 3400px) { html[data-font-size="auto"] { --font-size-root: 18px; } }
+@media (max-width: 767px)  { html[data-font-size="auto"] { --font-size-root: 16px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

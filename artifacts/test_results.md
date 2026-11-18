@@ -1,0 +1,61 @@
+# Test Results — 2026-11-18
+
+Môi trường: Linux, Chrome hệ thống (headless, Playwright 1.64.1), backend Axum debug trên `127.0.0.1:8085`,
+PostgreSQL cục bộ, bundle WASM **release**. Tài khoản thật (alice_/bob_/charlie_ + mã chạy), không mock.
+
+## Lệnh đã chạy
+| Lệnh | Kết quả |
+|---|---|
+| `cargo build -p chatw-app --target wasm32-unknown-unknown --features web --release` | PASS |
+| `cargo check -p chatw-app --features desktop` (bản native) | PASS |
+| `cargo test --workspace` | PASS — 3 unit + 1 integration (`test_full_e2ee_chat_flow`) |
+| `node app/e2e/ui-audit.mjs artifacts/screenshots/after` | **442/442 PASS** |
+
+### Ghi chú về integration test
+`test_full_e2ee_chat_flow` **đã lỗi từ trước** phiên này (kỳ vọng 1 kênh khi tạo server, nhưng commit 46e9e06 thêm
+kênh thoại mặc định đúng theo spec 003). Test được cập nhật để kiểm tra đúng hành vi đã đặc tả: có kênh text
+`general` **và** một kênh voice. Không nới điều kiện nào khác.
+
+## UI audit — chi tiết theo nhóm
+Mỗi viewport kiểm tra: không cuộn ngang; header & composer nằm trong viewport và không bị phần tử khác che
+(`elementFromPoint`); danh sách tin ≥ 320px (hoặc panel là drawer có backdrop); panel thông tin không đè lên chat khi
+inline; bubble ≤ 720px; không bubble nào tràn nội dung; font tin nhắn ≥ 14px.
+
+Viewport: 320×568, 360×740, 375×667, 390×844, 430×932, 768×1024, 900×800, 1024×768, 1280×800, 1366×768,
+1440×900, 1920×1080, 2560×1440, 3840×2160 — cả light và dark, có và không có panel thông tin.
+
+| Nhóm | Pass | Fail |
+|---|---|---|
+| login light | 8 | 0 |
+| login dark | 8 | 0 |
+| friendship alice_636id | 2 | 0 |
+| friendship bob_636id | 1 | 0 |
+| create community | 1 | 0 |
+| create group | 1 | 0 |
+| E2EE DM | 1 | 0 |
+| no decrypt | 1 | 0 |
+| dm light | 188 | 0 |
+| dm dark | 188 | 0 |
+| settings light | 8 | 0 |
+| settings dark | 8 | 0 |
+| community opens | 1 | 0 |
+| group light | 10 | 0 |
+| emoji search | 2 | 0 |
+| emoji picker | 2 | 0 |
+| mobile list | 2 | 0 |
+| group dark | 10 | 0 |
+
+## Chức năng kiểm chứng end-to-end (qua UI thật)
+| Luồng | Kết quả |
+|---|---|
+| Dev-login 3 tài khoản, kết bạn qua API thật | PASS |
+| DM E2EE Alice ↔ Bob: tin ngắn, đoạn dài, URL dài, nhiều dòng (Shift+Enter), emoji | PASS, 0 lỗi giải mã |
+| Tin nhắn tự gửi không bị nhân đôi | PASS (kiểm bằng ảnh) |
+| Tạo cộng đồng, mở từ rail, hiển thị danh mục + kênh | PASS |
+| Tạo nhóm 3 người, gửi tin nhóm qua composer mới | PASS |
+| Emoji picker: mở, tìm "tim" có kết quả, nằm trong viewport | PASS |
+| Settings: mở, chuyển mục Bảo mật / Giao diện, mobile list→detail→đóng | PASS |
+
+## NOT TESTED
+Truyền âm thanh/video WebRTC thật, kênh thoại có media, Google OAuth thật, upload avatar/banner/sticker qua UI mới,
+Windows/macOS, Android/iOS, hiệu năng với hàng nghìn tin nhắn.

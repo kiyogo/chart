@@ -1,0 +1,2216 @@
+{
+  "run": "636id",
+  "base": "http://127.0.0.1:8085",
+  "checks": [
+    {
+      "name": "login light 375x667 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "login light 768x1024 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=768/768"
+    },
+    {
+      "name": "login light 1366x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "login light 1366x768 primary card visible",
+      "pass": true,
+      "detail": "w=360"
+    },
+    {
+      "name": "login light 1920x1080 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1920/1920"
+    },
+    {
+      "name": "login light 1920x1080 primary card visible",
+      "pass": true,
+      "detail": "w=384"
+    },
+    {
+      "name": "login light 2560x1440 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=2560/2560"
+    },
+    {
+      "name": "login light 2560x1440 primary card visible",
+      "pass": true,
+      "detail": "w=408"
+    },
+    {
+      "name": "login dark 375x667 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "login dark 768x1024 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=768/768"
+    },
+    {
+      "name": "login dark 1366x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "login dark 1366x768 primary card visible",
+      "pass": true,
+      "detail": "w=360"
+    },
+    {
+      "name": "login dark 1920x1080 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1920/1920"
+    },
+    {
+      "name": "login dark 1920x1080 primary card visible",
+      "pass": true,
+      "detail": "w=384"
+    },
+    {
+      "name": "login dark 2560x1440 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=2560/2560"
+    },
+    {
+      "name": "login dark 2560x1440 primary card visible",
+      "pass": true,
+      "detail": "w=408"
+    },
+    {
+      "name": "friendship alice_636id -> bob_636id",
+      "pass": true,
+      "detail": "req status 200"
+    },
+    {
+      "name": "friendship alice_636id -> charlie_636id",
+      "pass": true,
+      "detail": "req status 200"
+    },
+    {
+      "name": "friendship bob_636id -> charlie_636id",
+      "pass": true,
+      "detail": "req status 200"
+    },
+    {
+      "name": "create community server",
+      "pass": true,
+      "detail": "status 200"
+    },
+    {
+      "name": "create group DM",
+      "pass": true,
+      "detail": "status 200"
+    },
+    {
+      "name": "E2EE DM delivered and decrypted (Bob -> Alice)",
+      "pass": true,
+      "detail": "found=1"
+    },
+    {
+      "name": "no decrypt errors in fresh conversation",
+      "pass": true,
+      "detail": "errors=0"
+    },
+    {
+      "name": "dm light 320x568 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=320/320"
+    },
+    {
+      "name": "dm light 320x568 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":320,\"h\":56,\"r\":320,\"b\":56}"
+    },
+    {
+      "name": "dm light 320x568 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":496.8125,\"w\":320,\"h\":71.1875,\"r\":320,\"b\":568}"
+    },
+    {
+      "name": "dm light 320x568 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 320x568 message list readable width",
+      "pass": true,
+      "detail": "w=320"
+    },
+    {
+      "name": "dm light 320x568 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 320x568 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=252"
+    },
+    {
+      "name": "dm light 320x568 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 320x568 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm light 320x568 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=320/320"
+    },
+    {
+      "name": "dm light 360x740 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=360/360"
+    },
+    {
+      "name": "dm light 360x740 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":360,\"h\":56,\"r\":360,\"b\":56}"
+    },
+    {
+      "name": "dm light 360x740 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":668.8125,\"w\":360,\"h\":71.1875,\"r\":360,\"b\":740}"
+    },
+    {
+      "name": "dm light 360x740 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 360x740 message list readable width",
+      "pass": true,
+      "detail": "w=360"
+    },
+    {
+      "name": "dm light 360x740 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 360x740 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=286"
+    },
+    {
+      "name": "dm light 360x740 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 360x740 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm light 360x740 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=360/360"
+    },
+    {
+      "name": "dm light 375x667 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "dm light 375x667 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":375,\"h\":56,\"r\":375,\"b\":56}"
+    },
+    {
+      "name": "dm light 375x667 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":595.8125,\"w\":375,\"h\":71.1875,\"r\":375,\"b\":667}"
+    },
+    {
+      "name": "dm light 375x667 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 375x667 message list readable width",
+      "pass": true,
+      "detail": "w=375"
+    },
+    {
+      "name": "dm light 375x667 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 375x667 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=298"
+    },
+    {
+      "name": "dm light 375x667 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 375x667 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm light 375x667 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "dm light 390x844 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=390/390"
+    },
+    {
+      "name": "dm light 390x844 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":390,\"h\":56,\"r\":390,\"b\":56}"
+    },
+    {
+      "name": "dm light 390x844 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":772.8125,\"w\":390,\"h\":71.1875,\"r\":390,\"b\":844}"
+    },
+    {
+      "name": "dm light 390x844 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 390x844 message list readable width",
+      "pass": true,
+      "detail": "w=390"
+    },
+    {
+      "name": "dm light 390x844 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 390x844 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=311"
+    },
+    {
+      "name": "dm light 390x844 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 390x844 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm light 390x844 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=390/390"
+    },
+    {
+      "name": "dm light 430x932 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=430/430"
+    },
+    {
+      "name": "dm light 430x932 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":430,\"h\":56,\"r\":430,\"b\":56}"
+    },
+    {
+      "name": "dm light 430x932 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":860.8125,\"w\":430,\"h\":71.1875,\"r\":430,\"b\":932}"
+    },
+    {
+      "name": "dm light 430x932 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 430x932 message list readable width",
+      "pass": true,
+      "detail": "w=430"
+    },
+    {
+      "name": "dm light 430x932 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 430x932 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=345"
+    },
+    {
+      "name": "dm light 430x932 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 430x932 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm light 430x932 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=430/430"
+    },
+    {
+      "name": "dm light 768x1024 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=768/768"
+    },
+    {
+      "name": "dm light 768x1024 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":296.25,\"y\":0,\"w\":471.75,\"h\":52.5,\"r\":768,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 768x1024 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":296.25,\"y\":932.3125,\"w\":471.75,\"h\":91.6875,\"r\":768,\"b\":1024}"
+    },
+    {
+      "name": "dm light 768x1024 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 768x1024 message list readable width",
+      "pass": true,
+      "detail": "w=472"
+    },
+    {
+      "name": "dm light 768x1024 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 768x1024 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=312"
+    },
+    {
+      "name": "dm light 768x1024 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 768x1024 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 768x1024 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=768/768"
+    },
+    {
+      "name": "dm light 900x800 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=900/900"
+    },
+    {
+      "name": "dm light 900x800 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":296.25,\"y\":0,\"w\":603.75,\"h\":52.5,\"r\":900,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 900x800 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":296.25,\"y\":708.3125,\"w\":603.75,\"h\":91.6875,\"r\":900,\"b\":800}"
+    },
+    {
+      "name": "dm light 900x800 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 900x800 message list readable width",
+      "pass": true,
+      "detail": "w=604"
+    },
+    {
+      "name": "dm light 900x800 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 900x800 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=402"
+    },
+    {
+      "name": "dm light 900x800 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 900x800 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 900x800 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=900/900"
+    },
+    {
+      "name": "dm light 1024x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1024/1024"
+    },
+    {
+      "name": "dm light 1024x768 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":315,\"y\":0,\"w\":709,\"h\":52.5,\"r\":1024,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 1024x768 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":315,\"y\":676.3125,\"w\":709,\"h\":91.6875,\"r\":1024,\"b\":768}"
+    },
+    {
+      "name": "dm light 1024x768 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1024x768 message list readable width",
+      "pass": true,
+      "detail": "w=709"
+    },
+    {
+      "name": "dm light 1024x768 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 1024x768 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=474"
+    },
+    {
+      "name": "dm light 1024x768 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1024x768 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 1024x768 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1024/1024"
+    },
+    {
+      "name": "dm light 1280x800 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1280/1280"
+    },
+    {
+      "name": "dm light 1280x800 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":323.5,\"y\":0,\"w\":956.5,\"h\":52.5,\"r\":1280,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 1280x800 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":323.5,\"y\":708.3125,\"w\":956.5,\"h\":91.6875,\"r\":1280,\"b\":800}"
+    },
+    {
+      "name": "dm light 1280x800 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1280x800 message list readable width",
+      "pass": true,
+      "detail": "w=957"
+    },
+    {
+      "name": "dm light 1280x800 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 1280x800 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=600"
+    },
+    {
+      "name": "dm light 1280x800 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1280x800 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 1280x800 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1280/1280"
+    },
+    {
+      "name": "dm light 1280x800 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":323.5,\"y\":0,\"w\":671.5,\"h\":52.5,\"r\":995,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 1280x800 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":323.5,\"y\":708.3125,\"w\":671.5,\"h\":91.6875,\"r\":995,\"b\":800}"
+    },
+    {
+      "name": "dm light 1280x800 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1280x800 +details message list readable width",
+      "pass": true,
+      "detail": "w=672"
+    },
+    {
+      "name": "dm light 1280x800 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=995 msgs.r=995"
+    },
+    {
+      "name": "dm light 1280x800 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=440"
+    },
+    {
+      "name": "dm light 1280x800 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1280x800 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 1366x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "dm light 1366x768 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":0,\"w\":1025.3125,\"h\":52.5,\"r\":1366,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 1366x768 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":676.3125,\"w\":1025.3125,\"h\":91.6875,\"r\":1366,\"b\":768}"
+    },
+    {
+      "name": "dm light 1366x768 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1366x768 message list readable width",
+      "pass": true,
+      "detail": "w=1025"
+    },
+    {
+      "name": "dm light 1366x768 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 1366x768 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=600"
+    },
+    {
+      "name": "dm light 1366x768 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1366x768 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 1366x768 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "dm light 1366x768 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":0,\"w\":724.796875,\"h\":52.5,\"r\":1065.484375,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 1366x768 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":676.3125,\"w\":724.796875,\"h\":91.6875,\"r\":1065.484375,\"b\":768}"
+    },
+    {
+      "name": "dm light 1366x768 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1366x768 +details message list readable width",
+      "pass": true,
+      "detail": "w=725"
+    },
+    {
+      "name": "dm light 1366x768 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=1065 msgs.r=1065"
+    },
+    {
+      "name": "dm light 1366x768 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=479"
+    },
+    {
+      "name": "dm light 1366x768 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1366x768 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 1440x900 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1440/1440"
+    },
+    {
+      "name": "dm light 1440x900 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":355.5,\"y\":0,\"w\":1084.5,\"h\":52.5,\"r\":1440,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 1440x900 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":355.5,\"y\":808.3125,\"w\":1084.5,\"h\":91.6875,\"r\":1440,\"b\":900}"
+    },
+    {
+      "name": "dm light 1440x900 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1440x900 message list readable width",
+      "pass": true,
+      "detail": "w=1085"
+    },
+    {
+      "name": "dm light 1440x900 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 1440x900 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=600"
+    },
+    {
+      "name": "dm light 1440x900 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1440x900 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 1440x900 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1440/1440"
+    },
+    {
+      "name": "dm light 1440x900 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":355.5,\"y\":0,\"w\":767.703125,\"h\":52.5,\"r\":1123.203125,\"b\":52.5}"
+    },
+    {
+      "name": "dm light 1440x900 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":355.5,\"y\":808.3125,\"w\":767.703125,\"h\":91.6875,\"r\":1123.203125,\"b\":900}"
+    },
+    {
+      "name": "dm light 1440x900 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1440x900 +details message list readable width",
+      "pass": true,
+      "detail": "w=768"
+    },
+    {
+      "name": "dm light 1440x900 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=1123 msgs.r=1123"
+    },
+    {
+      "name": "dm light 1440x900 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=510"
+    },
+    {
+      "name": "dm light 1440x900 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1440x900 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm light 1920x1080 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1920/1920"
+    },
+    {
+      "name": "dm light 1920x1080 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":398.390625,\"y\":0,\"w\":1521.609375,\"h\":56,\"r\":1920,\"b\":56}"
+    },
+    {
+      "name": "dm light 1920x1080 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":398.390625,\"y\":981.421875,\"w\":1521.609375,\"h\":98.578125,\"r\":1920,\"b\":1080}"
+    },
+    {
+      "name": "dm light 1920x1080 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1920x1080 message list readable width",
+      "pass": true,
+      "detail": "w=1522"
+    },
+    {
+      "name": "dm light 1920x1080 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 1920x1080 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=640"
+    },
+    {
+      "name": "dm light 1920x1080 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1920x1080 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm light 1920x1080 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1920/1920"
+    },
+    {
+      "name": "dm light 1920x1080 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":398.390625,\"y\":0,\"w\":1195.21875,\"h\":56,\"r\":1593.609375,\"b\":56}"
+    },
+    {
+      "name": "dm light 1920x1080 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":398.390625,\"y\":981.421875,\"w\":1195.21875,\"h\":98.578125,\"r\":1593.609375,\"b\":1080}"
+    },
+    {
+      "name": "dm light 1920x1080 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 1920x1080 +details message list readable width",
+      "pass": true,
+      "detail": "w=1195"
+    },
+    {
+      "name": "dm light 1920x1080 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=1594 msgs.r=1594"
+    },
+    {
+      "name": "dm light 1920x1080 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=640"
+    },
+    {
+      "name": "dm light 1920x1080 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 1920x1080 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm light 2560x1440 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=2560/2560"
+    },
+    {
+      "name": "dm light 2560x1440 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":450.5,\"y\":0,\"w\":2109.5,\"h\":59.5,\"r\":2560,\"b\":59.5}"
+    },
+    {
+      "name": "dm light 2560x1440 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":450.5,\"y\":1335.5,\"w\":2109.5,\"h\":104.5,\"r\":2560,\"b\":1440}"
+    },
+    {
+      "name": "dm light 2560x1440 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 2560x1440 message list readable width",
+      "pass": true,
+      "detail": "w=2110"
+    },
+    {
+      "name": "dm light 2560x1440 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 2560x1440 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=680"
+    },
+    {
+      "name": "dm light 2560x1440 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 2560x1440 message font >= 14px",
+      "pass": true,
+      "detail": "font=17"
+    },
+    {
+      "name": "dm light 2560x1440 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=2560/2560"
+    },
+    {
+      "name": "dm light 2560x1440 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":450.5,\"y\":0,\"w\":1701.5,\"h\":59.5,\"r\":2152,\"b\":59.5}"
+    },
+    {
+      "name": "dm light 2560x1440 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":450.5,\"y\":1335.5,\"w\":1701.5,\"h\":104.5,\"r\":2152,\"b\":1440}"
+    },
+    {
+      "name": "dm light 2560x1440 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 2560x1440 +details message list readable width",
+      "pass": true,
+      "detail": "w=1702"
+    },
+    {
+      "name": "dm light 2560x1440 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=2152 msgs.r=2152"
+    },
+    {
+      "name": "dm light 2560x1440 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=680"
+    },
+    {
+      "name": "dm light 2560x1440 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 2560x1440 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=17"
+    },
+    {
+      "name": "dm light 3840x2160 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=3840/3840"
+    },
+    {
+      "name": "dm light 3840x2160 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":477,\"y\":0,\"w\":3363,\"h\":63,\"r\":3840,\"b\":63}"
+    },
+    {
+      "name": "dm light 3840x2160 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":477,\"y\":2050.59375,\"w\":3363,\"h\":109.40625,\"r\":3840,\"b\":2160}"
+    },
+    {
+      "name": "dm light 3840x2160 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 3840x2160 message list readable width",
+      "pass": true,
+      "detail": "w=3363"
+    },
+    {
+      "name": "dm light 3840x2160 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm light 3840x2160 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=720"
+    },
+    {
+      "name": "dm light 3840x2160 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 3840x2160 message font >= 14px",
+      "pass": true,
+      "detail": "font=18"
+    },
+    {
+      "name": "dm light 3840x2160 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=3840/3840"
+    },
+    {
+      "name": "dm light 3840x2160 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":477,\"y\":0,\"w\":2931,\"h\":63,\"r\":3408,\"b\":63}"
+    },
+    {
+      "name": "dm light 3840x2160 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":477,\"y\":2050.59375,\"w\":2931,\"h\":109.40625,\"r\":3408,\"b\":2160}"
+    },
+    {
+      "name": "dm light 3840x2160 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm light 3840x2160 +details message list readable width",
+      "pass": true,
+      "detail": "w=2931"
+    },
+    {
+      "name": "dm light 3840x2160 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=3408 msgs.r=3408"
+    },
+    {
+      "name": "dm light 3840x2160 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=720"
+    },
+    {
+      "name": "dm light 3840x2160 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm light 3840x2160 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=18"
+    },
+    {
+      "name": "dm dark 320x568 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=320/320"
+    },
+    {
+      "name": "dm dark 320x568 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":320,\"h\":56,\"r\":320,\"b\":56}"
+    },
+    {
+      "name": "dm dark 320x568 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":496.8125,\"w\":320,\"h\":71.1875,\"r\":320,\"b\":568}"
+    },
+    {
+      "name": "dm dark 320x568 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 320x568 message list readable width",
+      "pass": true,
+      "detail": "w=320"
+    },
+    {
+      "name": "dm dark 320x568 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 320x568 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=252"
+    },
+    {
+      "name": "dm dark 320x568 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 320x568 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm dark 320x568 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=320/320"
+    },
+    {
+      "name": "dm dark 360x740 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=360/360"
+    },
+    {
+      "name": "dm dark 360x740 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":360,\"h\":56,\"r\":360,\"b\":56}"
+    },
+    {
+      "name": "dm dark 360x740 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":668.8125,\"w\":360,\"h\":71.1875,\"r\":360,\"b\":740}"
+    },
+    {
+      "name": "dm dark 360x740 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 360x740 message list readable width",
+      "pass": true,
+      "detail": "w=360"
+    },
+    {
+      "name": "dm dark 360x740 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 360x740 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=286"
+    },
+    {
+      "name": "dm dark 360x740 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 360x740 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm dark 360x740 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=360/360"
+    },
+    {
+      "name": "dm dark 375x667 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "dm dark 375x667 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":375,\"h\":56,\"r\":375,\"b\":56}"
+    },
+    {
+      "name": "dm dark 375x667 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":595.8125,\"w\":375,\"h\":71.1875,\"r\":375,\"b\":667}"
+    },
+    {
+      "name": "dm dark 375x667 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 375x667 message list readable width",
+      "pass": true,
+      "detail": "w=375"
+    },
+    {
+      "name": "dm dark 375x667 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 375x667 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=298"
+    },
+    {
+      "name": "dm dark 375x667 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 375x667 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm dark 375x667 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "dm dark 390x844 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=390/390"
+    },
+    {
+      "name": "dm dark 390x844 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":390,\"h\":56,\"r\":390,\"b\":56}"
+    },
+    {
+      "name": "dm dark 390x844 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":772.8125,\"w\":390,\"h\":71.1875,\"r\":390,\"b\":844}"
+    },
+    {
+      "name": "dm dark 390x844 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 390x844 message list readable width",
+      "pass": true,
+      "detail": "w=390"
+    },
+    {
+      "name": "dm dark 390x844 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 390x844 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=311"
+    },
+    {
+      "name": "dm dark 390x844 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 390x844 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm dark 390x844 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=390/390"
+    },
+    {
+      "name": "dm dark 430x932 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=430/430"
+    },
+    {
+      "name": "dm dark 430x932 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":0,\"w\":430,\"h\":56,\"r\":430,\"b\":56}"
+    },
+    {
+      "name": "dm dark 430x932 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":0,\"y\":860.8125,\"w\":430,\"h\":71.1875,\"r\":430,\"b\":932}"
+    },
+    {
+      "name": "dm dark 430x932 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 430x932 message list readable width",
+      "pass": true,
+      "detail": "w=430"
+    },
+    {
+      "name": "dm dark 430x932 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 430x932 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=345"
+    },
+    {
+      "name": "dm dark 430x932 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 430x932 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm dark 430x932 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=430/430"
+    },
+    {
+      "name": "dm dark 768x1024 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=768/768"
+    },
+    {
+      "name": "dm dark 768x1024 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":296.25,\"y\":0,\"w\":471.75,\"h\":52.5,\"r\":768,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 768x1024 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":296.25,\"y\":932.3125,\"w\":471.75,\"h\":91.6875,\"r\":768,\"b\":1024}"
+    },
+    {
+      "name": "dm dark 768x1024 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 768x1024 message list readable width",
+      "pass": true,
+      "detail": "w=472"
+    },
+    {
+      "name": "dm dark 768x1024 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 768x1024 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=312"
+    },
+    {
+      "name": "dm dark 768x1024 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 768x1024 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 768x1024 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=768/768"
+    },
+    {
+      "name": "dm dark 900x800 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=900/900"
+    },
+    {
+      "name": "dm dark 900x800 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":296.25,\"y\":0,\"w\":603.75,\"h\":52.5,\"r\":900,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 900x800 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":296.25,\"y\":708.3125,\"w\":603.75,\"h\":91.6875,\"r\":900,\"b\":800}"
+    },
+    {
+      "name": "dm dark 900x800 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 900x800 message list readable width",
+      "pass": true,
+      "detail": "w=604"
+    },
+    {
+      "name": "dm dark 900x800 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 900x800 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=402"
+    },
+    {
+      "name": "dm dark 900x800 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 900x800 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 900x800 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=900/900"
+    },
+    {
+      "name": "dm dark 1024x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1024/1024"
+    },
+    {
+      "name": "dm dark 1024x768 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":315,\"y\":0,\"w\":709,\"h\":52.5,\"r\":1024,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 1024x768 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":315,\"y\":676.3125,\"w\":709,\"h\":91.6875,\"r\":1024,\"b\":768}"
+    },
+    {
+      "name": "dm dark 1024x768 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1024x768 message list readable width",
+      "pass": true,
+      "detail": "w=709"
+    },
+    {
+      "name": "dm dark 1024x768 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 1024x768 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=474"
+    },
+    {
+      "name": "dm dark 1024x768 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1024x768 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 1024x768 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1024/1024"
+    },
+    {
+      "name": "dm dark 1280x800 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1280/1280"
+    },
+    {
+      "name": "dm dark 1280x800 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":323.5,\"y\":0,\"w\":956.5,\"h\":52.5,\"r\":1280,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 1280x800 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":323.5,\"y\":708.3125,\"w\":956.5,\"h\":91.6875,\"r\":1280,\"b\":800}"
+    },
+    {
+      "name": "dm dark 1280x800 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1280x800 message list readable width",
+      "pass": true,
+      "detail": "w=957"
+    },
+    {
+      "name": "dm dark 1280x800 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 1280x800 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=600"
+    },
+    {
+      "name": "dm dark 1280x800 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1280x800 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 1280x800 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1280/1280"
+    },
+    {
+      "name": "dm dark 1280x800 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":323.5,\"y\":0,\"w\":671.5,\"h\":52.5,\"r\":995,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 1280x800 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":323.5,\"y\":708.3125,\"w\":671.5,\"h\":91.6875,\"r\":995,\"b\":800}"
+    },
+    {
+      "name": "dm dark 1280x800 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1280x800 +details message list readable width",
+      "pass": true,
+      "detail": "w=672"
+    },
+    {
+      "name": "dm dark 1280x800 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=995 msgs.r=995"
+    },
+    {
+      "name": "dm dark 1280x800 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=440"
+    },
+    {
+      "name": "dm dark 1280x800 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1280x800 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 1366x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "dm dark 1366x768 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":0,\"w\":1025.3125,\"h\":52.5,\"r\":1366,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 1366x768 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":676.3125,\"w\":1025.3125,\"h\":91.6875,\"r\":1366,\"b\":768}"
+    },
+    {
+      "name": "dm dark 1366x768 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1366x768 message list readable width",
+      "pass": true,
+      "detail": "w=1025"
+    },
+    {
+      "name": "dm dark 1366x768 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 1366x768 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=600"
+    },
+    {
+      "name": "dm dark 1366x768 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1366x768 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 1366x768 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "dm dark 1366x768 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":0,\"w\":724.796875,\"h\":52.5,\"r\":1065.484375,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 1366x768 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":676.3125,\"w\":724.796875,\"h\":91.6875,\"r\":1065.484375,\"b\":768}"
+    },
+    {
+      "name": "dm dark 1366x768 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1366x768 +details message list readable width",
+      "pass": true,
+      "detail": "w=725"
+    },
+    {
+      "name": "dm dark 1366x768 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=1065 msgs.r=1065"
+    },
+    {
+      "name": "dm dark 1366x768 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=479"
+    },
+    {
+      "name": "dm dark 1366x768 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1366x768 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 1440x900 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1440/1440"
+    },
+    {
+      "name": "dm dark 1440x900 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":355.5,\"y\":0,\"w\":1084.5,\"h\":52.5,\"r\":1440,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 1440x900 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":355.5,\"y\":808.3125,\"w\":1084.5,\"h\":91.6875,\"r\":1440,\"b\":900}"
+    },
+    {
+      "name": "dm dark 1440x900 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1440x900 message list readable width",
+      "pass": true,
+      "detail": "w=1085"
+    },
+    {
+      "name": "dm dark 1440x900 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 1440x900 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=600"
+    },
+    {
+      "name": "dm dark 1440x900 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1440x900 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 1440x900 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1440/1440"
+    },
+    {
+      "name": "dm dark 1440x900 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":355.5,\"y\":0,\"w\":767.703125,\"h\":52.5,\"r\":1123.203125,\"b\":52.5}"
+    },
+    {
+      "name": "dm dark 1440x900 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":355.5,\"y\":808.3125,\"w\":767.703125,\"h\":91.6875,\"r\":1123.203125,\"b\":900}"
+    },
+    {
+      "name": "dm dark 1440x900 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1440x900 +details message list readable width",
+      "pass": true,
+      "detail": "w=768"
+    },
+    {
+      "name": "dm dark 1440x900 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=1123 msgs.r=1123"
+    },
+    {
+      "name": "dm dark 1440x900 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=510"
+    },
+    {
+      "name": "dm dark 1440x900 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1440x900 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "dm dark 1920x1080 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1920/1920"
+    },
+    {
+      "name": "dm dark 1920x1080 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":398.390625,\"y\":0,\"w\":1521.609375,\"h\":56,\"r\":1920,\"b\":56}"
+    },
+    {
+      "name": "dm dark 1920x1080 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":398.390625,\"y\":981.421875,\"w\":1521.609375,\"h\":98.578125,\"r\":1920,\"b\":1080}"
+    },
+    {
+      "name": "dm dark 1920x1080 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1920x1080 message list readable width",
+      "pass": true,
+      "detail": "w=1522"
+    },
+    {
+      "name": "dm dark 1920x1080 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 1920x1080 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=640"
+    },
+    {
+      "name": "dm dark 1920x1080 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1920x1080 message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm dark 1920x1080 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1920/1920"
+    },
+    {
+      "name": "dm dark 1920x1080 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":398.390625,\"y\":0,\"w\":1195.21875,\"h\":56,\"r\":1593.609375,\"b\":56}"
+    },
+    {
+      "name": "dm dark 1920x1080 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":398.390625,\"y\":981.421875,\"w\":1195.21875,\"h\":98.578125,\"r\":1593.609375,\"b\":1080}"
+    },
+    {
+      "name": "dm dark 1920x1080 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 1920x1080 +details message list readable width",
+      "pass": true,
+      "detail": "w=1195"
+    },
+    {
+      "name": "dm dark 1920x1080 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=1594 msgs.r=1594"
+    },
+    {
+      "name": "dm dark 1920x1080 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=640"
+    },
+    {
+      "name": "dm dark 1920x1080 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 1920x1080 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=16"
+    },
+    {
+      "name": "dm dark 2560x1440 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=2560/2560"
+    },
+    {
+      "name": "dm dark 2560x1440 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":450.5,\"y\":0,\"w\":2109.5,\"h\":59.5,\"r\":2560,\"b\":59.5}"
+    },
+    {
+      "name": "dm dark 2560x1440 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":450.5,\"y\":1335.5,\"w\":2109.5,\"h\":104.5,\"r\":2560,\"b\":1440}"
+    },
+    {
+      "name": "dm dark 2560x1440 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 2560x1440 message list readable width",
+      "pass": true,
+      "detail": "w=2110"
+    },
+    {
+      "name": "dm dark 2560x1440 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 2560x1440 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=680"
+    },
+    {
+      "name": "dm dark 2560x1440 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 2560x1440 message font >= 14px",
+      "pass": true,
+      "detail": "font=17"
+    },
+    {
+      "name": "dm dark 2560x1440 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=2560/2560"
+    },
+    {
+      "name": "dm dark 2560x1440 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":450.5,\"y\":0,\"w\":1701.5,\"h\":59.5,\"r\":2152,\"b\":59.5}"
+    },
+    {
+      "name": "dm dark 2560x1440 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":450.5,\"y\":1335.5,\"w\":1701.5,\"h\":104.5,\"r\":2152,\"b\":1440}"
+    },
+    {
+      "name": "dm dark 2560x1440 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 2560x1440 +details message list readable width",
+      "pass": true,
+      "detail": "w=1702"
+    },
+    {
+      "name": "dm dark 2560x1440 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=2152 msgs.r=2152"
+    },
+    {
+      "name": "dm dark 2560x1440 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=680"
+    },
+    {
+      "name": "dm dark 2560x1440 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 2560x1440 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=17"
+    },
+    {
+      "name": "dm dark 3840x2160 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=3840/3840"
+    },
+    {
+      "name": "dm dark 3840x2160 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":477,\"y\":0,\"w\":3363,\"h\":63,\"r\":3840,\"b\":63}"
+    },
+    {
+      "name": "dm dark 3840x2160 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":477,\"y\":2050.59375,\"w\":3363,\"h\":109.40625,\"r\":3840,\"b\":2160}"
+    },
+    {
+      "name": "dm dark 3840x2160 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 3840x2160 message list readable width",
+      "pass": true,
+      "detail": "w=3363"
+    },
+    {
+      "name": "dm dark 3840x2160 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "dm dark 3840x2160 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=720"
+    },
+    {
+      "name": "dm dark 3840x2160 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 3840x2160 message font >= 14px",
+      "pass": true,
+      "detail": "font=18"
+    },
+    {
+      "name": "dm dark 3840x2160 +details no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=3840/3840"
+    },
+    {
+      "name": "dm dark 3840x2160 +details header in viewport",
+      "pass": true,
+      "detail": "{\"x\":477,\"y\":0,\"w\":2931,\"h\":63,\"r\":3408,\"b\":63}"
+    },
+    {
+      "name": "dm dark 3840x2160 +details composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":477,\"y\":2050.59375,\"w\":2931,\"h\":109.40625,\"r\":3408,\"b\":2160}"
+    },
+    {
+      "name": "dm dark 3840x2160 +details composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dm dark 3840x2160 +details message list readable width",
+      "pass": true,
+      "detail": "w=2931"
+    },
+    {
+      "name": "dm dark 3840x2160 +details details panel does not cover chat",
+      "pass": true,
+      "detail": "details.x=3408 msgs.r=3408"
+    },
+    {
+      "name": "dm dark 3840x2160 +details bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=720"
+    },
+    {
+      "name": "dm dark 3840x2160 +details no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "dm dark 3840x2160 +details message font >= 14px",
+      "pass": true,
+      "detail": "font=18"
+    },
+    {
+      "name": "settings light 375x667 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "settings light 375x667 no clipped rows",
+      "pass": true,
+      "detail": "clipped=0"
+    },
+    {
+      "name": "settings light 900x800 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=900/900"
+    },
+    {
+      "name": "settings light 900x800 no clipped rows",
+      "pass": true,
+      "detail": "clipped=0"
+    },
+    {
+      "name": "settings light 1366x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "settings light 1366x768 no clipped rows",
+      "pass": true,
+      "detail": "clipped=0"
+    },
+    {
+      "name": "settings light 2560x1440 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=2560/2560"
+    },
+    {
+      "name": "settings light 2560x1440 no clipped rows",
+      "pass": true,
+      "detail": "clipped=0"
+    },
+    {
+      "name": "settings dark 375x667 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "settings dark 375x667 no clipped rows",
+      "pass": true,
+      "detail": "clipped=0"
+    },
+    {
+      "name": "settings dark 900x800 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=900/900"
+    },
+    {
+      "name": "settings dark 900x800 no clipped rows",
+      "pass": true,
+      "detail": "clipped=0"
+    },
+    {
+      "name": "settings dark 1366x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "settings dark 1366x768 no clipped rows",
+      "pass": true,
+      "detail": "clipped=0"
+    },
+    {
+      "name": "settings dark 2560x1440 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=2560/2560"
+    },
+    {
+      "name": "settings dark 2560x1440 no clipped rows",
+      "pass": true,
+      "detail": "clipped=0"
+    },
+    {
+      "name": "community opens from rail",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "group light message rendered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "group light 1366x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "group light 1366x768 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":0,\"w\":1025.3125,\"h\":52.5,\"r\":1366,\"b\":52.5}"
+    },
+    {
+      "name": "group light 1366x768 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":676.3125,\"w\":1025.3125,\"h\":91.6875,\"r\":1366,\"b\":768}"
+    },
+    {
+      "name": "group light 1366x768 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "group light 1366x768 message list readable width",
+      "pass": true,
+      "detail": "w=1025"
+    },
+    {
+      "name": "group light 1366x768 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "group light 1366x768 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=302"
+    },
+    {
+      "name": "group light 1366x768 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "group light 1366x768 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "emoji search light returns results",
+      "pass": true,
+      "detail": "hits=7"
+    },
+    {
+      "name": "emoji picker light inside viewport",
+      "pass": true,
+      "detail": "{\"x\":370.6875,\"y\":286.3125,\"width\":337.5,\"height\":390}"
+    },
+    {
+      "name": "mobile list light no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    },
+    {
+      "name": "group dark message rendered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "group dark 1366x768 no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=1366/1366"
+    },
+    {
+      "name": "group dark 1366x768 header in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":0,\"w\":1025.3125,\"h\":52.5,\"r\":1366,\"b\":52.5}"
+    },
+    {
+      "name": "group dark 1366x768 composer in viewport",
+      "pass": true,
+      "detail": "{\"x\":340.6875,\"y\":676.3125,\"w\":1025.3125,\"h\":91.6875,\"r\":1366,\"b\":768}"
+    },
+    {
+      "name": "group dark 1366x768 composer not covered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "group dark 1366x768 message list readable width",
+      "pass": true,
+      "detail": "w=1025"
+    },
+    {
+      "name": "group dark 1366x768 details panel does not cover chat",
+      "pass": true,
+      "detail": "closed"
+    },
+    {
+      "name": "group dark 1366x768 bubble max width <= 720px",
+      "pass": true,
+      "detail": "max=302"
+    },
+    {
+      "name": "group dark 1366x768 no bubble content overflow",
+      "pass": true,
+      "detail": "overflowing=0"
+    },
+    {
+      "name": "group dark 1366x768 message font >= 14px",
+      "pass": true,
+      "detail": "font=15"
+    },
+    {
+      "name": "emoji search dark returns results",
+      "pass": true,
+      "detail": "hits=7"
+    },
+    {
+      "name": "emoji picker dark inside viewport",
+      "pass": true,
+      "detail": "{\"x\":370.6875,\"y\":286.3125,\"width\":337.5,\"height\":390}"
+    },
+    {
+      "name": "mobile list dark no horizontal overflow",
+      "pass": true,
+      "detail": "scrollW=375/375"
+    }
+  ]
+}

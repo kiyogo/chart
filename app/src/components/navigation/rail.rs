@@ -64,6 +64,7 @@ pub fn NavigationRail(
             // Direct Messages
             div {
                 class: if active_section == NavSection::DirectMessages { "rail-slot active" } else { "rail-slot" },
+                "data-tooltip": "Tin nhắn",
                 span { class: "rail-pill" }
                 button {
                     r#type: "button",
@@ -81,6 +82,7 @@ pub fn NavigationRail(
             // Friends
             div {
                 class: if active_section == NavSection::Friends { "rail-slot active" } else { "rail-slot" },
+                "data-tooltip": "Bạn bè",
                 span { class: "rail-pill" }
                 button {
                     r#type: "button",

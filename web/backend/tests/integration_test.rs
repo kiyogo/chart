@@ -560,9 +560,14 @@ async fn test_full_e2ee_chat_flow() {
     assert_eq!(res.status(), StatusCode::OK);
     let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
     let channels: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
-    assert_eq!(channels.len(), 1);
-    assert_eq!(channels[0]["name"], "general");
-    let general_ch_id = channels[0]["id"].as_str().unwrap().to_string();
+    // Spec 003: a new server gets a default "general" text channel and a default voice channel.
+    assert_eq!(channels.len(), 2);
+    let general = channels
+        .iter()
+        .find(|c| c["name"] == "general" && c["channel_type"] == "text")
+        .expect("default general text channel");
+    assert!(channels.iter().any(|c| c["channel_type"] == "voice"), "default voice channel");
+    let general_ch_id = general["id"].as_str().unwrap().to_string();
 
     // 19. DISCORD-STYLE SERVERS: Create custom category and voice channel
     let req = Request::post(format!("/api/servers/{server_id}/categories"))

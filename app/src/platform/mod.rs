@@ -186,12 +186,18 @@ pub async fn process_selected_avatar_bytes() -> Result<Vec<u8>, String> {
 
 /// Insert an emoji at the current cursor selection of `#dm-chat-input` and return updated value.
 pub async fn insert_emoji_in_dm_input(current_text: &str, emoji: &str) -> String {
+    insert_text_in_input("dm-chat-input", current_text, emoji).await
+}
+
+/// Insert text at the cursor of the input/textarea with `input_id` and return the updated value.
+pub async fn insert_text_in_input(input_id: &str, current_text: &str, emoji: &str) -> String {
+    let id_json = serde_json::to_string(input_id).unwrap_or_else(|_| "\"\"".to_string());
     let emoji_json = serde_json::to_string(emoji).unwrap_or_else(|_| "\"\"".to_string());
     let cur_json = serde_json::to_string(current_text).unwrap_or_else(|_| "\"\"".to_string());
     let js = format!(
         r#"
         (() => {{
-            const input = document.getElementById('dm-chat-input');
+            const input = document.getElementById({id_json});
             const emoji = {emoji_json};
             const cur = {cur_json};
             if (!input) {{
@@ -223,20 +229,92 @@ pub async fn get_viewport_width() -> u32 {
     eval.recv::<u32>().await.unwrap_or(0)
 }
 
-/// Apply theme ("light" | "dark") to `<html data-theme="...">` and persist locally.
-pub fn apply_theme(theme: &str) {
-    let t = if theme == "dark" { "dark" } else { "light" };
-    storage_set("chatw_theme", t);
-    let _ = dioxus::document::eval(&format!(
-        "document.documentElement.setAttribute('data-theme', '{t}');"
-    ));
+/// User appearance preferences. Persisted in local storage and applied as
+/// `data-*` attributes on `<html>` so the CSS token layer reacts without zoom.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Appearance {
+    /// "light" | "dark" | "system"
+    pub theme: String,
+    /// "blue" | "violet" | "green" | "orange" | "rose"
+    pub accent: String,
+    /// "compact" | "comfortable" | "spacious"
+    pub density: String,
+    /// "auto" or a pixel size between 13 and 20
+    pub font_size: String,
 }
 
-pub fn load_saved_theme() -> String {
-    match storage_get("chatw_theme").as_deref() {
-        Some("dark") => "dark".to_string(),
-        _ => "light".to_string(),
+impl Default for Appearance {
+    fn default() -> Self {
+        Self {
+            theme: "system".to_string(),
+            accent: "blue".to_string(),
+            density: "comfortable".to_string(),
+            font_size: "auto".to_string(),
+        }
     }
+}
+
+fn pick(value: Option<String>, allowed: &[&str], fallback: &str) -> String {
+    match value {
+        Some(v) if allowed.contains(&v.as_str()) => v,
+        _ => fallback.to_string(),
+    }
+}
+
+pub fn load_appearance() -> Appearance {
+    let font_size = match storage_get("chatw_font_size") {
+        Some(v) if v == "auto" => v,
+        Some(v) if v.parse::<u32>().map(|n| (13..=20).contains(&n)).unwrap_or(false) => v,
+        _ => "auto".to_string(),
+    };
+    Appearance {
+        theme: pick(storage_get("chatw_theme"), &["light", "dark", "system"], "system"),
+        accent: pick(storage_get("chatw_accent"), &["blue", "violet", "green", "orange", "rose"], "blue"),
+        density: pick(storage_get("chatw_density"), &["compact", "comfortable", "spacious"], "comfortable"),
+        font_size,
+    }
+}
+
+/// Persist and apply appearance. "system" follows `prefers-color-scheme` live.
+pub fn apply_appearance(a: &Appearance) {
+    storage_set("chatw_theme", &a.theme);
+    storage_set("chatw_accent", &a.accent);
+    storage_set("chatw_density", &a.density);
+    storage_set("chatw_font_size", &a.font_size);
+    let font_px = if a.font_size == "auto" { String::new() } else { format!("{}px", a.font_size) };
+    let script = format!(
+        r#"
+        (function() {{
+            const root = document.documentElement;
+            const pref = {theme:?};
+            const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+            const resolve = () => pref === 'system' ? ((mq && mq.matches) ? 'dark' : 'light') : pref;
+            root.setAttribute('data-theme', resolve());
+            root.setAttribute('data-theme-pref', pref);
+            root.setAttribute('data-accent', {accent:?});
+            root.setAttribute('data-density', {density:?});
+            root.setAttribute('data-font-size', {font_size:?});
+            if ({font_px:?}) root.style.setProperty('--font-size-root', {font_px:?});
+            else root.style.removeProperty('--font-size-root');
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', resolve() === 'dark' ? '#111419' : '#FFFFFF');
+            if (mq && !window.__chatwThemeListener) {{
+                window.__chatwThemeListener = true;
+                mq.addEventListener('change', () => {{
+                    if (root.getAttribute('data-theme-pref') === 'system') {{
+                        root.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+                    }}
+                }});
+            }}
+        }})();
+        "#,
+        theme = a.theme,
+        accent = a.accent,
+        density = a.density,
+        font_size = a.font_size,
+        font_px = font_px,
+    );
+    let _ = dioxus::document::eval(&script);
 }
 
 pub fn copy_to_clipboard(text: &str) {

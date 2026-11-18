@@ -7,13 +7,13 @@ use crate::{
     components::{
         avatar::Avatar,
         calls::{ActiveCallOverlay, IncomingCallModal},
-        emoji_picker::EmojiPicker,
+        details_panel::DmDetailsPanel,
         groups::{AddMemberModal, CreateGroupModal, GroupInfoPanel, GroupInviteModal},
         icons::{
-            BackIcon, CloseIcon, EmojiIcon, FriendsIcon, GroupIcon, InfoIcon, LogoIcon,
-            LogoutIcon, MenuIcon, PhoneIcon, PlusIcon, SendIcon, ServerIcon, SettingsIcon,
-            VideoIcon,
+            BackIcon, GroupIcon, HashIcon, MessageIcon, MicIcon, MicOffIcon, PanelRightIcon,
+            PhoneIcon, PhoneOffIcon, ShieldIcon, UserPlusIcon, VideoIcon, VolumeIcon,
         },
+        messages::{Composer, MessageList, ViewMessage},
         navigation::{
             modals::{CommunityModal, CreateCategoryModal, CreateChannelModal, ServerInviteModal},
             rail::NavigationRail,
@@ -21,7 +21,7 @@ use crate::{
             NavSection,
         },
         profile_modal::ProfileModal,
-        sticker_picker::StickerPicker,
+        settings_view::SettingsView,
     },
     crypto::e2ee::{
         PeerKeys, decrypt_chat_message, encrypt_chat_message, get_or_verify_peer_keys,
@@ -31,32 +31,17 @@ use crate::{
     models::{
         CallSessionItem, ChannelItem, ChannelMessageItem, DisplayMessage, FriendItem,
         GroupCategoryItem, GroupChannelItem, GroupItem, GroupMessageItem, GroupReactionItem,
-        MessageStatus, PendingRequestItem, ServerItem, UserSearchResult, WsEvent,
+        MessageStatus, PendingRequestItem, ServerCategoryItem, ServerItem, UserSearchResult,
+        VoiceStateItem, WsEvent,
     },
     platform,
     services::{api, calls, groups, ws},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SidebarTab {
-    Chats,
-    Groups,
-    Friends,
-    Servers,
-}
-
 #[derive(Clone, PartialEq)]
 struct AddFriendStatus {
     is_error: bool,
     message: String,
-}
-
-fn format_badge(count: usize) -> String {
-    if count > 99 {
-        "99+".to_string()
-    } else {
-        count.to_string()
-    }
 }
 
 fn load_saved_previews(storage_key: &str) -> HashMap<String, String> {
@@ -93,23 +78,27 @@ pub fn Chat(
 
     // Avatar state
     let mut my_avatar_url = use_signal(|| current_user_avatar_url.clone());
-    let mut is_uploading_avatar = use_signal(|| false);
-    let mut avatar_upload_error = use_signal(|| Option::<String>::None);
 
     // Partner Info Sidebar (responsive auto-open on >= 1024px)
-    let mut is_partner_info_open = use_signal(|| platform::initial_window_width() >= 1024);
+    let mut is_partner_info_open = use_signal(|| platform::initial_window_width() >= 1280);
     let mut partner_fingerprint = use_signal(|| Option::<String>::None);
 
     // Sidebar Tabs
-    let mut sidebar_tab = use_signal(|| SidebarTab::Chats);
+    let mut nav_section = use_signal(|| NavSection::DirectMessages);
+    let mut server_categories = use_signal(Vec::<ServerCategoryItem>::new);
+    let mut voice_participants = use_signal(Vec::<VoiceStateItem>::new);
+    let mut is_community_modal_open = use_signal(|| false);
+    let mut is_create_category_open = use_signal(|| false);
+    let mut create_channel_for = use_signal(|| Option::<Option<String>>::None);
+    let mut is_server_invite_open = use_signal(|| false);
+    let mut group_reply_to = use_signal(|| Option::<(String, String)>::None);
+    let mut highlight_msg = use_signal(|| Option::<String>::None);
     let mut servers = use_signal(Vec::<ServerItem>::new);
     let mut selected_server = use_signal(|| Option::<ServerItem>::None);
     let mut channels = use_signal(Vec::<ChannelItem>::new);
     let mut selected_channel = use_signal(|| Option::<ChannelItem>::None);
     let mut channel_messages = use_signal(Vec::<ChannelMessageItem>::new);
     let mut channel_input = use_signal(String::new);
-    let mut new_server_name = use_signal(String::new);
-    let mut invite_code_input = use_signal(String::new);
     let mut active_voice_channel = use_signal(|| Option::<ChannelItem>::None);
     let mut is_voice_muted = use_signal(|| false);
 
@@ -125,7 +114,6 @@ pub fn Chat(
     let mut is_group_info_open = use_signal(|| false);
     let mut is_group_invite_open = use_signal(|| false);
     let mut is_group_add_member_open = use_signal(|| false);
-    let mut is_group_sticker_picker_open = use_signal(|| false);
 
     // Profile State
     let mut viewing_profile_user_id = use_signal(|| Option::<String>::None);
@@ -196,19 +184,20 @@ pub fn Chat(
         // Check actual viewport width & subscribe to resize events
         spawn(async move {
             let w = platform::get_viewport_width().await;
-            if w >= 1024 {
-                is_partner_info_open.set(true);
-            }
+            is_partner_info_open.set(w >= 1280);
             let mut eval = dioxus::document::eval(
                 r#"
+                let wide = window.innerWidth >= 1280;
                 window.addEventListener('resize', () => {
-                    dioxus.send(window.innerWidth || 0);
+                    const now = window.innerWidth >= 1280;
+                    if (now !== wide) { wide = now; dioxus.send(now); }
                 });
                 "#,
             );
-            while let Ok(width) = eval.recv::<u32>().await {
-                if width >= 1024 && !is_partner_info_open() {
-                    is_partner_info_open.set(true);
+            while let Ok(now_wide) = eval.recv::<bool>().await {
+                if !now_wide {
+                    is_partner_info_open.set(false);
+                    is_group_info_open.set(false);
                 }
             }
         });
@@ -328,7 +317,7 @@ pub fn Chat(
                                     platform::scroll_chat_to_bottom(false);
 
                                     if !is_from_me
-                                        && (sidebar_tab() != SidebarTab::Chats
+                                        && (nav_section() != NavSection::DirectMessages
                                             || is_settings_open())
                                     {
                                         unread_counts.with_mut(|m| {
@@ -344,7 +333,7 @@ pub fn Chat(
                                 }
                             }
                             Err(_) => {
-                                if is_for_active {
+                                if is_for_active && !messages.read().iter().any(|m| m.id == id) {
                                     messages.with_mut(|list| {
                                         list.push(DisplayMessage {
                                             id: id.clone(),
@@ -622,7 +611,8 @@ pub fn Chat(
         } else if ch.channel_type == "voice" {
             let ch_clone = ch.clone();
             spawn(async move {
-                if api::webrtc_join_voice(&ch_clone.id).await.is_ok() {
+                if let Ok(parts) = api::webrtc_join_voice(&ch_clone.id).await {
+                    voice_participants.set(parts);
                     active_voice_channel.set(Some(ch_clone));
                 }
             });
@@ -632,6 +622,8 @@ pub fn Chat(
     // Helper: select a group
     let select_group = use_callback(move |grp: GroupItem| {
         is_settings_open.set(false);
+        nav_section.set(NavSection::DirectMessages);
+        group_reply_to.set(None);
         selected_channel.set(None);
         active_friend.set(None);
         active_group.set(Some(grp.clone()));
@@ -657,14 +649,27 @@ pub fn Chat(
 
     // Helper: select a server
     let mut select_server = move |srv: ServerItem| {
+        is_settings_open.set(false);
+        nav_section.set(NavSection::Server(srv.id.clone()));
         selected_server.set(Some(srv.clone()));
+        active_friend.set(None);
+        active_group.set(None);
+        selected_channel.set(None);
+        channel_messages.set(Vec::new());
+        server_categories.set(Vec::new());
+        channels.set(Vec::new());
         spawn(async move {
+            if let Ok(cats) = api::servers_get_categories(&srv.id).await {
+                server_categories.set(cats);
+            }
             if let Ok(chs) = api::servers_get_channels(&srv.id).await {
                 let first_text = chs.iter().find(|c| c.channel_type == "text").cloned();
                 channels.set(chs);
-                if let Some(first) = first_text {
-                    select_channel(first);
-                }
+                // On wide screens open the first text channel; on mobile keep the channel list visible.
+                if platform::get_viewport_width().await >= 768
+                    && let Some(first) = first_text {
+                        select_channel(first);
+                    }
             }
         });
     };
@@ -674,6 +679,7 @@ pub fn Chat(
     let pkey_for_select = preview_storage_key.clone();
     let select_friend = use_callback(move |friend: FriendItem| {
         is_settings_open.set(false);
+        nav_section.set(NavSection::DirectMessages);
         selected_channel.set(None);
         active_group.set(None);
         active_friend.set(Some(friend.clone()));
@@ -688,11 +694,6 @@ pub fn Chat(
         let uid = uid_for_select.clone();
         let pkey = pkey_for_select.clone();
         spawn(async move {
-            let w = platform::get_viewport_width().await;
-            if w >= 1024 {
-                is_partner_info_open.set(true);
-            }
-
             let Some(keys) = user_keys() else {
                 return;
             };
@@ -839,6 +840,9 @@ pub fn Chat(
             match result {
                 Ok((seq, created_at)) => {
                     messages.with_mut(|list| {
+                        if list.iter().any(|m| m.id == message_id) {
+                            return;
+                        }
                         list.push(DisplayMessage {
                             id: message_id.clone(),
                             seq,
@@ -909,10 +913,12 @@ pub fn Chat(
             return;
         }
         group_input.set(String::new());
+        let reply = group_reply_to().map(|(id, _)| id);
+        group_reply_to.set(None);
         let gid = grp.id.clone();
         let cid = active_group_channel().map(|c| c.id);
         spawn(async move {
-            if let Ok(msg) = groups::groups_send_message(&gid, cid.as_deref(), &text, None).await {
+            if let Ok(msg) = groups::groups_send_message(&gid, cid.as_deref(), &text, reply).await {
                 group_messages.with_mut(|list| {
                     if !list.iter().any(|m| m.id == msg.id) {
                         list.push(msg);
@@ -923,949 +929,500 @@ pub fn Chat(
         });
     });
 
-    // Computed counts
+    // ---------------------------------------------------------------------
+    // Derived view state
+    // ---------------------------------------------------------------------
     let total_unread: usize = unread_counts.read().values().copied().sum();
     let pending_len = pending_requests.read().len();
+    let is_chat_selected = active_friend().is_some()
+        || active_group().is_some()
+        || selected_channel().is_some()
+        || is_settings_open();
+    let section = if is_settings_open() { NavSection::Settings } else { nav_section() };
 
-    let is_chat_selected = active_friend().is_some() || active_group().is_some() || selected_channel().is_some() || is_settings_open();
-
-    let sidebar_class = if is_chat_selected {
-        "sidebar hidden-mobile"
-    } else {
-        "sidebar "
+    let start_call = move |kind: &'static str, user: Option<String>, group: Option<String>| {
+        spawn(async move {
+            if let Ok(sess) = calls::calls_start(kind, user, group).await {
+                active_call_session.set(Some(sess));
+            }
+        });
     };
 
-    let chat_view_class =
-        if !is_chat_selected {
-            "chat-view hidden-mobile"
-        } else {
-            "chat-view "
-        };
+    let mut jump_to_message = move |id: String| {
+        highlight_msg.set(Some(id.clone()));
+        let id_json = serde_json::to_string(&format!("msg-{id}")).unwrap_or_default();
+        let _ = dioxus::document::eval(&format!(
+            "const el = document.getElementById({id_json}); if (el) el.scrollIntoView({{ block: 'center', behavior: 'smooth' }});"
+        ));
+        spawn(async move {
+            platform::sleep_ms(2000).await;
+            highlight_msg.set(None);
+        });
+    };
 
-    let current_username_for_add = current_username.clone();
+    let refresh_friend_state = move || {
+        spawn(async move {
+            if let Ok(list) = api::friends_list().await {
+                friends.set(list);
+            }
+            if let Ok(reqs) = api::friends_get_requests().await {
+                pending_requests.set(reqs);
+            }
+        });
+    };
+
+    let username_for_add = current_username.clone();
+    let add_friend_submit = move |_| {
+        let target = friend_input().trim().to_string();
+        if target.is_empty() || is_adding_friend() {
+            return;
+        }
+        if target.to_lowercase() == username_for_add.to_lowercase() {
+            add_friend_status.set(Some(AddFriendStatus { is_error: true, message: "Không thể tự kết bạn với chính mình".to_string() }));
+            return;
+        }
+        is_adding_friend.set(true);
+        add_friend_status.set(None);
+        spawn(async move {
+            match api::friends_send_request_by_username(&target).await {
+                Ok(_) => {
+                    friend_input.set(String::new());
+                    add_friend_status.set(Some(AddFriendStatus { is_error: false, message: "Đã gửi lời mời kết bạn".to_string() }));
+                    refresh_friend_state();
+                }
+                Err(err) => {
+                    let msg = match err.code.as_str() {
+                        "receiver_not_found" => "Không tìm thấy người dùng",
+                        "already_friends" => "Hai người đã là bạn bè",
+                        "request_already_pending" => "Đã gửi lời mời trước đó",
+                        _ => "Không thể gửi lời mời",
+                    };
+                    add_friend_status.set(Some(AddFriendStatus { is_error: true, message: msg.to_string() }));
+                }
+            }
+            is_adding_friend.set(false);
+        });
+    };
+
+    // DM messages → view model
+    let dm_view: Vec<ViewMessage> = match active_friend() {
+        Some(af) => {
+            let list = messages.read();
+            list.iter()
+                .map(|m| ViewMessage {
+                    id: m.id.clone(),
+                    sender_id: m.sender_id.clone(),
+                    sender_name: if m.is_self { current_username.clone() } else { af.username.clone() },
+                    sender_avatar: if m.is_self { my_avatar_url() } else { af.avatar_url.clone() },
+                    text: m.text.clone(),
+                    created_at: m.created_at.clone(),
+                    is_self: m.is_self,
+                    is_error: m.status == MessageStatus::Error,
+                    is_pending: false,
+                    reply_text: m.reply_to_id.as_ref().map(|rid| {
+                        list.iter().find(|x| &x.id == rid).map(|x| x.text.clone()).unwrap_or_else(|| "Tin nhắn gốc không còn".to_string())
+                    }),
+                    reactions: Vec::new(),
+                })
+                .collect()
+        }
+        None => Vec::new(),
+    };
+
+    // Group messages → view model (reactions aggregated per emoji)
+    let group_view: Vec<ViewMessage> = if active_group().is_some() {
+        let list = group_messages.read();
+        list.iter()
+            .map(|m| {
+                let mut agg: Vec<(String, usize, bool)> = Vec::new();
+                for r in &m.reactions {
+                    let mine = r.user_id == current_user_id;
+                    if let Some(e) = agg.iter_mut().find(|e| e.0 == r.emoji) {
+                        e.1 += 1;
+                        e.2 |= mine;
+                    } else {
+                        agg.push((r.emoji.clone(), 1, mine));
+                    }
+                }
+                ViewMessage {
+                    id: m.id.clone(),
+                    sender_id: m.sender_id.clone(),
+                    sender_name: m.sender_username.clone(),
+                    sender_avatar: m.sender_avatar_url.clone(),
+                    text: m.content.clone(),
+                    created_at: m.created_at.clone(),
+                    is_self: m.sender_id == current_user_id,
+                    is_error: false,
+                    is_pending: false,
+                    reply_text: m.reply_to_id.as_ref().map(|rid| {
+                        list.iter()
+                            .find(|x| &x.id == rid)
+                            .map(|x| format!("{}: {}", x.sender_username, x.content))
+                            .unwrap_or_else(|| "Tin nhắn gốc không còn".to_string())
+                    }),
+                    reactions: agg,
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Channel messages → view model
+    let channel_view: Vec<ViewMessage> = channel_messages
+        .read()
+        .iter()
+        .map(|m| ViewMessage {
+            id: m.id.clone(),
+            sender_id: m.sender_id.clone(),
+            sender_name: m.sender_username.clone(),
+            sender_avatar: m.sender_avatar_url.clone(),
+            text: m.content.clone(),
+            created_at: m.created_at.clone(),
+            is_self: m.sender_id == current_user_id,
+            is_error: false,
+            is_pending: false,
+            reply_text: None,
+            reactions: Vec::new(),
+        })
+        .collect();
+
+    let my_fingerprint = user_keys().map(|k| k.fingerprint_b64);
+    let feedback = add_friend_status().map(|s| (s.is_error, s.message));
 
     rsx! {
-        div { class: "app-layout",
-            div { class: "app-content",
-                // Sidebar
-                aside { class: "{sidebar_class}",
-                div { class: "sidebar-header",
-                    div { class: "app-brand",
-                        Avatar {
-                            name: current_username.clone(),
-                            avatar_url: my_avatar_url(),
-                            size: 28,
-                        }
-                        span { "{current_username}" }
-                    }
-                    div { class: "sidebar-actions",
-                        button {
-                            r#type: "button",
-                            class: if sidebar_tab() == SidebarTab::Chats && !is_settings_open() { "icon-btn active" } else { "icon-btn " },
-                            aria_label: "Danh sách chat",
-                            onclick: move |_| {
-                                sidebar_tab.set(SidebarTab::Chats);
-                                is_settings_open.set(false);
-                                if let Some(active) = active_friend() {
-                                    unread_counts.with_mut(|m| {
-                                        m.remove(&active.id);
-                                    });
-                                }
-                            },
-                            LogoIcon { size: 18 }
-                            if total_unread > 0 {
-                                span { class: "tab-badge", "{format_badge(total_unread)}" }
-                            }
-                        }
-                        button {
-                            r#type: "button",
-                            class: if sidebar_tab() == SidebarTab::Groups && !is_settings_open() { "icon-btn active" } else { "icon-btn " },
-                            aria_label: "Nhóm trò chuyện",
-                            onclick: move |_| {
-                                sidebar_tab.set(SidebarTab::Groups);
-                                is_settings_open.set(false);
-                                spawn(async move {
-                                    if let Ok(list) = groups::groups_list().await {
-                                        groups.set(list);
+        div { class: "workspace-shell",
+            NavigationRail {
+                active_section: section.clone(),
+                servers: servers(),
+                unread_dm_count: total_unread,
+                pending_friend_count: pending_len,
+                current_username: current_username.clone(),
+                current_avatar_url: my_avatar_url(),
+                hidden_mobile: is_chat_selected,
+                on_select_dm: move |_| {
+                    is_settings_open.set(false);
+                    nav_section.set(NavSection::DirectMessages);
+                },
+                on_select_friends: move |_| {
+                    is_settings_open.set(false);
+                    nav_section.set(NavSection::Friends);
+                    active_friend.set(None);
+                    active_group.set(None);
+                    selected_channel.set(None);
+                },
+                on_select_server: move |srv: ServerItem| select_server(srv),
+                on_open_create_server: move |_| is_community_modal_open.set(true),
+                on_open_settings: move |_| is_settings_open.set(true),
+                on_open_profile: {
+                    let me = current_user_id.clone();
+                    move |_| viewing_profile_user_id.set(Some(me.clone()))
+                },
+                on_logout: move |_| on_logout.call(()),
+            }
+
+            if section != NavSection::Settings {
+                NavigationSidebar {
+                    active_section: section.clone(),
+                    current_username: current_username.clone(),
+                    current_avatar_url: my_avatar_url(),
+                    hidden_mobile: is_chat_selected,
+                    friends: friends(),
+                    active_friend_id: active_friend().map(|f| f.id),
+                    groups: groups(),
+                    active_group_id: active_group().map(|g| g.id),
+                    unread_counts: unread_counts(),
+                    last_previews: last_previews(),
+                    on_select_friend: move |f: FriendItem| select_friend.call(f),
+                    on_select_group: move |g: GroupItem| select_group.call(g),
+                    on_open_create_group: move |_| is_create_group_open.set(true),
+                    friend_input: friend_input(),
+                    search_results: search_results(),
+                    pending_requests: pending_requests(),
+                    add_friend_feedback: feedback,
+                    is_adding_friend: is_adding_friend(),
+                    on_friend_input_change: move |v: String| {
+                        friend_input.set(v);
+                        add_friend_status.set(None);
+                    },
+                    on_add_friend_submit: add_friend_submit,
+                    on_send_friend_request_by_id: move |rid: String| {
+                        spawn(async move {
+                            if api::friends_send_request_by_id(&rid).await.is_ok() {
+                                search_results.with_mut(|list| {
+                                    for u in list.iter_mut() {
+                                        if u.id == rid {
+                                            u.relationship = "pending_sent".to_string();
+                                        }
                                     }
                                 });
-                            },
-                            GroupIcon {}
+                                refresh_friend_state();
+                            }
+                        });
+                    },
+                    on_accept_friend_request: move |rid: String| {
+                        spawn(async move {
+                            if api::friends_accept_request(&rid).await.is_ok() {
+                                refresh_friend_state();
+                            }
+                        });
+                    },
+                    selected_server: selected_server(),
+                    server_categories: server_categories(),
+                    server_channels: channels(),
+                    selected_channel_id: selected_channel().map(|c| c.id),
+                    active_voice_channel: active_voice_channel(),
+                    voice_participants: voice_participants(),
+                    is_voice_muted: is_voice_muted(),
+                    on_select_channel: move |ch: ChannelItem| select_channel(ch),
+                    on_open_create_category: move |_| is_create_category_open.set(true),
+                    on_open_create_channel: move |cat: Option<String>| create_channel_for.set(Some(cat)),
+                    on_open_server_invite: move |_| is_server_invite_open.set(true),
+                    on_toggle_voice_mute: move |_| {
+                        if let Some(ch) = active_voice_channel() {
+                            let next = !is_voice_muted();
+                            is_voice_muted.set(next);
+                            spawn(async move {
+                                let _ = api::webrtc_update_voice_state(&ch.id, next).await;
+                            });
                         }
-                        button {
-                            r#type: "button",
-                            class: if sidebar_tab() == SidebarTab::Friends && !is_settings_open() { "icon-btn active" } else { "icon-btn " },
-                            aria_label: "Kết bạn",
-                            onclick: move |_| {
-                                sidebar_tab.set(SidebarTab::Friends);
-                                is_settings_open.set(false);
-                            },
-                            FriendsIcon {}
-                            if pending_len > 0 {
-                                span { class: "tab-badge", "{format_badge(pending_len)}" }
-                            }
+                    },
+                    on_leave_voice: move |_| {
+                        if let Some(ch) = active_voice_channel() {
+                            spawn(async move {
+                                let _ = api::webrtc_leave_voice(&ch.id).await;
+                                active_voice_channel.set(None);
+                                voice_participants.set(Vec::new());
+                            });
                         }
-                        button {
-                            r#type: "button",
-                            class: if sidebar_tab() == SidebarTab::Servers && !is_settings_open() { "icon-btn active" } else { "icon-btn " },
-                            aria_label: "Máy chủ",
-                            onclick: move |_| {
-                                sidebar_tab.set(SidebarTab::Servers);
-                                is_settings_open.set(false);
-                                spawn(async move {
-                                    if let Ok(list) = api::servers_list().await {
-                                        servers.set(list);
-                                    }
-                                });
-                            },
-                            ServerIcon {}
-                        }
-                        button {
-                            r#type: "button",
-                            class: if is_settings_open() { "icon-btn active" } else { "icon-btn " },
-                            aria_label: "Cài đặt",
-                            onclick: move |_| {
-                                let next_open = !is_settings_open();
-                                is_settings_open.set(next_open);
-                                if next_open {
-                                    active_friend.set(None);
-                                    selected_channel.set(None);
-                                }
-                            },
-                            SettingsIcon {}
-                        }
-                        button {
-                            r#type: "button",
-                            class: "icon-btn btn-danger",
-                            aria_label: "Đăng xuất",
-                            onclick: move |_| on_logout.call(()),
-                            LogoutIcon {}
-                        }
-                    }
-                }
-
-                // Tab: Friends / Direct Add & Requests
-                if sidebar_tab() == SidebarTab::Friends {
-                    div { class: "add-friend-container",
-                        form {
-                            class: "add-friend-form",
-                            onsubmit: move |evt| {
-                                evt.prevent_default();
-                                let target = friend_input().trim().to_string();
-                                if target.is_empty() || is_adding_friend() {
-                                    return;
-                                }
-                                if target.to_lowercase() == current_username_for_add.to_lowercase() {
-                                    add_friend_status.set(Some(AddFriendStatus {
-                                        is_error: true,
-                                        message: "Không thể tự kết bạn".to_string(),
-                                    }));
-                                    return;
-                                }
-                                is_adding_friend.set(true);
-                                add_friend_status.set(None);
-                                spawn(async move {
-                                    match api::friends_send_request_by_username(&target).await {
-                                        Ok(_) => {
-                                            friend_input.set(String::new());
-                                            add_friend_status.set(Some(AddFriendStatus {
-                                                is_error: false,
-                                                message: "Đã gửi lời mời kết bạn".to_string(),
-                                            }));
-                                            if let Ok(list) = api::friends_list().await {
-                                                friends.set(list);
-                                            }
-                                            if let Ok(reqs) = api::friends_get_requests().await {
-                                                pending_requests.set(reqs);
-                                            }
-                                        }
-                                        Err(err) => {
-                                            let msg = match err.code.as_str() {
-                                                "receiver_not_found" => "Không tìm thấy người dùng",
-                                                "already_friends" => "Hai người đã là bạn bè",
-                                                "request_already_pending" => "Đã gửi lời mời trước đó",
-                                                _ => "Không thể gửi lời mời",
-                                            };
-                                            add_friend_status.set(Some(AddFriendStatus {
-                                                is_error: true,
-                                                message: msg.to_string(),
-                                            }));
-                                        }
-                                    }
-                                    is_adding_friend.set(false);
-                                });
-                            },
-                            input {
-                                r#type: "text",
-                                placeholder: "Tên tài khoản",
-                                aria_label: "Tên tài khoản kết bạn",
-                                value: "{friend_input}",
-                                oninput: move |evt| {
-                                    friend_input.set(evt.value());
-                                    add_friend_status.set(None);
-                                },
-                            }
-                            button {
-                                r#type: "submit",
-                                class: "btn-small-primary",
-                                disabled: friend_input().trim().is_empty() || is_adding_friend(),
-                                "Kết bạn"
-                            }
-                        }
-                        if let Some(st) = add_friend_status() {
-                            div {
-                                class: if st.is_error { "status-badge error" } else { "status-badge success" },
-                                "{st.message}"
-                            }
-                        }
-                    }
-
-                    div { class: "sidebar-scrollable",
-                        if !friend_input().trim().is_empty() {
-                            if search_results.read().is_empty() {
-                                div { class: "empty-chat", "Không tìm thấy người dùng" }
-                            } else {
-                                for user in search_results() {
-                                    div { class: "request-card", key: "{user.id}",
-                                        div { class: "request-user",
-                                            Avatar {
-                                                name: user.username.clone(),
-                                                avatar_url: user.avatar_url.clone(),
-                                                size: 32,
-                                            }
-                                            span { class: "chat-item-name", "{user.username}" }
-                                        }
-                                        if user.relationship == "friend" {
-                                            span { class: "btn-small-disabled", "Bạn bè" }
-                                        } else if user.relationship == "pending_sent" {
-                                            span { class: "btn-small-disabled", "Đã gửi" }
-                                        } else if user.relationship == "pending_received" {
-                                            button {
-                                                r#type: "button",
-                                                class: "btn-small-primary",
-                                                onclick: {
-                                                    let uid = user.id.clone();
-                                                    move |_| {
-                                                        let req_id = pending_requests
-                                                            .read()
-                                                            .iter()
-                                                            .find(|r| r.sender_id == uid)
-                                                            .map(|r| r.id.clone());
-                                                        if let Some(rid) = req_id {
-                                                            spawn(async move {
-                                                                if api::friends_accept_request(&rid).await.is_ok() {
-                                                                    if let Ok(list) = api::friends_list().await {
-                                                                        friends.set(list);
-                                                                    }
-                                                                    if let Ok(reqs) = api::friends_get_requests().await {
-                                                                        pending_requests.set(reqs);
-                                                                    }
-                                                                }
-                                                            });
-                                                        }
-                                                    }
-                                                },
-                                                "Chấp nhận"
-                                            }
-                                        } else {
-                                            button {
-                                                r#type: "button",
-                                                class: "btn-small-primary",
-                                                onclick: {
-                                                    let rid = user.id.clone();
-                                                    move |_| {
-                                                        let rid_c = rid.clone();
-                                                        spawn(async move {
-                                                            if api::friends_send_request_by_id(&rid_c).await.is_ok() {
-                                                                search_results.with_mut(|list| {
-                                                                    for u in list.iter_mut() {
-                                                                        if u.id == rid_c {
-                                                                            u.relationship = "pending_sent".to_string();
-                                                                        }
-                                                                    }
-                                                                });
-                                                                if let Ok(list) = api::friends_list().await {
-                                                                    friends.set(list);
-                                                                }
-                                                                if let Ok(reqs) = api::friends_get_requests().await {
-                                                                    pending_requests.set(reqs);
-                                                                }
-                                                            }
-                                                        });
-                                                    }
-                                                },
-                                                "Kết bạn"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } else if pending_requests.read().is_empty() {
-                            if add_friend_status().is_none() {
-                                div { class: "empty-chat", "Không có lời mời nào" }
-                            }
-                        } else {
-                            for req in pending_requests() {
-                                div { class: "request-card", key: "{req.id}",
-                                    div { class: "request-user",
-                                        Avatar {
-                                            name: req.sender_username.clone(),
-                                            avatar_url: req.sender_avatar_url.clone(),
-                                            size: 32,
-                                        }
-                                        span { class: "chat-item-name", "{req.sender_username}" }
-                                    }
-                                    button {
-                                        r#type: "button",
-                                        class: "btn-small-primary",
-                                        onclick: {
-                                            let rid = req.id.clone();
-                                            move |_| {
-                                                let rid_c = rid.clone();
-                                                spawn(async move {
-                                                    if api::friends_accept_request(&rid_c).await.is_ok() {
-                                                        if let Ok(list) = api::friends_list().await {
-                                                            friends.set(list);
-                                                        }
-                                                        if let Ok(reqs) = api::friends_get_requests().await {
-                                                            pending_requests.set(reqs);
-                                                        }
-                                                    }
-                                                });
-                                            }
-                                        },
-                                        "Chấp nhận"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Tab: Chats (Default)
-                if sidebar_tab() == SidebarTab::Chats {
-                    div { class: "sidebar-scrollable",
-                        if friends.read().is_empty() {
-                            div { class: "empty-chat", "Chưa có bạn bè nào" }
-                        } else {
-                            for friend in friends() {
-                                {
-                                    let is_selected = active_friend()
-                                        .as_ref()
-                                        .map(|a| a.id == friend.id)
-                                        .unwrap_or(false);
-                                    let unread = unread_counts
-                                        .read()
-                                        .get(&friend.id)
-                                        .copied()
-                                        .unwrap_or(0);
-                                    let preview = last_previews
-                                        .read()
-                                        .get(&friend.id)
-                                        .cloned()
-                                        .unwrap_or_else(|| "Bắt đầu trò chuyện".to_string());
-                                    let f_click = friend.clone();
-                                    rsx! {
-                                        button {
-                                            key: "{friend.id}",
-                                            r#type: "button",
-                                            class: if is_selected { "chat-item selected" } else { "chat-item " },
-                                            onclick: move |_| select_friend.call(f_click.clone()),
-                                            Avatar {
-                                                name: friend.username.clone(),
-                                                avatar_url: friend.avatar_url.clone(),
-                                                size: 38,
-                                            }
-                                            div { class: "chat-item-info",
-                                                div { class: "chat-item-header",
-                                                    span {
-                                                        class: if unread > 0 { "chat-item-name unread" } else { "chat-item-name " },
-                                                        "{friend.username}"
-                                                    }
-                                                    if unread > 0 {
-                                                        span { class: "chat-item-badge", "{format_badge(unread)}" }
-                                                    }
-                                                }
-                                                div {
-                                                    class: if unread > 0 { "chat-item-preview unread" } else { "chat-item-preview " },
-                                                    "{preview}"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Tab: Groups
-                if sidebar_tab() == SidebarTab::Groups {
-                    div { class: "group-tab-container",
-                        div { class: "group-actions-bar",
-                            button {
-                                r#type: "button",
-                                class: "group-create-btn",
-                                style: "display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--msg-sent); color: white; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer;",
-                                onclick: move |_| is_create_group_open.set(true),
-                                PlusIcon { size: 16 }
-                                span { "Tạo nhóm mới" }
-                            }
-                        }
-                        div { class: "sidebar-scrollable",
-                            if groups.read().is_empty() {
-                                div { class: "empty-chat", "Chưa tham gia nhóm nào" }
-                            } else {
-                                for grp in groups() {
-                                    {
-                                        let is_selected = active_group()
-                                            .as_ref()
-                                            .map(|g| g.id == grp.id)
-                                            .unwrap_or(false);
-                                        let g_click = grp.clone();
-                                        rsx! {
-                                            button {
-                                                key: "{grp.id}",
-                                                r#type: "button",
-                                                class: if is_selected { "chat-item selected" } else { "chat-item " },
-                                                onclick: move |_| select_group.call(g_click.clone()),
-                                                Avatar {
-                                                    name: grp.name.clone(),
-                                                    avatar_url: grp.avatar_url.clone(),
-                                                    size: 38,
-                                                }
-                                                div { class: "chat-item-info",
-                                                    div { class: "chat-item-header",
-                                                        span { class: "chat-item-name", "{grp.name}" }
-                                                        if let Some(role) = grp.role.as_ref() {
-                                                            span {
-                                                                style: "font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--bg-hover); color: var(--text-secondary); text-transform: uppercase; font-weight: 600;",
-                                                                "{role}"
-                                                            }
-                                                        }
-                                                    }
-                                                    div { class: "chat-item-preview",
-                                                        "{grp.member_count} thành viên"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Tab: Servers (Discord-style)
-                if sidebar_tab() == SidebarTab::Servers {
-                    div { class: "server-tab-container",
-                        div { class: "server-actions-bar",
-                            form {
-                                style: "display: flex; gap: 6px;",
-                                onsubmit: move |evt| {
-                                    evt.prevent_default();
-                                    let name = new_server_name().trim().to_string();
-                                    if name.is_empty() {
-                                        return;
-                                    }
-                                    spawn(async move {
-                                        if let Ok(created) = api::servers_create(&name).await {
-                                            new_server_name.set(String::new());
-                                            if let Ok(list) = api::servers_list().await {
-                                                servers.set(list);
-                                            }
-                                            select_server(created);
-                                        }
-                                    });
-                                },
-                                input {
-                                    r#type: "text",
-                                    placeholder: "Tên server mới",
-                                    value: "{new_server_name}",
-                                    oninput: move |evt| new_server_name.set(evt.value()),
-                                }
-                                button {
-                                    r#type: "submit",
-                                    disabled: new_server_name().trim().is_empty(),
-                                    "Tạo"
-                                }
-                            }
-                            form {
-                                style: "display: flex; gap: 6px;",
-                                onsubmit: move |evt| {
-                                    evt.prevent_default();
-                                    let code = invite_code_input().trim().to_string();
-                                    if code.is_empty() {
-                                        return;
-                                    }
-                                    spawn(async move {
-                                        if let Ok(srv) = api::servers_join(&code).await {
-                                            invite_code_input.set(String::new());
-                                            if let Ok(list) = api::servers_list().await {
-                                                servers.set(list);
-                                            }
-                                            select_server(srv);
-                                        }
-                                    });
-                                },
-                                input {
-                                    r#type: "text",
-                                    placeholder: "Mã mời tham gia",
-                                    value: "{invite_code_input}",
-                                    oninput: move |evt| invite_code_input.set(evt.value()),
-                                }
-                                button {
-                                    r#type: "submit",
-                                    disabled: invite_code_input().trim().is_empty(),
-                                    "Vào"
-                                }
-                            }
-                        }
-
-                        div { class: "server-list-header", "Danh sách máy chủ" }
-                        if servers.read().is_empty() {
-                            div { class: "empty-chat", "Chưa tham gia server nào" }
-                        } else {
-                            for srv in servers() {
-                                {
-                                    let is_sel = selected_server()
-                                        .as_ref()
-                                        .map(|s| s.id == srv.id)
-                                        .unwrap_or(false);
-                                    let s_click = srv.clone();
-                                    rsx! {
-                                        button {
-                                            key: "{srv.id}",
-                                            r#type: "button",
-                                            class: if is_sel { "server-item selected" } else { "server-item " },
-                                            onclick: move |_| select_server(s_click.clone()),
-                                            Avatar {
-                                                name: srv.name.clone(),
-                                                avatar_url: srv.icon_url.clone(),
-                                                size: 32,
-                                            }
-                                            span { "{srv.name}" }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if let Some(sel_srv) = selected_server() {
-                            div {
-                                class: "server-list-header",
-                                style: "margin-top: 12px;",
-                                "Kênh ("
-                                "{sel_srv.name}"
-                                ")"
-                            }
-                            for ch in channels() {
-                                {
-                                    let is_sel = selected_channel()
-                                        .as_ref()
-                                        .map(|c| c.id == ch.id)
-                                        .unwrap_or(false);
-                                    let icon_str = if ch.channel_type == "voice" { "🔊" } else { "#" };
-                                    let c_click = ch.clone();
-                                    rsx! {
-                                        button {
-                                            key: "{ch.id}",
-                                            r#type: "button",
-                                            class: if is_sel { "channel-item selected" } else { "channel-item " },
-                                            onclick: move |_| select_channel(c_click.clone()),
-                                            span { "{icon_str}" }
-                                            span { "{ch.name}" }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if let Some(vc) = active_voice_channel() {
-                            div {
-                                class: "voice-control-bar",
-                                style: "margin-top: auto;",
-                                span { "🔊 {vc.name}" }
-                                div { style: "display: flex; gap: 6px;",
-                                    button {
-                                        r#type: "button",
-                                        class: if is_voice_muted() { "voice-btn mute" } else { "voice-btn " },
-                                        onclick: move |_| {
-                                            if let Some(ch) = active_voice_channel() {
-                                                let next = !is_voice_muted();
-                                                is_voice_muted.set(next);
-                                                spawn(async move {
-                                                    let _ = api::webrtc_update_voice_state(&ch.id, next).await;
-                                                });
-                                            }
-                                        },
-                                        if is_voice_muted() { "Bật mic" } else { "Tắt mic" }
-                                    }
-                                    button {
-                                        r#type: "button",
-                                        class: "voice-btn disconnect",
-                                        onclick: move |_| {
-                                            if let Some(ch) = active_voice_channel() {
-                                                spawn(async move {
-                                                    let _ = api::webrtc_leave_voice(&ch.id).await;
-                                                    active_voice_channel.set(None);
-                                                });
-                                            }
-                                        },
-                                        "Rời phòng"
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    },
+                    on_open_profile: {
+                        let me = current_user_id.clone();
+                        move |_| viewing_profile_user_id.set(Some(me.clone()))
+                    },
+                    on_open_settings: move |_| is_settings_open.set(true),
                 }
             }
 
-            // Main Chat View
-            main { class: "{chat_view_class}",
-                if let Some(active) = active_friend() {
+            main { class: if is_chat_selected { "main-stage" } else { "main-stage hidden-mobile" },
+                if is_settings_open() {
+                    SettingsView {
+                        current_user_id: current_user_id.clone(),
+                        current_username: current_username.clone(),
+                        my_avatar_url: my_avatar_url(),
+                        user_keys: user_keys(),
+                        on_close: move |_| is_settings_open.set(false),
+                        on_open_profile: {
+                            let me = current_user_id.clone();
+                            move |_| viewing_profile_user_id.set(Some(me.clone()))
+                        },
+                        on_avatar_updated: move |url: String| {
+                            my_avatar_url.set(Some(url.clone()));
+                            on_avatar_updated.call(url);
+                        },
+                        on_keys_imported: move |k| user_keys.set(Some(k)),
+                        on_logout: move |_| on_logout.call(()),
+                    }
+                } else if let Some(active) = active_friend() {
                     div { class: "chat-main-container",
                         div { class: "chat-column",
-                            // DM Header
                             header { class: "chat-header",
                                 button {
                                     r#type: "button",
                                     class: "icon-btn back-btn",
-                                    aria_label: "Quay lại",
+                                    aria_label: "Quay lại danh sách",
                                     onclick: move |_| active_friend.set(None),
                                     BackIcon {}
                                 }
-                                Avatar {
-                                    name: active.username.clone(),
-                                    avatar_url: active.avatar_url.clone(),
-                                    size: 34,
-                                }
-                                h2 { class: "chat-header-title", "{active.username}" }
-                                div { class: "chat-header-spacer" }
-                                {
-                                    let active_uid_audio = active.id.clone();
-                                    let active_uid_video = active.id.clone();
-                                    rsx! {
-                                        button {
-                                            r#type: "button",
-                                            class: "icon-btn call-action-btn",
-                                            aria_label: "Gọi thoại",
-                                            title: "Gọi thoại",
-                                            onclick: move |_| {
-                                                let target = active_uid_audio.clone();
-                                                spawn(async move {
-                                                    if let Ok(sess) = calls::calls_start("audio", Some(target), None).await {
-                                                        active_call_session.set(Some(sess));
-                                                    }
-                                                });
-                                            },
-                                            PhoneIcon {}
-                                        }
-                                        button {
-                                            r#type: "button",
-                                            class: "icon-btn call-action-btn",
-                                            aria_label: "Gọi video",
-                                            title: "Gọi video",
-                                            onclick: move |_| {
-                                                let target = active_uid_video.clone();
-                                                spawn(async move {
-                                                    if let Ok(sess) = calls::calls_start("video", Some(target), None).await {
-                                                        active_call_session.set(Some(sess));
-                                                    }
-                                                });
-                                            },
-                                            VideoIcon {}
-                                        }
-                                    }
-                                }
                                 button {
                                     r#type: "button",
-                                    class: if is_partner_info_open() { "icon-btn active" } else { "icon-btn " },
-                                    aria_label: "Thông tin tài khoản",
-                                    title: "Thông tin tài khoản",
-                                    onclick: move |_| is_partner_info_open.set(!is_partner_info_open()),
-                                    MenuIcon {}
-                                }
-                            }
-
-                            // Messages — column-reverse: newest at bottom, scroll up for older
-                            div {
-                                id: "chat-messages-scroll",
-                                class: "chat-messages",
-                                if messages.read().is_empty() {
-                                    div { class: "empty-chat-inner", "Chưa có tin nhắn" }
-                                } else {
-                                    for msg in messages().into_iter().rev() {
-                                        {
-                                            let row_cls = if msg.is_self { "message-row sent" } else { "message-row received" };
-                                            let reply_text = msg.reply_to_id.as_ref().map(|rid| {
-                                                messages
-                                                    .read()
-                                                    .iter()
-                                                    .find(|m| &m.id == rid)
-                                                    .map(|m| m.text.clone())
-                                                    .unwrap_or_else(|| "Tin nhắn gốc".to_string())
-                                            });
-                                            let time_str = if msg.created_at.is_empty() {
-                                                String::new()
-                                            } else {
-                                                platform::format_local_time(&msg.created_at)
-                                            };
-                                            rsx! {
-                                                div { class: "{row_cls}", key: "{msg.id}",
-                                                    div { class: "message-content-wrapper",
-                                                        if !msg.is_self {
-                                                            Avatar {
-                                                                name: active.username.clone(),
-                                                                avatar_url: active.avatar_url.clone(),
-                                                                size: 28,
-                                                            }
-                                                        }
-                                                        div { class: "message-bubble",
-                                                            if let Some(rt) = reply_text {
-                                                                div {
-                                                                    style: "font-size: 11.5px; border-left: 2px solid currentColor; padding-left: 6px; margin-bottom: 4px; opacity: 0.75;",
-                                                                    "{rt}"
-                                                                }
-                                                            }
-                                                            "{msg.text}"
-                                                        }
-                                                    }
-                                                    if !msg.created_at.is_empty() {
-                                                        span { class: "message-time", "{time_str}" }
-                                                    }
-                                                }
-                                            }
+                                    class: "chat-header-identity",
+                                    title: "Xem hồ sơ",
+                                    onclick: {
+                                        let id = active.id.clone();
+                                        move |_| viewing_profile_user_id.set(Some(id.clone()))
+                                    },
+                                    Avatar { name: active.username.clone(), avatar_url: active.avatar_url.clone(), size: 38 }
+                                    div { class: "chat-header-info",
+                                        h2 { class: "chat-header-title", "{active.username}" }
+                                        if is_friend_typing() {
+                                            span { class: "chat-header-meta", style: "color: var(--accent-text);", "đang nhập" }
+                                        } else {
+                                            span { class: "chat-header-meta secure", ShieldIcon { size: 12 } "Mã hóa đầu cuối" }
                                         }
                                     }
                                 }
-                            }
-
-                            // Typing Indicator
-                            if is_friend_typing() {
-                                div { class: "typing-indicator", "Đang nhập" }
-                            }
-
-                            // Input Bar
-                            form {
-                                class: "chat-input-bar",
-                                onsubmit: move |evt| {
-                                    evt.prevent_default();
-                                    trigger_send_message.call(());
-                                },
-                                if is_emoji_open() {
-                                    EmojiPicker {
-                                        on_select: move |emoji: String| {
-                                            let cur = input_text();
-                                            spawn(async move {
-                                                let updated = platform::insert_emoji_in_dm_input(&cur, &emoji).await;
-                                                input_text.set(updated);
-                                            });
-                                        },
-                                    }
-                                }
-                                button {
-                                    r#type: "button",
-                                    class: "icon-btn",
-                                    aria_label: "Chọn emoji",
-                                    onclick: move |evt| {
-                                        evt.stop_propagation();
-                                        is_emoji_open.set(!is_emoji_open());
-                                    },
-                                    EmojiIcon {}
-                                }
-                                input {
-                                    id: "dm-chat-input",
-                                    r#type: "text",
-                                    class: "chat-input",
-                                    placeholder: "Nhập tin nhắn",
-                                    aria_label: "Nội dung tin nhắn",
-                                    value: "{input_text}",
-                                    oninput: move |evt| {
-                                        let val = evt.value();
-                                        input_text.set(val.clone());
-                                        if let Some(af) = active_friend() {
-                                            if !is_currently_typing() && !val.trim().is_empty() {
-                                                is_currently_typing.set(true);
-                                                let fid = af.id.clone();
-                                                spawn(async move {
-                                                    let _ = api::typing_send(&fid, true).await;
-                                                });
-                                            }
-                                            let next_seq = typing_seq() + 1;
-                                            typing_seq.set(next_seq);
-                                            let fid = af.id.clone();
-                                            spawn(async move {
-                                                platform::sleep_ms(2500).await;
-                                                if typing_seq() == next_seq && is_currently_typing() {
-                                                    is_currently_typing.set(false);
-                                                    let _ = api::typing_send(&fid, false).await;
-                                                }
-                                            });
-                                        }
-                                    },
-                                    onkeydown: move |evt| {
-                                        if evt.key() == Key::Enter && !evt.modifiers().shift() {
-                                            evt.prevent_default();
-                                            trigger_send_message.call(());
-                                        } else if evt.key() == Key::Escape {
-                                            is_emoji_open.set(false);
-                                        }
-                                    },
-                                }
-                                button {
-                                    r#type: "submit",
-                                    class: "send-btn",
-                                    disabled: is_sending() || input_text().trim().is_empty(),
-                                    aria_label: "Gửi",
-                                    SendIcon {}
-                                }
-                            }
-                        }
-
-                        // Partner Info Panel
-                        if is_partner_info_open() {
-                            aside { class: "partner-info-sidebar",
-                                header { class: "partner-info-header",
-                                    h3 { class: "partner-info-title", "Thông tin" }
+                                div { class: "chat-header-actions",
                                     button {
                                         r#type: "button",
                                         class: "icon-btn",
-                                        aria_label: "Đóng",
-                                        onclick: move |_| is_partner_info_open.set(false),
-                                        CloseIcon {}
+                                        title: "Gọi thoại",
+                                        aria_label: "Gọi thoại",
+                                        onclick: {
+                                            let id = active.id.clone();
+                                            move |_| start_call("audio", Some(id.clone()), None)
+                                        },
+                                        PhoneIcon { size: 20 }
+                                    }
+                                    button {
+                                        r#type: "button",
+                                        class: "icon-btn",
+                                        title: "Gọi video",
+                                        aria_label: "Gọi video",
+                                        onclick: {
+                                            let id = active.id.clone();
+                                            move |_| start_call("video", Some(id.clone()), None)
+                                        },
+                                        VideoIcon { size: 20 }
+                                    }
+                                    span { class: "chat-header-sep" }
+                                    button {
+                                        r#type: "button",
+                                        "data-testid": "toggle-details",
+                                        class: if is_partner_info_open() { "icon-btn active" } else { "icon-btn" },
+                                        title: "Thông tin cuộc trò chuyện",
+                                        aria_label: "Thông tin tài khoản",
+                                        aria_pressed: "{is_partner_info_open()}",
+                                        onclick: move |_| is_partner_info_open.set(!is_partner_info_open()),
+                                        PanelRightIcon { size: 20 }
                                     }
                                 }
-                                div { class: "partner-info-content",
-                                    div { class: "partner-info-card",
-                                        Avatar {
-                                            name: active.username.clone(),
-                                            avatar_url: active.avatar_url.clone(),
-                                            size: 64,
-                                        }
-                                        div { class: "partner-info-name", "{active.username}" }
-                                        div { class: "partner-info-sub", "Tài khoản bạn bè" }
-                                    }
+                            }
 
-                                    div { class: "settings-group",
-                                        div { class: "settings-group-title", "Tài khoản" }
-                                        div { class: "settings-row",
-                                            span { class: "settings-label", "Tên người dùng" }
-                                            span { class: "settings-value", "{active.username}" }
-                                        }
-                                        div { class: "settings-row column-layout",
-                                            span { class: "settings-label", "Mã định danh" }
-                                            span { class: "settings-value mono", "{active.id}" }
-                                        }
-                                    }
+                            MessageList {
+                                messages: dm_view.clone(),
+                                e2ee: true,
+                                intro_title: active.username.clone(),
+                                intro_sub: format!("Đây là khởi đầu cuộc trò chuyện trực tiếp giữa bạn và {}.", active.username),
+                                highlight_id: highlight_msg(),
+                                on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                            }
 
-                                    div { class: "settings-group",
-                                        div { class: "settings-group-title", "Mã hóa đầu cuối" }
-                                        div { class: "settings-row",
-                                            span { class: "settings-label", "Giao thức" }
-                                            span { class: "settings-value nowrap", "ECDH P-256 / AES-256-GCM" }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "settings-label", "Chữ ký số" }
-                                            span { class: "settings-value nowrap", "ECDSA P-256 / SHA-256" }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "settings-label", "Trạng thái khóa" }
-                                            span { class: "settings-value tag-active",
-                                                if partner_fingerprint().is_some() {
-                                                    "Đã kích hoạt trên thiết bị"
-                                                } else {
-                                                    "Đang tải"
-                                                }
-                                            }
-                                        }
-                                        if let Some(fp) = partner_fingerprint() {
-                                            div { class: "settings-row column-layout",
-                                                span { class: "settings-label", "Vân tay khóa" }
-                                                span { class: "settings-value mono", "{fp}" }
-                                            }
-                                        }
-                                    }
+                            div { class: "typing-indicator", aria_live: "polite",
+                                if is_friend_typing() {
+                                    span { class: "typing-dots", span {} span {} span {} }
+                                    span { "{active.username} đang nhập" }
                                 }
+                            }
+
+                            Composer {
+                                input_id: "dm-chat-input".to_string(),
+                                value: input_text(),
+                                placeholder: "Nhắn tin tới {active.username}",
+                                sending: is_sending(),
+                                disabled: user_keys().is_none(),
+                                on_input: move |val: String| {
+                                    input_text.set(val.clone());
+                                    if let Some(af) = active_friend() {
+                                        if !is_currently_typing() && !val.trim().is_empty() {
+                                            is_currently_typing.set(true);
+                                            let fid = af.id.clone();
+                                            spawn(async move {
+                                                let _ = api::typing_send(&fid, true).await;
+                                            });
+                                        }
+                                        let next_seq = typing_seq() + 1;
+                                        typing_seq.set(next_seq);
+                                        let fid = af.id.clone();
+                                        spawn(async move {
+                                            platform::sleep_ms(2500).await;
+                                            if typing_seq() == next_seq && is_currently_typing() {
+                                                is_currently_typing.set(false);
+                                                let _ = api::typing_send(&fid, false).await;
+                                            }
+                                        });
+                                    }
+                                },
+                                on_send: move |_| trigger_send_message.call(()),
+                            }
+                        }
+
+                        if is_partner_info_open() {
+                            DmDetailsPanel {
+                                user_id: active.id.clone(),
+                                username: active.username.clone(),
+                                avatar_url: active.avatar_url.clone(),
+                                fingerprint: partner_fingerprint(),
+                                my_fingerprint: my_fingerprint.clone(),
+                                messages: dm_view.clone(),
+                                on_close: move |_| is_partner_info_open.set(false),
+                                on_focus_composer: move |_| platform::focus_chat_input(),
+                                on_audio_call: {
+                                    let id = active.id.clone();
+                                    move |_| start_call("audio", Some(id.clone()), None)
+                                },
+                                on_video_call: {
+                                    let id = active.id.clone();
+                                    move |_| start_call("video", Some(id.clone()), None)
+                                },
+                                on_view_profile: {
+                                    let id = active.id.clone();
+                                    move |_| viewing_profile_user_id.set(Some(id.clone()))
+                                },
+                                on_jump_to: move |id: String| jump_to_message(id),
                             }
                         }
                     }
                 } else if let Some(grp) = active_group() {
-                    // Group View
                     div { class: "chat-main-container",
                         div { class: "chat-column",
-                            // Group Header
                             header { class: "chat-header",
                                 button {
                                     r#type: "button",
                                     class: "icon-btn back-btn",
-                                    aria_label: "Quay lại",
+                                    aria_label: "Quay lại danh sách",
                                     onclick: move |_| active_group.set(None),
                                     BackIcon {}
                                 }
-                                Avatar {
-                                    name: grp.name.clone(),
-                                    avatar_url: grp.avatar_url.clone(),
-                                    size: 34,
-                                }
-                                div { class: "chat-header-info", style: "display: flex; flex-direction: column; min-width: 0;",
-                                    h2 { class: "chat-header-title", style: "margin: 0; line-height: 1.2;", "{grp.name}" }
-                                    span { style: "font-size: 11px; color: var(--text-secondary);", "{grp.member_count} thành viên" }
-                                }
-                                div { class: "chat-header-spacer" }
-                                {
-                                    let g_id_audio = grp.id.clone();
-                                    let g_id_video = grp.id.clone();
-                                    rsx! {
-                                        button {
-                                            r#type: "button",
-                                            class: "icon-btn call-action-btn",
-                                            aria_label: "Gọi thoại nhóm",
-                                            title: "Gọi thoại nhóm",
-                                            onclick: move |_| {
-                                                let target = g_id_audio.clone();
-                                                spawn(async move {
-                                                    if let Ok(sess) = calls::calls_start("audio", None, Some(target)).await {
-                                                        active_call_session.set(Some(sess));
-                                                    }
-                                                });
-                                            },
-                                            PhoneIcon {}
-                                        }
-                                        button {
-                                            r#type: "button",
-                                            class: "icon-btn call-action-btn",
-                                            aria_label: "Gọi video nhóm",
-                                            title: "Gọi video nhóm",
-                                            onclick: move |_| {
-                                                let target = g_id_video.clone();
-                                                spawn(async move {
-                                                    if let Ok(sess) = calls::calls_start("video", None, Some(target)).await {
-                                                        active_call_session.set(Some(sess));
-                                                    }
-                                                });
-                                            },
-                                            VideoIcon {}
-                                        }
-                                    }
-                                }
                                 button {
                                     r#type: "button",
-                                    class: if is_group_info_open() { "icon-btn active" } else { "icon-btn " },
-                                    aria_label: "Thông tin nhóm",
+                                    class: "chat-header-identity",
                                     title: "Thông tin nhóm",
-                                    onclick: move |_| is_group_info_open.set(!is_group_info_open()),
-                                    InfoIcon { size: 18 }
+                                    onclick: move |_| is_group_info_open.set(true),
+                                    Avatar { name: grp.name.clone(), avatar_url: grp.avatar_url.clone(), size: 38 }
+                                    div { class: "chat-header-info",
+                                        h2 { class: "chat-header-title", "{grp.name}" }
+                                        span { class: "chat-header-meta", "{grp.member_count} thành viên" }
+                                    }
+                                }
+                                div { class: "chat-header-actions",
+                                    button {
+                                        r#type: "button",
+                                        class: "icon-btn",
+                                        title: "Gọi thoại nhóm",
+                                        aria_label: "Gọi thoại nhóm",
+                                        onclick: {
+                                            let gid = grp.id.clone();
+                                            move |_| start_call("audio", None, Some(gid.clone()))
+                                        },
+                                        PhoneIcon { size: 20 }
+                                    }
+                                    button {
+                                        r#type: "button",
+                                        class: "icon-btn",
+                                        title: "Gọi video nhóm",
+                                        aria_label: "Gọi video nhóm",
+                                        onclick: {
+                                            let gid = grp.id.clone();
+                                            move |_| start_call("video", None, Some(gid.clone()))
+                                        },
+                                        VideoIcon { size: 20 }
+                                    }
+                                    span { class: "chat-header-sep" }
+                                    button {
+                                        r#type: "button",
+                                        class: if is_group_info_open() { "icon-btn active" } else { "icon-btn" },
+                                        title: "Thông tin nhóm",
+                                        aria_label: "Thông tin nhóm",
+                                        aria_pressed: "{is_group_info_open()}",
+                                        onclick: move |_| is_group_info_open.set(!is_group_info_open()),
+                                        PanelRightIcon { size: 20 }
+                                    }
                                 }
                             }
 
-                            // Group Channels Bar
-                            if !group_channels.read().is_empty() {
-                                div {
-                                    class: "group-channels-bar",
-                                    style: "display: flex; gap: 6px; padding: 6px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); overflow-x: auto; align-items: center;",
-                                    span { style: "font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-right: 4px;", "Kênh:" }
+                            if group_channels.read().len() > 1 {
+                                div { class: "sidebar-filters", style: "padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border-subtle);", role: "tablist", aria_label: "Kênh của nhóm",
                                     for ch in group_channels() {
                                         {
                                             let is_cur = active_group_channel().as_ref().map(|c| c.id == ch.id).unwrap_or(false);
@@ -1873,26 +1430,23 @@ pub fn Chat(
                                             let gid = grp.id.clone();
                                             rsx! {
                                                 button {
+                                                    key: "{ch.id}",
                                                     r#type: "button",
-                                                    class: if is_cur { "channel-pill active" } else { "channel-pill" },
-                                                    style: if is_cur {
-                                                        "padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--primary); color: #fff; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px;"
-                                                    } else {
-                                                        "padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; background: var(--bg-hover); color: var(--text-secondary); border: none; cursor: pointer; display: flex; align-items: center; gap: 4px;"
-                                                    },
+                                                    role: "tab",
+                                                    aria_selected: "{is_cur}",
+                                                    class: if is_cur { "filter-chip active" } else { "filter-chip" },
                                                     onclick: move |_| {
                                                         let c = ch_clone.clone();
                                                         active_group_channel.set(Some(c.clone()));
                                                         let g = gid.clone();
-                                                        let cid = c.id.clone();
                                                         spawn(async move {
-                                                            if let Ok(msgs) = groups::groups_get_messages(&g, Some(&cid), 50, None).await {
+                                                            if let Ok(msgs) = groups::groups_get_messages(&g, Some(&c.id), 50, None).await {
                                                                 group_messages.set(msgs);
                                                             }
-                                                            platform::scroll_chat_to_bottom(false);
+                                                            platform::scroll_chat_to_bottom(true);
                                                         });
                                                     },
-                                                    span { "#{ch.name}" }
+                                                    "# {ch.name}"
                                                 }
                                             }
                                         }
@@ -1900,170 +1454,64 @@ pub fn Chat(
                                 }
                             }
 
-                            // Group Messages List
-                            div {
-                                id: "chat-messages-scroll",
-                                class: "chat-messages",
-                                style: "overflow-y: auto; display: flex; flex-direction: column;",
-                                if group_messages.read().is_empty() {
-                                    div { class: "empty-chat-inner", "Chưa có tin nhắn trong nhóm này" }
-                                } else {
-                                    for msg in group_messages() {
-                                        {
-                                            let is_self = msg.sender_id == current_user_id;
-                                            let row_cls = if is_self { "message-row sent" } else { "message-row received" };
-                                            let time_str = platform::format_local_time(&msg.created_at);
-                                            let sender_uid = msg.sender_id.clone();
-                                            let gid = grp.id.clone();
-                                            let mid = msg.id.clone();
-                                            rsx! {
-                                                div { class: "{row_cls}", key: "{msg.id}",
-                                                    div { class: "message-content-wrapper",
-                                                        if !is_self {
-                                                            div {
-                                                                style: "cursor: pointer;",
-                                                                onclick: {
-                                                                    let suid = sender_uid.clone();
-                                                                    move |_| viewing_profile_user_id.set(Some(suid.clone()))
-                                                                },
-                                                                Avatar {
-                                                                    name: msg.sender_username.clone(),
-                                                                    avatar_url: msg.sender_avatar_url.clone(),
-                                                                    size: 28,
-                                                                }
-                                                            }
-                                                        }
-                                                        div { class: "message-bubble",
-                                                            if !is_self {
-                                                                div {
-                                                                    style: "font-size: 11px; font-weight: 600; margin-bottom: 2px; opacity: 0.85; cursor: pointer;",
-                                                                    onclick: {
-                                                                        let suid = sender_uid.clone();
-                                                                        move |_| viewing_profile_user_id.set(Some(suid.clone()))
-                                                                    },
-                                                                    "{msg.sender_username}"
-                                                                }
-                                                            }
-                                                            "{msg.content}"
-                                                            if !msg.reactions.is_empty() {
-                                                                div {
-                                                                    class: "message-reactions-row",
-                                                                    style: "display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;",
-                                                                    for r in msg.reactions.iter() {
-                                                                        span {
-                                                                            class: "reaction-pill",
-                                                                            style: "background: var(--bg-hover); border: 1px solid var(--border); padding: 1px 6px; border-radius: 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 2px;",
-                                                                            "{r.emoji}"
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                            div {
-                                                                class: "message-quick-react",
-                                                                style: "display: inline-flex; gap: 2px; margin-top: 2px; opacity: 0.6;",
-                                                                for emoji in ["👍", "❤️", "😂", "🎉"] {
-                                                                    {
-                                                                        let g = gid.clone();
-                                                                        let m = mid.clone();
-                                                                        rsx! {
-                                                                            button {
-                                                                                r#type: "button",
-                                                                                style: "background: none; border: none; padding: 1px 4px; font-size: 11px; cursor: pointer; border-radius: 4px;",
-                                                                                onclick: move |_| {
-                                                                                    let g_c = g.clone();
-                                                                                    let m_c = m.clone();
-                                                                                    spawn(async move {
-                                                                                        let _ = groups::groups_toggle_reaction(&g_c, &m_c, emoji).await;
-                                                                                    });
-                                                                                },
-                                                                                "{emoji}"
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    if !msg.created_at.is_empty() {
-                                                        span { class: "message-time", "{time_str}" }
-                                                    }
-                                                }
-                                            }
-                                        }
+                            MessageList {
+                                messages: group_view.clone(),
+                                show_sender_names: true,
+                                intro_title: grp.name.clone(),
+                                intro_sub: format!("Nhóm trò chuyện với {} thành viên. Tin nhắn nhóm hiện được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.", grp.member_count),
+                                highlight_id: highlight_msg(),
+                                on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                                on_react: {
+                                    let gid = grp.id.clone();
+                                    move |(mid, emoji): (String, String)| {
+                                        let g = gid.clone();
+                                        spawn(async move {
+                                            let _ = groups::groups_toggle_reaction(&g, &mid, &emoji).await;
+                                        });
                                     }
-                                }
+                                },
+                                on_reply: move |m: ViewMessage| {
+                                    group_reply_to.set(Some((m.id.clone(), format!("{}: {}", m.sender_name, m.text))));
+                                    let _ = dioxus::document::eval("const el = document.getElementById('group-chat-input'); if (el) el.focus();");
+                                },
                             }
 
-                            // Group Input Bar
-                            div { style: "position: relative;",
-                                if is_group_sticker_picker_open() {
-                                    div {
-                                        style: "position: absolute; bottom: 60px; right: 16px; z-index: 50;",
-                                        StickerPicker {
-                                            on_select: {
-                                                let gid = grp.id.clone();
-                                                move |sticker_url: String| {
-                                                    is_group_sticker_picker_open.set(false);
-                                                    let g = gid.clone();
-                                                    let cid = active_group_channel().map(|c| c.id);
-                                                    spawn(async move {
-                                                        if let Ok(msg) = groups::groups_send_message(&g, cid.as_deref(), &sticker_url, None).await {
-                                                            group_messages.with_mut(|list| {
-                                                                if !list.iter().any(|m| m.id == msg.id) {
-                                                                    list.push(msg);
-                                                                }
-                                                            });
-                                                            platform::scroll_chat_to_bottom(false);
-                                                        }
-                                                    });
-                                                }
-                                            },
-                                            _on_close: Some(EventHandler::new(move |_| is_group_sticker_picker_open.set(false))),
-                                        }
-                                    }
-                                }
-                                form {
-                                    class: "chat-input-bar",
-                                    onsubmit: move |evt| {
-                                        evt.prevent_default();
-                                        trigger_send_group_message.call(());
-                                    },
-                                    button {
-                                        r#type: "button",
-                                        class: if is_group_sticker_picker_open() { "icon-btn active" } else { "icon-btn" },
-                                        style: "font-size: 16px; padding: 4px; border: none; background: transparent; cursor: pointer;",
-                                        aria_label: "Sticker",
-                                        title: "Chọn Sticker",
-                                        onclick: move |_| is_group_sticker_picker_open.set(!is_group_sticker_picker_open()),
-                                        "🎨"
-                                    }
-                                    input {
-                                        r#type: "text",
-                                        class: "chat-input",
-                                        placeholder: "Nhắn tin tại {grp.name}",
-                                        aria_label: "Nội dung tin nhắn nhóm",
-                                        value: "{group_input}",
-                                        oninput: move |evt| group_input.set(evt.value()),
-                                        onkeydown: move |evt| {
-                                            if evt.key() == Key::Enter && !evt.modifiers().shift() {
-                                                evt.prevent_default();
-                                                trigger_send_group_message.call(());
+                            Composer {
+                                input_id: "group-chat-input".to_string(),
+                                value: group_input(),
+                                placeholder: "Nhắn tin tới {grp.name}",
+                                reply_to: group_reply_to().map(|(_, t)| t),
+                                on_cancel_reply: move |_| group_reply_to.set(None),
+                                on_input: move |v: String| group_input.set(v),
+                                on_send: move |_| trigger_send_group_message.call(()),
+                                on_sticker: {
+                                    let gid = grp.id.clone();
+                                    move |sticker_url: String| {
+                                        let g = gid.clone();
+                                        let cid = active_group_channel().map(|c| c.id);
+                                        spawn(async move {
+                                            if let Ok(msg) = groups::groups_send_message(&g, cid.as_deref(), &sticker_url, None).await {
+                                                group_messages.with_mut(|list| {
+                                                    if !list.iter().any(|m| m.id == msg.id) {
+                                                        list.push(msg);
+                                                    }
+                                                });
+                                                platform::scroll_chat_to_bottom(false);
                                             }
-                                        },
+                                        });
                                     }
-                                    button {
-                                        r#type: "submit",
-                                        class: "send-btn",
-                                        disabled: group_input().trim().is_empty(),
-                                        aria_label: "Gửi",
-                                        SendIcon {}
-                                    }
-                                }
+                                },
                             }
                         }
 
-                        // Group Info Sidebar (if opened)
                         if is_group_info_open() {
+                            button {
+                                r#type: "button",
+                                class: "drawer-backdrop",
+                                aria_label: "Đóng thông tin nhóm",
+                                tabindex: "-1",
+                                onclick: move |_| is_group_info_open.set(false),
+                            }
                             GroupInfoPanel {
                                 group: grp.clone(),
                                 current_user_id: current_user_id.clone(),
@@ -2092,388 +1540,306 @@ pub fn Chat(
                         }
                     }
                 } else if let Some(ch) = selected_channel() {
-                    // Channel View
                     div { class: "chat-main-container",
                         div { class: "chat-column",
                             header { class: "chat-header",
                                 button {
                                     r#type: "button",
                                     class: "icon-btn back-btn",
-                                    aria_label: "Quay lại",
+                                    aria_label: "Quay lại danh sách kênh",
                                     onclick: move |_| selected_channel.set(None),
                                     BackIcon {}
                                 }
-                                div {
-                                    style: "font-size: 17px; font-weight: 600;",
-                                    if ch.channel_type == "voice" { "🔊 {ch.name}" } else { "# {ch.name}" }
-                                }
-                                div { class: "chat-header-spacer" }
-                                if let Some(srv) = selected_server() {
-                                    span {
-                                        style: "font-size: 12px; color: var(--text-muted);",
-                                        "{srv.name}"
+                                div { class: "chat-header-identity",
+                                    span { style: "color: var(--text-muted); display: flex;",
+                                        if ch.channel_type == "voice" { VolumeIcon { size: 20 } } else { HashIcon { size: 20 } }
+                                    }
+                                    div { class: "chat-header-info",
+                                        h2 { class: "chat-header-title", "{ch.name}" }
+                                        if let Some(srv) = selected_server() {
+                                            span { class: "chat-header-meta", "{srv.name}" }
+                                        }
                                     }
                                 }
                             }
 
-                            if ch.channel_type == "text" {
-                                // Channel Messages List
-                                div {
-                                    class: "chat-messages",
-                                    style: "overflow-y: auto; display: flex; flex-direction: column;",
-                                    if channel_messages.read().is_empty() {
-                                        div { class: "empty-chat-inner", "Chưa có tin nhắn trong kênh này" }
-                                    } else {
-                                        for msg in channel_messages() {
-                                            {
-                                                let is_self = msg.sender_id == current_user_id;
-                                                let row_cls = if is_self { "message-row sent" } else { "message-row received" };
-                                                let time_str = platform::format_local_time(&msg.created_at);
-                                                rsx! {
-                                                    div { class: "{row_cls}", key: "{msg.id}",
-                                                        div { class: "message-content-wrapper",
-                                                            if !is_self {
-                                                                Avatar {
-                                                                    name: msg.sender_username.clone(),
-                                                                    avatar_url: msg.sender_avatar_url.clone(),
-                                                                    size: 28,
-                                                                }
-                                                            }
-                                                            div { class: "message-bubble",
-                                                                if !is_self {
-                                                                    div {
-                                                                        style: "font-size: 11px; font-weight: 600; margin-bottom: 2px; opacity: 0.85;",
-                                                                        "{msg.sender_username}"
-                                                                    }
-                                                                }
-                                                                "{msg.content}"
-                                                            }
-                                                        }
-                                                        if !msg.created_at.is_empty() {
-                                                            span { class: "message-time", "{time_str}" }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                            if ch.channel_type != "voice" {
+                                MessageList {
+                                    messages: channel_view.clone(),
+                                    show_sender_names: true,
+                                    intro_title: format!("Chào mừng đến #{}", ch.name),
+                                    intro_sub: "Đây là khởi đầu của kênh. Tin nhắn kênh cộng đồng được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.".to_string(),
+                                    on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
                                 }
-
-                                // Channel Input Bar
-                                form {
-                                    class: "chat-input-bar",
-                                    onsubmit: move |evt| {
-                                        evt.prevent_default();
-                                        trigger_send_channel_message.call(());
-                                    },
-                                    input {
-                                        r#type: "text",
-                                        class: "chat-input",
-                                        placeholder: "Nhắn tin tại #{ch.name}",
-                                        aria_label: "Nội dung tin nhắn kênh",
-                                        value: "{channel_input}",
-                                        oninput: move |evt| channel_input.set(evt.value()),
-                                        onkeydown: move |evt| {
-                                            if evt.key() == Key::Enter && !evt.modifiers().shift() {
-                                                evt.prevent_default();
-                                                trigger_send_channel_message.call(());
-                                            }
-                                        },
-                                    }
-                                    button {
-                                        r#type: "submit",
-                                        class: "send-btn",
-                                        disabled: channel_input().trim().is_empty(),
-                                        aria_label: "Gửi",
-                                        SendIcon {}
-                                    }
+                                Composer {
+                                    input_id: "channel-chat-input".to_string(),
+                                    value: channel_input(),
+                                    placeholder: "Nhắn tin tới #{ch.name}",
+                                    on_input: move |v: String| channel_input.set(v),
+                                    on_send: move |_| trigger_send_channel_message.call(()),
                                 }
                             } else {
-                                // Voice Channel Room View
-                                div {
-                                    class: "empty-chat",
-                                    style: "flex-direction: column; gap: 12px;",
-                                    div { style: "font-size: 42px;", "🔊" }
-                                    div { style: "font-size: 18px; font-weight: 600;", "Kênh thoại: {ch.name}" }
-                                    div {
-                                        style: "font-size: 13px; color: var(--text-muted);",
-                                        if active_voice_channel().as_ref().map(|v| v.id == ch.id).unwrap_or(false) {
-                                            "Đang kết nối phòng thoại WebRTC"
-                                        } else {
-                                            "Nhấn vào kênh để kết nối"
-                                        }
-                                    }
-                                    if active_voice_channel().as_ref().map(|v| v.id == ch.id).unwrap_or(false) {
-                                        div { style: "display: flex; gap: 10px; margin-top: 8px;",
-                                            button {
-                                                r#type: "button",
-                                                class: if is_voice_muted() { "voice-btn mute" } else { "voice-btn " },
-                                                onclick: move |_| {
-                                                    if let Some(vc) = active_voice_channel() {
-                                                        let next = !is_voice_muted();
-                                                        is_voice_muted.set(next);
-                                                        spawn(async move {
-                                                            let _ = api::webrtc_update_voice_state(&vc.id, next).await;
-                                                        });
-                                                    }
-                                                },
-                                                if is_voice_muted() { "Bật mic" } else { "Tắt mic (Mute)" }
+                                {
+                                    let connected = active_voice_channel().as_ref().map(|v| v.id == ch.id).unwrap_or(false);
+                                    let parts: Vec<VoiceStateItem> = voice_participants().into_iter().filter(|p| p.channel_id == ch.id).collect();
+                                    let ch_join = ch.clone();
+                                    rsx! {
+                                        div { class: "voice-room-stage",
+                                            div { class: "empty-state-icon", VolumeIcon { size: 28 } }
+                                            div {
+                                                div { class: "voice-room-title", "{ch.name}" }
+                                                div { class: "voice-room-sub",
+                                                    if connected { "Bạn đang ở trong kênh thoại" } else { "Bạn chưa tham gia kênh thoại này" }
+                                                }
                                             }
-                                            button {
-                                                r#type: "button",
-                                                class: "voice-btn disconnect",
-                                                onclick: move |_| {
-                                                    if let Some(vc) = active_voice_channel() {
-                                                        spawn(async move {
-                                                            let _ = api::webrtc_leave_voice(&vc.id).await;
-                                                            active_voice_channel.set(None);
-                                                        });
-                                                    }
-                                                },
-                                                "Rời phòng"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else if is_settings_open() {
-                    // Settings View
-                    header { class: "chat-header",
-                        button {
-                            r#type: "button",
-                            class: "icon-btn",
-                            aria_label: "Đóng cài đặt",
-                            onclick: move |_| is_settings_open.set(false),
-                            BackIcon {}
-                        }
-                        h2 { class: "chat-header-title", "Cài đặt" }
-                    }
-                    div { class: "settings-content",
-                        div { class: "settings-profile-card",
-                            div { class: "settings-avatar-wrapper",
-                                Avatar {
-                                    name: current_username.clone(),
-                                    avatar_url: my_avatar_url(),
-                                    size: 56,
-                                }
-                            }
-                            div { class: "settings-profile-info",
-                                div { class: "settings-profile-name", "{current_username}" }
-                                div { class: "settings-profile-sub", "Tài khoản cá nhân" }
-                                button {
-                                    r#type: "button",
-                                    class: "btn-secondary",
-                                    style: "font-size: 11px; padding: 3px 8px; margin-top: 4px; border-radius: 6px; width: fit-content; cursor: pointer;",
-                                    onclick: {
-                                        let my_id = current_user_id.clone();
-                                        move |_| viewing_profile_user_id.set(Some(my_id.clone()))
-                                    },
-                                    "Chỉnh sửa hồ sơ"
-                                }
-                            }
-                            div { class: "settings-profile-action",
-                                label { class: "btn-avatar-upload",
-                                    input {
-                                        id: "avatar-file-input",
-                                        r#type: "file",
-                                        accept: "image/*",
-                                        disabled: is_uploading_avatar(),
-                                        style: "display: none;",
-                                        onchange: move |_| {
-                                            is_uploading_avatar.set(true);
-                                            avatar_upload_error.set(None);
-                                            spawn(async move {
-                                                match platform::process_selected_avatar_bytes().await {
-                                                    Ok(bytes) => match api::users_upload_avatar(bytes).await {
-                                                        Ok(resp) => {
-                                                            my_avatar_url.set(Some(resp.avatar_url.clone()));
-                                                            on_avatar_updated.call(resp.avatar_url);
+                                            if !parts.is_empty() {
+                                                div { class: "voice-participants-grid",
+                                                    for p in parts {
+                                                        div { key: "{p.user_id}", class: "voice-participant-card",
+                                                            Avatar { name: p.username.clone(), avatar_url: p.avatar_url.clone(), size: 64 }
+                                                            span { class: "voice-participant-name", "{p.username}" }
+                                                            if p.self_mute {
+                                                                span { class: "chat-item-tag", "Đã tắt mic" }
+                                                            }
                                                         }
-                                                        Err(_) => {
-                                                            avatar_upload_error.set(Some(
-                                                                "Không thể cập nhật ảnh đại diện".to_string(),
-                                                            ));
-                                                        }
-                                                    },
-                                                    Err(err) if err == "no_file" => {}
-                                                    Err(_) => {
-                                                        avatar_upload_error.set(Some(
-                                                            "Không thể cập nhật ảnh đại diện".to_string(),
-                                                        ));
                                                     }
                                                 }
-                                                is_uploading_avatar.set(false);
-                                            });
-                                        },
+                                            }
+                                            div { class: "voice-controls-dock",
+                                                if connected {
+                                                    button {
+                                                        r#type: "button",
+                                                        class: if is_voice_muted() { "call-btn call-btn-danger" } else { "call-btn" },
+                                                        title: if is_voice_muted() { "Bật micro" } else { "Tắt micro" },
+                                                        aria_label: if is_voice_muted() { "Bật micro" } else { "Tắt micro" },
+                                                        onclick: move |_| {
+                                                            if let Some(vc) = active_voice_channel() {
+                                                                let next = !is_voice_muted();
+                                                                is_voice_muted.set(next);
+                                                                spawn(async move {
+                                                                    let _ = api::webrtc_update_voice_state(&vc.id, next).await;
+                                                                });
+                                                            }
+                                                        },
+                                                        if is_voice_muted() { MicOffIcon { size: 20 } } else { MicIcon { size: 20 } }
+                                                    }
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "call-btn call-btn-danger",
+                                                        title: "Rời kênh thoại",
+                                                        aria_label: "Rời kênh thoại",
+                                                        onclick: move |_| {
+                                                            if let Some(vc) = active_voice_channel() {
+                                                                spawn(async move {
+                                                                    let _ = api::webrtc_leave_voice(&vc.id).await;
+                                                                    active_voice_channel.set(None);
+                                                                    voice_participants.set(Vec::new());
+                                                                });
+                                                            }
+                                                        },
+                                                        PhoneOffIcon { size: 20 }
+                                                    }
+                                                } else {
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "btn-primary",
+                                                        onclick: move |_| select_channel(ch_join.clone()),
+                                                        VolumeIcon { size: 18 }
+                                                        span { "Tham gia kênh thoại" }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                    if is_uploading_avatar() { "Đang tải" } else { "Đổi ảnh đại diện" }
                                 }
-                                if let Some(err) = avatar_upload_error() {
-                                    span { class: "error-text", "{err}" }
-                                }
-                            }
-                        }
-
-                        div { class: "settings-group",
-                            div { class: "settings-group-title", "Tài khoản" }
-                            div { class: "settings-row",
-                                span { class: "settings-label", "Tên người dùng" }
-                                span { class: "settings-value", "{current_username}" }
-                            }
-                            div { class: "settings-row column-layout",
-                                span { class: "settings-label", "Mã định danh" }
-                                span { class: "settings-value mono", "{current_user_id}" }
-                            }
-                        }
-
-                        div { class: "settings-group",
-                            div { class: "settings-group-title", "Mã hóa đầu cuối" }
-                            div { class: "settings-row",
-                                span { class: "settings-label", "Giao thức" }
-                                span { class: "settings-value nowrap", "ECDH P-256 / AES-256-GCM" }
-                            }
-                            div { class: "settings-row",
-                                span { class: "settings-label", "Chữ ký số" }
-                                span { class: "settings-value nowrap", "ECDSA P-256 / SHA-256" }
-                            }
-                            div { class: "settings-row",
-                                span { class: "settings-label", "Trạng thái khóa" }
-                                span { class: "settings-value tag-active",
-                                    if user_keys().is_some() {
-                                        "Đã kích hoạt trên thiết bị"
-                                    } else {
-                                        "Đang tải"
-                                    }
-                                }
-                            }
-                            if let Some(keys) = user_keys() {
-                                div { class: "settings-row column-layout",
-                                    span { class: "settings-label", "Vân tay khóa" }
-                                    span { class: "settings-value mono", "{keys.fingerprint_b64}" }
-                                }
-                            }
-                        }
-
-                        div { class: "settings-group",
-                            div { class: "settings-group-title", "Phiên đăng nhập" }
-                            button {
-                                r#type: "button",
-                                class: "btn-danger-outline",
-                                onclick: move |_| on_logout.call(()),
-                                "Đăng xuất"
                             }
                         }
                     }
                 } else {
-                    div { class: "empty-chat",
-                        span { "Chọn một cuộc trò chuyện để bắt đầu" }
-                    }
-                }
-            }
-
-            // Modals
-            if is_create_group_open() {
-                CreateGroupModal {
-                    friends: friends(),
-                    on_close: move |_| is_create_group_open.set(false),
-                    on_created: move |gid| {
-                        is_create_group_open.set(false);
-                        spawn(async move {
-                            if let Ok(grps) = groups::groups_list().await {
-                                groups.set(grps.clone());
-                                if let Some(created) = grps.into_iter().find(|g| g.id == gid) {
-                                    select_group.call(created);
+                    div { class: "empty-state",
+                        div { class: "empty-state-icon", MessageIcon { size: 28 } }
+                        if matches!(section, NavSection::Server(_)) {
+                            div { class: "empty-state-title", "Chọn một kênh" }
+                            div { class: "empty-state-sub", "Chọn kênh văn bản để đọc tin nhắn, hoặc kênh thoại để tham gia trò chuyện." }
+                        } else {
+                            div { class: "empty-state-title", "Chọn một cuộc trò chuyện" }
+                            div { class: "empty-state-sub", "Tin nhắn trực tiếp được mã hóa đầu cuối. Thêm bạn bè hoặc tạo nhóm để bắt đầu." }
+                            div { style: "display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center;",
+                                button {
+                                    r#type: "button",
+                                    class: "btn-primary",
+                                    onclick: move |_| nav_section.set(NavSection::Friends),
+                                    UserPlusIcon { size: 18 }
+                                    span { "Thêm bạn" }
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    onclick: move |_| is_create_group_open.set(true),
+                                    GroupIcon {}
+                                    span { "Tạo nhóm" }
                                 }
                             }
-                        });
-                    },
-                }
-            }
-
-            if is_group_invite_open() {
-                if let Some(grp) = active_group() {
-                    GroupInviteModal {
-                        group_id: grp.id.clone(),
-                        on_close: move |_| is_group_invite_open.set(false),
-                    }
-                }
-            }
-
-            if is_group_add_member_open() {
-                if let Some(grp) = active_group() {
-                    AddMemberModal {
-                        group_id: grp.id.clone(),
-                        on_close: move |_| is_group_add_member_open.set(false),
-                        on_member_added: move |_| {
-                            is_group_add_member_open.set(false);
-                        },
-                    }
-                }
-            }
-
-            if let Some(incoming) = incoming_call_session() {
-                {
-                    let inc_accept = incoming.clone();
-                    let inc_reject = incoming.clone();
-                    rsx! {
-                        IncomingCallModal {
-                            session: incoming,
-                            on_accept: move |_| {
-                                let s = inc_accept.clone();
-                                spawn(async move {
-                                    if let Ok(accepted) = calls::calls_accept(&s.id).await {
-                                        incoming_call_session.set(None);
-                                        active_call_session.set(Some(accepted));
-                                    }
-                                });
-                            },
-                            on_reject: move |_| {
-                                let s = inc_reject.clone();
-                                spawn(async move {
-                                    let _ = calls::calls_reject(&s.id).await;
-                                    incoming_call_session.set(None);
-                                });
-                            },
-                        }
-                    }
-                }
-            }
-
-            if let Some(session) = active_call_session() {
-                ActiveCallOverlay {
-                    session: session.clone(),
-                    current_user_id: current_user_id.clone(),
-                    on_end_call: move |_| {
-                        let s = session.clone();
-                        spawn(async move {
-                            let _ = calls::calls_end(&s.id).await;
-                            active_call_session.set(None);
-                            media::stop_all_media();
-                        });
-                    },
-                }
-            }
-
-            if let Some(uid) = viewing_profile_user_id() {
-                {
-                    let is_me = uid == current_user_id;
-                    rsx! {
-                        ProfileModal {
-                            user_id: uid.clone(),
-                            is_self: is_me,
-                            on_close: move |_| viewing_profile_user_id.set(None),
-                            on_profile_updated: move |p: crate::models::UserProfileResponse| {
-                                if let Some(av) = p.avatar_url {
-                                    my_avatar_url.set(Some(av));
-                                }
-                            },
                         }
                     }
                 }
             }
         }
+
+        // ---------------- Modals & overlays ----------------
+        if is_community_modal_open() {
+            CommunityModal {
+                on_close: move |_| is_community_modal_open.set(false),
+                on_server_ready: move |srv: ServerItem| {
+                    is_community_modal_open.set(false);
+                    let s2 = srv.clone();
+                    spawn(async move {
+                        if let Ok(list) = api::servers_list().await {
+                            servers.set(list);
+                        }
+                    });
+                    select_server(s2);
+                },
+            }
+        }
+
+        if is_create_category_open() {
+            if let Some(srv) = selected_server() {
+                CreateCategoryModal {
+                    server_id: srv.id.clone(),
+                    on_close: move |_| is_create_category_open.set(false),
+                    on_created: move |cat: ServerCategoryItem| {
+                        is_create_category_open.set(false);
+                        server_categories.with_mut(|l| l.push(cat));
+                    },
+                }
+            }
+        }
+
+        if let Some(cat) = create_channel_for() {
+            if let Some(srv) = selected_server() {
+                CreateChannelModal {
+                    server_id: srv.id.clone(),
+                    category_id: cat,
+                    on_close: move |_| create_channel_for.set(None),
+                    on_created: move |ch: ChannelItem| {
+                        create_channel_for.set(None);
+                        channels.with_mut(|l| {
+                            if !l.iter().any(|c| c.id == ch.id) {
+                                l.push(ch);
+                            }
+                        });
+                    },
+                }
+            }
+        }
+
+        if is_server_invite_open() {
+            if let Some(srv) = selected_server() {
+                ServerInviteModal {
+                    server_id: srv.id.clone(),
+                    server_name: srv.name.clone(),
+                    on_close: move |_| is_server_invite_open.set(false),
+                }
+            }
+        }
+
+        if is_create_group_open() {
+            CreateGroupModal {
+                friends: friends(),
+                on_close: move |_| is_create_group_open.set(false),
+                on_created: move |gid| {
+                    is_create_group_open.set(false);
+                    spawn(async move {
+                        if let Ok(grps) = groups::groups_list().await {
+                            groups.set(grps.clone());
+                            if let Some(created) = grps.into_iter().find(|g| g.id == gid) {
+                                select_group.call(created);
+                            }
+                        }
+                    });
+                },
+            }
+        }
+
+        if is_group_invite_open() {
+            if let Some(grp) = active_group() {
+                GroupInviteModal {
+                    group_id: grp.id.clone(),
+                    on_close: move |_| is_group_invite_open.set(false),
+                }
+            }
+        }
+
+        if is_group_add_member_open() {
+            if let Some(grp) = active_group() {
+                AddMemberModal {
+                    group_id: grp.id.clone(),
+                    on_close: move |_| is_group_add_member_open.set(false),
+                    on_member_added: move |_| is_group_add_member_open.set(false),
+                }
+            }
+        }
+
+        if let Some(incoming) = incoming_call_session() {
+            {
+                let inc_accept = incoming.clone();
+                let inc_reject = incoming.clone();
+                rsx! {
+                    IncomingCallModal {
+                        session: incoming,
+                        on_accept: move |_| {
+                            let s = inc_accept.clone();
+                            spawn(async move {
+                                if let Ok(accepted) = calls::calls_accept(&s.id).await {
+                                    incoming_call_session.set(None);
+                                    active_call_session.set(Some(accepted));
+                                }
+                            });
+                        },
+                        on_reject: move |_| {
+                            let s = inc_reject.clone();
+                            spawn(async move {
+                                let _ = calls::calls_reject(&s.id).await;
+                                incoming_call_session.set(None);
+                            });
+                        },
+                    }
+                }
+            }
+        }
+
+        if let Some(session) = active_call_session() {
+            ActiveCallOverlay {
+                session: session.clone(),
+                current_user_id: current_user_id.clone(),
+                on_end_call: move |_| {
+                    let s = session.clone();
+                    spawn(async move {
+                        let _ = calls::calls_end(&s.id).await;
+                        active_call_session.set(None);
+                        media::stop_all_media();
+                    });
+                },
+            }
+        }
+
+        if let Some(uid) = viewing_profile_user_id() {
+            {
+                let is_me = uid == current_user_id;
+                rsx! {
+                    ProfileModal {
+                        user_id: uid.clone(),
+                        is_self: is_me,
+                        on_close: move |_| viewing_profile_user_id.set(None),
+                        on_profile_updated: move |p: crate::models::UserProfileResponse| {
+                            if let Some(av) = p.avatar_url {
+                                my_avatar_url.set(Some(av));
+                            }
+                        },
+                    }
+                }
+            }
+        }
     }
-}
 }

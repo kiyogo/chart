@@ -1,8 +1,11 @@
 pub mod avatar;
 pub mod calls;
+pub mod details_panel;
+pub mod emoji_data;
 pub mod emoji_picker;
 pub mod groups;
 pub mod icons;
+pub mod messages;
 pub mod navigation;
 pub mod profile_modal;
 pub mod settings_view;

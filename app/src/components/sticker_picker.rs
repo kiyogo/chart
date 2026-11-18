@@ -1,11 +1,9 @@
 use dioxus::prelude::*;
 
-use crate::{
-    models::StickerPackItem,
-    platform,
-    services::stickers::stickers_list_packs,
-};
+use crate::{models::StickerPackItem, platform, services::stickers::stickers_list_packs};
 
+/// Sticker picker body (rendered inside a `.picker-popover`). Lists the user's
+/// real sticker packs from `/api/stickers`; selecting sends the sticker URL.
 #[component]
 pub fn StickerPicker(
     on_select: EventHandler<String>,
@@ -14,75 +12,76 @@ pub fn StickerPicker(
     let mut packs = use_signal(Vec::<StickerPackItem>::new);
     let mut active_pack_id = use_signal(|| Option::<String>::None);
     let mut is_loading = use_signal(|| true);
+    let mut load_error = use_signal(|| false);
 
     use_effect(move || {
         spawn(async move {
-            if let Ok(list) = stickers_list_packs().await {
-                if let Some(first) = list.first() {
-                    active_pack_id.set(Some(first.id.clone()));
+            match stickers_list_packs().await {
+                Ok(list) => {
+                    if let Some(first) = list.first() {
+                        active_pack_id.set(Some(first.id.clone()));
+                    }
+                    packs.set(list);
                 }
-                packs.set(list);
+                Err(_) => load_error.set(true),
             }
             is_loading.set(false);
         });
     });
 
-    let active_pack = packs()
-        .into_iter()
-        .find(|p| Some(&p.id) == active_pack_id().as_ref());
+    let active_pack = packs().into_iter().find(|p| Some(&p.id) == active_pack_id().as_ref());
 
     rsx! {
         div {
-            class: "sticker-picker-popover",
-            style: "width: 300px; height: 320px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); display: flex; flex-direction: column; overflow: hidden;",
+            style: "display: flex; flex-direction: column; height: 100%; min-height: 0;",
             onclick: move |evt| evt.stop_propagation(),
-
-            // Pack Tabs
-            div {
-                style: "display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid var(--border); overflow-x: auto; background: var(--bg-secondary);",
-                for p in packs() {
-                    {
-                        let pid = p.id.clone();
-                        let is_active = active_pack_id().as_deref() == Some(pid.as_str());
-                        rsx! {
-                            button {
-                                key: "{p.id}",
-                                r#type: "button",
-                                class: if is_active { "btn-small-primary" } else { "btn-small-disabled" },
-                                style: "cursor: pointer;",
-                                onclick: move |_| active_pack_id.set(Some(pid.clone())),
-                                "{p.name}"
+            onkeydown: move |evt| if evt.key() == Key::Escape { if let Some(h) = _on_close { h.call(()) } },
+            div { class: "picker-header",
+                span { class: "details-section-title", "Sticker" }
+            }
+            if !packs.read().is_empty() {
+                div { class: "picker-tabs", role: "tablist",
+                    for p in packs() {
+                        {
+                            let pid = p.id.clone();
+                            let is_active = active_pack_id().as_deref() == Some(pid.as_str());
+                            rsx! {
+                                button {
+                                    key: "{p.id}",
+                                    r#type: "button",
+                                    class: if is_active { "picker-tab text active" } else { "picker-tab text" },
+                                    onclick: move |_| active_pack_id.set(Some(pid.clone())),
+                                    "{p.name}"
+                                }
                             }
                         }
                     }
                 }
             }
-
-            // Stickers Grid
-            div {
-                style: "flex: 1; padding: 12px; overflow-y: auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; align-content: start;",
+            div { class: "picker-body",
                 if is_loading() {
-                    div { style: "grid-column: span 4; text-align: center; color: var(--text-secondary); padding: 20px;", "Đang tải sticker" }
+                    div { class: "picker-empty", "Đang tải sticker" }
+                } else if load_error() {
+                    div { class: "picker-empty", "Không tải được danh sách sticker" }
                 } else if let Some(pack) = active_pack {
                     if pack.stickers.is_empty() {
-                        div { style: "grid-column: span 4; text-align: center; color: var(--text-secondary); padding: 20px;", "Chưa có sticker trong bộ này" }
+                        div { class: "picker-empty", "Bộ sticker này chưa có sticker nào" }
                     } else {
-                        for st in pack.stickers {
-                            {
-                                let url = st.file_url.clone();
-                                let resolved = platform::resolve_asset_url(&url);
-                                let title_str = if st.name.is_empty() { "Sticker".to_string() } else { st.name.clone() };
-                                rsx! {
-                                    button {
-                                        key: "{st.id}",
-                                        r#type: "button",
-                                        style: "background: var(--bg-secondary); border: 1px solid var(--border); padding: 6px; border-radius: var(--radius-md); cursor: pointer; display: flex; align-items: center; justify-content: center; aspect-ratio: 1;",
-                                        title: "{title_str}",
-                                        onclick: move |_| on_select.call(url.clone()),
-                                        img {
-                                            src: "{resolved}",
-                                            alt: "{title_str}",
-                                            style: "width: 100%; height: 100%; object-fit: contain;",
+                        div { class: "sticker-grid",
+                            for st in pack.stickers {
+                                {
+                                    let url = st.file_url.clone();
+                                    let resolved = platform::resolve_asset_url(&url);
+                                    let title_str = if st.name.is_empty() { "Sticker".to_string() } else { st.name.clone() };
+                                    rsx! {
+                                        button {
+                                            key: "{st.id}",
+                                            r#type: "button",
+                                            class: "sticker-cell",
+                                            title: "{title_str}",
+                                            aria_label: "Gửi sticker {title_str}",
+                                            onclick: move |_| on_select.call(url.clone()),
+                                            img { src: "{resolved}", alt: "{title_str}", loading: "lazy" }
                                         }
                                     }
                                 }
@@ -90,7 +89,7 @@ pub fn StickerPicker(
                         }
                     }
                 } else {
-                    div { style: "grid-column: span 4; text-align: center; color: var(--text-secondary); padding: 20px;", "Chưa có bộ sticker nào" }
+                    div { class: "picker-empty", "Bạn chưa có bộ sticker nào" }
                 }
             }
         }

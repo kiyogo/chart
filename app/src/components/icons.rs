@@ -593,3 +593,90 @@ pub fn KeyIcon(#[props(default = 16)] size: u32) -> Element {
 
 
 
+
+/// Lucide-style stroke icon wrapper used by the icons below (24px grid, 2px stroke).
+#[component]
+fn StrokeIcon(size: u32, children: Element) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            "aria-hidden": "true",
+            {children}
+        }
+    }
+}
+
+#[component]
+pub fn SearchIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, circle { cx: "11", cy: "11", r: "7" } line { x1: "21", y1: "21", x2: "16.65", y2: "16.65" } } }
+}
+
+#[component]
+pub fn UserIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, path { d: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" } circle { cx: "12", cy: "7", r: "4" } } }
+}
+
+#[component]
+pub fn MonitorIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, rect { x: "2", y: "3", width: "20", height: "14", rx: "2" } line { x1: "8", y1: "21", x2: "16", y2: "21" } line { x1: "12", y1: "17", x2: "12", y2: "21" } } }
+}
+
+#[component]
+pub fn CheckIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, polyline { points: "20 6 9 17 4 12" } } }
+}
+
+#[component]
+pub fn CopyIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, rect { x: "9", y: "9", width: "13", height: "13", rx: "2" } path { d: "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" } } }
+}
+
+#[component]
+pub fn LockIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, rect { x: "3", y: "11", width: "18", height: "11", rx: "2" } path { d: "M7 11V7a5 5 0 0 1 10 0v4" } } }
+}
+
+#[component]
+pub fn BellIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, path { d: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" } path { d: "M13.73 21a2 2 0 0 1-3.46 0" } } }
+}
+
+#[component]
+pub fn PaletteIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { StrokeIcon { size,
+        circle { cx: "13.5", cy: "6.5", r: "1" } circle { cx: "17.5", cy: "10.5", r: "1" } circle { cx: "8.5", cy: "7.5", r: "1" } circle { cx: "6.5", cy: "12.5", r: "1" }
+        path { d: "M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C22 6 17.5 2 12 2z" }
+    } }
+}
+
+#[component]
+pub fn ChevronLeftIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, polyline { points: "15 18 9 12 15 6" } } }
+}
+
+#[component]
+pub fn MessageIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, path { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" } } }
+}
+
+#[component]
+pub fn PanelRightIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, rect { x: "3", y: "3", width: "18", height: "18", rx: "2" } line { x1: "15", y1: "3", x2: "15", y2: "21" } } }
+}
+
+#[component]
+pub fn CompassIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, circle { cx: "12", cy: "12", r: "10" } polygon { points: "16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" } } }
+}
+
+#[component]
+pub fn TypeIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { StrokeIcon { size, polyline { points: "4 7 4 4 20 4 20 7" } line { x1: "9", y1: "20", x2: "15", y2: "20" } line { x1: "12", y1: "4", x2: "12", y2: "20" } } }
+}

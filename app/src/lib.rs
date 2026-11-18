@@ -82,8 +82,7 @@ pub fn App() -> Element {
     };
 
     use_effect(move || {
-        let saved_theme = platform::load_saved_theme();
-        platform::apply_theme(&saved_theme);
+        platform::apply_appearance(&platform::load_appearance());
         check_auth();
     });
 
@@ -103,8 +102,9 @@ pub fn App() -> Element {
             div { class: "app-content",
                 match status() {
                     AuthStatus::Loading => rsx! {
-                        div { class: "auth-container",
-                            div { class: "empty-chat-sub", "Đang khởi tạo phiên làm việc" }
+                        div { class: "boot-screen", role: "status",
+                            span { class: "brand-mark", components::icons::LogoIcon { size: 22 } }
+                            span { "Đang khởi tạo phiên làm việc" }
                         }
                     },
                     AuthStatus::Unauthenticated => rsx! {
