@@ -41,3 +41,20 @@ Xem `test_results.md` — script ghi toàn bộ kiểm tra vào `screenshots/aft
 | Responsive | Tốt | 0 lỗi trên 14 viewport × 2 theme. |
 | Icon | Trung bình | Bộ SVG nội bộ kiểu Lucide; vài icon cũ không nhận `size`. |
 | Cuộc gọi | Chưa xét lại | `ActiveCallOverlay` giữ nguyên giao diện cũ (nền tối cố định). |
+
+## Vòng 2 — Phong cách riêng của ChatW, bỏ toàn bộ đường kẻ (theo phản hồi người dùng)
+Phản hồi: "giao diện quá giống Discord, phải có phong cách riêng, xóa tất cả thanh thẳng".
+
+| Trước (giống Discord) | Sau (ChatW) |
+|---|---|
+| Các cột dính liền, ngăn bằng đường kẻ dọc 1px | Các khối bo tròn (`--panel-radius: 18px`) nổi trên nền canvas, tách nhau bằng khoảng trống 8px (`--shell-gap`) |
+| Thanh chỉ báo dọc bên trái mục đang chọn ở rail, icon tròn chuyển thành vuông bo khi hover | Không có thanh chỉ báo. Mục đang chọn "nổi lên" thành ô sáng có chấm màu nhấn bên dưới; cộng đồng là hình tròn, khi chọn chuyển thành ô vuông bo màu nhấn |
+| Vạch ngang dưới rail, dưới header, giữa các mục | Không có vạch; phân tách bằng khoảng cách và độ sáng nền |
+| Tiêu đề mục VIẾT HOA giãn chữ | Viết thường kiểu câu, đậm vừa |
+| Khung người dùng cố định đáy sidebar | Bỏ (avatar, cài đặt, đăng xuất đã có ở rail) |
+| Trích dẫn trả lời có vạch dọc bên trái | Ô nền màu nhạt bo góc |
+| Viền quanh reaction, menu, picker, modal, thẻ chủ đề, nút phụ | Dùng nền tông màu và bóng nhẹ thay viền |
+
+Kiểm tra: `grep` không còn khai báo `border: …solid` nào trong `main.css` ngoài vòng xoay loading; trong component Rust
+chỉ còn vòng viền cùng màu nền quanh avatar hồ sơ (không nhìn thấy). Trên điện thoại các khối phủ kín màn hình
+(không bo, không khe). UI audit vẫn 442/442.

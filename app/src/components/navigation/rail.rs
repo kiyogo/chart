@@ -97,7 +97,6 @@ pub fn NavigationRail(
                 }
             }
 
-            div { class: "rail-divider" }
 
             // Community Servers Logo Rail
             div { class: "rail-scroll",
@@ -109,7 +108,7 @@ pub fn NavigationRail(
                         rsx! {
                             div {
                                 key: "{srv.id}",
-                                class: if is_selected { "rail-slot active" } else { "rail-slot" },
+                                class: if is_selected { "rail-slot rail-server active" } else { "rail-slot rail-server" },
                                 span { class: "rail-pill" }
                                 button {
                                     r#type: "button",

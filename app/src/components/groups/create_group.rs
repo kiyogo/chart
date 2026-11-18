@@ -106,7 +106,7 @@ pub fn CreateGroupModal(
                     div { class: "settings-section", style: "margin-top: 16px;",
                         label { class: "settings-label", "Thêm bạn bè vào nhóm ({selected_friends().len()} đã chọn)" }
                         div {
-                            style: "max-height: 200px; overflow-y: auto; margin-top: 8px; border: 1px solid var(--border-color); border-radius: 8px;",
+                            style: "max-height: 200px; overflow-y: auto; margin-top: 8px; background: var(--bg-surface-hover); border-radius: 8px;",
                             if friends.is_empty() {
                                 div { style: "padding: 16px; text-align: center; color: var(--text-secondary);", "Chưa có bạn bè nào để thêm." }
                             } else {

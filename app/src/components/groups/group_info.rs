@@ -155,7 +155,7 @@ pub fn GroupInfoPanel(
                                 rsx! {
                                     div {
                                         key: "{m.user_id}",
-                                        style: "display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border-color);",
+                                        style: "display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;",
                                         div { style: "display: flex; align-items: center; gap: 8px;",
                                             Avatar {
                                                 user_id: m.user_id.clone(),
@@ -235,14 +235,14 @@ pub fn GroupInfoPanel(
                     if !is_owner {
                         button {
                             class: "partner-action-btn",
-                            style: "width: 100%; color: #EF4444; border-color: rgba(239, 68, 68, 0.3);",
+                            style: "width: 100%; color: #EF4444; background: var(--bg-error);",
                             onclick: handle_leave,
                             "Rời khỏi nhóm"
                         }
                     } else {
                         button {
                             class: "partner-action-btn",
-                            style: "width: 100%; color: #EF4444; border-color: rgba(239, 68, 68, 0.3);",
+                            style: "width: 100%; color: #EF4444; background: var(--bg-error);",
                             onclick: handle_delete,
                             "Giải tán nhóm"
                         }

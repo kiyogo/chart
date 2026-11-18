@@ -61,6 +61,8 @@
   --sidebar-width: clamp(16.5rem, 20vw, 21rem);
   --details-width: clamp(19rem, 22vw, 23rem);
   --header-height: 3.5rem;
+  --shell-gap: 0.5rem;
+  --panel-radius: 1.125rem;
   --bubble-max: min(40rem, 72%);
   --control-height: 2.5rem;
   --icon-btn: 2.25rem;
@@ -96,16 +98,16 @@
 
   /* ---------- Light theme ---------- */
   color-scheme: light;
-  --bg-app: #F7F8FA;
-  --bg-rail: #EEF0F4;
-  --bg-sidebar: #F7F8FA;
+  --bg-app: #E9EDF3;
+  --bg-rail: #E9EDF3;
+  --bg-sidebar: #FFFFFF;
   --bg-primary: #FFFFFF;
-  --bg-secondary: #F7F8FA;
+  --bg-secondary: #F4F6F9;
   --bg-chat: #FFFFFF;
   --bg-surface: #FFFFFF;
   --bg-elevated: #FFFFFF;
-  --bg-surface-hover: #F1F3F6;
-  --bg-hover: #EDF0F4;
+  --bg-surface-hover: #F3F5F8;
+  --bg-hover: #EEF1F5;
   --bg-active: #E4E8EE;
   --bg-selected: var(--accent-soft);
   --bg-input: #F1F3F6;
@@ -161,15 +163,15 @@
   --accent-soft-strong: color-mix(in srgb, var(--accent) 30%, #1A1F29);
   --accent-text: color-mix(in srgb, var(--accent) 55%, #FFFFFF);
 
-  --bg-app: #111419;
-  --bg-rail: #0D1014;
-  --bg-sidebar: #15191F;
-  --bg-primary: #1A1E25;
-  --bg-secondary: #15191F;
-  --bg-chat: #1A1E25;
-  --bg-surface: #1F242C;
-  --bg-elevated: #242A33;
-  --bg-surface-hover: #262C35;
+  --bg-app: #0C0E12;
+  --bg-rail: #0C0E12;
+  --bg-sidebar: #171A20;
+  --bg-primary: #191C22;
+  --bg-secondary: #14171C;
+  --bg-chat: #191C22;
+  --bg-surface: #22262E;
+  --bg-elevated: #242930;
+  --bg-surface-hover: #21252C;
   --bg-hover: #242A33;
   --bg-active: #2C333D;
   --bg-input: #232930;

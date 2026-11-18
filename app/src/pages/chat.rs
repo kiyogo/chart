@@ -1196,11 +1196,6 @@ pub fn Chat(
                             });
                         }
                     },
-                    on_open_profile: {
-                        let me = current_user_id.clone();
-                        move |_| viewing_profile_user_id.set(Some(me.clone()))
-                    },
-                    on_open_settings: move |_| is_settings_open.set(true),
                 }
             }
 
@@ -1275,7 +1270,6 @@ pub fn Chat(
                                         },
                                         VideoIcon { size: 20 }
                                     }
-                                    span { class: "chat-header-sep" }
                                     button {
                                         r#type: "button",
                                         "data-testid": "toggle-details",
@@ -1408,7 +1402,6 @@ pub fn Chat(
                                         },
                                         VideoIcon { size: 20 }
                                     }
-                                    span { class: "chat-header-sep" }
                                     button {
                                         r#type: "button",
                                         class: if is_group_info_open() { "icon-btn active" } else { "icon-btn" },
@@ -1422,7 +1415,7 @@ pub fn Chat(
                             }
 
                             if group_channels.read().len() > 1 {
-                                div { class: "sidebar-filters", style: "padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border-subtle);", role: "tablist", aria_label: "Kênh của nhóm",
+                                div { class: "sidebar-filters", style: "padding: var(--space-2) var(--space-4);", role: "tablist", aria_label: "Kênh của nhóm",
                                     for ch in group_channels() {
                                         {
                                             let is_cur = active_group_channel().as_ref().map(|c| c.id == ch.id).unwrap_or(false);

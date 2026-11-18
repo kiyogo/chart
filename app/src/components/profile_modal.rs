@@ -267,7 +267,7 @@ pub fn ProfileModal(
                                 if let Some(ref st) = p.status_text {
                                     if !st.is_empty() {
                                         div {
-                                            style: "display: inline-flex; align-items: center; gap: 6px; background: var(--bg-secondary); border: 1px solid var(--border); padding: 4px 10px; border-radius: 9999px; font-size: 12px; margin-bottom: 12px;",
+                                            style: "display: inline-flex; align-items: center; gap: 6px; background: var(--bg-secondary); padding: 4px 10px; border-radius: 9999px; font-size: 12px; margin-bottom: 12px;",
                                             span { "{st}" }
                                         }
                                     }
@@ -290,7 +290,7 @@ pub fn ProfileModal(
                                     }
                                 }
 
-                                div { style: "padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; font-size: 12.5px;",
+                                div { style: "padding-top: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px;",
                                     div { style: "display: flex; justify-content: space-between;",
                                         span { style: "color: var(--text-secondary);", "Hiện diện" }
                                         span { style: "font-weight: 600; text-transform: capitalize;", "{p.presence}" }

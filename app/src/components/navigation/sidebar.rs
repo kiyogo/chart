@@ -6,7 +6,7 @@ use crate::{
         avatar::Avatar,
         icons::{
             ChevronDownIcon, ChevronRightIcon, HashIcon, MegaphoneIcon, MicIcon, MicOffIcon,
-            PhoneOffIcon, PlusIcon, SearchIcon, SettingsIcon, UserPlusIcon, VolumeIcon,
+            PhoneOffIcon, PlusIcon, SearchIcon, UserPlusIcon, VolumeIcon,
         },
         navigation::NavSection,
     },
@@ -64,9 +64,6 @@ pub fn NavigationSidebar(
     on_open_server_invite: EventHandler<()>,
     on_toggle_voice_mute: EventHandler<()>,
     on_leave_voice: EventHandler<()>,
-    // User footer
-    on_open_profile: EventHandler<()>,
-    on_open_settings: EventHandler<()>,
 ) -> Element {
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
     let mut dm_query = use_signal(String::new);
@@ -542,31 +539,6 @@ pub fn NavigationSidebar(
                 }
             }
 
-            // Bottom User Status Footer
-            div { class: "user-status-footer",
-                button {
-                    r#type: "button",
-                    class: "user-status-trigger",
-                    onclick: move |_| on_open_profile.call(()),
-                    Avatar {
-                        name: current_username.clone(),
-                        avatar_url: current_avatar_url.clone(),
-                        size: 32,
-                    }
-                    div { class: "user-status-meta",
-                        span { class: "user-status-name", "{current_username}" }
-                        span { class: "user-status-sub", "Trực tuyến" }
-                    }
-                }
-                button {
-                    r#type: "button",
-                    class: "icon-btn",
-                    title: "Cài đặt",
-                    aria_label: "Mở cài đặt",
-                    onclick: move |_| on_open_settings.call(()),
-                    SettingsIcon {}
-                }
-            }
         }
     }
 }

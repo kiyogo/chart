@@ -181,7 +181,7 @@ pub fn ActiveCallOverlay(
                             {
                                 let uid = p.user_id.clone();
                                 let is_speaking = active_speaker_id().as_deref() == Some(&uid);
-                                let border_style = if is_speaking { "2px solid #10B981" } else { "1px solid rgba(255,255,255,0.05)" };
+                                let border_style = if is_speaking { "transparent; background: #173A2C" } else { "transparent" };
                                 rsx! {
                                     div {
                                         key: "{p.user_id}",
@@ -240,7 +240,7 @@ pub fn ActiveCallOverlay(
                             {
                                 let uid = p.user_id.clone();
                                 let is_speaking = active_speaker_id().as_deref() == Some(&uid);
-                                let glow = if is_speaking { "border: 2px solid var(--status-success);" } else { "" };
+                                let glow = if is_speaking { "background: #173A2C;" } else { "" };
                                 rsx! {
                                     div {
                                         key: "{p.user_id}",
