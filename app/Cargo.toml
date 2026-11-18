@@ -1,0 +1,78 @@
+[package]
+name = "chatw-app"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "chatw_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chatw-app"
+path = "src/main.rs"
+
+[features]
+default = []
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
+
+[dependencies]
+dioxus = { version = "0.7.10", default-features = false, features = ["macro", "html", "signals", "hooks", "mounted", "document", "launch"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.22"
+p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
+aes-gcm = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+urlencoding = "2.1"
+uuid = { version = "1.29", features = ["v4", "serde"] }
+futures-channel = "0.3"
+futures-util = "0.3"
+tracing = "0.1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "wasmbind"] }
+getrandom = { version = "0.2", features = ["js"] }
+uuid = { version = "1.29", features = ["v4", "serde", "js"] }
+wasm-bindgen = "0.2.130"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlCanvasElement",
+    "HtmlImageElement",
+    "CanvasRenderingContext2d",
+    "File",
+    "FileList",
+    "Blob",
+    "BlobPropertyBag",
+    "Location",
+    "Storage",
+    "Headers",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "RequestCredentials",
+    "Response",
+    "WebSocket",
+    "MessageEvent",
+    "CloseEvent",
+    "ErrorEvent",
+    "Event",
+    "EventTarget",
+    "Url",
+    "ImageBitmap",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "cookies"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }

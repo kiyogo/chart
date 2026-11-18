@@ -6,7 +6,7 @@
 
 ```text
 chatw/
-├── app/                      # Ứng dụng client mới
+├── app/                      # Ứng dụng client đa nền tảng (Rust + Dioxus 0.7)
 ├── web/
 │   ├── backend/              # Rust (Axum 0.8 + Tokio + SQLx + PostgreSQL)
 │   │   ├── migrations/       # SQL migrations tự động

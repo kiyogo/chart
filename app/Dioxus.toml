@@ -1,0 +1,19 @@
+[application]
+name = "chatw"
+
+[web.app]
+title = "chatw - Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "assets"]
+
+[web.resource]
+style = []
+script = []
+
+[bundle]
+identifier = "com.chatw.app"
+publisher = "chatw"
+icon = ["public/logo.svg"]
+
