@@ -47,13 +47,22 @@ fn http_client() -> &'static reqwest::Client {
 }
 
 fn session_token_store() -> &'static Mutex<Option<String>> {
-    SESSION_TOKEN.get_or_init(|| Mutex::new(None))
+    SESSION_TOKEN.get_or_init(|| {
+        let stored = storage_get("chatw_session_token").filter(|s| !s.is_empty());
+        if let Some(ref tok) = stored {
+            if let Ok(url) = reqwest::Url::parse(&api_base()) {
+                cookie_jar().add_cookie_str(&format!("chatw_session={tok}; Path=/"), &url);
+            }
+        }
+        Mutex::new(stored)
+    })
 }
 
 fn set_session_cookie(token: &str) {
     if let Ok(mut guard) = session_token_store().lock() {
         *guard = Some(token.to_string());
     }
+    storage_set("chatw_session_token", token);
     if let Ok(url) = reqwest::Url::parse(&api_base()) {
         cookie_jar().add_cookie_str(&format!("chatw_session={token}; Path=/"), &url);
     }
@@ -67,8 +76,10 @@ fn capture_session_cookie_from_headers(headers: &reqwest::header::HeaderMap) {
                 if let Ok(mut guard) = session_token_store().lock() {
                     if tok.is_empty() {
                         *guard = None;
+                        storage_set("chatw_session_token", "");
                     } else {
                         *guard = Some(tok.to_string());
+                        storage_set("chatw_session_token", tok);
                     }
                 }
             }

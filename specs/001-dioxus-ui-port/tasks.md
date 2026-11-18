@@ -18,5 +18,22 @@
 - [x] Verify desktop/mobile target compatibility and report exact status
 - [x] Start real backend, SolidJS original, and Dioxus app; run automated functional + pixel-perfect visual comparison (SSIM + pixel diff + bounding boxes) across desktop/tablet/mobile viewports
 - [x] Fix any visual or functional discrepancies and re-verify
-- [x] Commit and push to `origin main`
+
+## Phase 11: Desktop Layout Overhaul & Multi-Viewport Verification
+- [x] Fix `.app-layout` flex column bug in `app/src/pages/chat.rs` by wrapping sidebar and chat view in `.app-content`
+- [x] Fix CSS horizontal flex overflow with `min-width: 0` on `.chat-view` in `app/assets/main.css`
+- [x] Implement comprehensive dark mode tokens and replace hardcoded colors in partner info cards
+- [x] Validate across 10 viewports (375x667 to 2560x1440) and 11 UI states (zero overflow, composer anchored)
+
+## Phase 12: Real Linux Desktop Binary & Packaging
+- [x] Resolve native build dependencies (vendored OpenSSL, GTK3/WebKit2GTK stubs, libxdo stub)
+- [x] Compile release native desktop binary `target/release/chatw-app` (18 MB)
+- [x] Implement native session persistence (`~/.local/share/chatw/client_storage.json`)
+- [x] Verify host runtime execution with WebKitGTK display
+- [x] Package Debian release package `target/chatw_0.1.0_amd64.deb` (4.3 MB)
+
+## Phase 13: CI/CD & Delivery
+- [x] Add GitHub Actions multi-platform CI workflow (`.github/workflows/ci.yml`)
+- [x] Commit and push all changes to `origin main`
+
 

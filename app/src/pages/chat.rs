@@ -700,8 +700,9 @@ pub fn Chat(
 
     rsx! {
         div { class: "app-layout",
-            // Sidebar
-            aside { class: "{sidebar_class}",
+            div { class: "app-content",
+                // Sidebar
+                aside { class: "{sidebar_class}",
                 div { class: "sidebar-header",
                     div { class: "app-brand",
                         Avatar {
@@ -1708,4 +1709,5 @@ pub fn Chat(
             }
         }
     }
+}
 }
