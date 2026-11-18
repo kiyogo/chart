@@ -1,5 +1,5 @@
 {
-  "run": "6sits",
+  "run": "8e9mb",
   "base": "http://127.0.0.1:8085",
   "checks": [
     {
@@ -83,17 +83,17 @@
       "detail": "w=408"
     },
     {
-      "name": "friendship alice_6sits -> bob_6sits",
+      "name": "friendship alice_8e9mb -> bob_8e9mb",
       "pass": true,
       "detail": "req status 200"
     },
     {
-      "name": "friendship alice_6sits -> charlie_6sits",
+      "name": "friendship alice_8e9mb -> charlie_8e9mb",
       "pass": true,
       "detail": "req status 200"
     },
     {
-      "name": "friendship bob_6sits -> charlie_6sits",
+      "name": "friendship bob_8e9mb -> charlie_8e9mb",
       "pass": true,
       "detail": "req status 200"
     },
@@ -118,6 +118,76 @@
       "detail": "errors=0"
     },
     {
+      "name": "DM reaction syncs to the other side",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "built-in sticker renders for sender",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "sticker decrypts and renders for receiver",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "profile popover opens from avatar",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "profile popover closes with Escape",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "quick switcher opens with Ctrl+K",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "quick switcher opens the picked chat",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "profile customization saved on server",
+      "pass": true,
+      "detail": "{\"d\":\"crown\",\"e\":\"snow\",\"c\":\"#6D28D9\"}"
+    },
+    {
+      "name": "client cannot self-assign badges",
+      "pass": true,
+      "detail": "status 200"
+    },
+    {
+      "name": "external banner URL rejected",
+      "pass": true,
+      "detail": "status 400"
+    },
+    {
+      "name": "pinned communities appear in rail",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "pinned groups appear in rail",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "uploaded sticker appears in my pack",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "non-image sticker upload rejected",
+      "pass": true,
+      "detail": "status 400"
+    },
+    {
       "name": "dm light 320x568 no horizontal overflow",
       "pass": true,
       "detail": "scrollW=320/320"
@@ -130,7 +200,7 @@
     {
       "name": "dm light 320x568 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":0,\"y\":498.8125,\"w\":320,\"h\":69.1875,\"r\":320,\"b\":568}"
+      "detail": "{\"x\":0,\"y\":475.625,\"w\":320,\"h\":92.375,\"r\":320,\"b\":568}"
     },
     {
       "name": "dm light 320x568 composer not covered",
@@ -150,7 +220,7 @@
     {
       "name": "dm light 320x568 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=252"
+      "detail": "max=161"
     },
     {
       "name": "dm light 320x568 no bubble content overflow",
@@ -200,7 +270,7 @@
     {
       "name": "dm light 360x740 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=286"
+      "detail": "max=201"
     },
     {
       "name": "dm light 360x740 no bubble content overflow",
@@ -250,7 +320,7 @@
     {
       "name": "dm light 375x667 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=298"
+      "detail": "max=216"
     },
     {
       "name": "dm light 375x667 no bubble content overflow",
@@ -300,7 +370,7 @@
     {
       "name": "dm light 390x844 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=311"
+      "detail": "max=231"
     },
     {
       "name": "dm light 390x844 no bubble content overflow",
@@ -350,7 +420,7 @@
     {
       "name": "dm light 430x932 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=345"
+      "detail": "max=271"
     },
     {
       "name": "dm light 430x932 no bubble content overflow",
@@ -375,12 +445,12 @@
     {
       "name": "dm light 768x1024 header in viewport",
       "pass": true,
-      "detail": "{\"x\":270,\"y\":7.5,\"w\":490.5,\"h\":52.5,\"r\":760.5,\"b\":60}"
+      "detail": "{\"x\":337.5,\"y\":7.5,\"w\":423,\"h\":52.5,\"r\":760.5,\"b\":60}"
     },
     {
       "name": "dm light 768x1024 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":270,\"y\":926.8125,\"w\":490.5,\"h\":89.6875,\"r\":760.5,\"b\":1016.5}"
+      "detail": "{\"x\":337.5,\"y\":926.8125,\"w\":423,\"h\":89.6875,\"r\":760.5,\"b\":1016.5}"
     },
     {
       "name": "dm light 768x1024 composer not covered",
@@ -390,7 +460,7 @@
     {
       "name": "dm light 768x1024 message list readable width",
       "pass": true,
-      "detail": "w=491"
+      "detail": "w=423"
     },
     {
       "name": "dm light 768x1024 details panel does not cover chat",
@@ -400,7 +470,7 @@
     {
       "name": "dm light 768x1024 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=326"
+      "detail": "max=258"
     },
     {
       "name": "dm light 768x1024 no bubble content overflow",
@@ -425,12 +495,12 @@
     {
       "name": "dm light 900x800 header in viewport",
       "pass": true,
-      "detail": "{\"x\":270,\"y\":7.5,\"w\":622.5,\"h\":52.5,\"r\":892.5,\"b\":60}"
+      "detail": "{\"x\":337.5,\"y\":7.5,\"w\":555,\"h\":52.5,\"r\":892.5,\"b\":60}"
     },
     {
       "name": "dm light 900x800 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":270,\"y\":702.8125,\"w\":622.5,\"h\":89.6875,\"r\":892.5,\"b\":792.5}"
+      "detail": "{\"x\":337.5,\"y\":702.8125,\"w\":555,\"h\":89.6875,\"r\":892.5,\"b\":792.5}"
     },
     {
       "name": "dm light 900x800 composer not covered",
@@ -440,7 +510,7 @@
     {
       "name": "dm light 900x800 message list readable width",
       "pass": true,
-      "detail": "w=623"
+      "detail": "w=555"
     },
     {
       "name": "dm light 900x800 details panel does not cover chat",
@@ -450,7 +520,7 @@
     {
       "name": "dm light 900x800 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=416"
+      "detail": "max=367"
     },
     {
       "name": "dm light 900x800 no bubble content overflow",
@@ -475,12 +545,12 @@
     {
       "name": "dm light 1024x768 header in viewport",
       "pass": true,
-      "detail": "{\"x\":292.5,\"y\":7.5,\"w\":724,\"h\":52.5,\"r\":1016.5,\"b\":60}"
+      "detail": "{\"x\":337.5,\"y\":7.5,\"w\":679,\"h\":52.5,\"r\":1016.5,\"b\":60}"
     },
     {
       "name": "dm light 1024x768 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":292.5,\"y\":670.8125,\"w\":724,\"h\":89.6875,\"r\":1016.5,\"b\":760.5}"
+      "detail": "{\"x\":337.5,\"y\":670.8125,\"w\":679,\"h\":89.6875,\"r\":1016.5,\"b\":760.5}"
     },
     {
       "name": "dm light 1024x768 composer not covered",
@@ -490,7 +560,7 @@
     {
       "name": "dm light 1024x768 message list readable width",
       "pass": true,
-      "detail": "w=724"
+      "detail": "w=679"
     },
     {
       "name": "dm light 1024x768 details panel does not cover chat",
@@ -500,7 +570,7 @@
     {
       "name": "dm light 1024x768 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=484"
+      "detail": "max=452"
     },
     {
       "name": "dm light 1024x768 no bubble content overflow",
@@ -525,12 +595,12 @@
     {
       "name": "dm light 1280x800 header in viewport",
       "pass": true,
-      "detail": "{\"x\":309.390625,\"y\":7.5,\"w\":963.109375,\"h\":52.5,\"r\":1272.5,\"b\":60}"
+      "detail": "{\"x\":351.296875,\"y\":7.5,\"w\":921.203125,\"h\":52.5,\"r\":1272.5,\"b\":60}"
     },
     {
       "name": "dm light 1280x800 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":309.390625,\"y\":702.8125,\"w\":963.109375,\"h\":89.6875,\"r\":1272.5,\"b\":792.5}"
+      "detail": "{\"x\":351.296875,\"y\":702.8125,\"w\":921.203125,\"h\":89.6875,\"r\":1272.5,\"b\":792.5}"
     },
     {
       "name": "dm light 1280x800 composer not covered",
@@ -540,7 +610,7 @@
     {
       "name": "dm light 1280x800 message list readable width",
       "pass": true,
-      "detail": "w=963"
+      "detail": "w=921"
     },
     {
       "name": "dm light 1280x800 details panel does not cover chat",
@@ -570,12 +640,12 @@
     {
       "name": "dm light 1280x800 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":309.390625,\"y\":7.5,\"w\":670.609375,\"h\":52.5,\"r\":980,\"b\":60}"
+      "detail": "{\"x\":351.296875,\"y\":7.5,\"w\":628.703125,\"h\":52.5,\"r\":980,\"b\":60}"
     },
     {
       "name": "dm light 1280x800 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":309.390625,\"y\":702.8125,\"w\":670.609375,\"h\":89.6875,\"r\":980,\"b\":792.5}"
+      "detail": "{\"x\":351.296875,\"y\":702.8125,\"w\":628.703125,\"h\":89.6875,\"r\":980,\"b\":792.5}"
     },
     {
       "name": "dm light 1280x800 +details composer not covered",
@@ -585,7 +655,7 @@
     {
       "name": "dm light 1280x800 +details message list readable width",
       "pass": true,
-      "detail": "w=671"
+      "detail": "w=629"
     },
     {
       "name": "dm light 1280x800 +details details panel does not cover chat",
@@ -595,7 +665,7 @@
     {
       "name": "dm light 1280x800 +details bubble max width <= 720px",
       "pass": true,
-      "detail": "max=440"
+      "detail": "max=409"
     },
     {
       "name": "dm light 1280x800 +details no bubble content overflow",
@@ -615,12 +685,12 @@
     {
       "name": "dm light 1366x768 header in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":7.5,\"w\":1029.328125,\"h\":52.5,\"r\":1358.5,\"b\":60}"
+      "detail": "{\"x\":369.359375,\"y\":7.5,\"w\":989.140625,\"h\":52.5,\"r\":1358.5,\"b\":60}"
     },
     {
       "name": "dm light 1366x768 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":670.8125,\"w\":1029.328125,\"h\":89.6875,\"r\":1358.5,\"b\":760.5}"
+      "detail": "{\"x\":369.359375,\"y\":670.8125,\"w\":989.140625,\"h\":89.6875,\"r\":1358.5,\"b\":760.5}"
     },
     {
       "name": "dm light 1366x768 composer not covered",
@@ -630,7 +700,7 @@
     {
       "name": "dm light 1366x768 message list readable width",
       "pass": true,
-      "detail": "w=1029"
+      "detail": "w=989"
     },
     {
       "name": "dm light 1366x768 details panel does not cover chat",
@@ -660,12 +730,12 @@
     {
       "name": "dm light 1366x768 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":7.5,\"w\":721.3125,\"h\":52.5,\"r\":1050.484375,\"b\":60}"
+      "detail": "{\"x\":369.359375,\"y\":7.5,\"w\":681.125,\"h\":52.5,\"r\":1050.484375,\"b\":60}"
     },
     {
       "name": "dm light 1366x768 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":670.8125,\"w\":721.3125,\"h\":89.6875,\"r\":1050.484375,\"b\":760.5}"
+      "detail": "{\"x\":369.359375,\"y\":670.8125,\"w\":681.125,\"h\":89.6875,\"r\":1050.484375,\"b\":760.5}"
     },
     {
       "name": "dm light 1366x768 +details composer not covered",
@@ -675,7 +745,7 @@
     {
       "name": "dm light 1366x768 +details message list readable width",
       "pass": true,
-      "detail": "w=721"
+      "detail": "w=681"
     },
     {
       "name": "dm light 1366x768 +details details panel does not cover chat",
@@ -685,7 +755,7 @@
     {
       "name": "dm light 1366x768 +details bubble max width <= 720px",
       "pass": true,
-      "detail": "max=476"
+      "detail": "max=447"
     },
     {
       "name": "dm light 1366x768 +details no bubble content overflow",
@@ -705,12 +775,12 @@
     {
       "name": "dm light 1440x900 header in viewport",
       "pass": true,
-      "detail": "{\"x\":346.1875,\"y\":7.5,\"w\":1086.3125,\"h\":52.5,\"r\":1432.5,\"b\":60}"
+      "detail": "{\"x\":384.890625,\"y\":7.5,\"w\":1047.609375,\"h\":52.5,\"r\":1432.5,\"b\":60}"
     },
     {
       "name": "dm light 1440x900 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":346.1875,\"y\":802.8125,\"w\":1086.3125,\"h\":89.6875,\"r\":1432.5,\"b\":892.5}"
+      "detail": "{\"x\":384.890625,\"y\":802.8125,\"w\":1047.609375,\"h\":89.6875,\"r\":1432.5,\"b\":892.5}"
     },
     {
       "name": "dm light 1440x900 composer not covered",
@@ -720,7 +790,7 @@
     {
       "name": "dm light 1440x900 message list readable width",
       "pass": true,
-      "detail": "w=1086"
+      "detail": "w=1048"
     },
     {
       "name": "dm light 1440x900 details panel does not cover chat",
@@ -750,12 +820,12 @@
     {
       "name": "dm light 1440x900 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":346.1875,\"y\":7.5,\"w\":762.015625,\"h\":52.5,\"r\":1108.203125,\"b\":60}"
+      "detail": "{\"x\":384.890625,\"y\":7.5,\"w\":723.3125,\"h\":52.5,\"r\":1108.203125,\"b\":60}"
     },
     {
       "name": "dm light 1440x900 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":346.1875,\"y\":802.8125,\"w\":762.015625,\"h\":89.6875,\"r\":1108.203125,\"b\":892.5}"
+      "detail": "{\"x\":384.890625,\"y\":802.8125,\"w\":723.3125,\"h\":89.6875,\"r\":1108.203125,\"b\":892.5}"
     },
     {
       "name": "dm light 1440x900 +details composer not covered",
@@ -765,7 +835,7 @@
     {
       "name": "dm light 1440x900 +details message list readable width",
       "pass": true,
-      "detail": "w=762"
+      "detail": "w=723"
     },
     {
       "name": "dm light 1440x900 +details details panel does not cover chat",
@@ -775,7 +845,7 @@
     {
       "name": "dm light 1440x900 +details bubble max width <= 720px",
       "pass": true,
-      "detail": "max=505"
+      "detail": "max=478"
     },
     {
       "name": "dm light 1440x900 +details no bubble content overflow",
@@ -795,12 +865,12 @@
     {
       "name": "dm light 1920x1080 header in viewport",
       "pass": true,
-      "detail": "{\"x\":361.59375,\"y\":8,\"w\":1550.40625,\"h\":56,\"r\":1912,\"b\":64}"
+      "detail": "{\"x\":433.59375,\"y\":8,\"w\":1478.40625,\"h\":56,\"r\":1912,\"b\":64}"
     },
     {
       "name": "dm light 1920x1080 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":361.59375,\"y\":975.421875,\"w\":1550.40625,\"h\":96.578125,\"r\":1912,\"b\":1072}"
+      "detail": "{\"x\":433.59375,\"y\":975.421875,\"w\":1478.40625,\"h\":96.578125,\"r\":1912,\"b\":1072}"
     },
     {
       "name": "dm light 1920x1080 composer not covered",
@@ -810,7 +880,7 @@
     {
       "name": "dm light 1920x1080 message list readable width",
       "pass": true,
-      "detail": "w=1550"
+      "detail": "w=1478"
     },
     {
       "name": "dm light 1920x1080 details panel does not cover chat",
@@ -840,12 +910,12 @@
     {
       "name": "dm light 1920x1080 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":361.59375,\"y\":8,\"w\":1216.015625,\"h\":56,\"r\":1577.609375,\"b\":64}"
+      "detail": "{\"x\":433.59375,\"y\":8,\"w\":1144.015625,\"h\":56,\"r\":1577.609375,\"b\":64}"
     },
     {
       "name": "dm light 1920x1080 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":361.59375,\"y\":975.421875,\"w\":1216.015625,\"h\":96.578125,\"r\":1577.609375,\"b\":1072}"
+      "detail": "{\"x\":433.59375,\"y\":975.421875,\"w\":1144.015625,\"h\":96.578125,\"r\":1577.609375,\"b\":1072}"
     },
     {
       "name": "dm light 1920x1080 +details composer not covered",
@@ -855,7 +925,7 @@
     {
       "name": "dm light 1920x1080 +details message list readable width",
       "pass": true,
-      "detail": "w=1216"
+      "detail": "w=1144"
     },
     {
       "name": "dm light 1920x1080 +details details panel does not cover chat",
@@ -885,12 +955,12 @@
     {
       "name": "dm light 2560x1440 header in viewport",
       "pass": true,
-      "detail": "{\"x\":425,\"y\":8.5,\"w\":2126.5,\"h\":59.5,\"r\":2551.5,\"b\":68}"
+      "detail": "{\"x\":501.5,\"y\":8.5,\"w\":2050,\"h\":59.5,\"r\":2551.5,\"b\":68}"
     },
     {
       "name": "dm light 2560x1440 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":425,\"y\":1329,\"w\":2126.5,\"h\":102.5,\"r\":2551.5,\"b\":1431.5}"
+      "detail": "{\"x\":501.5,\"y\":1329,\"w\":2050,\"h\":102.5,\"r\":2551.5,\"b\":1431.5}"
     },
     {
       "name": "dm light 2560x1440 composer not covered",
@@ -900,7 +970,7 @@
     {
       "name": "dm light 2560x1440 message list readable width",
       "pass": true,
-      "detail": "w=2127"
+      "detail": "w=2050"
     },
     {
       "name": "dm light 2560x1440 details panel does not cover chat",
@@ -930,12 +1000,12 @@
     {
       "name": "dm light 2560x1440 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":425,\"y\":8.5,\"w\":1710,\"h\":59.5,\"r\":2135,\"b\":68}"
+      "detail": "{\"x\":501.5,\"y\":8.5,\"w\":1633.5,\"h\":59.5,\"r\":2135,\"b\":68}"
     },
     {
       "name": "dm light 2560x1440 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":425,\"y\":1329,\"w\":1710,\"h\":102.5,\"r\":2135,\"b\":1431.5}"
+      "detail": "{\"x\":501.5,\"y\":1329,\"w\":1633.5,\"h\":102.5,\"r\":2135,\"b\":1431.5}"
     },
     {
       "name": "dm light 2560x1440 +details composer not covered",
@@ -945,7 +1015,7 @@
     {
       "name": "dm light 2560x1440 +details message list readable width",
       "pass": true,
-      "detail": "w=1710"
+      "detail": "w=1634"
     },
     {
       "name": "dm light 2560x1440 +details details panel does not cover chat",
@@ -975,12 +1045,12 @@
     {
       "name": "dm light 3840x2160 header in viewport",
       "pass": true,
-      "detail": "{\"x\":450,\"y\":9,\"w\":3381,\"h\":63,\"r\":3831,\"b\":72}"
+      "detail": "{\"x\":531,\"y\":9,\"w\":3300,\"h\":63,\"r\":3831,\"b\":72}"
     },
     {
       "name": "dm light 3840x2160 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":450,\"y\":2043.59375,\"w\":3381,\"h\":107.40625,\"r\":3831,\"b\":2151}"
+      "detail": "{\"x\":531,\"y\":2043.59375,\"w\":3300,\"h\":107.40625,\"r\":3831,\"b\":2151}"
     },
     {
       "name": "dm light 3840x2160 composer not covered",
@@ -990,7 +1060,7 @@
     {
       "name": "dm light 3840x2160 message list readable width",
       "pass": true,
-      "detail": "w=3381"
+      "detail": "w=3300"
     },
     {
       "name": "dm light 3840x2160 details panel does not cover chat",
@@ -1020,12 +1090,12 @@
     {
       "name": "dm light 3840x2160 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":450,\"y\":9,\"w\":2940,\"h\":63,\"r\":3390,\"b\":72}"
+      "detail": "{\"x\":531,\"y\":9,\"w\":2859,\"h\":63,\"r\":3390,\"b\":72}"
     },
     {
       "name": "dm light 3840x2160 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":450,\"y\":2043.59375,\"w\":2940,\"h\":107.40625,\"r\":3390,\"b\":2151}"
+      "detail": "{\"x\":531,\"y\":2043.59375,\"w\":2859,\"h\":107.40625,\"r\":3390,\"b\":2151}"
     },
     {
       "name": "dm light 3840x2160 +details composer not covered",
@@ -1035,7 +1105,7 @@
     {
       "name": "dm light 3840x2160 +details message list readable width",
       "pass": true,
-      "detail": "w=2940"
+      "detail": "w=2859"
     },
     {
       "name": "dm light 3840x2160 +details details panel does not cover chat",
@@ -1070,7 +1140,7 @@
     {
       "name": "dm dark 320x568 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":0,\"y\":498.8125,\"w\":320,\"h\":69.1875,\"r\":320,\"b\":568}"
+      "detail": "{\"x\":0,\"y\":475.625,\"w\":320,\"h\":92.375,\"r\":320,\"b\":568}"
     },
     {
       "name": "dm dark 320x568 composer not covered",
@@ -1090,7 +1160,7 @@
     {
       "name": "dm dark 320x568 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=252"
+      "detail": "max=161"
     },
     {
       "name": "dm dark 320x568 no bubble content overflow",
@@ -1140,7 +1210,7 @@
     {
       "name": "dm dark 360x740 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=286"
+      "detail": "max=201"
     },
     {
       "name": "dm dark 360x740 no bubble content overflow",
@@ -1190,7 +1260,7 @@
     {
       "name": "dm dark 375x667 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=298"
+      "detail": "max=216"
     },
     {
       "name": "dm dark 375x667 no bubble content overflow",
@@ -1240,7 +1310,7 @@
     {
       "name": "dm dark 390x844 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=311"
+      "detail": "max=231"
     },
     {
       "name": "dm dark 390x844 no bubble content overflow",
@@ -1290,7 +1360,7 @@
     {
       "name": "dm dark 430x932 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=345"
+      "detail": "max=271"
     },
     {
       "name": "dm dark 430x932 no bubble content overflow",
@@ -1315,12 +1385,12 @@
     {
       "name": "dm dark 768x1024 header in viewport",
       "pass": true,
-      "detail": "{\"x\":270,\"y\":7.5,\"w\":490.5,\"h\":52.5,\"r\":760.5,\"b\":60}"
+      "detail": "{\"x\":337.5,\"y\":7.5,\"w\":423,\"h\":52.5,\"r\":760.5,\"b\":60}"
     },
     {
       "name": "dm dark 768x1024 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":270,\"y\":926.8125,\"w\":490.5,\"h\":89.6875,\"r\":760.5,\"b\":1016.5}"
+      "detail": "{\"x\":337.5,\"y\":926.8125,\"w\":423,\"h\":89.6875,\"r\":760.5,\"b\":1016.5}"
     },
     {
       "name": "dm dark 768x1024 composer not covered",
@@ -1330,7 +1400,7 @@
     {
       "name": "dm dark 768x1024 message list readable width",
       "pass": true,
-      "detail": "w=491"
+      "detail": "w=423"
     },
     {
       "name": "dm dark 768x1024 details panel does not cover chat",
@@ -1340,7 +1410,7 @@
     {
       "name": "dm dark 768x1024 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=326"
+      "detail": "max=258"
     },
     {
       "name": "dm dark 768x1024 no bubble content overflow",
@@ -1365,12 +1435,12 @@
     {
       "name": "dm dark 900x800 header in viewport",
       "pass": true,
-      "detail": "{\"x\":270,\"y\":7.5,\"w\":622.5,\"h\":52.5,\"r\":892.5,\"b\":60}"
+      "detail": "{\"x\":337.5,\"y\":7.5,\"w\":555,\"h\":52.5,\"r\":892.5,\"b\":60}"
     },
     {
       "name": "dm dark 900x800 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":270,\"y\":702.8125,\"w\":622.5,\"h\":89.6875,\"r\":892.5,\"b\":792.5}"
+      "detail": "{\"x\":337.5,\"y\":702.8125,\"w\":555,\"h\":89.6875,\"r\":892.5,\"b\":792.5}"
     },
     {
       "name": "dm dark 900x800 composer not covered",
@@ -1380,7 +1450,7 @@
     {
       "name": "dm dark 900x800 message list readable width",
       "pass": true,
-      "detail": "w=623"
+      "detail": "w=555"
     },
     {
       "name": "dm dark 900x800 details panel does not cover chat",
@@ -1390,7 +1460,7 @@
     {
       "name": "dm dark 900x800 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=416"
+      "detail": "max=367"
     },
     {
       "name": "dm dark 900x800 no bubble content overflow",
@@ -1415,12 +1485,12 @@
     {
       "name": "dm dark 1024x768 header in viewport",
       "pass": true,
-      "detail": "{\"x\":292.5,\"y\":7.5,\"w\":724,\"h\":52.5,\"r\":1016.5,\"b\":60}"
+      "detail": "{\"x\":337.5,\"y\":7.5,\"w\":679,\"h\":52.5,\"r\":1016.5,\"b\":60}"
     },
     {
       "name": "dm dark 1024x768 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":292.5,\"y\":670.8125,\"w\":724,\"h\":89.6875,\"r\":1016.5,\"b\":760.5}"
+      "detail": "{\"x\":337.5,\"y\":670.8125,\"w\":679,\"h\":89.6875,\"r\":1016.5,\"b\":760.5}"
     },
     {
       "name": "dm dark 1024x768 composer not covered",
@@ -1430,7 +1500,7 @@
     {
       "name": "dm dark 1024x768 message list readable width",
       "pass": true,
-      "detail": "w=724"
+      "detail": "w=679"
     },
     {
       "name": "dm dark 1024x768 details panel does not cover chat",
@@ -1440,7 +1510,7 @@
     {
       "name": "dm dark 1024x768 bubble max width <= 720px",
       "pass": true,
-      "detail": "max=484"
+      "detail": "max=452"
     },
     {
       "name": "dm dark 1024x768 no bubble content overflow",
@@ -1465,12 +1535,12 @@
     {
       "name": "dm dark 1280x800 header in viewport",
       "pass": true,
-      "detail": "{\"x\":309.390625,\"y\":7.5,\"w\":963.109375,\"h\":52.5,\"r\":1272.5,\"b\":60}"
+      "detail": "{\"x\":351.296875,\"y\":7.5,\"w\":921.203125,\"h\":52.5,\"r\":1272.5,\"b\":60}"
     },
     {
       "name": "dm dark 1280x800 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":309.390625,\"y\":702.8125,\"w\":963.109375,\"h\":89.6875,\"r\":1272.5,\"b\":792.5}"
+      "detail": "{\"x\":351.296875,\"y\":702.8125,\"w\":921.203125,\"h\":89.6875,\"r\":1272.5,\"b\":792.5}"
     },
     {
       "name": "dm dark 1280x800 composer not covered",
@@ -1480,7 +1550,7 @@
     {
       "name": "dm dark 1280x800 message list readable width",
       "pass": true,
-      "detail": "w=963"
+      "detail": "w=921"
     },
     {
       "name": "dm dark 1280x800 details panel does not cover chat",
@@ -1510,12 +1580,12 @@
     {
       "name": "dm dark 1280x800 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":309.390625,\"y\":7.5,\"w\":670.609375,\"h\":52.5,\"r\":980,\"b\":60}"
+      "detail": "{\"x\":351.296875,\"y\":7.5,\"w\":628.703125,\"h\":52.5,\"r\":980,\"b\":60}"
     },
     {
       "name": "dm dark 1280x800 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":309.390625,\"y\":702.8125,\"w\":670.609375,\"h\":89.6875,\"r\":980,\"b\":792.5}"
+      "detail": "{\"x\":351.296875,\"y\":702.8125,\"w\":628.703125,\"h\":89.6875,\"r\":980,\"b\":792.5}"
     },
     {
       "name": "dm dark 1280x800 +details composer not covered",
@@ -1525,7 +1595,7 @@
     {
       "name": "dm dark 1280x800 +details message list readable width",
       "pass": true,
-      "detail": "w=671"
+      "detail": "w=629"
     },
     {
       "name": "dm dark 1280x800 +details details panel does not cover chat",
@@ -1535,7 +1605,7 @@
     {
       "name": "dm dark 1280x800 +details bubble max width <= 720px",
       "pass": true,
-      "detail": "max=440"
+      "detail": "max=409"
     },
     {
       "name": "dm dark 1280x800 +details no bubble content overflow",
@@ -1555,12 +1625,12 @@
     {
       "name": "dm dark 1366x768 header in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":7.5,\"w\":1029.328125,\"h\":52.5,\"r\":1358.5,\"b\":60}"
+      "detail": "{\"x\":369.359375,\"y\":7.5,\"w\":989.140625,\"h\":52.5,\"r\":1358.5,\"b\":60}"
     },
     {
       "name": "dm dark 1366x768 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":670.8125,\"w\":1029.328125,\"h\":89.6875,\"r\":1358.5,\"b\":760.5}"
+      "detail": "{\"x\":369.359375,\"y\":670.8125,\"w\":989.140625,\"h\":89.6875,\"r\":1358.5,\"b\":760.5}"
     },
     {
       "name": "dm dark 1366x768 composer not covered",
@@ -1570,7 +1640,7 @@
     {
       "name": "dm dark 1366x768 message list readable width",
       "pass": true,
-      "detail": "w=1029"
+      "detail": "w=989"
     },
     {
       "name": "dm dark 1366x768 details panel does not cover chat",
@@ -1600,12 +1670,12 @@
     {
       "name": "dm dark 1366x768 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":7.5,\"w\":721.3125,\"h\":52.5,\"r\":1050.484375,\"b\":60}"
+      "detail": "{\"x\":369.359375,\"y\":7.5,\"w\":681.125,\"h\":52.5,\"r\":1050.484375,\"b\":60}"
     },
     {
       "name": "dm dark 1366x768 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":670.8125,\"w\":721.3125,\"h\":89.6875,\"r\":1050.484375,\"b\":760.5}"
+      "detail": "{\"x\":369.359375,\"y\":670.8125,\"w\":681.125,\"h\":89.6875,\"r\":1050.484375,\"b\":760.5}"
     },
     {
       "name": "dm dark 1366x768 +details composer not covered",
@@ -1615,7 +1685,7 @@
     {
       "name": "dm dark 1366x768 +details message list readable width",
       "pass": true,
-      "detail": "w=721"
+      "detail": "w=681"
     },
     {
       "name": "dm dark 1366x768 +details details panel does not cover chat",
@@ -1625,7 +1695,7 @@
     {
       "name": "dm dark 1366x768 +details bubble max width <= 720px",
       "pass": true,
-      "detail": "max=476"
+      "detail": "max=447"
     },
     {
       "name": "dm dark 1366x768 +details no bubble content overflow",
@@ -1645,12 +1715,12 @@
     {
       "name": "dm dark 1440x900 header in viewport",
       "pass": true,
-      "detail": "{\"x\":346.1875,\"y\":7.5,\"w\":1086.3125,\"h\":52.5,\"r\":1432.5,\"b\":60}"
+      "detail": "{\"x\":384.890625,\"y\":7.5,\"w\":1047.609375,\"h\":52.5,\"r\":1432.5,\"b\":60}"
     },
     {
       "name": "dm dark 1440x900 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":346.1875,\"y\":802.8125,\"w\":1086.3125,\"h\":89.6875,\"r\":1432.5,\"b\":892.5}"
+      "detail": "{\"x\":384.890625,\"y\":802.8125,\"w\":1047.609375,\"h\":89.6875,\"r\":1432.5,\"b\":892.5}"
     },
     {
       "name": "dm dark 1440x900 composer not covered",
@@ -1660,7 +1730,7 @@
     {
       "name": "dm dark 1440x900 message list readable width",
       "pass": true,
-      "detail": "w=1086"
+      "detail": "w=1048"
     },
     {
       "name": "dm dark 1440x900 details panel does not cover chat",
@@ -1690,12 +1760,12 @@
     {
       "name": "dm dark 1440x900 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":346.1875,\"y\":7.5,\"w\":762.015625,\"h\":52.5,\"r\":1108.203125,\"b\":60}"
+      "detail": "{\"x\":384.890625,\"y\":7.5,\"w\":723.3125,\"h\":52.5,\"r\":1108.203125,\"b\":60}"
     },
     {
       "name": "dm dark 1440x900 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":346.1875,\"y\":802.8125,\"w\":762.015625,\"h\":89.6875,\"r\":1108.203125,\"b\":892.5}"
+      "detail": "{\"x\":384.890625,\"y\":802.8125,\"w\":723.3125,\"h\":89.6875,\"r\":1108.203125,\"b\":892.5}"
     },
     {
       "name": "dm dark 1440x900 +details composer not covered",
@@ -1705,7 +1775,7 @@
     {
       "name": "dm dark 1440x900 +details message list readable width",
       "pass": true,
-      "detail": "w=762"
+      "detail": "w=723"
     },
     {
       "name": "dm dark 1440x900 +details details panel does not cover chat",
@@ -1715,7 +1785,7 @@
     {
       "name": "dm dark 1440x900 +details bubble max width <= 720px",
       "pass": true,
-      "detail": "max=505"
+      "detail": "max=478"
     },
     {
       "name": "dm dark 1440x900 +details no bubble content overflow",
@@ -1735,12 +1805,12 @@
     {
       "name": "dm dark 1920x1080 header in viewport",
       "pass": true,
-      "detail": "{\"x\":361.59375,\"y\":8,\"w\":1550.40625,\"h\":56,\"r\":1912,\"b\":64}"
+      "detail": "{\"x\":433.59375,\"y\":8,\"w\":1478.40625,\"h\":56,\"r\":1912,\"b\":64}"
     },
     {
       "name": "dm dark 1920x1080 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":361.59375,\"y\":975.421875,\"w\":1550.40625,\"h\":96.578125,\"r\":1912,\"b\":1072}"
+      "detail": "{\"x\":433.59375,\"y\":975.421875,\"w\":1478.40625,\"h\":96.578125,\"r\":1912,\"b\":1072}"
     },
     {
       "name": "dm dark 1920x1080 composer not covered",
@@ -1750,7 +1820,7 @@
     {
       "name": "dm dark 1920x1080 message list readable width",
       "pass": true,
-      "detail": "w=1550"
+      "detail": "w=1478"
     },
     {
       "name": "dm dark 1920x1080 details panel does not cover chat",
@@ -1780,12 +1850,12 @@
     {
       "name": "dm dark 1920x1080 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":361.59375,\"y\":8,\"w\":1216.015625,\"h\":56,\"r\":1577.609375,\"b\":64}"
+      "detail": "{\"x\":433.59375,\"y\":8,\"w\":1144.015625,\"h\":56,\"r\":1577.609375,\"b\":64}"
     },
     {
       "name": "dm dark 1920x1080 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":361.59375,\"y\":975.421875,\"w\":1216.015625,\"h\":96.578125,\"r\":1577.609375,\"b\":1072}"
+      "detail": "{\"x\":433.59375,\"y\":975.421875,\"w\":1144.015625,\"h\":96.578125,\"r\":1577.609375,\"b\":1072}"
     },
     {
       "name": "dm dark 1920x1080 +details composer not covered",
@@ -1795,7 +1865,7 @@
     {
       "name": "dm dark 1920x1080 +details message list readable width",
       "pass": true,
-      "detail": "w=1216"
+      "detail": "w=1144"
     },
     {
       "name": "dm dark 1920x1080 +details details panel does not cover chat",
@@ -1825,12 +1895,12 @@
     {
       "name": "dm dark 2560x1440 header in viewport",
       "pass": true,
-      "detail": "{\"x\":425,\"y\":8.5,\"w\":2126.5,\"h\":59.5,\"r\":2551.5,\"b\":68}"
+      "detail": "{\"x\":501.5,\"y\":8.5,\"w\":2050,\"h\":59.5,\"r\":2551.5,\"b\":68}"
     },
     {
       "name": "dm dark 2560x1440 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":425,\"y\":1329,\"w\":2126.5,\"h\":102.5,\"r\":2551.5,\"b\":1431.5}"
+      "detail": "{\"x\":501.5,\"y\":1329,\"w\":2050,\"h\":102.5,\"r\":2551.5,\"b\":1431.5}"
     },
     {
       "name": "dm dark 2560x1440 composer not covered",
@@ -1840,7 +1910,7 @@
     {
       "name": "dm dark 2560x1440 message list readable width",
       "pass": true,
-      "detail": "w=2127"
+      "detail": "w=2050"
     },
     {
       "name": "dm dark 2560x1440 details panel does not cover chat",
@@ -1870,12 +1940,12 @@
     {
       "name": "dm dark 2560x1440 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":425,\"y\":8.5,\"w\":1710,\"h\":59.5,\"r\":2135,\"b\":68}"
+      "detail": "{\"x\":501.5,\"y\":8.5,\"w\":1633.5,\"h\":59.5,\"r\":2135,\"b\":68}"
     },
     {
       "name": "dm dark 2560x1440 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":425,\"y\":1329,\"w\":1710,\"h\":102.5,\"r\":2135,\"b\":1431.5}"
+      "detail": "{\"x\":501.5,\"y\":1329,\"w\":1633.5,\"h\":102.5,\"r\":2135,\"b\":1431.5}"
     },
     {
       "name": "dm dark 2560x1440 +details composer not covered",
@@ -1885,7 +1955,7 @@
     {
       "name": "dm dark 2560x1440 +details message list readable width",
       "pass": true,
-      "detail": "w=1710"
+      "detail": "w=1634"
     },
     {
       "name": "dm dark 2560x1440 +details details panel does not cover chat",
@@ -1915,12 +1985,12 @@
     {
       "name": "dm dark 3840x2160 header in viewport",
       "pass": true,
-      "detail": "{\"x\":450,\"y\":9,\"w\":3381,\"h\":63,\"r\":3831,\"b\":72}"
+      "detail": "{\"x\":531,\"y\":9,\"w\":3300,\"h\":63,\"r\":3831,\"b\":72}"
     },
     {
       "name": "dm dark 3840x2160 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":450,\"y\":2043.59375,\"w\":3381,\"h\":107.40625,\"r\":3831,\"b\":2151}"
+      "detail": "{\"x\":531,\"y\":2043.59375,\"w\":3300,\"h\":107.40625,\"r\":3831,\"b\":2151}"
     },
     {
       "name": "dm dark 3840x2160 composer not covered",
@@ -1930,7 +2000,7 @@
     {
       "name": "dm dark 3840x2160 message list readable width",
       "pass": true,
-      "detail": "w=3381"
+      "detail": "w=3300"
     },
     {
       "name": "dm dark 3840x2160 details panel does not cover chat",
@@ -1960,12 +2030,12 @@
     {
       "name": "dm dark 3840x2160 +details header in viewport",
       "pass": true,
-      "detail": "{\"x\":450,\"y\":9,\"w\":2940,\"h\":63,\"r\":3390,\"b\":72}"
+      "detail": "{\"x\":531,\"y\":9,\"w\":2859,\"h\":63,\"r\":3390,\"b\":72}"
     },
     {
       "name": "dm dark 3840x2160 +details composer in viewport",
       "pass": true,
-      "detail": "{\"x\":450,\"y\":2043.59375,\"w\":2940,\"h\":107.40625,\"r\":3390,\"b\":2151}"
+      "detail": "{\"x\":531,\"y\":2043.59375,\"w\":2859,\"h\":107.40625,\"r\":3390,\"b\":2151}"
     },
     {
       "name": "dm dark 3840x2160 +details composer not covered",
@@ -1975,7 +2045,7 @@
     {
       "name": "dm dark 3840x2160 +details message list readable width",
       "pass": true,
-      "detail": "w=2940"
+      "detail": "w=2859"
     },
     {
       "name": "dm dark 3840x2160 +details details panel does not cover chat",
@@ -2078,7 +2148,17 @@
       "detail": "clipped=0"
     },
     {
-      "name": "no left server rail rendered",
+      "name": "rail shows navigation, no servers by default",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "rail is icon-only (no text labels)",
+      "pass": true,
+      "detail": "text=\"\""
+    },
+    {
+      "name": "all rail icons use the ChatW Duo set",
       "pass": true,
       "detail": ""
     },
@@ -2100,12 +2180,12 @@
     {
       "name": "group light 1366x768 header in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":7.5,\"w\":1029.328125,\"h\":52.5,\"r\":1358.5,\"b\":60}"
+      "detail": "{\"x\":369.359375,\"y\":7.5,\"w\":989.140625,\"h\":52.5,\"r\":1358.5,\"b\":60}"
     },
     {
       "name": "group light 1366x768 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":670.8125,\"w\":1029.328125,\"h\":89.6875,\"r\":1358.5,\"b\":760.5}"
+      "detail": "{\"x\":369.359375,\"y\":670.8125,\"w\":989.140625,\"h\":89.6875,\"r\":1358.5,\"b\":760.5}"
     },
     {
       "name": "group light 1366x768 composer not covered",
@@ -2115,7 +2195,7 @@
     {
       "name": "group light 1366x768 message list readable width",
       "pass": true,
-      "detail": "w=1029"
+      "detail": "w=989"
     },
     {
       "name": "group light 1366x768 details panel does not cover chat",
@@ -2145,7 +2225,7 @@
     {
       "name": "emoji picker light inside viewport",
       "pass": true,
-      "detail": "{\"x\":359.171875,\"y\":280.8125,\"width\":337.5,\"height\":390}"
+      "detail": "{\"x\":399.359375,\"y\":280.8125,\"width\":337.5,\"height\":390}"
     },
     {
       "name": "mobile list light no horizontal overflow",
@@ -2165,12 +2245,12 @@
     {
       "name": "group dark 1366x768 header in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":7.5,\"w\":1029.328125,\"h\":52.5,\"r\":1358.5,\"b\":60}"
+      "detail": "{\"x\":369.359375,\"y\":7.5,\"w\":989.140625,\"h\":52.5,\"r\":1358.5,\"b\":60}"
     },
     {
       "name": "group dark 1366x768 composer in viewport",
       "pass": true,
-      "detail": "{\"x\":329.171875,\"y\":670.8125,\"w\":1029.328125,\"h\":89.6875,\"r\":1358.5,\"b\":760.5}"
+      "detail": "{\"x\":369.359375,\"y\":670.8125,\"w\":989.140625,\"h\":89.6875,\"r\":1358.5,\"b\":760.5}"
     },
     {
       "name": "group dark 1366x768 composer not covered",
@@ -2180,7 +2260,7 @@
     {
       "name": "group dark 1366x768 message list readable width",
       "pass": true,
-      "detail": "w=1029"
+      "detail": "w=989"
     },
     {
       "name": "group dark 1366x768 details panel does not cover chat",
@@ -2210,7 +2290,7 @@
     {
       "name": "emoji picker dark inside viewport",
       "pass": true,
-      "detail": "{\"x\":359.171875,\"y\":280.8125,\"width\":337.5,\"height\":390}"
+      "detail": "{\"x\":399.359375,\"y\":280.8125,\"width\":337.5,\"height\":390}"
     },
     {
       "name": "mobile list dark no horizontal overflow",

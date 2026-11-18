@@ -27,3 +27,11 @@ thấy và chưa xử lý.
 ## Không kiểm tra trong phiên này
 CSRF chi tiết, IDOR từng route, SQL injection (SQLx macro đã tham số hóa), upload MIME thực tế, phân quyền cộng đồng
 end-to-end, WebSocket auth, WebRTC authorization.
+
+## Cập nhật Spec 005 (đã sửa)
+- `PUT/POST /api/users/me/profile` bỏ qua `badges` từ client (trước đây người dùng tự gắn được huy hiệu, ví dụ "staff").
+- `custom_banner_url` chỉ chấp nhận `/uploads/banners/…`; màu hồ sơ kiểm tra `#RRGGBB`; khung/hiệu ứng theo danh sách trắng; có CHECK ở DB (migration 0009).
+- `POST /api/stickers/upload`: ≤ 512 KB, xác định định dạng bằng magic bytes (PNG/GIF/WebP/AVIF), tên tệp UUID; SVG và HTML bị từ chối (test: payload `<svg onload>` trả 400).
+- `add_sticker` chỉ nhận URL `/uploads/stickers/…`; xóa sticker/bộ chỉ cho tác giả; danh sách chỉ gồm bộ có sẵn + bộ của chính mình.
+- Sticker trong DM đi bên trong phong bì E2EE như văn bản; máy chủ không biết sticker nào được gửi.
+- Reaction DM là siêu dữ liệu máy chủ nhìn thấy (emoji + người thả) — không mã hóa đầu cuối, ghi chú để người dùng biết.

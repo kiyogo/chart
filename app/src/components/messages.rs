@@ -7,7 +7,7 @@ use crate::{
     components::{
         avatar::Avatar,
         emoji_picker::EmojiPicker,
-        icons::{CloseIcon, EmojiIcon, SendIcon, ShieldIcon, StickerIcon},
+        icons::{CloseIcon, CopyIcon, EmojiIcon, ReplyIcon, SendIcon, ShieldIcon, StickerIcon},
         sticker_picker::StickerPicker,
     },
     platform,
@@ -54,6 +54,10 @@ pub fn sticker_url_of(text: &str) -> Option<String> {
     let t = text.trim();
     if t.contains(char::is_whitespace) {
         return None;
+    }
+    // Built-in sticker set shipped with the client.
+    if t.starts_with("/stickers/") && t.ends_with(".svg") && !t.contains("..") {
+        return Some(t.to_string());
     }
     let path = if let Some(idx) = t.find("/uploads/") {
         let prefix = &t[..idx];
@@ -116,6 +120,8 @@ pub fn MessageList(
     #[props(default)] intro_title: String,
     #[props(default)] intro_sub: String,
     #[props(default)] on_open_profile: Option<EventHandler<String>>,
+    /// Click on an avatar / name with viewport coordinates (opens the profile popover).
+    #[props(default)] on_profile_click: Option<EventHandler<(String, f64, f64)>>,
     #[props(default)] on_react: Option<EventHandler<(String, String)>>,
     #[props(default)] on_reply: Option<EventHandler<ViewMessage>>,
     #[props(default)] highlight_id: Option<String>,
@@ -187,7 +193,11 @@ pub fn MessageList(
                                         button {
                                             r#type: "button",
                                             aria_label: "Xem hồ sơ {msg.sender_name}",
-                                            onclick: move |_| if let Some(h) = on_open_profile { h.call(sender_for_avatar.clone()) },
+                                            onclick: move |evt: MouseEvent| {
+                                                let c = evt.client_coordinates();
+                                                if let Some(h) = on_profile_click { h.call((sender_for_avatar.clone(), c.x, c.y)) }
+                                                else if let Some(h) = on_open_profile { h.call(sender_for_avatar.clone()) }
+                                            },
                                             Avatar { name: msg.sender_name.clone(), avatar_url: msg.sender_avatar.clone(), size: 32 }
                                         }
                                     }
@@ -197,7 +207,11 @@ pub fn MessageList(
                                         button {
                                             r#type: "button",
                                             class: "message-sender-name",
-                                            onclick: move |_| if let Some(h) = on_open_profile { h.call(sender_for_name.clone()) },
+                                            onclick: move |evt: MouseEvent| {
+                                                let c = evt.client_coordinates();
+                                                if let Some(h) = on_profile_click { h.call((sender_for_name.clone(), c.x, c.y)) }
+                                                else if let Some(h) = on_open_profile { h.call(sender_for_name.clone()) }
+                                            },
                                             "{msg.sender_name}"
                                         }
                                     }
@@ -283,10 +297,7 @@ pub fn MessageList(
                                                 title: "Trả lời",
                                                 aria_label: "Trả lời",
                                                 onclick: move |_| if let Some(h) = on_reply { h.call(m_reply.clone()) },
-                                                svg { width: "16", height: "16", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round",
-                                                    polyline { points: "9 17 4 12 9 7" }
-                                                    path { d: "M20 18v-2a4 4 0 0 0-4-4H4" }
-                                                }
+                                                ReplyIcon {}
                                             }
                                         }
                                         button {
@@ -295,10 +306,7 @@ pub fn MessageList(
                                             title: "Sao chép",
                                             aria_label: "Sao chép nội dung",
                                             onclick: move |_| platform::copy_to_clipboard(&m_copy),
-                                            svg { width: "16", height: "16", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round",
-                                                rect { x: "9", y: "9", width: "13", height: "13", rx: "2" }
-                                                path { d: "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" }
-                                            }
+                                            CopyIcon {}
                                         }
                                     }
                                 }

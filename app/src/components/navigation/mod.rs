@@ -1,4 +1,5 @@
 pub mod modals;
+pub mod rail;
 pub mod sidebar;
 
 #[derive(Clone, PartialEq, Eq)]

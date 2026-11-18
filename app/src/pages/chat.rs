@@ -16,12 +16,15 @@ use crate::{
         messages::{Composer, MessageList, ViewMessage},
         navigation::{
             modals::{CommunityModal, CreateCategoryModal, CreateChannelModal, ServerInviteModal},
+            rail::AppRail,
             sidebar::NavigationSidebar,
             NavSection,
         },
-        profile_modal::ProfileModal,
+        profile_modal::{ProfileModal, ProfilePopover},
+        quick_switcher::QuickSwitcher,
         settings_view::SettingsView,
     },
+    prefs::{Prefs, PrefsCtx},
     crypto::e2ee::{
         PeerKeys, decrypt_chat_message, encrypt_chat_message, get_or_verify_peer_keys,
         get_user_keys,
@@ -64,6 +67,14 @@ pub fn Chat(
     on_avatar_updated: EventHandler<String>,
 ) -> Element {
     let preview_storage_key = format!("chatw_previews_{current_user_id}");
+    let uid_for_prefs = current_user_id.clone();
+    let prefs_ctx = use_context_provider(move || PrefsCtx {
+        prefs: Signal::new(Prefs::load(&uid_for_prefs)),
+        user_id: Signal::new(uid_for_prefs.clone()),
+    });
+    let prefs = prefs_ctx.prefs;
+    let mut quick_switch_open = use_signal(|| false);
+    let mut profile_popover = use_signal(|| Option::<(String, f64, f64)>::None);
 
     let mut user_keys = use_signal(|| get_user_keys(Some(&current_user_id)));
     let mut friends = use_signal(Vec::<FriendItem>::new);
@@ -310,6 +321,7 @@ pub fn Chat(
                                                 is_self: is_from_me,
                                                 status: MessageStatus::Sent,
                                                 reply_to_id: reply_to_id.clone(),
+                                                reactions: Vec::new(),
                                             });
                                         }
                                     });
@@ -322,13 +334,13 @@ pub fn Chat(
                                         unread_counts.with_mut(|m| {
                                             *m.entry(partner_id.clone()).or_insert(0) += 1;
                                         });
-                                        platform::play_notification_chime();
+                                        if prefs.read().sound { platform::play_notification_chime(); }
                                     }
                                 } else if !is_from_me {
                                     unread_counts.with_mut(|m| {
                                         *m.entry(partner_id.clone()).or_insert(0) += 1;
                                     });
-                                    platform::play_notification_chime();
+                                    if prefs.read().sound { platform::play_notification_chime(); }
                                 }
                             }
                             Err(_) => {
@@ -344,6 +356,7 @@ pub fn Chat(
                                             is_self: false,
                                             status: MessageStatus::Error,
                                             reply_to_id: None,
+                                            reactions: Vec::new(),
                                         });
                                     });
                                 }
@@ -408,7 +421,7 @@ pub fn Chat(
                         if let Ok(reqs) = api::friends_get_requests().await {
                             pending_requests.set(reqs);
                         }
-                        platform::play_notification_chime();
+                        if prefs.read().sound { platform::play_notification_chime(); }
                     }
                     WsEvent::FriendAccepted { .. } => {
                         if let Ok(list) = api::friends_list().await {
@@ -450,7 +463,7 @@ pub fn Chat(
                             platform::scroll_chat_to_bottom(false);
                         }
                         if msg.sender_id != uid {
-                            platform::play_notification_chime();
+                            if prefs.read().sound { platform::play_notification_chime(); }
                         }
                     }
                     WsEvent::GroupMemberJoined(_)
@@ -459,6 +472,23 @@ pub fn Chat(
                         spawn(async move {
                             if let Ok(grps) = groups::groups_list().await {
                                 groups.set(grps);
+                            }
+                        });
+                    }
+                    WsEvent::ReactionUpdate(val) => {
+                        let msg_id = val.get("message_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let user_id = val.get("user_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let emoji = val.get("emoji").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let added = val.get("action").and_then(|v| v.as_str()) == Some("added");
+                        messages.with_mut(|list| {
+                            if let Some(m) = list.iter_mut().find(|m| m.id == msg_id) {
+                                if let Some(entry) = m.reactions.iter_mut().find(|(e, _)| *e == emoji) {
+                                    entry.1.retain(|u| u != &user_id);
+                                    if added { entry.1.push(user_id.clone()); }
+                                } else if added {
+                                    m.reactions.push((emoji.clone(), vec![user_id.clone()]));
+                                }
+                                m.reactions.retain(|(_, users)| !users.is_empty());
                             }
                         });
                     }
@@ -510,7 +540,7 @@ pub fn Chat(
                     WsEvent::CallIncoming(payload) => {
                         let sess = payload.into_item();
                         incoming_call_session.set(Some(sess));
-                        platform::play_notification_chime();
+                        if prefs.read().sound { platform::play_notification_chime(); }
                     }
                     WsEvent::CallAccepted(val) => {
                         if let Ok(sess) = serde_json::from_value::<CallSessionItem>(val) {
@@ -591,6 +621,28 @@ pub fn Chat(
                     }
                     _ => {}
                 }
+            }
+        });
+    });
+
+    // Global keyboard shortcut: Ctrl/Cmd + K opens the quick switcher.
+    use_effect(move || {
+        spawn(async move {
+            let mut eval = dioxus::document::eval(
+                r#"
+                if (!window.__chatwQuickKey) {
+                    window.__chatwQuickKey = true;
+                    document.addEventListener('keydown', (e) => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+                            e.preventDefault();
+                            dioxus.send(true);
+                        }
+                    });
+                }
+                "#,
+            );
+            while eval.recv::<bool>().await.is_ok() {
+                quick_switch_open.set(true);
             }
         });
     });
@@ -742,6 +794,7 @@ pub fn Chat(
                             is_self,
                             status: MessageStatus::Sent,
                             reply_to_id: wire.reply_to_id,
+                            reactions: wire.reactions.iter().map(|r| (r.emoji.clone(), r.user_ids.clone())).collect(),
                         }),
                         Err(_) => decrypted_list.push(DisplayMessage {
                             id: wire.id,
@@ -753,6 +806,7 @@ pub fn Chat(
                             is_self,
                             status: MessageStatus::Error,
                             reply_to_id: None,
+                            reactions: Vec::new(),
                         }),
                     }
                 }
@@ -852,6 +906,7 @@ pub fn Chat(
                             is_self: true,
                             status: MessageStatus::Sent,
                             reply_to_id: None,
+                            reactions: Vec::new(),
                         });
                     });
                     last_previews.with_mut(|m| {
@@ -872,6 +927,7 @@ pub fn Chat(
                             is_self: true,
                             status: MessageStatus::Error,
                             reply_to_id: None,
+                            reactions: Vec::new(),
                         });
                     });
                 }
@@ -1021,7 +1077,11 @@ pub fn Chat(
                     reply_text: m.reply_to_id.as_ref().map(|rid| {
                         list.iter().find(|x| &x.id == rid).map(|x| x.text.clone()).unwrap_or_else(|| "Tin nhắn gốc không còn".to_string())
                     }),
-                    reactions: Vec::new(),
+                    reactions: m
+                        .reactions
+                        .iter()
+                        .map(|(e, users)| (e.clone(), users.len(), users.iter().any(|u| u == &current_user_id)))
+                        .collect(),
                 })
                 .collect()
         }
@@ -1091,22 +1151,50 @@ pub fn Chat(
 
     rsx! {
         div { class: "workspace-shell",
+            AppRail {
+                active_section: section.clone(),
+                hidden_mobile: is_chat_selected,
+                unread_dm_count: total_unread,
+                pending_friend_count: pending_len,
+                current_username: current_username.clone(),
+                current_avatar_url: my_avatar_url(),
+                pinned_servers: if prefs.read().pin_communities { servers() } else { Vec::new() },
+                pinned_groups: if prefs.read().pin_groups { groups() } else { Vec::new() },
+                active_group_id: active_group().map(|g| g.id),
+                on_select_dm: move |_| {
+                    is_settings_open.set(false);
+                    nav_section.set(NavSection::DirectMessages);
+                },
+                on_select_friends: move |_| {
+                    is_settings_open.set(false);
+                    nav_section.set(NavSection::Friends);
+                },
+                on_select_communities: move |_| {
+                    is_settings_open.set(false);
+                    nav_section.set(NavSection::Communities);
+                    spawn(async move {
+                        if let Ok(list) = api::servers_list().await {
+                            servers.set(list);
+                        }
+                    });
+                },
+                on_quick_switch: move |_| quick_switch_open.set(true),
+                on_select_server: move |srv: ServerItem| select_server(srv),
+                on_select_group: move |g: GroupItem| select_group.call(g),
+                on_open_profile: {
+                    let me = current_user_id.clone();
+                    move |_| viewing_profile_user_id.set(Some(me.clone()))
+                },
+                on_open_settings: move |_| is_settings_open.set(true),
+                on_logout: move |_| on_logout.call(()),
+            }
+
             if section != NavSection::Settings {
                 NavigationSidebar {
                     active_section: section.clone(),
                     current_username: current_username.clone(),
                     current_avatar_url: my_avatar_url(),
                     hidden_mobile: is_chat_selected,
-                    unread_dm_count: total_unread,
-                    pending_friend_count: pending_len,
-                    on_select_dm: move |_| {
-                        is_settings_open.set(false);
-                        nav_section.set(NavSection::DirectMessages);
-                    },
-                    on_select_friends: move |_| {
-                        is_settings_open.set(false);
-                        nav_section.set(NavSection::Friends);
-                    },
                     on_select_communities: move |_| {
                         is_settings_open.set(false);
                         nav_section.set(NavSection::Communities);
@@ -1116,12 +1204,6 @@ pub fn Chat(
                             }
                         });
                     },
-                    on_open_profile: {
-                        let me = current_user_id.clone();
-                        move |_| viewing_profile_user_id.set(Some(me.clone()))
-                    },
-                    on_open_settings: move |_| is_settings_open.set(true),
-                    on_logout: move |_| on_logout.call(()),
                     servers: servers(),
                     on_select_server: move |srv: ServerItem| select_server(srv),
                     on_open_create_server: move |_| is_community_modal_open.set(true),
@@ -1218,7 +1300,7 @@ pub fn Chat(
                     }
                 } else if let Some(active) = active_friend() {
                     div { class: "chat-main-container",
-                        div { class: "chat-column",
+                        div { class: "chat-column wp-{prefs.read().wallpaper}",
                             header { class: "chat-header",
                                 button {
                                     r#type: "button",
@@ -1288,6 +1370,12 @@ pub fn Chat(
                                 intro_sub: format!("Đây là khởi đầu cuộc trò chuyện trực tiếp giữa bạn và {}.", active.username),
                                 highlight_id: highlight_msg(),
                                 on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                                on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
+                                on_react: move |(mid, emoji): (String, String)| {
+                                    spawn(async move {
+                                        let _ = api::messages_toggle_reaction(&mid, &emoji).await;
+                                    });
+                                },
                             }
 
                             div { class: "typing-indicator", aria_live: "polite",
@@ -1326,6 +1414,11 @@ pub fn Chat(
                                     }
                                 },
                                 on_send: move |_| trigger_send_message.call(()),
+                                on_sticker: move |url: String| {
+                                    // Stickers travel inside the E2EE envelope like any other text.
+                                    input_text.set(url);
+                                    trigger_send_message.call(());
+                                },
                             }
                         }
 
@@ -1357,7 +1450,7 @@ pub fn Chat(
                     }
                 } else if let Some(grp) = active_group() {
                     div { class: "chat-main-container",
-                        div { class: "chat-column",
+                        div { class: "chat-column wp-{prefs.read().wallpaper}",
                             header { class: "chat-header",
                                 button {
                                     r#type: "button",
@@ -1452,6 +1545,7 @@ pub fn Chat(
                                 intro_sub: format!("Nhóm trò chuyện với {} thành viên. Tin nhắn nhóm hiện được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.", grp.member_count),
                                 highlight_id: highlight_msg(),
                                 on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                                on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
                                 on_react: {
                                     let gid = grp.id.clone();
                                     move |(mid, emoji): (String, String)| {
@@ -1532,7 +1626,7 @@ pub fn Chat(
                     }
                 } else if let Some(ch) = selected_channel() {
                     div { class: "chat-main-container",
-                        div { class: "chat-column",
+                        div { class: "chat-column wp-{prefs.read().wallpaper}",
                             header { class: "chat-header",
                                 button {
                                     r#type: "button",
@@ -1561,6 +1655,7 @@ pub fn Chat(
                                     intro_title: format!("Chào mừng đến #{}", ch.name),
                                     intro_sub: "Đây là khởi đầu của kênh. Tin nhắn kênh cộng đồng được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.".to_string(),
                                     on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                                on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
                                 }
                                 Composer {
                                     input_id: "channel-chat-input".to_string(),
@@ -1568,6 +1663,10 @@ pub fn Chat(
                                     placeholder: "Nhắn tin tới #{ch.name}",
                                     on_input: move |v: String| channel_input.set(v),
                                     on_send: move |_| trigger_send_channel_message.call(()),
+                                    on_sticker: move |url: String| {
+                                        channel_input.set(url);
+                                        trigger_send_channel_message.call(());
+                                    },
                                 }
                             } else {
                                 {
@@ -1824,6 +1923,41 @@ pub fn Chat(
             }
         }
 
+        if let Some((uid, x, y)) = profile_popover() {
+            ProfilePopover {
+                key: "{uid}",
+                user_id: uid.clone(),
+                x: x,
+                y: y,
+                is_self: uid == current_user_id,
+                effects_enabled: prefs.read().profile_effects,
+                on_close: move |_| profile_popover.set(None),
+                on_view_full: move |id: String| {
+                    profile_popover.set(None);
+                    viewing_profile_user_id.set(Some(id));
+                },
+                on_message: move |id: String| {
+                    profile_popover.set(None);
+                    if let Some(f) = friends.read().iter().find(|f| f.id == id).cloned() {
+                        select_friend.call(f);
+                    }
+                },
+            }
+        }
+
+        if quick_switch_open() {
+            QuickSwitcher {
+                friends: friends(),
+                groups: groups(),
+                servers: servers(),
+                on_close: move |_| quick_switch_open.set(false),
+                on_pick_friend: move |f: FriendItem| { quick_switch_open.set(false); select_friend.call(f); },
+                on_pick_group: move |g: GroupItem| { quick_switch_open.set(false); select_group.call(g); },
+                on_pick_server: move |srv: ServerItem| { quick_switch_open.set(false); select_server(srv); },
+                on_open_settings: move |_| { quick_switch_open.set(false); is_settings_open.set(true); },
+            }
+        }
+
         if let Some(uid) = viewing_profile_user_id() {
             {
                 let is_me = uid == current_user_id;
@@ -1831,10 +1965,17 @@ pub fn Chat(
                     ProfileModal {
                         user_id: uid.clone(),
                         is_self: is_me,
+                        effects_enabled: prefs.read().profile_effects,
                         on_close: move |_| viewing_profile_user_id.set(None),
                         on_profile_updated: move |p: crate::models::UserProfileResponse| {
                             if let Some(av) = p.avatar_url {
                                 my_avatar_url.set(Some(av));
+                            }
+                        },
+                        on_message: move |id: String| {
+                            viewing_profile_user_id.set(None);
+                            if let Some(f) = friends.read().iter().find(|f| f.id == id).cloned() {
+                                select_friend.call(f);
                             }
                         },
                     }

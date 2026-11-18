@@ -4,6 +4,7 @@ pub mod media;
 pub mod models;
 pub mod pages;
 pub mod platform;
+pub mod prefs;
 pub mod services;
 
 use dioxus::prelude::*;

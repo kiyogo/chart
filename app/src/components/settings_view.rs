@@ -4,9 +4,10 @@ use crate::{
     components::{
         avatar::Avatar,
         details_panel::format_fingerprint,
+        settings_extra::{CustomizationSettings, StickerSettings},
         icons::{
             BackIcon, CheckIcon, ChevronRightIcon, KeyIcon, LogoutIcon, MonitorIcon,
-            MoonIcon, PaletteIcon, ShieldIcon, SunIcon, UserIcon,
+            MoonIcon, PaletteIcon, ShieldIcon, SlidersIcon, StickerIcon, SunIcon, UserIcon,
         },
     },
     crypto::e2ee::{UserKeys, export_user_keys_json, import_user_keys_json},
@@ -18,6 +19,8 @@ use crate::{
 enum SettingsTab {
     Account,
     Appearance,
+    Customize,
+    Stickers,
     Security,
     Session,
 }
@@ -83,6 +86,8 @@ pub fn SettingsView(
                     for (t, label) in [
                         (SettingsTab::Account, "Tài khoản của tôi"),
                         (SettingsTab::Appearance, "Giao diện"),
+                        (SettingsTab::Customize, "Tùy chỉnh"),
+                        (SettingsTab::Stickers, "Sticker"),
                         (SettingsTab::Security, "Bảo mật và mã hóa"),
                         (SettingsTab::Session, "Phiên đăng nhập"),
                     ] {
@@ -97,6 +102,8 @@ pub fn SettingsView(
                                 SettingsTab::Appearance => rsx! { PaletteIcon {} },
                                 SettingsTab::Security => rsx! { ShieldIcon { size: 18 } },
                                 SettingsTab::Session => rsx! { LogoutIcon {} },
+                                SettingsTab::Customize => rsx! { SlidersIcon {} },
+                                SettingsTab::Stickers => rsx! { StickerIcon {} },
                             }
                             span { "{label}" }
                             span { class: "chevron", ChevronRightIcon { size: 16 } }
@@ -114,6 +121,8 @@ pub fn SettingsView(
                                     SettingsTab::Appearance => "Giao diện",
                                     SettingsTab::Security => "Bảo mật và mã hóa",
                                     SettingsTab::Session => "Phiên đăng nhập",
+                                    SettingsTab::Customize => "Tùy chỉnh",
+                                    SettingsTab::Stickers => "Sticker",
                                 }
                             }
                             p { class: "settings-page-desc",
@@ -122,6 +131,8 @@ pub fn SettingsView(
                                     SettingsTab::Appearance => "Chủ đề màu, màu nhấn, cỡ chữ và mật độ hiển thị. Lưu trên thiết bị này.",
                                     SettingsTab::Security => "Khóa mã hóa đầu cuối của thiết bị, vân tay khóa, sao lưu và khôi phục.",
                                     SettingsTab::Session => "Quản lý phiên đăng nhập trên trình duyệt này.",
+                                    SettingsTab::Customize => "Cột điều hướng, hình nền trò chuyện, âm báo và hiệu ứng. Lưu riêng cho tài khoản trên thiết bị này.",
+                                    SettingsTab::Stickers => "Tạo bộ sticker riêng và tải ảnh lên để gửi trong mọi cuộc trò chuyện.",
                                 }
                             }
                         }
@@ -493,6 +504,8 @@ pub fn SettingsView(
                                 }
                             },
 
+                            SettingsTab::Customize => rsx! { CustomizationSettings {} },
+                            SettingsTab::Stickers => rsx! { StickerSettings { current_user_id: current_user_id.clone() } },
                             SettingsTab::Session => rsx! {
                                 div { class: "settings-group",
                                     div { class: "settings-group-title", "Quản lý phiên" }

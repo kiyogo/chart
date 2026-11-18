@@ -130,8 +130,18 @@ pub struct UpdateProfileRequest {
     pub status_emoji: Option<String>,
     pub presence: Option<String>,
     pub custom_banner_url: Option<String>,
+    /// Ignored: badges are awarded by the server, never set by the client.
+    #[serde(default)]
     pub badges: Option<Vec<String>>,
     pub social_links: Option<serde_json::Value>,
+    #[serde(default)]
+    pub profile_color: Option<String>,
+    #[serde(default)]
+    pub profile_accent: Option<String>,
+    #[serde(default)]
+    pub avatar_decoration: Option<String>,
+    #[serde(default)]
+    pub profile_effect: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -149,6 +159,11 @@ pub struct UserProfileResponse {
     pub badges: Vec<String>,
     #[serde(default)]
     pub social_links: serde_json::Value,
+    pub profile_color: Option<String>,
+    pub profile_accent: Option<String>,
+    pub avatar_decoration: String,
+    pub profile_effect: String,
+    pub member_since: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -23,6 +23,22 @@ kiểm thử lại trong phiên này) · **PARTIAL** · **NOT DONE** · **BLOCKE
 | Settings: Tài khoản, Giao diện, Bảo mật & mã hóa, Phiên; mobile list→detail | DONE | |
 | Sửa trùng tin nhắn tự gửi | DONE | |
 
+## Spec 005
+| Tính năng | Trạng thái | Bằng chứng |
+|---|---|---|
+| Cột trái chỉ biểu tượng, không server, tooltip | DONE | `rail is icon-only`, `rail shows navigation, no servers by default` |
+| Ghim cộng đồng / nhóm vào cột trái (Cài đặt) | DONE | `pinned communities appear in rail`, `pinned groups appear in rail` |
+| Bộ icon SVG riêng "ChatW Duo" (47 icon) + logo mới | DONE | `all rail icons use the ChatW Duo set` |
+| Hồ sơ: màu chủ đề, khung avatar, hiệu ứng, ngày tham gia, lưu server | DONE | `profile customization saved on server` |
+| Popover hồ sơ từ avatar, đóng bằng Esc | DONE | `profile popover opens from avatar`, `closes with Escape` |
+| Bộ sticker gốc + tạo bộ + tải ảnh + xóa | DONE | `uploaded sticker appears in my pack` |
+| Sticker trong DM (E2EE) / nhóm / kênh | DONE | `sticker decrypts and renders for receiver` |
+| Reaction DM realtime | DONE | `DM reaction syncs to the other side` |
+| Ctrl+K chuyển nhanh | DONE | `quick switcher opens the picked chat` |
+| Hình nền chat, âm báo, bật/tắt hiệu ứng | DONE (client, lưu theo tài khoản) | ảnh `settings_customize_*` |
+| Cắt ảnh avatar/banner thủ công (crop) | NOT DONE | hiện tự cắt giữa |
+| Huy hiệu được cấp bởi hệ thống | NOT DONE | trường chỉ đọc, chưa có cơ chế cấp |
+
 ## Có từ trước (không kiểm thử lại)
 DM E2EE (ECDH P-256 / AES-256-GCM / ECDSA), lời mời kết bạn, nhóm + thành viên + vai trò nhóm, mời nhóm, hồ sơ +
 banner + avatar AVIF, gọi 1-1 và nhóm WebRTC P2P, sao lưu/khôi phục khóa, audit log backend.

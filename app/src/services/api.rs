@@ -371,3 +371,9 @@ pub async fn update_my_profile(
     .await
 }
 
+
+/// Partial profile update: only keys present in `fields` are changed.
+/// Empty string clears `profile_color` / `profile_accent`.
+pub async fn update_my_profile_fields(fields: serde_json::Value) -> Result<UserProfileResponse, ApiError> {
+    post_json("/api/users/me/profile", fields).await
+}

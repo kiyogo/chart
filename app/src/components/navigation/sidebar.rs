@@ -5,9 +5,8 @@ use crate::{
     components::{
         avatar::Avatar,
         icons::{
-            ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CompassIcon, FriendsIcon,
-            HashIcon, LogoutIcon, MegaphoneIcon, MessageIcon, MicIcon, MicOffIcon, PhoneOffIcon,
-            PlusIcon, SearchIcon, SettingsIcon, UserIcon, UserPlusIcon, VolumeIcon,
+            ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, HashIcon, MegaphoneIcon, MicIcon,
+            MicOffIcon, PhoneOffIcon, PlusIcon, SearchIcon, UserPlusIcon, VolumeIcon,
         },
         navigation::NavSection,
     },
@@ -43,15 +42,7 @@ pub fn NavigationSidebar(
     current_username: String,
     current_avatar_url: Option<String>,
     hidden_mobile: bool,
-    // Section switcher + account (replaces the old server rail)
-    unread_dm_count: usize,
-    pending_friend_count: usize,
-    on_select_dm: EventHandler<()>,
-    on_select_friends: EventHandler<()>,
     on_select_communities: EventHandler<()>,
-    on_open_profile: EventHandler<()>,
-    on_open_settings: EventHandler<()>,
-    on_logout: EventHandler<()>,
     // Communities list
     servers: Vec<ServerItem>,
     on_select_server: EventHandler<ServerItem>,
@@ -94,7 +85,6 @@ pub fn NavigationSidebar(
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
     let mut dm_query = use_signal(String::new);
     let mut dm_filter = use_signal(|| "all");
-    let mut account_open = use_signal(|| false);
     let mut community_query = use_signal(String::new);
 
     let sidebar_cls = if hidden_mobile {
@@ -130,7 +120,6 @@ pub fn NavigationSidebar(
         .collect();
 
     let in_dm = active_section == NavSection::DirectMessages;
-    let in_friends = active_section == NavSection::Friends;
     let in_communities = matches!(active_section, NavSection::Communities | NavSection::Server(_));
     let cq = community_query().trim().to_lowercase();
     let mut seen_srv = HashSet::new();
@@ -142,21 +131,15 @@ pub fn NavigationSidebar(
 
     rsx! {
         aside { class: "{sidebar_cls}", aria_label: "Danh sách điều hướng",
-            // App header: account menu + contextual create action
-            div { class: "sidebar-app-header",
-                button {
-                    r#type: "button",
-                    class: "account-btn",
-                    aria_label: "Tài khoản của tôi",
-                    aria_haspopup: "menu",
-                    aria_expanded: "{account_open()}",
-                    onclick: move |_| account_open.set(!account_open()),
-                    Avatar { name: current_username.clone(), avatar_url: current_avatar_url.clone(), size: 36 }
-                    span { class: "account-meta",
-                        span { class: "account-name", "{current_username}" }
-                        span { class: "account-sub", "Tài khoản của bạn" }
+            // Section title + contextual action (navigation lives in the left rail)
+            div { class: "sidebar-top-header",
+                span { class: "sidebar-title",
+                    match &active_section {
+                        NavSection::DirectMessages => "Tin nhắn",
+                        NavSection::Friends => "Bạn bè",
+                        NavSection::Communities | NavSection::Server(_) => "Cộng đồng",
+                        NavSection::Settings => "Cài đặt",
                     }
-                    ChevronDownIcon { size: 14 }
                 }
                 if in_dm {
                     button {
@@ -176,63 +159,6 @@ pub fn NavigationSidebar(
                         onclick: move |_| on_open_create_server.call(()),
                         PlusIcon { size: 20 }
                     }
-                }
-                if account_open() {
-                    button {
-                        r#type: "button",
-                        class: "menu-dismiss",
-                        aria_label: "Đóng menu",
-                        tabindex: "-1",
-                        onclick: move |_| account_open.set(false),
-                    }
-                    div { class: "account-menu", role: "menu",
-                        button { r#type: "button", class: "menu-item", role: "menuitem",
-                            onclick: move |_| { account_open.set(false); on_open_profile.call(()); },
-                            UserIcon {} span { "Hồ sơ của tôi" }
-                        }
-                        button { r#type: "button", class: "menu-item", role: "menuitem",
-                            aria_label: "Cài đặt",
-                            onclick: move |_| { account_open.set(false); on_open_settings.call(()); },
-                            SettingsIcon {} span { "Cài đặt" }
-                        }
-                        button { r#type: "button", class: "menu-item danger", role: "menuitem",
-                            onclick: move |_| { account_open.set(false); on_logout.call(()); },
-                            LogoutIcon {} span { "Đăng xuất" }
-                        }
-                    }
-                }
-            }
-
-            // Section switcher
-            nav { class: "section-switch", role: "tablist", aria_label: "Chuyển mục",
-                button {
-                    r#type: "button",
-                    role: "tab",
-                    aria_selected: "{in_dm}",
-                    class: if in_dm { "section-tab active" } else { "section-tab" },
-                    onclick: move |_| on_select_dm.call(()),
-                    MessageIcon { size: 17 }
-                    span { "Tin nhắn" }
-                    if unread_dm_count > 0 { span { class: "section-badge", "{format_badge(unread_dm_count)}" } }
-                }
-                button {
-                    r#type: "button",
-                    role: "tab",
-                    aria_selected: "{in_friends}",
-                    class: if in_friends { "section-tab active" } else { "section-tab" },
-                    onclick: move |_| on_select_friends.call(()),
-                    FriendsIcon {}
-                    span { "Bạn bè" }
-                    if pending_friend_count > 0 { span { class: "section-badge", "{format_badge(pending_friend_count)}" } }
-                }
-                button {
-                    r#type: "button",
-                    role: "tab",
-                    aria_selected: "{in_communities}",
-                    class: if in_communities { "section-tab active" } else { "section-tab" },
-                    onclick: move |_| on_select_communities.call(()),
-                    CompassIcon { size: 17 }
-                    span { "Cộng đồng" }
                 }
             }
 
@@ -280,7 +206,7 @@ pub fn NavigationSidebar(
                                     let unread = unread_counts.get(&friend.id).copied().unwrap_or(0);
                                     let preview = last_previews
                                         .get(&friend.id)
-                                        .cloned()
+                                        .map(|t| if crate::components::messages::sticker_url_of(t).is_some() { "Đã gửi một sticker".to_string() } else { t.clone() })
                                         .unwrap_or_else(|| "Bắt đầu trò chuyện".to_string());
                                     let f_click = friend.clone();
                                     rsx! {
@@ -504,7 +430,7 @@ pub fn NavigationSidebar(
 
                 NavSection::Server(_) => rsx! {
                     if let Some(srv) = selected_server {
-                        div { class: "sidebar-top-header",
+                        div { class: "sidebar-server-header",
                             button {
                                 r#type: "button",
                                 class: "icon-btn",
@@ -513,7 +439,7 @@ pub fn NavigationSidebar(
                                 onclick: move |_| on_select_communities.call(()),
                                 ChevronLeftIcon { size: 18 }
                             }
-                            span { class: "sidebar-title", title: "{srv.name}", "{srv.name}" }
+                            span { class: "sidebar-server-name", title: "{srv.name}", "{srv.name}" }
                             div { style: "display: flex; align-items: center; gap: 2px;",
                                 button {
                                     r#type: "button",

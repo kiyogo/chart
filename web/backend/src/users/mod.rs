@@ -337,6 +337,37 @@ async fn handle_update_profile(
             return Err(AppError::BadRequest("invalid_presence"));
         }
     }
+    if let Some(ref dn) = payload.display_name {
+        if dn.chars().count() > 64 {
+            return Err(AppError::BadRequest("display_name_too_long"));
+        }
+    }
+    // Banners must come from our own upload endpoint (no arbitrary external URLs).
+    if let Some(ref url) = payload.custom_banner_url {
+        if !url.is_empty() && !url.starts_with("/uploads/banners/") {
+            return Err(AppError::BadRequest("invalid_banner_url"));
+        }
+    }
+    let is_hex = |c: &str| c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|ch| ch.is_ascii_hexdigit());
+    for color in [&payload.profile_color, &payload.profile_accent].into_iter().flatten() {
+        if !color.is_empty() && !is_hex(color) {
+            return Err(AppError::BadRequest("invalid_profile_color"));
+        }
+    }
+    if let Some(ref d) = payload.avatar_decoration {
+        if !["none", "halo", "crown", "sprout", "stars", "cat"].contains(&d.as_str()) {
+            return Err(AppError::BadRequest("invalid_avatar_decoration"));
+        }
+    }
+    if let Some(ref e) = payload.profile_effect {
+        if !["none", "sparkle", "snow", "aurora", "bubbles", "confetti"].contains(&e.as_str()) {
+            return Err(AppError::BadRequest("invalid_profile_effect"));
+        }
+    }
+    // Empty string clears an optional color.
+    let color_param = |c: &Option<String>| c.as_ref().map(|v| v.trim().to_string());
+    let profile_color = color_param(&payload.profile_color);
+    let profile_accent = color_param(&payload.profile_accent);
 
     let row = sqlx::query!(
         r#"
@@ -347,10 +378,14 @@ async fn handle_update_profile(
             presence = COALESCE($4, presence),
             display_name = COALESCE($5, display_name),
             custom_banner_url = COALESCE($6, custom_banner_url),
-            badges = COALESCE($7, badges),
-            social_links = COALESCE($8, social_links)
-        WHERE id = $9
-        RETURNING id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links
+            social_links = COALESCE($7, social_links),
+            profile_color = CASE WHEN $8::text IS NULL THEN profile_color WHEN $8 = '' THEN NULL ELSE $8 END,
+            profile_accent = CASE WHEN $9::text IS NULL THEN profile_accent WHEN $9 = '' THEN NULL ELSE $9 END,
+            avatar_decoration = COALESCE($10, avatar_decoration),
+            profile_effect = COALESCE($11, profile_effect)
+        WHERE id = $12
+        RETURNING id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links,
+                  profile_color, profile_accent, avatar_decoration, profile_effect, created_at
         "#,
         payload.bio,
         payload.status_text,
@@ -358,8 +393,11 @@ async fn handle_update_profile(
         payload.presence,
         payload.display_name,
         payload.custom_banner_url,
-        payload.badges.as_deref(),
         payload.social_links,
+        profile_color,
+        profile_accent,
+        payload.avatar_decoration,
+        payload.profile_effect,
         user.id
     )
     .fetch_one(&state.db)
@@ -402,6 +440,11 @@ async fn handle_update_profile(
         presence: row.presence,
         badges: row.badges,
         social_links: row.social_links,
+        profile_color: row.profile_color,
+        profile_accent: row.profile_accent,
+        avatar_decoration: row.avatar_decoration,
+        profile_effect: row.profile_effect,
+        member_since: row.created_at,
     }))
 }
 
@@ -415,7 +458,7 @@ async fn handle_get_profile(
     let _user = authenticate_session(&state.db, &state.config, session_token).await?;
 
     let row = sqlx::query!(
-        "SELECT id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links FROM users WHERE id = $1",
+        "SELECT id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links, profile_color, profile_accent, avatar_decoration, profile_effect, created_at FROM users WHERE id = $1",
         target_id
     )
     .fetch_optional(&state.db)
@@ -434,6 +477,11 @@ async fn handle_get_profile(
         presence: row.presence,
         badges: row.badges,
         social_links: row.social_links,
+        profile_color: row.profile_color,
+        profile_accent: row.profile_accent,
+        avatar_decoration: row.avatar_decoration,
+        profile_effect: row.profile_effect,
+        member_since: row.created_at,
     }))
 }
 

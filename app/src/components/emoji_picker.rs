@@ -1,7 +1,10 @@
 use dioxus::prelude::*;
 
 use crate::{
-    components::emoji_data::{CATEGORIES, SKIN_TONES, with_skin_tone},
+    components::{
+        emoji_data::{CATEGORIES, SKIN_TONES, with_skin_tone},
+        icons::{ClockIcon, SearchIcon},
+    },
     platform,
 };
 
@@ -132,10 +135,7 @@ pub fn EmojiPicker(
 
             div { class: "picker-header",
                 div { class: "search-field",
-                    svg { width: "16", height: "16", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round",
-                        circle { cx: "11", cy: "11", r: "7" }
-                        line { x1: "21", y1: "21", x2: "16.65", y2: "16.65" }
-                    }
+                    SearchIcon { size: 16 }
                     input {
                         id: "emoji-search",
                         r#type: "search",
@@ -173,10 +173,7 @@ pub fn EmojiPicker(
                             active_cat.set("recent");
                             let _ = dioxus::document::eval("const el = document.getElementById('emoji-cat-recent'); if (el) el.scrollIntoView({block: 'start'});");
                         },
-                        svg { width: "18", height: "18", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", stroke_linejoin: "round",
-                            circle { cx: "12", cy: "12", r: "9" }
-                            polyline { points: "12 7 12 12 15 14" }
-                        }
+                        ClockIcon { size: 18 }
                     }
                     for cat in CATEGORIES.iter() {
                         button {

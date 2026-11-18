@@ -63,3 +63,28 @@ pub async fn stickers_add_sticker(
     )
     .await
 }
+
+async fn delete_json(path: &str) -> Result<(), ApiError> {
+    platform::http_request("DELETE", path, None, None).await.map(|_| ())
+}
+
+/// Upload a sticker image (PNG/WebP/GIF/AVIF, at most 512 KB). Returns (url, is_animated).
+pub async fn stickers_upload_image(bytes: Vec<u8>, mime: &str) -> Result<(String, bool), ApiError> {
+    let (_, body) = platform::http_request("POST", "/api/stickers/upload", None, Some((bytes, mime))).await?;
+    let v: serde_json::Value = serde_json::from_str(&body).map_err(|_| ApiError { code: "invalid_json".into(), status: 200 })?;
+    let url = v.get("url").and_then(|u| u.as_str()).map(str::to_string).ok_or(ApiError { code: "missing_url".into(), status: 200 })?;
+    Ok((url, v.get("is_animated").and_then(|b| b.as_bool()).unwrap_or(false)))
+}
+
+pub async fn stickers_delete_pack(pack_id: &str) -> Result<(), ApiError> {
+    delete_json(&format!("/api/stickers/packs/{}", urlencoding::encode(pack_id))).await
+}
+
+pub async fn stickers_delete_sticker(pack_id: &str, sticker_id: &str) -> Result<(), ApiError> {
+    delete_json(&format!(
+        "/api/stickers/packs/{}/stickers/{}",
+        urlencoding::encode(pack_id),
+        urlencoding::encode(sticker_id)
+    ))
+    .await
+}

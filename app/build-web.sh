@@ -18,6 +18,6 @@ mkdir -p app/dist/pkg
 wasm-bindgen --target web --out-dir app/dist/pkg --out-name chatw_app "$WASM_PATH"
 cp app/web/index.html app/dist/index.html
 cp app/web/boot.js app/dist/boot.js
-cp app/public/* app/dist/
+cp -r app/public/. app/dist/
 echo "Built Dioxus web bundle -> app/dist/"
 

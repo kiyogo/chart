@@ -5,13 +5,14 @@ use dioxus::prelude::*;
 
 use crate::{
     components::{
-        avatar::Avatar,
         icons::{
             ChevronDownIcon, ChevronRightIcon, CloseIcon, CopyIcon, MessageIcon, PhoneIcon,
             SearchIcon, ShieldIcon, UserIcon, VideoIcon,
         },
         messages::ViewMessage,
+        profile_card::DecoratedAvatar,
     },
+    prefs::PrefsCtx,
     models::UserProfileResponse,
     platform,
     services::api,
@@ -73,12 +74,17 @@ pub fn DmDetailsPanel(
         .and_then(|p| p.display_name.clone())
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| username.clone());
+    let effects_on = use_context::<PrefsCtx>().prefs.read().profile_effects;
+    let c1 = p.as_ref().and_then(|p| p.profile_color.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| "var(--accent)".into());
+    let c2 = p.as_ref().and_then(|p| p.profile_accent.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| c1.clone());
+    let effect = p.as_ref().and_then(|p| p.profile_effect.clone()).unwrap_or_else(|| "none".into());
+    let decoration = p.as_ref().and_then(|p| p.avatar_decoration.clone());
     let banner_style = p
         .as_ref()
         .and_then(|p| p.custom_banner_url.clone())
         .filter(|u| !u.is_empty())
         .map(|u| format!("background-image: url('{}');", platform::resolve_asset_url(&u)))
-        .unwrap_or_default();
+        .unwrap_or_else(|| format!("background: linear-gradient(135deg, {c1}, {c2});"));
     let status_line = p.as_ref().map(|p| {
         let custom = match (p.status_emoji.as_deref(), p.status_text.as_deref()) {
             (Some(e), Some(t)) if !t.is_empty() => format!("{e} {t}"),
@@ -134,9 +140,15 @@ pub fn DmDetailsPanel(
             }
             div { class: "details-scroll",
                 div { class: "details-hero",
-                    div { class: "details-banner", style: "{banner_style}" }
+                    div { class: "details-banner", style: "{banner_style}",
+                        if effects_on && effect != "none" {
+                            div { class: "profile-effect effect-{effect}", aria_hidden: "true",
+                                for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
+                            }
+                        }
+                    }
                     div { class: "details-avatar",
-                        Avatar { name: username.clone(), avatar_url: avatar_url.clone(), size: 80 }
+                        DecoratedAvatar { name: username.clone(), avatar_url: avatar_url.clone(), size: 80, decoration: decoration }
                     }
                     div { class: "details-name", "{display_name}" }
                     div { class: "details-username", "@{username}" }

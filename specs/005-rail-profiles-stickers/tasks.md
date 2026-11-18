@@ -1,0 +1,11 @@
+# Tasks 005
+- [x] T1 Migration 0009 + profile API (fields, member_since, badges read-only, banner URL validation)
+- [x] T2 Sticker upload / delete endpoints + bộ sticker SVG gốc + sửa seed
+- [x] T3 Prefs (ghim cộng đồng/nhóm, hình nền, âm thanh, hiệu ứng) dùng chung qua context
+- [x] T4 Rail trái + thanh tab mobile, sidebar bỏ bộ chuyển cũ
+- [x] T5 ProfileCard + trình chỉnh hồ sơ + popover
+- [x] T6 Quản lý sticker trong Cài đặt; sticker trong DM/kênh
+- [x] T7 Reaction DM realtime
+- [x] T8 Ctrl+K quick switcher
+- [x] T9 Test, ui-audit, ảnh, báo cáo, push
+- [x] T10 (phản hồi giữa chừng) Cột trái chỉ hiện biểu tượng, không chữ; vẽ lại toàn bộ icon theo bộ "ChatW Duo"

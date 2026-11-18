@@ -199,6 +199,8 @@ pub struct DisplayMessage {
     pub is_self: bool,
     pub status: MessageStatus,
     pub reply_to_id: Option<String>,
+    /// emoji -> user ids who reacted (DM reactions are plain metadata on the server).
+    pub reactions: Vec<(String, Vec<String>)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -454,6 +456,16 @@ pub struct UserProfileResponse {
     pub badges: Vec<String>,
     #[serde(default)]
     pub social_links: serde_json::Value,
+    #[serde(default)]
+    pub profile_color: Option<String>,
+    #[serde(default)]
+    pub profile_accent: Option<String>,
+    #[serde(default)]
+    pub avatar_decoration: Option<String>,
+    #[serde(default)]
+    pub profile_effect: Option<String>,
+    #[serde(default)]
+    pub member_since: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

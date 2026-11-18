@@ -108,9 +108,14 @@ pub fn play_notification_chime() {
 
 /// Center-crop and compress selected file from `#avatar-file-input` to 512x512 AVIF (exact parity with image.ts).
 pub async fn process_selected_avatar_bytes() -> Result<Vec<u8>, String> {
+    process_avatar_from_input("avatar-file-input").await
+}
+
+/// Same as [`process_selected_avatar_bytes`] for an arbitrary file input id.
+pub async fn process_avatar_from_input(input_id: &str) -> Result<Vec<u8>, String> {
     let js = r#"
         (async () => {
-            const input = document.getElementById('avatar-file-input');
+            const input = document.getElementById('__INPUT_ID__');
             if (!input || !input.files || input.files.length === 0) {
                 dioxus.send({ error: 'no_file' });
                 return;
@@ -169,7 +174,7 @@ pub async fn process_selected_avatar_bytes() -> Result<Vec<u8>, String> {
             }
         })();
     "#;
-    let mut eval = dioxus::document::eval(js);
+    let mut eval = dioxus::document::eval(&js.replace("__INPUT_ID__", input_id));
     let val: serde_json::Value = eval.recv().await.map_err(|_| "avatar_eval_failed".to_string())?;
     if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
         return Err(err.to_string());
@@ -326,9 +331,14 @@ pub fn copy_to_clipboard(text: &str) {
 
 /// Process a banner image selected from `#banner-file-input` to 960x320 AVIF/WebP/JPEG.
 pub async fn process_selected_banner_bytes() -> Result<Vec<u8>, String> {
+    process_banner_from_input("banner-file-input").await
+}
+
+/// Same as [`process_selected_banner_bytes`] for an arbitrary file input id.
+pub async fn process_banner_from_input(input_id: &str) -> Result<Vec<u8>, String> {
     let js = r#"
         (async () => {
-            const input = document.getElementById('banner-file-input');
+            const input = document.getElementById('__INPUT_ID__');
             if (!input || !input.files || input.files.length === 0) {
                 dioxus.send({ error: 'no_file' });
                 return;
@@ -361,7 +371,7 @@ pub async fn process_selected_banner_bytes() -> Result<Vec<u8>, String> {
             }
         })();
     "#;
-    let mut eval = dioxus::document::eval(js);
+    let mut eval = dioxus::document::eval(&js.replace("__INPUT_ID__", input_id));
     let val: serde_json::Value = eval.recv().await.map_err(|_| "banner_eval_failed".to_string())?;
     if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
         return Err(err.to_string());
@@ -442,5 +452,58 @@ pub async fn stop_voice_recording() -> Result<(Vec<u8>, String), String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(b64)
         .map_err(|_| "invalid_audio_b64".to_string())?;
+    Ok((bytes, mime))
+}
+
+/// Read the image picked in `<input type=file id=input_id>` for use as a sticker.
+/// Animated GIFs up to 512 KB are kept as-is; other images are fitted into 320x320
+/// and re-encoded as WebP. Returns (bytes, mime).
+pub async fn process_selected_sticker(input_id: &str) -> Result<(Vec<u8>, String), String> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            const input = document.getElementById({id_json});
+            if (!input || !input.files || input.files.length === 0) {{ dioxus.send({{ error: 'no_file' }}); return; }}
+            const file = input.files[0];
+            const toB64 = (buf) => {{
+                let s = ''; const bytes = new Uint8Array(buf);
+                for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                return btoa(s);
+            }};
+            try {{
+                if (file.type === 'image/gif' && file.size <= 512 * 1024) {{
+                    dioxus.send({{ b64: toB64(await file.arrayBuffer()), mime: 'image/gif' }});
+                    input.value = '';
+                    return;
+                }}
+                const bitmap = await createImageBitmap(file);
+                const size = 320;
+                const scale = Math.min(size / bitmap.width, size / bitmap.height, 1);
+                const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
+                const canvas = document.createElement('canvas');
+                canvas.width = size; canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(bitmap, Math.round((size - w) / 2), Math.round((size - h) / 2), w, h);
+                const blob = await new Promise((res) => canvas.toBlob(res, 'image/webp', 0.9));
+                if (!blob) throw new Error('encode_failed');
+                dioxus.send({{ b64: toB64(await blob.arrayBuffer()), mime: 'image/webp' }});
+                input.value = '';
+            }} catch (e) {{
+                dioxus.send({{ error: 'unsupported' }});
+            }}
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.map_err(|_| "eval_failed".to_string())?;
+    if let Some(err) = val.get("error").and_then(|e| e.as_str()) {
+        return Err(err.to_string());
+    }
+    use base64::Engine;
+    let b64 = val.get("b64").and_then(|v| v.as_str()).ok_or("no_data")?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "decode_failed".to_string())?;
+    let mime = val.get("mime").and_then(|v| v.as_str()).unwrap_or("image/webp").to_string();
     Ok((bytes, mime))
 }

@@ -47,6 +47,18 @@ const LONG_URL = 'https://github.com/kiyogo/chart/blob/main/app/src/pages/chat.r
 const MULTILINE = 'Dòng một\nDòng hai\nDòng ba';
 
 const results = { run: RUN, base: BASE, checks: [] };
+
+// Build a valid RGBA PNG (rounded colored square) without extra dependencies.
+function makePng(w, h) {
+  const zlib = require('node:zlib');
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (buf) => { let c = 0xffffffff; for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  const raw = Buffer.alloc((w * 4 + 1) * h);
+  for (let y = 0; y < h; y++) { raw[y * (w * 4 + 1)] = 0; for (let x = 0; x < w; x++) { const o = y * (w * 4 + 1) + 1 + x * 4; const inside = Math.hypot(x - w / 2, y - h / 2) < w / 2 - 2; raw[o] = 39; raw[o + 1] = 100; raw[o + 2] = 231; raw[o + 3] = inside ? 255 : 0; } }
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
 function record(name, pass, detail = '') {
   results.checks.push({ name, pass, detail });
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`);
@@ -213,6 +225,112 @@ async function main() {
   const decryptErrors = await alice.page.locator('.message-bubble', { hasText: 'Không thể giải mã' }).count();
   record('no decrypt errors in fresh conversation', decryptErrors === 0, `errors=${decryptErrors}`);
 
+
+  // ---------------- Feature checks (spec 005) ----------------
+  await alice.page.setViewportSize({ width: 1366, height: 768 });
+  await bob.page.setViewportSize({ width: 1366, height: 768 });
+  const A = alice.page, B = bob.page;
+
+  // DM reaction from Alice on Bob's "OK", seen by Bob in realtime
+  const okRow = A.locator('.message-row.received', { hasText: 'OK' }).last();
+  await okRow.hover();
+  await okRow.locator('button[aria-label="Thả biểu cảm 👍"]').click();
+  await B.waitForTimeout(1200);
+  record('DM reaction syncs to the other side', await B.locator('.message-row.sent .reaction-pill', { hasText: '👍' }).count() > 0, '');
+
+  // Built-in sticker inside the E2EE envelope
+  await A.locator('button[aria-label="Chọn sticker"]').first().click();
+  await A.waitForTimeout(800);
+  await shot(A, 'sticker_picker_light_1366x768');
+  await A.locator('.picker-popover .sticker-cell').first().click();
+  await A.waitForTimeout(1200);
+  record('built-in sticker renders for sender', await A.locator('.message-row.sent .sticker-img').count() > 0, '');
+  record('sticker decrypts and renders for receiver', await B.locator('.message-row.received .sticker-img').count() > 0, '');
+
+  // Profile popover from a message avatar
+  await A.locator('.message-row.received .message-avatar-slot button').last().click();
+  await A.waitForTimeout(800);
+  record('profile popover opens from avatar', await A.locator('.profile-popover .profile-card').count() > 0, '');
+  await shot(A, 'profile_popover_light_1366x768');
+  await A.keyboard.press('Escape');
+  await A.waitForTimeout(300);
+  record('profile popover closes with Escape', await A.locator('.profile-popover').count() === 0, '');
+
+  // Quick switcher Ctrl+K
+  await A.keyboard.press('Control+k');
+  await A.waitForTimeout(400);
+  record('quick switcher opens with Ctrl+K', await A.locator('.quick-switcher').isVisible(), '');
+  await A.locator('#quick-switch-input').fill(NAMES.charlie);
+  await shot(A, 'quick_switcher_light_1366x768');
+  await A.keyboard.press('Enter');
+  await A.waitForTimeout(800);
+  record('quick switcher opens the picked chat', await A.locator('.chat-header-title', { hasText: NAMES.charlie }).count() > 0, '');
+
+  // Profile editor: decoration, effect and theme persisted on the server
+  await A.locator('.rail-account').click();
+  await A.locator('.rail-menu .menu-item', { hasText: 'Hồ sơ của tôi' }).click();
+  await A.waitForTimeout(800);
+  await A.locator('.profile-modal button', { hasText: 'Chỉnh sửa hồ sơ' }).click();
+  await A.waitForTimeout(300);
+  await A.locator('.profile-editor input[placeholder="Bạn đang làm gì?"]').fill('Đang thử giao diện mới');
+  await A.locator('.profile-editor textarea').fill('Xin chào, mình là Alice. Hồ sơ này dùng màu chủ đề và hiệu ứng tuyết rơi.');
+  await A.locator('.profile-editor .segmented button', { hasText: 'Trang trí' }).click();
+  await A.locator('.theme-swatch[aria-label="Chủ đề Thiên hà"]').click();
+  await A.locator('.option-tile', { hasText: 'Vương miện' }).click();
+  await A.locator('.option-tile', { hasText: 'Tuyết rơi' }).click();
+  await A.waitForTimeout(500);
+  await shot(A, 'profile_editor_light_1366x768');
+  await A.locator('.profile-editor button', { hasText: 'Lưu thay đổi' }).click();
+  await A.waitForTimeout(1000);
+  const prof = await api(alice, 'GET', `/api/users/${alice.me.id}/profile`);
+  record('profile customization saved on server', prof.body && prof.body.avatar_decoration === 'crown' && prof.body.profile_effect === 'snow' && prof.body.profile_color === '#6D28D9' && !!prof.body.member_since, JSON.stringify({ d: prof.body && prof.body.avatar_decoration, e: prof.body && prof.body.profile_effect, c: prof.body && prof.body.profile_color }));
+  await shot(A, 'profile_view_light_1366x768');
+  await A.locator('.profile-modal button[aria-label="Đóng hồ sơ"]').click().catch(() => {});
+  await A.keyboard.press('Escape');
+
+  // Security: client cannot award itself badges or set an external banner
+  const selfBadge = await api(alice, 'POST', '/api/users/me/profile', { badges: ['staff'] });
+  const after = await api(alice, 'GET', `/api/users/${alice.me.id}/profile`);
+  record('client cannot self-assign badges', (after.body.badges || []).length === 0, `status ${selfBadge.status}`);
+  const extBanner = await api(alice, 'POST', '/api/users/me/profile', { custom_banner_url: 'https://evil.example/x.png' });
+  record('external banner URL rejected', extBanner.status === 400, `status ${extBanner.status}`);
+
+  // Settings › Tùy chỉnh: pin communities + groups to the rail
+  await A.locator('.app-rail button.rail-item[aria-label="Cài đặt"]').click();
+  await A.locator('.settings-nav-item', { hasText: 'Tùy chỉnh' }).click();
+  await A.waitForTimeout(300);
+  await A.locator('label.toggle-row', { hasText: 'Ghim cộng đồng' }).locator('input').check();
+  await A.locator('label.toggle-row', { hasText: 'Ghim nhóm trò chuyện' }).locator('input').check();
+  await A.locator('.wallpaper-tile', { hasText: 'Bong bóng' }).click();
+  await A.waitForTimeout(400);
+  await shot(A, 'settings_customize_light_1366x768');
+  record('pinned communities appear in rail', await A.locator('.rail-pin.community').count() > 0, '');
+  record('pinned groups appear in rail', await A.locator('.rail-pin.group').count() > 0, '');
+
+  // Settings › Sticker: create a pack and upload a real PNG
+  await A.locator('.settings-nav-item', { hasText: 'Sticker' }).click();
+  await A.waitForTimeout(600);
+  await A.locator('input[aria-label="Tên bộ sticker mới"]').fill('Bộ thử nghiệm');
+  await A.locator('.inline-form button[type="submit"]').click();
+  await A.waitForTimeout(800);
+  const png = makePng(96, 96);
+  await A.locator('input[aria-label="Tên sticker"]').fill('Ô vuông');
+  await A.locator('#sticker-file-input').setInputFiles({ name: 'square.png', mimeType: 'image/png', buffer: png });
+  await A.waitForTimeout(2000);
+  await shot(A, 'settings_stickers_light_1366x768');
+  record('uploaded sticker appears in my pack', await A.locator('.sticker-pack-card .sticker-cell.manage img').count() > 0, '');
+  const badUpload = await alice.ctx.request.fetch(`${BASE}/api/stickers/upload`, { method: 'POST', headers: { 'content-type': 'image/png' }, data: Buffer.from('<svg onload=alert(1)></svg>') });
+  record('non-image sticker upload rejected', badUpload.status() === 400, `status ${badUpload.status()}`);
+  for (let i = 0; i < 2; i++) {
+    const back = A.locator('button[aria-label="Đóng cài đặt"]').first();
+    if (!(await back.isVisible().catch(() => false))) break;
+    await back.click(); await A.waitForTimeout(300);
+  }
+  // reset wallpaper/pins for the layout sweep that follows
+  await A.evaluate((id) => localStorage.removeItem('chatw_prefs_' + id), alice.me.id);
+  await A.reload(); await waitApp(A);
+  await openDm(A, NAMES.bob);
+
   // Viewport sweep on Alice's DM view
   for (const theme of ['light', 'dark']) {
     await alice.page.evaluate((t) => { localStorage.setItem('chatw_theme', t); document.documentElement.setAttribute('data-theme', t); }, theme);
@@ -254,9 +372,12 @@ async function main() {
       // On mobile the chat view hides navigation: go back to the list first.
       const backBtn = alice.page.locator('.main-stage .back-btn').first();
       if (await backBtn.isVisible().catch(() => false)) { await backBtn.click(); await alice.page.waitForTimeout(250); }
-      const accountBtn = alice.page.locator('.account-btn').first();
-      if (await accountBtn.isVisible().catch(() => false)) { await accountBtn.click(); await alice.page.waitForTimeout(200); }
-      const settingsBtn = alice.page.locator('.account-menu button[aria-label="Cài đặt"]').first();
+      let settingsBtn = alice.page.locator('.app-rail button.rail-item[aria-label="Cài đặt"]').first();
+      if (!(await settingsBtn.isVisible().catch(() => false))) {
+        await alice.page.locator('.rail-account').first().click().catch(() => {});
+        await alice.page.waitForTimeout(200);
+        settingsBtn = alice.page.locator('.rail-menu button[aria-label="Mở cài đặt"]').first();
+      }
       if (await settingsBtn.isVisible().catch(() => false)) {
         await settingsBtn.click();
         await alice.page.waitForTimeout(500);
@@ -290,10 +411,13 @@ async function main() {
   }
 
   await alice.page.setViewportSize({ width: 1366, height: 768 });
-  await alice.page.locator('.section-tab', { hasText: 'Cộng đồng' }).first().click();
+  await alice.page.locator('.app-rail button[aria-label="Cộng đồng"]').first().click();
   await alice.page.waitForTimeout(500);
   await shot(alice.page, 'communities_list_light_1366x768');
-  record('no left server rail rendered', await alice.page.locator('.nav-rail').count() === 0, '');
+  record('rail shows navigation, no servers by default', await alice.page.locator('.app-rail .rail-item').count() >= 4 && await alice.page.locator('.rail-pin').count() === 0, '');
+  const railText = await alice.page.evaluate(() => (() => { const r = document.querySelector('.app-rail').cloneNode(true); r.querySelectorAll('.user-avatar').forEach((e) => e.remove()); r.style.position = 'fixed'; document.body.appendChild(r); const t = r.innerText; r.remove(); return t; })().replace(/[0-9+\s]/g, ''));
+  record('rail is icon-only (no text labels)', railText === '', `text="${railText}"`);
+  record('all rail icons use the ChatW Duo set', await alice.page.evaluate(() => [...document.querySelectorAll('.app-rail svg')].every((s) => s.classList.contains('cw-icon'))), '');
   const srvBtn = alice.page.locator(`button[aria-label="Cộng đồng ChatW Studio ${RUN}"]`).first();
   if (await srvBtn.isVisible().catch(() => false)) {
     await srvBtn.click();
@@ -308,7 +432,7 @@ async function main() {
   for (const theme of ['light', 'dark']) {
     await alice.page.evaluate((t) => { localStorage.setItem('chatw_theme', t); document.documentElement.setAttribute('data-theme', t); }, theme);
     await alice.page.setViewportSize({ width: 1366, height: 768 });
-    await alice.page.locator('.section-tab', { hasText: 'Tin nhắn' }).first().click();
+    await alice.page.locator('.app-rail button[aria-label="Tin nhắn"]').first().click();
     await alice.page.waitForTimeout(400);
     const grpItem = alice.page.locator('.chat-item', { hasText: `Nhóm dự án ${RUN}` }).first();
     if (await grpItem.isVisible().catch(() => false)) {

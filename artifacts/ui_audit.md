@@ -70,3 +70,20 @@ Phản hồi: "không có cột server ở bên trái nữa, phải luôn luôn 
 - **Sửa dữ liệu sai:** danh sách server trước đây luôn hiện "0 thành viên" vì backend không trả `member_count` / `is_owner`.
   - `GET /api/servers` nay trả thêm hai trường này (chỉ bổ sung, các endpoint khác không đổi).
 - UI audit có thêm kiểm tra `no left server rail rendered`: 443/443 đạt. `cargo test --workspace` đạt.
+
+## Vòng 4 — Spec 005: cột trái kiểu rail không server, hồ sơ có hiệu ứng, sticker, bộ icon riêng
+Phản hồi:
+- "Cột bên trái giống kiểu Discord nhưng không hiện server, hiện Tin nhắn, Bạn bè, Cộng đồng…"
+- "Tùy setting để hiện cộng đồng / nhóm ở cột trái."
+- "Thêm hồ sơ có hiệu ứng, sticker, icon."
+- "Chỉ hiện logo icon, không hiện chữ; thiết kế lại toàn bộ icon bằng SVG theo phong cách riêng."
+
+| Hạng mục | Kết quả |
+|---|---|
+| Cột trái | Chỉ biểu tượng (Tin nhắn, Bạn bè, Cộng đồng, Tìm nhanh, Cài đặt, avatar tài khoản), tooltip tên khi rê chuột, badge số. Mặc định không hiện server. Trên điện thoại thành thanh tab dưới. |
+| Ghim | Cài đặt › Tùy chỉnh: "Ghim cộng đồng", "Ghim nhóm trò chuyện" (lưu riêng từng tài khoản trên thiết bị) |
+| Bộ icon "ChatW Duo" | 47 icon SVG vẽ mới trên lưới 24px: nét bo 1.8px + lớp nền mờ cùng màu. Logo mới là bong bóng có chữ "w". Thay hết SVG viết tay rải rác trong component. |
+| Hồ sơ | Màu chủ đề 2 tông (8 bộ có sẵn + chọn tự do), 6 khung avatar (vầng sáng, vương miện, mầm xanh, chòm sao, tai mèo), 6 hiệu ứng động (lấp lánh, tuyết, cực quang, bong bóng, pháo giấy). Trình chỉnh có xem trước trực tiếp; popover khi bấm avatar; ngày tham gia. |
+| Sticker | Bộ "Bóng Chat" 10 sticker SVG tự vẽ; tạo bộ riêng, tải ảnh (PNG/WebP/AVIF/GIF ≤ 512 KB, kiểm magic bytes phía server), xóa; gửi trong DM (bên trong bản mã E2EE), nhóm, kênh |
+| Tiện ích thêm | Reaction DM realtime; Ctrl+K chuyển nhanh; 5 hình nền chat; bật/tắt âm báo; bật/tắt hiệu ứng hồ sơ |
+| Lỗi đã sửa | Sticker mặc định hỏng (lưu emoji thay URL, cover ngoài bị CSP chặn); client tự gắn huy hiệu; banner URL tùy ý; danh sách sticker lộ bộ của người khác; menu tài khoản bị ép cao 8px trên mobile; popover không nhận Esc; thông báo lỗi tải sticker hiện chữ thô |
