@@ -962,12 +962,30 @@ input::placeholder {
   }
 }
 
-/* Server & Channel Styling */
-.server-tab-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow-y: auto;
+.call-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    transition: opacity 120ms ease;
+}
+
+.call-btn:hover {
+    opacity: 0.9;
+}
+
+.call-btn-danger {
+    background-color: var(--status-danger);
+    color: #FFFFFF;
+}
+
+.call-btn-success {
+    background-color: var(--status-success);
+    color: #FFFFFF;
 }
 
 .server-actions-bar {

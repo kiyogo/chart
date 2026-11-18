@@ -240,7 +240,7 @@ pub fn ActiveCallOverlay(
                             {
                                 let uid = p.user_id.clone();
                                 let is_speaking = active_speaker_id().as_deref() == Some(&uid);
-                                let glow = if is_speaking { "box-shadow: 0 0 20px rgba(16, 185, 129, 0.6); border: 2px solid #10B981;" } else { "" };
+                                let glow = if is_speaking { "border: 2px solid var(--status-success);" } else { "" };
                                 rsx! {
                                     div {
                                         key: "{p.user_id}",
@@ -298,7 +298,7 @@ pub fn ActiveCallOverlay(
                 // End Call Button
                 button {
                     class: "partner-action-btn",
-                    style: "background: #EF4444; color: white; border: none; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);",
+                    class: "call-btn call-btn-danger",
                     onclick: move |_| on_end_call.call(()),
                     PhoneOffIcon { size: 24 }
                 }

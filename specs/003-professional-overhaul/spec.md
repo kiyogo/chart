@@ -1,22 +1,18 @@
 # Spec: Professional Overhaul of ChatW
 
 ## 1. Mục tiêu
-Nâng cấp ChatW từ bản MVP hiện tại thành ứng dụng chat chuyên nghiệp, đa nền tảng, với giao diện Flat Modern, hệ thống nhóm kênh hoàn chỉnh, và nâng cao các tính năng nhắn tin/gọi thoại/hồ sơ cá nhân.
+Nâng cấp giao diện ChatW từ phong cách "AI demo" sang "Modern Flat Desktop UI" chuyên nghiệp, đồng nhất, và bổ sung các tính năng cộng đồng (kênh, phân quyền, hồ sơ đầy đủ, sticker, poll...).
 
-## 2. Các thay đổi chính
-- **Design System**: Loại bỏ hoàn toàn hiệu ứng AI (glow, bóng giả), chuyển sang Flat Modern UI với màu sắc trung tính và khoảng cách hợp lý. Hỗ trợ Light/Dark mode chuẩn semantic tokens.
-- **Group Channels**: Hỗ trợ danh mục (Categories) và đa loại kênh (Text, Voice, Video, Announcement, Forum, Media).
-- **Profile System**: Nâng cấp hồ sơ cá nhân với ảnh bìa, bio, trạng thái, và nhiều tùy chọn cá nhân hóa.
-- **Advanced Messaging**: Thêm Reaction, Poll, Event, Reminder, Stickers, và cải thiện quản lý tin nhắn (edit, pin, bookmark).
-- **Settings & Notifications**: Hệ thống cài đặt chi tiết và thông báo linh hoạt.
+## 2. Các thay đổi chính (UX/UI)
+- Loại bỏ hoàn toàn: `box-shadow` phát sáng, gradient không cần thiết, border blur, hiệu ứng AI-style.
+- Áp dụng hệ thống token CSS semantic cho Light/Dark mode.
+- Cấu trúc Nhóm -> Category -> Channel.
+- Hệ thống hồ sơ cá nhân hoàn chỉnh.
+- Giao diện cuộc gọi video/thoại tối giản, chuyên nghiệp.
+- Hệ thống thông báo và cài đặt chi tiết.
 
-## 3. Tiêu chí nghiệm thu (Acceptance Criteria)
-- [ ] Xóa toàn bộ box-shadow, neon, glow trong CSS.
-- [ ] Implement bộ CSS Variables semantic (colors, spacing, typography).
-- [ ] Light mode và Dark mode nhất quán, không trộn lẫn.
-- [ ] Giao diện cuộc gọi (Audio/Video) gọn gàng, không glow, tile responsive.
-- [ ] Hệ thống nhóm có Categories & Channels hoạt động.
-- [ ] Hồ sơ cá nhân đầy đủ tính năng.
-- [ ] Kiểm thử E2E đạt 100% với Alice, Bob, Charlie trên môi trường thực tế.
-- [ ] Không làm mất dữ liệu người dùng cũ.
-- [ ] Không thay đổi giao thức E2EE cốt lõi.
+## 3. Các yêu cầu kỹ thuật
+- Framework: Rust + Dioxus 0.7.x (giữ nguyên).
+- Backend: Rust + Axum + PostgreSQL (giữ nguyên).
+- Hỗ trợ đa nền tảng: Web, Windows, Linux, macOS, Android, iOS.
+- Không phá vỡ E2EE hiện có.

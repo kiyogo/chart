@@ -52,7 +52,7 @@ pub fn IncomingCallModal(
                     // Reject Button
                     button {
                         class: "partner-action-btn",
-                        style: "background: #EF4444; color: white; border: none; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);",
+                        class: "call-btn call-btn-danger",
                         onclick: move |_| on_reject.call(()),
                         PhoneOffIcon { size: 24 }
                     }
@@ -60,7 +60,7 @@ pub fn IncomingCallModal(
                     // Accept Button
                     button {
                         class: "partner-action-btn",
-                        style: "background: #10B981; color: white; border: none; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);",
+                        class: "call-btn call-btn-success",
                         onclick: move |_| on_accept.call(()),
                         if is_video {
                             VideoIcon { size: 24 }

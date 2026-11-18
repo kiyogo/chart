@@ -1,17 +1,21 @@
 # Plan: Professional Overhaul of ChatW
 
-## 1. Design System Overhaul (Ưu tiên)
-- Tạo CSS Token định nghĩa màu sắc, khoảng cách, font, bo góc.
-- Áp dụng vào `app/assets/main.css`.
-- Loại bỏ các class chứa hiệu ứng glow, bóng quá đậm, gradient neon.
+## 1. Giai đoạn thiết kế (CSS System)
+- Định nghĩa hệ thống biến CSS `semantic tokens` (Light/Dark mode).
+- Tạo `app/assets/theme.css` mới.
+- Audit và loại bỏ toàn bộ CSS vi phạm trong `app/assets/main.css` và các component.
 
-## 2. Structural/Database Overhaul
-- Migration DB hỗ trợ Category, Channel, và Profile nâng cao.
-- Cập nhật Models (`web/backend/src/models.rs`, `app/src/models.rs`) để hỗ trợ Group/Channel.
+## 2. Giai đoạn Backend (Data Models & Migrations)
+- Tạo migrations cho Categories, Channels, Profile details, Stickers, Polls.
+- Cập nhật backend models và API handlers.
 
-## 3. Implementation Phases
-- **P1: Design System & Semantic CSS**.
-- **P2: Group/Channel Infrastructure & UI**.
-- **P3: Profile & Contact System**.
-- **P4: Messaging Features (Stickers, Reactions, Polls, Events)**.
-- **P5: Settings, Notifications & Final QA**.
+## 3. Giai đoạn Frontend (Components)
+- Xây dựng component hệ thống (Global Layout, Modal, Popover).
+- Xây dựng lại cấu trúc Nhóm/Kênh UI.
+- Xây dựng Profile System.
+- Xây dựng Sticker System.
+- Xây dựng lại UI Cuộc gọi (theo yêu cầu 6, 7).
+
+## 4. Giai đoạn kiểm thử (Automated & Manual)
+- E2E testing cho từng tính năng mới.
+- Kiểm tra tính nhất quán giao diện trên đa nền tảng.
