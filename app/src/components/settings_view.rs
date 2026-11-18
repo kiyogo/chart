@@ -6,9 +6,13 @@ use crate::{
         details_panel::format_fingerprint,
         guide::GuideSettings,
         settings_extra::{AccountSecurity, CustomizationSettings, LibrarySettings},
+        settings_more::{AdvancedLookSettings, AutoReplySettings, ChatPrefsSettings, LanguageSettings, LockSettings, NotificationSettings, PrivacySettingsPanel},
+        business_view::BusinessSettings,
+        bots_view::BotsSettings,
         icons::{
             BackIcon, CheckIcon, ChevronRightIcon, KeyIcon, LogoutIcon, MonitorIcon,
             MoonIcon, BookIcon, LibraryIcon, PaletteIcon, ShieldIcon, SlidersIcon, SunIcon, UserIcon,
+            BellIcon, BlockIcon, BotIcon, GlobeIcon, LockIcon, MessageIcon, ReplyIcon, StoreIcon,
         },
     },
     crypto::e2ee::{UserKeys, export_user_keys_json, import_user_keys_json},
@@ -25,6 +29,14 @@ enum SettingsTab {
     Guide,
     Security,
     Session,
+    Chat,
+    Notifications,
+    Privacy,
+    Lock,
+    AutoReply,
+    Business,
+    Bots,
+    Language,
 }
 
 #[component]
@@ -40,6 +52,7 @@ pub fn SettingsView(
     on_logout: EventHandler<()>,
     #[props(default)] on_username_changed: Option<EventHandler<String>>,
     #[props(default)] on_replay_tour: Option<EventHandler<()>>,
+    #[props(default)] on_lock_now: Option<EventHandler<()>>,
 ) -> Element {
     let on_replay_tour = on_replay_tour.unwrap_or_else(|| EventHandler::new(|_| {}));
     let mut tab = use_signal(|| SettingsTab::Account);
@@ -90,11 +103,19 @@ pub fn SettingsView(
                     div { class: "settings-nav-title", "Người dùng" }
                     for (t, label) in [
                         (SettingsTab::Account, "Tài khoản của tôi"),
+                        (SettingsTab::Privacy, "Quyền riêng tư và chặn"),
+                        (SettingsTab::Security, "Bảo mật và mã hóa"),
+                        (SettingsTab::Lock, "Khóa ứng dụng (mã PIN)"),
+                        (SettingsTab::Session, "Thiết bị và phiên"),
+                        (SettingsTab::Chat, "Trò chuyện"),
+                        (SettingsTab::Notifications, "Thông báo và âm thanh"),
+                        (SettingsTab::AutoReply, "Trả lời tự động"),
                         (SettingsTab::Appearance, "Giao diện"),
                         (SettingsTab::Customize, "Tùy chỉnh"),
+                        (SettingsTab::Language, "Ngôn ngữ"),
                         (SettingsTab::Stickers, "Thư viện"),
-                        (SettingsTab::Security, "Bảo mật và mã hóa"),
-                        (SettingsTab::Session, "Phiên đăng nhập"),
+                        (SettingsTab::Business, "Kinh doanh"),
+                        (SettingsTab::Bots, "Bot"),
                         (SettingsTab::Guide, "Hướng dẫn"),
                     ] {
                         button {
@@ -111,6 +132,14 @@ pub fn SettingsView(
                                 SettingsTab::Customize => rsx! { SlidersIcon {} },
                                 SettingsTab::Stickers => rsx! { LibraryIcon {} },
                                 SettingsTab::Guide => rsx! { BookIcon {} },
+                                SettingsTab::Chat => rsx! { MessageIcon { size: 18 } },
+                                SettingsTab::Notifications => rsx! { BellIcon {} },
+                                SettingsTab::Privacy => rsx! { BlockIcon { size: 18 } },
+                                SettingsTab::Lock => rsx! { LockIcon { size: 18 } },
+                                SettingsTab::AutoReply => rsx! { ReplyIcon {} },
+                                SettingsTab::Business => rsx! { StoreIcon { size: 18 } },
+                                SettingsTab::Bots => rsx! { BotIcon { size: 18 } },
+                                SettingsTab::Language => rsx! { GlobeIcon { size: 18 } },
                             }
                             span { "{label}" }
                             span { class: "chevron", ChevronRightIcon { size: 16 } }
@@ -127,10 +156,18 @@ pub fn SettingsView(
                                     SettingsTab::Account => "Tài khoản của tôi",
                                     SettingsTab::Appearance => "Giao diện",
                                     SettingsTab::Security => "Bảo mật và mã hóa",
-                                    SettingsTab::Session => "Phiên đăng nhập",
+                                    SettingsTab::Session => "Thiết bị và phiên",
                                     SettingsTab::Customize => "Tùy chỉnh",
                                     SettingsTab::Stickers => "Thư viện",
                                     SettingsTab::Guide => "Hướng dẫn",
+                                    SettingsTab::Chat => "Trò chuyện",
+                                    SettingsTab::Notifications => "Thông báo và âm thanh",
+                                    SettingsTab::Privacy => "Quyền riêng tư và chặn",
+                                    SettingsTab::Lock => "Khóa ứng dụng",
+                                    SettingsTab::AutoReply => "Trả lời tự động",
+                                    SettingsTab::Business => "Kinh doanh",
+                                    SettingsTab::Bots => "Bot",
+                                    SettingsTab::Language => "Ngôn ngữ",
                                 }
                             }
                             p { class: "settings-page-desc",
@@ -138,7 +175,15 @@ pub fn SettingsView(
                                     SettingsTab::Account => "Ảnh đại diện, ảnh bìa và thông tin định danh của bạn.",
                                     SettingsTab::Appearance => "Chủ đề màu, màu nhấn, cỡ chữ và mật độ hiển thị. Lưu trên thiết bị này.",
                                     SettingsTab::Security => "Khóa mã hóa đầu cuối của thiết bị, vân tay khóa, sao lưu và khôi phục.",
-                                    SettingsTab::Session => "Quản lý phiên đăng nhập trên trình duyệt này.",
+                                    SettingsTab::Session => "Thiết bị đã đăng nhập (tên như Windows 1, Linux 2 có thể đổi) và phiên trên trình duyệt này.",
+                                    SettingsTab::Chat => "Cách soạn, trả lời, gợi ý và trạng thái đã xem / đang soạn tin.",
+                                    SettingsTab::Notifications => "Thông báo hệ thống và âm báo khi có tin nhắn, lời mời và cuộc gọi.",
+                                    SettingsTab::Privacy => "Ai có thể liên hệ, gọi, thêm bạn vào nhóm và danh sách người bị chặn.",
+                                    SettingsTab::Lock => "Yêu cầu mã PIN khi mở lại ChatW sau thời gian không hoạt động.",
+                                    SettingsTab::AutoReply => "Tự động trả lời khi bạn vắng mặt hoặc ngoài giờ.",
+                                    SettingsTab::Business => "Trang công khai giới thiệu bạn, sản phẩm và công cụ nhắn tin cho người bán hàng.",
+                                    SettingsTab::Bots => "Tạo bot, nhận token và lập trình bot của riêng bạn.",
+                                    SettingsTab::Language => "Ngôn ngữ hiển thị của ứng dụng.",
                                     SettingsTab::Customize => "Cột điều hướng, hình nền trò chuyện, âm báo và hiệu ứng. Lưu riêng cho tài khoản trên thiết bị này.",
                                     SettingsTab::Stickers => "Sticker, emoji và GIF của riêng bạn.",
                                     SettingsTab::Guide => "Giới thiệu, hướng dẫn từng bước, phím tắt và câu hỏi thường gặp.",
@@ -517,7 +562,15 @@ pub fn SettingsView(
                                 }
                             },
 
-                            SettingsTab::Customize => rsx! { CustomizationSettings {} },
+                            SettingsTab::Customize => rsx! { CustomizationSettings {} AdvancedLookSettings {} },
+                            SettingsTab::Chat => rsx! { ChatPrefsSettings {} },
+                            SettingsTab::Notifications => rsx! { NotificationSettings {} },
+                            SettingsTab::Privacy => rsx! { PrivacySettingsPanel {} },
+                            SettingsTab::Lock => rsx! { LockSettings { on_lock_now: move |_| if let Some(h) = on_lock_now { h.call(()) } } },
+                            SettingsTab::AutoReply => rsx! { AutoReplySettings {} },
+                            SettingsTab::Business => rsx! { BusinessSettings {} },
+                            SettingsTab::Bots => rsx! { BotsSettings { my_username: current_username.clone() } },
+                            SettingsTab::Language => rsx! { LanguageSettings {} },
                             SettingsTab::Stickers => rsx! { LibrarySettings { current_user_id: current_user_id.clone() } },
                             SettingsTab::Guide => rsx! { GuideSettings { on_replay_tour: move |_| on_replay_tour.call(()) } },
                             SettingsTab::Session => rsx! {

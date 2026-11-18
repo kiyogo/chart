@@ -81,6 +81,11 @@ pub fn NavigationSidebar(
     on_open_server_invite: EventHandler<()>,
     on_toggle_voice_mute: EventHandler<()>,
     on_leave_voice: EventHandler<()>,
+    /// Replaces the built-in direct message list (unified conversation list).
+    #[props(default)] dm_content: Option<Element>,
+    /// Groups moved to Communities, listed above the servers.
+    #[props(default)] community_groups: Vec<GroupItem>,
+    #[props(default)] on_open_server_settings: Option<EventHandler<()>>,
 ) -> Element {
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
     let mut dm_query = use_signal(String::new);
@@ -137,6 +142,7 @@ pub fn NavigationSidebar(
                         NavSection::DirectMessages => "Tin nhắn",
                         NavSection::Friends => "Bạn bè",
                         NavSection::Communities | NavSection::Server(_) => "Cộng đồng",
+                        NavSection::Search => "Tìm kiếm",
                         NavSection::Settings => "Cài đặt",
                     }
                 }
@@ -162,6 +168,8 @@ pub fn NavigationSidebar(
             }
 
             match active_section {
+                NavSection::DirectMessages if dm_content.is_some() => rsx! { {dm_content} },
+                NavSection::Search => rsx! {},
                 NavSection::DirectMessages => rsx! {
                     div { class: "sidebar-search",
                         div { class: "search-field",
@@ -445,10 +453,20 @@ pub fn NavigationSidebar(
                                 button {
                                     r#type: "button",
                                     class: "icon-btn",
-                                    title: "Tạo mã mời tham gia",
+                                    title: "Mời bạn bè bằng thẻ mời hoặc liên kết",
                                     aria_label: "Mời tham gia cộng đồng",
                                     onclick: move |_| on_open_server_invite.call(()),
                                     UserPlusIcon { size: 16 }
+                                }
+                                if let Some(h) = on_open_server_settings {
+                                    button {
+                                        r#type: "button",
+                                        class: "icon-btn",
+                                        title: "Cài đặt cộng đồng: vai trò, quyền, thành viên",
+                                        aria_label: "Cài đặt cộng đồng",
+                                        onclick: move |_| h.call(()),
+                                        crate::components::icons::SettingsIcon {}
+                                    }
                                 }
                                 button {
                                     r#type: "button",
@@ -605,6 +623,29 @@ pub fn NavigationSidebar(
                                 }
                             }
                         }
+                        if !community_groups.is_empty() {
+                            div { class: "sidebar-section-header", span { "Nhóm" } }
+                            for grp in community_groups.iter().cloned() {
+                                {
+                                    let is_sel = active_group_id.as_deref() == Some(grp.id.as_str());
+                                    let g_click = grp.clone();
+                                    rsx! {
+                                        button {
+                                            key: "{grp.id}",
+                                            r#type: "button",
+                                            class: if is_sel { "chat-item community-item selected" } else { "chat-item community-item" },
+                                            onclick: move |_| on_select_group.call(g_click.clone()),
+                                            Avatar { name: grp.name.clone(), avatar_url: grp.avatar_url.clone(), size: 40 }
+                                            div { class: "chat-item-info",
+                                                span { class: "chat-item-name", "{grp.name}" }
+                                                span { class: "chat-item-preview", "{grp.member_count} thành viên · Nhóm" }
+                                            }
+                                            ChevronRightIcon { size: 16 }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         button {
                             r#type: "button",
                             class: "create-community-btn",
@@ -612,7 +653,7 @@ pub fn NavigationSidebar(
                             span { class: "community-icon add", PlusIcon { size: 18 } }
                             span { class: "chat-item-info",
                                 span { class: "chat-item-name", "Tạo hoặc tham gia cộng đồng" }
-                                span { class: "chat-item-preview", "Bằng tên mới hoặc mã mời" }
+                                span { class: "chat-item-preview", "Bằng tên mới hoặc liên kết mời" }
                             }
                         }
                     }

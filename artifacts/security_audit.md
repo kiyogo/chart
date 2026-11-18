@@ -35,3 +35,14 @@ end-to-end, WebSocket auth, WebRTC authorization.
 - `add_sticker` chỉ nhận URL `/uploads/stickers/…`; xóa sticker/bộ chỉ cho tác giả; danh sách chỉ gồm bộ có sẵn + bộ của chính mình.
 - Sticker trong DM đi bên trong phong bì E2EE như văn bản; máy chủ không biết sticker nào được gửi.
 - Reaction DM là siêu dữ liệu máy chủ nhìn thấy (emoji + người thả) — không mã hóa đầu cuối, ghi chú để người dùng biết.
+
+## Spec 007 (đã kiểm tra)
+- Chặn: máy chủ từ chối tin nhắn, lời mời kết bạn, cuộc gọi và thêm vào nhóm giữa hai người đã chặn nhau.
+- "Chính mình" mã hóa bằng khóa của chính bạn; máy chủ chỉ lưu bản mã. Nhãn thiết bị nằm bên trong phong bì E2EE.
+- Ảnh trong DM: AES-256-GCM với khóa ngẫu nhiên mỗi ảnh, chỉ bản mã được tải lên; khóa đi trong tin nhắn E2EE. Tải tệp trả `application/octet-stream` + `nosniff`.
+- Mã PIN: chỉ lưu PBKDF2-SHA256 210.000 vòng có muối ngẫu nhiên trên thiết bị; so sánh thời gian hằng; sai 5 lần thì chờ tăng dần. Đây là khóa giao diện cục bộ, không thay mật khẩu.
+- Giá trị từ người khác chèn vào CSS (hình nền chung, ảnh bìa trên thẻ mời, banner) chỉ nhận đường dẫn cùng nguồn gồm ký tự an toàn hoặc `#RRGGBB`; ảnh đại diện trên thẻ mời không tải URL bên ngoài (tránh lộ IP).
+- Vai trò cộng đồng: mọi bit quyền mới (mời ra, @everyone, vào kênh thoại) được kiểm tra ở máy chủ; không thể cấp hoặc thu hồi quyền mình không có; không ai mời được chủ sở hữu ra; quản trị viên chỉ chủ sở hữu mời ra được.
+- Bot: token chỉ lưu SHA-256, hiện một lần; bot riêng tư chỉ nói chuyện với chủ; tên bot không được trùng tên tài khoản người khác.
+- Tin nhắn nhóm, kênh cộng đồng và bot không mã hóa đầu cuối (máy chủ đọc được) — ghi rõ trong giao diện.
+- Trả lời tự động và lời chào Kinh doanh gửi từ thiết bị của bạn (mã hóa đầu cuối); có dấu `[Tự động]` để hai tài khoản tự động không trả lời nhau vô hạn.

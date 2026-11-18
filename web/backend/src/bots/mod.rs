@@ -34,6 +34,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_my_bots).post(create_bot))
         .route("/public", get(list_public_bots))
+        .route("/chats", get(list_my_bot_chats))
         .route("/by-name/{username}", get(get_bot_by_name))
         .route("/{id}", get(get_bot).put(update_bot).delete(delete_bot))
         .route("/{id}/token", post(rotate_token))
@@ -137,6 +138,27 @@ async fn list_public_bots(State(state): State<AppState>, headers: HeaderMap) -> 
         out.push(b);
     }
     Ok(Json(out))
+}
+
+/// Bots the caller has a conversation with (most recent first).
+async fn list_my_bot_chats(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<Vec<serde_json::Value>>> {
+    let uid = auth_user(&state, &headers).await?;
+    let rows = sqlx::query!(
+        r#"SELECT b.id, b.username, b.display_name, b.avatar_url, b.description,
+                  (SELECT text FROM bot_messages m WHERE m.bot_id = b.id AND m.user_id = $1 ORDER BY seq DESC LIMIT 1) AS "last_text?",
+                  (SELECT MAX(seq) FROM bot_messages m WHERE m.bot_id = b.id AND m.user_id = $1) AS "last_seq?"
+           FROM bots b
+           WHERE EXISTS (SELECT 1 FROM bot_messages m WHERE m.bot_id = b.id AND m.user_id = $1) OR b.owner_id = $1
+           ORDER BY 7 DESC NULLS LAST"#,
+        uid
+    )
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| serde_json::json!({ "id": r.id, "username": r.username, "display_name": r.display_name, "avatar_url": r.avatar_url, "description": r.description, "last_text": r.last_text }))
+            .collect(),
+    ))
 }
 
 async fn get_bot_by_name(State(state): State<AppState>, headers: HeaderMap, Path(username): Path<String>) -> AppResult<Json<BotItem>> {

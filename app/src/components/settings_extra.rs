@@ -396,6 +396,7 @@ fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> E
     let mut confirm_all = use_signal(|| false);
     let mut confirm_one = use_signal(|| Option::<String>::None);
     let mut notice = use_signal(|| Option::<(bool, String)>::None);
+    let mut renaming = use_signal(|| Option::<(String, String)>::None);
     let reload = move || {
         spawn(async move {
             if let Ok(list) = library::sessions_list().await {
@@ -425,9 +426,36 @@ fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> E
                         div { key: "{s.id}", class: "device-row",
                             span { class: "device-icon", DevicesIcon { size: 20 } }
                             div { class: "settings-row-text",
-                                span { class: "settings-label",
-                                    "{device_label(s.device_name.as_deref())}"
-                                    if s.is_current { span { class: "chip-current", "Thiết bị này" } }
+                                if renaming().as_ref().is_some_and(|(id, _)| id == &s.id) {
+                                    form { class: "inline-form",
+                                        onsubmit: { let id = s.id.clone(); move |e: Event<FormData>| {
+                                            e.prevent_default();
+                                            let id = id.clone();
+                                            let name = renaming().map(|(_, n)| n.trim().to_string()).unwrap_or_default();
+                                            if name.is_empty() { return; }
+                                            spawn(async move {
+                                                match crate::services::social::session_rename(&id, &name).await {
+                                                    Ok(_) => notice.set(Some((false, "Đã đổi tên thiết bị".into()))),
+                                                    Err(_) => notice.set(Some((true, "Không đổi được tên thiết bị".into()))),
+                                                }
+                                                renaming.set(None);
+                                                reload();
+                                            });
+                                        } },
+                                        input { r#type: "text", maxlength: "40", aria_label: "Tên thiết bị", value: "{renaming().map(|(_, n)| n).unwrap_or_default()}",
+                                            oninput: { let id = s.id.clone(); move |e: Event<FormData>| renaming.set(Some((id.clone(), e.value()))) } }
+                                        button { r#type: "submit", class: "btn-primary", "Lưu" }
+                                        button { r#type: "button", class: "btn-ghost", onclick: move |_| renaming.set(None), "Hủy" }
+                                    }
+                                } else {
+                                    span { class: "settings-label",
+                                        "{s.device_label.clone().unwrap_or_else(|| device_label(s.device_name.as_deref()))}"
+                                        if s.is_current { span { class: "chip-current", "Thiết bị này" } }
+                                        button { r#type: "button", class: "btn-ghost small", title: "Đổi tên thiết bị",
+                                            onclick: { let id = s.id.clone(); let cur = s.device_label.clone().unwrap_or_default(); move |_| renaming.set(Some((id.clone(), cur.clone()))) },
+                                            "Đổi tên"
+                                        }
+                                    }
                                 }
                                 span { class: "settings-sublabel",
                                     "{s.ip_address.clone().unwrap_or_else(|| \"IP không rõ\".into())} · hoạt động {s.last_active.as_deref().map(relative_time).unwrap_or_default()}"

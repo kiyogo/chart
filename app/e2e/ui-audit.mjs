@@ -311,7 +311,7 @@ async function main() {
   await A.waitForTimeout(300);
   await A.locator('label.toggle-row', { hasText: 'Ghim cộng đồng' }).locator('input').check();
   await A.locator('label.toggle-row', { hasText: 'Ghim nhóm trò chuyện' }).locator('input').check();
-  await A.locator('.wallpaper-tile', { hasText: 'Bong bóng' }).click();
+  await A.getByRole('radio', { name: 'Bong bóng' }).first().click();
   await A.waitForTimeout(400);
   await shot(A, 'settings_customize_light_1366x768');
   record('pinned communities appear in rail', await A.locator('.rail-pin.community').count() > 0, '');
@@ -336,6 +336,153 @@ async function main() {
     if (!(await back.isVisible().catch(() => false))) break;
     await back.click(); await A.waitForTimeout(300);
   }
+  // ---------------- Feature checks (spec 007) ----------------
+  const safe = async (name, fn) => { try { await fn(); } catch (e) { record(name, false, String(e).split('\n')[0].slice(0, 160)); } };
+  await safe('self chat flow', async () => {
+    const selfRow = A.locator('[data-conv="self"]');
+    record('"Chính mình" is listed in Messages', await selfRow.count() > 0, '');
+    await selfRow.click(); await A.waitForTimeout(1200);
+    record('self chat shows this device', await A.locator('.device-chip.current').count() > 0, (await A.locator('.device-chip').allInnerTexts()).join('|'));
+    await sendText(A, 'Ghi chú cho chính mình');
+    await A.waitForTimeout(1200);
+    record('self note is encrypted, sent and shown', await A.locator('.message-row', { hasText: 'Ghi chú cho chính mình' }).count() > 0, '');
+    await shot(A, 'self_chat_light_1366x768');
+  });
+  await safe('composer suggestions', async () => {
+    await openDm(A, NAMES.bob);
+    const dmInput = A.locator('#dm-chat-input');
+    await dmInput.fill('chào @' + NAMES.bob.slice(0, 4));
+    await A.waitForTimeout(400);
+    record('@ mention suggestions appear', await A.locator('.suggest-list .suggest-item').count() > 0, '');
+    await dmInput.press('Tab');
+    record('Tab inserts the mention', (await dmInput.inputValue()).includes('@' + NAMES.bob + ' '), await dmInput.inputValue());
+    await dmInput.fill('cảm ơn');
+    await A.waitForTimeout(900);
+    record('sticker suggestions match the message', await A.locator('.sticker-suggest .sticker-suggest-cell').count() > 0, '');
+    await dmInput.fill('');
+  });
+  await safe('spreadsheet paste', async () => {
+    await A.evaluate(() => {
+      const el = document.getElementById('dm-chat-input');
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'Tên\tSố lượng\nTáo\t3\nCam\t5');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await A.waitForTimeout(600);
+    const asked = await A.locator('.paste-choice').count() > 0;
+    record('pasting spreadsheet cells asks image / table / text', asked, '');
+    await shot(A, 'paste_choice_light_1366x768');
+    await A.locator('.paste-choice button', { hasText: 'Dạng bảng' }).click();
+    await A.waitForTimeout(2000);
+    record('table message renders for the receiver (E2EE)', await B.locator('.table-card').count() > 0, '');
+  });
+  await safe('poll', async () => {
+    await A.locator('.composer-tools > button').click();
+    await A.locator('.tools-menu .menu-item', { hasText: 'Bình chọn' }).click();
+    await A.locator('input[placeholder="Đi ăn trưa ở đâu?"]').fill('Tối nay ăn gì?');
+    await A.locator('input[placeholder="Lựa chọn 1"]').fill('Phở');
+    await A.locator('input[placeholder="Lựa chọn 2"]').fill('Bún chả');
+    await A.locator('.modal-overlay button.btn-primary', { hasText: 'Gửi' }).click();
+    await A.waitForTimeout(2000);
+    const poll = B.locator('.poll-option', { hasText: 'Phở' }).first();
+    record('poll arrives for the friend', await poll.count() > 0, '');
+    await poll.click(); await B.waitForTimeout(2000);
+    record('vote is counted on both sides', (await A.locator('.poll-option', { hasText: 'Phở' }).first().innerText()).includes('1'), '');
+  });
+  await safe('message pin + seen', async () => {
+    await sendText(A, 'Tin nhắn quan trọng');
+    await A.waitForTimeout(800);
+    const row = A.locator('.message-row', { hasText: 'Tin nhắn quan trọng' }).last();
+    await row.hover();
+    await row.locator('button[aria-label="Ghim tin nhắn"]').click();
+    await A.waitForTimeout(900);
+    record('pinned message bar appears', await A.locator('.pinned-bar').count() > 0, '');
+    await openDm(B, NAMES.alice);
+    await A.waitForTimeout(1500);
+    record('"Đã xem" shows after the friend reads', await A.locator('.seen-indicator').count() > 0, '');
+    await shot(A, 'dm_pins_seen_light_1366x768');
+  });
+  await safe('conversation menu', async () => {
+    const bobRow = A.locator('.conv-row', { hasText: NAMES.bob }).first();
+    await bobRow.hover(); await bobRow.locator('.conv-more').click();
+    await A.locator('.conv-menu .account-menu-item', { hasText: 'Ghim lên đầu' }).click();
+    await A.waitForTimeout(800);
+    record('pinned conversation moves to the pinned section', await A.locator('.sidebar-section-header', { hasText: 'Đã ghim' }).count() > 0, '');
+    await A.locator('.chat-header button[aria-label="Tùy chọn khác"]').click();
+    await A.locator('.chat-more-menu .account-menu-item', { hasText: 'Chặn người này' }).click();
+    await A.waitForTimeout(900);
+    record('blocking shows a banner and disables sending', await A.locator('.chat-banner.danger').count() > 0 && await A.locator('.composer-disabled').count() > 0, '');
+    await shot(A, 'blocked_light_1366x768');
+    await A.locator('.chat-banner.danger button', { hasText: 'Bỏ chặn' }).click();
+    await A.waitForTimeout(900);
+    record('unblocking restores the composer', await A.locator('#dm-chat-input').count() > 0, '');
+  });
+  await safe('group management', async () => {
+    await A.locator('.conv-row', { hasText: `Nhóm dự án ${RUN}` }).first().locator('.chat-item').click();
+    await A.waitForTimeout(1500);
+    await A.locator('.chat-header button[aria-label="Tùy chọn khác"]').click();
+    await A.locator('.chat-more-menu .account-menu-item', { hasText: 'Quản lý nhóm' }).click();
+    await A.waitForTimeout(900);
+    record('group management dialog opens', await A.locator('.manage-dialog').count() > 0, '');
+    await shot(A, 'group_manage_light_1366x768');
+    await A.locator('.manage-dialog .filter-chip', { hasText: 'Tham gia' }).click();
+    await A.waitForTimeout(900);
+    record('group invite is a link', (await A.locator('.invite-link-text').first().innerText()).includes('/invite/g/'), await A.locator('.invite-link-text').first().innerText());
+    await A.keyboard.press('Escape');
+    await A.waitForTimeout(300);
+  });
+  await safe('search page', async () => {
+    await A.locator('.app-rail button[aria-label="Tìm kiếm"]').click();
+    await A.waitForTimeout(500);
+    await A.locator('#global-search-input').fill(NAMES.charlie.slice(0, 9));
+    await A.waitForTimeout(1200);
+    record('full-page search finds friends', await A.locator('.search-page .result-card', { hasText: NAMES.charlie }).count() > 0, '');
+    await shot(A, 'search_light_1366x768');
+  });
+  await safe('language', async () => {
+    await A.locator('.app-rail button.rail-item[aria-label="Cài đặt"]').click();
+    await A.locator('.settings-nav-item', { hasText: 'Ngôn ngữ' }).click();
+    await A.locator('.lang-tile', { hasText: 'English' }).click();
+    await A.waitForTimeout(500);
+    record('language switch translates the rail', await A.locator('.app-rail button[aria-label="Messages"]').count() > 0, '');
+    await A.locator('.lang-tile', { hasText: 'العربية' }).click();
+    await A.waitForTimeout(400);
+    record('right-to-left languages flip the layout', (await A.evaluate(() => document.documentElement.dir)) === 'rtl', '');
+    await shot(A, 'settings_language_ar_1366x768');
+    await A.locator('.lang-tile', { hasText: 'Tiếng Việt' }).click();
+    await A.waitForTimeout(400);
+  });
+  await safe('pin lock', async () => {
+    await A.locator('.settings-nav-item', { hasText: 'Khóa ứng dụng' }).click();
+    await A.waitForTimeout(400);
+    const pins = A.locator('input.pin-input');
+    await pins.nth(0).fill('2468'); await pins.nth(1).fill('2468');
+    await A.locator('button.btn-primary', { hasText: 'Đặt mã PIN' }).click();
+    await A.waitForTimeout(2000);
+    await A.locator('button', { hasText: 'Khóa ngay' }).click();
+    await A.waitForTimeout(600);
+    record('lock screen appears', await A.locator('.lock-screen').isVisible(), '');
+    await shot(A, 'pin_lock_light_1366x768');
+    await A.keyboard.type('1111'); await A.keyboard.press('Enter'); await A.waitForTimeout(1500);
+    record('wrong PIN is rejected', await A.locator('.lock-screen .status-badge.error').count() > 0, '');
+    await A.keyboard.type('2468'); await A.keyboard.press('Enter'); await A.waitForTimeout(2000);
+    record('correct PIN unlocks', await A.locator('.lock-screen').count() === 0, '');
+  });
+  await safe('settings pages render', async () => {
+    for (const tab of ['Trò chuyện', 'Thông báo và âm thanh', 'Quyền riêng tư và chặn', 'Trả lời tự động', 'Kinh doanh', 'Bot']) {
+      await A.locator('.settings-nav-item', { hasText: tab }).click();
+      await A.waitForTimeout(700);
+      const ok = await A.locator('.settings-content .settings-group').count() > 0;
+      record(`settings page "${tab}" renders`, ok, '');
+      await shot(A, `settings_${tab.split(' ')[0].normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').toLowerCase()}_light_1366x768`);
+    }
+  });
+  for (let i = 0; i < 2; i++) {
+    const back = A.locator('button[aria-label="Đóng cài đặt"]').first();
+    if (!(await back.isVisible().catch(() => false))) break;
+    await back.click(); await A.waitForTimeout(300);
+  }
+
   // reset wallpaper/pins for the layout sweep that follows
   await A.evaluate((id) => localStorage.removeItem('chatw_prefs_' + id), alice.me.id);
   await A.reload(); await waitApp(A);

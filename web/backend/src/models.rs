@@ -10,8 +10,11 @@ pub mod permissions {
     pub const MANAGE_SERVER: i64 = 1 << 4;
     pub const CREATE_INVITES: i64 = 1 << 5;
     pub const ADMINISTRATOR: i64 = 1 << 6;
-    pub const DEFAULT_EVERYONE: i64 = VIEW_CHANNELS | SEND_MESSAGES | CREATE_INVITES;
-    pub const ALL: i64 = (1 << 7) - 1;
+    pub const KICK_MEMBERS: i64 = 1 << 7;
+    pub const MENTION_EVERYONE: i64 = 1 << 8;
+    pub const CONNECT_VOICE: i64 = 1 << 9;
+    pub const DEFAULT_EVERYONE: i64 = VIEW_CHANNELS | SEND_MESSAGES | CREATE_INVITES | CONNECT_VOICE;
+    pub const ALL: i64 = (1 << 10) - 1;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -4,6 +4,8 @@
 
 use dioxus::prelude::*;
 
+use crate::i18n::t;
+
 use crate::{
     components::{
         avatar::Avatar,
@@ -46,8 +48,10 @@ pub fn AppRail(
     on_open_profile: EventHandler<()>,
     on_open_settings: EventHandler<()>,
     on_logout: EventHandler<()>,
+    #[props(default)] on_select_search: Option<EventHandler<()>>,
 ) -> Element {
     let mut menu_open = use_signal(|| false);
+    let in_search = active_section == NavSection::Search;
     let in_dm = active_section == NavSection::DirectMessages;
     let in_friends = active_section == NavSection::Friends;
     let in_comm = matches!(active_section, NavSection::Communities | NavSection::Server(_));
@@ -64,9 +68,9 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_dm { "rail-item active" } else { "rail-item" },
-                    title: "Tin nhắn",
-                    "data-tip": "Tin nhắn",
-                    aria_label: "Tin nhắn",
+                    title: "{t(\"nav.messages\")}",
+                    "data-tip": "{t(\"nav.messages\")}",
+                    aria_label: "{t(\"nav.messages\")}",
                     aria_current: if in_dm { "page" } else { "false" },
                     onclick: move |_| on_select_dm.call(()),
                     span { class: "rail-icon", MessageIcon { size: 20 }
@@ -76,9 +80,9 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_friends { "rail-item active" } else { "rail-item" },
-                    title: "Bạn bè",
-                    "data-tip": "Bạn bè",
-                    aria_label: "Bạn bè",
+                    title: "{t(\"nav.friends\")}",
+                    "data-tip": "{t(\"nav.friends\")}",
+                    aria_label: "{t(\"nav.friends\")}",
                     aria_current: if in_friends { "page" } else { "false" },
                     onclick: move |_| on_select_friends.call(()),
                     span { class: "rail-icon", FriendsIcon {}
@@ -88,21 +92,21 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_comm { "rail-item active" } else { "rail-item" },
-                    title: "Cộng đồng",
-                    "data-tip": "Cộng đồng",
-                    aria_label: "Cộng đồng",
+                    title: "{t(\"nav.communities\")}",
+                    "data-tip": "{t(\"nav.communities\")}",
+                    aria_label: "{t(\"nav.communities\")}",
                     aria_current: if in_comm { "page" } else { "false" },
                     onclick: move |_| on_select_communities.call(()),
                     span { class: "rail-icon", CompassIcon { size: 20 } }
                 }
                 button {
                     r#type: "button",
-                    class: "rail-item",
-                    title: "Tìm nhanh (Ctrl+K)",
-                    "data-tip": "Tìm nhanh (Ctrl+K)",
-                    aria_label: "Tìm nhanh",
-                    aria_keyshortcuts: "Control+K",
-                    onclick: move |_| on_quick_switch.call(()),
+                    class: if in_search { "rail-item active" } else { "rail-item" },
+                    title: "{t(\"nav.search\")} (Ctrl+K: {t(\"nav.quick\")})",
+                    "data-tip": "{t(\"nav.search\")}",
+                    aria_label: "{t(\"nav.search\")}",
+                    aria_current: if in_search { "page" } else { "false" },
+                    onclick: move |_| match on_select_search { Some(h) => h.call(()), None => on_quick_switch.call(()) },
                     span { class: "rail-icon", SearchIcon { size: 20 } }
                 }
             }
@@ -158,9 +162,9 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_settings { "rail-item compact active" } else { "rail-item compact" },
-                    title: "Cài đặt",
-                    "data-tip": "Cài đặt",
-                    aria_label: "Cài đặt",
+                    title: "{t(\"nav.settings\")}",
+                    "data-tip": "{t(\"nav.settings\")}",
+                    aria_label: "{t(\"nav.settings\")}",
                     onclick: move |_| on_open_settings.call(()),
                     span { class: "rail-icon", SettingsIcon {} }
                 }

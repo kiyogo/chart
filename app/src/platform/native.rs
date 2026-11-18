@@ -290,3 +290,14 @@ pub async fn run_ws_loop(tx: UnboundedSender<WsEvent>, stop: Arc<AtomicBool>) {
         retry_delay_ms = (retry_delay_ms * 1.5).min(10000.0);
     }
 }
+
+/// Download raw bytes from an API path (used for encrypted attachments).
+pub async fn fetch_bytes(path: &str) -> Result<Vec<u8>, String> {
+    let _ = session_token_store();
+    let url = if path.starts_with("http") { path.to_string() } else { format!("{}{}", api_base(), path) };
+    let resp = http_client().get(&url).send().await.map_err(|_| "network_error".to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("http_{}", resp.status().as_u16()));
+    }
+    resp.bytes().await.map(|b| b.to_vec()).map_err(|_| "read_failed".to_string())
+}

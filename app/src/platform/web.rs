@@ -219,3 +219,30 @@ pub async fn run_ws_loop(tx: UnboundedSender<WsEvent>, stop: Arc<AtomicBool>) {
         retry_delay_ms = (retry_delay_ms * 1.5).min(10000.0);
     }
 }
+
+/// Download raw bytes from an API path (used for encrypted attachments).
+pub async fn fetch_bytes(path: &str) -> Result<Vec<u8>, String> {
+    let url_json = serde_json::to_string(path).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            try {{
+                const res = await fetch({url_json}, {{ credentials: 'include' }});
+                if (!res.ok) {{ dioxus.send({{ error: 'http_' + res.status }}); return; }}
+                const buf = new Uint8Array(await res.arrayBuffer());
+                let s = '';
+                for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+                dioxus.send({{ b64: btoa(s) }});
+            }} catch (e) {{ dioxus.send({{ error: 'network_error' }}); }}
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let v = eval.recv::<serde_json::Value>().await.map_err(|_| "eval_failed".to_string())?;
+    if let Some(e) = v.get("error").and_then(|e| e.as_str()) {
+        return Err(e.to_string());
+    }
+    use base64::Engine;
+    let b64 = v.get("b64").and_then(|b| b.as_str()).ok_or("no_data")?;
+    base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "decode_failed".to_string())
+}

@@ -1,3 +1,4 @@
+pub mod conversations;
 pub mod modals;
 pub mod rail;
 pub mod sidebar;
@@ -8,6 +9,7 @@ pub enum NavSection {
     Friends,
     Communities,
     Server(String),
+    Search,
     Settings,
 }
 

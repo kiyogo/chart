@@ -170,24 +170,28 @@ async fn community_page(State(state): State<AppState>, Path(server_id): Path<Uui
     body.push_str(&format!(r#"<div class="head"><div class="avatar">{}</div><div><h1>{}</h1><div class="muted">{}</div></div></div>"#, esc(&initial), esc(&s.name), esc(&short)));
     body.push_str(r#"<div class="section"><span class="chip ok">Cộng đồng công khai đã xác minh</span></div></div>"#);
     for ch in channels {
-        let msgs = sqlx::query!(
-            r#"SELECT m.content, m.created_at, u.username AS "username!" FROM channel_messages m JOIN users u ON u.id = m.sender_id
-               WHERE m.channel_id = $1 ORDER BY m.created_at DESC LIMIT 30"#,
+        // Pinned ("good") messages first, then the latest ones, oldest at the top.
+        let mut msgs = sqlx::query!(
+            r#"SELECT m.content, m.created_at, m.is_pinned, u.username AS "username!" FROM channel_messages m JOIN users u ON u.id = m.sender_id
+               WHERE m.channel_id = $1 ORDER BY m.is_pinned DESC, m.created_at DESC LIMIT 30"#,
             ch.id
         )
         .fetch_all(&state.db)
         .await
         .unwrap_or_default();
+        msgs.sort_by(|a, b| b.is_pinned.cmp(&a.is_pinned).then(b.created_at.cmp(&a.created_at)));
         if msgs.is_empty() {
             continue;
         }
         body.push_str(&format!(r#"<div class="card"><div class="section"><div class="ch"># {}</div>"#, esc(&ch.name)));
-        for m in msgs.iter().rev() {
+        let (pinned, recent): (Vec<_>, Vec<_>) = msgs.iter().partition(|m| m.is_pinned);
+        for m in pinned.iter().chain(recent.iter().rev()) {
             body.push_str(&format!(
-                r#"<div class="msg"><div class="avatar" style="width:36px;height:36px;border:0;font-size:15px">{}</div><div><b>{} <span class="muted">{}</span></b><p>{}</p></div></div>"#,
+                r#"<div class="msg"><div class="avatar" style="width:36px;height:36px;border:0;font-size:15px">{}</div><div><b>{} <span class="muted">{}</span>{}</b><p>{}</p></div></div>"#,
                 esc(&m.username.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default()),
                 esc(&m.username),
                 m.created_at.format("%d/%m/%Y"),
+                if m.is_pinned { r#" <span class="chip ok">Nổi bật</span>"# } else { "" },
                 esc(&m.content)
             ));
         }

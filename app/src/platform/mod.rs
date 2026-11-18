@@ -75,6 +75,44 @@ pub fn install_audio_unlock() {
     );
 }
 
+/// Notification sounds synthesised with WebAudio (no audio files to load).
+pub fn play_sound(name: &str) {
+    let n = serde_json::to_string(name).unwrap_or_else(|_| "\"pop\"".into());
+    let _ = dioxus::document::eval(&format!(
+        r#"
+        try {{
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (AC) {{
+                const ctx = window.__chatwAudioCtx || new AC();
+                if (!window.__chatwAudioCtx) window.__chatwAudioCtx = ctx;
+                const tone = (f0, f1, start, dur, type, vol) => {{
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = type;
+                    const t = ctx.currentTime + start;
+                    osc.frequency.setValueAtTime(f0, t);
+                    osc.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8);
+                    gain.gain.setValueAtTime(0.0001, t);
+                    gain.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                    osc.connect(gain); gain.connect(ctx.destination);
+                    osc.start(t); osc.stop(t + dur + 0.02);
+                }};
+                const play = () => {{
+                    switch ({n}) {{
+                        case 'chime': tone(880, 660, 0, 0.3, 'sine', 0.18); tone(1320, 990, 0.12, 0.35, 'sine', 0.1); break;
+                        case 'soft': tone(520, 500, 0, 0.45, 'sine', 0.12); break;
+                        case 'bubble': tone(300, 900, 0, 0.12, 'sine', 0.16); tone(500, 1200, 0.1, 0.12, 'sine', 0.12); break;
+                        default: tone(660, 990, 0, 0.14, 'triangle', 0.2);
+                    }}
+                }};
+                if (ctx.state === 'suspended') ctx.resume().then(play); else play();
+            }}
+        }} catch (e) {{}}
+        "#
+    ));
+}
+
 pub fn play_notification_chime() {
     let _ = dioxus::document::eval(
         r#"
@@ -281,6 +319,70 @@ pub fn load_appearance() -> Appearance {
 }
 
 /// Persist and apply appearance. "system" follows `prefers-color-scheme` live.
+fn hex_luminance(hex: &str) -> f64 {
+    let h = hex.trim_start_matches('#');
+    let ch = |i: usize| u8::from_str_radix(h.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0) as f64 / 255.0;
+    let lin = |c: f64| if c <= 0.03928 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
+    0.2126 * lin(ch(0)) + 0.7152 * lin(ch(2)) + 0.0722 * lin(ch(4))
+}
+
+/// Readable text colour on top of a custom background colour.
+pub fn contrast_text(hex: &str) -> &'static str {
+    if hex_luminance(hex) > 0.42 { "#111419" } else { "#FFFFFF" }
+}
+
+/// Apply the user's deep customisation (custom accent, bubbles, shapes, widths,
+/// fonts, app wallpaper). Values are validated by `Prefs::sanitize` first.
+pub fn apply_customization(p: &crate::prefs::Prefs) {
+    let (wp_kind, wp_value) = if p.app_wallpaper.is_empty() {
+        ("none".to_string(), String::new())
+    } else if let Some(c) = p.app_wallpaper.strip_prefix("color:") {
+        ("color".to_string(), c.to_string())
+    } else if p.app_wallpaper.starts_with("/uploads/media/") {
+        ("image".to_string(), format!("url('{}')", resolve_asset_url(&p.app_wallpaper)))
+    } else {
+        (format!("preset-{}", p.app_wallpaper), String::new())
+    };
+    let vars = serde_json::json!({
+        "--accent": p.custom_accent,
+        "--accent-hover": if p.custom_accent.is_empty() { String::new() } else { format!("color-mix(in srgb, {} 86%, #000)", p.custom_accent) },
+        "--accent-soft": if p.custom_accent.is_empty() { String::new() } else { format!("color-mix(in srgb, {} 14%, transparent)", p.custom_accent) },
+        "--accent-soft-strong": if p.custom_accent.is_empty() { String::new() } else { format!("color-mix(in srgb, {} 24%, transparent)", p.custom_accent) },
+        "--on-accent": if p.custom_accent.is_empty() { "" } else { contrast_text(&p.custom_accent) },
+        "--msg-sent": p.bubble_self,
+        "--msg-sent-text": if p.bubble_self.is_empty() { "" } else { contrast_text(&p.bubble_self) },
+        "--msg-recv": p.bubble_other,
+        "--msg-recv-text": if p.bubble_other.is_empty() { "" } else { contrast_text(&p.bubble_other) },
+        "--app-wp-color": if wp_kind == "color" { wp_value.clone() } else { String::new() },
+        "--app-wp-image": if wp_kind == "image" { wp_value.clone() } else { String::new() },
+        "--app-wp-dim": format!("{}", p.app_wallpaper_dim as f32 / 100.0),
+        "--app-wp-blur": format!("{}px", p.app_wallpaper_blur),
+    });
+    let attrs = serde_json::json!({
+        "data-bubble-shape": p.bubble_shape,
+        "data-avatar-shape": p.avatar_shape,
+        "data-chat-width": p.chat_width,
+        "data-font": p.font_family,
+        "data-reduce-motion": p.reduce_motion.to_string(),
+        "data-show-avatars": p.show_avatars.to_string(),
+        "data-app-wp": wp_kind,
+        "data-custom-accent": (!p.custom_accent.is_empty()).to_string(),
+    });
+    let _ = dioxus::document::eval(&format!(
+        r#"
+        (function() {{
+            const root = document.documentElement;
+            const vars = {vars};
+            for (const [k, v] of Object.entries(vars)) {{
+                if (v) root.style.setProperty(k, v); else root.style.removeProperty(k);
+            }}
+            const attrs = {attrs};
+            for (const [k, v] of Object.entries(attrs)) root.setAttribute(k, v);
+        }})();
+        "#
+    ));
+}
+
 pub fn apply_appearance(a: &Appearance) {
     storage_set("chatw_theme", &a.theme);
     storage_set("chatw_accent", &a.accent);
@@ -536,4 +638,208 @@ pub async fn read_selected_file_raw(input_id: &str) -> Result<(Vec<u8>, String),
     let b64 = val.get("b64").and_then(|v| v.as_str()).ok_or("no_data")?;
     let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "decode_failed".to_string())?;
     Ok((bytes, val.get("mime").and_then(|v| v.as_str()).unwrap_or("image/png").to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// Spec 007 helpers: notifications, deep links, idle lock, paste, table images
+// ---------------------------------------------------------------------------
+
+/// Ask the browser for notification permission. Resolves to "granted" / "denied" / "unsupported".
+pub async fn request_notification_permission() -> String {
+    let mut ev = dioxus::document::eval(
+        r#"
+        (async () => {
+            if (!('Notification' in window)) { dioxus.send('unsupported'); return; }
+            try { dioxus.send(await Notification.requestPermission()); } catch (e) { dioxus.send('denied'); }
+        })();
+        "#,
+    );
+    ev.recv::<String>().await.unwrap_or_else(|_| "unsupported".into())
+}
+
+/// Show a system notification (no-op when permission is missing).
+pub fn show_notification(title: &str, body: &str, tag: &str) {
+    let t = serde_json::to_string(title).unwrap_or_default();
+    let b = serde_json::to_string(body).unwrap_or_default();
+    let g = serde_json::to_string(tag).unwrap_or_default();
+    let _ = dioxus::document::eval(&format!(
+        "try {{ if ('Notification' in window && Notification.permission === 'granted') {{ const n = new Notification({t}, {{ body: {b}, tag: {g}, icon: '/logo.svg' }}); n.onclick = () => {{ window.focus(); n.close(); }}; }} }} catch (e) {{}}"
+    ));
+}
+
+/// True when the app window is visible and focused.
+pub async fn is_window_active() -> bool {
+    let mut ev = dioxus::document::eval("dioxus.send(!document.hidden && document.hasFocus());");
+    ev.recv::<bool>().await.unwrap_or(true)
+}
+
+/// Read and clear a deep link (`/invite/g/CODE`, `/invite/s/CODE`, `?dm=name`, `?bot=name`).
+pub async fn take_deep_link() -> Option<String> {
+    let mut ev = dioxus::document::eval(
+        r#"
+        const p = window.location.pathname + window.location.search;
+        if (p && p !== '/' && (p.startsWith('/invite/') || window.location.search.length > 1)) {
+            try { history.replaceState(null, '', '/'); } catch (e) {}
+            dioxus.send(p);
+        } else { dioxus.send(''); }
+        "#,
+    );
+    ev.recv::<String>().await.ok().filter(|s| !s.is_empty())
+}
+
+/// A same-origin asset path that is safe to interpolate into CSS `url('...')`.
+pub fn safe_asset_path(p: &str) -> bool {
+    p.starts_with('/') && !p.contains("..") && p.len() < 300 && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_'))
+}
+
+/// Open a URL in a new tab / the system browser (http/https only).
+pub fn open_external_url(url: &str) {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return;
+    }
+    let u = serde_json::to_string(url).unwrap_or_default();
+    let _ = dioxus::document::eval(&format!("try {{ window.open({u}, '_blank', 'noopener,noreferrer'); }} catch (e) {{}}"));
+}
+
+/// Move keyboard focus into a freshly opened dialog so Escape and Tab work.
+pub fn focus_selector(selector: &str) {
+    let s = serde_json::to_string(selector).unwrap_or_default();
+    let _ = dioxus::document::eval(&format!(
+        "setTimeout(() => {{ const el = document.querySelector({s}); if (el) {{ if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1'); el.focus({{ preventScroll: true }}); }} }}, 40);"
+    ));
+}
+
+/// Public origin of the web app (for shareable links).
+pub async fn app_origin() -> String {
+    let mut ev = dioxus::document::eval("dioxus.send(window.location.origin || '');");
+    let o = ev.recv::<String>().await.unwrap_or_default();
+    if o.starts_with("http") { o } else { api_base() }
+}
+
+/// Share a link with the OS share sheet when available, otherwise copy it.
+pub fn share_link(title: &str, url: &str) {
+    let t = serde_json::to_string(title).unwrap_or_default();
+    let u = serde_json::to_string(url).unwrap_or_default();
+    let _ = dioxus::document::eval(&format!(
+        "(async () => {{ try {{ if (navigator.share) {{ await navigator.share({{ title: {t}, url: {u} }}); return; }} }} catch (e) {{}} try {{ await navigator.clipboard.writeText({u}); }} catch (e) {{}} }})();"
+    ));
+}
+
+/// Install the inactivity watcher once. Resolves every time the user comes back
+/// after being idle (or away) for at least `minutes`.
+pub fn idle_watch(minutes: u32) -> dioxus::document::Eval {
+    dioxus::document::eval(&format!(
+        r#"
+        window.__cwIdleLimit = {minutes} * 60 * 1000;
+        window.__cwIdleSend = (m) => dioxus.send(m);
+        if (!window.__cwIdle) {{
+            window.__cwIdle = true;
+            const KEY = 'chatw_last_active';
+            window.__cwLast = Number(localStorage.getItem(KEY) || Date.now());
+            const mark = () => {{
+                const now = Date.now();
+                if (now - window.__cwLast >= window.__cwIdleLimit) window.__cwIdleSend('lock');
+                window.__cwLast = now;
+                localStorage.setItem(KEY, String(now));
+            }};
+            ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((e) => window.addEventListener(e, mark, {{ passive: true }}));
+            document.addEventListener('visibilitychange', () => {{ if (!document.hidden) mark(); }});
+            setInterval(() => {{ if (Date.now() - window.__cwLast >= window.__cwIdleLimit) window.__cwIdleSend('lock'); }}, 30000);
+        }}
+        if (Date.now() - window.__cwLast >= window.__cwIdleLimit) window.__cwIdleSend('lock');
+        "#
+    ))
+}
+
+/// Watch paste events on a composer textarea: images and spreadsheet (tab-separated)
+/// text are reported instead of being pasted when `intercept_tables` is true.
+pub fn paste_watch(input_id: &str, intercept_tables: bool) -> dioxus::document::Eval {
+    let id = serde_json::to_string(input_id).unwrap_or_default();
+    dioxus::document::eval(&format!(
+        r#"
+        const attach = () => {{
+            const el = document.getElementById({id});
+            if (!el) {{ setTimeout(attach, 300); return; }}
+            if (el.__cwPaste) return;
+            el.__cwPaste = true;
+            el.addEventListener('paste', async (e) => {{
+                const cd = e.clipboardData;
+                if (!cd) return;
+                const file = [...(cd.files || [])].find((f) => f.type.startsWith('image/'));
+                if (file) {{
+                    e.preventDefault();
+                    if (file.size > 8 * 1024 * 1024) {{ dioxus.send({{ kind: 'error', text: 'too_large' }}); return; }}
+                    const buf = new Uint8Array(await file.arrayBuffer());
+                    let s = '';
+                    for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+                    dioxus.send({{ kind: 'image', b64: btoa(s), mime: file.type }});
+                    return;
+                }}
+                const text = cd.getData('text/plain') || '';
+                if ({intercept_tables} && text.includes('\t')) {{
+                    const rows = text.replace(/\r/g, '').split('\n').filter((r) => r.length);
+                    if (rows.length >= 1 && rows.some((r) => r.includes('\t'))) {{
+                        e.preventDefault();
+                        dioxus.send({{ kind: 'table', text: rows.join('\n') }});
+                    }}
+                }}
+            }});
+        }};
+        attach();
+        "#
+    ))
+}
+
+/// Render tab-separated text as a PNG table image (for "paste Excel as image").
+pub async fn render_table_png(tsv: &str) -> Result<Vec<u8>, String> {
+    let t = serde_json::to_string(tsv).unwrap_or_default();
+    let mut ev = dioxus::document::eval(&format!(
+        r#"
+        (async () => {{
+            const rows = {t}.split('\n').slice(0, 60).map((r) => r.split('\t').slice(0, 20));
+            const cols = Math.max(...rows.map((r) => r.length));
+            const c = document.createElement('canvas');
+            const ctx = c.getContext('2d');
+            const font = '14px Inter, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif';
+            ctx.font = font;
+            const pad = 10, rowH = 30;
+            const widths = Array.from({{ length: cols }}, (_, i) => Math.min(280, Math.max(48, ...rows.map((r) => ctx.measureText(r[i] || '').width + pad * 2))));
+            const W = Math.ceil(widths.reduce((a, b) => a + b, 0)), H = rows.length * rowH;
+            const scale = 2;
+            c.width = W * scale; c.height = H * scale;
+            ctx.scale(scale, scale);
+            ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
+            rows.forEach((r, ri) => {{
+                if (ri === 0) {{ ctx.fillStyle = '#EAF0FD'; ctx.fillRect(0, 0, W, rowH); }}
+                else if (ri % 2 === 0) {{ ctx.fillStyle = '#F6F8FB'; ctx.fillRect(0, ri * rowH, W, rowH); }}
+                let x = 0;
+                for (let ci = 0; ci < cols; ci++) {{
+                    const txt = r[ci] || '';
+                    ctx.fillStyle = ri === 0 ? '#1B2440' : '#2B3245';
+                    ctx.font = (ri === 0 ? '600 ' : '') + font;
+                    let shown = txt;
+                    while (shown.length > 1 && ctx.measureText(shown).width > widths[ci] - pad * 2) shown = shown.slice(0, -2) + '…';
+                    const num = /^-?[\d.,]+%?$/.test(txt.trim());
+                    ctx.textAlign = num ? 'right' : 'left';
+                    ctx.fillText(shown, num ? x + widths[ci] - pad : x + pad, ri * rowH + 20);
+                    x += widths[ci];
+                }}
+            }});
+            const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+            const buf = new Uint8Array(await blob.arrayBuffer());
+            let s = '';
+            for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+            dioxus.send(btoa(s));
+        }})();
+        "#
+    ));
+    let b64 = ev.recv::<String>().await.map_err(|_| "render_failed".to_string())?;
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "decode_failed".to_string())
+}
+
+/// Image size (width, height) of encoded bytes, via the browser decoder.
+pub async fn image_bytes_to_data_url(bytes: &[u8], mime: &str) -> String {
+    use base64::Engine;
+    format!("data:{};base64,{}", mime, base64::engine::general_purpose::STANDARD.encode(bytes))
 }

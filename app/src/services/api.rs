@@ -168,16 +168,36 @@ pub async fn messages_send(
     recipient_envelope: &str,
     sender_envelope: &str,
 ) -> Result<SendMessageResponse, ApiError> {
+    messages_send_reply(message_id, recipient_id, recipient_envelope, sender_envelope, None).await
+}
+
+/// Send an E2EE direct message, optionally as a reply (the reply id is metadata only).
+pub async fn messages_send_reply(
+    message_id: &str,
+    recipient_id: &str,
+    recipient_envelope: &str,
+    sender_envelope: &str,
+    reply_to_id: Option<&str>,
+) -> Result<SendMessageResponse, ApiError> {
     post_json(
         "/api/messages",
         json!({
             "message_id": message_id,
             "recipient_id": recipient_id,
             "recipient_envelope": recipient_envelope,
-            "sender_envelope": sender_envelope
+            "sender_envelope": sender_envelope,
+            "reply_to_id": reply_to_id
         }),
     )
     .await
+}
+
+/// Pin or unpin a direct message (both participants see it).
+pub async fn messages_pin(message_id: &str, pinned: bool) -> Result<(), ApiError> {
+    let method = if pinned { "POST" } else { "DELETE" };
+    platform::http_request(method, &format!("/api/messages/{}/pin", urlencoding::encode(message_id)), None, None)
+        .await
+        .map(|_| ())
 }
 
 pub async fn messages_get(

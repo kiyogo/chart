@@ -1,10 +1,11 @@
 pub mod permissions;
+pub mod roles;
 
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    routing::{get, post},
+    routing::{delete, get, post, put},
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -52,6 +53,10 @@ pub fn server_routes() -> Router<AppState> {
             "/{id}/roles",
             get(handle_list_roles).post(handle_create_role),
         )
+        .route("/{id}/roles/{role_id}", put(roles::update_role).delete(roles::delete_role))
+        .route("/{id}/members/{user_id}/roles/{role_id}", put(roles::assign_role).delete(roles::unassign_role))
+        .route("/{id}/members/{user_id}", delete(roles::kick_member))
+        .route("/{id}/my-permissions", get(roles::my_permissions))
         .route("/{id}/invites", post(handle_create_invite))
 }
 
@@ -971,6 +976,12 @@ async fn handle_post_channel_message(
         perm_flags::SEND_MESSAGES,
     )
     .await?;
+    let lower = content.to_lowercase();
+    if (lower.contains("@everyone") || lower.contains("@here"))
+        && !permissions::has_server_permission(&state.db, ch.server_id, user.id, perm_flags::MENTION_EVERYONE).await?
+    {
+        return Err(AppError::Forbidden("mention_everyone_forbidden"));
+    }
 
     let message_id = Uuid::new_v4();
 

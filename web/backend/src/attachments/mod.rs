@@ -120,13 +120,24 @@ async fn handle_download_attachment(
         AppError::NotFound("file_not_found_on_disk")
     })?;
 
-    let content_disposition = format!("attachment; filename=\"{}\"", row.file_name);
+    // Attachments are opaque (usually client-side encrypted) blobs: never let the
+    // uploader-declared type make the browser execute or render them.
+    let _declared_type = row.mime_type;
+    let safe_name: String = row
+        .file_name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || "._- ".contains(*c))
+        .take(100)
+        .collect();
+    let content_disposition = format!("attachment; filename=\"{}\"", if safe_name.is_empty() { "file".to_string() } else { safe_name });
 
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, row.mime_type),
+            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
             (header::CONTENT_DISPOSITION, content_disposition),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
+            (header::CACHE_CONTROL, "private, max-age=86400".to_string()),
         ],
         data,
     )

@@ -7,8 +7,8 @@ use crate::{
     components::{
         avatar::Avatar,
         emoji_picker::EmojiPicker,
-        icons::{CloseIcon, CopyIcon, EmojiIcon, GifIcon, ReplyIcon, SendIcon, ShieldIcon, SmilePlusIcon, StickerIcon},
-        media_picker::{MediaPicker, MediaTab},
+        icons::{CopyIcon, PinIcon, ReplyIcon, ShieldIcon, SmilePlusIcon},
+        rich::{Rich, RichContent, VoteTally, parse_rich, rich_preview},
     },
     platform,
 };
@@ -28,6 +28,11 @@ pub struct ViewMessage {
     pub reply_text: Option<String>,
     /// (emoji, count, reacted_by_me)
     pub reactions: Vec<(String, usize, bool)>,
+    pub is_pinned: bool,
+    /// Posted by a bot (groups) — shows a BOT tag.
+    pub is_bot: bool,
+    /// Message from a group leader / deputy while "highlight admins" is on.
+    pub highlighted: bool,
 }
 
 const GROUP_WINDOW_SECS: i64 = 5 * 60;
@@ -85,6 +90,9 @@ pub fn gif_url_of(text: &str) -> Option<String> {
 
 /// Short preview text for lists and notifications.
 pub fn preview_text(text: &str) -> String {
+    if let Some(r) = parse_rich(text) {
+        return rich_preview(&r);
+    }
     if gif_url_of(text).is_some() {
         return "Đã gửi một GIF".to_string();
     }
@@ -174,6 +182,41 @@ fn segments(text: &str) -> Vec<Segment> {
     out
 }
 
+/// Text with @mentions highlighted.
+#[component]
+fn MentionText(text: String) -> Element {
+    let mut parts: Vec<(bool, String)> = Vec::new();
+    let mut buf = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '@' && buf.chars().last().map(|p| p.is_whitespace()).unwrap_or(true) && chars.peek().is_some_and(|n| n.is_alphanumeric() || *n == '_') {
+            if !buf.is_empty() {
+                parts.push((false, std::mem::take(&mut buf)));
+            }
+            let mut name = String::from("@");
+            while let Some(&n) = chars.peek() {
+                if n.is_alphanumeric() || n == '_' || n == '.' {
+                    name.push(n);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            parts.push((true, name));
+        } else {
+            buf.push(c);
+        }
+    }
+    if !buf.is_empty() {
+        parts.push((false, buf));
+    }
+    rsx! {
+        for (i, (is_mention, t)) in parts.into_iter().enumerate() {
+            if is_mention { span { key: "{i}", class: "mention", "{t}" } } else { span { key: "{i}", "{t}" } }
+        }
+    }
+}
+
 #[component]
 pub fn MessageList(
     messages: Vec<ViewMessage>,
@@ -187,8 +230,28 @@ pub fn MessageList(
     #[props(default)] on_react: Option<EventHandler<(String, String)>>,
     #[props(default)] on_reply: Option<EventHandler<ViewMessage>>,
     #[props(default)] highlight_id: Option<String>,
+    /// Current user id (poll votes) and username (mention highlight).
+    #[props(default)] my_id: String,
+    #[props(default)] my_username: String,
+    /// Message after which "Đã xem" is shown.
+    #[props(default)] seen_id: Option<String>,
+    /// Double-click the empty area beside a message to reply.
+    #[props(default)] double_click_reply: bool,
+    #[props(default)] on_pin: Option<EventHandler<(String, bool)>>,
+    /// Send a raw rich payload (e.g. a poll vote) into this conversation.
+    #[props(default)] on_send_raw: Option<EventHandler<String>>,
+    #[props(default)] on_open_invite: Option<EventHandler<(String, String)>>,
 ) -> Element {
     let mut full_picker_for = use_signal(|| Option::<String>::None);
+    // Poll votes are messages too: tally them and hide them from the list.
+    let mut tally: VoteTally = VoteTally::new();
+    for m in &messages {
+        if let Some(Rich::Vote { poll_id, option }) = parse_rich(&m.text) {
+            tally.entry(poll_id).or_default().insert(m.sender_id.clone(), option);
+        }
+    }
+    let messages: Vec<ViewMessage> = messages.into_iter().filter(|m| !matches!(parse_rich(&m.text), Some(Rich::Vote { .. }))).collect();
+    let mention_token = if my_username.is_empty() { String::new() } else { format!("@{}", my_username.to_lowercase()) };
     let count = messages.len();
     let parsed: Vec<Option<DateTime<Local>>> = messages.iter().map(|m| parse_local(&m.created_at)).collect();
 
@@ -233,6 +296,9 @@ pub fn MessageList(
                         if !joins_prev { row_cls.push_str(" group-start"); }
                         if !joins_next { row_cls.push_str(" group-end"); }
                         if highlight_id.as_deref() == Some(msg.id.as_str()) { row_cls.push_str(" highlight"); }
+                        if msg.highlighted { row_cls.push_str(" admin-highlight"); }
+                        if !mention_token.is_empty() && !msg.is_self && msg.text.to_lowercase().contains(&mention_token) { row_cls.push_str(" mentions-me"); }
+                        let rich = if msg.is_error { None } else { parse_rich(&msg.text) };
                         let time_str = t.map(|d| d.format("%H:%M").to_string()).unwrap_or_default();
                         let full_time = t.map(|d| d.format("%H:%M, %d/%m/%Y").to_string()).unwrap_or_default();
                         let gif = if msg.is_error { None } else { gif_url_of(&msg.text) };
@@ -242,6 +308,11 @@ pub fn MessageList(
                         let sender_for_avatar = msg.sender_id.clone();
                         let sender_for_name = msg.sender_id.clone();
                         let m_reply = msg.clone();
+                        let m_reply2 = msg.clone();
+                        let pin_id = msg.id.clone();
+                        let pinned_now = msg.is_pinned;
+                        let is_seen = seen_id.as_deref() == Some(msg.id.as_str());
+                        let tally_for = tally.clone();
                         let m_copy = msg.text.clone();
                         let mid = msg.id.clone();
                         rsx! {
@@ -277,9 +348,25 @@ pub fn MessageList(
                                                 else if let Some(h) = on_open_profile { h.call(sender_for_name.clone()) }
                                             },
                                             "{msg.sender_name}"
+                                            if msg.is_bot { span { class: "bot-tag", "BOT" } }
                                         }
                                     }
-                                    if let Some(url) = gif {
+                                    if let Some(r) = rich.clone() {
+                                        div { class: "message-rich", title: "{full_time}",
+                                            RichContent {
+                                                rich: r,
+                                                message_id: msg.id.clone(),
+                                                my_id: my_id.clone(),
+                                                tally: tally_for,
+                                                on_vote: on_send_raw.map(|h| EventHandler::new(move |(pid, i): (String, usize)| h.call(format!("vote:{pid}:{i}")))),
+                                                on_open_invite: on_open_invite,
+                                            }
+                                        }
+                                        span { class: "message-time-standalone",
+                                            if msg.is_pinned { span { class: "pin-mark", aria_label: "Đã ghim", "📌" } }
+                                            "{time_str}"
+                                        }
+                                    } else if let Some(url) = gif {
                                         div { class: "message-media gif", title: "{full_time}",
                                             img { class: "gif-img", src: "{platform::resolve_asset_url(&url)}", alt: "GIF", loading: "lazy" }
                                         }
@@ -299,7 +386,7 @@ pub fn MessageList(
                                             span { class: "message-text",
                                                 for (si, seg) in segments(&msg.text).into_iter().enumerate() {
                                                     match seg {
-                                                        Segment::Text(t) => rsx! { span { key: "{si}", "{t}" } },
+                                                        Segment::Text(t) => rsx! { span { key: "{si}", MentionText { text: t } } },
                                                         Segment::Link(l) => rsx! {
                                                             a { key: "{si}", href: "{l}", target: "_blank", rel: "noopener noreferrer nofollow", "{l}" }
                                                         },
@@ -311,6 +398,7 @@ pub fn MessageList(
                                             }
                                             if !time_str.is_empty() {
                                                 span { class: "bubble-meta",
+                                                    if msg.is_pinned { span { class: "pin-mark", aria_label: "Đã ghim", "📌" } }
                                                     "{time_str}"
                                                     if msg.is_self && msg.is_pending {
                                                         span { aria_label: "Đang gửi", "·" }
@@ -394,6 +482,16 @@ pub fn MessageList(
                                                 }
                                             }
                                         }
+                                        if on_pin.is_some() {
+                                            button {
+                                                r#type: "button",
+                                                class: "message-action-btn",
+                                                title: if pinned_now { "Bỏ ghim" } else { "Ghim tin nhắn" },
+                                                aria_label: if pinned_now { "Bỏ ghim" } else { "Ghim tin nhắn" },
+                                                onclick: move |_| if let Some(h) = on_pin { h.call((pin_id.clone(), !pinned_now)) },
+                                                PinIcon { size: 16 }
+                                            }
+                                        }
                                         if on_reply.is_some() {
                                             button {
                                                 r#type: "button",
@@ -414,6 +512,16 @@ pub fn MessageList(
                                         }
                                     }
                                 }
+                                if double_click_reply && on_reply.is_some() {
+                                    div {
+                                        class: "message-gutter",
+                                        title: "Bấm đúp để trả lời",
+                                        ondoubleclick: move |_| if let Some(h) = on_reply { h.call(m_reply2.clone()) },
+                                    }
+                                }
+                            }
+                            if is_seen {
+                                div { class: "seen-indicator", "Đã xem" }
                             }
                           }
                         }
@@ -427,126 +535,4 @@ pub fn MessageList(
     }
 }
 
-#[component]
-pub fn Composer(
-    input_id: String,
-    value: String,
-    placeholder: String,
-    on_input: EventHandler<String>,
-    on_send: EventHandler<()>,
-    #[props(default)] sending: bool,
-    #[props(default)] reply_to: Option<String>,
-    #[props(default)] on_cancel_reply: Option<EventHandler<()>>,
-    #[props(default)] on_sticker: Option<EventHandler<String>>,
-    #[props(default)] disabled: bool,
-) -> Element {
-    let mut picker = use_signal(|| Option::<MediaTab>::None);
-    let can_send = !value.trim().is_empty() && !sending && !disabled;
-    let id_for_emoji = input_id.clone();
-    let value_for_emoji = value.clone();
-
-    rsx! {
-        div { class: "composer",
-            div { class: "composer-inner",
-                if let Some(t) = picker() {
-                    MediaPicker {
-                        key: "{t as u8}",
-                        initial_tab: t,
-                        on_emoji: move |emoji: String| {
-                            let cur = value_for_emoji.clone();
-                            let id = id_for_emoji.clone();
-                            spawn(async move {
-                                let updated = platform::insert_text_in_input(&id, &cur, &emoji).await;
-                                on_input.call(updated);
-                            });
-                        },
-                        on_sticker: on_sticker.map(|h| EventHandler::new(move |url: String| { picker.set(None); h.call(url); })),
-                        on_gif: on_sticker.map(|h| EventHandler::new(move |url: String| { picker.set(None); h.call(format!("gif:{url}")); })),
-                        on_close: move |_| picker.set(None),
-                    }
-                }
-                if let Some(rt) = reply_to.as_ref() {
-                    div { class: "composer-context",
-                        span { class: "composer-context-text", "Trả lời: {rt}" }
-                        button {
-                            r#type: "button",
-                            class: "icon-btn",
-                            aria_label: "Hủy trả lời",
-                            onclick: move |_| if let Some(h) = on_cancel_reply { h.call(()) },
-                            CloseIcon { size: 16 }
-                        }
-                    }
-                }
-                div { class: "composer-box",
-                    button {
-                        r#type: "button",
-                        class: if picker() == Some(MediaTab::Emoji) { "icon-btn active" } else { "icon-btn" },
-                        title: "Emoji",
-                        aria_label: "Chọn emoji",
-                        aria_expanded: "{picker().is_some()}",
-                        onclick: move |evt| {
-                            evt.stop_propagation();
-                            picker.set(if picker() == Some(MediaTab::Emoji) { None } else { Some(MediaTab::Emoji) });
-                        },
-                        EmojiIcon {}
-                    }
-                    textarea {
-                        id: "{input_id}",
-                        class: "composer-input",
-                        rows: "1",
-                        placeholder: "{placeholder}",
-                        aria_label: "{placeholder}",
-                        disabled: disabled,
-                        value: "{value}",
-                        oninput: move |evt| on_input.call(evt.value()),
-                        onkeydown: move |evt| {
-                            let key = evt.key();
-                            if key == Key::Enter && !evt.modifiers().shift() && !evt.is_composing() {
-                                evt.prevent_default();
-                                on_send.call(());
-                            } else if key == Key::Escape {
-                                picker.set(None);
-                            }
-                        },
-                    }
-                    if on_sticker.is_some() {
-                        button {
-                            r#type: "button",
-                            class: if picker() == Some(MediaTab::Gif) { "icon-btn active" } else { "icon-btn" },
-                            title: "GIF",
-                            aria_label: "Chọn GIF",
-                            onclick: move |evt| {
-                                evt.stop_propagation();
-                                picker.set(if picker() == Some(MediaTab::Gif) { None } else { Some(MediaTab::Gif) });
-                            },
-                            GifIcon {}
-                        }
-                        button {
-                            r#type: "button",
-                            class: if picker() == Some(MediaTab::Sticker) { "icon-btn active" } else { "icon-btn" },
-                            title: "Sticker",
-                            aria_label: "Chọn sticker",
-                            onclick: move |evt| {
-                                evt.stop_propagation();
-                                picker.set(if picker() == Some(MediaTab::Sticker) { None } else { Some(MediaTab::Sticker) });
-                            },
-                            StickerIcon {}
-                        }
-                    }
-                    button {
-                        r#type: "button",
-                        class: "send-btn",
-                        title: "Gửi (Enter)",
-                        aria_label: "Gửi",
-                        disabled: !can_send,
-                        onclick: move |_| on_send.call(()),
-                        SendIcon {}
-                    }
-                }
-                div { class: "composer-hint hide-mobile",
-                    span { class: "kbd", "Enter" } " gửi · " span { class: "kbd", "Shift + Enter" } " xuống dòng"
-                }
-            }
-        }
-    }
-}
+pub use crate::components::composer::{Composer, MentionCandidate};

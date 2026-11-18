@@ -108,8 +108,12 @@ pub fn WelcomeTour(on_close: EventHandler<()>) -> Element {
     }
 }
 
-const SHORTCUTS: [(&str, &str); 7] = [
+const SHORTCUTS: [(&str, &str); 11] = [
     ("Ctrl + K", "Tìm nhanh cuộc trò chuyện, nhóm, cộng đồng"),
+    ("@ rồi gõ tên", "Nhắc tên một người; Tab hoặc Enter để chèn"),
+    (": rồi gõ tên emoji", "Gợi ý emoji, ví dụ :fire"),
+    ("/ rồi gõ phím tắt", "Chèn trả lời nhanh của Kinh doanh"),
+    ("Bấm đúp cạnh tin nhắn", "Trả lời tin nhắn đó"),
     ("Enter", "Gửi tin nhắn"),
     ("Shift + Enter", "Xuống dòng"),
     ("Esc", "Đóng bảng chọn, hộp thoại, hồ sơ"),
@@ -118,7 +122,33 @@ const SHORTCUTS: [(&str, &str); 7] = [
     ("Tab", "Di chuyển giữa các nút"),
 ];
 
-const GUIDES: [(&str, &str, &[&str]); 5] = [
+const GUIDES: [(&str, &str, &[&str]); 10] = [
+    ("devices", "\"Chính mình\": ghi chú giữa các thiết bị", &[
+        "Mở \"Chính mình\" ở đầu danh sách Tin nhắn; tin nhắn được mã hóa bằng khóa của bạn.",
+        "Mỗi tin ghi tên thiết bị đã gửi, ví dụ Linux 1, Windows 2. Bấm tên thiết bị để đổi tên.",
+        "Menu ⋯ để đổi hình nền hoặc xóa; tạo lại bằng nút ở đầu danh sách.",
+    ]),
+    ("chat", "Ghim, thẻ phân loại, tắt thông báo", &[
+        "Rê chuột lên một cuộc trò chuyện (hoặc nhấp chuột phải) rồi bấm ⋯.",
+        "Ghim lên đầu, gắn thẻ phân loại, tắt thông báo, chuyển nhóm sang Cộng đồng, chặn.",
+        "Lọc theo thẻ bằng nút Phân loại phía trên danh sách.",
+    ]),
+    ("user", "Quản lý nhóm", &[
+        "Trong nhóm bấm ⋯ › Quản lý nhóm.",
+        "Bật / tắt quyền thành viên: gửi tin, bình chọn, ghi chú, nhắc hẹn, ghim, đổi tên, đổi ảnh.",
+        "Tham gia: duyệt thành viên mới, liên kết mời (sao chép, chia sẻ, đổi), yêu cầu chờ duyệt.",
+        "Trưởng nhóm bổ nhiệm phó nhóm hoặc chuyển quyền trưởng nhóm.",
+    ]),
+    ("shield", "Khóa ChatW bằng mã PIN", &[
+        "Cài đặt › Khóa ứng dụng › đặt mã PIN 4 đến 8 số.",
+        "Chọn thời gian không hoạt động trước khi khóa, hoặc khóa mỗi lần mở.",
+        "Quên mã PIN: đăng xuất trên màn hình khóa rồi đăng nhập lại.",
+    ]),
+    ("library", "Tạo bot của riêng bạn", &[
+        "Cài đặt › Bot › nhập tên bot và tên hiển thị.",
+        "Lưu token (chỉ hiện một lần), rồi gọi getUpdates và sendMessage từ code của bạn.",
+        "Thêm bot vào nhóm bạn quản lý; công khai bot sau khi được xác minh.",
+    ]),
     ("shield", "Xác minh mã hóa với bạn bè", &[
         "Mở cuộc trò chuyện, bấm biểu tượng bảng Thông tin ở góc phải.",
         "Mở mục \"Bảo mật và mã hóa\" để xem vân tay khóa.",
@@ -147,7 +177,10 @@ const GUIDES: [(&str, &str, &[&str]); 5] = [
     ]),
 ];
 
-const FAQ: [(&str, &str); 5] = [
+const FAQ: [(&str, &str); 8] = [
+    ("Vì sao trả lời tự động không chạy khi tôi tắt máy?", "Tin nhắn riêng được mã hóa đầu cuối nên máy chủ không thể tự viết trả lời. Trả lời tự động chạy trên thiết bị của bạn khi ChatW đang mở."),
+    ("Ẩn \"Đã xem\" có tác dụng gì?", "Người khác không biết bạn đã đọc, và bạn cũng không thấy họ đã đọc. Đổi trong Cài đặt › Trò chuyện."),
+    ("Làm sao để nhóm hoặc cộng đồng hiện trong Tìm kiếm?", "Bật Công khai trong Quản lý nhóm hoặc Cài đặt cộng đồng. Đội ngũ ChatW xác minh trước khi hiện cho mọi người."),
     ("Vì sao có tin nhắn \"Không thể giải mã\"?", "Mỗi trình duyệt có khóa mã hóa riêng. Tin gửi tới khóa cũ không đọc được ở thiết bị mới. Hãy khôi phục bản sao lưu khóa trong Bảo mật và mã hóa."),
     ("Tin nhắn nhóm có được mã hóa đầu cuối không?", "Chưa. Hiện chỉ tin nhắn trực tiếp được mã hóa đầu cuối; nhóm và kênh cộng đồng được máy chủ lưu ở dạng thường."),
     ("ChatW có lưu email hay số điện thoại không?", "Không. Bạn đăng nhập bằng Google; máy chủ chỉ lưu mã định danh ẩn danh do Google cấp."),

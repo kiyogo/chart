@@ -215,6 +215,7 @@ pub struct DisplayMessage {
     pub reply_to_id: Option<String>,
     /// emoji -> user ids who reacted (DM reactions are plain metadata on the server).
     pub reactions: Vec<(String, Vec<String>)>,
+    pub is_pinned: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -303,6 +304,18 @@ pub enum WsEvent {
     CallParticipantLeft(serde_json::Value),
     #[serde(rename = "call.state.update")]
     CallStateUpdate(serde_json::Value),
+    #[serde(rename = "message.read")]
+    MessageRead(serde_json::Value),
+    #[serde(rename = "wallpaper.updated")]
+    WallpaperUpdated(serde_json::Value),
+    #[serde(rename = "bot.message")]
+    BotMessage(serde_json::Value),
+    #[serde(rename = "group.join_request")]
+    GroupJoinRequest(serde_json::Value),
+    #[serde(rename = "group.settings")]
+    GroupSettings(serde_json::Value),
+    #[serde(rename = "prefs.updated")]
+    PrefsUpdated(serde_json::Value),
     #[serde(other)]
     Unknown,
 }
@@ -517,6 +530,8 @@ pub struct GroupMessageItem {
     pub is_edited: bool,
     #[serde(default)]
     pub reactions: Vec<GroupReactionItem>,
+    #[serde(default)]
+    pub is_bot: bool,
     pub created_at: String,
 }
 
@@ -616,6 +631,8 @@ pub struct SessionItem {
     #[serde(default)]
     pub device_name: Option<String>,
     #[serde(default)]
+    pub device_label: Option<String>,
+    #[serde(default)]
     pub ip_address: Option<String>,
     #[serde(default)]
     pub last_active: Option<String>,
@@ -623,4 +640,245 @@ pub struct SessionItem {
     pub created_at: Option<String>,
     #[serde(default)]
     pub is_current: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Spec 007: privacy, conversation organisation, groups, bots, business, directory
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct PrivacySettings {
+    pub friend_requests: String,
+    pub calls: String,
+    pub group_invites: String,
+    pub discoverable: bool,
+    pub read_receipts: bool,
+    pub typing: bool,
+    pub self_chat: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BlockedUser {
+    pub id: String,
+    pub username: String,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ChatLabel {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    #[serde(default)]
+    pub position: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ConvPref {
+    pub conv_type: String,
+    pub conv_id: String,
+    #[serde(default)]
+    pub pinned_at: Option<String>,
+    #[serde(default)]
+    pub label_ids: Vec<String>,
+    #[serde(default)]
+    pub in_messages: bool,
+    #[serde(default)]
+    pub in_communities: bool,
+    #[serde(default)]
+    pub muted: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct GroupSettings {
+    pub perm_send: bool,
+    pub perm_poll: bool,
+    pub perm_note: bool,
+    pub perm_reminder: bool,
+    pub perm_pin: bool,
+    pub perm_rename: bool,
+    pub perm_avatar: bool,
+    pub require_approval: bool,
+    pub highlight_admins: bool,
+    pub allow_link_join: bool,
+    pub is_public: bool,
+    pub verification_status: String,
+    #[serde(default)]
+    pub banner_url: Option<String>,
+    #[serde(default)]
+    pub my_role: Option<String>,
+    #[serde(default)]
+    pub pending_requests: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct JoinRequestItem {
+    pub user_id: String,
+    pub username: String,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InvitePreview {
+    pub kind: String,
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
+    #[serde(default)]
+    pub member_count: i64,
+    #[serde(default)]
+    pub require_approval: bool,
+    #[serde(default)]
+    pub is_member: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct ServerSettings {
+    pub is_public: bool,
+    pub public_index: bool,
+    pub verification_status: String,
+    #[serde(default)]
+    pub banner_url: Option<String>,
+    #[serde(default)]
+    pub is_owner: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BotItem {
+    pub id: String,
+    #[serde(default)]
+    pub owner_id: String,
+    pub username: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub is_public: bool,
+    #[serde(default)]
+    pub verification_status: String,
+    #[serde(default)]
+    pub token_hint: Option<String>,
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub last_text: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BotChatMessage {
+    pub id: String,
+    pub seq: i64,
+    pub from_bot: bool,
+    pub text: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct BusinessProfile {
+    pub handle: String,
+    pub name: String,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub hours: Option<String>,
+    #[serde(default)]
+    pub website: Option<String>,
+    #[serde(default)]
+    pub contact: Option<String>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub greeting: Option<String>,
+    #[serde(default)]
+    pub away_message: Option<String>,
+    #[serde(default)]
+    pub verification_status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BusinessProduct {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub price: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub image_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct QuickReply {
+    pub id: String,
+    pub shortcut: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct BusinessData {
+    #[serde(default)]
+    pub profile: Option<BusinessProfile>,
+    #[serde(default)]
+    pub products: Vec<BusinessProduct>,
+    #[serde(default)]
+    pub quick_replies: Vec<QuickReply>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct DirectoryEntry {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub handle: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+    #[serde(default)]
+    pub member_count: i64,
+    #[serde(default)]
+    pub joined: bool,
+    #[serde(default)]
+    pub require_approval: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct DirectoryResults {
+    #[serde(default)]
+    pub servers: Vec<DirectoryEntry>,
+    #[serde(default)]
+    pub groups: Vec<DirectoryEntry>,
+    #[serde(default)]
+    pub bots: Vec<DirectoryEntry>,
+    #[serde(default)]
+    pub businesses: Vec<DirectoryEntry>,
 }

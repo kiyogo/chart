@@ -46,6 +46,7 @@ fn GifPane(on_select: EventHandler<String>) -> Element {
     let q = query().trim().to_lowercase();
     let mine_shown: Vec<LibraryItem> = mine().into_iter().filter(|g| q.is_empty() || g.name.to_lowercase().contains(&q)).collect();
     let builtin_shown: Vec<(&str, &str)> = BUILTIN_GIFS.iter().copied().filter(|(n, _)| q.is_empty() || n.to_lowercase().contains(&q)).collect();
+    let fx_shown: Vec<(&str, &str)> = crate::components::fx_gifs::FX_GIFS.iter().copied().filter(|(n, _)| q.is_empty() || n.to_lowercase().contains(&q)).collect();
     rsx! {
         div { class: "picker-header",
             div { class: "search-field",
@@ -71,6 +72,18 @@ fn GifPane(on_select: EventHandler<String>) -> Element {
                                     span { class: "gif-name", "{g.name}" }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+            if !fx_shown.is_empty() {
+                div { class: "picker-section-title", "Reactions" }
+                div { class: "gif-grid",
+                    for (name, url) in fx_shown {
+                        button { key: "{url}", r#type: "button", class: "gif-cell builtin", title: "{name}", aria_label: "Send GIF {name}",
+                            onclick: move |_| on_select.call(url.to_string()),
+                            img { src: "{url}", alt: "{name}", loading: "lazy" }
+                            span { class: "gif-name", "{name}" }
                         }
                     }
                 }

@@ -59,3 +59,23 @@ Viewport: 320×568, 360×740, 375×667, 390×844, 430×932, 768×1024, 900×800,
 ## NOT TESTED
 Truyền âm thanh/video WebRTC thật, kênh thoại có media, Google OAuth thật, upload avatar/banner/sticker qua UI mới,
 Windows/macOS, Android/iOS, hiệu năng với hàng nghìn tin nhắn.
+
+## Spec 007 (phiên 19/11/2026)
+| Bộ kiểm thử | Kết quả |
+|---|---|
+| `cargo test --workspace` (backend + app: E2EE, blob AES-GCM, gợi ý composer, i18n 33 ngôn ngữ, nhãn thiết bị, kiểm tra giá trị hình nền) | PASS (16 unit + 1 integration) |
+| WASM release build (`app/build-web.sh release`) | PASS, 7,9 MB |
+| `cargo check -p chatw-app --features desktop` | PASS (liên kết bản desktop vẫn cần `libxdo3` trên máy) |
+| API smoke spec 007 (quyền riêng tư, chặn, thiết bị, nhãn, ghim, hình nền, Chính mình, bot, Kinh doanh, nhóm, quản trị) | PASS |
+| API smoke 2: vai trò cộng đồng (tạo, sửa, gán, gỡ, mời ra, @everyone, không cấp quyền mình không có), 9 bộ sticker | PASS 17/17 |
+| UI audit (`node app/e2e/ui-audit.mjs --quick`, Chrome thật, backend thật) | PASS 276/276 |
+
+Kiểm tra giao diện mới trong UI audit: Chính mình (thiết bị, ghi chú E2EE), gợi ý @ và Tab, gợi ý sticker theo nội dung,
+dán ô Excel (hỏi cách gửi, bảng hiển thị ở người nhận qua E2EE), bình chọn và bỏ phiếu hai phía, ghim tin nhắn, "Đã xem",
+ghim cuộc trò chuyện, chặn / bỏ chặn, hộp quản lý nhóm, liên kết mời nhóm, tìm kiếm toàn trang, đổi ngôn ngữ (Anh, Ả Rập
+RTL), đặt mã PIN / khóa / sai PIN / mở khóa, 6 trang cài đặt mới.
+
+Lỗi tìm thấy và đã sửa trong phiên: tin gửi cho "Chính mình" bị ràng buộc DB cũ chặn (migration 0014); trang Tìm kiếm
+treo do hiệu ứng đọc và ghi cùng một tín hiệu; menu tài khoản ở cột trái bị danh sách hội thoại che (lớp xếp chồng CSS);
+Esc không đóng hộp thoại mới (đưa tiêu điểm vào hộp thoại khi mở); trái tim trong sticker động bị CSS ghi đè vị trí;
+xem trước "Chính mình" lộ mã thiết bị; ảnh đại diện trong hộp quản lý nhóm bị kéo dãn.

@@ -102,7 +102,7 @@ async fn handle_join_voice_channel(
         &state.db,
         ch.server_id,
         user.id,
-        perm_flags::VIEW_CHANNELS,
+        perm_flags::CONNECT_VOICE,
     )
     .await?;
 
