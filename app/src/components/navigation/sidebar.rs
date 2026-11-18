@@ -577,3 +577,4 @@ fn ChannelRowItem(
         }
     }
 }
+

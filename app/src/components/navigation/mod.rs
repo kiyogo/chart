@@ -9,3 +9,4 @@ pub enum NavSection {
     Server(String),
     Settings,
 }
+

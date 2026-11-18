@@ -370,3 +370,4 @@ pub fn SettingsView(
         }
     }
 }
+

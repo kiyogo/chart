@@ -69,9 +69,9 @@ pub fn StickerPicker(
                     } else {
                         for st in pack.stickers {
                             {
-                                let url = st.image_url.clone();
+                                let url = st.file_url.clone();
                                 let resolved = platform::resolve_asset_url(&url);
-                                let title_str = st.name.clone().unwrap_or_else(|| "Sticker".into());
+                                let title_str = if st.name.is_empty() { "Sticker".to_string() } else { st.name.clone() };
                                 rsx! {
                                     button {
                                         key: "{st.id}",

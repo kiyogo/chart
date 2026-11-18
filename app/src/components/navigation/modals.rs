@@ -387,3 +387,4 @@ pub fn ServerInviteModal(server_id: String, server_name: String, on_close: Event
         }
     }
 }
+
