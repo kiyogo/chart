@@ -100,6 +100,69 @@ pub enum WsEvent {
         status_text: Option<String>,
         status_emoji: Option<String>,
     },
+    #[serde(rename = "group.message.new")]
+    GroupMessageNew {
+        message: crate::models::GroupMessageItem,
+    },
+    #[serde(rename = "group.member.joined")]
+    GroupMemberJoined {
+        group_id: Uuid,
+        member: crate::models::GroupMemberItem,
+    },
+    #[serde(rename = "group.member.left")]
+    GroupMemberLeft {
+        group_id: Uuid,
+        user_id: Uuid,
+    },
+    #[serde(rename = "group.updated")]
+    GroupUpdated {
+        group: crate::models::GroupItem,
+    },
+    #[serde(rename = "call.incoming")]
+    CallIncoming {
+        session: crate::models::CallSessionItem,
+    },
+    #[serde(rename = "call.accepted")]
+    CallAccepted {
+        call_id: Uuid,
+        user_id: Uuid,
+    },
+    #[serde(rename = "call.rejected")]
+    CallRejected {
+        call_id: Uuid,
+        user_id: Uuid,
+        reason: String,
+    },
+    #[serde(rename = "call.ended")]
+    CallEnded {
+        call_id: Uuid,
+        reason: String,
+    },
+    #[serde(rename = "call.signal")]
+    CallSignal {
+        call_id: Uuid,
+        sender_id: Uuid,
+        target_user_id: Option<Uuid>,
+        signal_type: String,
+        data: serde_json::Value,
+    },
+    #[serde(rename = "call.participant.joined")]
+    CallParticipantJoined {
+        call_id: Uuid,
+        participant: crate::models::CallParticipantItem,
+    },
+    #[serde(rename = "call.participant.left")]
+    CallParticipantLeft {
+        call_id: Uuid,
+        user_id: Uuid,
+    },
+    #[serde(rename = "call.state.update")]
+    CallStateUpdate {
+        call_id: Uuid,
+        user_id: Uuid,
+        muted: bool,
+        camera_off: bool,
+    },
 }
 
 pub struct WsHub {

@@ -1,5 +1,6 @@
 pub mod components;
 pub mod crypto;
+pub mod media;
 pub mod models;
 pub mod pages;
 pub mod platform;

@@ -48,11 +48,18 @@ pub fn avatar_font_size(size: u32) -> &'static str {
 
 #[component]
 pub fn Avatar(
-    name: String,
+    #[props(default)] name: String,
+    #[props(default)] username: Option<String>,
+    #[props(default)] user_id: Option<String>,
     #[props(default)] avatar_url: Option<String>,
     #[props(default = 36)] size: u32,
     #[props(default)] class: String,
 ) -> Element {
+    let effective_name = if !name.is_empty() {
+        name
+    } else {
+        username.unwrap_or_default()
+    };
     let mut img_failed = use_signal(|| false);
     let mut last_url = use_signal(|| avatar_url.clone());
 
@@ -76,7 +83,7 @@ pub fn Avatar(
             return rsx! {
                 img {
                     src: "{resolved}",
-                    alt: "{name}",
+                    alt: "{effective_name}",
                     class: "{cls}",
                     style: "{style}",
                     onerror: move |_| img_failed.set(true),
@@ -84,9 +91,9 @@ pub fn Avatar(
             };
         }
 
-    let bg = avatar_bg_color(&name);
+    let bg = avatar_bg_color(&effective_name);
     let fs = avatar_font_size(size);
-    let initial = avatar_initial(&name);
+    let initial = avatar_initial(&effective_name);
     let style = format!(
         "width: {size}px; height: {size}px; min-width: {size}px; min-height: {size}px; background-color: {bg}; font-size: {fs};"
     );

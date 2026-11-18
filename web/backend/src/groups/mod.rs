@@ -1,0 +1,996 @@
+use axum::{
+    Json, Router,
+    extract::{Path, Query, State},
+    http::HeaderMap,
+    routing::{delete, get, post, put},
+};
+use chrono::{Duration, Utc};
+use serde::Deserialize;
+use uuid::Uuid;
+
+use crate::{
+    auth::{
+        AppState,
+        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+    },
+    error::{AppError, AppResult},
+    models::{
+        AddGroupMemberRequest, CreateGroupInviteRequest, CreateGroupRequest, GroupInviteItem,
+        GroupItem, GroupMemberItem, GroupMessageItem, PostGroupMessageRequest,
+        UpdateGroupMemberRoleRequest, UpdateGroupRequest,
+    },
+    websocket::WsEvent,
+};
+
+#[derive(Deserialize)]
+pub struct MessagesQuery {
+    pub before_seq: Option<i64>,
+    pub limit: Option<i64>,
+}
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/", post(create_group).get(list_my_groups))
+        .route("/join/{code}", post(join_by_invite))
+        .route(
+            "/{group_id}",
+            get(get_group_details)
+                .put(update_group)
+                .delete(delete_group),
+        )
+        .route(
+            "/{group_id}/members",
+            get(list_members).post(add_member),
+        )
+        .route(
+            "/{group_id}/members/{user_id}",
+            delete(remove_member),
+        )
+        .route(
+            "/{group_id}/members/{user_id}/role",
+            put(update_member_role),
+        )
+        .route("/{group_id}/invites", post(create_invite))
+        .route(
+            "/{group_id}/messages",
+            get(list_messages).post(send_message),
+        )
+        .route(
+            "/{group_id}/messages/{message_id}",
+            put(edit_message).delete(delete_message),
+        )
+        .route(
+            "/{group_id}/messages/{message_id}/pin",
+            post(pin_message),
+        )
+}
+
+// Helper: check group membership and return user role
+async fn get_member_role(
+    db: &sqlx::PgPool,
+    group_id: Uuid,
+    user_id: Uuid,
+) -> AppResult<Option<String>> {
+    let row = sqlx::query!(
+        "SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2",
+        group_id,
+        user_id
+    )
+    .fetch_optional(db)
+    .await?;
+
+    Ok(row.map(|r| r.role))
+}
+
+// 1. Create Group
+async fn create_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateGroupRequest>,
+) -> AppResult<Json<GroupItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    if payload.name.trim().is_empty() {
+        return Err(AppError::BadRequest("group_name_cannot_be_empty"));
+    }
+
+    let group_id = Uuid::new_v4();
+    let mut tx = state.db.begin().await?;
+
+    sqlx::query!(
+        r#"
+        INSERT INTO groups (id, name, description, avatar_url, owner_id)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+        group_id,
+        payload.name.trim(),
+        payload.description,
+        payload.avatar_url,
+        user.id
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // Add owner as owner member
+    sqlx::query!(
+        r#"
+        INSERT INTO group_members (group_id, user_id, role)
+        VALUES ($1, $2, 'owner')
+        "#,
+        group_id,
+        user.id
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // Add additional members
+    for mid in payload.member_ids {
+        if mid != user.id {
+            sqlx::query!(
+                r#"
+                INSERT INTO group_members (group_id, user_id, role)
+                VALUES ($1, $2, 'member')
+                ON CONFLICT DO NOTHING
+                "#,
+                group_id,
+                mid
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    tx.commit().await?;
+
+    let count = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM group_members WHERE group_id = $1",
+        group_id
+    )
+    .fetch_one(&state.db)
+    .await?
+    .unwrap_or(1);
+
+    let group = GroupItem {
+        id: group_id,
+        name: payload.name.trim().to_string(),
+        description: payload.description,
+        avatar_url: payload.avatar_url,
+        owner_id: user.id,
+        member_count: count,
+        role: Some("owner".to_string()),
+        created_at: Utc::now(),
+    };
+
+    Ok(Json(group))
+}
+
+// 2. List user's groups
+async fn list_my_groups(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Vec<GroupItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT g.id, g.name, g.description, g.avatar_url, g.owner_id, g.created_at,
+               gm.role,
+               (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count
+        FROM groups g
+        JOIN group_members gm ON g.id = gm.group_id
+        WHERE gm.user_id = $1
+        ORDER BY g.created_at DESC
+        "#,
+        user.id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let groups = rows
+        .into_iter()
+        .map(|r| GroupItem {
+            id: r.id,
+            name: r.name,
+            description: r.description,
+            avatar_url: r.avatar_url,
+            owner_id: r.owner_id,
+            member_count: r.member_count.unwrap_or(1),
+            role: Some(r.role),
+            created_at: r.created_at,
+        })
+        .collect();
+
+    Ok(Json(groups))
+}
+
+// 3. Get group details
+async fn get_group_details(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+) -> AppResult<Json<GroupItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id).await?;
+    if role.is_none() {
+        return Err(AppError::Forbidden("not_a_group_member"));
+    }
+
+    let g = sqlx::query!(
+        r#"
+        SELECT g.id, g.name, g.description, g.avatar_url, g.owner_id, g.created_at,
+               (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count
+        FROM groups g
+        WHERE g.id = $1
+        "#,
+        group_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("group_not_found"))?;
+
+    Ok(Json(GroupItem {
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        avatar_url: g.avatar_url,
+        owner_id: g.owner_id,
+        member_count: g.member_count.unwrap_or(1),
+        role,
+        created_at: g.created_at,
+    }))
+}
+
+// 4. Update group (Owner or Admin)
+async fn update_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    Json(payload): Json<UpdateGroupRequest>,
+) -> AppResult<Json<GroupItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    if role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    let row = sqlx::query!(
+        r#"
+        UPDATE groups
+        SET name = COALESCE($2, name),
+            description = COALESCE($3, description),
+            avatar_url = COALESCE($4, avatar_url)
+        WHERE id = $1
+        RETURNING id, name, description, avatar_url, owner_id, created_at
+        "#,
+        group_id,
+        payload.name.as_deref().map(str::trim),
+        payload.description,
+        payload.avatar_url
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("group_not_found"))?;
+
+    let member_count = sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM group_members WHERE group_id = $1",
+        group_id
+    )
+    .fetch_one(&state.db)
+    .await?
+    .unwrap_or(1);
+
+    let updated = GroupItem {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        avatar_url: row.avatar_url,
+        owner_id: row.owner_id,
+        member_count,
+        role: Some(role),
+        created_at: row.created_at,
+    };
+
+    // Broadcast update
+    let members = sqlx::query_scalar!(
+        "SELECT user_id FROM group_members WHERE group_id = $1",
+        group_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    state
+        .ws_hub
+        .send_to_users(&members, WsEvent::GroupUpdated { group: updated.clone() })
+        .await;
+
+    Ok(Json(updated))
+}
+
+// 5. Delete group (Owner only)
+async fn delete_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let group = sqlx::query!("SELECT owner_id FROM groups WHERE id = $1", group_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(AppError::NotFound("group_not_found"))?;
+
+    if group.owner_id != user.id {
+        return Err(AppError::Forbidden("only_owner_can_delete_group"));
+    }
+
+    sqlx::query!("DELETE FROM groups WHERE id = $1", group_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "deleted": true })))
+}
+
+// 6. List group members
+async fn list_members(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+) -> AppResult<Json<Vec<GroupMemberItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id).await?;
+    if role.is_none() {
+        return Err(AppError::Forbidden("not_a_group_member"));
+    }
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT gm.group_id, gm.user_id, gm.role, gm.joined_at,
+               u.username, u.avatar_url
+        FROM group_members gm
+        JOIN users u ON gm.user_id = u.id
+        WHERE gm.group_id = $1
+        ORDER BY
+            CASE gm.role
+                WHEN 'owner' THEN 1
+                WHEN 'admin' THEN 2
+                ELSE 3
+            END,
+            gm.joined_at ASC
+        "#,
+        group_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let members = rows
+        .into_iter()
+        .map(|r| GroupMemberItem {
+            group_id: r.group_id,
+            user_id: r.user_id,
+            username: r.username.unwrap_or_default(),
+            avatar_url: r.avatar_url,
+            role: r.role,
+            joined_at: r.joined_at,
+        })
+        .collect();
+
+    Ok(Json(members))
+}
+
+// 7. Add member (Owner or Admin)
+async fn add_member(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    Json(payload): Json<AddGroupMemberRequest>,
+) -> AppResult<Json<GroupMemberItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    if role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    let target_user_id = if let Some(uid) = payload.user_id {
+        uid
+    } else if let Some(ref uname) = payload.username {
+        sqlx::query_scalar!(
+            "SELECT id FROM users WHERE username_norm = $1",
+            uname.to_lowercase()
+        )
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(AppError::NotFound("user_not_found"))?
+    } else {
+        return Err(AppError::BadRequest("missing_user_id_or_username"));
+    };
+
+    sqlx::query!(
+        r#"
+        INSERT INTO group_members (group_id, user_id, role)
+        VALUES ($1, $2, 'member')
+        ON CONFLICT (group_id, user_id) DO NOTHING
+        "#,
+        group_id,
+        target_user_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    let target_user = sqlx::query!(
+        "SELECT username, avatar_url FROM users WHERE id = $1",
+        target_user_id
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    let member_item = GroupMemberItem {
+        group_id,
+        user_id: target_user_id,
+        username: target_user.username.unwrap_or_default(),
+        avatar_url: target_user.avatar_url,
+        role: "member".to_string(),
+        joined_at: Utc::now(),
+    };
+
+    let members = sqlx::query_scalar!(
+        "SELECT user_id FROM group_members WHERE group_id = $1",
+        group_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    state.ws_hub.send_to_users(
+        &members,
+        WsEvent::GroupMemberJoined {
+            group_id,
+            member: member_item.clone(),
+        },
+    )
+    .await;
+
+    Ok(Json(member_item))
+}
+
+// 8. Remove member or Leave group
+async fn remove_member(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((group_id, target_user_id)): Path<(Uuid, Uuid)>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let my_role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    let target_role = get_member_role(&state.db, group_id, target_user_id)
+        .await?
+        .ok_or(AppError::NotFound("member_not_found"))?;
+
+    // Self leaving
+    if user.id == target_user_id {
+        if my_role == "owner" {
+            return Err(AppError::BadRequest("owner_cannot_leave_must_transfer_or_delete"));
+        }
+    } else {
+        // Kick logic
+        if my_role == "owner" {
+            // Owner can kick anyone
+        } else if my_role == "admin" {
+            if target_role == "owner" || target_role == "admin" {
+                return Err(AppError::Forbidden("admin_cannot_kick_owner_or_admin"));
+            }
+        } else {
+            return Err(AppError::Forbidden("insufficient_permissions"));
+        }
+    }
+
+    sqlx::query!(
+        "DELETE FROM group_members WHERE group_id = $1 AND user_id = $2",
+        group_id,
+        target_user_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    let members = sqlx::query_scalar!(
+        "SELECT user_id FROM group_members WHERE group_id = $1",
+        group_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    state.ws_hub.send_to_users(
+        &members,
+        WsEvent::GroupMemberLeft {
+            group_id,
+            user_id: target_user_id,
+        },
+    )
+    .await;
+
+    // Also notify target user
+    state.ws_hub.send_to_user(
+        &target_user_id,
+        WsEvent::GroupMemberLeft {
+            group_id,
+            user_id: target_user_id,
+        },
+    )
+    .await;
+
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+// 9. Update member role (Owner only)
+async fn update_member_role(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((group_id, target_user_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<UpdateGroupMemberRoleRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let my_role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    if my_role != "owner" {
+        return Err(AppError::Forbidden("only_owner_can_manage_roles"));
+    }
+
+    if payload.role == "owner" {
+        // Transfer ownership
+        let mut tx = state.db.begin().await?;
+        sqlx::query!(
+            "UPDATE groups SET owner_id = $1 WHERE id = $2",
+            target_user_id,
+            group_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query!(
+            "UPDATE group_members SET role = 'owner' WHERE group_id = $1 AND user_id = $2",
+            group_id,
+            target_user_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query!(
+            "UPDATE group_members SET role = 'admin' WHERE group_id = $1 AND user_id = $2",
+            group_id,
+            user.id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+    } else if payload.role == "admin" || payload.role == "member" {
+        sqlx::query!(
+            "UPDATE group_members SET role = $1 WHERE group_id = $2 AND user_id = $3",
+            payload.role,
+            group_id,
+            target_user_id
+        )
+        .execute(&state.db)
+        .await?;
+    } else {
+        return Err(AppError::BadRequest("invalid_role"));
+    }
+
+    Ok(Json(serde_json::json!({ "updated": true, "role": payload.role })))
+}
+
+// 10. Create group invite link
+async fn create_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    Json(payload): Json<CreateGroupInviteRequest>,
+) -> AppResult<Json<GroupInviteItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    if role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    let code = Uuid::new_v4().simple().to_string()[..12].to_string();
+
+    let expires_at = payload
+        .expires_in_seconds
+        .map(|sec| Utc::now() + Duration::seconds(sec));
+
+    sqlx::query!(
+        r#"
+        INSERT INTO group_invites (code, group_id, inviter_id, max_uses, expires_at)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+        code,
+        group_id,
+        user.id,
+        payload.max_uses,
+        expires_at
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(GroupInviteItem {
+        code,
+        group_id,
+        inviter_id: user.id,
+        max_uses: payload.max_uses,
+        uses: 0,
+        expires_at,
+        created_at: Utc::now(),
+    }))
+}
+
+// 11. Join group via invite code
+async fn join_by_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(code): Path<String>,
+) -> AppResult<Json<GroupItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let invite = sqlx::query!(
+        "SELECT group_id, max_uses, uses, expires_at FROM group_invites WHERE code = $1",
+        code
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("invite_not_found"))?;
+
+    if let Some(exp) = invite.expires_at {
+        if exp < Utc::now() {
+            return Err(AppError::BadRequest("invite_expired"));
+        }
+    }
+
+    if let Some(max_u) = invite.max_uses {
+        if invite.uses >= max_u {
+            return Err(AppError::BadRequest("invite_limit_reached"));
+        }
+    }
+
+    let mut tx = state.db.begin().await?;
+
+    // Increment invite usage
+    sqlx::query!(
+        "UPDATE group_invites SET uses = uses + 1 WHERE code = $1",
+        code
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // Add user as member
+    sqlx::query!(
+        r#"
+        INSERT INTO group_members (group_id, user_id, role)
+        VALUES ($1, $2, 'member')
+        ON CONFLICT (group_id, user_id) DO NOTHING
+        "#,
+        invite.group_id,
+        user.id
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let g = sqlx::query!(
+        r#"
+        SELECT g.id, g.name, g.description, g.avatar_url, g.owner_id, g.created_at,
+               (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count
+        FROM groups g
+        WHERE g.id = $1
+        "#,
+        invite.group_id
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    let member_item = GroupMemberItem {
+        group_id: invite.group_id,
+        user_id: user.id,
+        username: user.username.unwrap_or_default(),
+        avatar_url: user.avatar_url,
+        role: "member".to_string(),
+        joined_at: Utc::now(),
+    };
+
+    let members = sqlx::query_scalar!(
+        "SELECT user_id FROM group_members WHERE group_id = $1",
+        invite.group_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    state.ws_hub.send_to_users(
+        &members,
+        WsEvent::GroupMemberJoined {
+            group_id: invite.group_id,
+            member: member_item,
+        },
+    )
+    .await;
+
+    Ok(Json(GroupItem {
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        avatar_url: g.avatar_url,
+        owner_id: g.owner_id,
+        member_count: g.member_count.unwrap_or(1),
+        role: Some("member".to_string()),
+        created_at: g.created_at,
+    }))
+}
+
+// 12. List messages
+async fn list_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    Query(query): Query<MessagesQuery>,
+) -> AppResult<Json<Vec<GroupMessageItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id).await?;
+    if role.is_none() {
+        return Err(AppError::Forbidden("not_a_group_member"));
+    }
+
+    let limit = query.limit.unwrap_or(50).clamp(1, 100);
+    let before_seq = query.before_seq.unwrap_or(i64::MAX);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT m.id, m.seq, m.group_id, m.sender_id, m.content, m.reply_to_id,
+               m.is_pinned, m.is_edited, m.created_at,
+               u.username, u.avatar_url
+        FROM group_messages m
+        JOIN users u ON m.sender_id = u.id
+        WHERE m.group_id = $1 AND m.seq < $2
+        ORDER BY m.seq DESC
+        LIMIT $3
+        "#,
+        group_id,
+        before_seq,
+        limit
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut messages: Vec<GroupMessageItem> = rows
+        .into_iter()
+        .map(|r| GroupMessageItem {
+            id: r.id,
+            seq: r.seq,
+            group_id: r.group_id,
+            sender_id: r.sender_id,
+            sender_name: r.username.unwrap_or_default(),
+            sender_avatar_url: r.avatar_url,
+            content: r.content,
+            reply_to_id: r.reply_to_id,
+            is_pinned: r.is_pinned,
+            is_edited: r.is_edited,
+            created_at: r.created_at,
+        })
+        .collect();
+
+    messages.reverse();
+    Ok(Json(messages))
+}
+
+// 13. Send group message
+async fn send_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    Json(payload): Json<PostGroupMessageRequest>,
+) -> AppResult<Json<GroupMessageItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id).await?;
+    if role.is_none() {
+        return Err(AppError::Forbidden("not_a_group_member"));
+    }
+
+    if payload.content.trim().is_empty() {
+        return Err(AppError::BadRequest("empty_message"));
+    }
+
+    let msg_id = Uuid::new_v4();
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO group_messages (id, group_id, sender_id, content, reply_to_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING seq, created_at
+        "#,
+        msg_id,
+        group_id,
+        user.id,
+        payload.content.trim(),
+        payload.reply_to_id
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    let item = GroupMessageItem {
+        id: msg_id,
+        seq: row.seq,
+        group_id,
+        sender_id: user.id,
+        sender_name: user.username.unwrap_or_default(),
+        sender_avatar_url: user.avatar_url,
+        content: payload.content.trim().to_string(),
+        reply_to_id: payload.reply_to_id,
+        is_pinned: false,
+        is_edited: false,
+        created_at: row.created_at,
+    };
+
+    // Broadcast to all group members
+    let member_ids = sqlx::query_scalar!(
+        "SELECT user_id FROM group_members WHERE group_id = $1",
+        group_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    state
+        .ws_hub
+        .send_to_users(&member_ids, WsEvent::GroupMessageNew { message: item.clone() })
+        .await;
+
+    Ok(Json(item))
+}
+
+// 14. Edit message
+async fn edit_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((group_id, message_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<PostGroupMessageRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let msg = sqlx::query!(
+        "SELECT sender_id FROM group_messages WHERE id = $1 AND group_id = $2",
+        message_id,
+        group_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
+
+    if msg.sender_id != user.id {
+        return Err(AppError::Forbidden("cannot_edit_other_user_message"));
+    }
+
+    sqlx::query!(
+        "UPDATE group_messages SET content = $1, is_edited = true WHERE id = $2",
+        payload.content.trim(),
+        message_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "edited": true })))
+}
+
+// 15. Delete message (Sender or Owner/Admin)
+async fn delete_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((group_id, message_id)): Path<(Uuid, Uuid)>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    let msg = sqlx::query!(
+        "SELECT sender_id FROM group_messages WHERE id = $1 AND group_id = $2",
+        message_id,
+        group_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
+
+    if msg.sender_id != user.id && role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    sqlx::query!(
+        "DELETE FROM group_messages WHERE id = $1",
+        message_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "deleted": true })))
+}
+
+// 16. Pin / Unpin message (Owner or Admin)
+async fn pin_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((group_id, message_id)): Path<(Uuid, Uuid)>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    if role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    let updated = sqlx::query!(
+        r#"
+        UPDATE group_messages
+        SET is_pinned = NOT is_pinned
+        WHERE id = $1 AND group_id = $2
+        RETURNING is_pinned
+        "#,
+        message_id,
+        group_id
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "pinned": updated.is_pinned })))
+}

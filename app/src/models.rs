@@ -234,9 +234,178 @@ pub enum WsEvent {
     UserPresenceUpdate(serde_json::Value),
     #[serde(rename = "webrtc.signal")]
     WebRtcSignal(serde_json::Value),
+    #[serde(rename = "group.message.new")]
+    GroupMessageNew(GroupMessagePayload),
+    #[serde(rename = "group.member.joined")]
+    GroupMemberJoined(serde_json::Value),
+    #[serde(rename = "group.member.left")]
+    GroupMemberLeft(serde_json::Value),
+    #[serde(rename = "group.updated")]
+    GroupUpdated(serde_json::Value),
+    #[serde(rename = "call.incoming")]
+    CallIncoming(CallSessionPayload),
+    #[serde(rename = "call.accepted")]
+    CallAccepted(serde_json::Value),
+    #[serde(rename = "call.rejected")]
+    CallRejected(serde_json::Value),
+    #[serde(rename = "call.ended")]
+    CallEnded(serde_json::Value),
+    #[serde(rename = "call.signal")]
+    CallSignal(serde_json::Value),
+    #[serde(rename = "call.participant.joined")]
+    CallParticipantJoined(serde_json::Value),
+    #[serde(rename = "call.participant.left")]
+    CallParticipantLeft(serde_json::Value),
+    #[serde(rename = "call.state.update")]
+    CallStateUpdate(serde_json::Value),
     #[serde(other)]
     Unknown,
 }
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum GroupMessagePayload {
+    Wrapped { message: GroupMessageItem },
+    Flat(GroupMessageItem),
+}
+
+impl GroupMessagePayload {
+    pub fn into_item(self) -> GroupMessageItem {
+        match self {
+            Self::Wrapped { message } => message,
+            Self::Flat(item) => item,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum CallSessionPayload {
+    Wrapped { session: CallSessionItem },
+    Flat(CallSessionItem),
+}
+
+impl CallSessionPayload {
+    pub fn into_item(self) -> CallSessionItem {
+        match self {
+            Self::Wrapped { session } => session,
+            Self::Flat(item) => item,
+        }
+    }
+}
+
+// --- Groups Models for App ---
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupItem {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    pub owner_id: String,
+    #[serde(default)]
+    pub member_count: i64,
+    #[serde(default)]
+    pub role: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupMemberItem {
+    pub group_id: String,
+    pub user_id: String,
+    pub username: String,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    pub role: String,
+    pub joined_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupInviteItem {
+    pub code: String,
+    pub group_id: String,
+    pub inviter_id: String,
+    #[serde(default)]
+    pub max_uses: Option<i32>,
+    pub uses: i32,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupMessageItem {
+    pub id: String,
+    pub seq: i64,
+    pub group_id: String,
+    pub sender_id: String,
+    #[serde(alias = "sender_name")]
+    pub sender_username: String,
+    #[serde(default)]
+    pub sender_avatar_url: Option<String>,
+    pub content: String,
+    #[serde(default)]
+    pub reply_to_id: Option<String>,
+    #[serde(default)]
+    pub is_pinned: bool,
+    #[serde(default)]
+    pub is_edited: bool,
+    pub created_at: String,
+}
+
+// --- Calls Models for App ---
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CallSessionItem {
+    pub id: String,
+    pub call_type: String, // "audio" | "video"
+    pub caller_id: String,
+    pub caller_name: String,
+    #[serde(default)]
+    pub caller_avatar_url: Option<String>,
+    #[serde(default)]
+    pub receiver_id: Option<String>,
+    #[serde(default)]
+    pub receiver_name: Option<String>,
+    #[serde(default)]
+    pub group_id: Option<String>,
+    #[serde(default)]
+    pub group_name: Option<String>,
+    pub status: String, // "ringing" | "active" | "ended" | "rejected" | "missed" | "busy"
+    #[serde(default)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    pub ended_at: Option<String>,
+    pub created_at: String,
+    #[serde(default)]
+    pub participants: Vec<CallParticipantItem>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CallParticipantItem {
+    pub call_id: String,
+    pub user_id: String,
+    pub username: String,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    pub joined_at: String,
+    #[serde(default)]
+    pub left_at: Option<String>,
+    pub muted: bool,
+    pub camera_off: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CallSignalPayload {
+    #[serde(default)]
+    pub target_user_id: Option<String>,
+    pub signal_type: String, // "offer" | "answer" | "ice_candidate"
+    pub data: serde_json::Value,
+}
+
 
 /// Handles both backend `{ "message": ChannelMessageItem }` and flat `ChannelMessageItem`.
 #[derive(Clone, Debug, Deserialize)]

@@ -182,3 +182,146 @@ pub struct AuditLogItem {
     pub created_at: DateTime<Utc>,
 }
 
+// --- Groups Models ---
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GroupItem {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub avatar_url: Option<String>,
+    pub owner_id: Uuid,
+    pub member_count: i64,
+    pub role: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateGroupRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub member_ids: Vec<Uuid>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateGroupRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GroupMemberItem {
+    pub group_id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub avatar_url: Option<String>,
+    pub role: String,
+    pub joined_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AddGroupMemberRequest {
+    pub user_id: Option<Uuid>,
+    pub username: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateGroupMemberRoleRequest {
+    pub role: String, // "admin", "member", "owner" (transfer)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GroupInviteItem {
+    pub code: String,
+    pub group_id: Uuid,
+    pub inviter_id: Uuid,
+    pub max_uses: Option<i32>,
+    pub uses: i32,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateGroupInviteRequest {
+    pub max_uses: Option<i32>,
+    pub expires_in_seconds: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GroupMessageItem {
+    pub id: Uuid,
+    pub seq: i64,
+    pub group_id: Uuid,
+    pub sender_id: Uuid,
+    pub sender_name: String,
+    pub sender_avatar_url: Option<String>,
+    pub content: String,
+    pub reply_to_id: Option<Uuid>,
+    pub is_pinned: bool,
+    pub is_edited: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PostGroupMessageRequest {
+    pub content: String,
+    pub reply_to_id: Option<Uuid>,
+}
+
+// --- Calls Models ---
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CallSessionItem {
+    pub id: Uuid,
+    pub call_type: String, // "audio" | "video"
+    pub caller_id: Uuid,
+    pub caller_name: String,
+    pub caller_avatar_url: Option<String>,
+    pub receiver_id: Option<Uuid>,
+    pub receiver_name: Option<String>,
+    pub group_id: Option<Uuid>,
+    pub group_name: Option<String>,
+    pub status: String, // "ringing" | "active" | "ended" | "rejected" | "missed" | "busy"
+    pub started_at: Option<DateTime<Utc>>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub participants: Vec<CallParticipantItem>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StartCallRequest {
+    pub call_type: String, // "audio" | "video"
+    pub receiver_id: Option<Uuid>,
+    pub group_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CallParticipantItem {
+    pub call_id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub avatar_url: Option<String>,
+    pub joined_at: DateTime<Utc>,
+    pub left_at: Option<DateTime<Utc>>,
+    pub muted: bool,
+    pub camera_off: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CallSignalPayload {
+    pub target_user_id: Option<Uuid>,
+    pub signal_type: String, // "offer" | "answer" | "ice_candidate" | "reconnect"
+    pub data: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateCallStateRequest {
+    pub muted: Option<bool>,
+    pub camera_off: Option<bool>,
+}
+
+

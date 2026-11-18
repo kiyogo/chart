@@ -1123,3 +1123,41 @@ input::placeholder {
   background: #ef4444;
   color: #ffffff;
 }
+
+/* --- Group Conversations & Audio/Video Calling --- */
+.group-actions-bar {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+  color: inherit;
+}
+
+.group-item:hover {
+  background: var(--bg-hover);
+}
+
+.group-item.selected {
+  background: var(--bg-hover);
+}
+
+.group-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+

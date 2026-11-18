@@ -16,8 +16,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use chatw::{
     attachments, audit,
     auth::{self, AppState, google::GoogleJwksCache},
+    calls,
     config::Config,
-    crypto, db, friends, messages, servers, typing, users, webrtc,
+    crypto, db, friends, groups, messages, servers, typing, users, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -36,7 +37,7 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
     );
     headers.insert(
         header::HeaderName::from_static("permissions-policy"),
-        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+        HeaderValue::from_static("camera=(self), microphone=(self), display-capture=(self), geolocation=()"),
     );
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
@@ -126,6 +127,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/users", users::routes())
         .nest("/keys", crypto::keys::routes())
         .nest("/friends", friends::routes())
+        .nest("/groups", groups::routes())
+        .nest("/calls", calls::routes())
         .nest("/messages", messages::routes())
         .nest("/attachments", attachments::routes())
         .nest("/audit", audit::routes())

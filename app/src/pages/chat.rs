@@ -6,27 +6,32 @@ use uuid::Uuid;
 use crate::{
     components::{
         avatar::Avatar,
+        calls::{ActiveCallOverlay, IncomingCallModal},
         emoji_picker::EmojiPicker,
+        groups::{AddMemberModal, CreateGroupModal, GroupInfoPanel, GroupInviteModal},
         icons::{
-            BackIcon, CloseIcon, EmojiIcon, FriendsIcon, LogoIcon, LogoutIcon, MenuIcon, SendIcon,
-            ServerIcon, SettingsIcon,
+            BackIcon, CloseIcon, EmojiIcon, FriendsIcon, GroupIcon, InfoIcon, LogoIcon,
+            LogoutIcon, MenuIcon, PhoneIcon, PlusIcon, SendIcon, ServerIcon, SettingsIcon,
+            VideoIcon,
         },
     },
     crypto::e2ee::{
         PeerKeys, decrypt_chat_message, encrypt_chat_message, get_or_verify_peer_keys,
         get_user_keys,
     },
+    media,
     models::{
-        ChannelItem, ChannelMessageItem, DisplayMessage, FriendItem, MessageStatus,
-        PendingRequestItem, ServerItem, UserSearchResult, WsEvent,
+        CallSessionItem, ChannelItem, ChannelMessageItem, DisplayMessage, FriendItem, GroupItem,
+        GroupMessageItem, MessageStatus, PendingRequestItem, ServerItem, UserSearchResult, WsEvent,
     },
     platform,
-    services::{api, ws},
+    services::{api, calls, groups, ws},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SidebarTab {
     Chats,
+    Groups,
     Friends,
     Servers,
 }
@@ -98,6 +103,20 @@ pub fn Chat(
     let mut invite_code_input = use_signal(String::new);
     let mut active_voice_channel = use_signal(|| Option::<ChannelItem>::None);
     let mut is_voice_muted = use_signal(|| false);
+
+    // Groups State
+    let mut groups = use_signal(Vec::<GroupItem>::new);
+    let mut active_group = use_signal(|| Option::<GroupItem>::None);
+    let mut group_messages = use_signal(Vec::<GroupMessageItem>::new);
+    let mut group_input = use_signal(String::new);
+    let mut is_create_group_open = use_signal(|| false);
+    let mut is_group_info_open = use_signal(|| false);
+    let mut is_group_invite_open = use_signal(|| false);
+    let mut is_group_add_member_open = use_signal(|| false);
+
+    // Calls State
+    let mut active_call_session = use_signal(|| Option::<CallSessionItem>::None);
+    let mut incoming_call_session = use_signal(|| Option::<CallSessionItem>::None);
 
     // Friends & Search
     let mut friend_input = use_signal(String::new);
@@ -190,6 +209,9 @@ pub fn Chat(
             }
             if let Ok(srvs) = api::servers_list().await {
                 servers.set(srvs);
+            }
+            if let Ok(grps) = groups::groups_list().await {
+                groups.set(grps);
             }
 
             let (_ws_handle, mut rx) = ws::connect_ws();
@@ -409,6 +431,115 @@ pub fn Chat(
                         => {
                             is_friend_typing.set(false);
                         }
+                    WsEvent::GroupMessageNew(payload) => {
+                        let msg = payload.into_item();
+                        if active_group()
+                            .as_ref()
+                            .map(|g| g.id == msg.group_id)
+                            .unwrap_or(false)
+                        {
+                            group_messages.with_mut(|list| {
+                                if !list.iter().any(|m| m.id == msg.id) {
+                                    list.push(msg.clone());
+                                }
+                            });
+                            platform::scroll_chat_to_bottom(false);
+                        }
+                        if msg.sender_id != uid {
+                            platform::play_notification_chime();
+                        }
+                    }
+                    WsEvent::GroupMemberJoined(_)
+                    | WsEvent::GroupMemberLeft(_)
+                    | WsEvent::GroupUpdated(_) => {
+                        spawn(async move {
+                            if let Ok(grps) = groups::groups_list().await {
+                                groups.set(grps);
+                            }
+                        });
+                    }
+                    WsEvent::CallIncoming(payload) => {
+                        let sess = payload.into_item();
+                        incoming_call_session.set(Some(sess));
+                        platform::play_notification_chime();
+                    }
+                    WsEvent::CallAccepted(val) => {
+                        if let Ok(sess) = serde_json::from_value::<CallSessionItem>(val) {
+                            incoming_call_session.set(None);
+                            active_call_session.set(Some(sess));
+                        }
+                    }
+                    WsEvent::CallRejected(_) | WsEvent::CallEnded(_) => {
+                        incoming_call_session.set(None);
+                        active_call_session.set(None);
+                        media::stop_all_media();
+                    }
+                    WsEvent::CallSignal(val) => {
+                        let call_id = val.get("call_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let sender_id = val.get("sender_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let signal_type = val.get("signal_type").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let data = val.get("data").cloned().unwrap_or(serde_json::Value::Null);
+
+                        let c_id = call_id.clone();
+                        let s_id = sender_id.clone();
+                        spawn(async move {
+                            if let Ok(Some(reply_data)) = media::handle_remote_signal(&c_id, &s_id, &signal_type, data).await {
+                                let reply_type = if signal_type == "offer" { "answer" } else { "ice_candidate" };
+                                let _ = calls::calls_send_signal(&c_id, Some(s_id), reply_type, reply_data).await;
+                            }
+                        });
+                    }
+                    WsEvent::CallParticipantJoined(val) => {
+                        if let (Some(sess_id), Some(p_val)) = (
+                            val.get("session_id").and_then(|v| v.as_str()),
+                            val.get("participant"),
+                        ) {
+                            if let Ok(p) = serde_json::from_value::<crate::models::CallParticipantItem>(p_val.clone()) {
+                                active_call_session.with_mut(|opt| {
+                                    if let Some(s) = opt {
+                                        if s.id == sess_id && !s.participants.iter().any(|x| x.user_id == p.user_id) {
+                                            s.participants.push(p);
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    WsEvent::CallParticipantLeft(val) => {
+                        if let (Some(sess_id), Some(user_id)) = (
+                            val.get("session_id").and_then(|v| v.as_str()),
+                            val.get("user_id").and_then(|v| v.as_str()),
+                        ) {
+                            active_call_session.with_mut(|opt| {
+                                if let Some(s) = opt {
+                                    if s.id == sess_id {
+                                        s.participants.retain(|x| x.user_id != user_id);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    WsEvent::CallStateUpdate(val) => {
+                        if let (Some(sess_id), Some(user_id), Some(muted), Some(cam_off)) = (
+                            val.get("session_id").and_then(|v| v.as_str()),
+                            val.get("user_id").and_then(|v| v.as_str()),
+                            val.get("is_muted").and_then(|v| v.as_bool()),
+                            val.get("is_camera_off").and_then(|v| v.as_bool()),
+                        ) {
+                            active_call_session.with_mut(|opt| {
+                                if let Some(s) = opt {
+                                    if s.id == sess_id {
+                                        for p in s.participants.iter_mut() {
+                                            if p.user_id == user_id {
+                                                p.muted = muted;
+                                                p.camera_off = cam_off;
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -419,6 +550,7 @@ pub fn Chat(
     let mut select_channel = move |ch: ChannelItem| {
         selected_channel.set(Some(ch.clone()));
         active_friend.set(None);
+        active_group.set(None);
         if ch.channel_type == "text" {
             let cid = ch.id.clone();
             spawn(async move {
@@ -435,6 +567,23 @@ pub fn Chat(
             });
         }
     };
+
+    // Helper: select a group
+    let select_group = use_callback(move |grp: GroupItem| {
+        is_settings_open.set(false);
+        selected_channel.set(None);
+        active_friend.set(None);
+        active_group.set(Some(grp.clone()));
+        group_messages.set(Vec::new());
+
+        let gid = grp.id.clone();
+        spawn(async move {
+            if let Ok(msgs) = groups::groups_get_messages(&gid, 50, None).await {
+                group_messages.set(msgs);
+            }
+            platform::scroll_chat_to_bottom(false);
+        });
+    });
 
     // Helper: select a server
     let mut select_server = move |srv: ServerItem| {
@@ -456,6 +605,7 @@ pub fn Chat(
     let select_friend = use_callback(move |friend: FriendItem| {
         is_settings_open.set(false);
         selected_channel.set(None);
+        active_group.set(None);
         active_friend.set(Some(friend.clone()));
         is_friend_typing.set(false);
         messages.set(Vec::new());
@@ -679,18 +829,43 @@ pub fn Chat(
         });
     });
 
+    // Send group message
+    let trigger_send_group_message = use_callback(move |_: ()| {
+        let Some(grp) = active_group() else {
+            return;
+        };
+        let text = group_input().trim().to_string();
+        if text.is_empty() {
+            return;
+        }
+        group_input.set(String::new());
+        let gid = grp.id.clone();
+        spawn(async move {
+            if let Ok(msg) = groups::groups_send_message(&gid, &text, None).await {
+                group_messages.with_mut(|list| {
+                    if !list.iter().any(|m| m.id == msg.id) {
+                        list.push(msg);
+                    }
+                });
+                platform::scroll_chat_to_bottom(false);
+            }
+        });
+    });
+
     // Computed counts
     let total_unread: usize = unread_counts.read().values().copied().sum();
     let pending_len = pending_requests.read().len();
 
-    let sidebar_class = if active_friend().is_some() {
+    let is_chat_selected = active_friend().is_some() || active_group().is_some() || selected_channel().is_some() || is_settings_open();
+
+    let sidebar_class = if is_chat_selected {
         "sidebar hidden-mobile"
     } else {
         "sidebar "
     };
 
     let chat_view_class =
-        if active_friend().is_none() && !is_settings_open() && selected_channel().is_none() {
+        if !is_chat_selected {
             "chat-view hidden-mobile"
         } else {
             "chat-view "
@@ -730,6 +905,21 @@ pub fn Chat(
                             if total_unread > 0 {
                                 span { class: "tab-badge", "{format_badge(total_unread)}" }
                             }
+                        }
+                        button {
+                            r#type: "button",
+                            class: if sidebar_tab() == SidebarTab::Groups && !is_settings_open() { "icon-btn active" } else { "icon-btn " },
+                            aria_label: "Nhóm trò chuyện",
+                            onclick: move |_| {
+                                sidebar_tab.set(SidebarTab::Groups);
+                                is_settings_open.set(false);
+                                spawn(async move {
+                                    if let Ok(list) = groups::groups_list().await {
+                                        groups.set(list);
+                                    }
+                                });
+                            },
+                            GroupIcon {}
                         }
                         button {
                             r#type: "button",
@@ -1038,6 +1228,64 @@ pub fn Chat(
                     }
                 }
 
+                // Tab: Groups
+                if sidebar_tab() == SidebarTab::Groups {
+                    div { class: "group-tab-container",
+                        div { class: "group-actions-bar",
+                            button {
+                                r#type: "button",
+                                class: "group-create-btn",
+                                style: "display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--msg-sent); color: white; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer;",
+                                onclick: move |_| is_create_group_open.set(true),
+                                PlusIcon { size: 16 }
+                                span { "Tạo nhóm mới" }
+                            }
+                        }
+                        div { class: "sidebar-scrollable",
+                            if groups.read().is_empty() {
+                                div { class: "empty-chat", "Chưa tham gia nhóm nào" }
+                            } else {
+                                for grp in groups() {
+                                    {
+                                        let is_selected = active_group()
+                                            .as_ref()
+                                            .map(|g| g.id == grp.id)
+                                            .unwrap_or(false);
+                                        let g_click = grp.clone();
+                                        rsx! {
+                                            button {
+                                                key: "{grp.id}",
+                                                r#type: "button",
+                                                class: if is_selected { "chat-item selected" } else { "chat-item " },
+                                                onclick: move |_| select_group.call(g_click.clone()),
+                                                Avatar {
+                                                    name: grp.name.clone(),
+                                                    avatar_url: grp.avatar_url.clone(),
+                                                    size: 38,
+                                                }
+                                                div { class: "chat-item-info",
+                                                    div { class: "chat-item-header",
+                                                        span { class: "chat-item-name", "{grp.name}" }
+                                                        if let Some(role) = grp.role.as_ref() {
+                                                            span {
+                                                                style: "font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--bg-hover); color: var(--text-secondary); text-transform: uppercase; font-weight: 600;",
+                                                                "{role}"
+                                                            }
+                                                        }
+                                                    }
+                                                    div { class: "chat-item-preview",
+                                                        "{grp.member_count} thành viên"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Tab: Servers (Discord-style)
                 if sidebar_tab() == SidebarTab::Servers {
                     div { class: "server-tab-container",
@@ -1224,6 +1472,42 @@ pub fn Chat(
                                 }
                                 h2 { class: "chat-header-title", "{active.username}" }
                                 div { class: "chat-header-spacer" }
+                                {
+                                    let active_uid_audio = active.id.clone();
+                                    let active_uid_video = active.id.clone();
+                                    rsx! {
+                                        button {
+                                            r#type: "button",
+                                            class: "icon-btn call-action-btn",
+                                            aria_label: "Gọi thoại",
+                                            title: "Gọi thoại",
+                                            onclick: move |_| {
+                                                let target = active_uid_audio.clone();
+                                                spawn(async move {
+                                                    if let Ok(sess) = calls::calls_start("audio", Some(target), None).await {
+                                                        active_call_session.set(Some(sess));
+                                                    }
+                                                });
+                                            },
+                                            PhoneIcon {}
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            class: "icon-btn call-action-btn",
+                                            aria_label: "Gọi video",
+                                            title: "Gọi video",
+                                            onclick: move |_| {
+                                                let target = active_uid_video.clone();
+                                                spawn(async move {
+                                                    if let Ok(sess) = calls::calls_start("video", Some(target), None).await {
+                                                        active_call_session.set(Some(sess));
+                                                    }
+                                                });
+                                            },
+                                            VideoIcon {}
+                                        }
+                                    }
+                                }
                                 button {
                                     r#type: "button",
                                     class: if is_partner_info_open() { "icon-btn active" } else { "icon-btn " },
@@ -1433,6 +1717,178 @@ pub fn Chat(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                } else if let Some(grp) = active_group() {
+                    // Group View
+                    div { class: "chat-main-container",
+                        div { class: "chat-column",
+                            // Group Header
+                            header { class: "chat-header",
+                                button {
+                                    r#type: "button",
+                                    class: "icon-btn back-btn",
+                                    aria_label: "Quay lại",
+                                    onclick: move |_| active_group.set(None),
+                                    BackIcon {}
+                                }
+                                Avatar {
+                                    name: grp.name.clone(),
+                                    avatar_url: grp.avatar_url.clone(),
+                                    size: 34,
+                                }
+                                div { class: "chat-header-info", style: "display: flex; flex-direction: column; min-width: 0;",
+                                    h2 { class: "chat-header-title", style: "margin: 0; line-height: 1.2;", "{grp.name}" }
+                                    span { style: "font-size: 11px; color: var(--text-secondary);", "{grp.member_count} thành viên" }
+                                }
+                                div { class: "chat-header-spacer" }
+                                {
+                                    let g_id_audio = grp.id.clone();
+                                    let g_id_video = grp.id.clone();
+                                    rsx! {
+                                        button {
+                                            r#type: "button",
+                                            class: "icon-btn call-action-btn",
+                                            aria_label: "Gọi thoại nhóm",
+                                            title: "Gọi thoại nhóm",
+                                            onclick: move |_| {
+                                                let target = g_id_audio.clone();
+                                                spawn(async move {
+                                                    if let Ok(sess) = calls::calls_start("audio", None, Some(target)).await {
+                                                        active_call_session.set(Some(sess));
+                                                    }
+                                                });
+                                            },
+                                            PhoneIcon {}
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            class: "icon-btn call-action-btn",
+                                            aria_label: "Gọi video nhóm",
+                                            title: "Gọi video nhóm",
+                                            onclick: move |_| {
+                                                let target = g_id_video.clone();
+                                                spawn(async move {
+                                                    if let Ok(sess) = calls::calls_start("video", None, Some(target)).await {
+                                                        active_call_session.set(Some(sess));
+                                                    }
+                                                });
+                                            },
+                                            VideoIcon {}
+                                        }
+                                    }
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: if is_group_info_open() { "icon-btn active" } else { "icon-btn " },
+                                    aria_label: "Thông tin nhóm",
+                                    title: "Thông tin nhóm",
+                                    onclick: move |_| is_group_info_open.set(!is_group_info_open()),
+                                    InfoIcon { size: 18 }
+                                }
+                            }
+
+                            // Group Messages List
+                            div {
+                                id: "chat-messages-scroll",
+                                class: "chat-messages",
+                                style: "overflow-y: auto; display: flex; flex-direction: column;",
+                                if group_messages.read().is_empty() {
+                                    div { class: "empty-chat-inner", "Chưa có tin nhắn trong nhóm này" }
+                                } else {
+                                    for msg in group_messages() {
+                                        {
+                                            let is_self = msg.sender_id == current_user_id;
+                                            let row_cls = if is_self { "message-row sent" } else { "message-row received" };
+                                            let time_str = platform::format_local_time(&msg.created_at);
+                                            rsx! {
+                                                div { class: "{row_cls}", key: "{msg.id}",
+                                                    div { class: "message-content-wrapper",
+                                                        if !is_self {
+                                                            Avatar {
+                                                                name: msg.sender_username.clone(),
+                                                                avatar_url: msg.sender_avatar_url.clone(),
+                                                                size: 28,
+                                                            }
+                                                        }
+                                                        div { class: "message-bubble",
+                                                            if !is_self {
+                                                                div {
+                                                                    style: "font-size: 11px; font-weight: 600; margin-bottom: 2px; opacity: 0.85;",
+                                                                    "{msg.sender_username}"
+                                                                }
+                                                            }
+                                                            "{msg.content}"
+                                                        }
+                                                    }
+                                                    if !msg.created_at.is_empty() {
+                                                        span { class: "message-time", "{time_str}" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Group Input Bar
+                            form {
+                                class: "chat-input-bar",
+                                onsubmit: move |evt| {
+                                    evt.prevent_default();
+                                    trigger_send_group_message.call(());
+                                },
+                                input {
+                                    r#type: "text",
+                                    class: "chat-input",
+                                    placeholder: "Nhắn tin tại {grp.name}",
+                                    aria_label: "Nội dung tin nhắn nhóm",
+                                    value: "{group_input}",
+                                    oninput: move |evt| group_input.set(evt.value()),
+                                    onkeydown: move |evt| {
+                                        if evt.key() == Key::Enter && !evt.modifiers().shift() {
+                                            evt.prevent_default();
+                                            trigger_send_group_message.call(());
+                                        }
+                                    },
+                                }
+                                button {
+                                    r#type: "submit",
+                                    class: "send-btn",
+                                    disabled: group_input().trim().is_empty(),
+                                    aria_label: "Gửi",
+                                    SendIcon {}
+                                }
+                            }
+                        }
+
+                        // Group Info Sidebar (if opened)
+                        if is_group_info_open() {
+                            GroupInfoPanel {
+                                group: grp.clone(),
+                                current_user_id: current_user_id.clone(),
+                                on_close: move |_| is_group_info_open.set(false),
+                                on_open_invite: move |_| is_group_invite_open.set(true),
+                                on_open_add_member: move |_| is_group_add_member_open.set(true),
+                                on_group_deleted: move |_| {
+                                    is_group_info_open.set(false);
+                                    active_group.set(None);
+                                    spawn(async move {
+                                        if let Ok(grps) = groups::groups_list().await {
+                                            groups.set(grps);
+                                        }
+                                    });
+                                },
+                                on_group_left: move |_| {
+                                    is_group_info_open.set(false);
+                                    active_group.set(None);
+                                    spawn(async move {
+                                        if let Ok(grps) = groups::groups_list().await {
+                                            groups.set(grps);
+                                        }
+                                    });
+                                },
                             }
                         }
                     }
@@ -1705,6 +2161,89 @@ pub fn Chat(
                     div { class: "empty-chat",
                         span { "Chọn một cuộc trò chuyện để bắt đầu" }
                     }
+                }
+            }
+
+            // Modals
+            if is_create_group_open() {
+                CreateGroupModal {
+                    friends: friends(),
+                    on_close: move |_| is_create_group_open.set(false),
+                    on_created: move |gid| {
+                        is_create_group_open.set(false);
+                        spawn(async move {
+                            if let Ok(grps) = groups::groups_list().await {
+                                groups.set(grps.clone());
+                                if let Some(created) = grps.into_iter().find(|g| g.id == gid) {
+                                    select_group.call(created);
+                                }
+                            }
+                        });
+                    },
+                }
+            }
+
+            if is_group_invite_open() {
+                if let Some(grp) = active_group() {
+                    GroupInviteModal {
+                        group_id: grp.id.clone(),
+                        on_close: move |_| is_group_invite_open.set(false),
+                    }
+                }
+            }
+
+            if is_group_add_member_open() {
+                if let Some(grp) = active_group() {
+                    AddMemberModal {
+                        group_id: grp.id.clone(),
+                        on_close: move |_| is_group_add_member_open.set(false),
+                        on_member_added: move |_| {
+                            is_group_add_member_open.set(false);
+                        },
+                    }
+                }
+            }
+
+            if let Some(incoming) = incoming_call_session() {
+                {
+                    let inc_accept = incoming.clone();
+                    let inc_reject = incoming.clone();
+                    rsx! {
+                        IncomingCallModal {
+                            session: incoming,
+                            on_accept: move |_| {
+                                let s = inc_accept.clone();
+                                spawn(async move {
+                                    if let Ok(accepted) = calls::calls_accept(&s.id).await {
+                                        incoming_call_session.set(None);
+                                        active_call_session.set(Some(accepted));
+                                    }
+                                });
+                            },
+                            on_reject: move |_| {
+                                let s = inc_reject.clone();
+                                spawn(async move {
+                                    let _ = calls::calls_reject(&s.id).await;
+                                    incoming_call_session.set(None);
+                                });
+                            },
+                        }
+                    }
+                }
+            }
+
+            if let Some(session) = active_call_session() {
+                ActiveCallOverlay {
+                    session: session.clone(),
+                    current_user_id: current_user_id.clone(),
+                    on_end_call: move |_| {
+                        let s = session.clone();
+                        spawn(async move {
+                            let _ = calls::calls_end(&s.id).await;
+                            active_call_session.set(None);
+                            media::stop_all_media();
+                        });
+                    },
                 }
             }
         }
