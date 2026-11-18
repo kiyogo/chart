@@ -15,6 +15,7 @@ use crate::{
     services::api,
 };
 
+const THEME_CSS: &str = include_str!("../assets/theme.css");
 const MAIN_CSS: &str = include_str!("../assets/main.css");
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -83,6 +84,7 @@ pub fn App() -> Element {
     };
 
     rsx! {
+        document::Style { {THEME_CSS} }
         document::Style { {MAIN_CSS} }
         div { class: "app-layout",
             main { class: "app-content",

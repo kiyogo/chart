@@ -11,6 +11,7 @@ pub mod groups;
 pub mod messages;
 pub mod models;
 pub mod servers;
+pub mod stickers;
 pub mod typing;
 pub mod users;
 pub mod webrtc;

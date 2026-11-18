@@ -14,6 +14,8 @@ use crate::{
             LogoutIcon, MenuIcon, PhoneIcon, PlusIcon, SendIcon, ServerIcon, SettingsIcon,
             VideoIcon,
         },
+        profile_modal::ProfileModal,
+        sticker_picker::StickerPicker,
     },
     crypto::e2ee::{
         PeerKeys, decrypt_chat_message, encrypt_chat_message, get_or_verify_peer_keys,
@@ -21,8 +23,9 @@ use crate::{
     },
     media,
     models::{
-        CallSessionItem, ChannelItem, ChannelMessageItem, DisplayMessage, FriendItem, GroupItem,
-        GroupMessageItem, MessageStatus, PendingRequestItem, ServerItem, UserSearchResult, WsEvent,
+        CallSessionItem, ChannelItem, ChannelMessageItem, DisplayMessage, FriendItem,
+        GroupCategoryItem, GroupChannelItem, GroupItem, GroupMessageItem, GroupReactionItem,
+        MessageStatus, PendingRequestItem, ServerItem, UserSearchResult, WsEvent,
     },
     platform,
     services::{api, calls, groups, ws},
@@ -107,12 +110,19 @@ pub fn Chat(
     // Groups State
     let mut groups = use_signal(Vec::<GroupItem>::new);
     let mut active_group = use_signal(|| Option::<GroupItem>::None);
+    let mut active_group_channel = use_signal(|| Option::<GroupChannelItem>::None);
+    let mut group_channels = use_signal(Vec::<GroupChannelItem>::new);
+    let mut group_categories = use_signal(Vec::<GroupCategoryItem>::new);
     let mut group_messages = use_signal(Vec::<GroupMessageItem>::new);
     let mut group_input = use_signal(String::new);
     let mut is_create_group_open = use_signal(|| false);
     let mut is_group_info_open = use_signal(|| false);
     let mut is_group_invite_open = use_signal(|| false);
     let mut is_group_add_member_open = use_signal(|| false);
+    let mut is_group_sticker_picker_open = use_signal(|| false);
+
+    // Profile State
+    let mut viewing_profile_user_id = use_signal(|| Option::<String>::None);
 
     // Calls State
     let mut active_call_session = use_signal(|| Option::<CallSessionItem>::None);
@@ -458,6 +468,51 @@ pub fn Chat(
                             }
                         });
                     }
+                    WsEvent::GroupReactionUpdate(val) => {
+                        let msg_id = val.get("message_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let user_id = val.get("user_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let emoji = val.get("emoji").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let action = val.get("action").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+
+                        group_messages.with_mut(|list| {
+                            if let Some(msg) = list.iter_mut().find(|m| m.id == msg_id) {
+                                if action == "removed" {
+                                    msg.reactions.retain(|r| !(r.user_id == user_id && r.emoji == emoji));
+                                } else if action == "added" {
+                                    if !msg.reactions.iter().any(|r| r.user_id == user_id && r.emoji == emoji) {
+                                        msg.reactions.push(GroupReactionItem {
+                                            id: Uuid::new_v4().to_string(),
+                                            message_id: msg_id.clone(),
+                                            user_id: user_id.clone(),
+                                            username: String::new(),
+                                            emoji: emoji.clone(),
+                                            created_at: String::new(),
+                                        });
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    WsEvent::GroupChannelNew(val) => {
+                        let gid = val.get("group_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        if active_group().as_ref().map(|g| g.id == gid).unwrap_or(false) {
+                            if let Some(ch_val) = val.get("channel") {
+                                if let Ok(ch) = serde_json::from_value::<GroupChannelItem>(ch_val.clone()) {
+                                    group_channels.with_mut(|list| {
+                                        if !list.iter().any(|c| c.id == ch.id) {
+                                            list.push(ch);
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    WsEvent::GroupChannelDeleted(val) => {
+                        let cid = val.get("channel_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        group_channels.with_mut(|list| {
+                            list.retain(|c| c.id != cid);
+                        });
+                    }
                     WsEvent::CallIncoming(payload) => {
                         let sess = payload.into_item();
                         incoming_call_session.set(Some(sess));
@@ -578,7 +633,16 @@ pub fn Chat(
 
         let gid = grp.id.clone();
         spawn(async move {
-            if let Ok(msgs) = groups::groups_get_messages(&gid, 50, None).await {
+            let _ = groups::groups_list_categories(&gid).await.map(|cats| group_categories.set(cats));
+            if let Ok(chs) = groups::groups_list_channels(&gid).await {
+                let first = chs.first().cloned();
+                group_channels.set(chs);
+                active_group_channel.set(first.clone());
+                let cid = first.as_ref().map(|c| c.id.as_str());
+                if let Ok(msgs) = groups::groups_get_messages(&gid, cid, 50, None).await {
+                    group_messages.set(msgs);
+                }
+            } else if let Ok(msgs) = groups::groups_get_messages(&gid, None, 50, None).await {
                 group_messages.set(msgs);
             }
             platform::scroll_chat_to_bottom(false);
@@ -840,8 +904,9 @@ pub fn Chat(
         }
         group_input.set(String::new());
         let gid = grp.id.clone();
+        let cid = active_group_channel().map(|c| c.id);
         spawn(async move {
-            if let Ok(msg) = groups::groups_send_message(&gid, &text, None).await {
+            if let Ok(msg) = groups::groups_send_message(&gid, cid.as_deref(), &text, None).await {
                 group_messages.with_mut(|list| {
                     if !list.iter().any(|m| m.id == msg.id) {
                         list.push(msg);
@@ -1789,6 +1854,46 @@ pub fn Chat(
                                 }
                             }
 
+                            // Group Channels Bar
+                            if !group_channels.read().is_empty() {
+                                div {
+                                    class: "group-channels-bar",
+                                    style: "display: flex; gap: 6px; padding: 6px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); overflow-x: auto; align-items: center;",
+                                    span { style: "font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-right: 4px;", "Kênh:" }
+                                    for ch in group_channels() {
+                                        {
+                                            let is_cur = active_group_channel().as_ref().map(|c| c.id == ch.id).unwrap_or(false);
+                                            let ch_clone = ch.clone();
+                                            let gid = grp.id.clone();
+                                            rsx! {
+                                                button {
+                                                    r#type: "button",
+                                                    class: if is_cur { "channel-pill active" } else { "channel-pill" },
+                                                    style: if is_cur {
+                                                        "padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--primary); color: #fff; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px;"
+                                                    } else {
+                                                        "padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; background: var(--bg-hover); color: var(--text-secondary); border: none; cursor: pointer; display: flex; align-items: center; gap: 4px;"
+                                                    },
+                                                    onclick: move |_| {
+                                                        let c = ch_clone.clone();
+                                                        active_group_channel.set(Some(c.clone()));
+                                                        let g = gid.clone();
+                                                        let cid = c.id.clone();
+                                                        spawn(async move {
+                                                            if let Ok(msgs) = groups::groups_get_messages(&g, Some(&cid), 50, None).await {
+                                                                group_messages.set(msgs);
+                                                            }
+                                                            platform::scroll_chat_to_bottom(false);
+                                                        });
+                                                    },
+                                                    span { "#{ch.name}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             // Group Messages List
                             div {
                                 id: "chat-messages-scroll",
@@ -1802,24 +1907,75 @@ pub fn Chat(
                                             let is_self = msg.sender_id == current_user_id;
                                             let row_cls = if is_self { "message-row sent" } else { "message-row received" };
                                             let time_str = platform::format_local_time(&msg.created_at);
+                                            let sender_uid = msg.sender_id.clone();
+                                            let gid = grp.id.clone();
+                                            let mid = msg.id.clone();
                                             rsx! {
                                                 div { class: "{row_cls}", key: "{msg.id}",
                                                     div { class: "message-content-wrapper",
                                                         if !is_self {
-                                                            Avatar {
-                                                                name: msg.sender_username.clone(),
-                                                                avatar_url: msg.sender_avatar_url.clone(),
-                                                                size: 28,
+                                                            div {
+                                                                style: "cursor: pointer;",
+                                                                onclick: {
+                                                                    let suid = sender_uid.clone();
+                                                                    move |_| viewing_profile_user_id.set(Some(suid.clone()))
+                                                                },
+                                                                Avatar {
+                                                                    name: msg.sender_username.clone(),
+                                                                    avatar_url: msg.sender_avatar_url.clone(),
+                                                                    size: 28,
+                                                                }
                                                             }
                                                         }
                                                         div { class: "message-bubble",
                                                             if !is_self {
                                                                 div {
-                                                                    style: "font-size: 11px; font-weight: 600; margin-bottom: 2px; opacity: 0.85;",
+                                                                    style: "font-size: 11px; font-weight: 600; margin-bottom: 2px; opacity: 0.85; cursor: pointer;",
+                                                                    onclick: {
+                                                                        let suid = sender_uid.clone();
+                                                                        move |_| viewing_profile_user_id.set(Some(suid.clone()))
+                                                                    },
                                                                     "{msg.sender_username}"
                                                                 }
                                                             }
                                                             "{msg.content}"
+                                                            if !msg.reactions.is_empty() {
+                                                                div {
+                                                                    class: "message-reactions-row",
+                                                                    style: "display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;",
+                                                                    for r in msg.reactions.iter() {
+                                                                        span {
+                                                                            class: "reaction-pill",
+                                                                            style: "background: var(--bg-hover); border: 1px solid var(--border); padding: 1px 6px; border-radius: 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 2px;",
+                                                                            "{r.emoji}"
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            div {
+                                                                class: "message-quick-react",
+                                                                style: "display: inline-flex; gap: 2px; margin-top: 2px; opacity: 0.6;",
+                                                                for emoji in ["👍", "❤️", "😂", "🎉"] {
+                                                                    {
+                                                                        let g = gid.clone();
+                                                                        let m = mid.clone();
+                                                                        rsx! {
+                                                                            button {
+                                                                                r#type: "button",
+                                                                                style: "background: none; border: none; padding: 1px 4px; font-size: 11px; cursor: pointer; border-radius: 4px;",
+                                                                                onclick: move |_| {
+                                                                                    let g_c = g.clone();
+                                                                                    let m_c = m.clone();
+                                                                                    spawn(async move {
+                                                                                        let _ = groups::groups_toggle_reaction(&g_c, &m_c, emoji).await;
+                                                                                    });
+                                                                                },
+                                                                                "{emoji}"
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                     if !msg.created_at.is_empty() {
@@ -1833,32 +1989,69 @@ pub fn Chat(
                             }
 
                             // Group Input Bar
-                            form {
-                                class: "chat-input-bar",
-                                onsubmit: move |evt| {
-                                    evt.prevent_default();
-                                    trigger_send_group_message.call(());
-                                },
-                                input {
-                                    r#type: "text",
-                                    class: "chat-input",
-                                    placeholder: "Nhắn tin tại {grp.name}",
-                                    aria_label: "Nội dung tin nhắn nhóm",
-                                    value: "{group_input}",
-                                    oninput: move |evt| group_input.set(evt.value()),
-                                    onkeydown: move |evt| {
-                                        if evt.key() == Key::Enter && !evt.modifiers().shift() {
-                                            evt.prevent_default();
-                                            trigger_send_group_message.call(());
+                            div { style: "position: relative;",
+                                if is_group_sticker_picker_open() {
+                                    div {
+                                        style: "position: absolute; bottom: 60px; right: 16px; z-index: 50;",
+                                        StickerPicker {
+                                            on_select: {
+                                                let gid = grp.id.clone();
+                                                move |sticker_url: String| {
+                                                    is_group_sticker_picker_open.set(false);
+                                                    let g = gid.clone();
+                                                    let cid = active_group_channel().map(|c| c.id);
+                                                    spawn(async move {
+                                                        if let Ok(msg) = groups::groups_send_message(&g, cid.as_deref(), &sticker_url, None).await {
+                                                            group_messages.with_mut(|list| {
+                                                                if !list.iter().any(|m| m.id == msg.id) {
+                                                                    list.push(msg);
+                                                                }
+                                                            });
+                                                            platform::scroll_chat_to_bottom(false);
+                                                        }
+                                                    });
+                                                }
+                                            },
+                                            _on_close: Some(EventHandler::new(move |_| is_group_sticker_picker_open.set(false))),
                                         }
-                                    },
+                                    }
                                 }
-                                button {
-                                    r#type: "submit",
-                                    class: "send-btn",
-                                    disabled: group_input().trim().is_empty(),
-                                    aria_label: "Gửi",
-                                    SendIcon {}
+                                form {
+                                    class: "chat-input-bar",
+                                    onsubmit: move |evt| {
+                                        evt.prevent_default();
+                                        trigger_send_group_message.call(());
+                                    },
+                                    button {
+                                        r#type: "button",
+                                        class: if is_group_sticker_picker_open() { "icon-btn active" } else { "icon-btn" },
+                                        style: "font-size: 16px; padding: 4px; border: none; background: transparent; cursor: pointer;",
+                                        aria_label: "Sticker",
+                                        title: "Chọn Sticker",
+                                        onclick: move |_| is_group_sticker_picker_open.set(!is_group_sticker_picker_open()),
+                                        "🎨"
+                                    }
+                                    input {
+                                        r#type: "text",
+                                        class: "chat-input",
+                                        placeholder: "Nhắn tin tại {grp.name}",
+                                        aria_label: "Nội dung tin nhắn nhóm",
+                                        value: "{group_input}",
+                                        oninput: move |evt| group_input.set(evt.value()),
+                                        onkeydown: move |evt| {
+                                            if evt.key() == Key::Enter && !evt.modifiers().shift() {
+                                                evt.prevent_default();
+                                                trigger_send_group_message.call(());
+                                            }
+                                        },
+                                    }
+                                    button {
+                                        r#type: "submit",
+                                        class: "send-btn",
+                                        disabled: group_input().trim().is_empty(),
+                                        aria_label: "Gửi",
+                                        SendIcon {}
+                                    }
                                 }
                             }
                         }
@@ -2063,6 +2256,16 @@ pub fn Chat(
                             div { class: "settings-profile-info",
                                 div { class: "settings-profile-name", "{current_username}" }
                                 div { class: "settings-profile-sub", "Tài khoản cá nhân" }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    style: "font-size: 11px; padding: 3px 8px; margin-top: 4px; border-radius: 6px; width: fit-content; cursor: pointer;",
+                                    onclick: {
+                                        let my_id = current_user_id.clone();
+                                        move |_| viewing_profile_user_id.set(Some(my_id.clone()))
+                                    },
+                                    "Chỉnh sửa hồ sơ"
+                                }
                             }
                             div { class: "settings-profile-action",
                                 label { class: "btn-avatar-upload",
@@ -2244,6 +2447,24 @@ pub fn Chat(
                             media::stop_all_media();
                         });
                     },
+                }
+            }
+
+            if let Some(uid) = viewing_profile_user_id() {
+                {
+                    let is_me = uid == current_user_id;
+                    rsx! {
+                        ProfileModal {
+                            user_id: uid.clone(),
+                            is_self: is_me,
+                            on_close: move |_| viewing_profile_user_id.set(None),
+                            on_profile_updated: move |p: crate::models::UserProfileResponse| {
+                                if let Some(av) = p.avatar_url {
+                                    my_avatar_url.set(Some(av));
+                                }
+                            },
+                        }
+                    }
                 }
             }
         }

@@ -3,7 +3,8 @@ use serde_json::json;
 
 use crate::{
     models::{
-        ApiError, GroupInviteItem, GroupItem, GroupMemberItem, GroupMessageItem,
+        ApiError, GroupCategoryItem, GroupChannelItem, GroupInviteItem, GroupItem, GroupMemberItem,
+        GroupMessageItem,
     },
     platform,
 };
@@ -176,11 +177,16 @@ pub async fn groups_join_by_invite(code: &str) -> Result<GroupItem, ApiError> {
 // 12. List messages
 pub async fn groups_get_messages(
     group_id: &str,
+    channel_id: Option<&str>,
     limit: i64,
     before_seq: Option<i64>,
 ) -> Result<Vec<GroupMessageItem>, ApiError> {
     let encoded = urlencoding::encode(group_id);
     let mut path = format!("/api/groups/{encoded}/messages?limit={limit}");
+    if let Some(cid) = channel_id {
+        let enc_cid = urlencoding::encode(cid);
+        path.push_str(&format!("&channel_id={enc_cid}"));
+    }
     if let Some(seq) = before_seq {
         path.push_str(&format!("&before_seq={seq}"));
     }
@@ -190,6 +196,7 @@ pub async fn groups_get_messages(
 // 13. Send group message
 pub async fn groups_send_message(
     group_id: &str,
+    channel_id: Option<&str>,
     content: &str,
     reply_to_id: Option<String>,
 ) -> Result<GroupMessageItem, ApiError> {
@@ -198,6 +205,7 @@ pub async fn groups_send_message(
         &format!("/api/groups/{encoded}/messages"),
         json!({
             "content": content,
+            "channel_id": channel_id,
             "reply_to_id": reply_to_id,
         }),
     )
@@ -236,5 +244,84 @@ pub async fn groups_pin_message(group_id: &str, message_id: &str) -> Result<bool
     let res: serde_json::Value =
         post_json(&format!("/api/groups/{enc_gid}/messages/{enc_mid}/pin"), json!({})).await?;
     Ok(res.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+// 17. List categories
+pub async fn groups_list_categories(group_id: &str) -> Result<Vec<GroupCategoryItem>, ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    get_json(&format!("/api/groups/{enc_gid}/categories")).await
+}
+
+// 18. Create category
+pub async fn groups_create_category(
+    group_id: &str,
+    name: &str,
+    position: Option<i32>,
+) -> Result<GroupCategoryItem, ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    post_json(
+        &format!("/api/groups/{enc_gid}/categories"),
+        json!({ "name": name, "position": position }),
+    )
+    .await
+}
+
+// 19. Delete category
+pub async fn groups_delete_category(group_id: &str, category_id: &str) -> Result<(), ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    let enc_cid = urlencoding::encode(category_id);
+    let _: serde_json::Value =
+        delete_json(&format!("/api/groups/{enc_gid}/categories/{enc_cid}")).await?;
+    Ok(())
+}
+
+// 20. List channels
+pub async fn groups_list_channels(group_id: &str) -> Result<Vec<GroupChannelItem>, ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    get_json(&format!("/api/groups/{enc_gid}/channels")).await
+}
+
+// 21. Create channel
+pub async fn groups_create_channel(
+    group_id: &str,
+    category_id: Option<&str>,
+    name: &str,
+    channel_type: Option<&str>,
+) -> Result<GroupChannelItem, ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    post_json(
+        &format!("/api/groups/{enc_gid}/channels"),
+        json!({
+            "category_id": category_id,
+            "name": name,
+            "channel_type": channel_type.unwrap_or("text"),
+        }),
+    )
+    .await
+}
+
+// 22. Delete channel
+pub async fn groups_delete_channel(group_id: &str, channel_id: &str) -> Result<(), ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    let enc_cid = urlencoding::encode(channel_id);
+    let _: serde_json::Value =
+        delete_json(&format!("/api/groups/{enc_gid}/channels/{enc_cid}")).await?;
+    Ok(())
+}
+
+// 23. Toggle Reaction
+pub async fn groups_toggle_reaction(
+    group_id: &str,
+    message_id: &str,
+    emoji: &str,
+) -> Result<String, ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    let enc_mid = urlencoding::encode(message_id);
+    let res: serde_json::Value = post_json(
+        &format!("/api/groups/{enc_gid}/messages/{enc_mid}/reactions"),
+        json!({ "emoji": emoji }),
+    )
+    .await?;
+    Ok(res.get("action").and_then(|v| v.as_str()).unwrap_or("added").to_string())
 }
 

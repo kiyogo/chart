@@ -15,15 +15,18 @@ use crate::{
     },
     error::{AppError, AppResult},
     models::{
-        AddGroupMemberRequest, CreateGroupInviteRequest, CreateGroupRequest, GroupInviteItem,
-        GroupItem, GroupMemberItem, GroupMessageItem, PostGroupMessageRequest,
-        UpdateGroupMemberRoleRequest, UpdateGroupRequest,
+        AddGroupMemberRequest, CreateGroupCategoryRequest, CreateGroupChannelRequest,
+        CreateGroupInviteRequest, CreateGroupRequest, GroupCategoryItem, GroupChannelItem,
+        GroupInviteItem, GroupItem, GroupMemberItem, GroupMessageItem, GroupReactionItem,
+        PostGroupMessageRequest, ToggleReactionRequest, UpdateGroupMemberRoleRequest,
+        UpdateGroupRequest,
     },
     websocket::WsEvent,
 };
 
 #[derive(Deserialize)]
 pub struct MessagesQuery {
+    pub channel_id: Option<Uuid>,
     pub before_seq: Option<i64>,
     pub limit: Option<i64>,
 }
@@ -52,6 +55,22 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/{group_id}/invites", post(create_invite))
         .route(
+            "/{group_id}/categories",
+            get(list_categories).post(create_category),
+        )
+        .route(
+            "/{group_id}/categories/{category_id}",
+            delete(delete_category),
+        )
+        .route(
+            "/{group_id}/channels",
+            get(list_channels).post(create_channel),
+        )
+        .route(
+            "/{group_id}/channels/{channel_id}",
+            delete(delete_channel),
+        )
+        .route(
             "/{group_id}/messages",
             get(list_messages).post(send_message),
         )
@@ -62,6 +81,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/{group_id}/messages/{message_id}/pin",
             post(pin_message),
+        )
+        .route(
+            "/{group_id}/messages/{message_id}/reactions",
+            post(toggle_reaction),
         )
 }
 
@@ -141,6 +164,32 @@ async fn create_group(
             .await?;
         }
     }
+
+    // Default category and general channel
+    let cat_id = Uuid::new_v4();
+    let chan_id = Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO group_categories (id, group_id, name, position)
+        VALUES ($1, $2, 'Text Channels', 0)
+        "#,
+        cat_id,
+        group_id
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query!(
+        r#"
+        INSERT INTO group_channels (id, group_id, category_id, name, channel_type, position)
+        VALUES ($1, $2, $3, 'general', 'text', 0)
+        "#,
+        chan_id,
+        group_id,
+        cat_id
+    )
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
 
@@ -786,36 +835,74 @@ async fn list_messages(
 
     let rows = sqlx::query!(
         r#"
-        SELECT m.id, m.seq, m.group_id, m.sender_id, m.content, m.reply_to_id,
+        SELECT m.id, m.seq, m.group_id, m.channel_id, m.sender_id, m.content, m.reply_to_id,
                m.is_pinned, m.is_edited, m.created_at,
                u.username, u.avatar_url
         FROM group_messages m
         JOIN users u ON m.sender_id = u.id
-        WHERE m.group_id = $1 AND m.seq < $2
+        WHERE m.group_id = $1
+          AND ($2::uuid IS NULL OR m.channel_id = $2)
+          AND m.seq < $3
         ORDER BY m.seq DESC
-        LIMIT $3
+        LIMIT $4
         "#,
         group_id,
+        query.channel_id,
         before_seq,
         limit
     )
     .fetch_all(&state.db)
     .await?;
 
+    let msg_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    let reaction_rows = if msg_ids.is_empty() {
+        vec![]
+    } else {
+        sqlx::query!(
+            r#"
+            SELECT r.id, r.message_id, r.user_id, r.emoji, r.created_at, u.username
+            FROM group_message_reactions r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.message_id = ANY($1)
+            ORDER BY r.created_at ASC
+            "#,
+            &msg_ids
+        )
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    let mut reactions_map: std::collections::HashMap<Uuid, Vec<GroupReactionItem>> = std::collections::HashMap::new();
+    for r in reaction_rows {
+        reactions_map.entry(r.message_id).or_default().push(GroupReactionItem {
+            id: r.id,
+            message_id: r.message_id,
+            user_id: r.user_id,
+            username: r.username.unwrap_or_default(),
+            emoji: r.emoji,
+            created_at: r.created_at,
+        });
+    }
+
     let mut messages: Vec<GroupMessageItem> = rows
         .into_iter()
-        .map(|r| GroupMessageItem {
-            id: r.id,
-            seq: r.seq,
-            group_id: r.group_id,
-            sender_id: r.sender_id,
-            sender_name: r.username.unwrap_or_default(),
-            sender_avatar_url: r.avatar_url,
-            content: r.content,
-            reply_to_id: r.reply_to_id,
-            is_pinned: r.is_pinned,
-            is_edited: r.is_edited,
-            created_at: r.created_at,
+        .map(|r| {
+            let reactions = reactions_map.remove(&r.id).unwrap_or_default();
+            GroupMessageItem {
+                id: r.id,
+                seq: r.seq,
+                group_id: r.group_id,
+                channel_id: r.channel_id,
+                sender_id: r.sender_id,
+                sender_name: r.username.unwrap_or_default(),
+                sender_avatar_url: r.avatar_url,
+                content: r.content,
+                reply_to_id: r.reply_to_id,
+                is_pinned: r.is_pinned,
+                is_edited: r.is_edited,
+                reactions,
+                created_at: r.created_at,
+            }
         })
         .collect();
 
@@ -846,12 +933,13 @@ async fn send_message(
     let msg_id = Uuid::new_v4();
     let row = sqlx::query!(
         r#"
-        INSERT INTO group_messages (id, group_id, sender_id, content, reply_to_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO group_messages (id, group_id, channel_id, sender_id, content, reply_to_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING seq, created_at
         "#,
         msg_id,
         group_id,
+        payload.channel_id,
         user.id,
         payload.content.trim(),
         payload.reply_to_id
@@ -863,6 +951,7 @@ async fn send_message(
         id: msg_id,
         seq: row.seq,
         group_id,
+        channel_id: payload.channel_id,
         sender_id: user.id,
         sender_name: user.username.unwrap_or_default(),
         sender_avatar_url: user.avatar_url,
@@ -870,6 +959,7 @@ async fn send_message(
         reply_to_id: payload.reply_to_id,
         is_pinned: false,
         is_edited: false,
+        reactions: Vec::new(),
         created_at: row.created_at,
     };
 
@@ -993,4 +1083,292 @@ async fn pin_message(
     .await?;
 
     Ok(Json(serde_json::json!({ "pinned": updated.is_pinned })))
+}
+
+// 17. List categories
+async fn list_categories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+) -> AppResult<Json<Vec<GroupCategoryItem>>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id).await?;
+    if role.is_none() {
+        return Err(AppError::Forbidden("not_a_group_member"));
+    }
+
+    let rows = sqlx::query_as!(
+        GroupCategoryItem,
+        "SELECT id, group_id, name, position, created_at FROM group_categories WHERE group_id = $1 ORDER BY position ASC, created_at ASC",
+        group_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    Ok(Json(rows))
+}
+
+// 18. Create category
+async fn create_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    Json(payload): Json<CreateGroupCategoryRequest>,
+) -> AppResult<Json<GroupCategoryItem>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+    if role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    if payload.name.trim().is_empty() {
+        return Err(AppError::BadRequest("category_name_cannot_be_empty"));
+    }
+
+    let cat_id = Uuid::new_v4();
+    let pos = payload.position.unwrap_or(0);
+    let row = sqlx::query_as!(
+        GroupCategoryItem,
+        r#"
+        INSERT INTO group_categories (id, group_id, name, position)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, group_id, name, position, created_at
+        "#,
+        cat_id,
+        group_id,
+        payload.name.trim(),
+        pos
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(row))
+}
+
+// 19. Delete category
+async fn delete_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((group_id, category_id)): Path<(Uuid, Uuid)>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+    if role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    sqlx::query!("DELETE FROM group_categories WHERE id = $1 AND group_id = $2", category_id, group_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "deleted": true })))
+}
+
+// 20. List channels
+async fn list_channels(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+) -> AppResult<Json<Vec<GroupChannelItem>>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id).await?;
+    if role.is_none() {
+        return Err(AppError::Forbidden("not_a_group_member"));
+    }
+
+    let rows = sqlx::query_as!(
+        GroupChannelItem,
+        r#"
+        SELECT id, group_id, category_id, name, description, channel_type, position, is_private, created_at
+        FROM group_channels
+        WHERE group_id = $1
+        ORDER BY position ASC, created_at ASC
+        "#,
+        group_id
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    Ok(Json(rows))
+}
+
+// 21. Create channel
+async fn create_channel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    Json(payload): Json<CreateGroupChannelRequest>,
+) -> AppResult<Json<GroupChannelItem>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+    if role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    if payload.name.trim().is_empty() {
+        return Err(AppError::BadRequest("channel_name_cannot_be_empty"));
+    }
+
+    let chan_id = Uuid::new_v4();
+    let chan_type = payload.channel_type.unwrap_or_else(|| "text".to_string());
+    let pos = payload.position.unwrap_or(0);
+    let is_priv = payload.is_private.unwrap_or(false);
+
+    let row = sqlx::query_as!(
+        GroupChannelItem,
+        r#"
+        INSERT INTO group_channels (id, group_id, category_id, name, description, channel_type, position, is_private)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, group_id, category_id, name, description, channel_type, position, is_private, created_at
+        "#,
+        chan_id,
+        group_id,
+        payload.category_id,
+        payload.name.trim(),
+        payload.description,
+        chan_type,
+        pos,
+        is_priv
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    // Broadcast to members
+    let member_ids = sqlx::query_scalar!("SELECT user_id FROM group_members WHERE group_id = $1", group_id)
+        .fetch_all(&state.db)
+        .await?;
+
+    state
+        .ws_hub
+        .send_to_users(
+            &member_ids,
+            WsEvent::GroupChannelNew {
+                group_id,
+                channel: row.clone(),
+            },
+        )
+        .await;
+
+    Ok(Json(row))
+}
+
+// 22. Delete channel
+async fn delete_channel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((group_id, channel_id)): Path<(Uuid, Uuid)>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+    if role != "owner" && role != "admin" {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    sqlx::query!("DELETE FROM group_channels WHERE id = $1 AND group_id = $2", channel_id, group_id)
+        .execute(&state.db)
+        .await?;
+
+    let member_ids = sqlx::query_scalar!("SELECT user_id FROM group_members WHERE group_id = $1", group_id)
+        .fetch_all(&state.db)
+        .await?;
+
+    state
+        .ws_hub
+        .send_to_users(
+            &member_ids,
+            WsEvent::GroupChannelDeleted {
+                group_id,
+                channel_id,
+            },
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({ "deleted": true })))
+}
+
+// 23. Toggle Reaction
+async fn toggle_reaction(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((group_id, message_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<ToggleReactionRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id).await?;
+    if role.is_none() {
+        return Err(AppError::Forbidden("not_a_group_member"));
+    }
+
+    let emoji = payload.emoji.trim();
+    if emoji.is_empty() || emoji.len() > 32 {
+        return Err(AppError::BadRequest("invalid_emoji"));
+    }
+
+    let existing = sqlx::query!(
+        "SELECT id FROM group_message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3",
+        message_id,
+        user.id,
+        emoji
+    )
+    .fetch_optional(&state.db)
+    .await?;
+
+    let action = if let Some(r) = existing {
+        sqlx::query!("DELETE FROM group_message_reactions WHERE id = $1", r.id)
+            .execute(&state.db)
+            .await?;
+        "removed"
+    } else {
+        sqlx::query!(
+            "INSERT INTO group_message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)",
+            message_id,
+            user.id,
+            emoji
+        )
+        .execute(&state.db)
+        .await?;
+        "added"
+    };
+
+    let member_ids = sqlx::query_scalar!("SELECT user_id FROM group_members WHERE group_id = $1", group_id)
+        .fetch_all(&state.db)
+        .await?;
+
+    state
+        .ws_hub
+        .send_to_users(
+            &member_ids,
+            WsEvent::GroupReactionUpdate {
+                group_id,
+                message_id,
+                user_id: user.id,
+                emoji: emoji.to_string(),
+                action: action.to_string(),
+            },
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({ "action": action, "emoji": emoji })))
 }

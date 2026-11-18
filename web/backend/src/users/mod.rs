@@ -78,7 +78,14 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/name", post(handle_set_name))
         .route("/search", get(handle_search))
-        .route("/profile", axum::routing::put(handle_update_profile))
+        .route(
+            "/profile",
+            axum::routing::put(handle_update_profile).post(handle_update_profile),
+        )
+        .route(
+            "/me/profile",
+            axum::routing::put(handle_update_profile).post(handle_update_profile),
+        )
         .route("/{id}/profile", get(handle_get_profile))
         .route(
             "/avatar",
@@ -290,14 +297,22 @@ async fn handle_update_profile(
         SET bio = COALESCE($1, bio),
             status_text = COALESCE($2, status_text),
             status_emoji = COALESCE($3, status_emoji),
-            presence = COALESCE($4, presence)
-        WHERE id = $5
-        RETURNING id, username, avatar_url, bio, status_text, status_emoji, presence
+            presence = COALESCE($4, presence),
+            display_name = COALESCE($5, display_name),
+            custom_banner_url = COALESCE($6, custom_banner_url),
+            badges = COALESCE($7, badges),
+            social_links = COALESCE($8, social_links)
+        WHERE id = $9
+        RETURNING id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links
         "#,
         payload.bio,
         payload.status_text,
         payload.status_emoji,
         payload.presence,
+        payload.display_name,
+        payload.custom_banner_url,
+        payload.badges.as_deref(),
+        payload.social_links,
         user.id
     )
     .fetch_one(&state.db)
@@ -331,11 +346,15 @@ async fn handle_update_profile(
     Ok(Json(crate::models::UserProfileResponse {
         id: row.id,
         username: row.username.unwrap_or_default(),
+        display_name: row.display_name,
         avatar_url: row.avatar_url,
+        custom_banner_url: row.custom_banner_url,
         bio: row.bio,
         status_text: row.status_text,
         status_emoji: row.status_emoji,
         presence: row.presence,
+        badges: row.badges,
+        social_links: row.social_links,
     }))
 }
 
@@ -349,7 +368,7 @@ async fn handle_get_profile(
     let _user = authenticate_session(&state.db, &state.config, session_token).await?;
 
     let row = sqlx::query!(
-        "SELECT id, username, avatar_url, bio, status_text, status_emoji, presence FROM users WHERE id = $1",
+        "SELECT id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links FROM users WHERE id = $1",
         target_id
     )
     .fetch_optional(&state.db)
@@ -359,11 +378,15 @@ async fn handle_get_profile(
     Ok(Json(crate::models::UserProfileResponse {
         id: row.id,
         username: row.username.unwrap_or_default(),
+        display_name: row.display_name,
         avatar_url: row.avatar_url,
+        custom_banner_url: row.custom_banner_url,
         bio: row.bio,
         status_text: row.status_text,
         status_emoji: row.status_emoji,
         presence: row.presence,
+        badges: row.badges,
+        social_links: row.social_links,
     }))
 }
 

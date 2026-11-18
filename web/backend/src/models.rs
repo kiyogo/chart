@@ -119,21 +119,31 @@ pub struct PostChannelMessageRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UpdateProfileRequest {
+    pub display_name: Option<String>,
     pub bio: Option<String>,
     pub status_text: Option<String>,
     pub status_emoji: Option<String>,
     pub presence: Option<String>,
+    pub custom_banner_url: Option<String>,
+    pub badges: Option<Vec<String>>,
+    pub social_links: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UserProfileResponse {
     pub id: Uuid,
     pub username: String,
+    pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub custom_banner_url: Option<String>,
     pub bio: Option<String>,
     pub status_text: Option<String>,
     pub status_emoji: Option<String>,
     pub presence: String,
+    #[serde(default)]
+    pub badges: Vec<String>,
+    #[serde(default)]
+    pub social_links: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -251,10 +261,100 @@ pub struct CreateGroupInviteRequest {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GroupCategoryItem {
+    pub id: Uuid,
+    pub group_id: Uuid,
+    pub name: String,
+    pub position: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateGroupCategoryRequest {
+    pub name: String,
+    pub position: Option<i32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GroupChannelItem {
+    pub id: Uuid,
+    pub group_id: Uuid,
+    pub category_id: Option<Uuid>,
+    pub name: String,
+    pub description: Option<String>,
+    pub channel_type: String, // "text" | "voice" | "video" | "announcement" | "forum" | "media"
+    pub position: i32,
+    pub is_private: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateGroupChannelRequest {
+    pub category_id: Option<Uuid>,
+    pub name: String,
+    pub description: Option<String>,
+    pub channel_type: Option<String>,
+    pub position: Option<i32>,
+    pub is_private: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GroupReactionItem {
+    pub id: Uuid,
+    pub message_id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub emoji: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ToggleReactionRequest {
+    pub emoji: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StickerPackItem {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub author_id: Option<Uuid>,
+    pub cover_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub stickers: Vec<StickerItem>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StickerItem {
+    pub id: Uuid,
+    pub pack_id: Uuid,
+    pub name: String,
+    pub file_url: String,
+    pub is_animated: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateStickerPackRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub cover_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AddStickerRequest {
+    pub name: String,
+    pub file_url: String,
+    pub is_animated: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GroupMessageItem {
     pub id: Uuid,
     pub seq: i64,
     pub group_id: Uuid,
+    pub channel_id: Option<Uuid>,
     pub sender_id: Uuid,
     pub sender_name: String,
     pub sender_avatar_url: Option<String>,
@@ -262,6 +362,8 @@ pub struct GroupMessageItem {
     pub reply_to_id: Option<Uuid>,
     pub is_pinned: bool,
     pub is_edited: bool,
+    #[serde(default)]
+    pub reactions: Vec<GroupReactionItem>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -269,6 +371,7 @@ pub struct GroupMessageItem {
 pub struct PostGroupMessageRequest {
     pub content: String,
     pub reply_to_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
 }
 
 // --- Calls Models ---

@@ -242,6 +242,12 @@ pub enum WsEvent {
     GroupMemberLeft(serde_json::Value),
     #[serde(rename = "group.updated")]
     GroupUpdated(serde_json::Value),
+    #[serde(rename = "group.reaction.update")]
+    GroupReactionUpdate(serde_json::Value),
+    #[serde(rename = "group.channel.new")]
+    GroupChannelNew(serde_json::Value),
+    #[serde(rename = "group.channel.deleted")]
+    GroupChannelDeleted(serde_json::Value),
     #[serde(rename = "call.incoming")]
     CallIncoming(CallSessionPayload),
     #[serde(rename = "call.accepted")]
@@ -337,10 +343,103 @@ pub struct GroupInviteItem {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupCategoryItem {
+    pub id: String,
+    pub group_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub position: i32,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupChannelItem {
+    pub id: String,
+    pub group_id: String,
+    #[serde(default)]
+    pub category_id: Option<String>,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default = "default_channel_type")]
+    pub channel_type: String,
+    #[serde(default)]
+    pub position: i32,
+    #[serde(default)]
+    pub is_private: bool,
+    pub created_at: String,
+}
+
+fn default_channel_type() -> String {
+    "text".to_string()
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupReactionItem {
+    pub id: String,
+    pub message_id: String,
+    pub user_id: String,
+    pub username: String,
+    pub emoji: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StickerPackItem {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub author_id: Option<String>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+    #[serde(default)]
+    pub stickers: Vec<StickerItem>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StickerItem {
+    pub id: String,
+    pub pack_id: String,
+    pub name: String,
+    pub file_url: String,
+    #[serde(default)]
+    pub is_animated: bool,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct UserProfileResponse {
+    pub id: String,
+    pub username: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub custom_banner_url: Option<String>,
+    #[serde(default)]
+    pub bio: Option<String>,
+    #[serde(default)]
+    pub status_text: Option<String>,
+    #[serde(default)]
+    pub status_emoji: Option<String>,
+    pub presence: String,
+    #[serde(default)]
+    pub badges: Vec<String>,
+    #[serde(default)]
+    pub social_links: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GroupMessageItem {
     pub id: String,
     pub seq: i64,
     pub group_id: String,
+    #[serde(default)]
+    pub channel_id: Option<String>,
     pub sender_id: String,
     #[serde(alias = "sender_name")]
     pub sender_username: String,
@@ -353,6 +452,8 @@ pub struct GroupMessageItem {
     pub is_pinned: bool,
     #[serde(default)]
     pub is_edited: bool,
+    #[serde(default)]
+    pub reactions: Vec<GroupReactionItem>,
     pub created_at: String,
 }
 

@@ -104,6 +104,24 @@ pub enum WsEvent {
     GroupMessageNew {
         message: crate::models::GroupMessageItem,
     },
+    #[serde(rename = "group.reaction.update")]
+    GroupReactionUpdate {
+        group_id: Uuid,
+        message_id: Uuid,
+        user_id: Uuid,
+        emoji: String,
+        action: String,
+    },
+    #[serde(rename = "group.channel.new")]
+    GroupChannelNew {
+        group_id: Uuid,
+        channel: crate::models::GroupChannelItem,
+    },
+    #[serde(rename = "group.channel.deleted")]
+    GroupChannelDeleted {
+        group_id: Uuid,
+        channel_id: Uuid,
+    },
     #[serde(rename = "group.member.joined")]
     GroupMemberJoined {
         group_id: Uuid,

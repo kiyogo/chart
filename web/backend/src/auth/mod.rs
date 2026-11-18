@@ -352,13 +352,29 @@ async fn handle_dev_login(
         .await?;
 
     let user_id = match existing {
-        Some(row) => row.id,
+        Some(row) => {
+            if let Some(ref u) = username {
+                let norm = u.to_lowercase();
+                sqlx::query!(
+                    "UPDATE users SET username = COALESCE(username, $1), username_norm = COALESCE(username_norm, $2) WHERE id = $3",
+                    u,
+                    norm,
+                    row.id
+                )
+                .execute(&mut *tx)
+                .await?;
+            }
+            row.id
+        }
         None => {
             let new_id = Uuid::new_v4();
+            let norm = username.as_ref().map(|u| u.to_lowercase());
             sqlx::query!(
-                "INSERT INTO users (id, google_sub, username, username_norm) VALUES ($1, $2, NULL, NULL)",
+                "INSERT INTO users (id, google_sub, username, username_norm) VALUES ($1, $2, $3, $4)",
                 new_id,
-                sub
+                sub,
+                username,
+                norm
             )
             .execute(&mut *tx)
             .await?;

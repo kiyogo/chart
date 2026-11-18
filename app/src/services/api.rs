@@ -5,8 +5,8 @@ use crate::{
     models::{
         ApiError, AvatarUploadResponse, ChannelItem, ChannelMessageItem, FriendItem, MeResponse,
         MessageWireItem, PendingRequestItem, ProvidersResponse, PublicKeysResponse,
-        RequestActionResponse, SendMessageResponse, ServerItem, SetNameResponse, UserSearchResult,
-        VoiceStateItem,
+        RequestActionResponse, SendMessageResponse, ServerItem, SetNameResponse, UserProfileResponse,
+        UserSearchResult, VoiceStateItem,
     },
     platform,
 };
@@ -235,5 +235,34 @@ pub async fn webrtc_update_voice_state(
 pub async fn webrtc_leave_voice(channel_id: &str) -> Result<(), ApiError> {
     let encoded = urlencoding::encode(channel_id);
     post_empty(&format!("/api/webrtc/voice/{encoded}/leave"), None).await
+}
+
+// --- Profiles ---
+
+pub async fn get_user_profile(user_id: &str) -> Result<UserProfileResponse, ApiError> {
+    let encoded = urlencoding::encode(user_id);
+    get_json(&format!("/api/users/{encoded}/profile")).await
+}
+
+pub async fn update_my_profile(
+    display_name: Option<&str>,
+    bio: Option<&str>,
+    status_text: Option<&str>,
+    status_emoji: Option<&str>,
+    presence: Option<&str>,
+    custom_banner_url: Option<&str>,
+) -> Result<UserProfileResponse, ApiError> {
+    post_json(
+        "/api/users/me/profile",
+        json!({
+            "display_name": display_name,
+            "bio": bio,
+            "status_text": status_text,
+            "status_emoji": status_emoji,
+            "presence": presence,
+            "custom_banner_url": custom_banner_url,
+        }),
+    )
+    .await
 }
 
