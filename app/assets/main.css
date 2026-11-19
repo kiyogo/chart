@@ -188,15 +188,17 @@ input[type="range"]:active::-moz-range-thumb {
   box-shadow: 0 0 12px var(--accent), 0 0 0 3px var(--bg-primary);
 }
 input[type="color"] {
-  width: 2.5rem !important;
+  width: 2.75rem !important;
+  max-width: 2.75rem !important;
   height: 2.25rem !important;
   min-height: 0 !important;
   padding: 2px !important;
-  flex: 0 0 2.5rem !important;
+  flex: 0 0 2.75rem !important;
   border-radius: var(--radius-md);
   background: var(--bg-surface);
   cursor: pointer;
   appearance: auto;
+  box-sizing: border-box;
 }
 
 .btn-primary, .btn-secondary, .btn-ghost, .btn-danger, .btn-danger-outline,
@@ -827,22 +829,23 @@ input.switch:checked::after { transform: translateX(1.125rem); }
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 0.55rem 0.65rem;
-  min-height: 3.5rem;
+  padding: 0.65rem 0.75rem;
+  min-height: 3.75rem;
   border-radius: var(--radius-lg);
   text-align: left;
   width: 100%;
   min-width: 0;
   color: var(--text-primary);
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 .chat-item:hover { background: var(--bg-hover); }
 .chat-item.selected { background: var(--bg-selected); }
 .chat-item.selected .chat-item-preview { color: var(--text-secondary); }
 .chat-item.selected .chat-item-name { color: var(--text-selected); }
 .chat-item-avatar { position: relative; flex-shrink: 0; display: flex; }
-.chat-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.chat-item-header, .chat-item-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-width: 0; }
+.chat-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.chat-item-header, .chat-item-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-width: 0; line-height: 1.35; }
 .chat-item-name {
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
@@ -851,6 +854,7 @@ input.switch:checked::after { transform: translateX(1.125rem); }
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  line-height: 1.35;
 }
 .chat-item-name.unread { font-weight: var(--weight-bold); }
 .chat-item-time { font-size: var(--text-xs); color: var(--text-muted); flex-shrink: 0; }
@@ -862,6 +866,8 @@ input.switch:checked::after { transform: translateX(1.125rem); }
   white-space: nowrap;
   min-width: 0;
   flex: 1;
+  line-height: 1.35;
+  padding-bottom: 2px;
 }
 .chat-item-preview.unread { color: var(--text-primary); font-weight: var(--weight-medium); }
 .chat-item-preview.typing { color: var(--accent-text); font-style: normal; }
@@ -3401,10 +3407,11 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 .search-field.big input { width: 100%; height: 3rem; padding-left: 3rem; border-radius: var(--radius-xl); font-size: var(--text-lg); }
 
 /* ============ Global UI & Layout Polish Fixes ============ */
-.conv-row { position: relative; display: block; flex-shrink: 0; margin: 0; }
-.settings-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.settings-row > .grow, .settings-row > .settings-row-text { flex: 1; min-width: 10rem; }
-.settings-label { white-space: normal; word-break: normal; overflow-wrap: break-word; line-height: 1.35; }
+.conv-row { position: relative; display: block; flex-shrink: 0; margin: 0 0 4px 0; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.settings-row > .grow, .settings-row > .settings-row-text { flex: 1 1 auto; min-width: 0; }
+.settings-label { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; line-height: 1.35; }
+.settings-row input[type="color"] { width: 2.75rem !important; max-width: 2.75rem !important; flex: 0 0 2.75rem !important; }
 .settings-row select, .settings-row input[type="number"], .settings-row input[type="time"] { width: auto; min-width: 8rem; flex-shrink: 0; }
 .settings-row input[type="range"] { width: auto; max-width: 14rem; flex: 1; }
 .account-menu { min-width: 15rem; width: max-content; max-width: 22rem; }
@@ -3560,8 +3567,8 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 }
 .mod-color-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--space-3);
 }
 .plugin-composer-bar {
   display: flex;

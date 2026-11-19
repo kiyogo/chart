@@ -12,7 +12,7 @@ use crate::{
         icons::{
             BackIcon, CheckIcon, ChevronRightIcon, KeyIcon, LogoutIcon, MonitorIcon,
             MoonIcon, BookIcon, LibraryIcon, PaletteIcon, ShieldIcon, SlidersIcon, SunIcon, UserIcon,
-            BellIcon, BlockIcon, BotIcon, GlobeIcon, LockIcon, MessageIcon, ReplyIcon, StoreIcon,
+            BellIcon, BlockIcon, GlobeIcon, LockIcon, MessageIcon, PluginIcon, ReplyIcon, StoreIcon,
         },
     },
     crypto::e2ee::{UserKeys, export_user_keys_json, import_user_keys_json},
@@ -195,7 +195,7 @@ pub fn SettingsView(
                                 SettingsTab::Lock => rsx! { LockIcon { size: 18 } },
                                 SettingsTab::AutoReply => rsx! { ReplyIcon {} },
                                 SettingsTab::Business => rsx! { StoreIcon { size: 18 } },
-                                SettingsTab::Bots => rsx! { BotIcon { size: 18 } },
+                                SettingsTab::Bots => rsx! { PluginIcon { size: 18 } },
                                 SettingsTab::Language => rsx! { GlobeIcon { size: 18 } },
                                 SettingsTab::Demo => rsx! { crate::components::icons::SparkleIcon { size: 18 } },
                                 SettingsTab::Studio => rsx! { crate::components::icons::ImageIcon { size: 18 } },

@@ -122,7 +122,7 @@ pub fn NotificationSettings() -> Element {
     let mut perm = use_signal(|| Option::<String>::None);
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", BellIcon {} " Thông báo" }
+            div { class: "settings-group-title", BellIcon {} " Tùy chọn thông báo" }
             Toggle { label: "Nhận thông báo khi có tin nhắn mới", desc: "Thông báo hệ thống khi ChatW không ở trên cùng", checked: pr.notify,
                 on_change: move |v: bool| {
                     c.update(|p| p.notify = v);
@@ -375,7 +375,7 @@ pub fn AutoReplySettings() -> Element {
     let mut text = use_signal(|| pr.auto_reply_text.clone());
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Trả lời tự động" }
+            div { class: "settings-group-title", "Tin nhắn tự động khi vắng mặt" }
             p { class: "settings-group-desc", "Tự động gửi một tin nhắn khi có người nhắn cho bạn, tối đa một lần mỗi 6 giờ cho mỗi người. Vì tin nhắn được mã hóa đầu cuối, máy chủ không thể trả lời thay bạn: trả lời tự động hoạt động khi ChatW đang mở trên ít nhất một thiết bị của bạn." }
             Toggle { label: "Bật trả lời tự động", checked: pr.auto_reply, on_change: move |v| c.update(|p| p.auto_reply = v) }
             div { class: "settings-row column-layout",

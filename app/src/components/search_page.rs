@@ -8,7 +8,7 @@ use crate::{
     components::{
         avatar::Avatar,
         composer::fold,
-        icons::{BotIcon, CompassIcon, GroupIcon, SearchIcon, StoreIcon, UserPlusIcon},
+        icons::{CompassIcon, GroupIcon, PluginIcon, SearchIcon, StoreIcon, UserPlusIcon},
     },
     models::{BotItem, DirectoryEntry, DirectoryResults, FriendItem, GroupItem, ServerItem, UserSearchResult},
     platform,
@@ -281,7 +281,7 @@ pub fn SearchPage(
                             }
                         }
                         rsx! {
-                            DirSection { title: "Plugin công khai", icon: "bot", entries: plugin_entries, empty: if q.is_empty() { "Chưa có plugin công khai đã xác minh" } else { "Không có plugin phù hợp" },
+                            DirSection { title: "Plugin công khai", icon: "plugin", entries: plugin_entries, empty: if q.is_empty() { "Chưa có plugin công khai đã xác minh" } else { "Không có plugin phù hợp" },
                                 on_action: move |e: DirectoryEntry| {
                                     let id = e.id.clone().unwrap_or_default();
                                     let name = e.username.clone().unwrap_or_default();
@@ -334,7 +334,7 @@ fn DirSection(title: String, icon: String, entries: Vec<DirectoryEntry>, empty: 
                 match icon.as_str() {
                     "community" => rsx! { CompassIcon { size: 18 } },
                     "group" => rsx! { GroupIcon {} },
-                    "bot" => rsx! { BotIcon { size: 18 } },
+                    "plugin" | "bot" => rsx! { PluginIcon { size: 18 } },
                     _ => rsx! { StoreIcon { size: 18 } },
                 }
                 "{title}"
@@ -348,7 +348,7 @@ fn DirSection(title: String, icon: String, entries: Vec<DirectoryEntry>, empty: 
                             let name = e.display_name.clone().or(e.name.clone()).unwrap_or_default();
                             let sub = match icon.as_str() {
                                 "community" | "group" => format!("{} thành viên{}", e.member_count, if e.require_approval { " · cần duyệt" } else { "" }),
-                                "bot" => format!("@{}", e.username.clone().unwrap_or_default()),
+                                "plugin" | "bot" => format!("@{}", e.username.clone().unwrap_or_default()),
                                 _ => e.category.clone().unwrap_or_else(|| "Kinh doanh".into()),
                             };
                             let banner = e.banner_url.clone().or(e.cover_url.clone()).filter(|u| platform::safe_asset_path(u));
@@ -356,7 +356,7 @@ fn DirSection(title: String, icon: String, entries: Vec<DirectoryEntry>, empty: 
                                 ("community" | "group", true) => "Mở",
                                 ("community", false) => "Tham gia",
                                 ("group", false) => if e.require_approval { "Xin tham gia" } else { "Tham gia" },
-                                ("bot", _) => "Trò chuyện",
+                                ("plugin" | "bot", _) => "Dùng Plugin",
                                 _ => "Xem trang",
                             };
                             let ec = e.clone();

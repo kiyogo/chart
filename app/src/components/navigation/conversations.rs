@@ -11,7 +11,7 @@ use serde_json::json;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BellOffIcon, BotIcon, CheckIcon, ChevronDownIcon, DevicesIcon, HashIcon, MoreIcon, PinIcon, PlusIcon, SearchIcon, TagIcon, TrashIcon},
+        icons::{BellOffIcon, CheckIcon, ChevronDownIcon, DevicesIcon, HashIcon, MoreIcon, PinIcon, PluginIcon, PlusIcon, SearchIcon, TagIcon, TrashIcon},
         messages::preview_text,
         profile_card::{name_effect_class, nameplate_style},
     },
@@ -307,6 +307,7 @@ pub fn ConversationList(
                         labels: labels_rows.clone(),
                         on_close: move |_| menu_for.set(None),
                         on_pref: move |v| { menu_for.set(None); on_pref.call(v) },
+                        on_pref_label: move |v| { on_pref.call(v) },
                         on_manage_labels: move |_| { menu_for.set(None); manage_labels.set(true); },
                         on_block: move |v| { menu_for.set(None); on_block.call(v) },
                         on_mark_read: move |id| { menu_for.set(None); on_mark_read.call(id) },
@@ -427,12 +428,14 @@ fn ConvMenu(
     labels: Vec<ChatLabel>,
     on_close: EventHandler<()>,
     on_pref: EventHandler<(String, String, serde_json::Value)>,
+    on_pref_label: EventHandler<(String, String, serde_json::Value)>,
     on_manage_labels: EventHandler<()>,
     on_block: EventHandler<(String, bool)>,
     on_mark_read: EventHandler<String>,
     on_delete_self: EventHandler<()>,
 ) -> Element {
     let mut show_labels = use_signal(|| false);
+    let mut current_label_ids = use_signal(|| label_ids.clone());
     let ct = conv_type.clone();
     let id = conv_id.clone();
     let pref = move |fields: serde_json::Value| on_pref.call((ct.clone(), id.clone(), fields));
@@ -440,7 +443,9 @@ fn ConvMenu(
     let pref_mute = pref.clone();
     let pref_comm = pref.clone();
     let pref_out = pref.clone();
-    let pref_label = pref.clone();
+    let ct_label = conv_type.clone();
+    let id_label = conv_id.clone();
+    let pref_label = move |fields: serde_json::Value| on_pref_label.call((ct_label.clone(), id_label.clone(), fields));
     let id_read = conv_id.clone();
     let id_block = conv_id.clone();
     let _ = row_key;
@@ -464,13 +469,17 @@ fn ConvMenu(
                     if labels.is_empty() { div { class: "menu-note", "Chưa có thẻ nào" } }
                     for l in labels.iter().cloned() {
                         {
-                            let on = label_ids.contains(&l.id);
-                            let mut next = label_ids.clone();
+                            let on = current_label_ids.read().contains(&l.id);
+                            let mut next = current_label_ids.read().clone();
                             if on { next.retain(|x| x != &l.id); } else { next.push(l.id.clone()); }
+                            let next_val = next.clone();
                             let p = pref_label.clone();
                             rsx! {
                                 button { key: "{l.id}", r#type: "button", role: "menuitemcheckbox", aria_checked: "{on}", class: "account-menu-item",
-                                    onclick: move |_| p(json!({ "label_ids": next.clone() })),
+                                    onclick: move |_| {
+                                        current_label_ids.set(next_val.clone());
+                                        p(json!({ "label_ids": next_val.clone() }));
+                                    },
                                     span { class: "label-dot", style: "--label: {l.color};" }
                                     span { class: "grow", "{l.name}" }
                                     if on { CheckIcon { size: 14 } }
@@ -507,7 +516,7 @@ fn ConvMenu(
                 }
             }
             if conv_type == "bot" {
-                div { class: "menu-note", BotIcon { size: 14 } " Trò chuyện với plugin" }
+                div { class: "menu-note", PluginIcon { size: 14 } " Trò chuyện với plugin" }
             }
         }
     }

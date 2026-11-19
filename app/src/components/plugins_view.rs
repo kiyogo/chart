@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BackIcon, BotIcon, CheckIcon, CopyIcon, GroupIcon, PaletteIcon, PlusIcon, RefreshIcon, SlidersIcon, SparkleIcon, TrashIcon},
+        icons::{BackIcon, CheckIcon, CopyIcon, GroupIcon, PaletteIcon, PluginIcon, PlusIcon, RefreshIcon, SlidersIcon, SparkleIcon, TrashIcon},
         messages::{Composer, MessageList, ViewMessage},
     },
     models::{BotChatMessage, BotItem, GroupItem},
@@ -810,7 +810,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                 header { class: "chat-header",
                     button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
-                        span { class: "self-chat-avatar", BotIcon { size: 20 } }
+                        span { class: "self-chat-avatar", PluginIcon { size: 20 } }
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "Kho Plugin & Mod Giao Diện" span { class: "bot-tag", "MOD" } }
                             span { class: "chat-header-meta", "Tùy biến toàn bộ ứng dụng, thêm trang mới, hiệu ứng, HUD và lập trình Bot" }
@@ -2358,7 +2358,7 @@ pub fn PluginsSettings(
                                                     });
                                                 }
                                             },
-                                            BotIcon { size: 16 } "Tạo Token HTTP API trên máy chủ cho Plugin này"
+                                            PluginIcon { size: 16 } "Tạo Token HTTP API trên máy chủ cho Plugin này"
                                         }
                                     }
                                     pre { class: "code-block",
@@ -2413,7 +2413,7 @@ pub fn PluginsSettings(
                                         if pm.custom_page_enabled { span { class: "mod-cap-pill", "🧭 Trang: {pm.page_title}" } }
                                         if pm.hud_enabled { span { class: "mod-cap-pill", "🛰 HUD nổi" } }
                                         if pm.screen_fx != "none" { span { class: "mod-cap-pill", SparkleIcon { size: 13 } "FX: {pm.screen_fx}" } }
-                                        if pm.bot_enabled { span { class: "mod-cap-pill", BotIcon { size: 13 } "{pm.commands.len()} lệnh Bot" } }
+                                        if pm.bot_enabled { span { class: "mod-cap-pill", PluginIcon { size: 13 } "{pm.commands.len()} lệnh Bot" } }
                                     }
                                     div { class: "mod-card-actions",
                                         if pm.custom_page_enabled {

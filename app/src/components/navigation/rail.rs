@@ -10,7 +10,7 @@ use crate::{
     components::{
         avatar::Avatar,
         plugins_view::{ACTIVE_PLUGIN_PAGE, enabled_rail_pages},
-        icons::{BotIcon, CompassIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, SearchIcon, SettingsIcon, UserIcon},
+        icons::{CompassIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, PluginIcon, SearchIcon, SettingsIcon, UserIcon},
         navigation::NavSection,
     },
     models::{GroupItem, ServerItem},
@@ -121,7 +121,7 @@ pub fn AppRail(
                     onclick: move |_| {
                         *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
                     },
-                    span { class: "rail-icon", BotIcon { size: 20 } }
+                    span { class: "rail-icon", PluginIcon { size: 20 } }
                 }
                 for (pid, picon, ptitle) in custom_pages {
                     {

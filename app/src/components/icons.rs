@@ -543,6 +543,14 @@ pub fn BotIcon(#[props(default = 18)] size: u32) -> Element {
 }
 
 #[component]
+pub fn PluginIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { fill: "currentColor", fill_opacity: "0.16", d: "M14 7V4.5a2.5 2.5 0 0 0-5 0V7H6a2 2 0 0 0-2 2v3a2.5 2.5 0 0 0 0 5v3a2 2 0 0 0 2 2h3v-2.5a2.5 2.5 0 0 1 5 0V22h3a2 2 0 0 0 2-2v-3a2.5 2.5 0 0 1 0-5V9a2 2 0 0 0-2-2h-3z" }
+        path { d: "M14 7V4.5a2.5 2.5 0 0 0-5 0V7H6a2 2 0 0 0-2 2v3a2.5 2.5 0 0 0 0 5v3a2 2 0 0 0 2 2h3v-2.5a2.5 2.5 0 0 1 5 0V22h3a2 2 0 0 0 2-2v-3a2.5 2.5 0 0 1 0-5V9a2 2 0 0 0-2-2h-3z" }
+    } }
+}
+
+#[component]
 pub fn StoreIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
         path { fill: "currentColor", fill_opacity: "0.16", d: "M4 9.5h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" }
