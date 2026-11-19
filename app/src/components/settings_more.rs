@@ -404,6 +404,7 @@ pub fn LanguageSettings() -> Element {
     let cur = c.prefs.read().language.clone();
     rsx! {
         div { class: "settings-group",
+            div { class: "settings-group-title", "{t(\"settings.language\")}" }
             p { class: "settings-group-desc", "{LANGUAGES.len()} ngôn ngữ cho thanh điều hướng, danh sách trò chuyện và ô soạn tin. Các trang khác đang hiển thị tiếng Việt. Tên sticker và emoji luôn là tiếng Anh." }
             div { class: "lang-grid", role: "radiogroup", aria_label: "Ngôn ngữ",
                 for (code, native, english) in LANGUAGES.iter().copied() {
