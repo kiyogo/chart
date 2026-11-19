@@ -334,7 +334,7 @@ pub fn ConversationList(
             }
         }
         div { class: "sidebar-filters", role: "tablist", aria_label: "Lọc cuộc trò chuyện",
-            for (val, label) in [("all", t("chat.all")), ("unread", t("chat.unread"))] {
+            for (val, label) in [("all", ""), ("unread", "")] {
                 button {
                     key: "{val}",
                     r#type: "button",
@@ -358,7 +358,6 @@ pub fn ConversationList(
                         "{l.name}"
                     } else {
                         TagIcon { size: 14 }
-                        "Phân loại"
                     }
                     ChevronDownIcon { size: 14 }
                 }
