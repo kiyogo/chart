@@ -130,8 +130,8 @@ pub fn ProfileModal(
                 ext["status_expires_in_minutes"] = json!(if d.status_text.as_deref().unwrap_or_default().trim().is_empty() { 0 } else { status_expiry() });
             }
             if let Some((t, sec, g)) = draft_layout() {
-                if let Err(e) = crate::services::profile_plus::save_layout(&t, &sec, &g).await {
-                    notice.set(Some((true, format!("Không lưu được bố cục ({})", e.code))));
+                if let Err(_e) = crate::services::profile_plus::save_layout(&t, &sec, &g).await {
+                    notice.set(Some((true, "Không lưu được bố cục".to_string())));
                 }
             }
             let result = match update_my_profile_fields(fields).await {
@@ -158,7 +158,7 @@ pub fn ProfileModal(
                 Err(e) => notice.set(Some((true, match e.code.as_str() {
                     "invalid_website" => "Website phải bắt đầu bằng https:// hoặc http://".to_string(),
                     "too_many_interests" => "Tối đa 12 sở thích".to_string(),
-                    c => format!("Không lưu được hồ sơ ({c})"),
+                    _ => "Không lưu được hồ sơ".to_string(),
                 }))),
             }
             saving.set(false);
@@ -437,7 +437,7 @@ pub fn ProfileModal(
                                             }},
                                         }
                                     } else {
-                                        div { class: "form-hint", "Tải ảnh của bạn (PNG, GIF động, WebP, AVIF, JPEG ≤ 2 MB) hoặc vẽ ngay trong ChatW." }
+                                        div { class: "form-hint", "Tải ảnh của bạn tối đa 2 MB hoặc vẽ ngay trong ChatW." }
                                         div { class: "inline-form",
                                             span { class: "member-sub", "Cần nhiều lớp hoặc hoạt ảnh? ChatW Studio xuất GIF động và áp dụng thẳng lên hồ sơ." }
                                             for (t, l) in [("decoration", "Studio: trang trí"), ("nameplate", "Studio: bảng tên"), ("effect", "Studio: hiệu ứng")] {
@@ -486,7 +486,7 @@ pub fn ProfileModal(
                                                                     spawn(async move {
                                                                         let res: Result<String, String> = async {
                                                                             let (bytes, mime) = platform::read_selected_file_raw(&format!("custom-{target}-input")).await?;
-                                                                            library::upload_media(bytes, &mime).await.map_err(|e| format!("Tải lên thất bại ({})", e.code))
+                                                                            library::upload_media(bytes, &mime).await.map_err(|_e| "Tải lên thất bại".to_string())
                                                                         }.await;
                                                                         match res {
                                                                             Ok(u) => {

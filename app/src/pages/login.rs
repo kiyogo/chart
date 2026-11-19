@@ -32,7 +32,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
         let google_enabled = providers().map(|p| p.google).unwrap_or(false);
         if !google_enabled {
             error.set(Some(
-                "Đăng nhập Google chưa được cấu hình trên máy chủ (GOOGLE_CLIENT_ID).".to_string(),
+                "Đăng nhập Google chưa được cấu hình trên máy chủ.".to_string(),
             ));
             return;
         }
@@ -160,7 +160,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                         form {
                             class: "auth-dev-form",
                             onsubmit: handle_dev_login,
-                            div { class: "auth-dev-title", "Đăng nhập thử nghiệm (chỉ máy chủ cục bộ)" }
+                            div { class: "auth-dev-title", "Đăng nhập thử nghiệm" }
                             div { class: "auth-dev-row",
                                 input {
                                     r#type: "text",

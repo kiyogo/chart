@@ -163,7 +163,7 @@ pub fn EmojiPicker(
                     input {
                         id: "emoji-search",
                         r#type: "search",
-                        placeholder: "Search emoji (smile, heart, ok)",
+                        placeholder: "Tìm emoji",
                         aria_label: "Tìm emoji",
                         autocomplete: "off",
                         value: "{query}",

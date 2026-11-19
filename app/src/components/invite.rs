@@ -238,7 +238,7 @@ pub fn InviteFriendsDialog(
                 div { class: "modal-actions",
                     button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Xong" }
                     button { r#type: "button", class: "btn-primary", disabled: picked.read().is_empty() || code().is_none() || busy(), onclick: send,
-                        "Gửi thẻ mời ({picked.read().len()})"
+                        "Gửi thẻ mời"
                     }
                 }
             }

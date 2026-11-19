@@ -46,6 +46,10 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
             "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://ipc.localhost ipc:; img-src 'self' data: https://*.googleusercontent.com https://lh3.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
         ),
     );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+    );
 
     response
 }

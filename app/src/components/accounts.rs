@@ -63,7 +63,7 @@ pub fn TwoFactorPrompt(on_done: EventHandler<()>, on_cancel: EventHandler<()>) -
     rsx! {
         form { class: "twofa-card", onsubmit: submit,
             h1 { class: "auth-title", "Xác minh hai bước" }
-            p { class: "auth-subtitle", "Nhập mã 6 số trong ứng dụng xác thực (Google Authenticator, Microsoft Authenticator, 2FAS…), hoặc một mã dự phòng dạng xxxx-xxxx." }
+            p { class: "auth-subtitle", "Nhập mã 6 số trong ứng dụng xác thực hoặc một mã dự phòng dạng xxxx-xxxx." }
             input { id: "twofa-code", class: "auth-input twofa-input", r#type: "text", inputmode: "text", autocomplete: "one-time-code", maxlength: "12",
                 aria_label: "Mã xác minh", placeholder: "123456", value: "{code}", oninput: move |e| code.set(e.value()) }
             if let Some(e) = error() { div { class: "auth-error", role: "alert", "{e}" } }
@@ -363,7 +363,7 @@ pub fn SecuritySettings() -> Element {
             }
 
             div { class: "settings-group-title", "Nhật ký bảo mật" }
-            p { class: "settings-row-desc", "100 hoạt động gần nhất. Địa chỉ IP chỉ giữ phần mạng (ví dụ 203.0.x.x)." }
+            p { class: "settings-row-desc", "100 hoạt động gần nhất. Địa chỉ IP chỉ giữ phần mạng." }
             if events.read().is_empty() {
                 div { class: "sidebar-empty", "Trống" }
             } else {

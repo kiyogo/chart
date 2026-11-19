@@ -88,7 +88,8 @@ pub fn Inventory(my_id: String) -> Element {
 
     let q = fold(query().trim());
     let hit = |name: &str| q.is_empty() || fold(name).contains(&q);
-    let show = |c: Cat| cat() == Cat::All || cat() == c;
+    let _ = (&mut cat, CATS);
+    let show = |_c: Cat| true;
     let favs = prefs.prefs.read().fav_stickers.clone();
     let fav_gifs = prefs.prefs.read().fav_gifs.clone();
     let p = profile();
@@ -97,56 +98,51 @@ pub fn Inventory(my_id: String) -> Element {
         div { class: "inventory",
             div { class: "search-field",
                 crate::components::icons::SearchIcon { size: 16 }
-                input { r#type: "search", placeholder: "Tìm", aria_label: "Tìm trong kho vật phẩm", value: "{query}", oninput: move |e| query.set(e.value()) }
-            }
-            div { class: "studio-presets", role: "tablist", aria_label: "Danh mục kho",
-                for (c, l) in CATS {
-                    button { key: "{l}", r#type: "button", role: "tab", aria_selected: "{cat() == c}", class: if cat() == c { "studio-chip active" } else { "studio-chip" }, onclick: move |_| cat.set(c), "{l}" }
-                }
+                input { r#type: "search", placeholder: "Tìm trong kho đồ", aria_label: "Tìm trong kho vật phẩm", value: "{query}", oninput: move |e| query.set(e.value()) }
             }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, role: "status", "{m}" } }
 
             if show(Cat::Equipped) {
                 if let Some(pr) = p.clone() {
-                    div { class: "settings-group-title", "Đang dùng" }
+                    div { class: "settings-group-title", "Đang trang bị" }
                     div { class: "inv-grid",
-                        InvCard { title: "Avatar Motion", sub: pr.avatar_motion.as_ref().and_then(|m| m.meta()).map(|m| m.1.to_string()).unwrap_or_else(|| "None".into()) }
-                        InvCard { title: "Avatar Decoration", sub: pr.avatar_decoration.clone().unwrap_or_else(|| "none".into()), img: pr.custom_decoration_url.clone().filter(|_| pr.avatar_decoration.as_deref() == Some("custom")) }
-                        InvCard { title: "Name Effect", sub: pr.name_effect.clone().unwrap_or_else(|| "none".into()) }
-                        InvCard { title: "Nameplate", sub: pr.nameplate.clone().unwrap_or_else(|| "none".into()), img: pr.custom_nameplate_url.clone().filter(|_| pr.nameplate.as_deref() == Some("custom")) }
-                        InvCard { title: "Profile Effect", sub: pr.profile_effect.clone().unwrap_or_else(|| "none".into()), img: pr.custom_effect_url.clone().filter(|_| pr.profile_effect.as_deref() == Some("custom")) }
-                        InvCard { title: "Profile Template", sub: plus().map(|x| pp::template_name(&x.template).to_string()).unwrap_or_else(|| "Minimal Profile".into()) }
-                        for b in pr.badges.iter() { InvCard { key: "{b}", title: "Badge", sub: crate::components::profile_card::badge_label(b).to_string() } }
+                        InvCard { title: "Chuyển động Avatar", sub: pr.avatar_motion.as_ref().and_then(|m| m.meta()).map(|m| m.1.to_string()).unwrap_or_else(|| "Không".into()) }
+                        InvCard { title: "Trang trí Avatar", sub: pr.avatar_decoration.clone().unwrap_or_else(|| "Không".into()), img: pr.custom_decoration_url.clone().filter(|_| pr.avatar_decoration.as_deref() == Some("custom")) }
+                        InvCard { title: "Hiệu ứng tên", sub: pr.name_effect.clone().unwrap_or_else(|| "Không".into()) }
+                        InvCard { title: "Bảng tên", sub: pr.nameplate.clone().unwrap_or_else(|| "Không".into()), img: pr.custom_nameplate_url.clone().filter(|_| pr.nameplate.as_deref() == Some("custom")) }
+                        InvCard { title: "Hiệu ứng hồ sơ", sub: pr.profile_effect.clone().unwrap_or_else(|| "Không".into()), img: pr.custom_effect_url.clone().filter(|_| pr.profile_effect.as_deref() == Some("custom")) }
+                        InvCard { title: "Bố cục hồ sơ", sub: plus().map(|x| pp::template_name(&x.template).to_string()).unwrap_or_else(|| "Tối giản".into()) }
+                        for b in pr.badges.iter() { InvCard { key: "{b}", title: "Huy hiệu", sub: crate::components::profile_card::badge_label(b).to_string() } }
                     }
                 }
             }
             if show(Cat::Stickers) {
-                div { class: "settings-group-title", "Sticker Packs ({packs.read().len()}) · Favorite Stickers ({favs.len()})" }
+                div { class: "settings-group-title", "Bộ Sticker & Sticker yêu thích" }
                 div { class: "inv-grid",
                     for pk in packs().into_iter().filter(|x| hit(&x.name)) {
-                        InvCard { key: "{pk.id}", title: pk.name.clone(), sub: format!("{} stickers", pk.stickers.len()), img: pk.cover_url.clone().or(pk.stickers.first().map(|s| s.file_url.clone())) }
+                        InvCard { key: "{pk.id}", title: pk.name.clone(), sub: format!("{} sticker", pk.stickers.len()), img: pk.cover_url.clone().or(pk.stickers.first().map(|s| s.file_url.clone())) }
                     }
                     for u in favs.iter().cloned().filter(|u| hit(u)) {
-                        InvCard { key: "{u}", title: "Favorite Sticker", sub: String::new(), img: Some(u.clone()) }
+                        InvCard { key: "{u}", title: "Sticker yêu thích", sub: String::new(), img: Some(u.clone()) }
                     }
                 }
                 if packs.read().is_empty() && favs.is_empty() { div { class: "sidebar-empty", "Trống" } }
             }
             if show(Cat::Emoji) {
-                div { class: "settings-group-title", "Custom Emoji ({emojis.read().len()})" }
+                div { class: "settings-group-title", "Emoji tùy chỉnh" }
                 div { class: "inv-grid compact",
                     for e in emojis().into_iter().filter(|x| hit(&x.name)) { InvCard { key: "{e.id}", title: format!(":{}:", e.name), sub: String::new(), img: Some(e.file_url.clone()) } }
                 }
             }
             if show(Cat::Gifs) {
-                div { class: "settings-group-title", "My GIFs ({gifs.read().len()}) · Favorite GIFs ({fav_gifs.len()})" }
+                div { class: "settings-group-title", "Bộ sưu tập GIF" }
                 div { class: "inv-grid compact",
                     for g in gifs().into_iter().filter(|x| hit(&x.name)) { InvCard { key: "{g.id}", title: g.name.clone(), sub: String::new(), img: Some(g.file_url.clone()) } }
-                    for u in fav_gifs.iter().cloned() { InvCard { key: "f{u}", title: "Favorite GIF", sub: String::new(), img: Some(u.clone()) } }
+                    for u in fav_gifs.iter().cloned() { InvCard { key: "f{u}", title: "GIF yêu thích", sub: String::new(), img: Some(u.clone()) } }
                 }
             }
             if show(Cat::Drawings) {
-                div { class: "settings-group-title", "Drawings ({projects.read().len()})" }
+                div { class: "settings-group-title", "Bản vẽ Studio" }
                 div { class: "inv-grid",
                     for pj in projects().into_iter().filter(|x| hit(&x.name)) {
                         {
@@ -164,7 +160,7 @@ pub fn Inventory(my_id: String) -> Element {
                 }
             }
             if show(Cat::Layouts) {
-                div { class: "settings-group-title", "Profile Templates · Layout presets ({presets.read().len()})" }
+                div { class: "settings-group-title", "Mẫu bố cục hồ sơ" }
                 div { class: "inv-grid",
                     for pr in presets().into_iter().filter(|x| hit(&x.name)) {
                         {
@@ -181,7 +177,7 @@ pub fn Inventory(my_id: String) -> Element {
                                             spawn(async move {
                                                 msg.set(Some(match pp::save_layout(&t, &s, &m).await {
                                                     Ok(()) => (false, "Đã áp dụng bố cục cho hồ sơ".into()),
-                                                    Err(e) => (true, format!("Không áp dụng được ({})", e.code)),
+                                                    Err(_) => (true, "Không áp dụng được bố cục".into()),
                                                 }));
                                             });
                                         }, "Áp dụng" }

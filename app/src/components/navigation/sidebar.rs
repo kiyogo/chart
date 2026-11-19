@@ -89,7 +89,7 @@ pub fn NavigationSidebar(
 ) -> Element {
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
     let mut dm_query = use_signal(String::new);
-    let mut dm_filter = use_signal(|| "all");
+    let dm_filter = use_signal(|| "all");
     let mut community_query = use_signal(String::new);
 
     let sidebar_cls = if hidden_mobile {
@@ -180,19 +180,6 @@ pub fn NavigationSidebar(
                                 aria_label: "Tìm cuộc trò chuyện",
                                 value: "{dm_query}",
                                 oninput: move |e| dm_query.set(e.value()),
-                            }
-                        }
-                    }
-                    div { class: "sidebar-filters", role: "tablist", aria_label: "Lọc cuộc trò chuyện",
-                        for (val, label) in [("all", "")] {
-                            button {
-                                key: "{val}",
-                                r#type: "button",
-                                role: "tab",
-                                aria_selected: "{filter == val}",
-                                class: if filter == val { "filter-chip active" } else { "filter-chip" },
-                                onclick: move |_| dm_filter.set(val),
-                                "{label}"
                             }
                         }
                     }
@@ -385,7 +372,7 @@ pub fn NavigationSidebar(
                         }
 
                         div { class: "sidebar-section-header",
-                            span { "Lời mời kết bạn ({pending_requests.len()})" }
+                            span { "Lời mời kết bạn" }
                         }
                         if pending_requests.is_empty() {
                             div { class: "sidebar-empty", "Không có lời mời nào" }
@@ -414,7 +401,7 @@ pub fn NavigationSidebar(
                         }
 
                         div { class: "sidebar-section-header",
-                            span { "Tất cả bạn bè ({friends.len()})" }
+                            span { "Tất cả bạn bè" }
                         }
                         for friend in friends {
                             {

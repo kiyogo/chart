@@ -136,7 +136,7 @@ pub fn ProfileSections(
                                                 spawn(async move {
                                                     match pp::sign(&u, &b).await {
                                                         Ok(()) => { entry.set(String::new()); error.set(None); if let Some(h) = on_changed { h.call(()) } }
-                                                        Err(e) => error.set(Some(match e.code.as_str() { "rate_limited" => "Bạn viết nhiều quá, thử lại sau".into(), "guestbook_closed" => "Sổ lưu bút đang đóng".into(), c => format!("Không gửi được ({c})") })),
+                                                        Err(e) => error.set(Some(match e.code.as_str() { "rate_limited" => "Bạn viết nhiều quá, thử lại sau".into(), "guestbook_closed" => "Sổ lưu bút đang đóng".into(), _ => "Không gửi được".into() })),
                                                     }
                                                 });
                                             } },
@@ -334,7 +334,7 @@ pub fn LayoutEditor(
                         spawn(async move {
                             match pp::save_preset(&n, &t, &s).await {
                                 Ok(()) => { preset_name.set(String::new()); msg.set(Some((false, "Đã lưu bản bố cục".into()))); if let Ok(p) = pp::presets().await { presets.set(p); } }
-                                Err(e) => msg.set(Some((true, if e.code == "preset_limit_reached" { "Đã đủ 10 bản".into() } else { format!("Không lưu được ({})", e.code) }))),
+                                Err(e) => msg.set(Some((true, if e.code == "preset_limit_reached" { "Đã đủ 10 bản".into() } else { "Không lưu được".into() }))),
                             }
                         });
                     } },
@@ -344,7 +344,7 @@ pub fn LayoutEditor(
                     onclick: { let (t, s) = (t0.clone(), s0.clone()); move |_| {
                         let text = pp::export_layout(&t, &s);
                         platform::copy_to_clipboard(&text);
-                        msg.set(Some((false, "Đã sao chép bố cục dạng JSON (dán để chia sẻ hoặc nhập lại)".into())));
+                        msg.set(Some((false, "Đã sao chép bố cục dạng JSON".into())));
                     } },
                     "Xuất"
                 }
@@ -419,7 +419,7 @@ pub fn LayoutEditor(
             div { class: "inline-form",
                 select { aria_label: "Loại mục trưng bày", value: "{add_kind}", onchange: move |e| add_kind.set(e.value()),
                     option { value: "link", "Liên kết nổi bật" }
-                    option { value: "image", "Ảnh (tải lên)" }
+                    option { value: "image", "Ảnh tải lên" }
                     option { value: "sticker", "Sticker yêu thích" }
                 }
                 input { maxlength: "40", placeholder: "Tiêu đề", aria_label: "Tiêu đề mục trưng bày", value: "{add_title}", oninput: move |e| add_title.set(e.value()) }
@@ -431,7 +431,7 @@ pub fn LayoutEditor(
                             spawn(async move {
                                 match pp::add_showcase("link", &u, &t).await {
                                     Ok(()) => { add_url.set(String::new()); add_title.set(String::new()); if let Some(h) = on_showcase_changed { h.call(()) } }
-                                    Err(e) => msg.set(Some((true, format!("Không thêm được ({})", e.code)))),
+                                    Err(_e) => msg.set(Some((true, "Không thêm được".into()))),
                                 }
                             });
                         }, "Thêm" }
@@ -444,9 +444,9 @@ pub fn LayoutEditor(
                                     Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                         Ok(url) => match pp::add_showcase(if mime == "image/gif" { "gif" } else { "image" }, &url, &t).await {
                                             Ok(()) => { add_title.set(String::new()); if let Some(h) = on_showcase_changed { h.call(()) } }
-                                            Err(e) => msg.set(Some((true, format!("Không thêm được ({})", e.code)))),
+                                            Err(_e) => msg.set(Some((true, "Không thêm được".into()))),
                                         },
-                                        Err(e) => msg.set(Some((true, format!("Không tải ảnh lên được ({})", e.code)))),
+                                        Err(_e) => msg.set(Some((true, "Không tải ảnh lên được".into()))),
                                     },
                                     Err(e) if e == "too_large" => msg.set(Some((true, "Ảnh lớn hơn 2 MB".into()))),
                                     Err(_) => {}
@@ -459,7 +459,7 @@ pub fn LayoutEditor(
                     {
                         let favs = try_consume_context::<crate::prefs::PrefsCtx>().map(|c| c.prefs.read().fav_stickers.clone()).unwrap_or_default();
                         rsx! {
-                            if favs.is_empty() { span { class: "member-sub", "Chưa có sticker yêu thích (bấm ☆ trong bảng sticker)" } }
+                            if favs.is_empty() { span { class: "member-sub", "Chưa có sticker yêu thích" } }
                             for u in favs.into_iter().take(12) {
                                 button { key: "{u}", r#type: "button", class: "showcase-pick", aria_label: "Trưng bày sticker này", disabled: showcase.len() >= 12,
                                     onclick: { let u = u.clone(); move |_| {

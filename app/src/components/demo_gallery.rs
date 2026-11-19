@@ -67,7 +67,7 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                     profile.set(Some(p));
                     status.set(Some((false, format!("Đã áp dụng {label} cho hồ sơ"))));
                 }
-                Err(e) => status.set(Some((true, format!("Không áp dụng được ({})", e.code)))),
+                Err(_) => status.set(Some((true, "Không áp dụng được".into()))),
             }
             busy.set(false);
         });
@@ -90,7 +90,7 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                     });
                     status.set(Some((false, "Đã áp dụng hiệu ứng avatar cho hồ sơ".into())));
                 }
-                Err(e) => status.set(Some((true, format!("Không áp dụng được ({})", e.code)))),
+                Err(_) => status.set(Some((true, "Không áp dụng được".into()))),
             }
             busy.set(false);
         });
@@ -105,150 +105,133 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
     let c1 = p.as_ref().and_then(|p| p.profile_color.clone()).unwrap_or_else(|| "var(--accent)".into());
     let c2 = p.as_ref().and_then(|p| p.profile_accent.clone()).unwrap_or_else(|| "#A78BFA".into());
     let cur_wp = prefs_ctx.prefs.read().wallpaper.clone();
+    let _ = (&mut section, &mut mode, &mut reduced, Section::Avatar, Section::Names, Section::Plates, Section::Effects, Section::Wallpapers);
     let stage_cls = format!("demo-stage {}{}", mode(), if reduced() { " demo-reduced" } else { "" });
 
     rsx! {
         div { class: "demo-gallery",
-            div { class: "demo-toolbar",
-                div { class: "segmented", role: "tablist", aria_label: "Nhóm demo",
-                    for (s, label) in [(Section::Avatar, "Avatar"), (Section::Names, "Hiệu ứng tên"), (Section::Plates, "Bảng tên"), (Section::Effects, "Hiệu ứng hồ sơ"), (Section::Wallpapers, "Hình nền chat")] {
-                        button { key: "{label}", r#type: "button", role: "tab", aria_selected: "{section() == s}", class: if section() == s { "active" } else { "" },
-                            onclick: move |_| { section.set(s); status.set(None); }, "{label}" }
-                    }
-                }
-                div { class: "segmented", role: "radiogroup", aria_label: "Chế độ xem trước",
-                    for (m, label) in [("desktop", "Desktop"), ("mobile", "Mobile"), ("compact", "Gọn")] {
-                        button { key: "{m}", r#type: "button", role: "radio", aria_checked: "{mode() == m}", class: if mode() == m { "active" } else { "" },
-                            onclick: move |_| mode.set(m), "{label}" }
-                    }
-                }
-                label { class: "demo-check",
-                    input { r#type: "checkbox", checked: reduced(), onchange: move |e| reduced.set(e.checked()) }
-                    "Xem như khi giảm chuyển động"
-                }
-            }
             if let Some((err, msg)) = status() {
                 div { class: if err { "status-badge error" } else { "status-badge success" }, role: "status", "{msg}" }
             }
-            div { class: "{stage_cls}", style: "--pc-1: {c1}; --pc-2: {c2};",
-                match section() {
-                    Section::Avatar => rsx! {
-                        p { class: "member-sub", "Thử 40 hiệu ứng, chỉnh thông số rồi bấm Áp dụng. Người khác thấy hiệu ứng này trên hồ sơ và danh sách của họ." }
-                        AvatarStudio { name: my_name.clone(), avatar_url: my_avatar.clone(), value: trial(), on_change: move |m| trial.set(m) }
-                        div { class: "demo-actions",
-                            button { r#type: "button", class: "btn-primary", disabled: busy() || trial() == saved_motion, onclick: apply_motion, "Áp dụng cho hồ sơ" }
-                            button { r#type: "button", class: "btn-secondary", disabled: trial() == saved_motion, onclick: move |_| trial.set(saved_motion.clone()), "Khôi phục hiệu ứng đang dùng" }
-                        }
-                        div { class: "settings-group-title", "Xem tất cả cùng lúc" }
-                        label { class: "demo-check",
-                            input { r#type: "checkbox", checked: run_all(), onchange: move |e| run_all.set(e.checked()) }
-                            "Chạy cả 40 hiệu ứng (tốn CPU hơn, chỉ nên bật để so sánh)"
-                        }
-                        div { class: "demo-motion-wall",
-                            for (id, label, _, _) in MOTIONS {
-                                {
-                                    let mut m = AvatarMotion::of(id);
-                                    m.trigger = if run_all() { "always".into() } else { "hover".into() };
-                                    let pick = AvatarMotion::of(id);
-                                    rsx! {
-                                        button { key: "{id}-{run_all()}", r#type: "button", class: "demo-motion-cell", title: "Thử {label}",
-                                            onclick: move |_| trial.set(Some(pick.clone())),
-                                            MotionAvatar { name: my_name.clone(), avatar_url: my_avatar.clone(), size: 56, motion: m }
-                                            span { "{label}" }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    Section::Names => rsx! {
-                        div { class: "demo-list",
-                            for (id, label) in NAME_EFFECTS {
-                                {
-                                    let n = name.clone();
-                                    rsx! {
-                                        div { key: "{id}", class: if cur_name_fx == id { "demo-row current" } else { "demo-row" },
-                                            span { class: "demo-name {name_effect_class(Some(id))}", "{n}" }
-                                            span { class: "member-sub grow", "{label}" }
-                                            if cur_name_fx == id {
-                                                span { class: "demo-badge", "Đang dùng" }
-                                            } else {
-                                                button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("name_effect", id.to_string(), format!("hiệu ứng tên {label}")), "Áp dụng" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    Section::Plates => rsx! {
-                        div { class: "demo-list",
-                            for (id, label) in NAMEPLATES {
-                                {
-                                    let (cls, style) = nameplate_style(Some(id), None);
-                                    let n = name.clone();
-                                    rsx! {
-                                        div { key: "{id}", class: if cur_plate == id { "demo-row current" } else { "demo-row" },
-                                            div { class: "demo-plate chat-item {cls}", style: "{style}",
-                                                span { class: "chat-item-name {name_effect_class(Some(&cur_name_fx))}", "{n}" }
-                                            }
-                                            span { class: "member-sub grow", "{label}" }
-                                            if cur_plate == id {
-                                                span { class: "demo-badge", "Đang dùng" }
-                                            } else {
-                                                button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("nameplate", id.to_string(), format!("bảng tên {label}")), "Áp dụng" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    Section::Effects => rsx! {
-                        div { class: "demo-effect-grid",
-                            for (id, label) in EFFECTS {
-                                div { key: "{id}", class: if cur_effect == id { "demo-effect current" } else { "demo-effect" },
-                                    div { class: "demo-effect-banner profile-card-banner",
-                                        if id != "none" {
-                                            div { class: "profile-effect effect-{id}", aria_hidden: "true",
-                                                for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
-                                            }
-                                        }
-                                    }
-                                    div { class: "demo-effect-foot",
+            div { class: "{stage_cls}", style: "--pc-1: {c1}; --pc-2: {c2}; display: flex; flex-direction: column; gap: var(--space-5);",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Hiệu ứng chuyển động Avatar" }
+                    AvatarStudio { name: my_name.clone(), avatar_url: my_avatar.clone(), value: trial(), on_change: move |m| trial.set(m) }
+                    div { class: "demo-actions",
+                        button { r#type: "button", class: "btn-primary", disabled: busy() || trial() == saved_motion, onclick: apply_motion, "Áp dụng cho hồ sơ" }
+                        button { r#type: "button", class: "btn-secondary", disabled: trial() == saved_motion, onclick: move |_| trial.set(saved_motion.clone()), "Khôi phục hiệu ứng đang dùng" }
+                    }
+                    label { class: "demo-check",
+                        input { r#type: "checkbox", checked: run_all(), onchange: move |e| run_all.set(e.checked()) }
+                        "Chạy cả 40 hiệu ứng cùng lúc"
+                    }
+                    div { class: "demo-motion-wall",
+                        for (id, label, _, _) in MOTIONS {
+                            {
+                                let mut m = AvatarMotion::of(id);
+                                m.trigger = if run_all() { "always".into() } else { "hover".into() };
+                                let pick = AvatarMotion::of(id);
+                                rsx! {
+                                    button { key: "{id}-{run_all()}", r#type: "button", class: "demo-motion-cell", title: "Thử {label}",
+                                        onclick: move |_| trial.set(Some(pick.clone())),
+                                        MotionAvatar { name: my_name.clone(), avatar_url: my_avatar.clone(), size: 56, motion: m }
                                         span { "{label}" }
-                                        if cur_effect == id {
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Hiệu ứng tên" }
+                    div { class: "demo-list",
+                        for (id, label) in NAME_EFFECTS {
+                            {
+                                let n = name.clone();
+                                rsx! {
+                                    div { key: "{id}", class: if cur_name_fx == id { "demo-row current" } else { "demo-row" },
+                                        span { class: "demo-name {name_effect_class(Some(id))}", "{n}" }
+                                        span { class: "member-sub grow", "{label}" }
+                                        if cur_name_fx == id {
                                             span { class: "demo-badge", "Đang dùng" }
                                         } else {
-                                            button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("profile_effect", id.to_string(), format!("hiệu ứng {label}")), "Áp dụng" }
+                                            button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("name_effect", id.to_string(), format!("hiệu ứng tên {label}")), "Áp dụng" }
                                         }
                                     }
                                 }
                             }
                         }
-                    },
-                    Section::Wallpapers => rsx! {
-                        p { class: "member-sub", "Hình nền mặc định cho các đoạn chat chưa có hình nền chung. Lưu trong cài đặt và đồng bộ với thiết bị khác khi bật đồng bộ." }
-                        div { class: "demo-effect-grid",
-                            for (id, label) in WALLPAPER_NAMES {
-                                div { key: "{id}", class: if cur_wp == id { "demo-effect current" } else { "demo-effect" },
-                                    div { class: "demo-wallpaper wallpaper-sample wp-{id}",
-                                        div { class: "demo-bubble other", "Chào bạn!" }
-                                        div { class: "demo-bubble mine", "Hình nền này đẹp đó" }
-                                    }
-                                    div { class: "demo-effect-foot",
-                                        span { "{label}" }
-                                        if cur_wp == id {
+                    }
+                }
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Bảng tên" }
+                    div { class: "demo-list",
+                        for (id, label) in NAMEPLATES {
+                            {
+                                let (cls, style) = nameplate_style(Some(id), None);
+                                let n = name.clone();
+                                rsx! {
+                                    div { key: "{id}", class: if cur_plate == id { "demo-row current" } else { "demo-row" },
+                                        div { class: "demo-plate chat-item {cls}", style: "{style}",
+                                            span { class: "chat-item-name {name_effect_class(Some(&cur_name_fx))}", "{n}" }
+                                        }
+                                        span { class: "member-sub grow", "{label}" }
+                                        if cur_plate == id {
                                             span { class: "demo-badge", "Đang dùng" }
                                         } else {
-                                            button { r#type: "button", class: "btn-small-secondary",
-                                                onclick: move |_| { prefs_ctx.update(move |p| p.wallpaper = id.to_string()); status.set(Some((false, format!("Đã đặt hình nền {label}")))); }, "Áp dụng" }
+                                            button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("nameplate", id.to_string(), format!("bảng tên {label}")), "Áp dụng" }
                                         }
                                     }
                                 }
                             }
                         }
-                    },
+                    }
+                }
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Hiệu ứng hồ sơ" }
+                    div { class: "demo-effect-grid",
+                        for (id, label) in EFFECTS {
+                            div { key: "{id}", class: if cur_effect == id { "demo-effect current" } else { "demo-effect" },
+                                div { class: "demo-effect-banner profile-card-banner",
+                                    if id != "none" {
+                                        div { class: "profile-effect effect-{id}", aria_hidden: "true",
+                                            for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
+                                        }
+                                    }
+                                }
+                                div { class: "demo-effect-foot",
+                                    span { "{label}" }
+                                    if cur_effect == id {
+                                        span { class: "demo-badge", "Đang dùng" }
+                                    } else {
+                                        button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("profile_effect", id.to_string(), format!("hiệu ứng {label}")), "Áp dụng" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Hình nền chat" }
+                    div { class: "demo-effect-grid",
+                        for (id, label) in WALLPAPER_NAMES {
+                            div { key: "{id}", class: if cur_wp == id { "demo-effect current" } else { "demo-effect" },
+                                div { class: "demo-wallpaper wallpaper-sample wp-{id}",
+                                    div { class: "demo-bubble other", "Chào bạn!" }
+                                    div { class: "demo-bubble mine", "Hình nền này đẹp đó" }
+                                }
+                                div { class: "demo-effect-foot",
+                                    span { "{label}" }
+                                    if cur_wp == id {
+                                        span { class: "demo-badge", "Đang dùng" }
+                                    } else {
+                                        button { r#type: "button", class: "btn-small-secondary",
+                                            onclick: move |_| { prefs_ctx.update(move |p| p.wallpaper = id.to_string()); status.set(Some((false, format!("Đã đặt hình nền {label}")))); }, "Áp dụng" }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

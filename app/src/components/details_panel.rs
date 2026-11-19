@@ -242,7 +242,7 @@ pub fn DmDetailsPanel(
                     if security_open() {
                         div { class: "security-note",
                             "Tin nhắn trực tiếp được mã hóa bằng ECDH P-256 + AES-256-GCM và ký bằng ECDSA P-256. "
-                            "Để xác minh danh tính, hãy so sánh vân tay khóa dưới đây với {username} qua một kênh khác (gặp trực tiếp hoặc cuộc gọi)."
+                            "Để xác minh danh tính, hãy so sánh vân tay khóa dưới đây với {username} qua một kênh khác."
                         }
                         if let Some(fp) = fingerprint.clone() {
                             div { class: "details-section-title", "Vân tay khóa của {username}" }
@@ -292,7 +292,7 @@ fn ContactNoteEditor(user_id: String) -> Element {
         spawn(async move {
             match crate::services::profile_ext::save_note(&u, &nickname(), &note()).await {
                 Ok(()) => status.set(Some((false, "Đã lưu".into()))),
-                Err(e) => status.set(Some((true, format!("Không lưu được ({})", e.code)))),
+                Err(_e) => status.set(Some((true, "Không lưu được".to_string()))),
             }
             busy.set(false);
         });
@@ -309,7 +309,7 @@ fn ContactNoteEditor(user_id: String) -> Element {
             if open() {
                 p { class: "member-sub", "Chỉ bạn thấy. Biệt danh thay tên người này trong danh sách của bạn." }
                 input { r#type: "text", maxlength: "40", placeholder: "Biệt danh", aria_label: "Biệt danh", value: "{nickname}", oninput: move |e| nickname.set(e.value()) }
-                textarea { rows: "3", maxlength: "500", placeholder: "Ghi chú riêng (ví dụ: gặp ở đâu, sở thích)", aria_label: "Ghi chú riêng", value: "{note}", oninput: move |e| note.set(e.value()) }
+                textarea { rows: "3", maxlength: "500", placeholder: "Ghi chú riêng", aria_label: "Ghi chú riêng", value: "{note}", oninput: move |e| note.set(e.value()) }
                 div { class: "inline-form",
                     button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: save, "Lưu" }
                     if let Some((err, m)) = status() { span { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }

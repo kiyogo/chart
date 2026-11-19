@@ -297,7 +297,7 @@ pub fn Chat(
         let reqs = pending_requests.read().len();
         let combined = total_unread + reqs;
         if combined > 0 {
-            platform::set_document_title(&format!("({combined}) chatw"));
+            platform::set_document_title("chatw");
         } else {
             platform::set_document_title("chatw");
         }
@@ -474,7 +474,7 @@ pub fn Chat(
                             platform::play_sound("chime");
                         }
                         platform::show_notification("Nhắc hẹn", &format!("{title} · {place}"), &format!("reminder:{id}"));
-                        toast.set(Some(format!("Nhắc hẹn: {title} ({place})")));
+                        toast.set(Some(format!("Nhắc hẹn: {title} · {place}")));
                         fired.push(id);
                         changed = true;
                     }
@@ -1045,7 +1045,7 @@ pub fn Chat(
                     WsEvent::SecurityAlert(v) => {
                         let device = v.get("device").and_then(|x| x.as_str()).unwrap_or("thiết bị mới").to_string();
                         let ip = v.get("ip").and_then(|x| x.as_str()).unwrap_or_default().to_string();
-                        let text = format!("Tài khoản vừa đăng nhập từ {device} ({ip}). Không phải bạn? Vào Cài đặt › Thiết bị và phiên để đăng xuất thiết bị đó.");
+                        let text = format!("Tài khoản vừa đăng nhập từ {device} · {ip}. Không phải bạn? Vào Cài đặt › Thiết bị để đăng xuất thiết bị đó.");
                         toast.set(Some(text.clone()));
                         platform::show_notification("ChatW: đăng nhập mới", &text, "security-alert");
                     }
@@ -1494,14 +1494,20 @@ pub fn Chat(
         });
     });
 
+    let uname_for_dm_cmd = current_username.clone();
     let trigger_send_message = use_callback(move |_: ()| {
         let Some(active) = active_friend() else {
             return;
         };
-        let text = input_text().trim().to_string();
-        if text.is_empty() || is_sending() || user_keys().is_none() {
+        let raw_text = input_text().trim().to_string();
+        if raw_text.is_empty() || is_sending() || user_keys().is_none() {
             return;
         }
+        let text = if raw_text.starts_with('/') {
+            crate::components::bots_view::try_run_plugin_command(&raw_text, &uname_for_dm_cmd).unwrap_or(raw_text)
+        } else {
+            raw_text
+        };
         if is_currently_typing() {
             is_currently_typing.set(false);
             let next_seq = typing_seq() + 1;
@@ -1644,7 +1650,7 @@ pub fn Chat(
                         send_group_raw.call(format!("img:{json}"));
                     }
                 }
-                Err(_) => toast.set(Some("Không tải ảnh lên được (PNG, JPEG, WebP, GIF, AVIF; tối đa 8 MB)".into())),
+                Err(_) => toast.set(Some("Không tải ảnh lên được".into())),
             }
         });
     });
@@ -1654,10 +1660,12 @@ pub fn Chat(
     // ---------------------------------------------------------------------
     let total_unread: usize = unread_counts.read().values().copied().sum();
     let pending_len = pending_requests.read().len();
+    let active_mod_page = crate::components::bots_view::ACTIVE_PLUGIN_PAGE.read().clone();
     let is_chat_selected = active_friend().is_some()
         || active_group().is_some()
         || selected_channel().is_some()
         || active_bot().is_some()
+        || active_mod_page.is_some()
         || is_settings_open()
         || nav_section() == NavSection::Search;
     let section = if is_settings_open() { NavSection::Settings } else { nav_section() };
@@ -1745,7 +1753,8 @@ pub fn Chat(
                         .and_then(|sid| sessions_now.iter().find(|x| &x.id == sid))
                         .and_then(|x| x.device_label.clone().or(x.device_name.clone()));
                     let label = live.unwrap_or_else(|| if dev_label.is_empty() { "Thiết bị này".to_string() } else { dev_label.clone() });
-                    let mine = if self_mode { dev_sid.is_none() || dev_sid == current_sid } else { m.is_self };
+                    let _ = &current_sid;
+                    let mine = if self_mode { true } else { m.is_self };
                     ViewMessage {
                         id: m.id.clone(),
                         sender_id: if self_mode { dev_sid.clone().unwrap_or_default() } else { m.sender_id.clone() },
@@ -1979,6 +1988,7 @@ pub fn Chat(
 
     rsx! {
         div { class: "workspace-shell",
+            crate::components::bots_view::PluginGlobalOverlay {}
             AppRail {
                 active_section: section.clone(),
                 hidden_mobile: is_chat_selected,
@@ -2021,7 +2031,7 @@ pub fn Chat(
                 on_logout: move |_| on_logout.call(()),
             }
 
-            if section != NavSection::Settings && section != NavSection::Search {
+            if section != NavSection::Settings && section != NavSection::Search && active_mod_page.is_none() {
                 NavigationSidebar {
                     dm_content: rsx! {
                         ConversationList {
@@ -2153,7 +2163,18 @@ pub fn Chat(
             }
 
             main { class: if is_chat_selected { "main-stage" } else { "main-stage hidden-mobile" },
-                if is_settings_open() {
+                if let Some(pid) = active_mod_page.clone() {
+                    crate::components::bots_view::PluginCustomPageView {
+                        key: "{pid}",
+                        plugin_id: pid,
+                        my_username: current_username.clone(),
+                        on_close: move |_| *crate::components::bots_view::ACTIVE_PLUGIN_PAGE.write() = None,
+                        on_open_bot_chat: move |b: BotItem| {
+                            *crate::components::bots_view::ACTIVE_PLUGIN_PAGE.write() = None;
+                            open_bot.call(b);
+                        },
+                    }
+                } else if is_settings_open() {
                     SettingsView {
                         current_user_id: current_user_id.clone(),
                         current_username: current_username.clone(),

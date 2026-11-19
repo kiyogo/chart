@@ -143,7 +143,7 @@ pub fn NotificationSettings() -> Element {
                     }
                 }
             }
-            Toggle { label: "Hiện nội dung tin nhắn trong thông báo", desc: "Tắt để thông báo chỉ ghi tên người gửi (an toàn hơn khi người khác nhìn màn hình)", checked: pr.notify_preview, on_change: move |v| c.update(|p| p.notify_preview = v) }
+            Toggle { label: "Hiện nội dung tin nhắn trong thông báo", desc: "Tắt để thông báo chỉ ghi tên người gửi", checked: pr.notify_preview, on_change: move |v| c.update(|p| p.notify_preview = v) }
             Toggle { label: "Thông báo tin nhắn nhóm", checked: pr.notify_groups, on_change: move |v| c.update(|p| p.notify_groups = v) }
             Toggle { label: "Thông báo cuộc gọi đến", checked: pr.notify_calls, on_change: move |v| c.update(|p| p.notify_calls = v) }
         }
@@ -221,7 +221,7 @@ pub fn PrivacySettingsPanel() -> Element {
         }
         div { class: "settings-group",
             div { class: "settings-group-title", "Mã hóa đầu cuối" }
-            p { class: "settings-group-desc", "Tin nhắn riêng, \"Chính mình\", ảnh và thẻ mời trong tin nhắn riêng được mã hóa trên thiết bị. Máy chủ chỉ chuyển tiếp và không đọc được. Tin nhắn nhóm, kênh cộng đồng và bot được máy chủ lưu ở dạng thường." }
+            p { class: "settings-group-desc", "Tin nhắn riêng, \"Chính mình\", ảnh và thẻ mời trong tin nhắn riêng được mã hóa trên thiết bị. Máy chủ chỉ chuyển tiếp và không đọc được. Tin nhắn nhóm, kênh cộng đồng và plugin được máy chủ lưu ở dạng thường." }
         }
     }
 }
@@ -330,7 +330,7 @@ pub fn LockSettings(on_lock_now: EventHandler<()>) -> Element {
     rsx! {
         div { class: "settings-group",
             div { class: "settings-group-title", LockIcon { size: 18 } " Mã PIN khóa ứng dụng" }
-            p { class: "settings-group-desc", "Khóa giao diện ChatW trên thiết bị này khi bạn không hoạt động quá lâu hoặc mở lại ứng dụng. Mã PIN chỉ lưu dạng băm có muối (PBKDF2) trên thiết bị, không gửi lên máy chủ." }
+            p { class: "settings-group-desc", "Khóa giao diện ChatW trên thiết bị này khi bạn không hoạt động quá lâu hoặc mở lại ứng dụng. Mã PIN chỉ lưu dạng băm có muối PBKDF2 trên thiết bị, không gửi lên máy chủ." }
             if has_pin {
                 Toggle { label: "Bật khóa bằng mã PIN", checked: pr.lock_enabled, on_change: move |v| c.update(|p| p.lock_enabled = v) }
                 Toggle { label: "Yêu cầu mã PIN mỗi khi mở ChatW", checked: pr.lock_on_start, on_change: move |v| c.update(|p| p.lock_on_start = v) }
@@ -352,7 +352,7 @@ pub fn LockSettings(on_lock_now: EventHandler<()>) -> Element {
                         input { r#type: "password", class: "pin-input", inputmode: "numeric", autocomplete: "off", maxlength: "8", value: "{current}", oninput: move |e| current.set(e.value().chars().filter(|c| c.is_ascii_digit()).collect()) }
                     }
                 }
-                label { class: "form-field", span { "Mã PIN mới (4 đến 8 số)" }
+                label { class: "form-field", span { "Mã PIN mới từ 4 đến 8 số" }
                     input { r#type: "password", class: "pin-input", inputmode: "numeric", autocomplete: "new-password", maxlength: "8", value: "{pin1}", oninput: move |e| pin1.set(e.value().chars().filter(|c| c.is_ascii_digit()).collect()) }
                 }
                 label { class: "form-field", span { "Nhập lại mã PIN mới" }
@@ -402,17 +402,15 @@ pub fn AutoReplySettings() -> Element {
 pub fn LanguageSettings() -> Element {
     let c = ctx();
     let cur = c.prefs.read().language.clone();
+    let _ = t;
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "{t(\"settings.language\")}" }
-            p { class: "settings-group-desc", "{LANGUAGES.len()} ngôn ngữ cho thanh điều hướng, danh sách trò chuyện và ô soạn tin. Các trang khác đang hiển thị tiếng Việt. Tên sticker và emoji luôn là tiếng Anh." }
             div { class: "lang-grid", role: "radiogroup", aria_label: "Ngôn ngữ",
-                for (code, native, english) in LANGUAGES.iter().copied() {
+                for (code, native, _english) in LANGUAGES.iter().copied() {
                     button { key: "{code}", r#type: "button", role: "radio", aria_checked: "{cur == code}", lang: "{code}",
                         class: if cur == code { "lang-tile active" } else { "lang-tile" },
                         onclick: move |_| c.update(|p| p.language = code.to_string()),
                         span { class: "lang-native", "{native}" }
-                        span { class: "lang-english", "{english}" }
                     }
                 }
             }
@@ -471,7 +469,7 @@ pub fn AdvancedLookSettings() -> Element {
         }
         div { class: "settings-group",
             div { class: "settings-group-title", ImageIcon { size: 18 } " Hình nền toàn ứng dụng" }
-            p { class: "settings-group-desc", "Hình nền phía sau toàn bộ ChatW trên thiết bị này. Hình nền riêng cho từng đoạn chat đặt trong menu ⋯ của đoạn chat đó (cả hai bên cùng thấy)." }
+            p { class: "settings-group-desc", "Hình nền phía sau toàn bộ ChatW trên thiết bị này. Hình nền riêng cho từng đoạn chat đặt trong menu của đoạn chat đó." }
             div { class: "wallpaper-grid",
                 button { r#type: "button", class: if pr.app_wallpaper.is_empty() { "wallpaper-tile active" } else { "wallpaper-tile" }, onclick: move |_| c.update(|p| p.app_wallpaper.clear()),
                     span { class: "wallpaper-sample wp-none" } span { "Không" }

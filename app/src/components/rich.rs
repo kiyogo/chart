@@ -389,7 +389,7 @@ pub fn ComposerTools(
                             } else {
                                 label { class: "form-field", span { class: "form-label", "Nội dung nhắc" } input { maxlength: "120", value: "{title}", oninput: move |e| title.set(e.value()), placeholder: "Họp nhóm" } }
                                 label { class: "form-field", span { class: "form-label", "Thời gian" } input { r#type: "datetime-local", value: "{at}", oninput: move |e| at.set(e.value()) } }
-                                div { class: "form-hint", "ChatW sẽ thông báo cho mọi người trong cuộc trò chuyện khi đến giờ (khi ứng dụng đang mở)." }
+                                div { class: "form-hint", "ChatW sẽ thông báo cho mọi người trong cuộc trò chuyện khi đến giờ." }
                             }
                         }
                         div { class: "modal-footer",

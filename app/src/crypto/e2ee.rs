@@ -360,10 +360,10 @@ impl DecryptError {
     pub fn user_message(&self) -> String {
         match self {
             DecryptError::WrongDeviceKey => {
-                "Tin nhắn được mã hóa bằng khóa thiết bị khác (nhập khóa sao lưu trong Cài đặt để giải mã)".to_string()
+                "Tin nhắn được mã hóa bằng khóa thiết bị khác".to_string()
             }
             DecryptError::SignatureMismatch => {
-                "Không xác minh được chữ ký người gửi (khóa đối phương đã thay đổi)".to_string()
+                "Không xác minh được chữ ký người gửi".to_string()
             }
             DecryptError::Corrupted(_) => "Dữ liệu mã hóa không hợp lệ".to_string(),
         }

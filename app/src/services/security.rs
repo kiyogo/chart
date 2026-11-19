@@ -156,6 +156,6 @@ pub fn error_text(code: &str) -> String {
         "second_factor_required" => "Cần mã xác minh hai bước".into(),
         "account_limit_reached" => "Tối đa 5 tài khoản trên một thiết bị".into(),
         "account_not_signed_in" => "Tài khoản này đã đăng xuất".into(),
-        c => format!("Không thực hiện được ({c})"),
+        _ => "Không thực hiện được".into(),
     }
 }

@@ -172,7 +172,7 @@ pub fn ActiveCallOverlay(
                             }
                             div { style: "position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white;",
                                 "Bạn"
-                                if is_muted() { " (Muted)" }
+                                if is_muted() { " · Đã tắt tiếng" }
                             }
                         }
 
@@ -209,7 +209,7 @@ pub fn ActiveCallOverlay(
                                         }
                                         div { style: "position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white;",
                                             "{p.username}"
-                                            if p.muted { " (Muted)" }
+                                            if p.muted { " · Đã tắt tiếng" }
                                         }
                                     }
                                 }

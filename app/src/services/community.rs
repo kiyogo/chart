@@ -215,10 +215,10 @@ pub fn error_text(code: &str) -> String {
         "missing_permission" => "Bạn không có quyền làm việc này".into(),
         "thread_locked" => "Chủ đề đã bị khóa".into(),
         "name_taken" => "Tên này đã có trong cộng đồng".into(),
-        "invalid_name" => "Tên chỉ gồm chữ thường không dấu, số và dấu _ (2–32 ký tự)".into(),
+        "invalid_name" => "Tên chỉ gồm chữ thường không dấu, số và dấu gạch dưới từ 2 đến 32 ký tự".into(),
         "expression_limit_reached" => "Tối đa 100 emoji và 100 sticker".into(),
         "invalid_event_time" => "Giờ kết thúc phải sau giờ bắt đầu".into(),
-        c => format!("Không thực hiện được ({c})"),
+        _ => "Không thực hiện được".into(),
     }
 }
 

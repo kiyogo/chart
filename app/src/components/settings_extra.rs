@@ -194,8 +194,8 @@ pub fn StickerSettings(current_user_id: String) -> Element {
                                             _ => "Không đọc được tệp ảnh này. Hãy chọn PNG, WebP, AVIF hoặc GIF.".to_string(),
                                         })?;
                                         if bytes.len() > 512 * 1024 { return Err("Tệp vượt quá 512 KB".into()); }
-                                        let (url, animated) = stickers::stickers_upload_image(bytes, &mime).await.map_err(|e| format!("Tải lên thất bại ({})", e.code))?;
-                                        stickers::stickers_add_sticker(&pid, &name, &url, animated).await.map_err(|e| format!("Không thêm được sticker ({})", e.code))?;
+                                        let (url, animated) = stickers::stickers_upload_image(bytes, &mime).await.map_err(|_| "Tải lên thất bại".to_string())?;
+                                        stickers::stickers_add_sticker(&pid, &name, &url, animated).await.map_err(|_| "Không thêm được sticker".to_string())?;
                                         Ok(())
                                     }.await;
                                     match result {
@@ -362,7 +362,7 @@ fn UsernameDialog(current: String, on_close: EventHandler<()>, on_changed: Event
                                                 error.set(Some(match e.code.as_str() {
                                                     "username_taken" => "Tên này đã có người dùng".to_string(),
                                                     "invalid_username" | "username_invalid" => "Tên không hợp lệ".to_string(),
-                                                    other => format!("Không đổi được tên ({other})"),
+                                                    _ => "Không đổi được tên".to_string(),
                                                 }));
                                                 step.set(UserStep::Edit);
                                             }
@@ -572,7 +572,7 @@ pub fn AccountSecurity(current_username: String, on_username_changed: EventHandl
                 div { class: "settings-row",
                     div { class: "settings-row-text",
                         span { class: "settings-label", "Phương thức đăng nhập" }
-                        span { class: "settings-sublabel", "Google OAuth (PKCE). Bật xác minh 2 bước trên tài khoản Google để bảo vệ thêm." }
+                        span { class: "settings-sublabel", "Google OAuth PKCE. Bật xác minh 2 bước trên tài khoản Google để bảo vệ thêm." }
                     }
                 }
                 button { r#type: "button", class: "settings-row row-button", onclick: move |_| dialog.set(Some("devices")),
@@ -616,10 +616,10 @@ pub fn EmojiSettings() -> Element {
     let valid = (2..=32).contains(&n.len()) && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Custom emoji" }
-            div { class: "settings-group-desc", "Tên tiếng Anh gồm chữ, số, gạch dưới (ví dụ party_cat). Ảnh vuông PNG/GIF/WebP ≤ 2 MB, hiển thị như :party_cat: trong tin nhắn." }
+            div { class: "settings-group-title", "Emoji tùy chỉnh" }
+            div { class: "settings-group-desc", "Tên tiếng Anh gồm chữ, số, gạch dưới. Ảnh vuông PNG/GIF/WebP ≤ 2 MB, hiển thị như :party_cat: trong tin nhắn." }
             div { class: "sticker-upload",
-                input { maxlength: "32", placeholder: "emoji_name", aria_label: "Tên emoji", value: "{name}", oninput: move |e| name.set(e.value()) }
+                input { maxlength: "32", placeholder: "party_cat", aria_label: "Tên emoji", value: "{name}", oninput: move |e| name.set(e.value()) }
                 label { class: if busy() || !valid { "btn-avatar-upload disabled" } else { "btn-avatar-upload" },
                     input {
                         id: "emoji-file-input", r#type: "file", accept: "image/png,image/gif,image/webp,image/avif", style: "display: none;",
@@ -631,8 +631,8 @@ pub fn EmojiSettings() -> Element {
                             spawn(async move {
                                 let res: Result<(), String> = async {
                                     let (bytes, mime) = platform::read_selected_file_raw("emoji-file-input").await?;
-                                    let url = library::upload_media(bytes, &mime).await.map_err(|e| format!("Upload failed ({})", e.code))?;
-                                    library::emojis_create(&nm, &url).await.map_err(|e| if e.code == "emoji_name_taken" { "Tên emoji đã tồn tại".to_string() } else { format!("Không thêm được emoji ({})", e.code) })?;
+                                    let url = library::upload_media(bytes, &mime).await.map_err(|_| "Tải lên thất bại".to_string())?;
+                                    library::emojis_create(&nm, &url).await.map_err(|e| if e.code == "emoji_name_taken" { "Tên emoji đã tồn tại".to_string() } else { "Không thêm được emoji".to_string() })?;
                                     Ok(())
                                 }.await;
                                 match res {
@@ -657,7 +657,7 @@ pub fn EmojiSettings() -> Element {
                         div { key: "{it.id}", class: "library-cell", title: ":{it.name}:",
                             img { src: "{platform::resolve_asset_url(&it.file_url)}", alt: ":{it.name}:", loading: "lazy" }
                             span { class: "library-name", ":{it.name}:" }
-                            button { r#type: "button", class: "sticker-remove", aria_label: "Delete :{it.name}:",
+                            button { r#type: "button", class: "sticker-remove", aria_label: "Xóa :{it.name}:",
                                 onclick: { let id = it.id.clone(); move |_| { let id = id.clone(); spawn(async move { let _ = library::emojis_delete(&id).await; reload(); }); } },
                                 CloseIcon { size: 14 }
                             }
@@ -679,10 +679,10 @@ pub fn GifSettings() -> Element {
     use_effect(move || reload());
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "My GIFs" }
-            div { class: "settings-group-desc", "Tải GIF động (≤ 2 MB) hoặc lưu ảnh động có sẵn của ChatW vào bộ sưu tập để gửi nhanh." }
+            div { class: "settings-group-title", "GIF của bạn" }
+            div { class: "settings-group-desc", "Tải GIF động tối đa 2 MB hoặc lưu ảnh động có sẵn của ChatW vào bộ sưu tập để gửi nhanh." }
             div { class: "sticker-upload",
-                input { maxlength: "64", placeholder: "GIF name", aria_label: "Tên GIF", value: "{name}", oninput: move |e| name.set(e.value()) }
+                input { maxlength: "64", placeholder: "Tên GIF", aria_label: "Tên GIF", value: "{name}", oninput: move |e| name.set(e.value()) }
                 label { class: if busy() { "btn-avatar-upload disabled" } else { "btn-avatar-upload" },
                     input {
                         id: "gif-file-input", r#type: "file", accept: "image/gif,image/webp,image/png", style: "display: none;",
@@ -694,8 +694,8 @@ pub fn GifSettings() -> Element {
                             spawn(async move {
                                 let res: Result<(), String> = async {
                                     let (bytes, mime) = platform::read_selected_file_raw("gif-file-input").await?;
-                                    let url = library::upload_media(bytes, &mime).await.map_err(|e| format!("Upload failed ({})", e.code))?;
-                                    library::gifs_create(&nm, &url).await.map_err(|e| format!("Không lưu được GIF ({})", e.code))?;
+                                    let url = library::upload_media(bytes, &mime).await.map_err(|_| "Tải lên thất bại".to_string())?;
+                                    library::gifs_create(&nm, &url).await.map_err(|_| "Không lưu được GIF".to_string())?;
                                     Ok(())
                                 }.await;
                                 match res {
@@ -717,7 +717,7 @@ pub fn GifSettings() -> Element {
                     div { key: "{it.id}", class: "library-cell", title: "{it.name}",
                         img { src: "{platform::resolve_asset_url(&it.file_url)}", alt: "{it.name}", loading: "lazy" }
                         span { class: "library-name", "{it.name}" }
-                        button { r#type: "button", class: "sticker-remove", aria_label: "Delete {it.name}",
+                        button { r#type: "button", class: "sticker-remove", aria_label: "Xóa {it.name}",
                             onclick: { let id = it.id.clone(); move |_| { let id = id.clone(); spawn(async move { let _ = library::gifs_delete(&id).await; reload(); }); } },
                             CloseIcon { size: 14 }
                         }
@@ -736,9 +736,9 @@ pub fn GifSettings() -> Element {
                                 img { src: "{url}", alt: "{nm}", loading: "lazy" }
                                 span { class: "library-name", "{nm}" }
                                 if !saved {
-                                    button { r#type: "button", class: "save-chip", aria_label: "Save {nm}",
+                                    button { r#type: "button", class: "save-chip", aria_label: "Lưu {nm}",
                                         onclick: move |_| { spawn(async move { let _ = library::gifs_create(nm, url).await; reload(); }); },
-                                        "Save"
+                                        "Lưu"
                                     }
                                 }
                             }

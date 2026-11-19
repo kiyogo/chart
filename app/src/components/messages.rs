@@ -369,7 +369,7 @@ pub fn MessageList(
                                                 else if let Some(h) = on_open_profile { h.call(sender_for_name.clone()) }
                                             },
                                             "{msg.sender_name}"
-                                            if msg.is_bot { span { class: "bot-tag", "BOT" } }
+                                            if msg.is_bot { span { class: "bot-tag", "PLUGIN" } }
                                         }
                                     }
                                     if let Some(r) = rich.clone() {
@@ -400,7 +400,7 @@ pub fn MessageList(
                                             let (u1, u2, u3) = (url.clone(), url.clone(), url.clone());
                                             rsx! {
                                                 div { class: "message-media sticker-media", title: "{full_time}",
-                                                    button { r#type: "button", class: "sticker-open", aria_label: "Sticker options", aria_haspopup: "menu", aria_expanded: "{menu_open}",
+                                                    button { r#type: "button", class: "sticker-open", aria_label: "Tùy chọn Sticker", aria_haspopup: "menu", aria_expanded: "{menu_open}",
                                                         onclick: move |_| sticker_menu_for.set(if menu_open { None } else { Some(mid.clone()) }),
                                                         img { class: "sticker-img", src: "{platform::resolve_asset_url(&url)}", alt: "Sticker", loading: "lazy" }
                                                     }
@@ -411,19 +411,19 @@ pub fn MessageList(
                                                             if let Some(ctx) = prefs_ctx {
                                                                 button { r#type: "button", role: "menuitem", class: "account-menu-item",
                                                                     onclick: move |_| { sticker_menu_for.set(None); crate::components::sticker_picker::toggle_favorite(ctx, &u1) },
-                                                                    if is_fav { "★ Remove from Favorite Stickers" } else { "☆ Add to Favorite Stickers" }
+                                                                    if is_fav { "★ Bỏ khỏi Sticker yêu thích" } else { "☆ Thêm vào Sticker yêu thích" }
                                                                 }
                                                             }
                                                             if let Some(h) = on_send_raw {
                                                                 button { r#type: "button", role: "menuitem", class: "account-menu-item",
-                                                                    onclick: move |_| { sticker_menu_for.set(None); h.call(u2.clone()) }, "Send Again" }
+                                                                    onclick: move |_| { sticker_menu_for.set(None); h.call(u2.clone()) }, "Gửi lại" }
                                                             }
                                                             button { r#type: "button", role: "menuitem", class: "account-menu-item",
                                                                 onclick: move |_| {
                                                                     sticker_menu_for.set(None);
                                                                     let name = sticker_search_term(&u3);
                                                                     *crate::components::sticker_picker::PICKER_REQUEST.write() = Some(name);
-                                                                }, "Find Similar Stickers" }
+                                                                }, "Tìm Sticker tương tự" }
                                                         }
                                                     }
                                                 }

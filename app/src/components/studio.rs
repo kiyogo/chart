@@ -34,18 +34,18 @@ const PALETTE: [&str; 18] = [
 ];
 
 const TOOLS: [(&str, &str, &str); 12] = [
-    ("brush", "Brush (B)", "M4 20c3 0 5-2 5-4.5S7 12 9.5 11L20 4l-7.5 10.5C11 17 9 15 7.5 15"),
-    ("pencil", "Pencil (P)", "M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"),
-    ("eraser", "Eraser (E)", "M8 20h12M5 15l9-9 5 5-9 9H8z"),
-    ("fill", "Fill (G)", "M5 11l6-6 7 7-6 6zM19 15s2 2.5 2 3.8a2 2 0 01-4 0C17 17.5 19 15 19 15z"),
-    ("line", "Line (L)", "M5 19L19 5"),
-    ("rect", "Rectangle (R)", "M5 6h14v12H5z"),
-    ("ellipse", "Ellipse (O)", "M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z"),
-    ("polygon", "Star / Polygon (S)", "M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"),
-    ("text", "Text (T)", "M5 6h14M12 6v13M9 19h6"),
-    ("picker", "Eyedropper (I)", "M15 4l5 5-2 2-5-5zM13 6l-8 8v5h5l8-8"),
-    ("move", "Move (V)", "M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"),
-    ("clear", "Clear layer", "M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12"),
+    ("brush", "Cọ vẽ", "M4 20c3 0 5-2 5-4.5S7 12 9.5 11L20 4l-7.5 10.5C11 17 9 15 7.5 15"),
+    ("pencil", "Bút chì", "M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"),
+    ("eraser", "Tẩy", "M8 20h12M5 15l9-9 5 5-9 9H8z"),
+    ("fill", "Tô màu", "M5 11l6-6 7 7-6 6zM19 15s2 2.5 2 3.8a2 2 0 01-4 0C17 17.5 19 15 19 15z"),
+    ("line", "Đường thẳng", "M5 19L19 5"),
+    ("rect", "Hình chữ nhật", "M5 6h14v12H5z"),
+    ("ellipse", "Hình elip", "M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z"),
+    ("polygon", "Ngôi sao / Đa giác", "M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"),
+    ("text", "Văn bản", "M5 6h14M12 6v13M9 19h6"),
+    ("picker", "Hút màu", "M15 4l5 5-2 2-5-5zM13 6l-8 8v5h5l8-8"),
+    ("move", "Di chuyển", "M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"),
+    ("clear", "Xóa lớp", "M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12"),
 ];
 
 const PRESETS: [(&str, &str); 10] = [
@@ -155,7 +155,7 @@ fn err_text(code: &str) -> String {
         "project_too_large" | "payload_too_large" => "Dự án lớn hơn 6 MB, hãy giảm số khung hoặc kích thước".into(),
         "invalid_sticker_size" | "invalid_media_size" | "banner_too_large" => "Tệp quá lớn, hãy giảm số khung hoặc kích thước".into(),
         "emoji_name_taken" => "Đã có emoji trùng tên, hãy đổi tên dự án".into(),
-        c => format!("Không thực hiện được ({c})"),
+        _ => "Không thực hiện được".into(),
     }
 }
 
@@ -248,7 +248,7 @@ pub fn Studio(
                 Ok(new_id) => {
                     project_id.set(Some(new_id));
                     js("ChatwStudio.dropDraft()");
-                    toast.set(Some((false, "Đã lưu dự án (giữ nguyên mọi lớp và khung hình)".into())));
+                    toast.set(Some((false, "Đã lưu dự án".into())));
                 }
                 Err(e) => toast.set(Some((true, err_text(&e.code)))),
             }
@@ -407,8 +407,8 @@ pub fn Studio(
                 input { class: "studio-name", aria_label: "Tên dự án", maxlength: "64", value: "{name}", oninput: move |e| name.set(e.value()) }
                 span { class: "studio-kind", "{kind_label} · {s.w}×{s.h}" }
                 div { class: "studio-top-actions",
-                    button { r#type: "button", class: "btn-small-secondary", title: "Undo (Ctrl+Z)", disabled: s.undo == 0, onclick: move |_| js("ChatwStudio.undo()"), "Hoàn tác" }
-                    button { r#type: "button", class: "btn-small-secondary", title: "Redo (Ctrl+Y)", disabled: s.redo == 0, onclick: move |_| js("ChatwStudio.redo()"), "Làm lại" }
+                    button { r#type: "button", class: "btn-small-secondary", title: "Hoàn tác", disabled: s.undo == 0, onclick: move |_| js("ChatwStudio.undo()"), "Hoàn tác" }
+                    button { r#type: "button", class: "btn-small-secondary", title: "Làm lại", disabled: s.redo == 0, onclick: move |_| js("ChatwStudio.redo()"), "Làm lại" }
                     button { r#type: "button", class: "btn-small-secondary", onclick: move |_| menu.set(if menu() == Some("new") { None } else { Some("new") }), "Mới" }
                     label { class: "btn-small-secondary", r#for: "studio-import", role: "button", tabindex: "0", "Nhập" }
                     input { id: "studio-import", r#type: "file", accept: "image/png,image/jpeg,image/webp,image/gif,image/avif,.json,application/json", style: "display: none;",
@@ -433,7 +433,7 @@ pub fn Studio(
                 }
                 if menu() == Some("new") {
                     div { class: "account-menu studio-menu", role: "menu",
-                        div { class: "menu-label", "Bản vẽ mới (bản hiện tại vẫn còn trong Hoàn tác nếu chưa lưu)" }
+                        div { class: "menu-label", "Bản vẽ mới" }
                         for (id, label, w, h) in TARGETS {
                             button { key: "{id}", r#type: "button", role: "menuitem", class: "account-menu-item",
                                 onclick: move |_| { menu.set(None); kind.set(id.to_string()); project_id.set(None); js(&format!("ChatwStudio.newDoc({w}, {h})")); },

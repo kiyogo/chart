@@ -125,30 +125,29 @@ const SHORTCUTS: [(&str, &str); 11] = [
 const GUIDES: [(&str, &str, &[&str]); 16] = [
     ("user", "Avatar Studio: avatar xoay và 40 hiệu ứng", &[
         "Mở hồ sơ của bạn › Chỉnh sửa hồ sơ › thẻ Avatar Studio.",
-        "Chọn một hiệu ứng (Spin, Orbit, Hearts, Glitch...), chỉnh Tốc độ, Cường độ, Màu và Hướng xoay.",
+        "Chọn một hiệu ứng như Spin, Orbit, Hearts, Glitch, chỉnh Tốc độ, Cường độ, Màu và Hướng xoay.",
         "Kích hoạt: Luôn chạy, Khi rê chuột hoặc Khi nhấp. Đặt Số lần lặp nếu không muốn chạy mãi.",
         "Bấm Lưu. Bạn bè thấy hiệu ứng trên hồ sơ, danh sách trò chuyện và danh sách bạn bè.",
     ]),
     ("chat", "Demo Gallery: thử trước khi dùng", &[
-        "Cài đặt › Demo Gallery.",
-        "Chọn nhóm: Avatar, Hiệu ứng tên, Bảng tên, Hiệu ứng hồ sơ hoặc Hình nền chat.",
-        "Đổi chế độ xem Desktop / Mobile / Gọn, hoặc xem như khi giảm chuyển động.",
+        "Cài đặt › Demo.",
+        "Xem toàn bộ hiệu ứng Avatar, Hiệu ứng tên, Bảng tên, Hiệu ứng hồ sơ và Hình nền chat.",
         "Bấm Áp dụng: thay đổi được lưu thật vào hồ sơ hoặc cài đặt.",
     ]),
     ("user", "Thông tin hồ sơ và quyền xem", &[
         "Chỉnh sửa hồ sơ › Thông tin: thêm danh xưng, công việc, nơi sống, website, sở thích.",
         "Mỗi mục có quyền riêng: Mọi người, Bạn bè hoặc Chỉ mình tôi. Máy chủ chỉ gửi mục đó cho người được phép.",
         "Trạng thái tùy chỉnh có thể tự xóa sau 30 phút, 1 giờ, 4 giờ, hết hôm nay hoặc 7 ngày.",
-        "Ảnh bìa GIF hoặc WebP động giữ nguyên chuyển động (tối đa 8 MB).",
+        "Ảnh bìa GIF hoặc WebP động giữ nguyên chuyển động tối đa 8 MB.",
     ]),
     ("chat", "Sticker, GIF và emoji yêu thích", &[
-        "Rê chuột lên sticker hoặc GIF trong bảng chọn và bấm ☆ để thêm vào Favorites.",
-        "Thẻ Recently Used giữ 24 sticker bạn gửi gần nhất.",
-        "Bấm vào sticker trong tin nhắn: Add to Favorite Stickers, Send Again hoặc Find Similar Stickers.",
+        "Rê chuột lên sticker hoặc GIF trong bảng chọn và bấm ☆ để thêm vào mục yêu thích.",
+        "Thẻ gần đây giữ 24 sticker bạn gửi gần nhất.",
+        "Bấm vào sticker trong tin nhắn để thêm vào yêu thích, gửi lại hoặc tìm sticker tương tự.",
         "Emoji: nhấp chuột phải vào emoji, hoặc bấm ☆ ở chân bảng chọn. Danh sách yêu thích đồng bộ giữa các thiết bị.",
     ]),
     ("devices", "Đồng bộ cài đặt giữa các thiết bị", &[
-        "Cài đặt › Tùy chỉnh › Đồng bộ cài đặt với các thiết bị khác (bật sẵn).",
+        "Cài đặt › Tùy chỉnh › Đồng bộ cài đặt với các thiết bị khác.",
         "Giao diện, gợi ý, thông báo và danh sách yêu thích đi theo tài khoản.",
         "Mã PIN khóa ứng dụng không bao giờ rời khỏi thiết bị.",
         "Hai thiết bị cùng sửa: bản ghi sau cùng được giữ, không thiết bị nào ghi đè dữ liệu mới hơn mà không đọc lại.",
@@ -156,34 +155,34 @@ const GUIDES: [(&str, &str, &[&str]); 16] = [
     ("lock", "Biệt danh, ghi chú riêng và lưu tin nhắn", &[
         "Mở bảng Thông tin của một cuộc trò chuyện › Biệt danh và ghi chú riêng.",
         "Biệt danh thay tên người đó trong danh sách của bạn; chỉ bạn thấy.",
-        "Rê chuột lên một tin nhắn và bấm biểu tượng thiết bị để lưu bản sao vào \"Chính mình\" (vẫn mã hóa đầu cuối).",
+        "Rê chuột lên một tin nhắn và bấm biểu tượng thiết bị để lưu bản sao vào \"Chính mình\".",
         "Tìm cài đặt nhanh bằng ô Tìm cài đặt ở đầu trang Cài đặt.",
     ]),
     ("devices", "\"Chính mình\": ghi chú giữa các thiết bị", &[
         "Mở \"Chính mình\" ở đầu danh sách Tin nhắn; tin nhắn được mã hóa bằng khóa của bạn.",
-        "Mỗi tin ghi tên thiết bị đã gửi, ví dụ Linux 1, Windows 2. Bấm tên thiết bị để đổi tên.",
-        "Menu ⋯ để đổi hình nền hoặc xóa; tạo lại bằng nút ở đầu danh sách.",
+        "Mỗi tin ghi tên thiết bị đã gửi. Bấm tên thiết bị để đổi tên.",
+        "Menu tùy chọn để đổi hình nền hoặc xóa; tạo lại bằng nút ở đầu danh sách.",
     ]),
     ("chat", "Ghim, thẻ phân loại, tắt thông báo", &[
-        "Rê chuột lên một cuộc trò chuyện (hoặc nhấp chuột phải) rồi bấm ⋯.",
+        "Rê chuột lên một cuộc trò chuyện rồi bấm nút tùy chọn.",
         "Ghim lên đầu, gắn thẻ phân loại, tắt thông báo, chuyển nhóm sang Cộng đồng, chặn.",
-        "Lọc theo thẻ bằng nút Phân loại phía trên danh sách.",
+        "Quản lý thẻ bằng nút thẻ phân loại phía trên danh sách.",
     ]),
     ("user", "Quản lý nhóm", &[
-        "Trong nhóm bấm ⋯ › Quản lý nhóm.",
+        "Trong nhóm bấm nút tùy chọn › Quản lý nhóm.",
         "Bật / tắt quyền thành viên: gửi tin, bình chọn, ghi chú, nhắc hẹn, ghim, đổi tên, đổi ảnh.",
-        "Tham gia: duyệt thành viên mới, liên kết mời (sao chép, chia sẻ, đổi), yêu cầu chờ duyệt.",
+        "Tham gia: duyệt thành viên mới, liên kết mời, yêu cầu chờ duyệt.",
         "Trưởng nhóm bổ nhiệm phó nhóm hoặc chuyển quyền trưởng nhóm.",
     ]),
     ("shield", "Khóa ChatW bằng mã PIN", &[
-        "Cài đặt › Khóa ứng dụng › đặt mã PIN 4 đến 8 số.",
+        "Cài đặt › Khóa PIN › đặt mã PIN 4 đến 8 số.",
         "Chọn thời gian không hoạt động trước khi khóa, hoặc khóa mỗi lần mở.",
         "Quên mã PIN: đăng xuất trên màn hình khóa rồi đăng nhập lại.",
     ]),
-    ("library", "Tạo bot của riêng bạn", &[
-        "Cài đặt › Bot › nhập tên bot và tên hiển thị.",
-        "Lưu token (chỉ hiện một lần), rồi gọi getUpdates và sendMessage từ code của bạn.",
-        "Thêm bot vào nhóm bạn quản lý; công khai bot sau khi được xác minh.",
+    ("library", "Tạo Plugin & Mod giao diện của riêng bạn", &[
+        "Bấm biểu tượng Plugin & Mod trên thanh điều hướng trái hoặc vào Cài đặt › Plugin.",
+        "Bật các Mod có sẵn như Minecraft Voxel, Cyberpunk Neon, Sakura Glass, Sổ tay hoặc tạo Plugin mới.",
+        "Mỗi Plugin có thể làm Bot trò chuyện, biến đổi toàn bộ giao diện CSS, thêm trang mới lên thanh điều hướng, bật HUD nổi và kết nối HTTP API Token.",
     ]),
     ("shield", "Xác minh mã hóa với bạn bè", &[
         "Mở cuộc trò chuyện, bấm biểu tượng bảng Thông tin ở góc phải.",
@@ -198,11 +197,11 @@ const GUIDES: [(&str, &str, &[&str]); 16] = [
     ]),
     ("library", "Thêm emoji, sticker, GIF của riêng bạn", &[
         "Cài đặt › Thư viện, chọn Sticker, Emoji hoặc GIF.",
-        "Emoji cần tên tiếng Anh (chữ, số, gạch dưới), ví dụ party_cat.",
+        "Emoji cần tên tiếng Anh gồm chữ, số, gạch dưới, ví dụ party_cat.",
         "Dùng ngay trong bảng chọn ở ô soạn tin, trong mọi cuộc trò chuyện.",
     ]),
     ("devices", "Đăng xuất thiết bị bị mất", &[
-        "Cài đặt › Tài khoản của tôi › Thiết bị đã đăng nhập.",
+        "Cài đặt › Tài khoản › Thiết bị đã đăng nhập.",
         "Bấm \"Đăng xuất\" ở thiết bị lạ, hoặc đăng xuất tất cả thiết bị khác.",
         "Thiết bị mới sẽ có khóa mã hóa riêng; hãy sao lưu khóa trong Bảo mật và mã hóa.",
     ]),
@@ -214,7 +213,7 @@ const GUIDES: [(&str, &str, &[&str]); 16] = [
 ];
 
 const FAQ: [(&str, &str); 9] = [
-    ("Bộ sticker OpenMoji lấy từ đâu?", "Hơn 2.000 sticker trong thẻ OpenMoji là tác phẩm của dự án mã nguồn mở OpenMoji (openmoji.org), dùng theo giấy phép CC BY-SA 4.0. Tên và từ khóa tìm kiếm lấy từ dữ liệu Unicode CLDR, nên bạn tìm được bằng cả tiếng Việt lẫn tiếng Anh."),
+    ("Bộ sticker OpenMoji lấy từ đâu?", "Hơn 2.000 sticker trong thẻ OpenMoji là tác phẩm của dự án mã nguồn mở OpenMoji, dùng theo giấy phép CC BY-SA 4.0. Tên và từ khóa tìm kiếm lấy từ dữ liệu Unicode CLDR, nên bạn tìm được bằng cả tiếng Việt lẫn tiếng Anh."),
     ("Vì sao trả lời tự động không chạy khi tôi tắt máy?", "Tin nhắn riêng được mã hóa đầu cuối nên máy chủ không thể tự viết trả lời. Trả lời tự động chạy trên thiết bị của bạn khi ChatW đang mở."),
     ("Ẩn \"Đã xem\" có tác dụng gì?", "Người khác không biết bạn đã đọc, và bạn cũng không thấy họ đã đọc. Đổi trong Cài đặt › Trò chuyện."),
     ("Làm sao để nhóm hoặc cộng đồng hiện trong Tìm kiếm?", "Bật Công khai trong Quản lý nhóm hoặc Cài đặt cộng đồng. Đội ngũ ChatW xác minh trước khi hiện cho mọi người."),
@@ -236,7 +235,7 @@ pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
     rsx! {
         div { class: "search-field help-search",
             crate::components::icons::SearchIcon { size: 16 }
-            input { r#type: "search", placeholder: "Tìm trong hướng dẫn (ví dụ: avatar, sticker, PIN)", aria_label: "Tìm trong hướng dẫn", value: "{query}", oninput: move |e| query.set(e.value()) }
+            input { r#type: "search", placeholder: "Tìm trong hướng dẫn", aria_label: "Tìm trong hướng dẫn", value: "{query}", oninput: move |e| query.set(e.value()) }
         }
         if !q.is_empty() && guides.is_empty() && faq.is_empty() && shortcuts.is_empty() {
             div { class: "sidebar-empty", "Không có hướng dẫn phù hợp" }

@@ -9,7 +9,8 @@ use crate::i18n::t;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{CompassIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, SearchIcon, SettingsIcon, UserIcon},
+        bots_view::{ACTIVE_PLUGIN_PAGE, enabled_rail_pages},
+        icons::{BotIcon, CompassIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, SearchIcon, SettingsIcon, UserIcon},
         navigation::NavSection,
     },
     models::{GroupItem, ServerItem},
@@ -51,11 +52,14 @@ pub fn AppRail(
     #[props(default)] on_select_search: Option<EventHandler<()>>,
 ) -> Element {
     let mut menu_open = use_signal(|| false);
-    let in_search = active_section == NavSection::Search;
-    let in_dm = active_section == NavSection::DirectMessages;
-    let in_friends = active_section == NavSection::Friends;
-    let in_comm = matches!(active_section, NavSection::Communities | NavSection::Server(_));
-    let in_settings = active_section == NavSection::Settings;
+    let active_mod_page = ACTIVE_PLUGIN_PAGE.read().clone();
+    let in_mod = active_mod_page.is_some();
+    let in_search = !in_mod && active_section == NavSection::Search;
+    let in_dm = !in_mod && active_section == NavSection::DirectMessages;
+    let in_friends = !in_mod && active_section == NavSection::Friends;
+    let in_comm = !in_mod && matches!(active_section, NavSection::Communities | NavSection::Server(_));
+    let in_settings = !in_mod && active_section == NavSection::Settings;
+    let custom_pages = enabled_rail_pages();
     let mut cls = String::from("app-rail");
     if hidden_mobile { cls.push_str(" hidden-mobile"); }
 
@@ -71,7 +75,7 @@ pub fn AppRail(
                     "data-tip": "{t(\"nav.messages\")}",
                     aria_label: "{t(\"nav.messages\")}",
                     aria_current: if in_dm { "page" } else { "false" },
-                    onclick: move |_| on_select_dm.call(()),
+                    onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; on_select_dm.call(()); },
                     span { class: "rail-icon", MessageIcon { size: 20 }
                         if unread_dm_count > 0 { span { class: "rail-count", "{badge(unread_dm_count)}" } }
                     }
@@ -82,7 +86,7 @@ pub fn AppRail(
                     "data-tip": "{t(\"nav.friends\")}",
                     aria_label: "{t(\"nav.friends\")}",
                     aria_current: if in_friends { "page" } else { "false" },
-                    onclick: move |_| on_select_friends.call(()),
+                    onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; on_select_friends.call(()); },
                     span { class: "rail-icon", FriendsIcon {}
                         if pending_friend_count > 0 { span { class: "rail-count", "{badge(pending_friend_count)}" } }
                     }
@@ -93,7 +97,7 @@ pub fn AppRail(
                     "data-tip": "{t(\"nav.communities\")}",
                     aria_label: "{t(\"nav.communities\")}",
                     aria_current: if in_comm { "page" } else { "false" },
-                    onclick: move |_| on_select_communities.call(()),
+                    onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; on_select_communities.call(()); },
                     span { class: "rail-icon", CompassIcon { size: 20 } }
                 }
                 button {
@@ -102,8 +106,39 @@ pub fn AppRail(
                     "data-tip": "{t(\"nav.search\")}",
                     aria_label: "{t(\"nav.search\")}",
                     aria_current: if in_search { "page" } else { "false" },
-                    onclick: move |_| match on_select_search { Some(h) => h.call(()), None => on_quick_switch.call(()) },
+                    onclick: move |_| {
+                        *ACTIVE_PLUGIN_PAGE.write() = None;
+                        match on_select_search { Some(h) => h.call(()), None => on_quick_switch.call(()) }
+                    },
                     span { class: "rail-icon", SearchIcon { size: 20 } }
+                }
+                button {
+                    r#type: "button",
+                    class: if active_mod_page.as_deref() == Some("studio") { "rail-item active" } else { "rail-item" },
+                    "data-tip": "Plugin & Mod",
+                    aria_label: "Plugin & Mod",
+                    aria_current: if active_mod_page.as_deref() == Some("studio") { "page" } else { "false" },
+                    onclick: move |_| {
+                        *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
+                    },
+                    span { class: "rail-icon", BotIcon { size: 20 } }
+                }
+                for (pid, picon, ptitle) in custom_pages {
+                    {
+                        let is_act = active_mod_page.as_deref() == Some(pid.as_str());
+                        let pid2 = pid.clone();
+                        rsx! {
+                            button {
+                                key: "mod-{pid}",
+                                r#type: "button",
+                                class: if is_act { "rail-item active" } else { "rail-item" },
+                                "data-tip": "{ptitle}",
+                                aria_label: "{ptitle}",
+                                onclick: move |_| *ACTIVE_PLUGIN_PAGE.write() = Some(pid2.clone()),
+                                span { class: "rail-icon", style: "font-size: 1.15rem;", "{picon}" }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -158,7 +193,7 @@ pub fn AppRail(
                     class: if in_settings { "rail-item compact active" } else { "rail-item compact" },
                     "data-tip": "{t(\"nav.settings\")}",
                     aria_label: "{t(\"nav.settings\")}",
-                    onclick: move |_| on_open_settings.call(()),
+                    onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; on_open_settings.call(()); },
                     span { class: "rail-icon", SettingsIcon {} }
                 }
                 button {

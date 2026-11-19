@@ -9,8 +9,8 @@ use dioxus::prelude::*;
 pub const LANGUAGES: &[(&str, &str, &str)] = &[
     ("vi", "Tiếng Việt", "Vietnamese"),
     ("en", "English", "English"),
-    ("zh-CN", "简体中文", "Chinese (Simplified)"),
-    ("zh-TW", "繁體中文", "Chinese (Traditional)"),
+    ("zh-CN", "简体中文", "Chinese Simplified"),
+    ("zh-TW", "繁體中文", "Chinese Traditional"),
     ("ja", "日本語", "Japanese"),
     ("ko", "한국어", "Korean"),
     ("th", "ไทย", "Thai"),
@@ -33,7 +33,7 @@ pub const LANGUAGES: &[(&str, &str, &str)] = &[
     ("de", "Deutsch", "German"),
     ("fr", "Français", "French"),
     ("es", "Español", "Spanish"),
-    ("pt-BR", "Português (Brasil)", "Portuguese (Brazil)"),
+    ("pt-BR", "Português Brasil", "Portuguese Brazil"),
     ("it", "Italiano", "Italian"),
     ("nl", "Nederlands", "Dutch"),
     ("sv", "Svenska", "Swedish"),
@@ -55,9 +55,9 @@ type Row = [&'static str; 31];
 
 const TR: &[Row] = &[
     // vi
-    ["Tin nhắn", "Bạn bè", "Cộng đồng", "Tìm kiếm", "Cài đặt", "Hồ sơ", "Đăng xuất", "Tìm nhanh", "Chính mình", "Tìm cuộc trò chuyện", "Tất cả", "Chưa đọc", "Đã ghim", "Tin nhắn trực tiếp", "Nhóm", "Kênh", "Bot", "Nhắn tin tới {name}", "Mã hóa đầu cuối", "{name} đang soạn tin", "Đã xem", "Gửi", "Hủy", "Lưu", "Đóng", "Xóa", "Tham gia", "Sao chép liên kết", "Mời", "Chọn một cuộc trò chuyện", "Ngôn ngữ"],
+    ["Tin nhắn", "Bạn bè", "Cộng đồng", "Tìm kiếm", "Cài đặt", "Hồ sơ", "Đăng xuất", "Tìm nhanh", "Chính mình", "Tìm cuộc trò chuyện", "Tất cả", "Chưa đọc", "Đã ghim", "Tin nhắn trực tiếp", "Nhóm", "Kênh", "Plugin", "Nhắn tin tới {name}", "Mã hóa đầu cuối", "{name} đang soạn tin", "Đã xem", "Gửi", "Hủy", "Lưu", "Đóng", "Xóa", "Tham gia", "Sao chép liên kết", "Mời", "Chọn một cuộc trò chuyện", "Ngôn ngữ"],
     // en
-    ["Messages", "Friends", "Communities", "Search", "Settings", "Profile", "Log out", "Quick switch", "Note to self", "Search conversations", "All", "Unread", "Pinned", "Direct messages", "Groups", "Channels", "Bots", "Message {name}", "End-to-end encrypted", "{name} is typing", "Seen", "Send", "Cancel", "Save", "Close", "Delete", "Join", "Copy link", "Invite", "Select a conversation", "Language"],
+    ["Messages", "Friends", "Communities", "Search", "Settings", "Profile", "Log out", "Quick switch", "Note to self", "Search conversations", "All", "Unread", "Pinned", "Direct messages", "Groups", "Channels", "Plugins", "Message {name}", "End-to-end encrypted", "{name} is typing", "Seen", "Send", "Cancel", "Save", "Close", "Delete", "Join", "Copy link", "Invite", "Select a conversation", "Language"],
     // zh-CN
     ["消息", "好友", "社区", "搜索", "设置", "个人资料", "退出登录", "快速切换", "我自己", "搜索会话", "全部", "未读", "已置顶", "私信", "群组", "频道", "机器人", "发消息给 {name}", "端到端加密", "{name} 正在输入", "已读", "发送", "取消", "保存", "关闭", "删除", "加入", "复制链接", "邀请", "选择一个会话", "语言"],
     // zh-TW

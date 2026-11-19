@@ -22,7 +22,7 @@ fn biz_error(code: &str) -> &'static str {
         "invalid_product_name" => "Tên sản phẩm không hợp lệ",
         "product_limit_reached" => "Đã đạt số sản phẩm tối đa",
         "business_profile_required" => "Hãy lưu trang Kinh doanh trước",
-        "invalid_shortcut" => "Phím tắt chỉ gồm chữ không dấu, số hoặc gạch dưới (tối đa 24 ký tự)",
+        "invalid_shortcut" => "Phím tắt chỉ gồm chữ không dấu, số hoặc gạch dưới tối đa 24 ký tự",
         "shortcut_taken" => "Phím tắt này đã có",
         "invalid_text" => "Nội dung không hợp lệ",
         _ => "Không lưu được, vui lòng thử lại",
@@ -167,10 +167,10 @@ pub fn BusinessSettings() -> Element {
             if has_profile {
                 div { class: "settings-group",
                     div { class: "settings-group-title", "Tin nhắn kinh doanh" }
-                    label { class: "form-field", span { "Lời chào khách mới (gửi tự động một lần cho mỗi người nhắn đầu tiên)" }
+                    label { class: "form-field", span { "Lời chào khách mới" }
                         textarea { rows: "2", maxlength: "1000", placeholder: "Chào bạn, cảm ơn đã nhắn cho Tiệm hoa Mai!", value: "{f.greeting.clone().unwrap_or_default()}", oninput: move |e| { let v = opt(e.value()); form.with_mut(|p| p.greeting = v) } }
                     }
-                    label { class: "form-field", span { "Tin nhắn ngoài giờ (hiện trên trang công khai)" }
+                    label { class: "form-field", span { "Tin nhắn ngoài giờ" }
                         textarea { rows: "2", maxlength: "1000", value: "{f.away_message.clone().unwrap_or_default()}", oninput: move |e| { let v = opt(e.value()); form.with_mut(|p| p.away_message = v) } }
                     }
                     button { r#type: "button", class: "btn-secondary", onclick: save, "Lưu tin nhắn" }

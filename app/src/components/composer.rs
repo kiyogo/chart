@@ -387,7 +387,7 @@ pub fn Composer(
                         };
                         rsx! {
                             div { class: "paste-choice", role: "dialog", aria_label: "Dán bảng tính",
-                                div { class: "paste-choice-title", "Dán bảng tính ({rows} dòng × {cols} cột)" }
+                                div { class: "paste-choice-title", "Dán bảng tính {rows} dòng × {cols} cột" }
                                 div { class: "paste-choice-sub", "Chọn cách gửi nội dung vừa dán" }
                                 div { class: "paste-choice-actions",
                                     if on_image.is_some() {
@@ -420,7 +420,7 @@ pub fn Composer(
                                 }
                                 label { class: "paste-choice-remember",
                                     input { r#type: "checkbox", checked: remember_choice(), onchange: move |e| remember_choice.set(e.checked()) }
-                                    span { "Ghi nhớ lựa chọn (đổi lại trong Cài đặt › Trò chuyện)" }
+                                    span { "Ghi nhớ lựa chọn" }
                                 }
                             }
                         }
@@ -508,6 +508,38 @@ pub fn Composer(
                 if let Some(reason) = disabled_reason.as_ref() {
                     div { class: "composer-disabled", role: "status", "{reason}" }
                 } else {
+                    {
+                        let mod_btns = crate::components::bots_view::enabled_composer_buttons();
+                        if !mod_btns.is_empty() && input_id != "bot-chat-input" {
+                            rsx! {
+                                div { class: "plugin-composer-bar",
+                                    for (blabel, bcontent, pname) in mod_btns {
+                                        {
+                                            let cur_v = value.clone();
+                                            let bc = bcontent.clone();
+                                            rsx! {
+                                                button {
+                                                    key: "{pname}-{blabel}",
+                                                    r#type: "button",
+                                                    class: "plugin-cmd-chip",
+                                                    title: "Plugin: {pname}",
+                                                    onclick: move |_| {
+                                                        let out = crate::components::bots_view::try_run_plugin_command(&bc, "Bạn")
+                                                            .unwrap_or_else(|| if cur_v.is_empty() { bc.clone() } else { format!("{cur_v} {bc}") });
+                                                        on_input.call(out);
+                                                        platform::focus_chat_input();
+                                                    },
+                                                    "{blabel}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            rsx! {}
+                        }
+                    }
                     div { class: "composer-box",
                         if on_raw.is_some() || on_image.is_some() {
                             ComposerTools {
@@ -596,7 +628,7 @@ pub fn Composer(
                         button {
                             r#type: "button",
                             class: "send-btn",
-                            title: if enter_sends { "Gửi (Enter)" } else { "Gửi (Ctrl + Enter)" },
+                            title: "Gửi",
                             aria_label: "Gửi",
                             disabled: !can_send,
                             onclick: move |_| on_send.call(()),

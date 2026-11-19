@@ -135,7 +135,7 @@ pub fn CommunityModal(
                                 label { class: "form-label", "Mã mời" }
                                 input {
                                     r#type: "text",
-                                    placeholder: "Nhập mã mời (ví dụ: a1b2c3d4)",
+                                    placeholder: "Nhập mã mời, ví dụ a1b2c3d4",
                                     value: "{invite_code}",
                                     oninput: move |e| invite_code.set(e.value()),
                                 }
@@ -303,10 +303,10 @@ pub fn CreateChannelModal(
                         select {
                             value: "{channel_type}",
                             onchange: move |e| channel_type.set(e.value()),
-                            option { value: "text", "Kênh văn bản (#)" }
-                            option { value: "voice", "Kênh thoại (Voice WebRTC)" }
+                            option { value: "text", "Kênh văn bản" }
+                            option { value: "voice", "Kênh thoại" }
                             option { value: "announcement", "Kênh thông báo" }
-                            option { value: "forum", "Kênh diễn đàn (chủ đề và trả lời)" }
+                            option { value: "forum", "Kênh diễn đàn" }
                             option { value: "event", "Kênh sự kiện" }
                         }
                     }

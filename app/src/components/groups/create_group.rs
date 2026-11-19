@@ -85,7 +85,7 @@ pub fn CreateGroupModal(
                             class: "search-input",
                             style: "width: 100%; box-sizing: border-box; margin-top: 6px;",
                             r#type: "text",
-                            placeholder: "Nhập tên nhóm...",
+                            placeholder: "Nhập tên nhóm",
                             value: "{group_name}",
                             oninput: move |e| group_name.set(e.value()),
                         }
@@ -97,14 +97,14 @@ pub fn CreateGroupModal(
                             class: "search-input",
                             style: "width: 100%; box-sizing: border-box; margin-top: 6px;",
                             r#type: "text",
-                            placeholder: "Mô tả mục đích nhóm...",
+                            placeholder: "Mô tả mục đích nhóm",
                             value: "{description}",
                             oninput: move |e| description.set(e.value()),
                         }
                     }
 
                     div { class: "settings-section", style: "margin-top: 16px;",
-                        label { class: "settings-label", "Thêm bạn bè vào nhóm ({selected_friends().len()} đã chọn)" }
+                        label { class: "settings-label", "Thêm bạn bè vào nhóm" }
                         div {
                             style: "max-height: 200px; overflow-y: auto; margin-top: 8px; background: var(--bg-surface-hover); border-radius: 8px;",
                             if friends.is_empty() {
@@ -159,7 +159,7 @@ pub fn CreateGroupModal(
                             class: "add-friend-submit-btn",
                             disabled: is_submitting(),
                             onclick: handle_submit,
-                            if is_submitting() { "Đang tạo..." } else { "Tạo nhóm" }
+                            if is_submitting() { "Đang tạo" } else { "Tạo nhóm" }
                         }
                     }
                 }

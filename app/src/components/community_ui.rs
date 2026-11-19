@@ -129,7 +129,7 @@ pub fn CommunityProfileDialog(server_id: String, server_name: String, my_name: S
                                 match platform::read_selected_file_raw("cprof-avatar").await {
                                     Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                         Ok(u) => avatar.set(Some(u)),
-                                        Err(e) => msg.set(Some((true, format!("Không tải ảnh lên được ({})", e.code)))),
+                                        Err(_) => msg.set(Some((true, "Không tải ảnh lên được".into()))),
                                     },
                                     Err(e) if e == "too_large" => msg.set(Some((true, "Ảnh lớn hơn 2 MB".into()))),
                                     Err(_) => {}
@@ -142,7 +142,7 @@ pub fn CommunityProfileDialog(server_id: String, server_name: String, my_name: S
                 }
                 label { class: "form-field", span { class: "form-label", "Biệt danh trong cộng đồng" }
                     input { maxlength: "32", placeholder: "{my_name}", value: "{nick}", oninput: move |e| nick.set(e.value()) } }
-                label { class: "form-field", span { class: "form-label", "Giới thiệu ngắn ({bio().chars().count()}/190)" }
+                label { class: "form-field", span { class: "form-label", "Giới thiệu ngắn" }
                     textarea { rows: "3", maxlength: "190", value: "{bio}", oninput: move |e| bio.set(e.value()) } }
                 if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
                 div { class: "modal-actions",
@@ -398,9 +398,9 @@ pub fn WelcomeEditor(server_id: String) -> Element {
     });
     rsx! {
         div { class: "settings-section",
-            label { class: "form-field", span { class: "form-label", "Lời chào ({message().chars().count()}/500)" }
+            label { class: "form-field", span { class: "form-label", "Lời chào" }
                 textarea { rows: "3", maxlength: "500", value: "{message}", oninput: move |e| message.set(e.value()) } }
-            label { class: "form-field", span { class: "form-label", "Nội quy ({rules().chars().count()}/2000)" }
+            label { class: "form-field", span { class: "form-label", "Nội quy" }
                 textarea { rows: "6", maxlength: "2000", placeholder: "1. Tôn trọng mọi người\n2. Không spam", value: "{rules}", oninput: move |e| rules.set(e.value()) } }
             label { class: "demo-check", input { r#type: "checkbox", checked: require(), onchange: move |e| require.set(e.checked()) } "Thành viên phải đồng ý nội quy trước khi gửi tin nhắn" }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
@@ -439,13 +439,13 @@ pub fn ExpressionsManager(server_id: String) -> Element {
     let sid_up = server_id.clone();
     rsx! {
         div { class: "settings-section",
-            p { class: "settings-row-desc", "Emoji và sticker riêng của cộng đồng (tên tiếng Anh, chữ thường không dấu). Thành viên dùng được trong các kênh của cộng đồng này. Cần quyền Manage Expressions." }
+            p { class: "settings-row-desc", "Emoji và sticker riêng của cộng đồng. Thành viên dùng được trong các kênh của cộng đồng này." }
             div { class: "inline-form",
                 select { aria_label: "Loại", value: "{kind}", onchange: move |e| kind.set(e.value()),
-                    option { value: "emoji", "Custom Emoji" }
+                    option { value: "emoji", "Emoji tùy chỉnh" }
                     option { value: "sticker", "Sticker" }
                 }
-                input { maxlength: "32", placeholder: "name (vd: party_cat)", aria_label: "Tên emoji hoặc sticker", value: "{name}", oninput: move |e| name.set(e.value()) }
+                input { maxlength: "32", placeholder: "Tên emoji, ví dụ party_cat", aria_label: "Tên emoji hoặc sticker", value: "{name}", oninput: move |e| name.set(e.value()) }
                 input { id: "expr-file", r#type: "file", accept: "image/png,image/gif,image/webp,image/avif", style: "display: none;",
                     onchange: move |_| {
                         let (s, k, n) = (sid_up.clone(), kind(), name().trim().to_lowercase());
@@ -456,7 +456,7 @@ pub fn ExpressionsManager(server_id: String) -> Element {
                                         Ok(()) => { name.set(String::new()); msg.set(Some((false, "Đã thêm".into()))); reload.call(()); }
                                         Err(e) => msg.set(Some((true, cm::error_text(&e.code)))),
                                     },
-                                    Err(e) => msg.set(Some((true, format!("Không tải lên được ({})", e.code)))),
+                                    Err(_) => msg.set(Some((true, "Không tải lên được".into()))),
                                 },
                                 Err(e) if e == "too_large" => msg.set(Some((true, "Ảnh lớn hơn 2 MB".into()))),
                                 Err(_) => {}

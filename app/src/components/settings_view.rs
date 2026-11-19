@@ -60,7 +60,7 @@ const NAV: [(&str, SettingsTab, &str); 18] = [
     ("Sáng tạo", SettingsTab::Inventory, "Kho đồ"),
     ("Sáng tạo", SettingsTab::Demo, "Demo"),
     ("Khác", SettingsTab::Business, "Kinh doanh"),
-    ("Khác", SettingsTab::Bots, "Bot"),
+    ("Khác", SettingsTab::Bots, "Plugin"),
     ("Khác", SettingsTab::Guide, "Hướng dẫn"),
 ];
 
@@ -84,7 +84,7 @@ fn tab_keywords(t: SettingsTab) -> &'static str {
         SettingsTab::Language => "ngon ngu language tieng anh",
         SettingsTab::Stickers => "thu vien sticker emoji gif tai len upload library",
         SettingsTab::Business => "kinh doanh ban hang san pham business",
-        SettingsTab::Bots => "bot token api",
+        SettingsTab::Bots => "plugin mod bot token api giao dien",
         SettingsTab::Guide => "huong dan phim tat cau hoi tro giup help faq",
         SettingsTab::Inventory => "kho vat pham inventory thanh tich achievement huy hieu badge sticker pack emoji gif ban ve trang bi equipped template bo cuc",
         SettingsTab::Studio => "studio ve hoat anh animation drawing layer lop khung hinh gif sticker emoji avatar anh bia ve tay",
@@ -185,7 +185,7 @@ pub fn SettingsView(
                                 SettingsTab::Account => rsx! { UserIcon {} },
                                 SettingsTab::Appearance => rsx! { PaletteIcon {} },
                                 SettingsTab::Security => rsx! { ShieldIcon { size: 18 } },
-                                SettingsTab::Session => rsx! { LogoutIcon {} },
+                                SettingsTab::Session => rsx! { crate::components::icons::DevicesIcon { size: 18 } },
                                 SettingsTab::Customize => rsx! { SlidersIcon {} },
                                 SettingsTab::Stickers => rsx! { LibraryIcon {} },
                                 SettingsTab::Guide => rsx! { BookIcon {} },
@@ -311,7 +311,7 @@ pub fn SettingsView(
                                             span { class: "settings-value", "{current_username}" }
                                         }
                                         div { class: "settings-row column-layout",
-                                            span { class: "settings-label", "Mã định danh (UUID)" }
+                                            span { class: "settings-label", "Mã định danh" }
                                             span { class: "settings-value mono", "{current_user_id}" }
                                         }
                                     }
@@ -471,7 +471,7 @@ pub fn SettingsView(
                             SettingsTab::Security => rsx! {
                                 crate::components::accounts::SecuritySettings {}
                                 div { class: "settings-group",
-                                    div { class: "settings-group-title", "Mã hóa đầu cuối (E2EE)" }
+                                    div { class: "settings-group-title", "Mã hóa đầu cuối" }
                                     div { class: "settings-row",
                                         span { class: "settings-label", "Thuật toán trao đổi khóa & mã hóa" }
                                         span { class: "settings-value", "ECDH P-256 / HKDF-SHA-256 / AES-256-GCM" }
@@ -489,7 +489,7 @@ pub fn SettingsView(
                                     if let Some(ref keys) = user_keys {
                                         div { class: "settings-row column-layout",
                                             div { style: "display: flex; justify-content: space-between; width: 100%; align-items: center;",
-                                                span { class: "settings-label", "Vân tay khóa công khai (SHA-256)" }
+                                                span { class: "settings-label", "Vân tay khóa công khai" }
                                                 button {
                                                     r#type: "button",
                                                     class: "btn-secondary",

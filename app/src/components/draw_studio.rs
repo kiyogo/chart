@@ -103,7 +103,7 @@ pub fn DrawStudio(target: String, on_saved: EventHandler<String>, on_close: Even
                 let b64 = data_url.split(',').nth(1).ok_or("Dữ liệu ảnh không hợp lệ")?;
                 use base64::Engine;
                 let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "Dữ liệu ảnh không hợp lệ".to_string())?;
-                library::upload_media(bytes, "image/png").await.map_err(|e| format!("Tải lên thất bại ({})", e.code))
+                library::upload_media(bytes, "image/png").await.map_err(|_e| "Tải lên thất bại".to_string())
             }
             .await;
             match result {

@@ -154,7 +154,7 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                                         label { class: "settings-row toggle-row",
                                             span { class: "grow",
                                                 span { class: "settings-label", "Cho phép Google và công cụ tìm kiếm hiển thị" }
-                                                span { class: "settings-row-desc", "Trang công khai của cộng đồng đã xác minh hiển thị tin nhắn được ghim (nổi bật) và tin nhắn mới trong các kênh văn bản để công cụ tìm kiếm lập chỉ mục" }
+                                                span { class: "settings-row-desc", "Trang công khai của cộng đồng đã xác minh hiển thị tin nhắn được ghim và tin nhắn mới trong các kênh văn bản để công cụ tìm kiếm lập chỉ mục" }
                                             }
                                             input { r#type: "checkbox", class: "switch", checked: st.public_index, disabled: !is_owner || !st.is_public,
                                                 onchange: move |e| { let s = s2.clone(); let v = e.checked(); spawn(async move {
@@ -239,7 +239,7 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                                         div { key: "{m.user_id}", class: "member-row",
                                             Avatar { name: m.username.clone(), avatar_url: m.avatar_url.clone(), size: 36 }
                                             div { class: "grow",
-                                                div { class: "member-name", "{m.username}" if is_srv_owner { span { class: "member-sub", " · chủ sở hữu" } } if is_me { span { class: "member-sub", " (bạn)" } } }
+                                                div { class: "member-name", "{m.username}" if is_srv_owner { span { class: "member-sub", " · chủ sở hữu" } } if is_me { span { class: "member-sub", " · bạn" } } }
                                                 div { class: "role-chips",
                                                     for r in my_roles {
                                                         {

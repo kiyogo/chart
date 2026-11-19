@@ -16,8 +16,11 @@ fi
 rm -rf app/dist
 mkdir -p app/dist/pkg
 wasm-bindgen --target web --out-dir app/dist/pkg --out-name chatw_app "$WASM_PATH"
-cp app/web/index.html app/dist/index.html
-cp app/web/boot.js app/dist/boot.js
+TS="$(date +%s)"
+sed "s|/boot.js|/boot.js?v=${TS}|g" app/web/index.html > app/dist/index.html
+sed "s|/pkg/chatw_app.js|/pkg/chatw_app.js?v=${TS}|g" app/web/boot.js > app/dist/boot.js
+sed -i "s|chatw_app_bg.wasm|chatw_app_bg.wasm?v=${TS}|g" app/dist/pkg/chatw_app.js
 cp -r app/public/. app/dist/
-echo "Built Dioxus web bundle -> app/dist/"
+echo "Built Dioxus web bundle (v=${TS}) -> app/dist/"
+
 

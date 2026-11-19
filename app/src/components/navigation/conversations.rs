@@ -184,7 +184,13 @@ pub fn ConversationList(
             order: 8000 + i,
         });
     }
-    for (i, b) in bots.iter().enumerate() {
+    let mut all_bots = bots.clone();
+    for lb in crate::components::bots_view::enabled_bot_plugins_as_items() {
+        if !all_bots.iter().any(|x| x.id == lb.id || x.username == lb.username) {
+            all_bots.push(lb);
+        }
+    }
+    for (i, b) in all_bots.iter().enumerate() {
         let p = pref_of("bot", &b.id);
         rows.push(Row {
             key: format!("bot:{}", b.id),
@@ -208,12 +214,8 @@ pub fn ConversationList(
 
     let q = crate::components::composer::fold(query().trim());
     let f = filter();
+    let _ = (&mut filter, &mut label_menu, ChevronDownIcon);
     rows.retain(|r| q.is_empty() || crate::components::composer::fold(&r.name).contains(&q));
-    rows.retain(|r| match f.as_str() {
-        "all" => true,
-        "unread" => r.unread > 0,
-        id => r.labels.iter().any(|l| l.id == id),
-    });
     // Pinned first (most recently pinned on top), then "Chính mình", then the rest.
     rows.sort_by(|a, b| match (&a.pinned_at, &b.pinned_at) {
         (Some(x), Some(y)) => y.cmp(x),
@@ -223,11 +225,6 @@ pub fn ConversationList(
     });
     let pinned: Vec<Row> = rows.iter().filter(|r| r.pinned_at.is_some()).cloned().collect();
     let rest: Vec<Row> = rows.iter().filter(|r| r.pinned_at.is_none()).cloned().collect();
-    let active_label = labels.iter().find(|l| l.id == f).cloned();
-    let label_counts: HashMap<String, usize> = labels
-        .iter()
-        .map(|l| (l.id.clone(), prefs.iter().filter(|p| p.label_ids.contains(&l.id)).count()))
-        .collect();
 
     let labels_rows = labels.clone();
     let render_row = move |r: Row| {
@@ -268,7 +265,7 @@ pub fn ConversationList(
                     div { class: "chat-item-info",
                         div { class: "chat-item-header",
                             span { class: if r.unread > 0 { "chat-item-name unread {r.name_fx}" } else { "chat-item-name {r.name_fx}" }, "{r.name}" }
-                            if matches!(r.open, ConvOpen::Bot(_)) { span { class: "bot-tag", "BOT" } }
+                            if matches!(r.open, ConvOpen::Bot(_)) { span { class: "bot-tag", "PLUGIN" } }
                             if r.muted { span { class: "chat-item-icon", title: "Đã tắt thông báo", BellOffIcon { size: 13 } } }
                             if r.pinned_at.is_some() { span { class: "chat-item-icon", title: "Đã ghim", PinIcon { size: 13 } } }
                             if r.unread > 0 {
@@ -333,64 +330,6 @@ pub fn ConversationList(
                 }
             }
         }
-        div { class: "sidebar-filters", role: "tablist", aria_label: "Lọc cuộc trò chuyện",
-            for (val, label) in [("all", t("chat.all")), ("unread", t("chat.unread"))] {
-                button {
-                    key: "{val}",
-                    r#type: "button",
-                    role: "tab",
-                    aria_selected: "{f == val}",
-                    class: if f == val { "filter-chip active" } else { "filter-chip" },
-                    onclick: move |_| filter.set(val.to_string()),
-                    "{label}"
-                }
-            }
-            div { class: "label-filter",
-                button {
-                    r#type: "button",
-                    class: if active_label.is_some() { "filter-chip active" } else { "filter-chip" },
-                    aria_haspopup: "menu",
-                    aria_expanded: "{label_menu()}",
-                    title: "Lọc theo thẻ phân loại",
-                    onclick: move |e| { e.stop_propagation(); label_menu.set(!label_menu()); },
-                    if let Some(l) = active_label.as_ref() {
-                        span { class: "label-dot", style: "--label: {l.color};" }
-                        "{l.name}"
-                    } else {
-                        TagIcon { size: 14 }
-                        "Phân loại"
-                    }
-                    ChevronDownIcon { size: 14 }
-                }
-                if label_menu() {
-                    button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| label_menu.set(false) }
-                    div { class: "account-menu label-menu", role: "menu",
-                        if labels.is_empty() {
-                            div { class: "menu-note", "Chưa có thẻ phân loại nào" }
-                        }
-                        for l in labels.iter().cloned() {
-                            {
-                                let id = l.id.clone();
-                                let _count = label_counts.get(&l.id).copied().unwrap_or(0);
-                                rsx! {
-                                    button { key: "{l.id}", r#type: "button", role: "menuitemradio", aria_checked: "{f == l.id}", class: "account-menu-item",
-                                        onclick: move |_| { filter.set(id.clone()); label_menu.set(false); },
-                                        span { class: "label-dot", style: "--label: {l.color};" }
-                                        span { class: "grow", "{l.name}" }
-                                    }
-                                }
-                            }
-                        }
-                        if active_label.is_some() {
-                            button { r#type: "button", class: "account-menu-item", onclick: move |_| { filter.set("all".into()); label_menu.set(false); }, "Bỏ lọc" }
-                        }
-                        button { r#type: "button", class: "account-menu-item", onclick: move |_| { label_menu.set(false); manage_labels.set(true); },
-                            TagIcon { size: 16 } "Quản lý thẻ phân loại"
-                        }
-                    }
-                }
-            }
-        }
         div { class: "sidebar-scrollable",
             if !self_chat && q.is_empty() && f == "all" {
                 button { r#type: "button", class: "self-chat-create", onclick: move |_| on_create_self.call(()),
@@ -404,13 +343,23 @@ pub fn ConversationList(
             }
             div { class: "sidebar-section-header",
                 span { "{t(\"nav.messages\")}" }
-                button {
-                    r#type: "button",
-                    class: "sidebar-section-btn",
-                    title: "Tạo nhóm",
-                    aria_label: "Tạo nhóm",
-                    onclick: move |_| on_create_group.call(()),
-                    PlusIcon { size: 14 }
+                div { style: "display: inline-flex; gap: 4px;",
+                    button {
+                        r#type: "button",
+                        class: "sidebar-section-btn",
+                        title: "Quản lý thẻ phân loại",
+                        aria_label: "Quản lý thẻ phân loại",
+                        onclick: move |_| manage_labels.set(true),
+                        TagIcon { size: 14 }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "sidebar-section-btn",
+                        title: "Tạo nhóm",
+                        aria_label: "Tạo nhóm",
+                        onclick: move |_| on_create_group.call(()),
+                        PlusIcon { size: 14 }
+                    }
                 }
             }
             if rest.is_empty() && rows.is_empty() {
@@ -558,7 +507,7 @@ fn ConvMenu(
                 }
             }
             if conv_type == "bot" {
-                div { class: "menu-note", BotIcon { size: 14 } " Trò chuyện với bot không mã hóa đầu cuối" }
+                div { class: "menu-note", BotIcon { size: 14 } " Trò chuyện với plugin" }
             }
         }
     }

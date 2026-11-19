@@ -145,7 +145,7 @@ pub fn GroupInfoPanel(
                 }
 
                 div { class: "partner-info-section",
-                    h5 { class: "partner-info-section-title", "Thành viên ({members().len()})" }
+                    h5 { class: "partner-info-section-title", "Thành viên" }
                     div { class: "partner-info-card", style: "padding: 0;",
                         for m in members().iter() {
                             {
@@ -167,7 +167,7 @@ pub fn GroupInfoPanel(
                                                 div { style: "font-size: 13px; font-weight: 500;",
                                                     "{m.username}"
                                                     if is_self {
-                                                        span { style: "color: var(--text-secondary); font-size: 11px; margin-left: 4px;", "(bạn)" }
+                                                        span { style: "color: var(--text-secondary); font-size: 11px; margin-left: 4px;", "· bạn" }
                                                     }
                                                 }
                                                 div { style: "font-size: 11px; color: var(--text-secondary);",

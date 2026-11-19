@@ -240,7 +240,7 @@ pub fn GroupManageDialog(
                                         div { key: "{m.user_id}", class: "member-row",
                                             Avatar { name: m.username.clone(), avatar_url: m.avatar_url.clone(), size: 36 }
                                             div { class: "grow",
-                                                div { class: "member-name", "{m.username}" if is_me { span { class: "member-sub", " (bạn)" } } }
+                                                div { class: "member-name", "{m.username}" if is_me { span { class: "member-sub", " · bạn" } } }
                                                 div { class: "member-sub", if role == "owner" { CrownIcon { size: 12 } } " {role_label(&role)}" }
                                             }
                                             if is_owner && !is_me && role != "owner" {
@@ -293,7 +293,7 @@ pub fn GroupManageDialog(
                                     onchange: { let s2 = save.clone(); move |e: Event<FormData>| s2(json!({ "is_public": e.checked() })) },
                                 }
                             }
-                            div { class: "settings-group-title", "Ảnh bìa nhóm (hiện trên thẻ mời)" }
+                            div { class: "settings-group-title", "Ảnh bìa nhóm" }
                             div { class: "inline-form",
                                 input { id: "group-banner-file", r#type: "file", accept: "image/png,image/jpeg,image/webp,image/avif", style: "display: none;",
                                     onchange: { let s2 = save.clone(); move |_| { let s3 = s2.clone(); spawn(async move {

@@ -57,7 +57,7 @@ pub const ACHIEVEMENTS: [(&str, &str, &str); 15] = [
     ("secure", "Khóa chặt", "Bật xác minh hai bước"),
     ("stylist", "Phong cách", "Dùng hiệu ứng avatar, hiệu ứng tên hoặc bảng tên"),
     ("storyteller", "Người kể chuyện", "Điền ít nhất 4 mục hồ sơ"),
-    ("bot_builder", "Thợ làm bot", "Tạo một bot"),
+    ("bot_builder", "Thợ làm plugin", "Tạo một plugin"),
     ("merchant", "Chủ cửa hàng", "Bật trang Kinh doanh"),
     ("night_owl", "Cú đêm", "Thành tích ẩn"),
 ];

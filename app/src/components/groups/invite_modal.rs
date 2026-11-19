@@ -142,12 +142,12 @@ pub fn AddMemberModal(
                     }
 
                     div { class: "settings-section",
-                        label { class: "settings-label", "Tên người dùng (username)" }
+                        label { class: "settings-label", "Tên người dùng" }
                         input {
                             class: "search-input",
                             style: "width: 100%; box-sizing: border-box; margin-top: 6px;",
                             r#type: "text",
-                            placeholder: "Nhập username...",
+                            placeholder: "Nhập tên tài khoản",
                             value: "{username}",
                             oninput: move |e| username.set(e.value()),
                         }
