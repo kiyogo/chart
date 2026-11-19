@@ -195,11 +195,11 @@ pub fn ServerSettingsDialog(
                                         label { class: "settings-row toggle-row",
                                             span { class: "grow",
                                                 span { class: "settings-label", BuildingIcon { size: 16 } " Chế độ doanh nghiệp" }
-                                                span { class: "settings-row-desc",
+                                                span { class: "ent-switch-desc",
                                                     if st.is_enterprise && st.retention_locked {
                                                         "Đang bật khóa bảo toàn dữ liệu doanh nghiệp. Không thể tắt khi chính sách lưu trữ còn hiệu lực."
                                                     } else {
-                                                        "Bổ sung công cụ quản lý và làm việc dành cho doanh nghiệp mà vẫn giữ nguyên máy chủ và lịch sử hiện tại."
+                                                        "Bổ sung công cụ quản lý và làm việc dành cho doanh nghiệp."
                                                     }
                                                 }
                                             }

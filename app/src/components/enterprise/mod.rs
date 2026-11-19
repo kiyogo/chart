@@ -53,84 +53,109 @@ pub fn EnterpriseWorkspace(
 
     let effective_tick = refresh_tick + local_tick();
     let sid_search = server_id.clone();
+    let visible_mods: Vec<String> = if cfg.module_order.is_empty() {
+        cfg.enabled_modules.iter().filter(|k| cfg.can_see_module(k)).cloned().collect()
+    } else {
+        cfg.module_order.iter().filter(|k| cfg.can_see_module(k)).cloned().collect()
+    };
 
     rsx! {
-        div { class: "ent-workspace",
-            header { class: "chat-header ent-header",
-                button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại thanh bên", onclick: move |_| on_close.call(()), BackIcon {} }
-                div { class: "chat-header-identity",
-                    span { style: "color: var(--accent); display: flex;", {module_icon(&module)} }
-                    div { class: "chat-header-info",
-                        h2 { class: "chat-header-title", "{module_label(&module)}" }
-                        span { class: "chat-header-meta", "{server_name} · Không gian doanh nghiệp" }
-                    }
-                }
-                div { class: "chat-header-actions",
-                    div { class: "ent-search-box",
-                        SearchIcon { size: 15 }
-                        input {
-                            r#type: "text",
-                            placeholder: "Tìm trong doanh nghiệp",
-                            value: "{query}",
-                            oninput: {
-                                let sid = sid_search.clone();
-                                move |e| {
-                                    let val = e.value();
-                                    query.set(val.clone());
-                                    let sid = sid.clone();
-                                    spawn(async move {
-                                        if val.trim().is_empty() {
-                                            hits.set(Vec::new());
-                                        } else if let Ok(res) = enterprise::search(&sid, &val).await {
-                                            hits.set(res);
-                                        }
-                                    });
-                                }
-                            },
+        div { class: "chat-main-container",
+            div { class: "chat-column ent-workspace",
+                header { class: "chat-header ent-header",
+                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại thanh bên", onclick: move |_| on_close.call(()), BackIcon {} }
+                    div { class: "chat-header-identity",
+                        span { style: "color: var(--accent); display: flex;", {module_icon(&module)} }
+                        div { class: "chat-header-info",
+                            h2 { class: "chat-header-title", "{module_label(&module)}" }
+                            span { class: "chat-header-meta", "{server_name} · Không gian doanh nghiệp" }
                         }
-                        if !hits().is_empty() {
-                            div { class: "ent-search-popover",
-                                for h in hits() {
-                                    {
-                                        let m = h.module.clone();
-                                        rsx! {
-                                            button { key: "{h.kind}-{h.id}", r#type: "button", class: "ent-search-hit",
-                                                onclick: move |_| {
-                                                    hits.set(Vec::new());
-                                                    query.set(String::new());
-                                                    on_select_module.call(m.clone());
-                                                },
-                                                strong { "{h.title}" }
-                                                span { class: "ent-muted", "{h.subtitle}" }
+                    }
+                    div { class: "chat-header-actions",
+                        div { class: "ent-search-box",
+                            SearchIcon { size: 15 }
+                            input {
+                                r#type: "text",
+                                placeholder: "Tìm trong doanh nghiệp",
+                                value: "{query}",
+                                oninput: {
+                                    let sid = sid_search.clone();
+                                    move |e| {
+                                        let val = e.value();
+                                        query.set(val.clone());
+                                        let sid = sid.clone();
+                                        spawn(async move {
+                                            if val.trim().is_empty() {
+                                                hits.set(Vec::new());
+                                            } else if let Ok(res) = enterprise::search(&sid, &val).await {
+                                                hits.set(res);
+                                            }
+                                        });
+                                    }
+                                },
+                            }
+                            if !hits().is_empty() {
+                                div { class: "ent-search-popover",
+                                    for h in hits() {
+                                        {
+                                            let m = h.module.clone();
+                                            rsx! {
+                                                button { key: "{h.kind}-{h.id}", r#type: "button", class: "ent-search-hit",
+                                                    onclick: move |_| {
+                                                        hits.set(Vec::new());
+                                                        query.set(String::new());
+                                                        on_select_module.call(m.clone());
+                                                    },
+                                                    strong { "{h.title}" }
+                                                    span { class: "ent-muted", "{h.subtitle}" }
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
+                        button { r#type: "button", class: "icon-btn", title: "Làm mới dữ liệu", onclick: move |_| local_tick.set(local_tick() + 1), RefreshIcon { size: 16 } }
+                        button { r#type: "button", class: "btn-ghost", onclick: move |_| on_close.call(()), "Kênh chat" }
                     }
-                    button { r#type: "button", class: "icon-btn", title: "Làm mới dữ liệu", onclick: move |_| local_tick.set(local_tick() + 1), RefreshIcon { size: 16 } }
-                    button { r#type: "button", class: "btn-ghost", onclick: move |_| on_close.call(()), "Kênh chat" }
                 }
-            }
 
-            div { class: "ent-body",
-                match module.as_str() {
-                    "hr" => rsx! { hr_dept::HrPanel { server_id, cfg, refresh_tick: effective_tick } },
-                    "departments" => rsx! { hr_dept::DepartmentsPanel { server_id, cfg, refresh_tick: effective_tick } },
-                    "tasks" => rsx! { tasks_projects::TasksPanel { server_id, cfg, refresh_tick: effective_tick } },
-                    "projects" => rsx! { tasks_projects::ProjectsPanel { server_id, cfg, refresh_tick: effective_tick } },
-                    "attendance" => rsx! { time_leave::AttendancePanel { server_id, cfg, refresh_tick: effective_tick } },
-                    "leave" => rsx! { time_leave::LeavePanel { server_id, my_id, cfg, refresh_tick: effective_tick } },
-                    "meetings" => rsx! { time_leave::MeetingsPanel { server_id, refresh_tick: effective_tick } },
-                    "calendar" => rsx! { time_leave::CalendarPanel { server_id, refresh_tick: effective_tick } },
-                    "approvals" => rsx! { ops::ApprovalsPanel { server_id, my_id, cfg, refresh_tick: effective_tick } },
-                    "documents" => rsx! { ops::DocumentsPanel { server_id, cfg, refresh_tick: effective_tick } },
-                    "announcements" => rsx! { ops::AnnouncementsPanel { server_id, cfg, refresh_tick: effective_tick } },
-                    "reports" => rsx! { overview::ReportsPanel { server_id, cfg, refresh_tick: effective_tick } },
-                    "ai" => rsx! { ops::AiPanel { server_id, cfg } },
-                    "automation" => rsx! { ops::AutomationPanel { server_id, cfg, refresh_tick: effective_tick } },
-                    _ => rsx! { overview::OverviewPanel { server_id, cfg, refresh_tick: effective_tick, on_navigate: on_select_module } },
+                div { class: "sidebar-filters ent-mod-tabs",
+                    for mk in visible_mods {
+                        {
+                            let is_cur = mk == module;
+                            let m_click = mk.clone();
+                            rsx! {
+                                button {
+                                    key: "tab-{mk}",
+                                    r#type: "button",
+                                    class: if is_cur { "filter-chip active" } else { "filter-chip" },
+                                    onclick: move |_| on_select_module.call(m_click.clone()),
+                                    "{module_label(&mk)}"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                div { class: "ent-body",
+                    match module.as_str() {
+                        "hr" => rsx! { hr_dept::HrPanel { server_id, cfg, refresh_tick: effective_tick } },
+                        "departments" => rsx! { hr_dept::DepartmentsPanel { server_id, cfg, refresh_tick: effective_tick } },
+                        "tasks" => rsx! { tasks_projects::TasksPanel { server_id, cfg, refresh_tick: effective_tick } },
+                        "projects" => rsx! { tasks_projects::ProjectsPanel { server_id, cfg, refresh_tick: effective_tick } },
+                        "attendance" => rsx! { time_leave::AttendancePanel { server_id, cfg, refresh_tick: effective_tick } },
+                        "leave" => rsx! { time_leave::LeavePanel { server_id, my_id, cfg, refresh_tick: effective_tick } },
+                        "meetings" => rsx! { time_leave::MeetingsPanel { server_id, refresh_tick: effective_tick } },
+                        "calendar" => rsx! { time_leave::CalendarPanel { server_id, refresh_tick: effective_tick } },
+                        "approvals" => rsx! { ops::ApprovalsPanel { server_id, my_id, cfg, refresh_tick: effective_tick } },
+                        "documents" => rsx! { ops::DocumentsPanel { server_id, cfg, refresh_tick: effective_tick } },
+                        "announcements" => rsx! { ops::AnnouncementsPanel { server_id, cfg, refresh_tick: effective_tick } },
+                        "reports" => rsx! { overview::ReportsPanel { server_id, cfg, refresh_tick: effective_tick } },
+                        "ai" => rsx! { ops::AiPanel { server_id, cfg } },
+                        "automation" => rsx! { ops::AutomationPanel { server_id, cfg, refresh_tick: effective_tick } },
+                        _ => rsx! { overview::OverviewPanel { server_id, cfg, refresh_tick: effective_tick, on_navigate: on_select_module } },
+                    }
                 }
             }
         }

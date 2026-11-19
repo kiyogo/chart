@@ -127,7 +127,7 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                                 rsx! {
                                     div { key: "{a.id}", class: "ent-row-card",
                                         div { class: "grow",
-                                            div { class: "ent-row-title", strong { "{a.username}" } span { class: "ent-pill", "{a.work_date}" } span { class: "ent-pill", "{a.status}" } }
+                                            div { class: "ent-row-title", strong { "{a.username}" } span { class: "ent-pill", "{a.work_date}" } span { class: "ent-pill", "{enterprise::vn_approval_status(&a.status)}" } }
                                             div { class: "ent-muted", "{a.reason}" }
                                         }
                                         if can_manage && a.status == "pending" {
@@ -160,8 +160,8 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                                 td { "{row.username}" }
                                 td { "{row.check_in_at.as_deref().map(|s| &s[11..19]).unwrap_or(\"-\")}" }
                                 td { "{row.check_out_at.as_deref().map(|s| &s[11..19]).unwrap_or(\"-\")}" }
-                                td { "{row.work_mode}" }
-                                td { span { class: "ent-pill", "{row.status}" } }
+                                td { "{enterprise::vn_work_mode(&row.work_mode)}" }
+                                td { span { class: "ent-pill", "{enterprise::vn_att_status(&row.status)}" } }
                             }
                         }
                     }
@@ -213,7 +213,7 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
             div { class: "ent-kpi-grid",
                 for b in data().balances {
                     div { key: "{b.leave_type}-{b.year}", class: "ent-kpi-card",
-                        div { class: "ent-kpi-head", span { "{b.leave_type} ({b.year})" } }
+                        div { class: "ent-kpi-head", span { "{enterprise::vn_leave_type(&b.leave_type)} ({b.year})" } }
                         div { class: "ent-kpi-val", "{b.total_days - b.used_days} ngày còn" }
                         div { class: "ent-kpi-sub", "Đã dùng {b.used_days}/{b.total_days} ngày" }
                     }
@@ -276,9 +276,9 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
                                 div { class: "grow",
                                     div { class: "ent-row-title",
                                         strong { "{req.username}" }
-                                        span { class: "ent-pill", "{req.leave_type}" }
+                                        span { class: "ent-pill", "{enterprise::vn_leave_type(&req.leave_type)}" }
                                         span { class: "ent-pill", "{req.start_date} đến {req.end_date} ({req.days_count} ngày)" }
-                                        span { class: "ent-pill", "{req.status}" }
+                                        span { class: "ent-pill", "{enterprise::vn_approval_status(&req.status)}" }
                                     }
                                     div { class: "ent-muted", "{req.reason}" }
                                 }
@@ -405,8 +405,8 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
                                     div { class: "grow",
                                         div { class: "ent-row-title",
                                             strong { "{m.title}" }
-                                            span { class: "ent-pill", "{m.meeting_type}" }
-                                            span { class: "ent-pill", "{m.status}" }
+                                            span { class: "ent-pill", "{enterprise::vn_meeting_type(&m.meeting_type)}" }
+                                            span { class: "ent-pill", "{enterprise::vn_meeting_status(&m.status)}" }
                                         }
                                         div { class: "ent-muted",
                                             "Chủ trì: {m.host_name} · Bắt đầu: {m.starts_at.chars().take(16).collect::<String>()}"

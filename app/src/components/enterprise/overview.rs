@@ -117,7 +117,7 @@ pub fn OverviewPanel(
                         div { class: "ent-card-head",
                             h4 { "Chấm công nhanh hôm nay" }
                             if let Some(att) = &ov.my_attendance {
-                                span { class: "ent-pill", "{att.work_date} · {att.work_mode}" }
+                                span { class: "ent-pill", "{att.work_date} · {enterprise::vn_work_mode(&att.work_mode)}" }
                             }
                         }
                         if let Some(att) = &ov.my_attendance {
@@ -237,7 +237,7 @@ pub fn ReportsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64)
                             div { class: "ent-chips",
                                 for item in arr {
                                     if let Some(pair) = item.as_array() {
-                                        span { class: "ent-pill", "{pair[0].as_str().unwrap_or(\"\")}: {pair[1].as_i64().unwrap_or(0)}" }
+                                        span { class: "ent-pill", "{enterprise::vn_task_status(pair[0].as_str().unwrap_or(\"\"))}: {pair[1].as_i64().unwrap_or(0)}" }
                                     }
                                 }
                             }

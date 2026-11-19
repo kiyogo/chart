@@ -119,9 +119,9 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                                 div { class: "grow",
                                     div { class: "ent-row-title",
                                         strong { "{req.title}" }
-                                        span { class: "ent-pill", "{req.category}" }
+                                        span { class: "ent-pill", "{enterprise::vn_category(&req.category)}" }
                                         span { class: "ent-pill", "Bước {req.current_step + 1}/{req.total_steps}" }
-                                        span { class: "ent-pill", "{req.status}" }
+                                        span { class: "ent-pill", "{enterprise::vn_approval_status(&req.status)}" }
                                     }
                                     div { class: "ent-muted",
                                         "Người gửi: {req.requester_name}"
@@ -276,7 +276,7 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                         }
                     }, "Tạo thư mục" }
                     for f in data().folders {
-                        span { key: "{f.id}", class: "ent-pill", "{f.name} ({f.scope})" }
+                        span { key: "{f.id}", class: "ent-pill", "{f.name} ({enterprise::vn_doc_scope(&f.scope)})" }
                     }
                 }
             }
@@ -292,7 +292,7 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                                 div { class: "grow",
                                     div { class: "ent-row-title",
                                         strong { "{d.title}" }
-                                        span { class: "ent-pill", "{d.scope}" }
+                                        span { class: "ent-pill", "{enterprise::vn_doc_scope(&d.scope)}" }
                                         span { class: "ent-pill", "v{d.version}" }
                                     }
                                     div { class: "ent-muted",
@@ -414,7 +414,7 @@ pub fn AnnouncementsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick
                                     div { class: "grow",
                                         div { class: "ent-row-title",
                                             strong { "{a.title}" }
-                                            span { class: "ent-pill", "{a.priority}" }
+                                            span { class: "ent-pill", "{enterprise::vn_ann_priority(&a.priority)}" }
                                             if a.pinned { span { class: "ent-pill ok", "Đã ghim" } }
                                         }
                                         p { style: "margin: 4px 0;", "{a.content}" }

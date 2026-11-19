@@ -80,6 +80,143 @@ pub fn module_label(key: &str) -> &'static str {
     MODULE_DEFS.iter().find(|(k, _)| *k == key).map(|(_, l)| *l).unwrap_or("Không gian làm việc")
 }
 
+pub fn vn_emp_status(s: &str) -> &'static str {
+    match s {
+        "active" => "Đang làm việc",
+        "onboarding" => "Thử việc",
+        "suspended" => "Tạm khóa",
+        "offboarded" => "Đã nghỉ việc",
+        _ => "Đang làm việc",
+    }
+}
+
+pub fn vn_work_mode(s: &str) -> &'static str {
+    match s {
+        "onsite" => "Tại văn phòng",
+        "remote" => "Từ xa",
+        "hybrid" => "Linh hoạt",
+        _ => "Tại văn phòng",
+    }
+}
+
+pub fn vn_task_status(s: &str) -> &'static str {
+    match s {
+        "todo" => "Cần làm",
+        "in_progress" => "Đang làm",
+        "review" => "Chờ duyệt",
+        "done" => "Hoàn thành",
+        "archived" => "Lưu trữ",
+        _ => "Cần làm",
+    }
+}
+
+pub fn vn_project_status(s: &str) -> &'static str {
+    match s {
+        "planning" => "Lập kế hoạch",
+        "active" => "Đang triển khai",
+        "on_hold" => "Tạm dừng",
+        "completed" => "Hoàn thành",
+        "archived" => "Lưu trữ",
+        _ => "Đang triển khai",
+    }
+}
+
+pub fn vn_priority(s: &str) -> &'static str {
+    match s {
+        "low" => "Thấp",
+        "medium" => "Trung bình",
+        "high" => "Cao",
+        "urgent" => "Khẩn cấp",
+        _ => "Trung bình",
+    }
+}
+
+pub fn vn_att_status(s: &str) -> &'static str {
+    match s {
+        "present" => "Đúng giờ",
+        "late" => "Đi muộn",
+        "early_leave" => "Về sớm",
+        "remote" => "Làm từ xa",
+        "overtime" => "Tăng ca",
+        _ => "Đúng giờ",
+    }
+}
+
+pub fn vn_approval_status(s: &str) -> &'static str {
+    match s {
+        "pending" => "Chờ duyệt",
+        "approved" => "Đã duyệt",
+        "rejected" => "Từ chối",
+        "needs_revision" => "Cần bổ sung",
+        "withdrawn" => "Đã thu hồi",
+        _ => "Chờ duyệt",
+    }
+}
+
+pub fn vn_leave_type(s: &str) -> &'static str {
+    match s {
+        "annual" => "Phép năm",
+        "sick" => "Nghỉ ốm",
+        "unpaid" => "Không lương",
+        _ => "Nghỉ phép",
+    }
+}
+
+pub fn vn_doc_scope(s: &str) -> &'static str {
+    match s {
+        "company" => "Toàn công ty",
+        "department" => "Phòng ban",
+        "project" => "Dự án",
+        "personal" => "Cá nhân",
+        _ => "Nội bộ",
+    }
+}
+
+pub fn vn_category(s: &str) -> &'static str {
+    match s {
+        "purchase" => "Mua sắm",
+        "payment" => "Thanh toán",
+        "equipment" => "Thiết bị",
+        "it_support" => "Hỗ trợ CNTT",
+        "travel" => "Công tác",
+        "access_request" => "Cấp quyền",
+        "leave" => "Nghỉ phép",
+        "attendance_fix" => "Điều chỉnh công",
+        "project_proposal" => "Đề xuất dự án",
+        _ => "Đề xuất",
+    }
+}
+
+pub fn vn_meeting_type(s: &str) -> &'static str {
+    match s {
+        "video" => "Họp video",
+        "audio" => "Họp thoại",
+        "standup" => "Họp nhanh",
+        "review" => "Đánh giá",
+        "all_hands" => "Toàn công ty",
+        _ => "Họp nội bộ",
+    }
+}
+
+pub fn vn_meeting_status(s: &str) -> &'static str {
+    match s {
+        "scheduled" => "Đã lên lịch",
+        "live" => "Đang diễn ra",
+        "ended" => "Đã kết thúc",
+        "cancelled" => "Đã hủy",
+        _ => "Đã lên lịch",
+    }
+}
+
+pub fn vn_ann_priority(s: &str) -> &'static str {
+    match s {
+        "normal" => "Bình thường",
+        "important" => "Quan trọng",
+        "urgent" => "Khẩn cấp",
+        _ => "Bình thường",
+    }
+}
+
 async fn call<T: DeserializeOwned>(method: &str, path: &str, body: Option<Value>) -> Result<T, ApiError> {
     let (_, text) = platform::http_request(method, path, body.map(|b| b.to_string()), None).await?;
     serde_json::from_str(&text).map_err(|_| ApiError { code: "invalid_json".into(), status: 200 })

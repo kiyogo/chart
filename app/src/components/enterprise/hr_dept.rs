@@ -349,12 +349,12 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                         if let Some(code) = &emp.employee_code {
                                             span { class: "ent-pill", "{code}" }
                                         }
-                                        span { class: "ent-pill", "{emp.employment_status}" }
+                                        span { class: "ent-pill", "{enterprise::vn_emp_status(&emp.employment_status)}" }
                                     }
                                     div { class: "ent-muted",
                                         "{emp.job_title.as_deref().unwrap_or(\"Thành viên\")}"
                                         if let Some(dn) = &emp.department_name { " · {dn}" }
-                                        " · {emp.work_mode}"
+                                        " · {enterprise::vn_work_mode(&emp.work_mode)}"
                                         if let Some(em) = &emp.work_email { " · {em}" }
                                         if let Some(ph) = &emp.work_phone { " · {ph}" }
                                     }

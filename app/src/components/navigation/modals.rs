@@ -107,7 +107,7 @@ pub fn CommunityModal(
                             label { class: "settings-row toggle-row", style: "margin: 0;",
                                 span { class: "grow",
                                     span { class: "settings-label", "Chế độ doanh nghiệp" }
-                                    span { class: "settings-row-desc", "Bổ sung công cụ quản lý và làm việc dành cho doanh nghiệp." }
+                                    span { class: "ent-switch-desc", "Bổ sung công cụ quản lý và làm việc dành cho doanh nghiệp." }
                                 }
                                 input {
                                     r#type: "checkbox",

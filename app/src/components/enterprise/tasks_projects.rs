@@ -193,7 +193,7 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                                             let tid2 = t.id.clone();
                                             rsx! {
                                                 div { key: "{t.id}", class: "ent-kanban-card",
-                                                    div { class: "ent-row-title", strong { "{t.title}" } span { class: "ent-pill", "{t.priority}" } }
+                                                    div { class: "ent-row-title", strong { "{t.title}" } span { class: "ent-pill", "{enterprise::vn_priority(&t.priority)}" } }
                                                     div { class: "ent-muted",
                                                         if let Some(an) = &t.assignee_name { "Phụ trách: {an}" } else { "Chưa phân công" }
                                                         if let Some(d) = &t.due_date { " · Hạn {d}" }
@@ -229,8 +229,8 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                                         div { class: "grow",
                                             div { class: "ent-row-title",
                                                 strong { "{t.title}" }
-                                                span { class: "ent-pill", "{t.priority}" }
-                                                span { class: "ent-pill", "{t.status}" }
+                                                span { class: "ent-pill", "{enterprise::vn_priority(&t.priority)}" }
+                                                span { class: "ent-pill", "{enterprise::vn_task_status(&t.status)}" }
                                                 if let Some(pn) = &t.project_name { span { class: "ent-pill", "{pn}" } }
                                                 if let Some(ch) = &t.source_channel_name { span { class: "ent-pill", "Từ #{ch}" } }
                                             }
@@ -399,8 +399,8 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                                     div { class: "grow",
                                         div { class: "ent-row-title",
                                             strong { "{p.name}" }
-                                            span { class: "ent-pill", "{p.status}" }
-                                            span { class: "ent-pill", "{p.priority}" }
+                                            span { class: "ent-pill", "{enterprise::vn_project_status(&p.status)}" }
+                                            span { class: "ent-pill", "{enterprise::vn_priority(&p.priority)}" }
                                         }
                                         if let Some(d) = &p.description { p { class: "ent-muted", "{d}" } }
                                         div { class: "ent-muted",
