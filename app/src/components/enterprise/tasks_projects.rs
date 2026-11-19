@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use serde_json::json;
 
 use crate::{
-    components::icons::{BriefcaseIcon, CloseIcon, ListChecksIcon, PlusIcon},
+    components::icons::{CloseIcon, PlusIcon},
     models::ServerMemberItem,
     services::{
         api,
@@ -15,16 +15,17 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
     let mut tasks = use_signal(Vec::<TaskItem>::new);
     let mut projects = use_signal(Vec::<ProjectItem>::new);
     let mut members = use_signal(Vec::<ServerMemberItem>::new);
-    let mut mode = use_signal(|| "list".to_string()); // "list" | "kanban" | "calendar"
+    let mut mode = use_signal(|| "kanban".to_string()); // "kanban" | "list" | "calendar"
     let mut view = use_signal(|| "all".to_string()); // "all" | "mine" | "assigned" | "overdue"
     let mut q = use_signal(String::new);
+    let mut show_create = use_signal(|| false);
     let mut open_task = use_signal(|| Option::<String>::None);
     let mut comments = use_signal(Vec::<TaskCommentItem>::new);
     let mut comment_input = use_signal(String::new);
     let mut msg = use_signal(|| Option::<(bool, String)>::None);
 
-    // Quick create task
     let mut title = use_signal(String::new);
+    let mut desc = use_signal(String::new);
     let mut priority = use_signal(|| "medium".to_string());
     let mut due_date = use_signal(String::new);
     let mut assignee = use_signal(String::new);
@@ -58,7 +59,6 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
         use_effect(use_reactive!(|(sid, refresh_tick)| {
             let sid = sid.clone();
             let _ = refresh_tick;
-            let _ = refresh_tick;
             let v = view();
             let qv = q();
             spawn(async move {
@@ -85,6 +85,7 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
             let sid = sid.clone();
             let body = json!({
                 "title": t,
+                "description": desc(),
                 "priority": priority(),
                 "due_date": if due_date().is_empty() { serde_json::Value::Null } else { json!(due_date()) },
                 "assignee_id": if assignee().is_empty() { serde_json::Value::Null } else { json!(assignee()) },
@@ -94,7 +95,9 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                 match enterprise::create_task(&sid, body).await {
                     Ok(_) => {
                         title.set(String::new());
+                        desc.set(String::new());
                         due_date.set(String::new());
+                        show_create.set(false);
                         msg.set(Some((false, "Đã giao công việc mới".into())));
                         reload.call(());
                     }
@@ -133,11 +136,10 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
     rsx! {
         div { class: "ent-section",
             div { class: "ent-toolbar",
-                h3 { class: "ent-section-title", ListChecksIcon { size: 18 } " Công việc & Bảng tiến độ" }
                 div { class: "ent-inline-bar",
                     div { class: "ent-segmented",
-                        button { r#type: "button", class: if mode() == "list" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("list".into()), "Danh sách" }
                         button { r#type: "button", class: if mode() == "kanban" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("kanban".into()), "Kanban" }
+                        button { r#type: "button", class: if mode() == "list" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("list".into()), "Danh sách" }
                         button { r#type: "button", class: if mode() == "calendar" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("calendar".into()), "Theo hạn" }
                     }
                     select { value: "{view}", onchange: move |e| { view.set(e.value()); reload.call(()); },
@@ -149,33 +151,59 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                     input { r#type: "text", placeholder: "Tìm công việc", value: "{q}", oninput: move |e| q.set(e.value()) }
                     button { r#type: "button", class: "btn-secondary", onclick: move |_| reload.call(()), "Lọc" }
                 }
+                if can_create {
+                    button {
+                        r#type: "button",
+                        class: "btn-primary",
+                        onclick: move |_| show_create.set(!show_create()),
+                        PlusIcon { size: 15 } " Giao việc mới"
+                    }
+                }
             }
 
             if let Some((is_err, text)) = msg() {
                 div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{text}" }
             }
 
-            if can_create {
-                div { class: "ent-card ent-inline-bar",
-                    input { r#type: "text", placeholder: "Nhập tiêu đề công việc mới", value: "{title}", oninput: move |e| title.set(e.value()) }
-                    select { value: "{project_id}", onchange: move |e| project_id.set(e.value()),
-                        option { value: "", "Dự án" }
-                        for p in projects() { option { key: "{p.id}", value: "{p.id}", "{p.name}" } }
-                    }
-                    if can_assign {
-                        select { value: "{assignee}", onchange: move |e| assignee.set(e.value()),
-                            option { value: "", "Người thực hiện" }
-                            for m in members() { option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" } }
+            if can_create && show_create() {
+                div { class: "ent-card",
+                    div { class: "ent-form-grid",
+                        label { class: "form-field", span { "Tiêu đề công việc" }
+                            input { r#type: "text", placeholder: "Nhập tiêu đề công việc", value: "{title}", oninput: move |e| title.set(e.value()) }
+                        }
+                        label { class: "form-field", span { "Dự án liên kết" }
+                            select { value: "{project_id}", onchange: move |e| project_id.set(e.value()),
+                                option { value: "", "Chưa chọn dự án" }
+                                for p in projects() { option { key: "{p.id}", value: "{p.id}", "{p.name}" } }
+                            }
+                        }
+                        if can_assign {
+                            label { class: "form-field", span { "Người thực hiện" }
+                                select { value: "{assignee}", onchange: move |e| assignee.set(e.value()),
+                                    option { value: "", "Chưa phân công" }
+                                    for m in members() { option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" } }
+                                }
+                            }
+                        }
+                        label { class: "form-field", span { "Mức ưu tiên" }
+                            select { value: "{priority}", onchange: move |e| priority.set(e.value()),
+                                option { value: "low", "Thấp" }
+                                option { value: "medium", "Trung bình" }
+                                option { value: "high", "Cao" }
+                                option { value: "urgent", "Khẩn cấp" }
+                            }
+                        }
+                        label { class: "form-field", span { "Hạn hoàn thành" }
+                            input { r#type: "date", value: "{due_date}", oninput: move |e| due_date.set(e.value()) }
+                        }
+                        label { class: "form-field", span { "Mô tả chi tiết" }
+                            input { r#type: "text", placeholder: "Yêu cầu đầu ra hoặc tiêu chí hoàn thành", value: "{desc}", oninput: move |e| desc.set(e.value()) }
                         }
                     }
-                    select { value: "{priority}", onchange: move |e| priority.set(e.value()),
-                        option { value: "low", "Thấp" }
-                        option { value: "medium", "Trung bình" }
-                        option { value: "high", "Cao" }
-                        option { value: "urgent", "Khẩn cấp" }
+                    div { class: "ent-btn-group",
+                        button { r#type: "button", class: "btn-primary", onclick: create_task, "Lưu công việc" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
                     }
-                    input { r#type: "date", value: "{due_date}", oninput: move |e| due_date.set(e.value()) }
-                    button { r#type: "button", class: "btn-primary", onclick: create_task, PlusIcon { size: 15 } " Thêm việc" }
                 }
             }
 
@@ -191,19 +219,32 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                                         {
                                             let tid1 = t.id.clone();
                                             let tid2 = t.id.clone();
+                                            let tid3 = t.id.clone();
                                             rsx! {
                                                 div { key: "{t.id}", class: "ent-kanban-card",
-                                                    div { class: "ent-row-title", strong { "{t.title}" } span { class: "ent-pill", "{enterprise::vn_priority(&t.priority)}" } }
-                                                    div { class: "ent-muted",
-                                                        if let Some(an) = &t.assignee_name { "Phụ trách: {an}" } else { "Chưa phân công" }
-                                                        if let Some(d) = &t.due_date { " · Hạn {d}" }
+                                                    div { class: "ent-row-title",
+                                                        strong { "{t.title}" }
+                                                        span { class: "ent-pill", "{enterprise::vn_priority(&t.priority)}" }
                                                     }
-                                                    div { class: "ent-btn-group", style: "margin-top: 6px;",
-                                                        if st != "done" {
-                                                            button { r#type: "button", class: "btn-ghost", onclick: move |_| set_status.call((tid1.clone(), "done")), "Hoàn tất" }
+                                                    if let Some(ds) = &t.description {
+                                                        if !ds.is_empty() {
+                                                            div { class: "ent-muted", style: "margin-top: 4px;", "{ds}" }
                                                         }
+                                                    }
+                                                    div { class: "ent-chips", style: "margin-top: 6px;",
+                                                        if let Some(pn) = &t.project_name { span { class: "ent-pill", "{pn}" } }
+                                                        if let Some(an) = &t.assignee_name { span { class: "ent-pill", "@{an}" } }
+                                                        if let Some(d) = &t.due_date { span { class: "ent-pill", "Hạn {d}" } }
+                                                    }
+                                                    div { class: "ent-btn-group", style: "margin-top: 8px;",
                                                         if st == "todo" {
-                                                            button { r#type: "button", class: "btn-ghost", onclick: move |_| set_status.call((tid2.clone(), "in_progress")), "Bắt đầu" }
+                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| set_status.call((tid2.clone(), "in_progress")), "Nhận việc" }
+                                                        }
+                                                        if st == "in_progress" {
+                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| set_status.call((tid3.clone(), "review")), "Gửi duyệt" }
+                                                        }
+                                                        if st != "done" {
+                                                            button { r#type: "button", class: "btn-primary", onclick: move |_| set_status.call((tid1.clone(), "done")), "Hoàn tất" }
                                                         }
                                                     }
                                                 }
@@ -225,12 +266,12 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                             let sid_c = server_id.clone();
                             rsx! {
                                 div { key: "{t.id}", class: "ent-card",
-                                    div { class: "ent-row-card", style: "border: none; padding: 0;",
+                                    div { class: "ent-row-card", style: "border: none; padding: 0; background: transparent;",
                                         div { class: "grow",
                                             div { class: "ent-row-title",
                                                 strong { "{t.title}" }
                                                 span { class: "ent-pill", "{enterprise::vn_priority(&t.priority)}" }
-                                                span { class: "ent-pill", "{enterprise::vn_task_status(&t.status)}" }
+                                                span { class: "ent-pill ok", "{enterprise::vn_task_status(&t.status)}" }
                                                 if let Some(pn) = &t.project_name { span { class: "ent-pill", "{pn}" } }
                                                 if let Some(ch) = &t.source_channel_name { span { class: "ent-pill", "Từ #{ch}" } }
                                             }
@@ -303,6 +344,7 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
 #[component]
 pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> Element {
     let mut projects = use_signal(Vec::<ProjectItem>::new);
+    let mut show_create = use_signal(|| false);
     let mut name = use_signal(String::new);
     let mut desc = use_signal(String::new);
     let mut priority = use_signal(|| "medium".to_string());
@@ -357,6 +399,7 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                     Ok(_) => {
                         name.set(String::new());
                         desc.set(String::new());
+                        show_create.set(false);
                         msg.set(Some((false, "Đã khởi tạo dự án".into())));
                         r();
                     }
@@ -368,25 +411,50 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
 
     rsx! {
         div { class: "ent-section",
-            h3 { class: "ent-section-title", BriefcaseIcon { size: 18 } " Dự án doanh nghiệp ({projects().len()})" }
+            div { class: "ent-toolbar",
+                div { class: "ent-chips",
+                    span { class: "ent-pill ok", "{projects().len()} dự án doanh nghiệp" }
+                }
+                if can_manage {
+                    button {
+                        r#type: "button",
+                        class: "btn-primary",
+                        onclick: move |_| show_create.set(!show_create()),
+                        PlusIcon { size: 15 } " Tạo dự án"
+                    }
+                }
+            }
             if let Some((is_err, text)) = msg() {
                 div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{text}" }
             }
-            if can_manage {
-                div { class: "ent-card ent-inline-bar",
-                    input { r#type: "text", placeholder: "Tên dự án mới", value: "{name}", oninput: move |e| name.set(e.value()) }
-                    input { r#type: "text", placeholder: "Mô tả ngắn", value: "{desc}", oninput: move |e| desc.set(e.value()) }
-                    select { value: "{priority}", onchange: move |e| priority.set(e.value()),
-                        option { value: "low", "Thấp" }
-                        option { value: "medium", "Trung bình" }
-                        option { value: "high", "Cao" }
-                        option { value: "urgent", "Khẩn cấp" }
+            if can_manage && show_create() {
+                div { class: "ent-card",
+                    div { class: "ent-form-grid",
+                        label { class: "form-field", span { "Tên dự án" }
+                            input { r#type: "text", placeholder: "Nhập tên dự án", value: "{name}", oninput: move |e| name.set(e.value()) }
+                        }
+                        label { class: "form-field", span { "Mô tả mục tiêu" }
+                            input { r#type: "text", placeholder: "Mô tả ngắn gọn mục tiêu dự án", value: "{desc}", oninput: move |e| desc.set(e.value()) }
+                        }
+                        label { class: "form-field", span { "Mức ưu tiên" }
+                            select { value: "{priority}", onchange: move |e| priority.set(e.value()),
+                                option { value: "low", "Thấp" }
+                                option { value: "medium", "Trung bình" }
+                                option { value: "high", "Cao" }
+                                option { value: "urgent", "Khẩn cấp" }
+                            }
+                        }
+                        label { class: "form-field", span { "Thời hạn dự kiến" }
+                            input { r#type: "date", value: "{due_date}", oninput: move |e| due_date.set(e.value()) }
+                        }
                     }
-                    input { r#type: "date", value: "{due_date}", oninput: move |e| due_date.set(e.value()) }
-                    button { r#type: "button", class: "btn-primary", onclick: create, PlusIcon { size: 15 } " Tạo dự án" }
+                    div { class: "ent-btn-group",
+                        button { r#type: "button", class: "btn-primary", onclick: create, "Lưu dự án" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                    }
                 }
             }
-            div { class: "ent-list",
+            div { class: "ent-dept-grid",
                 for p in projects() {
                     {
                         let pct = if p.task_total > 0 { (p.task_done * 100 / p.task_total).min(100) } else { 0 };
@@ -395,19 +463,11 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                         let r = reload.clone();
                         rsx! {
                             div { key: "{p.id}", class: "ent-card",
-                                div { class: "ent-row-card", style: "border: none; padding: 0;",
-                                    div { class: "grow",
-                                        div { class: "ent-row-title",
-                                            strong { "{p.name}" }
-                                            span { class: "ent-pill", "{enterprise::vn_project_status(&p.status)}" }
-                                            span { class: "ent-pill", "{enterprise::vn_priority(&p.priority)}" }
-                                        }
-                                        if let Some(d) = &p.description { p { class: "ent-muted", "{d}" } }
-                                        div { class: "ent-muted",
-                                            "{p.task_done}/{p.task_total} công việc ({pct}%)"
-                                            if let Some(due) = &p.due_date { " · Hạn {due}" }
-                                        }
-                                        div { class: "ent-progress", div { class: "ent-progress-fill", style: "width: {pct}%;" } }
+                                div { class: "ent-card-head",
+                                    div { class: "ent-row-title",
+                                        strong { "{p.name}" }
+                                        span { class: "ent-pill ok", "{enterprise::vn_project_status(&p.status)}" }
+                                        span { class: "ent-pill", "{enterprise::vn_priority(&p.priority)}" }
                                     }
                                     if can_manage {
                                         select { value: "{p.status}", onchange: move |e| {
@@ -424,6 +484,15 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                                         }
                                     }
                                 }
+                                if let Some(d) = &p.description {
+                                    if !d.is_empty() { div { class: "ent-muted", "{d}" } }
+                                }
+                                div { class: "ent-chips",
+                                    span { class: "ent-pill", "{p.task_done}/{p.task_total} công việc ({pct}%)" }
+                                    if let Some(due) = &p.due_date { span { class: "ent-pill", "Hạn {due}" } }
+                                    if let Some(ch) = &p.linked_channel_name { span { class: "ent-pill ok", "Kênh #{ch}" } }
+                                }
+                                div { class: "ent-progress", div { class: "ent-progress-fill", style: "width: {pct}%;" } }
                             }
                         }
                     }

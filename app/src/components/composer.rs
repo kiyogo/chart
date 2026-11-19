@@ -178,7 +178,7 @@ fn build_suggestions(
                         trigger: trig.clone(),
                         desc: desc.clone(),
                     });
-                    if out.len() >= 8 {
+                    if out.len() >= 12 {
                         break;
                     }
                 }
@@ -246,6 +246,7 @@ pub fn Composer(
     #[props(default)] disabled_reason: Option<String>,
     #[props(default)] mentions: Vec<MentionCandidate>,
     #[props(default)] quick_replies: Vec<(String, String)>,
+    #[props(default)] extra_commands: Vec<(String, String, String, String)>,
     /// Raw rich payloads (polls, notes, reminders, tables).
     #[props(default)] on_raw: Option<EventHandler<String>>,
     /// Images (picked or pasted): bytes + mime.
@@ -361,7 +362,8 @@ pub fn Composer(
         }
     });
 
-    let plugin_cmds = crate::components::plugins_view::enabled_slash_commands();
+    let mut plugin_cmds = extra_commands;
+    plugin_cmds.extend(crate::components::plugins_view::enabled_slash_commands());
     let suggestions: Vec<Suggest> = if disabled || dismissed_for() == value {
         Vec::new()
     } else {

@@ -2,10 +2,7 @@ use dioxus::prelude::*;
 use serde_json::{Value, json};
 
 use crate::{
-    components::icons::{
-        BriefcaseIcon, BuildingIcon, CalendarIcon, ChevronDownIcon, ChevronRightIcon, DownloadIcon,
-        FileTextIcon, ListChecksIcon, LockIcon, ShieldIcon, SlidersIcon, SparkleIcon,
-    },
+    components::icons::{ChevronDownIcon, ChevronRightIcon, DownloadIcon, SparkleIcon},
     services::enterprise::{
         self, EnterpriseConfig, MODULE_DEFS, ent_perm, export_all_json_url, export_audit_csv_url,
         export_reports_csv_url,
@@ -116,16 +113,6 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
     rsx! {
         div { class: "ent-section",
             div { class: "ent-toolbar",
-                span { class: "settings-label", SlidersIcon { size: 16 } " Cài đặt doanh nghiệp chuyên sâu" }
-                input {
-                    r#type: "text",
-                    placeholder: "Tìm thiết lập (ví dụ: ca làm, phép, quota, MFA, AI)",
-                    value: "{search}",
-                    oninput: move |e| search.set(e.value()),
-                }
-            }
-
-            if !filtering {
                 div { class: "sidebar-filters",
                     for (k, label) in [
                         ("general", "Chung & Giao diện"),
@@ -144,6 +131,12 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
                             "{label}"
                         }
                     }
+                }
+                input {
+                    r#type: "text",
+                    placeholder: "Tìm thiết lập (ca làm, phép, quota, MFA, AI)",
+                    value: "{search}",
+                    oninput: move |e| search.set(e.value()),
                 }
             }
 
@@ -165,7 +158,6 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
                     rsx! {
                         if show_general {
                             div { class: "ent-card",
-                                h4 { BuildingIcon { size: 16 } " Thông tin chung & Giao diện doanh nghiệp" }
                                 div { class: "ent-form-grid",
                                     label { class: "form-field", span { "Tên pháp nhân / Doanh nghiệp" }
                                         input { r#type: "text", disabled: !can_ent, value: "{company_name}", oninput: move |e| company_name.set(e.value()) }
@@ -276,7 +268,6 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
 
                         if show_hr {
                             div { class: "ent-card",
-                                h4 { BriefcaseIcon { size: 16 } " Chính sách Thành viên & Nhân sự" }
                                 div { class: "ent-inline-bar",
                                     label { class: "form-field", span { "Tiền tố mã nhân viên" }
                                         input { r#type: "text", disabled: !can_ent, value: "{emp_prefix}", oninput: move |e| emp_prefix.set(e.value()) }
@@ -319,7 +310,6 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
 
                         if show_work {
                             div { class: "ent-card",
-                                h4 { ListChecksIcon { size: 16 } " Chính sách Công việc, Dự án & Kênh" }
                                 label { class: "settings-row toggle-row",
                                     span { class: "grow",
                                         span { class: "settings-label", "Yêu cầu bước Chờ duyệt trước khi đóng công việc" }
@@ -361,7 +351,6 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
 
                         if show_time {
                             div { class: "ent-card",
-                                h4 { CalendarIcon { size: 16 } " Chính sách Chấm công & Nghỉ phép" }
                                 div { class: "ent-form-grid",
                                     label { class: "form-field", span { "Giờ vào ca chuẩn" }
                                         input { r#type: "time", disabled: !can_ent, value: "{work_start}", oninput: move |e| work_start.set(e.value()) }
@@ -414,7 +403,6 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
 
                         if show_docs {
                             div { class: "ent-card",
-                                h4 { FileTextIcon { size: 16 } " Phê duyệt, Tài liệu & Thông báo nội bộ" }
                                 div { class: "ent-inline-bar",
                                     label { class: "form-field", span { "Hạn mức lưu trữ tài liệu (MB)" }
                                         input { r#type: "number", disabled: !can_ent, value: "{quota_mb}", oninput: move |e| quota_mb.set(e.value()) }
@@ -458,7 +446,6 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
 
                         if show_sec {
                             div { class: "ent-card",
-                                h4 { LockIcon { size: 16 } " Bảo mật, Quyền riêng tư & Trợ lý AI" }
                                 label { class: "settings-row toggle-row",
                                     span { class: "grow",
                                         span { class: "settings-label", "Yêu cầu xác thực đa yếu tố (MFA/2FA) cho vai trò quản lý" }
@@ -503,7 +490,6 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
 
                         if show_adv {
                             div { class: "ent-card",
-                                h4 { ShieldIcon { size: 16 } " Kiểm toán, Lưu trữ & Bảo toàn dữ liệu" }
                                 label { class: "settings-row toggle-row",
                                     span { class: "grow",
                                         span { class: "settings-label", "Khóa bảo toàn dữ liệu doanh nghiệp (Retention Lock)" }

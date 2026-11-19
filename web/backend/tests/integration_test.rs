@@ -1142,7 +1142,8 @@ async fn test_enterprise_server_lifecycle() {
         .await
         .unwrap();
     let tasks: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(tasks_res.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert!(tasks[0]["source_message_preview"].is_null());
+    let secret_task = tasks.iter().find(|t| t["title"] == "Follow up secret").unwrap();
+    assert!(secret_task["source_message_preview"].is_null());
 
     // 6. Server-clock Attendance Check-in / Check-out & Leave Request + Timed Doc Share
     assert_eq!(

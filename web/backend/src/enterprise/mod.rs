@@ -229,6 +229,344 @@ pub async fn init_enterprise_tx(
         }
     }
 
+    // 5. Enterprise Categories & Channels
+    let ent_cat_id: Uuid = match sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM server_categories WHERE server_id = $1 AND name = 'Không gian Doanh nghiệp' LIMIT 1",
+    )
+    .bind(server_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    {
+        Some(id) => id,
+        None => {
+            let cid = Uuid::new_v4();
+            sqlx::query("INSERT INTO server_categories (id, server_id, name, position) VALUES ($1, $2, 'Không gian Doanh nghiệp', 10)")
+                .bind(cid)
+                .bind(server_id)
+                .execute(&mut **tx)
+                .await?;
+            cid
+        }
+    };
+
+    let meet_cat_id: Uuid = match sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM server_categories WHERE server_id = $1 AND name = 'Phòng họp Trực tuyến' LIMIT 1",
+    )
+    .bind(server_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    {
+        Some(id) => id,
+        None => {
+            let cid = Uuid::new_v4();
+            sqlx::query("INSERT INTO server_categories (id, server_id, name, position) VALUES ($1, $2, 'Phòng họp Trực tuyến', 20)")
+                .bind(cid)
+                .bind(server_id)
+                .execute(&mut **tx)
+                .await?;
+            cid
+        }
+    };
+
+    let ent_channels = [
+        ("thông-báo-nội-bộ", "announcement", ent_cat_id, 1i32),
+        ("ban-điều-hành", "text", ent_cat_id, 2i32),
+        ("nhân-sự-hành-chính", "text", ent_cat_id, 3i32),
+        ("kỹ-thuật-sản-phẩm", "text", ent_cat_id, 4i32),
+        ("kinh-doanh-vận-hành", "text", ent_cat_id, 5i32),
+        ("tự-động-hóa", "text", ent_cat_id, 6i32),
+        ("Phòng họp Điều hành", "voice", meet_cat_id, 7i32),
+        ("Phòng họp Nhanh", "voice", meet_cat_id, 8i32),
+    ];
+
+    let mut ch_map = std::collections::HashMap::new();
+    for (cname, ctype, cat_id, pos) in ent_channels {
+        let existing: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM channels WHERE server_id = $1 AND name = $2 LIMIT 1",
+        )
+        .bind(server_id)
+        .bind(cname)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let ch_id = match existing {
+            Some(id) => id,
+            None => {
+                let id = Uuid::new_v4();
+                sqlx::query(
+                    "INSERT INTO channels (id, server_id, category_id, name, channel_type, position, is_private) VALUES ($1, $2, $3, $4, $5, $6, FALSE)",
+                )
+                .bind(id)
+                .bind(server_id)
+                .bind(cat_id)
+                .bind(cname)
+                .bind(ctype)
+                .bind(pos)
+                .execute(&mut **tx)
+                .await?;
+                if cname == "thông-báo-nội-bộ" {
+                    let welcome = "Chào mừng đến với Không gian Doanh nghiệp. Các kênh phòng ban, quy trình phê duyệt, chấm công, bảng công việc và lệnh nhanh (/task, /checkin, /checkout, /leave, /meet, /approve, /announce, /workspace) đã được kích hoạt.";
+                    sqlx::query(
+                        "INSERT INTO channel_messages (id, channel_id, sender_id, content) VALUES ($1, $2, $3, $4)",
+                    )
+                    .bind(Uuid::new_v4())
+                    .bind(id)
+                    .bind(owner_id)
+                    .bind(welcome)
+                    .execute(&mut **tx)
+                    .await?;
+                }
+                id
+            }
+        };
+        ch_map.insert(cname, ch_id);
+    }
+
+    // 6. Default Departments linked to channels
+    let dept_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM enterprise_departments WHERE server_id = $1",
+    )
+    .bind(server_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    let mut primary_dept_id: Option<Uuid> = None;
+    let mut eng_dept_id: Option<Uuid> = None;
+    if dept_count == 0 {
+        let depts = [
+            ("Ban Điều hành", "BOD", "Điều hành chiến lược và phê duyệt cấp cao", "Trụ sở chính", ch_map.get("ban-điều-hành").copied()),
+            ("Phòng Kỹ thuật & Sản phẩm", "ENG", "Phát triển sản phẩm, hạ tầng kỹ thuật và bảo mật", "Trụ sở chính", ch_map.get("kỹ-thuật-sản-phẩm").copied()),
+            ("Phòng Nhân sự & Hành chính", "HR", "Tuyển dụng, hồ sơ nhân sự, chấm công và phúc lợi", "Trụ sở chính", ch_map.get("nhân-sự-hành-chính").copied()),
+            ("Phòng Kinh doanh & Vận hành", "BIZ", "Phát triển kinh doanh, đối tác và chăm sóc khách hàng", "Chi nhánh", ch_map.get("kinh-doanh-vận-hành").copied()),
+        ];
+        for (idx, (dname, dcode, ddesc, branch, lch)) in depts.iter().enumerate() {
+            let did: Uuid = sqlx::query_scalar(
+                r#"
+                INSERT INTO enterprise_departments (server_id, name, code, description, manager_user_id, linked_channel_id, branch_name)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id
+                "#,
+            )
+            .bind(server_id)
+            .bind(dname)
+            .bind(dcode)
+            .bind(ddesc)
+            .bind(owner_id)
+            .bind(lch)
+            .bind(branch)
+            .fetch_one(&mut **tx)
+            .await?;
+            if idx == 0 {
+                primary_dept_id = Some(did);
+                sqlx::query(
+                    "INSERT INTO enterprise_department_members (department_id, server_id, user_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                )
+                .bind(did)
+                .bind(server_id)
+                .bind(owner_id)
+                .execute(&mut **tx)
+                .await?;
+                sqlx::query(
+                    "UPDATE enterprise_employees SET department_id = COALESCE(department_id, $3) WHERE server_id = $1 AND user_id = $2",
+                )
+                .bind(server_id)
+                .bind(owner_id)
+                .bind(did)
+                .execute(&mut **tx)
+                .await?;
+            } else if idx == 1 {
+                eng_dept_id = Some(did);
+            }
+        }
+    }
+
+    // 7. Default Projects & Starter Tasks
+    let proj_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM enterprise_projects WHERE server_id = $1",
+    )
+    .bind(server_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    if proj_count == 0 {
+        let p1_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO enterprise_projects (server_id, department_id, name, description, status, priority, manager_user_id, linked_channel_id, start_date, due_date, created_by)
+            VALUES ($1, $2, 'Vận hành & Chuyển đổi số Doanh nghiệp', 'Chuẩn hóa quy trình làm việc, phân quyền phòng ban và tự động hóa báo cáo nội bộ', 'active', 'high', $3, $4, '2026-01-01', '2026-12-31', $3)
+            RETURNING id
+            "#,
+        )
+        .bind(server_id)
+        .bind(primary_dept_id)
+        .bind(owner_id)
+        .bind(ch_map.get("ban-điều-hành").copied())
+        .fetch_one(&mut **tx)
+        .await?;
+
+        let _p2_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO enterprise_projects (server_id, department_id, name, description, status, priority, manager_user_id, linked_channel_id, start_date, due_date, created_by)
+            VALUES ($1, $2, 'Phát triển Nền tảng & Bảo mật Hệ thống', 'Nâng cấp kiến trúc bảo mật, hiệu năng thời gian thực và quy trình kiểm thử', 'active', 'medium', $3, $4, '2026-02-01', '2026-12-31', $3)
+            RETURNING id
+            "#,
+        )
+        .bind(server_id)
+        .bind(eng_dept_id.or(primary_dept_id))
+        .bind(owner_id)
+        .bind(ch_map.get("kỹ-thuật-sản-phẩm").copied())
+        .fetch_one(&mut **tx)
+        .await?;
+
+        let task_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM enterprise_tasks WHERE server_id = $1",
+        )
+        .bind(server_id)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        if task_count == 0 {
+            let starter_tasks = [
+                ("Thiết lập cơ cấu phòng ban & phân quyền nhân sự", "Kiểm tra danh sách phòng ban, bổ nhiệm trưởng bộ phận và gán vai trò tương ứng", "done", "high", "2026-11-20"),
+                ("Triển khai quy trình chấm công & phê duyệt nghỉ phép", "Hướng dẫn thành viên sử dụng lệnh /checkin, /checkout và gửi đơn trên hệ thống", "in_progress", "high", "2026-11-25"),
+                ("Đồng bộ tài liệu quy chế & sổ tay nhân viên", "Tải lên quy định làm việc và biểu mẫu hành chính vào kho Tài liệu doanh nghiệp", "review", "medium", "2026-11-28"),
+                ("Đánh giá hiệu suất & báo cáo vận hành định kỳ", "Tổng hợp chỉ số hoàn thành công việc và chuyên cần tại mục Báo cáo", "todo", "medium", "2026-12-05"),
+            ];
+            for (title, desc, status, prio, due) in starter_tasks {
+                sqlx::query(
+                    r#"
+                    INSERT INTO enterprise_tasks (server_id, project_id, department_id, title, description, status, priority, assignee_id, due_date, created_by)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $8)
+                    "#,
+                )
+                .bind(server_id)
+                .bind(p1_id)
+                .bind(primary_dept_id)
+                .bind(title)
+                .bind(desc)
+                .bind(status)
+                .bind(prio)
+                .bind(owner_id)
+                .bind(due)
+                .execute(&mut **tx)
+                .await?;
+            }
+        }
+    }
+
+    // 8. Default Scheduled Meetings, Folders, Pinned Announcement, and Automation Workflows
+    let meet_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM enterprise_meetings WHERE server_id = $1",
+    )
+    .bind(server_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if meet_count == 0 {
+        let now = Utc::now();
+        let m1_start = now + chrono::Duration::hours(2);
+        let m1_end = m1_start + chrono::Duration::hours(1);
+        let m2_start = now + chrono::Duration::hours(26);
+        let m2_end = m2_start + chrono::Duration::minutes(45);
+
+        sqlx::query(
+            r#"
+            INSERT INTO enterprise_meetings (server_id, department_id, channel_id, title, description, meeting_type, host_id, starts_at, ends_at, recurrence, notes, status)
+            VALUES ($1, $2, $3, 'Họp giao ban Điều hành & Tiến độ tuần', 'Rà soát mục tiêu trọng tâm, tiến độ dự án và phê duyệt tồn đọng', 'review', $4, $5, $6, 'weekly', 'Chuẩn bị số liệu báo cáo tuần của từng phòng ban', 'scheduled')
+            "#,
+        )
+        .bind(server_id)
+        .bind(primary_dept_id)
+        .bind(ch_map.get("Phòng họp Điều hành").copied())
+        .bind(owner_id)
+        .bind(m1_start)
+        .bind(m1_end)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO enterprise_meetings (server_id, department_id, channel_id, title, description, meeting_type, host_id, starts_at, ends_at, recurrence, notes, status)
+            VALUES ($1, $2, $3, 'Standup đồng bộ công việc hàng ngày', 'Cập nhật nhanh công việc trong ngày và xử lý vướng mắc kỹ thuật', 'standup', $4, $5, $6, 'daily', 'Mỗi thành viên cập nhật ngắn gọn 3 phút', 'scheduled')
+            "#,
+        )
+        .bind(server_id)
+        .bind(eng_dept_id.or(primary_dept_id))
+        .bind(ch_map.get("Phòng họp Nhanh").copied())
+        .bind(owner_id)
+        .bind(m2_start)
+        .bind(m2_end)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    let folder_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM enterprise_folders WHERE server_id = $1",
+    )
+    .bind(server_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if folder_count == 0 {
+        for fname in ["Quy chế & Sổ tay Nhân sự", "Tài liệu Dự án & Kỹ thuật", "Biểu mẫu & Hợp đồng"] {
+            sqlx::query(
+                "INSERT INTO enterprise_folders (server_id, scope, owner_id, name) VALUES ($1, 'company', $2, $3)",
+            )
+            .bind(server_id)
+            .bind(owner_id)
+            .bind(fname)
+            .execute(&mut **tx)
+            .await?;
+        }
+    }
+
+    let ann_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM enterprise_announcements WHERE server_id = $1",
+    )
+    .bind(server_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if ann_count == 0 {
+        sqlx::query(
+            r#"
+            INSERT INTO enterprise_announcements (server_id, scope, author_id, title, content, priority, pinned)
+            VALUES ($1, 'company', $2, 'Chính thức vận hành Không gian làm việc Doanh nghiệp', 'Toàn bộ phòng ban, kênh phối hợp chuyên trách, bảng công việc Kanban, chấm công, nghỉ phép, phê duyệt và lệnh nhanh trong kênh chat đã sẵn sàng hoạt động.', 'important', TRUE)
+            "#,
+        )
+        .bind(server_id)
+        .bind(owner_id)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    let wf_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM enterprise_workflows WHERE server_id = $1",
+    )
+    .bind(server_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if wf_count == 0 {
+        let auto_ch = ch_map.get("tự-động-hóa").copied();
+        let cfg = serde_json::json!({ "channel_id": auto_ch });
+        let default_wfs = [
+            ("Thông báo khi giao công việc mới", "task_assigned", "post_channel_message"),
+            ("Cập nhật khi hoàn thành công việc", "task_completed", "post_channel_message"),
+            ("Thông báo kết quả duyệt nghỉ phép", "leave_decided", "post_channel_message"),
+            ("Thông báo kết quả phê duyệt đề xuất", "approval_decided", "post_channel_message"),
+        ];
+        for (wname, trig, act) in default_wfs {
+            sqlx::query(
+                r#"
+                INSERT INTO enterprise_workflows (server_id, name, trigger_event, action_type, action_config, enabled)
+                VALUES ($1, $2, $3, $4, $5, TRUE)
+                "#,
+            )
+            .bind(server_id)
+            .bind(wname)
+            .bind(trig)
+            .bind(act)
+            .bind(&cfg)
+            .execute(&mut **tx)
+            .await?;
+        }
+    }
+
     Ok(())
 }
 
@@ -253,13 +591,41 @@ pub async fn get_config(
     Path(server_id): Path<Uuid>,
 ) -> AppResult<Json<ConfigResponse>> {
     let uid = auth_user(&state, &headers).await?;
-    let ctx = load_ctx(&state.db, server_id, uid).await?;
+    let mut ctx = load_ctx(&state.db, server_id, uid).await?;
 
-    // Guarantee config row exists even if toggled manually in DB
-    sqlx::query("INSERT INTO server_enterprise_configs (server_id) VALUES ($1) ON CONFLICT DO NOTHING")
-        .bind(server_id)
-        .execute(&state.db)
-        .await?;
+    // Guarantee config row exists and auto-backfill starter channels/departments/projects for existing enterprise servers
+    let needs_seed: bool = sqlx::query_scalar(
+        r#"
+        SELECT (SELECT is_enterprise FROM servers WHERE id = $1)
+           AND (SELECT COUNT(*) FROM enterprise_departments WHERE server_id = $1) = 0
+           AND (SELECT COUNT(*) FROM enterprise_projects WHERE server_id = $1) = 0
+        "#,
+    )
+    .bind(server_id)
+    .fetch_optional(&state.db)
+    .await?
+    .unwrap_or(false);
+
+    if needs_seed {
+        if let Ok(mut tx) = state.db.begin().await {
+            let owner_id: Uuid = sqlx::query_scalar("SELECT owner_id FROM servers WHERE id = $1")
+                .bind(server_id)
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap_or(uid);
+            if init_enterprise_tx(&mut tx, server_id, owner_id).await.is_ok() {
+                let _ = tx.commit().await;
+                if let Ok(reloaded) = load_ctx(&state.db, server_id, uid).await {
+                    ctx = reloaded;
+                }
+            }
+        }
+    } else {
+        sqlx::query("INSERT INTO server_enterprise_configs (server_id) VALUES ($1) ON CONFLICT DO NOTHING")
+            .bind(server_id)
+            .execute(&state.db)
+            .await?;
+    }
 
     let config: EnterpriseConfigRow = sqlx::query_as(
         "SELECT * FROM server_enterprise_configs WHERE server_id = $1",

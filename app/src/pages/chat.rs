@@ -1616,6 +1616,178 @@ pub fn Chat(
         if raw_content.is_empty() {
             return;
         }
+        let ent_srv_id = selected_server().filter(|s| s.is_enterprise).map(|s| s.id);
+        if let Some(ref sid) = ent_srv_id {
+            if raw_content == "/workspace" || raw_content.starts_with("/workspace ") {
+                channel_input.set(String::new());
+                selected_channel.set(None);
+                active_ent_module.set(Some("overview".to_string()));
+                return;
+            }
+            if raw_content.starts_with('/') {
+                let mut parts = raw_content.splitn(2, char::is_whitespace);
+                let cmd = parts.next().unwrap_or("").to_lowercase();
+                let arg = parts.next().unwrap_or("").trim().to_string();
+                let sid_cl = sid.clone();
+                let ch_cl = ch.clone();
+                if matches!(
+                    cmd.as_str(),
+                    "/task" | "/checkin" | "/checkout" | "/leave" | "/meet" | "/approve" | "/announce"
+                ) {
+                    channel_input.set(String::new());
+                    spawn(async move {
+                        let msg_opt: Option<String> = match cmd.as_str() {
+                            "/task" => {
+                                let title = if arg.is_empty() { "Công việc mới từ kênh chat".to_string() } else { arg };
+                                let body = serde_json::json!({
+                                    "title": title,
+                                    "priority": "medium",
+                                    "source_channel_id": ch_cl.id,
+                                });
+                                match enterprise::create_task(&sid_cl, body).await {
+                                    Ok(_) => {
+                                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                                        toast.set(Some("Đã tạo công việc doanh nghiệp".into()));
+                                        Some(format!("[Công việc mới] {title}"))
+                                    }
+                                    Err(e) => {
+                                        toast.set(Some(format!("Không tạo được công việc: {}", e.code)));
+                                        None
+                                    }
+                                }
+                            }
+                            "/checkin" => {
+                                match enterprise::check_in(&sid_cl, "onsite", &arg).await {
+                                    Ok(_) => {
+                                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                                        toast.set(Some("Đã chấm công vào ca".into()));
+                                        Some(if arg.is_empty() {
+                                            "[Chấm công] Đã chấm công vào ca làm việc".to_string()
+                                        } else {
+                                            format!("[Chấm công] Đã chấm công vào ca ({arg})")
+                                        })
+                                    }
+                                    Err(e) => {
+                                        toast.set(Some(format!("Không chấm công được: {}", e.code)));
+                                        None
+                                    }
+                                }
+                            }
+                            "/checkout" => {
+                                match enterprise::check_out(&sid_cl, &arg).await {
+                                    Ok(_) => {
+                                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                                        toast.set(Some("Đã chấm công tan ca".into()));
+                                        Some(if arg.is_empty() {
+                                            "[Chấm công] Đã chấm công kết thúc ca làm việc".to_string()
+                                        } else {
+                                            format!("[Chấm công] Đã chấm công tan ca ({arg})")
+                                        })
+                                    }
+                                    Err(e) => {
+                                        toast.set(Some(format!("Không chấm công tan ca được: {}", e.code)));
+                                        None
+                                    }
+                                }
+                            }
+                            "/leave" => {
+                                let reason = if arg.is_empty() { "Nghỉ phép cá nhân".to_string() } else { arg };
+                                let body = serde_json::json!({
+                                    "leave_type": "annual",
+                                    "start_date": "2026-11-20",
+                                    "end_date": "2026-11-20",
+                                    "half_day": "full",
+                                    "reason": reason,
+                                });
+                                match enterprise::create_leave(&sid_cl, body).await {
+                                    Ok(_) => {
+                                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                                        toast.set(Some("Đã gửi đơn xin nghỉ phép".into()));
+                                        Some(format!("[Nghỉ phép] Đã gửi đơn xin nghỉ phép: {reason}"))
+                                    }
+                                    Err(e) => {
+                                        toast.set(Some(format!("Không gửi được đơn nghỉ phép: {}", e.code)));
+                                        None
+                                    }
+                                }
+                            }
+                            "/meet" => {
+                                let title = if arg.is_empty() { "Họp đồng bộ nhanh".to_string() } else { arg };
+                                let body = serde_json::json!({
+                                    "title": title,
+                                    "meeting_type": "video",
+                                    "channel_id": ch_cl.id,
+                                    "starts_at": "2026-11-20T09:00:00Z",
+                                    "ends_at": "2026-11-20T10:00:00Z",
+                                });
+                                match enterprise::create_meeting(&sid_cl, body).await {
+                                    Ok(_) => {
+                                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                                        toast.set(Some("Đã đặt lịch cuộc họp".into()));
+                                        Some(format!("[Cuộc họp] Đã đặt lịch họp: {title}"))
+                                    }
+                                    Err(e) => {
+                                        toast.set(Some(format!("Không đặt được lịch họp: {}", e.code)));
+                                        None
+                                    }
+                                }
+                            }
+                            "/approve" => {
+                                let title = if arg.is_empty() { "Đề xuất phê duyệt nội bộ".to_string() } else { arg };
+                                let body = serde_json::json!({
+                                    "title": title,
+                                    "category": "custom",
+                                    "form_data": { "channel": ch_cl.name },
+                                });
+                                match enterprise::submit_approval(&sid_cl, body).await {
+                                    Ok(_) => {
+                                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                                        toast.set(Some("Đã gửi đề xuất phê duyệt".into()));
+                                        Some(format!("[Phê duyệt] Đã gửi đề xuất: {title}"))
+                                    }
+                                    Err(e) => {
+                                        toast.set(Some(format!("Không gửi được đề xuất: {}", e.code)));
+                                        None
+                                    }
+                                }
+                            }
+                            "/announce" => {
+                                let text = if arg.is_empty() { "Thông báo vận hành nội bộ".to_string() } else { arg };
+                                let body = serde_json::json!({
+                                    "title": text,
+                                    "content": text,
+                                    "scope": "company",
+                                    "priority": "important",
+                                    "pinned": false,
+                                });
+                                match enterprise::create_announcement(&sid_cl, body).await {
+                                    Ok(_) => {
+                                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                                        toast.set(Some("Đã đăng thông báo nội bộ".into()));
+                                        Some(format!("[Thông báo nội bộ] {text}"))
+                                    }
+                                    Err(e) => {
+                                        toast.set(Some(format!("Không đăng được thông báo: {}", e.code)));
+                                        None
+                                    }
+                                }
+                            }
+                            _ => None,
+                        };
+                        if let Some(post_txt) = msg_opt {
+                            if let Ok(posted) = api::channels_post_message(&ch_cl.id, &post_txt).await {
+                                channel_messages.with_mut(|list| {
+                                    if !list.iter().any(|m| m.id == posted.id) {
+                                        list.push(posted);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                    return;
+                }
+            }
+        }
         let content = if raw_content.starts_with('/') {
             crate::components::plugins_view::try_run_plugin_command(&raw_content, &uname_for_ch_cmd).unwrap_or(raw_content)
         } else {
@@ -2940,7 +3112,25 @@ pub fn Chat(
                                 Composer {
                                     input_id: "channel-chat-input".to_string(),
                                     value: channel_input(),
-                                    placeholder: "Nhắn tin tới #{ch.name}",
+                                    placeholder: if selected_server().is_some_and(|s| s.is_enterprise) {
+                                        format!("Nhắn tin tới #{} (gõ / để dùng lệnh doanh nghiệp)", ch.name)
+                                    } else {
+                                        format!("Nhắn tin tới #{}", ch.name)
+                                    },
+                                    extra_commands: if selected_server().is_some_and(|s| s.is_enterprise) {
+                                        vec![
+                                            ("🏢".into(), String::new(), "/workspace".into(), "Mở bảng Tổng quan Không gian Doanh nghiệp".into()),
+                                            ("✅".into(), String::new(), "/task".into(), "Tạo công việc mới: /task <tiêu đề công việc>".into()),
+                                            ("🟢".into(), String::new(), "/checkin".into(), "Chấm công vào ca làm việc: /checkin [ghi chú]".into()),
+                                            ("🔴".into(), String::new(), "/checkout".into(), "Chấm công tan ca làm việc: /checkout [ghi chú]".into()),
+                                            ("🏖️".into(), String::new(), "/leave".into(), "Gửi đơn xin nghỉ phép: /leave <lý do>".into()),
+                                            ("📹".into(), String::new(), "/meet".into(), "Đặt lịch họp nhanh: /meet <tiêu đề cuộc họp>".into()),
+                                            ("📋".into(), String::new(), "/approve".into(), "Gửi đề xuất phê duyệt: /approve <tiêu đề đề xuất>".into()),
+                                            ("📢".into(), String::new(), "/announce".into(), "Đăng thông báo nội bộ: /announce <nội dung>".into()),
+                                        ]
+                                    } else {
+                                        Vec::new()
+                                    },
                                     on_input: move |v: String| channel_input.set(v),
                                     on_send: move |_| trigger_send_channel_message.call(()),
                                     on_sticker: move |url: String| {
@@ -3246,6 +3436,12 @@ pub fn Chat(
                             } else {
                                 enterprise_config.set(None);
                                 active_ent_module.set(None);
+                            }
+                            if let Ok(cats) = api::servers_get_categories(&sid).await {
+                                server_categories.set(cats);
+                            }
+                            if let Ok(chs) = api::servers_get_channels(&sid).await {
+                                channels.set(chs);
                             }
                             ent_refresh_tick.set(ent_refresh_tick() + 1);
                         });
