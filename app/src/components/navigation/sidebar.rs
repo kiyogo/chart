@@ -94,7 +94,6 @@ pub fn NavigationSidebar(
     #[props(default)] on_select_ent_module: Option<EventHandler<String>>,
 ) -> Element {
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
-    let mut show_all_ent_mods = use_signal(|| false);
     let mut dm_query = use_signal(String::new);
     let dm_filter = use_signal(|| "all");
     let mut community_query = use_signal(String::new);
@@ -486,20 +485,6 @@ pub fn NavigationSidebar(
                                         } else {
                                             cfg.module_order.iter().filter(|k| cfg.can_see_module(k)).cloned().collect()
                                         };
-                                        let total_mods = visible_mods.len();
-                                        let expanded = show_all_ent_mods();
-                                        let shown_mods: Vec<String> = if expanded || total_mods <= 5 {
-                                            visible_mods
-                                        } else {
-                                            let mut top: Vec<String> = visible_mods.iter().take(5).cloned().collect();
-                                            if let Some(act) = &active_ent_module {
-                                                if !top.contains(act) && visible_mods.contains(act) {
-                                                    top.push(act.clone());
-                                                }
-                                            }
-                                            top
-                                        };
-                                        let hidden_count = total_mods.saturating_sub(shown_mods.len());
                                         rsx! {
                                             div { class: "category-block",
                                                 div { class: "category-row",
@@ -516,7 +501,7 @@ pub fn NavigationSidebar(
                                                     }
                                                 }
                                                 if !is_ws_collapsed {
-                                                    for mod_key in shown_mods {
+                                                    for mod_key in visible_mods {
                                                         {
                                                             let is_active = active_ent_module.as_deref() == Some(mod_key.as_str());
                                                             let mk = mod_key.clone();
@@ -529,20 +514,6 @@ pub fn NavigationSidebar(
                                                                     {module_icon(&mod_key)}
                                                                     span { class: "channel-row-name", "{module_label(&mod_key)}" }
                                                                 }
-                                                            }
-                                                        }
-                                                    }
-                                                    if total_mods > 5 {
-                                                        button {
-                                                            r#type: "button",
-                                                            class: "channel-row ent-more-row",
-                                                            onclick: move |_| show_all_ent_mods.set(!expanded),
-                                                            if expanded {
-                                                                ChevronDownIcon { size: 14 }
-                                                                span { class: "channel-row-name", "Thu gọn danh mục" }
-                                                            } else {
-                                                                ChevronRightIcon { size: 14 }
-                                                                span { class: "channel-row-name", "Xem thêm {hidden_count} mục" }
                                                             }
                                                         }
                                                     }
