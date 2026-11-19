@@ -19,7 +19,7 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache, session::create_session},
     config::Config,
     crypto::{self, Envelope, PROTOCOL_VERSION, compute_fingerprint},
-    db, enterprise, friends, messages, servers, typing, users, webrtc,
+    db, enterprise, feed, friends, messages, servers, typing, users, vico, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -66,6 +66,8 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         .nest("/api/users", users::routes())
         .nest("/api/keys", crypto::keys::routes())
         .nest("/api/friends", friends::routes())
+        .nest("/api/feed", feed::routes())
+        .nest("/api/vico", vico::routes())
         .nest("/api/messages", messages::routes())
         .nest("/api/attachments", attachments::routes())
         .nest("/api/audit", audit::routes())
@@ -1333,3 +1335,272 @@ async fn test_enterprise_server_lifecycle() {
     assert!(!exported["tasks"].as_array().unwrap().is_empty());
     assert!(!exported["documents"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn test_social_feed_lifecycle() {
+    let config = create_test_config();
+    let pool = db::connect(&config.database_url, 5).await.unwrap();
+    db::run_migrations(&pool).await.unwrap();
+
+    let suffix = Uuid::new_v4().to_string()[..8].to_string();
+    let a_id = Uuid::new_v4();
+    let b_id = Uuid::new_v4();
+    let a_uname = format!("feed_a_{suffix}");
+    let b_uname = format!("feed_b_{suffix}");
+
+    for (id, uname) in [(a_id, &a_uname), (b_id, &b_uname)] {
+        sqlx::query("INSERT INTO users (id, google_sub, username, username_norm) VALUES ($1, $2, $3, $4)")
+            .bind(id)
+            .bind(format!("sub_{id}"))
+            .bind(uname)
+            .bind(uname.to_lowercase())
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    let u_a = a_id.min(b_id);
+    let u_b = a_id.max(b_id);
+    sqlx::query("INSERT INTO friendships (user_a, user_b) VALUES ($1, $2)")
+        .bind(u_a)
+        .bind(u_b)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let a_cookie = create_session(&pool, &config, a_id, None).await.unwrap();
+    let b_cookie = create_session(&pool, &config, b_id, None).await.unwrap();
+    let a_hdr = a_cookie.split(';').next().unwrap().to_string();
+    let b_hdr = b_cookie.split(';').next().unwrap().to_string();
+    let app = build_test_app(pool.clone(), config).await;
+
+    // 1. Author creates a friends post + private post
+    let c_res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/feed")
+                .header(header::COOKIE, a_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "content": "Hello Threads feed!", "visibility": "friends" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(c_res.status(), StatusCode::OK);
+    let post_id = serde_json::from_slice::<Value>(&axum::body::to_bytes(c_res.into_body(), usize::MAX).await.unwrap()).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let priv_res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/feed")
+                .header(header::COOKIE, a_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "content": "Secret diary note", "visibility": "self" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(priv_res.status(), StatusCode::OK);
+    let priv_id = serde_json::from_slice::<Value>(&axum::body::to_bytes(priv_res.into_body(), usize::MAX).await.unwrap()).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // 2. Friend sees the friends post, does NOT see self-only post
+    let feed_b = app
+        .clone()
+        .oneshot(Request::get("/api/feed?filter=friends").header(header::COOKIE, b_hdr.as_str()).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(feed_b.status(), StatusCode::OK);
+    let list_b: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(feed_b.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(list_b.iter().any(|p| p["id"] == post_id));
+    assert!(!list_b.iter().any(|p| p["id"] == priv_id));
+
+    // 3. Friend replies + likes
+    let reply_res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/feed")
+                .header(header::COOKIE, b_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "content": "Nice thread!", "parent_id": post_id }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reply_res.status(), StatusCode::OK);
+
+    let like_res = app
+        .clone()
+        .oneshot(Request::post(format!("/api/feed/{post_id}/like")).header(header::COOKIE, b_hdr.as_str()).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(like_res.status(), StatusCode::OK);
+    let like_val: Value = serde_json::from_slice(&axum::body::to_bytes(like_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(like_val["liked"], true);
+    assert_eq!(like_val["like_count"], 1);
+
+    // 4. Replies list contains the reply; non-author cannot delete author's post
+    let rep_get = app
+        .clone()
+        .oneshot(Request::get(format!("/api/feed/{post_id}/replies")).header(header::COOKIE, a_hdr.as_str()).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(rep_get.status(), StatusCode::OK);
+    let reps: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(rep_get.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(reps.len(), 1);
+    assert_eq!(reps[0]["content"], "Nice thread!");
+
+    assert_eq!(
+        app.clone()
+            .oneshot(Request::delete(format!("/api/feed/{post_id}")).header(header::COOKIE, b_hdr.as_str()).body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+
+    assert_eq!(
+        app.clone()
+            .oneshot(Request::delete(format!("/api/feed/{post_id}")).header(header::COOKIE, a_hdr.as_str()).body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn test_vico_ai_chat_lifecycle() {
+    let config = create_test_config();
+    let pool = db::connect(&config.database_url, 5).await.unwrap();
+    db::run_migrations(&pool).await.unwrap();
+
+    let uid = Uuid::new_v4();
+    let uname = format!("vico_{}", &uid.to_string()[..6]);
+    sqlx::query("INSERT INTO users (id, google_sub, username, username_norm) VALUES ($1, $2, $3, $4)")
+        .bind(uid)
+        .bind(format!("sub_{uid}"))
+        .bind(&uname)
+        .bind(uname.to_lowercase())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let cookie = create_session(&pool, &config, uid, None).await.unwrap();
+    let hdr = cookie.split(';').next().unwrap().to_string();
+    let app = build_test_app(pool.clone(), config).await;
+
+    let conv_res = app
+        .clone()
+        .oneshot(Request::get("/api/vico/conversations").header(header::COOKIE, hdr.as_str()).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(conv_res.status(), StatusCode::OK);
+    let convs: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(conv_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(convs.len(), 1);
+    let cid = convs[0]["id"].as_str().unwrap().to_string();
+
+    let msg_res = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/vico/conversations/{cid}/messages"))
+                .header(header::COOKIE, hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "content": "25 * 4 + 10" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(msg_res.status(), StatusCode::OK);
+    let msg_val: Value = serde_json::from_slice(&axum::body::to_bytes(msg_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(msg_val["assistant_message"]["content"].as_str().unwrap().contains("110"));
+}
+
+#[tokio::test]
+async fn test_server_members_and_search() {
+    let config = create_test_config();
+    let pool = db::connect(&config.database_url, 5).await.unwrap();
+    db::run_migrations(&pool).await.unwrap();
+
+    let uid = Uuid::new_v4();
+    let uname = format!("srv_{}", &uid.to_string()[..6]);
+    sqlx::query(
+        "INSERT INTO users (id, google_sub, username, username_norm, presence, status_text, status_emoji) VALUES ($1, $2, $3, $4, 'online', 'Đang trực', '🚀')",
+    )
+    .bind(uid)
+    .bind(format!("sub_{uid}"))
+    .bind(&uname)
+    .bind(uname.to_lowercase())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let cookie = create_session(&pool, &config, uid, None).await.unwrap();
+    let hdr = cookie.split(';').next().unwrap().to_string();
+    let app = build_test_app(pool.clone(), config).await;
+
+    let srv_res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/servers")
+                .header(header::COOKIE, hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "name": "KiyoMC" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(srv_res.status(), StatusCode::OK);
+    let srv_val: Value = serde_json::from_slice(&axum::body::to_bytes(srv_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let sid = srv_val["id"].as_str().unwrap().to_string();
+
+    let ch_res = app
+        .clone()
+        .oneshot(Request::get(format!("/api/servers/{sid}/channels")).header(header::COOKIE, hdr.as_str()).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let chs: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(ch_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let cid = chs[0]["id"].as_str().unwrap().to_string();
+
+    let post_res = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/channels/{cid}/messages"))
+                .header(header::COOKIE, hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "content": "Thử tìm kiếm discord" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(post_res.status(), StatusCode::OK);
+
+    let mem_res = app
+        .clone()
+        .oneshot(Request::get(format!("/api/servers/{sid}/members")).header(header::COOKIE, hdr.as_str()).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(mem_res.status(), StatusCode::OK);
+    let mems: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(mem_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(mems.len(), 1);
+    assert_eq!(mems[0]["presence"], "online");
+    assert_eq!(mems[0]["status_text"], "Đang trực");
+    assert_eq!(mems[0]["status_emoji"], "🚀");
+
+    let search_res = app
+        .clone()
+        .oneshot(Request::get(format!("/api/servers/{sid}/search?q=discord")).header(header::COOKIE, hdr.as_str()).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(search_res.status(), StatusCode::OK);
+    let hits: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(search_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0]["content"], "Thử tìm kiếm discord");
+}
+
+

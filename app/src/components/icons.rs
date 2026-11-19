@@ -714,3 +714,156 @@ pub fn PlugIcon(#[props(default = 18)] size: u32) -> Element {
         path { d: "M9.5 3.5V8M14.5 3.5V8M12 16.5V21" }
     } }
 }
+
+/// Official Vico AI logo downloaded from https://vico.kiyo.vn/img/favicon.svg
+#[component]
+pub fn VicoAiIcon(#[props(default = 18)] size: u32, #[props(default = false)] full: bool) -> Element {
+    static VICO_GRAD_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+    let uid = use_hook(|| VICO_GRAD_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let grad_id = format!("vico-g-{uid}");
+    let fill_url = format!("url(#{grad_id})");
+    let rect_rx = if full { "0" } else { "7" };
+    rsx! {
+        svg {
+            class: "svg-icon vico-ai-svg",
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 32 32",
+            "aria-hidden": "true",
+            defs {
+                linearGradient {
+                    id: "{grad_id}",
+                    x1: "0",
+                    y1: "0",
+                    x2: "1",
+                    y2: "1",
+                    stop { offset: "0", stop_color: "#8E74FF" }
+                    stop { offset: ".55", stop_color: "#5B3FE8" }
+                    stop { offset: "1", stop_color: "#4232C9" }
+                }
+            }
+            rect { width: "32", height: "32", rx: "{rect_rx}", fill: "{fill_url}" }
+            path {
+                d: "M23.5 11.5 16 25",
+                stroke: "#fff",
+                stroke_opacity: ".7",
+                stroke_width: "5.6",
+                stroke_linecap: "round",
+                fill: "none",
+            }
+            path {
+                d: "M8.5 11.5 16 25",
+                stroke: "#fff",
+                stroke_width: "5.6",
+                stroke_linecap: "round",
+                fill: "none",
+            }
+            path {
+                d: "M16 3Q16.6 7.6 20.2 8.2Q16.6 8.8 16 13.4Q15.4 8.8 11.8 8.2Q15.4 7.6 16 3Z",
+                fill: "#fff",
+            }
+        }
+    }
+}
+
+/// Threads / Social Feed ("Mới") icon
+#[component]
+pub fn FeedThreadsIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "3", y: "3.5", width: "18", height: "17", rx: "5", fill: "currentColor", fill_opacity: "0.14" }
+        path { d: "M15.4 10.6c-.4-2.1-1.9-3.1-3.9-3.1-2.5 0-4.2 1.8-4.2 4.5s1.7 4.5 4.3 4.5c2.2 0 3.7-1.1 4.1-3.1.2-1.1-.4-2.3-1.8-2.6-1.2-.3-2.5.3-2.6 1.5-.1 1 .7 1.7 1.8 1.7 1.3 0 2.3-1 2.5-2.6" }
+    } }
+}
+
+#[component]
+pub fn HeartIcon(#[props(default = 16)] size: u32, #[props(default = false)] filled: bool) -> Element {
+    rsx! {
+        svg {
+            class: "cw-icon",
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: if filled { "currentColor" } else { "none" },
+            stroke: "currentColor",
+            stroke_width: "1.9",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            "aria-hidden": "true",
+            path { d: "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" }
+        }
+    }
+}
+
+#[component]
+pub fn RepeatIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { d: "M17 2l4 4-4 4" }
+        path { d: "M3 11v-1a4 4 0 0 1 4-4h14" }
+        path { d: "M7 22l-4-4 4-4" }
+        path { d: "M21 13v1a4 4 0 0 1-4 4H3" }
+    } }
+}
+
+#[component]
+pub fn DiceIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "3.5", y: "3.5", width: "17", height: "17", rx: "4", fill: "currentColor", fill_opacity: "0.18" }
+        circle { cx: "8.5", cy: "8.5", r: "1.2", fill: "currentColor" }
+        circle { cx: "15.5", cy: "8.5", r: "1.2", fill: "currentColor" }
+        circle { cx: "12", cy: "12", r: "1.2", fill: "currentColor" }
+        circle { cx: "8.5", cy: "15.5", r: "1.2", fill: "currentColor" }
+        circle { cx: "15.5", cy: "15.5", r: "1.2", fill: "currentColor" }
+    } }
+}
+
+#[component]
+pub fn CoinIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        circle { cx: "12", cy: "12", r: "8.5", fill: "currentColor", fill_opacity: "0.18" }
+        circle { cx: "12", cy: "12", r: "4.5" }
+        path { d: "M12 7.5v9" }
+    } }
+}
+
+#[component]
+pub fn CalcIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "4.5", y: "2.5", width: "15", height: "19", rx: "3", fill: "currentColor", fill_opacity: "0.16" }
+        rect { x: "7.5", y: "5.5", width: "9", height: "3.5", rx: "1" }
+        path { d: "M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01" }
+    } }
+}
+
+#[component]
+pub fn HelpCircleIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        circle { cx: "12", cy: "12", r: "9", fill: "currentColor", fill_opacity: "0.16" }
+        path { d: "M9.4 9.3a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.3-2.6 3.8" }
+        circle { cx: "12", cy: "17.2", r: "0.9", fill: "currentColor" }
+    } }
+}
+
+#[component]
+pub fn LogInIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { d: "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" }
+        polyline { points: "10 17 15 12 10 7" }
+        path { d: "M15 12H3" }
+    } }
+}
+
+#[component]
+pub fn LogOutIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" }
+        polyline { points: "16 17 21 12 16 7" }
+        path { d: "M21 12H9" }
+    } }
+}
+
+#[component]
+pub fn BoltIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        polygon { points: "13 2.5 5 13.5 11.5 13.5 10.5 21.5 19 10.5 12.5 10.5", fill: "currentColor", fill_opacity: "0.18" }
+    } }
+}

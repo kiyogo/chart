@@ -9,6 +9,8 @@ pub enum NavSection {
     Friends,
     Communities,
     Server(String),
+    Feed,
+    VicoAi,
     Search,
     Settings,
 }

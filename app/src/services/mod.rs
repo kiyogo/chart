@@ -4,6 +4,7 @@ pub mod community;
 pub mod dm;
 pub mod drawings;
 pub mod enterprise;
+pub mod feed;
 pub mod gif_export;
 pub mod groups;
 pub mod library;
@@ -14,5 +15,6 @@ pub mod profile_plus;
 pub mod security;
 pub mod settings_sync;
 pub mod stickers;
+pub mod vico;
 pub mod ws;
 

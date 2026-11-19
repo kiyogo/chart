@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use serde_json::{Value, json};
 
 use crate::{
-    components::icons::{ChevronDownIcon, ChevronRightIcon, DownloadIcon, SparkleIcon},
+    components::icons::{ChevronDownIcon, ChevronRightIcon, DownloadIcon, VicoAiIcon},
     services::enterprise::{
         self, EnterpriseConfig, MODULE_DEFS, ent_perm, export_all_json_url, export_audit_csv_url,
         export_reports_csv_url,
@@ -106,7 +106,7 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
     let show_docs = (!filtering && cat() == "docs")
         || (filtering && "phê duyệt biểu mẫu tài liệu dung lượng quota thông báo chia sẻ".contains(&q));
     let show_sec = (!filtering && cat() == "security")
-        || (filtering && "bảo mật riêng tư mfa 2fa phiên danh bạ ai trợ lý tóm tắt".contains(&q));
+        || (filtering && "bảo mật riêng tư mfa 2fa phiên danh bạ ai vico trợ lý tóm tắt".contains(&q));
     let show_adv = (!filtering && cat() == "advanced")
         || (filtering && "kiểm toán nhật ký nâng cao lưu trữ retention xuất dữ liệu csv json".contains(&q));
 
@@ -472,7 +472,7 @@ pub fn EnterpriseSettingsPanel(server_id: String, on_changed: EventHandler<()>) 
                                 }
                                 label { class: "settings-row toggle-row",
                                     span { class: "grow",
-                                        span { class: "settings-label", SparkleIcon { size: 15 } " Cho phép Trợ lý tổng hợp AI doanh nghiệp" }
+                                        span { class: "settings-label", VicoAiIcon { size: 15 } " Cho phép Vico AI tổng hợp doanh nghiệp" }
                                         span { class: "settings-row-desc", "Chỉ tổng hợp dữ liệu nghiệp vụ máy chủ được cấp quyền, không giải mã tin nhắn E2EE" }
                                     }
                                     input {

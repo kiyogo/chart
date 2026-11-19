@@ -282,6 +282,15 @@ pub async fn servers_get_members(server_id: &str) -> Result<Vec<crate::models::S
     get_json(&format!("/api/servers/{encoded}/members")).await
 }
 
+pub async fn servers_search_messages(
+    server_id: &str,
+    q: &str,
+) -> Result<Vec<crate::models::ServerMessageSearchHit>, ApiError> {
+    let enc_id = urlencoding::encode(server_id);
+    let enc_q = urlencoding::encode(q);
+    get_json(&format!("/api/servers/{enc_id}/search?q={enc_q}")).await
+}
+
 pub async fn servers_create_invite(server_id: &str) -> Result<String, ApiError> {
     let encoded = urlencoding::encode(server_id);
     let v: serde_json::Value =

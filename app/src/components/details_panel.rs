@@ -139,16 +139,13 @@ pub fn DmDetailsPanel(
                     img { class: "custom-effect anim-{custom_fx_anim}", src: "{platform::resolve_asset_url(&u)}", alt: "", aria_hidden: "true" }
                 }
             }
-            header { class: "details-header",
-                h3 { class: "details-title", "Thông tin" }
-                button {
-                    r#type: "button",
-                    class: "icon-btn",
-                    title: "Đóng",
-                    aria_label: "Đóng",
-                    onclick: move |_| on_close.call(()),
-                    CloseIcon {}
-                }
+            button {
+                r#type: "button",
+                class: "icon-btn profile-close only-mobile",
+                title: "Đóng",
+                aria_label: "Đóng",
+                onclick: move |_| on_close.call(()),
+                CloseIcon {}
             }
             div { class: "details-scroll",
                 div { class: "details-hero",

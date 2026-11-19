@@ -14,7 +14,13 @@ use crate::{
     components::{
         avatar::Avatar,
         chat_extras::wallpaper_attrs,
-        icons::{BackIcon, BotIcon, CheckIcon, CloseIcon, CopyIcon, DownloadIcon, GroupIcon, PanelRightIcon, PluginIcon, PlusIcon, RefreshIcon, SendIcon, SlidersIcon, TrashIcon},
+        icons::{
+            BackIcon, BoltIcon, BotIcon, BuildingIcon, CalcIcon, CalendarIcon, CheckIcon,
+            ClipboardCheckIcon, CloseIcon, CoinIcon, CompassIcon, CopyIcon, DiceIcon,
+            DownloadIcon, GlobeIcon, GroupIcon, HelpCircleIcon, ListChecksIcon, LogInIcon,
+            LogOutIcon, MegaphoneIcon, PanelRightIcon, PluginIcon, PlusIcon, RefreshIcon,
+            SendIcon, SlidersIcon, TrashIcon, TypeIcon, VicoAiIcon, VideoIcon,
+        },
         messages::{Composer, MessageList, ViewMessage},
     },
     models::{BotChatMessage, BotItem, GroupItem},
@@ -38,6 +44,8 @@ pub struct PluginCommand {
     pub trigger: String,
     pub description: String,
     pub response: String,
+    #[serde(default)]
+    pub icon: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -152,10 +160,10 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/craft".into(), description: "Tạo vật phẩm".into(), response: "⛏ [{user}] đã chế tạo thành công!".into() },
-                PluginCommand { trigger: "/coords".into(), description: "Xem tọa độ".into(), response: "🧭 Tọa độ của {user}: X: 128, Y: 64, Z: -256".into() },
-                PluginCommand { trigger: "/seed".into(), description: "Mã ngẫu nhiên".into(), response: "🌱 Seed: 849201749201 · Số: {rand100}".into() },
-                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc".into(), response: "🎲 {user} tung xúc xắc được: {dice}".into() },
+                PluginCommand { trigger: "/craft".into(), description: "Tạo vật phẩm".into(), response: "⛏ [{user}] đã chế tạo thành công!".into(), icon: "svg:voxel".into() },
+                PluginCommand { trigger: "/coords".into(), description: "Xem tọa độ".into(), response: "🧭 Tọa độ của {user}: X: 128, Y: 64, Z: -256".into(), icon: "svg:compass".into() },
+                PluginCommand { trigger: "/seed".into(), description: "Mã ngẫu nhiên".into(), response: "🌱 Seed: 849201749201 · Số: {rand100}".into(), icon: "svg:code".into() },
+                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc".into(), response: "🎲 {user} tung xúc xắc được: {dice}".into(), icon: "svg:dice".into() },
             ],
             auto_reply: String::new(),
             webhook_url: String::new(),
@@ -210,8 +218,8 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/neon".into(), description: "Kích hoạt hiệu ứng".into(), response: "⚡ Hệ thống đồng bộ {rand100}%".into() },
-                PluginCommand { trigger: "/status".into(), description: "Kiểm tra trạng thái".into(), response: "🛰 Trực tuyến · Mã hóa E2EE P-256 + AES-256-GCM".into() },
+                PluginCommand { trigger: "/neon".into(), description: "Kích hoạt hiệu ứng".into(), response: "⚡ Hệ thống đồng bộ {rand100}%".into(), icon: "svg:cyber".into() },
+                PluginCommand { trigger: "/status".into(), description: "Kiểm tra trạng thái".into(), response: "🛰 Trực tuyến · Mã hóa E2EE P-256 + AES-256-GCM".into(), icon: "svg:globe".into() },
             ],
             auto_reply: String::new(),
             webhook_url: String::new(),
@@ -266,8 +274,8 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             server_bot_id: None,
             bot_enabled: false,
             commands: vec![
-                PluginCommand { trigger: "/sakura".into(), description: "Gửi lời chúc".into(), response: "🌸 Chúc {user} một ngày tốt lành lúc {time}".into() },
-                PluginCommand { trigger: "/fortune".into(), description: "Rút quẻ may mắn".into(), response: "🎴 Năng lượng của {user}: {rand100}/100".into() },
+                PluginCommand { trigger: "/sakura".into(), description: "Gửi lời chúc".into(), response: "🌸 Chúc {user} một ngày tốt lành lúc {time}".into(), icon: "svg:sakura".into() },
+                PluginCommand { trigger: "/fortune".into(), description: "Rút quẻ may mắn".into(), response: "🎴 Năng lượng của {user}: {rand100}/100".into(), icon: "svg:sakura".into() },
             ],
             auto_reply: String::new(),
             webhook_url: String::new(),
@@ -322,8 +330,8 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             server_bot_id: None,
             bot_enabled: false,
             commands: vec![
-                PluginCommand { trigger: "/todo".into(), description: "Thêm việc cần làm".into(), response: "✅ Đã thêm việc cho {user}: {args}".into() },
-                PluginCommand { trigger: "/note".into(), description: "Lưu ghi chú".into(), response: "📝 Đã lưu ghi chú lúc {time}: {args}".into() },
+                PluginCommand { trigger: "/todo".into(), description: "Thêm việc cần làm".into(), response: "✅ Đã thêm việc cho {user}: {args}".into(), icon: "svg:todo".into() },
+                PluginCommand { trigger: "/note".into(), description: "Lưu ghi chú".into(), response: "📝 Đã lưu ghi chú lúc {time}: {args}".into(), icon: "svg:notes".into() },
             ],
             auto_reply: String::new(),
             webhook_url: String::new(),
@@ -360,7 +368,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             server_bot_id: None,
             bot_enabled: false,
             commands: vec![
-                PluginCommand { trigger: "/sound".into(), description: "Phát âm thanh".into(), response: "🔊 Đã phát âm thanh cho {user}".into() },
+                PluginCommand { trigger: "/sound".into(), description: "Phát âm thanh".into(), response: "🔊 Đã phát âm thanh cho {user}".into(), icon: "logo:sound".into() },
             ],
             auto_reply: String::new(),
             webhook_url: String::new(),
@@ -397,11 +405,11 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc 1-6".into(), response: "🎲 Kết quả xúc xắc của {user}: {dice}".into() },
-                PluginCommand { trigger: "/flip".into(), description: "Tung đồng xu".into(), response: "🪙 Đồng xu rơi vào mặt: {coin}".into() },
-                PluginCommand { trigger: "/time".into(), description: "Xem giờ hiện tại".into(), response: "🕒 Giờ hiện tại: {time} · {date}".into() },
-                PluginCommand { trigger: "/calc".into(), description: "Tính biểu thức".into(), response: "🧮 Kết quả: {calc}".into() },
-                PluginCommand { trigger: "/upper".into(), description: "Chữ in hoa".into(), response: "🔠 {upper}".into() },
+                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc 1-6".into(), response: "🎲 Kết quả xúc xắc của {user}: {dice}".into(), icon: "svg:dice".into() },
+                PluginCommand { trigger: "/flip".into(), description: "Tung đồng xu".into(), response: "🪙 Đồng xu rơi vào mặt: {coin}".into(), icon: "svg:coin".into() },
+                PluginCommand { trigger: "/time".into(), description: "Xem giờ hiện tại".into(), response: "🕒 Giờ hiện tại: {time} · {date}".into(), icon: "svg:clock".into() },
+                PluginCommand { trigger: "/calc".into(), description: "Tính biểu thức".into(), response: "🧮 Kết quả: {calc}".into(), icon: "svg:calc".into() },
+                PluginCommand { trigger: "/upper".into(), description: "Chữ in hoa".into(), response: "🔠 {upper}".into(), icon: "svg:upper".into() },
             ],
             auto_reply: "Đã nhận tin nhắn từ {user}. Gõ /help để xem danh sách lệnh nhanh.".into(),
             webhook_url: String::new(),
@@ -672,6 +680,24 @@ pub fn PluginGlyph(icon: String, #[props(default)] logo_url: String, #[props(def
                     path { d: "M8 10l3 2.5-3 2.5M12.5 15h3.5" }
                 }
             },
+            "vico" => rsx! { VicoAiIcon { size } },
+            "dice" => rsx! { span { style: "color: #7C3AED; display: inline-flex;", DiceIcon { size } } },
+            "coin" => rsx! { span { style: "color: #D97706; display: inline-flex;", CoinIcon { size } } },
+            "calc" => rsx! { span { style: "color: #059669; display: inline-flex;", CalcIcon { size } } },
+            "upper" => rsx! { span { style: "color: #0D9488; display: inline-flex;", TypeIcon { size } } },
+            "help" => rsx! { span { style: "color: #6366F1; display: inline-flex;", HelpCircleIcon { size } } },
+            "compass" => rsx! { span { style: "color: #0284C7; display: inline-flex;", CompassIcon { size } } },
+            "globe" => rsx! { span { style: "color: #2563EB; display: inline-flex;", GlobeIcon { size } } },
+            "todo" => rsx! { span { style: "color: #16A34A; display: inline-flex;", ListChecksIcon { size } } },
+            "workspace" => rsx! { span { style: "color: #2563EB; display: inline-flex;", BuildingIcon { size } } },
+            "task" => rsx! { span { style: "color: #16A34A; display: inline-flex;", ListChecksIcon { size } } },
+            "checkin" => rsx! { span { style: "color: #16A34A; display: inline-flex;", LogInIcon { size } } },
+            "checkout" => rsx! { span { style: "color: #DC2626; display: inline-flex;", LogOutIcon { size } } },
+            "leave" => rsx! { span { style: "color: #0891B2; display: inline-flex;", CalendarIcon { size } } },
+            "meet" => rsx! { span { style: "color: #4F46E5; display: inline-flex;", VideoIcon { size } } },
+            "approve" => rsx! { span { style: "color: #7C3AED; display: inline-flex;", ClipboardCheckIcon { size } } },
+            "announce" => rsx! { span { style: "color: #EA580C; display: inline-flex;", MegaphoneIcon { size } } },
+            "bolt" => rsx! { span { style: "color: #EAB308; display: inline-flex;", BoltIcon { size } } },
             _ => rsx! { PluginIcon { size } },
         };
     }
@@ -746,6 +772,52 @@ pub fn enabled_rail_pages() -> Vec<(String, String, String, String)> {
         .collect()
 }
 
+/// Resolves the most accurate icon/logo pair for a slash command trigger.
+pub fn resolve_command_icon(trigger: &str, cmd_icon: &str, plugin_icon: &str, plugin_logo: &str) -> (String, String) {
+    let custom = cmd_icon.trim();
+    if !custom.is_empty() {
+        if custom.starts_with("svg:") || custom.starts_with("logo:") || custom.starts_with("<svg") || custom.starts_with('/') || custom.starts_with("http") || custom.starts_with("data:") {
+            return (String::new(), custom.to_string());
+        }
+        return (custom.to_string(), String::new());
+    }
+    let plogo = plugin_logo.trim();
+    let has_brand_logo = plogo.starts_with("logo:") || plogo.starts_with("<svg") || plogo.starts_with('/') || plogo.starts_with("http") || plogo.starts_with("data:");
+    match trigger.trim().to_lowercase().as_str() {
+        "/roll" | "/dice" => (String::new(), "svg:dice".into()),
+        "/flip" | "/coin" => (String::new(), "svg:coin".into()),
+        "/time" | "/timer" | "/uptime" | "/clock" => (String::new(), "svg:clock".into()),
+        "/calc" | "/math" => (String::new(), "svg:calc".into()),
+        "/upper" | "/lower" | "/text" => (String::new(), "svg:upper".into()),
+        "/sound" | "/sfx" | "/play" => {
+            if has_brand_logo {
+                (String::new(), plogo.to_string())
+            } else {
+                (String::new(), "svg:sound".into())
+            }
+        }
+        "/craft" => (String::new(), "svg:voxel".into()),
+        "/coords" | "/pos" => (String::new(), "svg:compass".into()),
+        "/seed" => (String::new(), "svg:code".into()),
+        "/neon" | "/bolt" => (String::new(), "svg:cyber".into()),
+        "/status" => (String::new(), "svg:globe".into()),
+        "/sakura" | "/fortune" => (String::new(), "svg:sakura".into()),
+        "/todo" => (String::new(), "svg:todo".into()),
+        "/note" | "/notes" => (String::new(), "svg:notes".into()),
+        "/help" => (String::new(), "svg:help".into()),
+        "/workspace" => (String::new(), "svg:workspace".into()),
+        "/task" => (String::new(), "svg:task".into()),
+        "/checkin" => (String::new(), "svg:checkin".into()),
+        "/checkout" => (String::new(), "svg:checkout".into()),
+        "/leave" => (String::new(), "svg:leave".into()),
+        "/meet" => (String::new(), "svg:meet".into()),
+        "/approve" => (String::new(), "svg:approve".into()),
+        "/announce" => (String::new(), "svg:announce".into()),
+        "/vico" | "/ai" => (String::new(), "svg:vico".into()),
+        _ => (plugin_icon.to_string(), plugin_logo.to_string()),
+    }
+}
+
 /// Enabled `/commands` across all active Plugins for the Composer `/` autocomplete popup.
 pub fn enabled_slash_commands() -> Vec<(String, String, String, String)> {
     let mut out = Vec::new();
@@ -754,12 +826,13 @@ pub fn enabled_slash_commands() -> Vec<(String, String, String, String)> {
         for c in &p.commands {
             let tr = c.trigger.trim();
             if tr.starts_with('/') && seen.insert(tr.to_lowercase()) {
-                out.push((p.icon.clone(), p.logo_url.clone(), tr.to_string(), c.description.clone()));
+                let (ic, lg) = resolve_command_icon(tr, &c.icon, &p.icon, &p.logo_url);
+                out.push((ic, lg, tr.to_string(), c.description.clone()));
             }
         }
     }
     if !out.is_empty() && seen.insert("/help".to_string()) {
-        out.push(("🧩".into(), "svg:plugin".into(), "/help".into(), "Xem tất cả lệnh đang bật".into()));
+        out.push((String::new(), "svg:help".into(), "/help".into(), "Xem tất cả lệnh đang bật".into()));
     }
     out
 }
@@ -1320,13 +1393,8 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
         return rsx! {
             div { class: "chat-main-container",
                 div { class: "chat-column plugin-panel {wp_cls}", style: "{wp_style}",
-                    header { class: "chat-header",
+                    header { class: "chat-header only-mobile",
                         button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
-                        div { class: "chat-header-identity",
-                            div { class: "chat-header-info",
-                                h2 { class: "chat-header-title", "Plugin" }
-                            }
-                        }
                     }
                     div { class: "plugin-custom-stage",
                         div { class: "settings-content", style: "max-width: 66rem; width: 100%; margin: 0 auto;",
@@ -2529,7 +2597,6 @@ pub fn PluginChatView(
                             } else {
                                 span { class: "bot-header-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: glyph_slot_size(&header_logo, 20, 38) } }
                             }
-                            span { class: "avatar-plugin-badge", "Plugin" }
                         }
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "{bot.display_name}" }
@@ -2753,7 +2820,7 @@ pub fn PluginsSettings(
                             server_bot_id: Some(sb.id.clone()),
                             bot_enabled: true,
                             commands: vec![
-                                PluginCommand { trigger: "/start".into(), description: "Khởi động plugin".into(), response: format!("Xin chào {{user}}! Đây là plugin @{}.", sb.username) },
+                                PluginCommand { trigger: "/start".into(), description: "Khởi động plugin".into(), response: format!("Xin chào {{user}}! Đây là plugin @{}.", sb.username), icon: String::new() },
                             ],
                             auto_reply: String::new(),
                             webhook_url: String::new(),
@@ -2843,7 +2910,7 @@ pub fn PluginsSettings(
                 server_bot_id: srv_id,
                 bot_enabled: true,
                 commands: vec![
-                    PluginCommand { trigger: "/hello".into(), description: "Chào người dùng".into(), response: format!("{ic} Xin chào {{user}} từ Plugin {d}!") },
+                    PluginCommand { trigger: "/hello".into(), description: "Chào người dùng".into(), response: format!("{ic} Xin chào {{user}} từ Plugin {d}!"), icon: String::new() },
                 ],
                 auto_reply: String::new(),
                 webhook_url: String::new(),
@@ -3812,7 +3879,7 @@ pub fn PluginsSettings(
                                 let d = if cmd_desc().trim().is_empty() { "Lệnh tùy chỉnh".to_string() } else { cmd_desc().trim().to_string() };
                                 update_plugin(&id, &|p| {
                                     p.bot_enabled = true;
-                                    p.commands.push(PluginCommand { trigger: trig.clone(), description: d.clone(), response: resp.clone() });
+                                    p.commands.push(PluginCommand { trigger: trig.clone(), description: d.clone(), response: resp.clone(), icon: String::new() });
                                 });
                                 cmd_trigger.set(String::new());
                                 cmd_desc.set(String::new());
@@ -3823,18 +3890,24 @@ pub fn PluginsSettings(
                     }
                     div { class: "mod-todo-list",
                         for (ci, c) in em.commands.iter().enumerate() {
-                            div { key: "{ci}", class: "mod-todo-row",
-                                code { class: "kbd", "{c.trigger}" }
-                                span { class: "settings-label", "{c.description}" }
-                                span { class: "grow member-sub", "→ {c.response}" }
-                                button {
-                                    r#type: "button",
-                                    class: "icon-btn danger",
-                                    onclick: {
-                                        let id = eid_bot.clone();
-                                        move |_| update_plugin(&id, &|p| { if ci < p.commands.len() { p.commands.remove(ci); } })
-                                    },
-                                    TrashIcon { size: 15 }
+                            {
+                                let (c_ic, c_lg) = resolve_command_icon(&c.trigger, &c.icon, &em.icon, &em.logo_url);
+                                rsx! {
+                                    div { key: "{ci}", class: "mod-todo-row",
+                                        PluginGlyph { icon: c_ic, logo_url: c_lg, size: 18 }
+                                        code { class: "kbd", "{c.trigger}" }
+                                        span { class: "settings-label", "{c.description}" }
+                                        span { class: "grow member-sub", "→ {c.response}" }
+                                        button {
+                                            r#type: "button",
+                                            class: "icon-btn danger",
+                                            onclick: {
+                                                let id = eid_bot.clone();
+                                                move |_| update_plugin(&id, &|p| { if ci < p.commands.len() { p.commands.remove(ci); } })
+                                            },
+                                            TrashIcon { size: 15 }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -3958,6 +4031,18 @@ mod tests {
         val.as_object_mut().unwrap().remove("installed");
         let parsed: PluginMod = serde_json::from_value(val).unwrap();
         assert!(parsed.installed);
+    }
+
+    #[test]
+    fn command_icons_resolve_distinct_vectors_instead_of_bot_logo() {
+        assert_eq!(resolve_command_icon("/roll", "", "🤖", "logo:clock"), (String::new(), "svg:dice".into()));
+        assert_eq!(resolve_command_icon("/flip", "", "🤖", "logo:clock"), (String::new(), "svg:coin".into()));
+        assert_eq!(resolve_command_icon("/time", "", "🤖", "logo:clock"), (String::new(), "svg:clock".into()));
+        assert_eq!(resolve_command_icon("/calc", "", "🤖", "logo:clock"), (String::new(), "svg:calc".into()));
+        assert_eq!(resolve_command_icon("/upper", "", "🤖", "logo:clock"), (String::new(), "svg:upper".into()));
+        assert_eq!(resolve_command_icon("/sound", "", "🎹", "logo:sound"), (String::new(), "logo:sound".into()));
+        assert_eq!(resolve_command_icon("/workspace", "", "", ""), (String::new(), "svg:workspace".into()));
+        assert_eq!(resolve_command_icon("/task", "", "", ""), (String::new(), "svg:task".into()));
     }
 }
 

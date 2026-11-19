@@ -454,8 +454,8 @@ async fn handle_update_profile(
         r#"
         UPDATE users
         SET bio = COALESCE($1, bio),
-            status_text = COALESCE($2, status_text),
-            status_emoji = COALESCE($3, status_emoji),
+            status_text = CASE WHEN $2::text IS NULL THEN status_text WHEN $2 = '' THEN NULL ELSE $2 END,
+            status_emoji = CASE WHEN $3::text IS NULL THEN status_emoji WHEN $3 = '' THEN NULL ELSE $3 END,
             presence = COALESCE($4, presence),
             display_name = COALESCE($5, display_name),
             custom_banner_url = COALESCE($6, custom_banner_url),
@@ -511,10 +511,12 @@ async fn handle_update_profile(
     .fetch_all(&state.db)
     .await?;
 
+    let mut recipients = friend_ids;
+    recipients.push(user.id);
     state
         .ws_hub
         .send_to_users(
-            &friend_ids,
+            &recipients,
             crate::websocket::WsEvent::UserPresenceUpdate {
                 user_id: user.id,
                 presence: row.presence.clone(),

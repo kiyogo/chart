@@ -52,7 +52,7 @@ pub const ENT_PERMS_META: [(i64, &str, &str); 23] = [
     (ent_perm::MANAGE_ENTERPRISE, "Cấu hình không gian doanh nghiệp", "Bật tắt phân hệ làm việc, giao diện và quy định chung"),
     (ent_perm::VIEW_AUDIT, "Xem nhật ký kiểm tra", "Theo dõi toàn bộ thao tác thay đổi trên máy chủ doanh nghiệp"),
     (ent_perm::MANAGE_INTEGRATIONS, "Quản lý tích hợp ngoài", "Cấu hình webhook và kết nối hệ thống bên thứ ba"),
-    (ent_perm::MANAGE_AI, "Quản lý trợ lý AI doanh nghiệp", "Bật tắt và cấu hình tính năng tóm tắt bằng AI"),
+    (ent_perm::MANAGE_AI, "Quản lý Vico AI doanh nghiệp", "Bật tắt và cấu hình tính năng tóm tắt bằng Vico AI"),
     (ent_perm::MANAGE_AUTOMATION, "Quản lý quy trình tự động hóa", "Tạo và điều khiển luật tự động chạy theo sự kiện"),
     (ent_perm::POST_ANNOUNCEMENTS, "Đăng thông báo nội bộ", "Gửi thông báo toàn công ty hoặc theo phòng ban"),
     (ent_perm::MANAGE_MEETINGS, "Quản lý tất cả cuộc họp", "Xem và điều phối toàn bộ lịch họp nội bộ"),
@@ -72,7 +72,7 @@ pub const MODULE_DEFS: [(&str, &str); 15] = [
     ("documents", "Tài liệu"),
     ("announcements", "Thông báo"),
     ("reports", "Báo cáo"),
-    ("ai", "Trợ lý AI"),
+    ("ai", "Vico AI"),
     ("automation", "Tự động hóa"),
 ];
 

@@ -152,7 +152,7 @@ pub fn DecoratedAvatar(
     let budget = try_consume_context::<crate::prefs::PrefsCtx>().map(|c| c.prefs.read().avatar_fx_lists.clone()).unwrap_or_else(|| "hover".into());
     let motion = motion.filter(|m| m.is_valid()).or_else(|| legacy_motion(avatar_effect.as_deref()));
     let motion = if in_list && budget == "off" { None } else { motion };
-    let (mcls, mstyle) = motion.as_ref().map(|m| m.render_attrs(in_list && budget == "hover")).unwrap_or_default();
+    let (mcls, mstyle) = motion.as_ref().map(|m| m.render_attrs(false)).unwrap_or_default();
     let kind = mcls.split(' ').find_map(|c| c.strip_prefix("avm-k-")).unwrap_or_default().to_string();
     let mut on = use_signal(|| false);
     let click = mcls.contains("avm-t-click");

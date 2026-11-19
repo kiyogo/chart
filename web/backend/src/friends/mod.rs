@@ -52,6 +52,7 @@ pub struct FriendItem {
     pub profile_color: Option<String>,
     pub status_text: Option<String>,
     pub status_emoji: Option<String>,
+    pub presence: String,
     /// Avatar decoration and validated avatar motion (spec 009).
     pub avatar_decoration: Option<String>,
     pub avatar_motion: Option<crate::profile_ext::AvatarMotion>,
@@ -374,7 +375,7 @@ async fn handle_list_friends(
             u.username as "username!",
             u.avatar_url as "avatar_url",
             u.display_name, u.nameplate, u.custom_nameplate_url, u.name_effect, u.profile_color,
-            u.status_text, u.status_emoji, u.avatar_decoration, u.avatar_motion
+            u.status_text, u.status_emoji, u.presence, u.avatar_decoration, u.avatar_motion
         FROM friendships f
         JOIN users u ON u.id = (CASE WHEN f.user_a = $1 THEN f.user_b ELSE f.user_a END)
         WHERE f.user_a = $1 OR f.user_b = $1
@@ -398,6 +399,7 @@ async fn handle_list_friends(
             profile_color: r.profile_color,
             status_text: r.status_text,
             status_emoji: r.status_emoji,
+            presence: r.presence,
             avatar_decoration: Some(r.avatar_decoration),
             avatar_motion: crate::profile_ext::parse_motion(r.avatar_motion.as_ref()),
         })

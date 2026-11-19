@@ -9,6 +9,7 @@ use crate::{
         calls::{ActiveCallOverlay, IncomingCallModal},
         details_panel::DmDetailsPanel,
         enterprise::{EnterpriseWorkspace, tasks_projects::CreateTaskFromMsgDialog},
+        feed_view::FeedView,
         groups::{AddMemberModal, CreateGroupModal, GroupInfoPanel},
         icons::{
             BackIcon, BlockIcon, DevicesIcon, GroupIcon, HashIcon, MessageIcon, MicIcon, MicOffIcon, MoreIcon,
@@ -31,7 +32,9 @@ use crate::{
         profile_modal::{ProfileModal, ProfilePopover},
         guide::WelcomeTour,
         quick_switcher::QuickSwitcher,
+        server_members_panel::{ServerHeaderTools, ServerMembersPanel},
         settings_view::SettingsView,
+        vico_ai_view::VicoAiView,
     },
     prefs::{Prefs, PrefsCtx},
     crypto::e2ee::{
@@ -42,9 +45,9 @@ use crate::{
     models::{
         CallSessionItem, ChannelItem, ChannelMessageItem, DisplayMessage, FriendItem,
         GroupCategoryItem, GroupChannelItem, GroupItem, GroupMessageItem, GroupReactionItem,
-        MessageStatus, PendingRequestItem, ServerCategoryItem, ServerItem, UserSearchResult,
-        VoiceStateItem, WsEvent, BotItem, BusinessData, ChatLabel, ConvPref, GroupMemberItem, GroupSettings,
-        PrivacySettings, SessionItem,
+        MessageStatus, PendingRequestItem, ServerCategoryItem, ServerItem, ServerMemberItem,
+        UserSearchResult, VoiceStateItem, WsEvent, BotItem, BusinessData, ChatLabel, ConvPref,
+        GroupMemberItem, GroupSettings, PrivacySettings, SessionItem,
     },
     platform,
     services::{api, calls, dm, enterprise, groups, library, social, ws},
@@ -145,8 +148,11 @@ pub fn Chat(
     let mut is_sending = use_signal(|| false);
     let mut is_settings_open = use_signal(|| false);
 
-    // Avatar state
+    // Avatar & status note state
     let mut my_avatar_url = use_signal(|| current_user_avatar_url.clone());
+    let mut my_status_text = use_signal(|| Option::<String>::None);
+    let mut my_status_emoji = use_signal(|| Option::<String>::None);
+    let mut feed_refresh_tick = use_signal(|| 0u64);
 
     // Partner Info Sidebar (responsive auto-open on >= 1024px)
     let mut is_partner_info_open = use_signal(|| platform::initial_window_width() >= 1280);
@@ -164,6 +170,9 @@ pub fn Chat(
     let mut highlight_msg = use_signal(|| Option::<String>::None);
     let mut servers = use_signal(Vec::<ServerItem>::new);
     let mut selected_server = use_signal(|| Option::<ServerItem>::None);
+    let mut server_members = use_signal(Vec::<ServerMemberItem>::new);
+    let mut server_roles = use_signal(Vec::<social::ServerRole>::new);
+    let mut is_server_members_open = use_signal(|| false);
     let mut enterprise_config = use_signal(|| Option::<enterprise::EnterpriseConfig>::None);
     let mut active_ent_module = use_signal(|| Option::<String>::None);
     let mut ent_refresh_tick = use_signal(|| 0u64);
@@ -324,7 +333,12 @@ pub fn Chat(
     });
 
     let reload_social = use_callback(move |_: ()| {
+        let me_uid = my_id_sig.peek().clone();
         spawn(async move {
+            if let Ok(me_prof) = api::get_user_profile(&me_uid).await {
+                my_status_text.set(me_prof.status_text.filter(|s| !s.trim().is_empty()));
+                my_status_emoji.set(me_prof.status_emoji.filter(|s| !s.trim().is_empty()));
+            }
             if let Ok(p) = social::privacy_get().await {
                 privacy.set(p);
             }
@@ -1058,6 +1072,55 @@ pub fn Chat(
                         if let Ok(list) = api::friends_list().await {
                             friends.set(list);
                         }
+                        if let Some(srv) = selected_server.peek().clone() {
+                            if let Ok(ms) = api::servers_get_members(&srv.id).await {
+                                server_members.set(ms);
+                            }
+                        }
+                    }
+                    WsEvent::UserPresenceUpdate(v) => {
+                        let uid = v.get("user_id").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+                        let pres = v.get("presence").and_then(|x| x.as_str()).map(str::to_string);
+                        let st = v.get("status_text").and_then(|x| x.as_str()).map(str::to_string).filter(|s| !s.trim().is_empty());
+                        let se = v.get("status_emoji").and_then(|x| x.as_str()).map(str::to_string).filter(|s| !s.trim().is_empty());
+                        if uid == *my_id_sig.peek() {
+                            my_status_text.set(st.clone());
+                            my_status_emoji.set(se.clone());
+                        }
+                        if !uid.is_empty() {
+                            friends.with_mut(|list| {
+                                if let Some(fr) = list.iter_mut().find(|f| f.id == uid) {
+                                    if let Some(ref p) = pres {
+                                        fr.presence = Some(p.clone());
+                                    }
+                                    fr.status_text = st.clone();
+                                    fr.status_emoji = se.clone();
+                                }
+                            });
+                            active_friend.with_mut(|af| {
+                                if let Some(fr) = af.as_mut() {
+                                    if fr.id == uid {
+                                        if let Some(ref p) = pres {
+                                            fr.presence = Some(p.clone());
+                                        }
+                                        fr.status_text = st.clone();
+                                        fr.status_emoji = se.clone();
+                                    }
+                                }
+                            });
+                            server_members.with_mut(|list| {
+                                if let Some(m) = list.iter_mut().find(|x| x.user_id == uid) {
+                                    if let Some(ref p) = pres {
+                                        m.presence = Some(p.clone());
+                                    }
+                                    m.status_text = st.clone();
+                                    m.status_emoji = se.clone();
+                                }
+                            });
+                        }
+                    }
+                    WsEvent::FeedUpdated(_) => {
+                        feed_refresh_tick.set(feed_refresh_tick() + 1);
                     }
                     WsEvent::PrefsUpdated(_) => {
                         if let Ok(p) = social::prefs_list().await {
@@ -1209,7 +1272,11 @@ pub fn Chat(
         channel_messages.set(Vec::new());
         server_categories.set(Vec::new());
         channels.set(Vec::new());
+        server_members.set(Vec::new());
+        server_roles.set(Vec::new());
         spawn(async move {
+            let vw = platform::get_viewport_width().await;
+            is_server_members_open.set(vw >= 1100);
             if srv.is_enterprise {
                 if let Ok(ecfg) = enterprise::get_config(&srv.id).await {
                     enterprise_config.set(Some(ecfg));
@@ -1217,6 +1284,12 @@ pub fn Chat(
             }
             if let Ok(cats) = api::servers_get_categories(&srv.id).await {
                 server_categories.set(cats);
+            }
+            if let Ok(ms) = api::servers_get_members(&srv.id).await {
+                server_members.set(ms);
+            }
+            if let Ok(rs) = social::server_roles(&srv.id).await {
+                server_roles.set(rs);
             }
             // Community emoji / stickers for the pickers, my permissions, and the welcome screen.
             crate::services::community::activate(&srv.id).await;
@@ -1230,7 +1303,7 @@ pub fn Chat(
                 let first_text = chs.iter().find(|c| c.channel_type == "text").cloned();
                 channels.set(chs);
                 // On wide screens open the first text channel; on mobile keep the channel list visible.
-                if platform::get_viewport_width().await >= 768
+                if vw >= 768
                     && let Some(first) = first_text {
                         select_channel(first);
                     }
@@ -1373,6 +1446,7 @@ pub fn Chat(
             profile_color: None,
             status_text: None,
             status_emoji: None,
+            presence: None,
             avatar_url: None,
             avatar_decoration: None,
             avatar_motion: None,
@@ -1887,7 +1961,7 @@ pub fn Chat(
         || active_bot().is_some()
         || active_mod_page.is_some()
         || is_settings_open()
-        || nav_section() == NavSection::Search;
+        || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi);
     let section = if is_settings_open() { NavSection::Settings } else { nav_section() };
 
     let start_call = move |kind: &'static str, user: Option<String>, group: Option<String>| {
@@ -2241,6 +2315,14 @@ pub fn Chat(
                     is_settings_open.set(false);
                     nav_section.set(NavSection::Search);
                 },
+                on_select_feed: move |_| {
+                    is_settings_open.set(false);
+                    nav_section.set(NavSection::Feed);
+                },
+                on_select_vico_ai: move |_| {
+                    is_settings_open.set(false);
+                    nav_section.set(NavSection::VicoAi);
+                },
                 on_select_server: move |srv: ServerItem| select_server(srv),
                 on_select_group: move |g: GroupItem| select_group.call(g),
                 on_open_profile: {
@@ -2251,7 +2333,7 @@ pub fn Chat(
                 on_logout: move |_| on_logout.call(()),
             }
 
-            if section != NavSection::Settings && section != NavSection::Search && active_mod_page.is_none() {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() {
                 if let Some(lpid) = active_left_plugin.clone() {
                     aside { class: "nav-sidebar",
                         crate::components::plugins_view::PluginLeftAppView {
@@ -2300,6 +2382,18 @@ pub fn Chat(
                             on_labels_changed: move |l: Vec<ChatLabel>| chat_labels.set(l),
                             on_block: do_block,
                             on_mark_read: move |id: String| unread_counts.with_mut(|m| { m.remove(&id); }),
+                            my_username: current_username.clone(),
+                            my_avatar_url: my_avatar_url(),
+                            my_status_text: my_status_text(),
+                            my_status_emoji: my_status_emoji(),
+                            on_my_status_updated: move |(st, se)| {
+                                my_status_text.set(st);
+                                my_status_emoji.set(se);
+                            },
+                            on_note_reply: move |(fr, draft_txt): (FriendItem, String)| {
+                                select_friend.call(fr);
+                                input_text.set(draft_txt);
+                            },
                         }
                     },
                     community_groups: community_groups.clone(),
@@ -2458,6 +2552,33 @@ pub fn Chat(
                                 }
                             });
                         },
+                    }
+                } else if section == NavSection::Feed {
+                    FeedView {
+                        my_id: current_user_id.clone(),
+                        my_username: current_username.clone(),
+                        my_avatar_url: my_avatar_url(),
+                        my_status_text: my_status_text(),
+                        my_status_emoji: my_status_emoji(),
+                        friends: friends(),
+                        refresh_tick: feed_refresh_tick(),
+                        on_back: move |_| nav_section.set(NavSection::DirectMessages),
+                        on_my_status_updated: move |(st, se)| {
+                            my_status_text.set(st);
+                            my_status_emoji.set(se);
+                        },
+                        on_open_friend: move |f: FriendItem| select_friend.call(f),
+                        on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                        on_note_reply: move |(fr, draft_txt): (FriendItem, String)| {
+                            select_friend.call(fr);
+                            input_text.set(draft_txt);
+                        },
+                    }
+                } else if section == NavSection::VicoAi {
+                    VicoAiView {
+                        my_username: current_username.clone(),
+                        my_avatar_url: my_avatar_url(),
+                        on_back: move |_| nav_section.set(NavSection::DirectMessages),
                     }
                 } else if let Some(b) = active_bot() {
                     BotChatView {
@@ -3023,10 +3144,26 @@ pub fn Chat(
                         EnterpriseWorkspace {
                             server_id: srv.id.clone(),
                             server_name: srv.name.clone(),
+                            owner_id: srv.owner_id.clone(),
                             my_id: current_user_id.clone(),
                             module: mod_key,
                             cfg,
                             refresh_tick: ent_refresh_tick(),
+                            members: server_members(),
+                            roles: server_roles(),
+                            members_open: is_server_members_open(),
+                            on_toggle_members: move |_| is_server_members_open.set(!is_server_members_open()),
+                            on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                            on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
+                            on_jump_channel_msg: move |(cid, mid): (String, String)| {
+                                if let Some(target_ch) = channels.peek().iter().find(|c| c.id == cid).cloned() {
+                                    select_channel(target_ch);
+                                    spawn(async move {
+                                        platform::sleep_ms(140).await;
+                                        jump_to_message(mid);
+                                    });
+                                }
+                            },
                             on_select_module: move |m: String| active_ent_module.set(Some(m)),
                             on_close: move |_| active_ent_module.set(None),
                         }
@@ -3055,8 +3192,8 @@ pub fn Chat(
                                         }
                                     }
                                 }
-                                if ch.channel_type != "voice" {
-                                    div { class: "chat-header-actions",
+                                div { class: "chat-header-actions",
+                                    if ch.channel_type != "voice" {
                                         button { r#type: "button", class: "btn-ghost", title: "Sự kiện của cộng đồng", onclick: move |_| events_open.set(true),
                                             span { "📅" } span { class: "hide-mobile", "Sự kiện" } }
                                         button { r#type: "button", class: "btn-ghost", title: "Biệt danh, ảnh và giới thiệu riêng trong cộng đồng này", onclick: move |_| community_profile_open.set(true),
@@ -3074,6 +3211,34 @@ pub fn Chat(
                                             },
                                             MessageIcon { size: 16 }
                                             span { class: "hide-mobile", if popped_now { "Bỏ khỏi Tin nhắn" } else { "Đưa ra Tin nhắn" } }
+                                        }
+                                    }
+                                    if let Some(srv) = selected_server() {
+                                        ServerHeaderTools {
+                                            server_id: srv.id.clone(),
+                                            server_name: srv.name.clone(),
+                                            is_enterprise: srv.is_enterprise,
+                                            members: server_members(),
+                                            members_open: is_server_members_open(),
+                                            on_toggle_members: move |_| is_server_members_open.set(!is_server_members_open()),
+                                            on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                                            on_jump_channel_msg: move |(cid, mid): (String, String)| {
+                                                let same = selected_channel.peek().as_ref().map(|c| c.id == cid).unwrap_or(false);
+                                                if same {
+                                                    jump_to_message(mid);
+                                                } else if let Some(target_ch) = channels.peek().iter().find(|c| c.id == cid).cloned() {
+                                                    select_channel(target_ch);
+                                                    spawn(async move {
+                                                        platform::sleep_ms(140).await;
+                                                        jump_to_message(mid);
+                                                    });
+                                                }
+                                            },
+                                            on_open_ent_module: if srv.is_enterprise {
+                                                Some(EventHandler::new(move |m: String| active_ent_module.set(Some(m))))
+                                            } else {
+                                                None
+                                            },
                                         }
                                     }
                                 }
@@ -3103,6 +3268,7 @@ pub fn Chat(
                                             show_sender_names: true,
                                             intro_title: format!("Chào mừng đến #{}", ch.name),
                                             intro_sub: "Đây là khởi đầu của kênh. Tin nhắn kênh cộng đồng được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.".to_string(),
+                                            highlight_id: highlight_msg(),
                                             on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
                                             on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
                                             on_create_task: on_task_handler,
@@ -3119,14 +3285,14 @@ pub fn Chat(
                                     },
                                     extra_commands: if selected_server().is_some_and(|s| s.is_enterprise) {
                                         vec![
-                                            ("🏢".into(), String::new(), "/workspace".into(), "Mở bảng Tổng quan Không gian Doanh nghiệp".into()),
-                                            ("✅".into(), String::new(), "/task".into(), "Tạo công việc mới: /task <tiêu đề công việc>".into()),
-                                            ("🟢".into(), String::new(), "/checkin".into(), "Chấm công vào ca làm việc: /checkin [ghi chú]".into()),
-                                            ("🔴".into(), String::new(), "/checkout".into(), "Chấm công tan ca làm việc: /checkout [ghi chú]".into()),
-                                            ("🏖️".into(), String::new(), "/leave".into(), "Gửi đơn xin nghỉ phép: /leave <lý do>".into()),
-                                            ("📹".into(), String::new(), "/meet".into(), "Đặt lịch họp nhanh: /meet <tiêu đề cuộc họp>".into()),
-                                            ("📋".into(), String::new(), "/approve".into(), "Gửi đề xuất phê duyệt: /approve <tiêu đề đề xuất>".into()),
-                                            ("📢".into(), String::new(), "/announce".into(), "Đăng thông báo nội bộ: /announce <nội dung>".into()),
+                                            ("".into(), "svg:workspace".into(), "/workspace".into(), "Mở bảng Tổng quan Không gian Doanh nghiệp".into()),
+                                            ("".into(), "svg:task".into(), "/task".into(), "Tạo công việc mới: /task <tiêu đề công việc>".into()),
+                                            ("".into(), "svg:checkin".into(), "/checkin".into(), "Chấm công vào ca làm việc: /checkin [ghi chú]".into()),
+                                            ("".into(), "svg:checkout".into(), "/checkout".into(), "Chấm công tan ca làm việc: /checkout [ghi chú]".into()),
+                                            ("".into(), "svg:leave".into(), "/leave".into(), "Gửi đơn xin nghỉ phép: /leave <lý do>".into()),
+                                            ("".into(), "svg:meet".into(), "/meet".into(), "Đặt lịch họp nhanh: /meet <tiêu đề cuộc họp>".into()),
+                                            ("".into(), "svg:approve".into(), "/approve".into(), "Gửi đề xuất phê duyệt: /approve <tiêu đề đề xuất>".into()),
+                                            ("".into(), "svg:announce".into(), "/announce".into(), "Đăng thông báo nội bộ: /announce <nội dung>".into()),
                                         ]
                                     } else {
                                         Vec::new()
@@ -3211,6 +3377,18 @@ pub fn Chat(
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        if is_server_members_open() {
+                            if let Some(srv) = selected_server() {
+                                ServerMembersPanel {
+                                    owner_id: srv.owner_id.clone(),
+                                    members: server_members(),
+                                    roles: server_roles(),
+                                    on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
+                                    on_close: move |_| is_server_members_open.set(false),
                                 }
                             }
                         }
@@ -3421,7 +3599,21 @@ pub fn Chat(
                 crate::components::server_settings::ServerSettingsDialog {
                     server: srv.clone(),
                     my_id: current_user_id.clone(),
-                    on_close: move |_| server_settings_open.set(false),
+                    on_close: {
+                        let sid = srv.id.clone();
+                        move |_| {
+                            server_settings_open.set(false);
+                            let sid = sid.clone();
+                            spawn(async move {
+                                if let Ok(ms) = api::servers_get_members(&sid).await {
+                                    server_members.set(ms);
+                                }
+                                if let Ok(rs) = social::server_roles(&sid).await {
+                                    server_roles.set(rs);
+                                }
+                            });
+                        }
+                    },
                     on_enterprise_changed: move |_| {
                         let sid = srv.id.clone();
                         spawn(async move {
@@ -3442,6 +3634,12 @@ pub fn Chat(
                             }
                             if let Ok(chs) = api::servers_get_channels(&sid).await {
                                 channels.set(chs);
+                            }
+                            if let Ok(ms) = api::servers_get_members(&sid).await {
+                                server_members.set(ms);
+                            }
+                            if let Ok(rs) = social::server_roles(&sid).await {
+                                server_roles.set(rs);
                             }
                             ent_refresh_tick.set(ent_refresh_tick() + 1);
                         });

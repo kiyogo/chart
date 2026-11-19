@@ -531,11 +531,15 @@ pub fn AiPanel(server_id: String, cfg: EnterpriseConfig) -> Element {
         div { class: "ent-section",
             if !ai_enabled {
                 div { class: "ent-card",
-                    p { class: "ent-muted", "Trợ lý tổng hợp doanh nghiệp chỉ hoạt động khi quản trị viên bật trong Cài đặt máy chủ và không bao giờ đọc tin nhắn cá nhân mã hóa đầu cuối." }
+                    div { class: "ent-inline-bar",
+                        crate::components::icons::VicoAiIcon { size: 22 }
+                        p { class: "ent-muted", "Vico AI chỉ hoạt động trong không gian này khi quản trị viên bật trong Cài đặt máy chủ và không bao giờ đọc tin nhắn cá nhân mã hóa đầu cuối." }
+                    }
                 }
             } else {
                 div { class: "ent-card",
                     div { class: "ent-inline-bar",
+                        crate::components::icons::VicoAiIcon { size: 22 }
                         select { value: "{scope}", onchange: move |e| scope.set(e.value()),
                             option { value: "overview", "Tổng quan toàn công ty" }
                             option { value: "tasks", "Tiến độ công việc" }
@@ -551,11 +555,11 @@ pub fn AiPanel(server_id: String, cfg: EnterpriseConfig) -> Element {
                                             note.set(v.get("e2ee_note").and_then(|x| x.as_str()).map(str::to_string));
                                             err.set(None);
                                         }
-                                        Err(e) => err.set(Some(format!("Không chạy tổng hợp được: {}", e.code))),
+                                        Err(e) => err.set(Some(format!("Vico AI không chạy tổng hợp được: {}", e.code))),
                                     }
                                 });
                             }
-                        }, "Tạo bản tóm tắt" }
+                        }, "Tóm tắt bằng Vico AI" }
                     }
                     if let Some(e) = err() { div { class: "status-badge error", "{e}" } }
                     if let Some(s) = summary() {

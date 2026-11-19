@@ -18,8 +18,8 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache},
     calls, community,
     config::Config,
-    admin, bots, business, convo, crypto, db, directory, drawings, enterprise, friends, groups, library, messages, privacy, public_pages, servers,
-    profile_ext, profile_plus, security, stickers, typing, users, webrtc,
+    admin, bots, business, convo, crypto, db, directory, drawings, enterprise, feed, friends, groups, library, messages, privacy, public_pages, servers,
+    profile_ext, profile_plus, security, stickers, typing, users, vico, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -122,6 +122,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/users", users::routes())
         .nest("/keys", crypto::keys::routes())
         .nest("/friends", friends::routes())
+        .nest("/feed", feed::routes())
+        .nest("/vico", vico::routes())
         .nest("/groups", groups::routes())
         .nest("/calls", calls::routes())
         .nest("/messages", messages::routes())

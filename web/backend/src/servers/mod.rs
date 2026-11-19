@@ -9,6 +9,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde::Deserialize;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::{
@@ -22,7 +23,8 @@ use crate::{
 use crate::models::{
     ChannelItem, ChannelMessageItem, CreateCategoryRequest, CreateChannelRequest,
     CreateRoleRequest, CreateServerRequest, PostChannelMessageRequest, ServerCategoryItem,
-    ServerItem, ServerMemberItem, ServerRoleItem, permissions as perm_flags,
+    ServerItem, ServerMemberItem, ServerMessageSearchHit, ServerRoleItem,
+    permissions as perm_flags,
 };
 
 #[derive(Deserialize)]
@@ -31,10 +33,16 @@ pub struct ChannelMessagesQuery {
     pub limit: Option<i64>,
 }
 
+#[derive(Deserialize)]
+pub struct ServerSearchQuery {
+    pub q: Option<String>,
+}
+
 pub fn server_routes() -> Router<AppState> {
     Router::new()
         .route("/invite-preview/{code}", get(handle_invite_preview))
         .route("/{id}/settings", get(handle_get_settings).put(handle_update_settings))
+        .route("/{id}/search", get(handle_search_messages))
         .route("/", post(handle_create_server).get(handle_list_servers))
         .route("/discover", get(handle_discover_servers))
         .route("/join/{code}", post(handle_join_server_by_invite))
@@ -622,53 +630,149 @@ async fn handle_list_members(
     )
     .await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
-        SELECT m.server_id, m.user_id, u.username, m.nickname, u.avatar_url, m.joined_at
+        SELECT m.server_id, m.user_id, u.username, m.nickname,
+               COALESCE(m.avatar_url, u.avatar_url) AS avatar_url,
+               m.joined_at,
+               u.display_name, u.presence, u.status_text, u.status_emoji,
+               u.nameplate, u.custom_nameplate_url, u.name_effect, u.avatar_decoration
         FROM server_members m
         JOIN users u ON m.user_id = u.id
         WHERE m.server_id = $1
         ORDER BY m.joined_at ASC
         "#,
-        server_id
     )
+    .bind(server_id)
     .fetch_all(&state.db)
     .await?;
 
-    let role_rows = sqlx::query!(
+    let role_rows = sqlx::query(
         r#"
         SELECT user_id, role_id
         FROM server_member_roles
         WHERE server_id = $1
         "#,
-        server_id
     )
+    .bind(server_id)
     .fetch_all(&state.db)
     .await?;
 
     let mut user_roles: std::collections::HashMap<Uuid, Vec<Uuid>> =
         std::collections::HashMap::new();
     for r in role_rows {
-        user_roles.entry(r.user_id).or_default().push(r.role_id);
+        let uid: Uuid = r.get("user_id");
+        let rid: Uuid = r.get("role_id");
+        user_roles.entry(uid).or_default().push(rid);
     }
 
+    let ws_online = state.ws_hub.online_user_ids().await;
     let members = rows
         .into_iter()
         .map(|r| {
-            let roles = user_roles.remove(&r.user_id).unwrap_or_default();
+            let uid: Uuid = r.get("user_id");
+            let roles = user_roles.remove(&uid).unwrap_or_default();
+            let raw_pres: String = r.get("presence");
+            let eff_pres = match raw_pres.as_str() {
+                "idle" | "dnd" | "online" => raw_pres,
+                _ if ws_online.contains(&uid) => "online".to_string(),
+                _ => "offline".to_string(),
+            };
+            let clean_opt = |col: &str| -> Option<String> {
+                r.get::<Option<String>, _>(col).filter(|s| !s.trim().is_empty())
+            };
             ServerMemberItem {
-                server_id: r.server_id,
-                user_id: r.user_id,
-                username: r.username.unwrap_or_default(),
-                nickname: r.nickname,
-                avatar_url: r.avatar_url,
+                server_id: r.get("server_id"),
+                user_id: uid,
+                username: r.get::<Option<String>, _>("username").unwrap_or_default(),
+                nickname: r.get("nickname"),
+                avatar_url: r.get("avatar_url"),
                 roles,
-                joined_at: r.joined_at,
+                joined_at: r.get("joined_at"),
+                display_name: clean_opt("display_name"),
+                presence: Some(eff_pres),
+                status_text: clean_opt("status_text"),
+                status_emoji: clean_opt("status_emoji"),
+                nameplate: clean_opt("nameplate"),
+                custom_nameplate_url: clean_opt("custom_nameplate_url"),
+                name_effect: clean_opt("name_effect"),
+                avatar_decoration: clean_opt("avatar_decoration"),
             }
         })
         .collect();
 
     Ok(Json(members))
+}
+
+async fn handle_search_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(server_id): Path<Uuid>,
+    Query(query): Query<ServerSearchQuery>,
+) -> AppResult<Json<Vec<ServerMessageSearchHit>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    permissions::require_server_permission(
+        &state.db,
+        server_id,
+        user.id,
+        perm_flags::VIEW_CHANNELS,
+    )
+    .await?;
+
+    let term = query.q.as_deref().map(str::trim).unwrap_or("");
+    if term.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+    let pat = format!("%{}%", term.to_lowercase());
+    let is_admin = permissions::has_server_permission(
+        &state.db,
+        server_id,
+        user.id,
+        perm_flags::ADMINISTRATOR,
+    )
+    .await?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT m.id, m.channel_id, c.name AS channel_name, m.sender_id,
+               COALESCE(sm.nickname, NULLIF(u.display_name, ''), u.username, '') AS sender_name,
+               COALESCE(sm.avatar_url, u.avatar_url) AS sender_avatar_url,
+               m.content, m.created_at
+        FROM channel_messages m
+        JOIN channels c ON c.id = m.channel_id
+        JOIN users u ON u.id = m.sender_id
+        LEFT JOIN server_members sm ON sm.server_id = c.server_id AND sm.user_id = m.sender_id
+        WHERE c.server_id = $1
+          AND ($3::bool OR NOT c.is_private)
+          AND lower(m.content) LIKE $2
+        ORDER BY m.created_at DESC
+        LIMIT 25
+        "#,
+    )
+    .bind(server_id)
+    .bind(&pat)
+    .bind(is_admin)
+    .fetch_all(&state.db)
+    .await?;
+
+    let hits = rows
+        .into_iter()
+        .map(|r| ServerMessageSearchHit {
+            message_id: r.get("id"),
+            channel_id: r.get("channel_id"),
+            channel_name: r.get("channel_name"),
+            sender_id: r.get("sender_id"),
+            sender_name: r.get("sender_name"),
+            sender_avatar_url: r.get("sender_avatar_url"),
+            content: r.get("content"),
+            created_at: r.get("created_at"),
+        })
+        .collect();
+
+    Ok(Json(hits))
 }
 
 async fn handle_list_roles(

@@ -110,6 +110,34 @@ pub struct ServerMemberItem {
     pub avatar_url: Option<String>,
     pub roles: Vec<Uuid>,
     pub joined_at: DateTime<Utc>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub presence: Option<String>,
+    #[serde(default)]
+    pub status_text: Option<String>,
+    #[serde(default)]
+    pub status_emoji: Option<String>,
+    #[serde(default)]
+    pub nameplate: Option<String>,
+    #[serde(default)]
+    pub custom_nameplate_url: Option<String>,
+    #[serde(default)]
+    pub name_effect: Option<String>,
+    #[serde(default)]
+    pub avatar_decoration: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerMessageSearchHit {
+    pub message_id: Uuid,
+    pub channel_id: Uuid,
+    pub channel_name: String,
+    pub sender_id: Uuid,
+    pub sender_name: String,
+    pub sender_avatar_url: Option<String>,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

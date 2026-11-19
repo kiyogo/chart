@@ -208,6 +208,9 @@ pub enum WsEvent {
     /// Enterprise workspace state updated (config, tasks, HR, approvals, docs, meetings).
     #[serde(rename = "enterprise.event")]
     EnterpriseEvent(serde_json::Value),
+    /// Threads-style social feed post / reply / delete update.
+    #[serde(rename = "feed.updated")]
+    FeedUpdated(serde_json::Value),
 }
 
 pub struct WsHub {
@@ -272,6 +275,11 @@ impl WsHub {
                 }
             }
         }
+    }
+
+    pub async fn online_user_ids(&self) -> std::collections::HashSet<Uuid> {
+        let clients = self.clients.read().await;
+        clients.keys().copied().collect()
     }
 }
 

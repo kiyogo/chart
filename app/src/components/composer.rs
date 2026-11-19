@@ -507,12 +507,19 @@ pub fn Composer(
                                                 span { class: "suggest-main", "/{shortcut}" }
                                                 span { class: "suggest-sub", "{text}" }
                                             },
-                                            Suggest::PluginCmd { icon, logo, trigger, desc } => rsx! {
-                                                span { class: "suggest-cmd-badge",
-                                                    crate::components::plugins_view::PluginGlyph { icon, logo_url: logo, size: 15 }
+                                            Suggest::PluginCmd { icon, logo, trigger, desc } => {
+                                                let trimmed = logo.trim();
+                                                let has_icon_or_logo = !trimmed.is_empty();
+                                                let is_brand_or_custom = has_icon_or_logo && !trimmed.starts_with("svg:");
+                                                let badge_cls = if has_icon_or_logo { "suggest-cmd-badge has-logo" } else { "suggest-cmd-badge" };
+                                                let g_size = if is_brand_or_custom { 24 } else if has_icon_or_logo { 20 } else { 17 };
+                                                rsx! {
+                                                    span { class: "{badge_cls}",
+                                                        crate::components::plugins_view::PluginGlyph { icon, logo_url: logo, size: g_size }
+                                                    }
+                                                    span { class: "suggest-main", "{trigger}" }
+                                                    span { class: "suggest-sub", "{desc}" }
                                                 }
-                                                span { class: "suggest-main", "{trigger}" }
-                                                span { class: "suggest-sub", "{desc}" }
                                             },
                                         }
                                     }

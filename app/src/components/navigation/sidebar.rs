@@ -148,6 +148,8 @@ pub fn NavigationSidebar(
                         NavSection::DirectMessages => "Tin nhắn",
                         NavSection::Friends => "Bạn bè",
                         NavSection::Communities | NavSection::Server(_) => "Cộng đồng",
+                        NavSection::Feed => "Mới",
+                        NavSection::VicoAi => "Vico AI",
                         NavSection::Search => "Tìm kiếm",
                         NavSection::Settings => "Cài đặt",
                     }
@@ -175,7 +177,7 @@ pub fn NavigationSidebar(
 
             match active_section {
                 NavSection::DirectMessages if dm_content.is_some() => rsx! { {dm_content} },
-                NavSection::Search => rsx! {},
+                NavSection::Search | NavSection::Feed | NavSection::VicoAi => rsx! {},
                 NavSection::DirectMessages => rsx! {
                     div { class: "sidebar-search",
                         div { class: "search-field",
@@ -323,7 +325,7 @@ pub fn NavigationSidebar(
                             }
                         }
                     }
-                    div { class: "sidebar-scrollable",
+                    div { class: "sidebar-scrollable friends-scroll",
                         if !friend_input.trim().is_empty() {
                             div { class: "sidebar-section-header", span { "Kết quả tìm kiếm" } }
                             if search_results.is_empty() {
@@ -335,7 +337,7 @@ pub fn NavigationSidebar(
                                             Avatar {
                                                 name: user.username.clone(),
                                                 avatar_url: user.avatar_url.clone(),
-                                                size: 30,
+                                                size: 32,
                                             }
                                             span { class: "chat-item-name", "{user.username}" }
                                         }
@@ -377,19 +379,14 @@ pub fn NavigationSidebar(
                             }
                         }
 
-                        div { class: "sidebar-section-header",
-                            span { "Lời mời kết bạn" }
-                        }
-                        if pending_requests.is_empty() {
-                            div { class: "sidebar-empty", "Không có lời mời nào" }
-                        } else {
+                        if !pending_requests.is_empty() {
                             for req in pending_requests {
                                 div { class: "request-card", key: "{req.id}",
                                     div { class: "request-user",
                                         Avatar {
                                             name: req.sender_username.clone(),
                                             avatar_url: req.sender_avatar_url.clone(),
-                                            size: 30,
+                                            size: 32,
                                         }
                                         span { class: "chat-item-name", "{req.sender_username}" }
                                     }
@@ -406,9 +403,6 @@ pub fn NavigationSidebar(
                             }
                         }
 
-                        div { class: "sidebar-section-header",
-                            span { "Tất cả bạn bè" }
-                        }
                         for friend in friends {
                             {
                                 let f_click = friend.clone();
@@ -416,12 +410,12 @@ pub fn NavigationSidebar(
                                     button {
                                         key: "fl-{friend.id}",
                                         r#type: "button",
-                                        class: "chat-item",
+                                        class: "chat-item friend-row",
                                         onclick: move |_| on_select_friend.call(f_click.clone()),
                                         Avatar {
                                             name: friend.username.clone(),
                                             avatar_url: friend.avatar_url.clone(),
-                                            size: 32,
+                                            size: 36,
                                         }
                                         div { class: "chat-item-info",
                                             span { class: "chat-item-name", "{friend.username}" }

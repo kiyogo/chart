@@ -77,6 +77,8 @@ pub struct FriendItem {
     #[serde(default)]
     pub status_emoji: Option<String>,
     #[serde(default)]
+    pub presence: Option<String>,
+    #[serde(default)]
     pub avatar_url: Option<String>,
     #[serde(default)]
     pub avatar_decoration: Option<String>,
@@ -164,6 +166,35 @@ pub struct ServerMemberItem {
     #[serde(default)]
     pub roles: Vec<String>,
     pub joined_at: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub presence: Option<String>,
+    #[serde(default)]
+    pub status_text: Option<String>,
+    #[serde(default)]
+    pub status_emoji: Option<String>,
+    #[serde(default)]
+    pub nameplate: Option<String>,
+    #[serde(default)]
+    pub custom_nameplate_url: Option<String>,
+    #[serde(default)]
+    pub name_effect: Option<String>,
+    #[serde(default)]
+    pub avatar_decoration: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ServerMessageSearchHit {
+    pub message_id: String,
+    pub channel_id: String,
+    pub channel_name: String,
+    pub sender_id: String,
+    pub sender_name: String,
+    #[serde(default)]
+    pub sender_avatar_url: Option<String>,
+    pub content: String,
+    pub created_at: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -328,6 +359,8 @@ pub enum WsEvent {
     SecurityAlert(serde_json::Value),
     #[serde(rename = "enterprise.event")]
     EnterpriseEvent(serde_json::Value),
+    #[serde(rename = "feed.updated")]
+    FeedUpdated(serde_json::Value),
     #[serde(other)]
     Unknown,
 }

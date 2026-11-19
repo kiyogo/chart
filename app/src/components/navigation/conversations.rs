@@ -11,13 +11,13 @@ use serde_json::json;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BellOffIcon, CheckIcon, ChevronDownIcon, DevicesIcon, HashIcon, MoreIcon, PinIcon, PluginIcon, PlusIcon, SearchIcon, TagIcon, TrashIcon},
+        icons::{BellOffIcon, CheckIcon, ChevronDownIcon, CloseIcon, DevicesIcon, HashIcon, MoreIcon, PinIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon, TagIcon, TrashIcon},
         messages::preview_text,
         profile_card::{name_effect_class, nameplate_style},
     },
     i18n::t,
     models::{BotItem, ChannelItem, ChatLabel, ConvPref, FriendItem, GroupItem},
-    services::social,
+    services::{api, profile_ext, social},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,9 +82,16 @@ pub fn ConversationList(
     on_labels_changed: EventHandler<Vec<ChatLabel>>,
     on_block: EventHandler<(String, bool)>,
     on_mark_read: EventHandler<String>,
+    #[props(default)] my_username: String,
+    #[props(default)] my_avatar_url: Option<String>,
+    #[props(default)] my_status_text: Option<String>,
+    #[props(default)] my_status_emoji: Option<String>,
+    #[props(default)] on_my_status_updated: Option<EventHandler<(Option<String>, Option<String>)>>,
+    #[props(default)] on_note_reply: Option<EventHandler<(FriendItem, String)>>,
 ) -> Element {
     let mut query = use_signal(String::new);
     let mut filter = use_signal(|| "all".to_string());
+    let _ = on_create_group;
     let mut menu_for = use_signal(|| Option::<String>::None);
     let mut label_menu = use_signal(|| false);
     let mut manage_labels = use_signal(|| false);
@@ -263,7 +270,6 @@ pub fn ConversationList(
                         ConvOpen::Bot(_) => rsx! {
                             div { class: "chat-item-avatar",
                                 Avatar { name: r.name.clone(), avatar_url: r.avatar.clone(), size: 52 }
-                                span { class: "avatar-plugin-badge", "Plugin" }
                             }
                         },
                         _ => rsx! { Avatar { name: r.name.clone(), avatar_url: r.avatar.clone(), size: 52 } },
@@ -337,6 +343,22 @@ pub fn ConversationList(
             }
         }
         div { class: "sidebar-scrollable",
+            if q.is_empty() && f == "all" {
+                StoriesNotesBar {
+                    strip_id: "conv-notes-strip".to_string(),
+                    my_username: my_username.clone(),
+                    my_avatar_url: my_avatar_url.clone(),
+                    my_status_text: my_status_text.clone(),
+                    my_status_emoji: my_status_emoji.clone(),
+                    friends: friends.clone(),
+                    on_my_status_updated: on_my_status_updated,
+                    on_open_friend: {
+                        let on_open = on_open;
+                        move |fr: FriendItem| on_open.call(ConvOpen::Dm(fr))
+                    },
+                    on_note_reply: on_note_reply,
+                }
+            }
             if !self_chat && q.is_empty() && f == "all" {
                 button { r#type: "button", class: "self-chat-create", onclick: move |_| on_create_self.call(()),
                     span { class: "self-chat-avatar small", DevicesIcon { size: 16 } }
@@ -346,27 +368,6 @@ pub fn ConversationList(
             if !pinned.is_empty() {
                 div { class: "sidebar-section-header", span { "{t(\"chat.pinned\")}" } }
                 for r in pinned { {render_row(r)} }
-            }
-            div { class: "sidebar-section-header",
-                span { "{t(\"nav.messages\")}" }
-                div { style: "display: inline-flex; gap: 4px;",
-                    button {
-                        r#type: "button",
-                        class: "sidebar-section-btn",
-                        title: "Quản lý thẻ phân loại",
-                        aria_label: "Quản lý thẻ phân loại",
-                        onclick: move |_| manage_labels.set(true),
-                        TagIcon { size: 14 }
-                    }
-                    button {
-                        r#type: "button",
-                        class: "sidebar-section-btn",
-                        title: "Tạo nhóm",
-                        aria_label: "Tạo nhóm",
-                        onclick: move |_| on_create_group.call(()),
-                        PlusIcon { size: 14 }
-                    }
-                }
             }
             if rest.is_empty() && rows.is_empty() {
                 div { class: "sidebar-empty",
@@ -399,6 +400,361 @@ pub fn ConversationList(
 
 fn badge(n: usize) -> String {
     if n > 99 { "99+".into() } else { n.to_string() }
+}
+
+const QUICK_NOTE_EMOJIS: [&str; 8] = ["💭", "🔥", "☕", "🎧", "🚀", "😄", "🎉", "✨"];
+
+/// Messenger-style horizontally scrollable Notes / Stories bar ("Tạo tin").
+#[component]
+pub fn StoriesNotesBar(
+    strip_id: String,
+    my_username: String,
+    my_avatar_url: Option<String>,
+    my_status_text: Option<String>,
+    my_status_emoji: Option<String>,
+    friends: Vec<FriendItem>,
+    #[props(default)] on_my_status_updated: Option<EventHandler<(Option<String>, Option<String>)>>,
+    on_open_friend: EventHandler<FriendItem>,
+    #[props(default)] on_note_reply: Option<EventHandler<(FriendItem, String)>>,
+) -> Element {
+    let mut edit_my_note = use_signal(|| false);
+    let mut note_emoji = use_signal(|| my_status_emoji.clone().unwrap_or_default());
+    let mut note_text = use_signal(|| my_status_text.clone().unwrap_or_default());
+    let mut note_expiry = use_signal(|| 1440i64);
+    let mut note_saving = use_signal(|| false);
+    let mut note_err = use_signal(|| Option::<String>::None);
+    let mut viewing_friend = use_signal(|| Option::<FriendItem>::None);
+    let mut reply_draft = use_signal(String::new);
+
+    let drag_js_id = strip_id.clone();
+    use_effect(move || {
+        let js = format!(
+            r#"
+            (function() {{
+                const el = document.getElementById({id:?});
+                if (!el || el.__notesDragReady) return;
+                el.__notesDragReady = true;
+                let down = false, startX = 0, startScroll = 0, moved = false;
+                el.addEventListener('pointerdown', (e) => {{
+                    if (e.button !== 0) return;
+                    down = true; moved = false;
+                    startX = e.clientX; startScroll = el.scrollLeft;
+                    el.classList.add('dragging');
+                }});
+                window.addEventListener('pointermove', (e) => {{
+                    if (!down) return;
+                    const dx = e.clientX - startX;
+                    if (Math.abs(dx) > 5) moved = true;
+                    if (moved) el.scrollLeft = startScroll - dx;
+                }});
+                window.addEventListener('pointerup', () => {{
+                    if (!down) return;
+                    down = false;
+                    el.classList.remove('dragging');
+                    if (moved) {{
+                        el.dataset.justDragged = '1';
+                        setTimeout(() => {{ delete el.dataset.justDragged; }}, 60);
+                    }}
+                }});
+                el.addEventListener('wheel', (e) => {{
+                    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {{
+                        el.scrollLeft += e.deltaY;
+                        e.preventDefault();
+                    }}
+                }}, {{ passive: false }});
+                el.addEventListener('click', (e) => {{
+                    if (el.dataset.justDragged === '1') {{
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }}
+                }}, true);
+            }})();
+            "#,
+            id = drag_js_id
+        );
+        let _ = dioxus::document::eval(&js);
+    });
+
+    let mut ordered_friends = friends.clone();
+    ordered_friends.sort_by_key(|f| {
+        let has_note = f.status_text.as_deref().is_some_and(|s| !s.trim().is_empty())
+            || f.status_emoji.as_deref().is_some_and(|s| !s.trim().is_empty());
+        let is_online = f.presence.as_deref() == Some("online");
+        (!has_note, !is_online, f.username.to_lowercase())
+    });
+
+    let my_em = my_status_emoji.as_deref().map(str::trim).unwrap_or("");
+    let my_tx = my_status_text.as_deref().map(str::trim).unwrap_or("");
+    let my_has_note = !my_em.is_empty() || !my_tx.is_empty();
+    let my_bubble_label = if my_has_note {
+        format!("{my_em} {my_tx}").trim().to_string()
+    } else {
+        "Chia sẻ suy nghĩ".to_string()
+    };
+
+    let init_em = my_em.to_string();
+    let init_tx = my_tx.to_string();
+
+    rsx! {
+        div { class: "notes-strip-wrap",
+            div { id: "{strip_id}", class: "notes-strip", role: "list", aria_label: "Tin và ghi chú",
+                // Current user tile ("Tạo tin")
+                button {
+                    r#type: "button",
+                    class: "note-item",
+                    role: "listitem",
+                    title: "Cập nhật ghi chú suy nghĩ",
+                    onclick: move |_| {
+                        note_emoji.set(init_em.clone());
+                        note_text.set(init_tx.clone());
+                        note_err.set(None);
+                        edit_my_note.set(true);
+                    },
+                    span { class: "note-avatar-wrap",
+                        span {
+                            class: if my_has_note { "note-bubble mine" } else { "note-bubble placeholder" },
+                            "{my_bubble_label}"
+                        }
+                        Avatar {
+                            name: if my_username.is_empty() { "Tôi".to_string() } else { my_username.clone() },
+                            avatar_url: my_avatar_url.clone(),
+                            size: 52,
+                        }
+                        span { class: "note-plus-badge", aria_hidden: "true", PlusIcon { size: 12 } }
+                    }
+                    span { class: "note-name", "Tạo tin" }
+                }
+
+                // Friends tiles
+                for fr in ordered_friends {
+                    {
+                        let shown = crate::services::profile_ext::nickname_of(&fr.id)
+                            .or_else(|| fr.display_name.clone().filter(|n| !n.trim().is_empty()))
+                            .unwrap_or_else(|| fr.username.clone());
+                        let fem = fr.status_emoji.as_deref().map(str::trim).unwrap_or("");
+                        let ftx = fr.status_text.as_deref().map(str::trim).unwrap_or("");
+                        let has_note = !fem.is_empty() || !ftx.is_empty();
+                        let bubble_str = format!("{fem} {ftx}").trim().to_string();
+                        let online = fr.presence.as_deref() == Some("online");
+                        let fr_click = fr.clone();
+                        rsx! {
+                            button {
+                                key: "note-{fr.id}",
+                                r#type: "button",
+                                class: "note-item",
+                                role: "listitem",
+                                onclick: move |_| {
+                                    if has_note {
+                                        reply_draft.set(String::new());
+                                        viewing_friend.set(Some(fr_click.clone()));
+                                    } else {
+                                        on_open_friend.call(fr_click.clone());
+                                    }
+                                },
+                                span { class: "note-avatar-wrap",
+                                    if has_note {
+                                        span { class: "note-bubble", "{bubble_str}" }
+                                    }
+                                    crate::components::profile_card::DecoratedAvatar {
+                                        name: fr.username.clone(),
+                                        avatar_url: fr.avatar_url.clone(),
+                                        size: 52,
+                                        decoration: fr.avatar_decoration.clone().filter(|d| d != "custom"),
+                                        motion: fr.avatar_motion.clone(),
+                                        in_list: true,
+                                    }
+                                    if online {
+                                        span { class: "note-online-dot", title: "Đang hoạt động" }
+                                    }
+                                }
+                                span { class: "note-name", "{shown}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if edit_my_note() {
+            div { class: "modal-overlay", onclick: move |_| edit_my_note.set(false),
+                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú của bạn", onclick: move |e| e.stop_propagation(),
+                    div { class: "modal-header",
+                        h2 { class: "modal-title", "Ghi chú mới" }
+                        button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| edit_my_note.set(false), CloseIcon { size: 18 } }
+                    }
+                    div { class: "note-emoji-row",
+                        for em in QUICK_NOTE_EMOJIS {
+                            {
+                                let active = note_emoji().trim() == em;
+                                rsx! {
+                                    button {
+                                        key: "{em}",
+                                        r#type: "button",
+                                        class: if active { "note-emoji-chip active" } else { "note-emoji-chip" },
+                                        onclick: move |_| note_emoji.set(em.to_string()),
+                                        "{em}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    div { class: "note-input-row",
+                        input {
+                            class: "note-emoji-input",
+                            r#type: "text",
+                            maxlength: "8",
+                            placeholder: "😊",
+                            aria_label: "Emoji",
+                            value: "{note_emoji}",
+                            oninput: move |e| note_emoji.set(e.value()),
+                        }
+                        input {
+                            r#type: "text",
+                            maxlength: "120",
+                            placeholder: "Chia sẻ suy nghĩ với bạn bè",
+                            aria_label: "Nội dung ghi chú",
+                            value: "{note_text}",
+                            oninput: move |e| note_text.set(e.value()),
+                        }
+                    }
+                    div { class: "inline-form",
+                        span { class: "member-sub", "Hiển thị trong" }
+                        select {
+                            value: "{note_expiry}",
+                            onchange: move |e| note_expiry.set(e.value().parse().unwrap_or(1440)),
+                            option { value: "1440", "24 giờ" }
+                            option { value: "240", "4 giờ" }
+                            option { value: "60", "1 giờ" }
+                            option { value: "0", "Không tự xóa" }
+                        }
+                    }
+                    if let Some(e) = note_err() {
+                        div { class: "status-badge error", "{e}" }
+                    }
+                    div { class: "modal-actions",
+                        if my_has_note {
+                            button {
+                                r#type: "button",
+                                class: "btn-ghost",
+                                disabled: note_saving(),
+                                onclick: move |_| {
+                                    note_saving.set(true);
+                                    note_err.set(None);
+                                    spawn(async move {
+                                        let r1 = api::update_my_profile(None, None, Some(""), Some(""), None, None).await;
+                                        let r2 = profile_ext::update_me(json!({ "status_expires_in_minutes": 0 })).await;
+                                        note_saving.set(false);
+                                        if r1.is_ok() && r2.is_ok() {
+                                            if let Some(h) = on_my_status_updated { h.call((None, None)); }
+                                            edit_my_note.set(false);
+                                        } else {
+                                            note_err.set(Some("Không xóa được ghi chú".into()));
+                                        }
+                                    });
+                                },
+                                "Xóa tin"
+                            }
+                        }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Hủy" }
+                        button {
+                            r#type: "button",
+                            class: "btn-primary",
+                            disabled: note_saving() || (note_text().trim().is_empty() && note_emoji().trim().is_empty()),
+                            onclick: move |_| {
+                                let t = note_text().trim().to_string();
+                                let em = note_emoji().trim().to_string();
+                                let exp = note_expiry();
+                                note_saving.set(true);
+                                note_err.set(None);
+                                spawn(async move {
+                                    let r1 = api::update_my_profile(None, None, Some(&t), Some(&em), None, None).await;
+                                    let r2 = profile_ext::update_me(json!({ "status_expires_in_minutes": exp })).await;
+                                    note_saving.set(false);
+                                    if r1.is_ok() && r2.is_ok() {
+                                        if let Some(h) = on_my_status_updated {
+                                            h.call(((!t.is_empty()).then_some(t), (!em.is_empty()).then_some(em)));
+                                        }
+                                        edit_my_note.set(false);
+                                    } else {
+                                        note_err.set(Some("Không lưu được ghi chú".into()));
+                                    }
+                                });
+                            },
+                            "Chia sẻ"
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(vf) = viewing_friend() {
+            {
+                let shown = crate::services::profile_ext::nickname_of(&vf.id)
+                    .or_else(|| vf.display_name.clone().filter(|n| !n.trim().is_empty()))
+                    .unwrap_or_else(|| vf.username.clone());
+                let full_note = format!(
+                    "{} {}",
+                    vf.status_emoji.as_deref().unwrap_or("").trim(),
+                    vf.status_text.as_deref().unwrap_or("").trim()
+                )
+                .trim()
+                .to_string();
+                let vf_open = vf.clone();
+                let vf_reply = vf.clone();
+                rsx! {
+                    div { class: "modal-overlay", onclick: move |_| viewing_friend.set(None),
+                        div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú của {shown}", onclick: move |e| e.stop_propagation(),
+                            div { class: "modal-header",
+                                div { style: "display: flex; align-items: center; gap: 10px;",
+                                    Avatar { name: vf.username.clone(), avatar_url: vf.avatar_url.clone(), size: 36 }
+                                    div {
+                                        div { class: "modal-title", style: "font-size: 1rem;", "{shown}" }
+                                        div { class: "member-sub", "@{vf.username}" }
+                                    }
+                                }
+                                button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| viewing_friend.set(None), CloseIcon { size: 18 } }
+                            }
+                            div { class: "note-view-card", "{full_note}" }
+                            div { class: "note-input-row",
+                                input {
+                                    r#type: "text",
+                                    placeholder: "Trả lời ghi chú của {shown}",
+                                    value: "{reply_draft}",
+                                    oninput: move |e| reply_draft.set(e.value()),
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-primary",
+                                    disabled: reply_draft().trim().is_empty(),
+                                    onclick: move |_| {
+                                        let txt = format!("Ghi chú \"{full_note}\": {}", reply_draft().trim());
+                                        viewing_friend.set(None);
+                                        if let Some(h) = on_note_reply {
+                                            h.call((vf_reply.clone(), txt));
+                                        } else {
+                                            on_open_friend.call(vf_reply.clone());
+                                        }
+                                    },
+                                    SendIcon { size: 16 }
+                                }
+                            }
+                            div { class: "modal-actions",
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    onclick: move |_| {
+                                        viewing_friend.set(None);
+                                        on_open_friend.call(vf_open.clone());
+                                    },
+                                    "Mở cuộc trò chuyện"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Self-chat messages carry the sending device label: "\u{2060}Linux 1\u{2060}text".
