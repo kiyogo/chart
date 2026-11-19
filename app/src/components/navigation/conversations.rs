@@ -207,13 +207,9 @@ pub fn ConversationList(
     }
 
     let q = crate::components::composer::fold(query().trim());
-    let f = filter();
-    rows.retain(|r| q.is_empty() || crate::components::composer::fold(&r.name).contains(&q));
-    rows.retain(|r| match f.as_str() {
-        "all" => true,
-        "unread" => r.unread > 0,
-        id => r.labels.iter().any(|l| l.id == id),
-    });
+    // Filters removed as requested.
+    let f = "all";
+
     // Pinned first (most recently pinned on top), then "Chính mình", then the rest.
     rows.sort_by(|a, b| match (&a.pinned_at, &b.pinned_at) {
         (Some(x), Some(y)) => y.cmp(x),
@@ -334,62 +330,12 @@ pub fn ConversationList(
             }
         }
         div { class: "sidebar-filters", role: "tablist", aria_label: "Lọc cuộc trò chuyện",
-            for (val, label) in [("all", t("chat.all")), ("unread", t("chat.unread"))] {
-                button {
-                    key: "{val}",
-                    r#type: "button",
-                    role: "tab",
-                    aria_selected: "{f == val}",
-                    class: if f == val { "filter-chip active" } else { "filter-chip" },
-                    onclick: move |_| filter.set(val.to_string()),
-                    "{label}"
-                }
-            }
-            div { class: "label-filter",
-                button {
-                    r#type: "button",
-                    class: if active_label.is_some() { "filter-chip active" } else { "filter-chip" },
-                    aria_haspopup: "menu",
-                    aria_expanded: "{label_menu()}",
-                    title: "Lọc theo thẻ phân loại",
-                    onclick: move |e| { e.stop_propagation(); label_menu.set(!label_menu()); },
-                    if let Some(l) = active_label.as_ref() {
-                        span { class: "label-dot", style: "--label: {l.color};" }
-                        "{l.name}"
-                    } else {
-                        TagIcon { size: 14 }
-                        "Phân loại"
-                    }
-                    ChevronDownIcon { size: 14 }
-                }
-                if label_menu() {
-                    button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| label_menu.set(false) }
-                    div { class: "account-menu label-menu", role: "menu",
-                        if labels.is_empty() {
-                            div { class: "menu-note", "Chưa có thẻ phân loại nào" }
-                        }
-                        for l in labels.iter().cloned() {
-                            {
-                                let id = l.id.clone();
-                                let count = label_counts.get(&l.id).copied().unwrap_or(0);
-                                rsx! {
-                                    button { key: "{l.id}", r#type: "button", role: "menuitemradio", aria_checked: "{f == l.id}", class: "account-menu-item",
-                                        onclick: move |_| { filter.set(id.clone()); label_menu.set(false); },
-                                        span { class: "label-dot", style: "--label: {l.color};" }
-                                        span { class: "grow", "{l.name}" }
-                                        span { class: "menu-count", "{count}" }
-                                    }
-                                }
-                            }
-                        }
-                        if active_label.is_some() {
-                            button { r#type: "button", class: "account-menu-item", onclick: move |_| { filter.set("all".into()); label_menu.set(false); }, "Bỏ lọc" }
-                        }
-                        button { r#type: "button", class: "account-menu-item", onclick: move |_| { label_menu.set(false); manage_labels.set(true); },
-                            TagIcon { size: 16 } "Quản lý thẻ phân loại"
-                        }
-                    }
-                }
+            button {
+                r#type: "button",
+                role: "tab",
+                aria_selected: "true",
+                class: "filter-chip active",
+                "Tất cả"
             }
         }
         div { class: "sidebar-scrollable",

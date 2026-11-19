@@ -180,7 +180,7 @@ export function Chat(props: {
     const reqs = pendingRequests().length;
     const combined = total + reqs;
     if (typeof document !== 'undefined') {
-      document.title = combined > 0 ? `${combined} chatw` : 'chatw';
+      document.title = 'chatw';
     }
   });
 
