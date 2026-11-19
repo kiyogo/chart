@@ -91,3 +91,16 @@ banner + avatar AVIF, gọi 1-1 và nhóm WebRTC P2P, sao lưu/khôi phục khó
 | Phòng họp kiểu Google Meet ở cột trái (khách chỉ nhập tên, phòng chờ duyệt) | NOT DONE | cần dịch vụ phòng + phiên khách |
 | Phát trực tiếp (Go Live) trong kênh thoại | NOT DONE | |
 | Bộ sticker / emoji tải từ Internet | NOT DONE | cần bạn đồng ý tải (tên tệp, nguồn, dung lượng) |
+
+## Spec 008: OpenMoji stickers
+
+| Feature | Status | Where |
+|---|---|---|
+| OpenMoji 17.0.0 tab in the sticker picker, 2,015 stickers in 10 categories | Done | `sticker_picker.rs`, `app/public/stickers/openmoji/` |
+| Search in English and Vietnamese (CLDR names and keywords, diacritics folded) | Done | `services/openmoji.rs` |
+| Suggest a sticker when the message is exactly its name or keyword ("pizza", "mèo") | Done | `composer.rs` |
+| Every SVG allow-listed and minified by the importer; checksum of the release verified | Done | `tools/import_openmoji.py` |
+| Credit and CC BY-SA 4.0 license in the picker, guide FAQ, LICENSE.md, THIRD_PARTY_NOTICES.md | Done | |
+| Static files served gzip-precompressed (catalogue 227 KB → 67 KB) | Done | `web/backend/src/main.rs` |
+| OpenMoji-only drawings (367) and unnamed combinations (78) | Waiting for download approval | |
+| Skin-tone sticker variants (2,035) | Not included | emoji picker has skin tones |

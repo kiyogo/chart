@@ -22,7 +22,7 @@ use crate::{
     models::StickerItem,
     platform,
     prefs::PrefsCtx,
-    services::stickers::stickers_list_packs,
+    services::{openmoji, stickers::stickers_list_packs},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -34,6 +34,8 @@ pub struct MentionCandidate {
 
 /// Every sticker the user can send, loaded once per session for suggestions.
 static STICKERS: GlobalSignal<Option<Vec<StickerItem>>> = Signal::global(|| None);
+/// The built-in OpenMoji catalogue, for "pizza" / "mèo" style suggestions.
+static OPENMOJI: GlobalSignal<Option<std::rc::Rc<openmoji::Catalog>>> = Signal::global(|| None);
 
 /// Extra trigger words for the built-in stickers (names stay English).
 const STICKER_TRIGGERS: &[(&str, &[&str])] = &[
@@ -254,6 +256,11 @@ pub fn Composer(
                     *STICKERS.write() = Some(packs.into_iter().flat_map(|p| p.stickers).collect());
                 }
             });
+            spawn(async move {
+                if let Ok(c) = openmoji::load().await {
+                    *OPENMOJI.write() = Some(c);
+                }
+            });
         }
     });
 
@@ -313,7 +320,13 @@ pub fn Composer(
         build_suggestions(&value, if mentions_on { &mentions } else { &[] }, &quick_replies, prefs.emoji_suggest)
     };
     let sticker_hits: Vec<StickerItem> = if suggestions.is_empty() && wants_stickers && !disabled && dismissed_for() != value {
-        STICKERS.read().as_ref().map(|all| suggest_stickers(&value, all)).unwrap_or_default()
+        let mut hits = STICKERS.read().as_ref().map(|all| suggest_stickers(&value, all)).unwrap_or_default();
+        if hits.len() < 10 {
+            if let Some(c) = OPENMOJI.read().as_ref() {
+                hits.extend(c.suggest(&value, 10 - hits.len()));
+            }
+        }
+        hits
     } else {
         Vec::new()
     };

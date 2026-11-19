@@ -361,6 +361,35 @@ async function main() {
     record('sticker suggestions match the message', await A.locator('.sticker-suggest .sticker-suggest-cell').count() > 0, '');
     await dmInput.fill('');
   });
+  await safe('openmoji stickers', async () => {
+    await openDm(A, NAMES.bob);
+    await A.locator('button[aria-label="Chọn sticker"]').first().click();
+    await A.waitForTimeout(800);
+    await A.locator('.picker-popover .picker-tab', { hasText: 'OpenMoji' }).click();
+    await A.waitForTimeout(1200);
+    record('OpenMoji tab lists many stickers', await A.locator('.openmoji-grid .sticker-cell').count() > 100, String(await A.locator('.openmoji-grid .sticker-cell').count()));
+    record('OpenMoji categories are shown', await A.locator('.picker-subtabs .picker-subtab').count() >= 9, '');
+    record('OpenMoji credit and license are shown', /OpenMoji/.test(await A.locator('.picker-credit').innerText()) && /CC BY-SA 4\.0/.test(await A.locator('.picker-credit').innerText()), '');
+    await A.locator('.picker-subtab[aria-label="Food & Drink"]').click();
+    await A.waitForTimeout(900);
+    const pizza = A.locator('.openmoji-grid img[alt="Pizza"]');
+    record('OpenMoji category switch shows food', await pizza.count() === 1, '');
+    const loaded = await pizza.evaluate(async (img) => { img.scrollIntoView(); for (let i = 0; i < 30 && !img.complete; i++) await new Promise((r) => setTimeout(r, 100)); return img.naturalWidth > 0; });
+    record('OpenMoji SVG image loads', loaded, '');
+    await shot(A, 'openmoji_picker_light_1366x768');
+    await A.locator('.picker-popover input[aria-label="Search stickers"]').fill('mèo');
+    await A.waitForTimeout(600);
+    record('Vietnamese search finds OpenMoji cats', await A.locator('.picker-popover .sticker-cell img[alt="Cat"]').count() > 0, '');
+    await A.locator('.picker-popover .sticker-cell img[alt="Cat"]').first().click();
+    await A.waitForTimeout(1500);
+    record('OpenMoji sticker sends and renders', await A.locator('.message-row.sent .sticker-img[src*="/stickers/openmoji/"]').count() > 0, '');
+    record('OpenMoji sticker renders for receiver', await B.locator('.message-row.received .sticker-img[src*="/stickers/openmoji/"]').count() > 0, '');
+    const dmInput = A.locator('#dm-chat-input');
+    await dmInput.fill('pizza');
+    await A.waitForTimeout(900);
+    record('typing "pizza" suggests the OpenMoji sticker', await A.locator('.sticker-suggest img[src*="/stickers/openmoji/1F355.svg"]').count() > 0, '');
+    await dmInput.fill('');
+  });
   await safe('spreadsheet paste', async () => {
     await A.evaluate(() => {
       const el = document.getElementById('dm-chat-input');

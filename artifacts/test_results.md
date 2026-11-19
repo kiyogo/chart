@@ -79,3 +79,14 @@ Lỗi tìm thấy và đã sửa trong phiên: tin gửi cho "Chính mình" bị
 treo do hiệu ứng đọc và ghi cùng một tín hiệu; menu tài khoản ở cột trái bị danh sách hội thoại che (lớp xếp chồng CSS);
 Esc không đóng hộp thoại mới (đưa tiêu điểm vào hộp thoại khi mở); trái tim trong sticker động bị CSS ghi đè vị trí;
 xem trước "Chính mình" lộ mã thiết bị; ảnh đại diện trong hộp quản lý nhóm bị kéo dãn.
+
+## Spec 008: OpenMoji stickers (2026-11-19)
+
+- `cargo test --workspace`: all pass (new: `services::openmoji` parse, search and suggest tests).
+- Importer: 4,495 files read from the verified archive; 2,015 kept (0 rejected by the SVG allow-list);
+  2,035 skin-tone variants and 367 OpenMoji-only drawings skipped; 78 unnamed combinations skipped.
+- Server: `catalog.json` served gzip-precompressed (226,775 → 67,363 bytes); SVGs served as `image/svg+xml`.
+- UI audit (real Chrome, real server): 285/285 pass, including 9 new OpenMoji checks (tab, categories, credit,
+  image load, Vietnamese search "mèo", send + receive in an E2EE DM, "pizza" suggestion).
+- Found and fixed while testing: sticker pack tabs squashed into each other once there were 10+ packs;
+  backend failed to start (`VersionMissing(14)`) because embedded migrations were stale (added `build.rs`).

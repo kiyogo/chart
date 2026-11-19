@@ -1343,7 +1343,7 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   color: var(--text-secondary);
   white-space: nowrap;
 }
-.picker-tab.text { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.picker-tab.text { font-size: var(--text-sm); font-weight: var(--weight-medium); flex: 0 0 auto; white-space: nowrap; }
 .picker-tab:hover { background: var(--bg-hover); }
 .picker-tab.active {
   background: var(--bg-selected);
@@ -2694,3 +2694,28 @@ button.result-card:hover { background: var(--bg-hover); }
 .role-select { max-width: 10rem; min-height: 2rem; }
 .result-card .btn-secondary, .member-row .btn-secondary, .bot-card .btn-ghost { background: var(--bg-elevated); }
 .result-card .btn-secondary:hover, .member-row .btn-secondary:hover { background: var(--bg-hover); }
+
+/* Spec 008: OpenMoji sticker set */
+.picker-subtabs { display: flex; gap: 2px; padding: var(--space-1) var(--space-2) 0; flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
+.picker-subtabs::-webkit-scrollbar { display: none; }
+.picker-subtab {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-md, 0.625rem);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: background 0.15s, opacity 0.15s;
+}
+.picker-subtab img { width: 1.5rem; height: 1.5rem; }
+.picker-subtab:hover { background: var(--bg-hover); opacity: 1; }
+.picker-subtab.active { background: var(--bg-active, var(--bg-hover)); opacity: 1; }
+.openmoji-grid { grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr)); }
+.picker-credit { padding: var(--space-3) var(--space-1) var(--space-1); font-size: 0.75rem; color: var(--text-muted); text-align: center; }
+.link-btn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }

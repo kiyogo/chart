@@ -156,7 +156,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && static_dir.exists()
     {
         let index_html = static_dir.join("index.html");
-        let serve_dir = ServeDir::new(static_dir).not_found_service(ServeFile::new(index_html));
+        // `.gz` siblings (e.g. the sticker catalogue) are served to clients that accept gzip.
+        let serve_dir = ServeDir::new(static_dir).precompressed_gzip().not_found_service(ServeFile::new(index_html));
         app = app.fallback_service(serve_dir);
         tracing::info!(dir = ?static_dir, "serving static frontend assets");
     }

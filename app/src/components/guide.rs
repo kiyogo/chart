@@ -177,7 +177,8 @@ const GUIDES: [(&str, &str, &[&str]); 10] = [
     ]),
 ];
 
-const FAQ: [(&str, &str); 8] = [
+const FAQ: [(&str, &str); 9] = [
+    ("Bộ sticker OpenMoji lấy từ đâu?", "Hơn 2.000 sticker trong thẻ OpenMoji là tác phẩm của dự án mã nguồn mở OpenMoji (openmoji.org), dùng theo giấy phép CC BY-SA 4.0. Tên và từ khóa tìm kiếm lấy từ dữ liệu Unicode CLDR, nên bạn tìm được bằng cả tiếng Việt lẫn tiếng Anh."),
     ("Vì sao trả lời tự động không chạy khi tôi tắt máy?", "Tin nhắn riêng được mã hóa đầu cuối nên máy chủ không thể tự viết trả lời. Trả lời tự động chạy trên thiết bị của bạn khi ChatW đang mở."),
     ("Ẩn \"Đã xem\" có tác dụng gì?", "Người khác không biết bạn đã đọc, và bạn cũng không thấy họ đã đọc. Đổi trong Cài đặt › Trò chuyện."),
     ("Làm sao để nhóm hoặc cộng đồng hiện trong Tìm kiếm?", "Bật Công khai trong Quản lý nhóm hoặc Cài đặt cộng đồng. Đội ngũ ChatW xác minh trước khi hiện cho mọi người."),
