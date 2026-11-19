@@ -63,3 +63,10 @@ end-to-end, WebSocket auth, WebRTC authorization.
 - TOTP: ±1 step, constant-time compare, last accepted step stored (no replay); 5 attempts per challenge, 5-minute
   challenges, 10 failures / 15 min → 429. Disable / regenerate / sign out other devices need a valid code.
 - Security log keeps only the network part of the IP (a.b.x.x).
+
+## Specs 012–013
+- Profile layout: hidden sections are filtered on the server, not just hidden in the UI; showcase only accepts our own
+  media paths or http(s) links; guestbook: blocks respected, 300 chars, 5 / hour / author, owner or author delete only.
+- Communities: every endpoint checks membership or a permission bit (Manage Expressions = 1024, Manage Channels,
+  Manage Server); the rules gate is enforced server-side for channel messages and forum posts; audit log readable only
+  with Manage Server; community avatars must be our own uploads.

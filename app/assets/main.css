@@ -3141,3 +3141,32 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 .pc-tpl-neon .member-sub, .pc-tpl-dark .member-sub, .pc-tpl-neon .profile-card-label, .pc-tpl-dark .profile-card-label, .pc-tpl-neon .pd-k, .pc-tpl-dark .pd-k { color: #94A3B8; }
 .pc-tpl-neon .guestbook-form input, .pc-tpl-dark .guestbook-form input { background: #0F172A; color: #E2E8F0; }
 .pc-tpl-light .achievement, .pc-tpl-light .interest-chip { background: #E2E8F0; color: #0F172A; }
+
+/* ============ Spec 013: community ============ */
+.welcome-dialog { max-width: 34rem; }
+.welcome-hero { padding: var(--space-4); border-radius: var(--radius-lg); background: linear-gradient(135deg, var(--accent), #A78BFA); color: #fff; }
+.welcome-kicker { font-size: var(--text-sm); opacity: 0.85; }
+.welcome-name { margin: 2px 0 0; font-size: 1.4rem; }
+.welcome-message { white-space: pre-wrap; }
+.welcome-channels { display: flex; flex-direction: column; gap: 4px; }
+.welcome-channel { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--radius-md); background: var(--bg-secondary); cursor: pointer; text-align: left; color: inherit; }
+.welcome-channel:hover { background: var(--bg-hover); }
+.welcome-rules { white-space: pre-wrap; max-height: 14rem; overflow-y: auto; padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-secondary); font-size: var(--text-sm); }
+.events-panel { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); overflow-y: auto; }
+.events-modal { max-width: 36rem; max-height: 85vh; overflow-y: auto; }
+.event-form { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-secondary); }
+.event-card { display: flex; flex-direction: column; gap: 4px; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-secondary); }
+.event-when { font-size: 0.75rem; font-weight: var(--weight-semibold); color: var(--accent); text-transform: uppercase; letter-spacing: 0.03em; }
+.event-desc { margin: 0; font-size: var(--text-sm); white-space: pre-wrap; }
+.forum-view { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.forum-new { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-secondary); }
+.forum-list { display: flex; flex-direction: column; gap: 4px; }
+.forum-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--space-3); border: 0; border-radius: var(--radius-md); background: var(--bg-secondary); cursor: pointer; text-align: left; color: inherit; }
+.forum-row:hover { background: var(--bg-hover); }
+.forum-title { margin: 0; font-weight: var(--weight-semibold); font-size: var(--text-base, 1rem); }
+.forum-thread { display: flex; flex-direction: column; gap: var(--space-3); }
+.forum-posts { display: flex; flex-direction: column; gap: var(--space-2); }
+.forum-post { display: flex; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-secondary); }
+.forum-post.first { box-shadow: inset 3px 0 0 var(--accent); }
+.forum-post-body { white-space: pre-wrap; word-break: break-word; }
+.btn-secondary.disabled { opacity: 0.5; pointer-events: none; }

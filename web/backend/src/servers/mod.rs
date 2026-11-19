@@ -552,7 +552,7 @@ async fn handle_create_channel(
     }
 
     let ch_type = payload.channel_type.as_deref().unwrap_or("text");
-    if !["text", "voice", "announcement", "forum"].contains(&ch_type) {
+    if !["text", "voice", "announcement", "forum", "event"].contains(&ch_type) {
         return Err(AppError::BadRequest("invalid_channel_type"));
     }
 
@@ -577,6 +577,7 @@ async fn handle_create_channel(
     .fetch_one(&state.db)
     .await?;
 
+    crate::community::audit(&state, server_id, user.id, "channel_created", name).await;
     Ok(Json(ChannelItem {
         id: row.id,
         server_id: row.server_id,
@@ -748,6 +749,7 @@ async fn handle_create_role(
     .fetch_one(&state.db)
     .await?;
 
+    crate::community::audit(&state, server_id, user.id, "role_created", payload.name.trim()).await;
     Ok(Json(ServerRoleItem {
         id: row.id,
         server_id: row.server_id,
@@ -911,11 +913,14 @@ async fn handle_get_channel_messages(
 
     let rows = sqlx::query!(
         r#"
-        SELECT m.id, m.seq, m.channel_id, m.sender_id, u.username, u.avatar_url,
+        SELECT m.id, m.seq, m.channel_id, m.sender_id,
+               COALESCE(sm.nickname, u.username) AS "username?", COALESCE(sm.avatar_url, u.avatar_url) AS "avatar_url?",
                m.content, m.reply_to_id, m.is_pinned, m.is_edited, m.created_at
         FROM channel_messages m
         JOIN users u ON m.sender_id = u.id
-        WHERE m.channel_id = $1 AND m.seq < $2
+        JOIN channels c ON c.id = m.channel_id
+        LEFT JOIN server_members sm ON sm.server_id = c.server_id AND sm.user_id = m.sender_id
+        WHERE m.channel_id = $1 AND m.seq < $2 AND m.thread_id IS NULL
         ORDER BY m.seq DESC
         LIMIT $3
         "#,
@@ -982,6 +987,11 @@ async fn handle_post_channel_message(
     {
         return Err(AppError::Forbidden("mention_everyone_forbidden"));
     }
+    // Spec 013: members must accept the rules first when the community requires it.
+    crate::community::rules_gate(&state, ch.server_id, user.id).await?;
+    let local = sqlx::query!("SELECT nickname, avatar_url FROM server_members WHERE server_id = $1 AND user_id = $2", ch.server_id, user.id)
+        .fetch_optional(&state.db)
+        .await?;
 
     let message_id = Uuid::new_v4();
 
@@ -1005,8 +1015,8 @@ async fn handle_post_channel_message(
         seq: row.seq,
         channel_id,
         sender_id: user.id,
-        sender_name: user.username.clone().unwrap_or_default(),
-        sender_avatar_url: user.avatar_url.clone(),
+        sender_name: local.as_ref().and_then(|l| l.nickname.clone()).or(user.username.clone()).unwrap_or_default(),
+        sender_avatar_url: local.as_ref().and_then(|l| l.avatar_url.clone()).or(user.avatar_url.clone()),
         content: content.to_string(),
         reply_to_id: payload.reply_to_id,
         is_pinned: row.is_pinned,
@@ -1113,6 +1123,11 @@ async fn handle_update_settings(
     )
     .execute(&state.db)
     .await?;
+    if let Ok(t) = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized) {
+        if let Ok(u) = authenticate_session(&state.db, &state.config, t).await {
+            crate::community::audit(&state, server_id, u.id, "settings_updated", "").await;
+        }
+    }
     handle_get_settings(State(state), headers, Path(server_id)).await
 }
 

@@ -120,6 +120,7 @@ pub async fn update_role(
     )
     .fetch_one(&state.db)
     .await?;
+    crate::community::audit(&state, server_id, uid, "role_updated", &r.name).await;
     Ok(Json(ServerRoleItem { id: r.id, server_id: r.server_id, name: r.name, color: r.color, position: r.position, permissions: r.permissions, created_at: r.created_at }))
 }
 
@@ -137,6 +138,7 @@ pub async fn delete_role(State(state): State<AppState>, headers: HeaderMap, Path
         return Err(AppError::Forbidden("cannot_grant_missing_permissions"));
     }
     sqlx::query!("DELETE FROM server_roles WHERE id = $1 AND server_id = $2", role_id, server_id).execute(&state.db).await?;
+    crate::community::audit(&state, server_id, uid, "role_deleted", &role_id.to_string()).await;
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
 
@@ -185,6 +187,7 @@ async fn set_member_role(state: AppState, headers: HeaderMap, server_id: Uuid, u
             .execute(&state.db)
             .await?;
     }
+    crate::community::audit(&state, server_id, uid, if on { "role_assigned" } else { "role_removed" }, &user_id.to_string()).await;
     Ok(Json(serde_json::json!({ "assigned": on })))
 }
 
@@ -209,5 +212,6 @@ pub async fn kick_member(State(state): State<AppState>, headers: HeaderMap, Path
         .ws_hub
         .send_to_user(&user_id, WsEvent::GroupSettings(serde_json::json!({ "server_id": server_id, "removed": true })))
         .await;
+    crate::community::audit(&state, server_id, uid, "member_kicked", &user_id.to_string()).await;
     Ok(Json(serde_json::json!({ "kicked": true })))
 }

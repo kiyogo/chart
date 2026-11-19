@@ -306,6 +306,8 @@ pub fn CreateChannelModal(
                             option { value: "text", "Kênh văn bản (#)" }
                             option { value: "voice", "Kênh thoại (Voice WebRTC)" }
                             option { value: "announcement", "Kênh thông báo" }
+                            option { value: "forum", "Kênh diễn đàn (chủ đề và trả lời)" }
+                            option { value: "event", "Kênh sự kiện" }
                         }
                     }
                     div { class: "form-field",

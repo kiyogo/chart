@@ -29,8 +29,9 @@ pub const ADMINISTRATOR: i64 = 1 << 6;
 pub const KICK_MEMBERS: i64 = 1 << 7;
 pub const MENTION_EVERYONE: i64 = 1 << 8;
 pub const CONNECT_VOICE: i64 = 1 << 9;
+pub const MANAGE_EXPRESSIONS: i64 = 1 << 10;
 
-pub const PERMS: [(i64, &str, &str); 10] = [
+pub const PERMS: [(i64, &str, &str); 11] = [
     (VIEW_CHANNELS, "Xem kênh", "Thấy các kênh và đọc tin nhắn"),
     (SEND_MESSAGES, "Gửi tin nhắn", "Nhắn tin trong các kênh văn bản"),
     (MENTION_EVERYONE, "Nhắc @everyone và @here", "Gửi tin nhắn có @everyone hoặc @here"),
@@ -40,6 +41,7 @@ pub const PERMS: [(i64, &str, &str); 10] = [
     (KICK_MEMBERS, "Mời thành viên ra", "Xóa thành viên khỏi cộng đồng"),
     (MANAGE_ROLES, "Quản lý vai trò", "Tạo vai trò và gán vai trò thấp hơn quyền của mình"),
     (MANAGE_SERVER, "Quản lý cộng đồng", "Đổi cài đặt chung của cộng đồng"),
+    (MANAGE_EXPRESSIONS, "Manage Expressions", "Thêm, xóa emoji và sticker của cộng đồng"),
     (ADMINISTRATOR, "Quản trị viên", "Toàn quyền. Chỉ cấp cho người thật sự tin tưởng"),
 ];
 
@@ -61,6 +63,9 @@ enum Tab {
     Overview,
     Roles,
     Members,
+    Welcome,
+    Expressions,
+    Audit,
 }
 
 #[component]
@@ -116,7 +121,7 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                     button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
                 }
                 div { class: "sidebar-filters", role: "tablist",
-                    for (tb, label) in [(Tab::Overview, "Tổng quan"), (Tab::Roles, "Vai trò và quyền"), (Tab::Members, "Thành viên")] {
+                    for (tb, label) in [(Tab::Overview, "Tổng quan"), (Tab::Roles, "Vai trò và quyền"), (Tab::Members, "Thành viên"), (Tab::Welcome, "Chào mừng và nội quy"), (Tab::Expressions, "Emoji và Sticker"), (Tab::Audit, "Nhật ký kiểm duyệt")] {
                         button { key: "{label}", r#type: "button", role: "tab", aria_selected: "{tab() == tb}", class: if tab() == tb { "filter-chip active" } else { "filter-chip" }, onclick: move |_| tab.set(tb), "{label}" }
                     }
                 }
@@ -219,6 +224,9 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                                 }
                             }
                         },
+                        Tab::Welcome => rsx! { crate::components::community_ui::WelcomeEditor { server_id: server.id.clone() } },
+                        Tab::Expressions => rsx! { crate::components::community_ui::ExpressionsManager { server_id: server.id.clone() } },
+                        Tab::Audit => rsx! { crate::components::community_ui::AuditLogView { server_id: server.id.clone() } },
                         Tab::Members => rsx! {
                             for m in members() {
                                 {

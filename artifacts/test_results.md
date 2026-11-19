@@ -129,3 +129,10 @@ xem trước "Chính mình" lộ mã thiết bị; ảnh đại diện trong h�
   unknown template refused, others can't delete entries, owner can, inventory equipped items + 15 achievements +
   apply preset.
 - UI audit regression: 313/313.
+
+## Spec 013: community (2026-11-19)
+- `node app/e2e/community-check.mjs`: **23/23** — forum + event channels, welcome + rules, emoji + sticker, duplicate
+  name refused, event, rules gate (403 before accepting), members can't add emoji or read the audit log, welcome dialog
+  in the UI with the agree checkbox, community nickname in channel messages, global profile unchanged, community
+  emoji / stickers in pickers, forum topic + reply in the UI, locked topic refuses replies, replies kept out of the
+  feed, event channel + RSVP, audit log entries.

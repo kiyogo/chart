@@ -1,5 +1,6 @@
 pub mod api;
 pub mod calls;
+pub mod community;
 pub mod dm;
 pub mod drawings;
 pub mod gif_export;

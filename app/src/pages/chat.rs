@@ -125,6 +125,11 @@ pub fn Chat(
     });
     let prefs = prefs_ctx.prefs;
     let mut quick_switch_open = use_signal(|| false);
+    // Spec 013: welcome screen, my profile in a community, events, moderator tools.
+    let mut welcome_for = use_signal(|| Option::<(String, crate::services::community::Welcome)>::None);
+    let mut community_profile_open = use_signal(|| false);
+    let mut events_open = use_signal(|| false);
+    let mut can_manage_channels = use_signal(|| false);
     let tour_key = format!("chatw_tour_v1_{current_user_id}");
     let mut tour_open = use_signal({ let k = tour_key.clone(); move || platform::storage_get(&k).is_none() });
     let mut profile_popover = use_signal(|| Option::<(String, f64, f64)>::None);
@@ -1094,7 +1099,7 @@ pub fn Chat(
         unread_counts.with_mut(|m| {
             m.remove(&ch.id);
         });
-        if ch.channel_type == "text" {
+        if ch.channel_type == "text" || ch.channel_type == "announcement" {
             let cid = ch.id.clone();
             spawn(async move {
                 if let Ok(msgs) = api::channels_get_messages(&cid, 50).await {
@@ -1178,6 +1183,14 @@ pub fn Chat(
         spawn(async move {
             if let Ok(cats) = api::servers_get_categories(&srv.id).await {
                 server_categories.set(cats);
+            }
+            // Community emoji / stickers for the pickers, my permissions, and the welcome screen.
+            crate::services::community::activate(&srv.id).await;
+            if let Ok((bits, _)) = social::server_my_permissions(&srv.id).await {
+                can_manage_channels.set(bits & 4 != 0);
+            }
+            if let Some(w) = crate::components::community_ui::should_show_welcome(&srv.id).await {
+                welcome_for.set(Some((srv.id.clone(), w)));
             }
             if let Ok(chs) = api::servers_get_channels(&srv.id).await {
                 let first_text = chs.iter().find(|c| c.channel_type == "text").cloned();
@@ -2771,6 +2784,10 @@ pub fn Chat(
                                 }
                                 if ch.channel_type != "voice" {
                                     div { class: "chat-header-actions",
+                                        button { r#type: "button", class: "btn-ghost", title: "Sự kiện của cộng đồng", onclick: move |_| events_open.set(true),
+                                            span { "📅" } span { class: "hide-mobile", "Sự kiện" } }
+                                        button { r#type: "button", class: "btn-ghost", title: "Biệt danh, ảnh và giới thiệu riêng trong cộng đồng này", onclick: move |_| community_profile_open.set(true),
+                                            crate::components::icons::UserIcon {} span { class: "hide-mobile", "Hồ sơ ở đây" } }
                                         button {
                                             r#type: "button",
                                             class: if popped_now { "btn-ghost active" } else { "btn-ghost" },
@@ -2789,7 +2806,13 @@ pub fn Chat(
                                 }
                             }
 
-                            if ch.channel_type != "voice" {
+                            if ch.channel_type == "forum" {
+                                crate::components::community_ui::ForumView { channel_id: ch.id.clone(), can_manage: can_manage_channels() }
+                            } else if ch.channel_type == "event" {
+                                if let Some(srv) = selected_server() {
+                                    crate::components::community_ui::EventsPanel { server_id: srv.id.clone(), can_manage: can_manage_channels() }
+                                }
+                            } else if ch.channel_type != "voice" {
                                 MessageList {
                                     messages: channel_view.clone(),
                                     show_sender_names: true,
@@ -3196,6 +3219,30 @@ pub fn Chat(
                             },
                             "Xóa vĩnh viễn"
                         }
+                    }
+                }
+            }
+        }
+        if let Some((sid, w)) = welcome_for() {
+            crate::components::community_ui::WelcomeDialog {
+                server_id: sid, welcome: w,
+                on_close: move |_| welcome_for.set(None),
+                on_open_channel: move |cid: String| {
+                    if let Some(ch) = channels.peek().iter().find(|c| c.id == cid).cloned() { select_channel(ch); }
+                },
+            }
+        }
+        if community_profile_open() {
+            if let Some(srv) = selected_server() {
+                crate::components::community_ui::CommunityProfileDialog { server_id: srv.id.clone(), server_name: srv.name.clone(), my_name: current_username.clone(), on_close: move |_| community_profile_open.set(false) }
+            }
+        }
+        if events_open() {
+            if let Some(srv) = selected_server() {
+                div { class: "modal-overlay", onclick: move |_| events_open.set(false),
+                    div { class: "modal-content events-modal", role: "dialog", aria_modal: "true", aria_label: "Sự kiện", onclick: move |e| e.stop_propagation(),
+                        onkeydown: move |e| if e.key() == Key::Escape { events_open.set(false) },
+                        crate::components::community_ui::EventsPanel { server_id: srv.id.clone(), can_manage: can_manage_channels(), on_close: move |_| events_open.set(false) }
                     }
                 }
             }

@@ -13,8 +13,10 @@ pub mod permissions {
     pub const KICK_MEMBERS: i64 = 1 << 7;
     pub const MENTION_EVERYONE: i64 = 1 << 8;
     pub const CONNECT_VOICE: i64 = 1 << 9;
+    /// Spec 013: add / remove community emoji and stickers.
+    pub const MANAGE_EXPRESSIONS: i64 = 1 << 10;
     pub const DEFAULT_EVERYONE: i64 = VIEW_CHANNELS | SEND_MESSAGES | CREATE_INVITES | CONNECT_VOICE;
-    pub const ALL: i64 = (1 << 10) - 1;
+    pub const ALL: i64 = (1 << 11) - 1;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

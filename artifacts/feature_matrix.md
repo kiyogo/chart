@@ -170,3 +170,14 @@ Status values: Tested = works end to end and covered by an automated check; Impl
 | 15 achievements from real activity, progress, hidden achievement, unlock history | Tested |
 | Inventory (equipped, packs, emoji, GIFs, drawings, presets, achievements) with search | Tested |
 | Profile visitors, collections, item trading | Not Started |
+
+## Spec 013: community (section XXIV)
+| Item | Status |
+|---|---|
+| Per-community nickname / avatar / bio (global profile untouched) | Tested |
+| Community emoji and stickers with "Manage Expressions" permission, shown in pickers | Tested |
+| Forum channels: topics, replies, pin, lock (replies kept out of the channel feed) | Tested |
+| Event channels and events with RSVP | Tested |
+| Moderation audit log | Tested |
+| Welcome screen, rules, "accept rules before posting" enforced by the server | Tested |
+| Per-channel emoji / themes, temporary channels, analytics, member notes, onboarding questions | Not Started |

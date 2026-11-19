@@ -5,6 +5,7 @@ pub mod auth;
 pub mod bots;
 pub mod business;
 pub mod calls;
+pub mod community;
 pub mod config;
 pub mod convo;
 pub mod crypto;

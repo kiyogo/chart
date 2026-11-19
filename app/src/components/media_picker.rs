@@ -154,6 +154,12 @@ pub fn MediaPicker(
 ) -> Element {
     let mut tab = use_signal(|| initial_tab);
     let mut custom = use_signal(Vec::<(String, String)>::new);
+    // Spec 013: emoji of the community whose channel is open come first.
+    let community_emoji: Vec<(String, String)> = crate::services::community::ACTIVE_EXPRESSIONS
+        .read()
+        .as_ref()
+        .map(|(_, l)| l.iter().filter(|x| x.kind == "emoji").map(|x| (x.name.clone(), x.file_url.clone())).collect())
+        .unwrap_or_default();
     use_effect(move || {
         spawn(async move {
             if let Ok(list) = library::emojis_list().await {
@@ -178,7 +184,7 @@ pub fn MediaPicker(
                 button { r#type: "button", role: "tab", aria_selected: "{tab() == MediaTab::Emoji}", class: if tab() == MediaTab::Emoji { "media-tab active" } else { "media-tab" }, onclick: move |_| tab.set(MediaTab::Emoji), "Emoji" }
             }
             match tab() {
-                MediaTab::Emoji => rsx! { EmojiPicker { embedded: true, custom_emojis: custom(), on_select: move |e| on_emoji.call(e), on_close: move |_| on_close.call(()) } },
+                MediaTab::Emoji => rsx! { EmojiPicker { embedded: true, custom_emojis: community_emoji.iter().cloned().chain(custom()).collect::<Vec<_>>(), on_select: move |e| on_emoji.call(e), on_close: move |_| on_close.call(()) } },
                 MediaTab::Sticker => rsx! {
                     StickerPicker { on_select: move |u: String| if let Some(h) = on_sticker { h.call(u) }, _on_close: Some(EventHandler::new(move |_| on_close.call(()))) }
                 },

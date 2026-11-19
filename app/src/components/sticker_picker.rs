@@ -130,6 +130,17 @@ pub fn StickerPicker(
         });
     });
 
+    let community: Option<StickerPackItem> = crate::services::community::ACTIVE_EXPRESSIONS.read().as_ref().and_then(|(sid, l)| {
+        let st: Vec<StickerItem> = l.iter().filter(|x| x.kind == "sticker").map(|x| StickerItem {
+            id: x.id.clone(), pack_id: format!("community-{sid}"), name: x.name.clone(), file_url: x.file_url.clone(), is_animated: x.is_animated, created_at: String::new(),
+        }).collect();
+        (!st.is_empty()).then(|| StickerPackItem { id: format!("community-{sid}"), name: "Community".into(), description: None, author_id: None, cover_url: None, stickers: st, created_at: String::new() })
+    });
+    if let Some(c) = community.clone() {
+        if !packs.peek().iter().any(|p| p.id == c.id) {
+            packs.with_mut(|l| l.insert(0, c));
+        }
+    }
     let active = active_pack_id();
     let om_active = active.as_deref() == Some(openmoji::PACK_ID);
     let active_pack = packs().into_iter().find(|p| Some(&p.id) == active.as_ref());

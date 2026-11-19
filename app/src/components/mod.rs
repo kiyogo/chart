@@ -5,6 +5,7 @@ pub mod business_view;
 pub mod bots_view;
 pub mod calls;
 pub mod chat_extras;
+pub mod community_ui;
 pub mod composer;
 pub mod demo_gallery;
 pub mod details_panel;

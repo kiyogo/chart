@@ -16,7 +16,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use chatw::{
     attachments, audit,
     auth::{self, AppState, google::GoogleJwksCache},
-    calls,
+    calls, community,
     config::Config,
     admin, bots, business, convo, crypto, db, directory, drawings, friends, groups, library, messages, privacy, public_pages, servers,
     profile_ext, profile_plus, security, stickers, typing, users, webrtc,
@@ -139,6 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/drawings", drawings::routes())
         .nest("/security", security::routes())
         .nest("/profile-plus", profile_plus::routes())
+        .merge(community::routes())
         .merge(profile_ext::routes())
         .merge(websocket::routes())
         .with_state(state.clone());
