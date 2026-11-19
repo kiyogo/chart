@@ -354,7 +354,7 @@ pub fn MessageList(
                                                 if let Some(h) = on_profile_click { h.call((sender_for_avatar.clone(), c.x, c.y)) }
                                                 else if let Some(h) = on_open_profile { h.call(sender_for_avatar.clone()) }
                                             },
-                                            Avatar { name: msg.sender_name.clone(), avatar_url: msg.sender_avatar.clone(), size: 32 }
+                                            Avatar { name: msg.sender_name.clone(), avatar_url: msg.sender_avatar.clone(), size: 36 }
                                         }
                                     }
                                 }

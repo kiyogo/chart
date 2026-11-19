@@ -67,6 +67,7 @@
   --control-height: 2.5rem;
   --icon-btn: 2.25rem;
   --avatar-list: 3.375rem;
+  --avatar-header: 2.375rem;
   --list-item-py: 0.5rem;
   --message-gap: 0.125rem;
   --message-group-gap: 0.875rem;
@@ -217,10 +218,11 @@
 
 /* ---------- Density ---------- */
 [data-density="compact"] {
-  --header-height: 3rem;
+  --header-height: 3.125rem;
   --control-height: 2.25rem;
   --icon-btn: 2rem;
   --avatar-list: 2.875rem;
+  --avatar-header: 2.125rem;
   --list-item-py: 0.3125rem;
   --message-group-gap: 0.5rem;
   --radius-bubble: 0.875rem;
@@ -230,6 +232,7 @@
   --control-height: 2.75rem;
   --icon-btn: 2.5rem;
   --avatar-list: 3.625rem;
+  --avatar-header: 2.5rem;
   --list-item-py: 0.6875rem;
   --message-gap: 0.25rem;
   --message-group-gap: 1.125rem;

@@ -625,3 +625,10 @@ pub fn RefreshIcon(#[props(default = 16)] size: u32) -> Element {
         path { d: "M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4" }
     } }
 }
+
+#[component]
+pub fn DownloadIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { d: "M12 4v11M7.5 11.5L12 16l4.5-4.5M5 19.5h14" }
+    } }
+}

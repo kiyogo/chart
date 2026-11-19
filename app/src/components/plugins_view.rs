@@ -14,7 +14,7 @@ use crate::{
     components::{
         avatar::Avatar,
         chat_extras::wallpaper_attrs,
-        icons::{BackIcon, BotIcon, CheckIcon, CloseIcon, CopyIcon, GroupIcon, PanelRightIcon, PluginIcon, PlusIcon, RefreshIcon, SendIcon, SlidersIcon, TrashIcon},
+        icons::{BackIcon, BotIcon, CheckIcon, CloseIcon, CopyIcon, DownloadIcon, GroupIcon, PanelRightIcon, PluginIcon, PlusIcon, RefreshIcon, SendIcon, SlidersIcon, TrashIcon},
         messages::{Composer, MessageList, ViewMessage},
     },
     models::{BotChatMessage, BotItem, GroupItem},
@@ -24,9 +24,14 @@ use crate::{
 };
 
 const STORAGE_KEY: &str = "chatw_plugins_v2";
+const STORE_MIGRATED_KEY: &str = "chatw_plugin_store_v1";
 const NOTES_KEY: &str = "chatw_plugin_notes_v1";
 const TODOS_KEY: &str = "chatw_plugin_todos_v1";
 const VOXEL_KEY: &str = "chatw_plugin_voxel_v1";
+
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PluginCommand {
@@ -82,6 +87,8 @@ pub struct PluginMod {
     #[serde(default)]
     pub logo_url: String,
     pub description: String,
+    #[serde(default = "default_true")]
+    pub installed: bool,
     pub enabled: bool,
     pub builtin: bool,
     pub server_bot_id: Option<String>,
@@ -139,6 +146,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             icon: "🎨".into(),
             logo_url: "logo:voxel".into(),
             description: "Giao diện khối vuông, bảng vẽ 2D và HUD tọa độ.".into(),
+            installed: false,
             enabled: false,
             builtin: true,
             server_bot_id: None,
@@ -196,6 +204,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             icon: "⚡".into(),
             logo_url: "logo:cyber".into(),
             description: "Giao diện tối Neon, hiệu ứng Matrix và trạm lệnh.".into(),
+            installed: false,
             enabled: false,
             builtin: true,
             server_bot_id: None,
@@ -251,6 +260,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             icon: "🌸".into(),
             logo_url: "logo:sakura".into(),
             description: "Giao diện kính mờ kèm hiệu ứng hoa anh đào rơi.".into(),
+            installed: false,
             enabled: false,
             builtin: true,
             server_bot_id: None,
@@ -306,6 +316,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             icon: "📋".into(),
             logo_url: "logo:notes".into(),
             description: "App bên trái ghi chú nhanh, việc cần làm và Pomodoro.".into(),
+            installed: true,
             enabled: true,
             builtin: true,
             server_bot_id: None,
@@ -343,6 +354,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             icon: "🎹".into(),
             logo_url: "logo:sound".into(),
             description: "Bảng âm thanh tổng hợp và tiếng gõ phím cơ.".into(),
+            installed: false,
             enabled: false,
             builtin: true,
             server_bot_id: None,
@@ -379,6 +391,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             icon: "🤖".into(),
             logo_url: "logo:bot".into(),
             description: "Bot tính toán, tung xúc xắc, đồng xu và xem giờ.".into(),
+            installed: true,
             enabled: true,
             builtin: true,
             server_bot_id: None,
@@ -420,10 +433,14 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
 fn load_plugins_from_storage() -> Vec<PluginMod> {
     let mut defaults = default_builtin_plugins();
     let logo_migrated = platform::storage_get("chatw_plugin_logos_v2").is_some();
+    let store_migrated = platform::storage_get(STORE_MIGRATED_KEY).is_some();
     if let Some(raw) = platform::storage_get(STORAGE_KEY) {
         if let Ok(saved) = serde_json::from_str::<Vec<PluginMod>>(&raw) {
             let any_left = saved.iter().any(|x| x.left_app_enabled);
             for mut s in saved {
+                if !store_migrated {
+                    s.installed = s.enabled || !s.builtin;
+                }
                 if let Some(existing) = defaults.iter_mut().find(|d| d.id == s.id) {
                     let lname = s.display_name.to_lowercase();
                     let ldesc = s.description.to_lowercase();
@@ -443,15 +460,22 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
                     if (s.logo_url.trim().is_empty() || (!logo_migrated && s.logo_url.starts_with("svg:"))) && !existing.logo_url.is_empty() {
                         s.logo_url = existing.logo_url.clone();
                     }
+                    if !s.installed {
+                        s.enabled = false;
+                    }
                     *existing = s;
                 } else {
+                    if !s.installed {
+                        s.enabled = false;
+                    }
                     defaults.push(s);
                 }
             }
         }
     }
-    if !logo_migrated {
+    if !logo_migrated || !store_migrated {
         platform::storage_set("chatw_plugin_logos_v2", "1");
+        platform::storage_set(STORE_MIGRATED_KEY, "1");
         if let Ok(s) = serde_json::to_string(&defaults) {
             platform::storage_set(STORAGE_KEY, &s);
         }
@@ -536,7 +560,7 @@ pub fn plugin_logo_data_url(logo_url: &str) -> Option<String> {
             _ => r##"<rect x="10" y="10" width="8.5" height="8.5" rx="2.2" fill="#fff"/><rect x="10" y="21.5" width="8.5" height="8.5" rx="2.2" fill="#fff"/><rect x="21.5" y="21.5" width="8.5" height="8.5" rx="2.2" fill="#fff"/><rect x="22.2" y="10.8" width="7" height="7" rx="2" transform="rotate(45 25.7 14.3)" fill="#fff"/>"##,
         };
         let raw_svg = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="12" fill="{c1}"/><path d="M0 0h40v21L0 33z" fill="{c2}" fill-opacity="0.32"/>{glyph}</svg>"#
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="{c1}"/><path d="M0 0h40v21L0 33z" fill="{c2}" fill-opacity="0.32"/>{glyph}</svg>"#
         );
         return Some(encode_svg_data_uri(&raw_svg));
     }
@@ -699,7 +723,7 @@ pub fn enabled_left_apps() -> Vec<(String, String, String, String)> {
     PLUGINS
         .read()
         .iter()
-        .filter(|p| p.enabled && p.left_app_enabled)
+        .filter(|p| p.installed && p.enabled && p.left_app_enabled)
         .map(|p| {
             let icon = if p.page_icon.trim().is_empty() { p.icon.clone() } else { p.page_icon.clone() };
             let title = if p.page_title.trim().is_empty() { p.display_name.clone() } else { p.page_title.clone() };
@@ -713,7 +737,7 @@ pub fn enabled_rail_pages() -> Vec<(String, String, String, String)> {
     PLUGINS
         .read()
         .iter()
-        .filter(|p| p.enabled && p.custom_page_enabled && !p.left_app_enabled)
+        .filter(|p| p.installed && p.enabled && p.custom_page_enabled && !p.left_app_enabled)
         .map(|p| {
             let icon = if p.page_icon.trim().is_empty() { p.icon.clone() } else { p.page_icon.clone() };
             let title = if p.page_title.trim().is_empty() { p.display_name.clone() } else { p.page_title.clone() };
@@ -726,7 +750,7 @@ pub fn enabled_rail_pages() -> Vec<(String, String, String, String)> {
 pub fn enabled_slash_commands() -> Vec<(String, String, String, String)> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for p in PLUGINS.read().iter().filter(|p| p.enabled && p.bot_enabled) {
+    for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled && p.bot_enabled) {
         for c in &p.commands {
             let tr = c.trigger.trim();
             if tr.starts_with('/') && seen.insert(tr.to_lowercase()) {
@@ -742,7 +766,7 @@ pub fn enabled_slash_commands() -> Vec<(String, String, String, String)> {
 
 pub fn enabled_composer_buttons() -> Vec<(String, String, String)> {
     let mut out = Vec::new();
-    for p in PLUGINS.read().iter().filter(|p| p.enabled) {
+    for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled) {
         for b in &p.composer_buttons {
             if !b.label.trim().is_empty() && !b.content.trim().is_empty() {
                 out.push((b.label.clone(), b.content.clone(), p.display_name.clone()));
@@ -756,7 +780,7 @@ pub fn enabled_bot_plugins_as_items() -> Vec<BotItem> {
     PLUGINS
         .read()
         .iter()
-        .filter(|p| p.enabled && p.bot_enabled && p.server_bot_id.is_none())
+        .filter(|p| p.installed && p.enabled && p.bot_enabled && p.server_bot_id.is_none())
         .map(|p| BotItem {
             id: p.id.clone(),
             owner_id: "local".into(),
@@ -850,14 +874,14 @@ pub fn try_run_plugin_command(input: &str, user_name: &str) -> Option<String> {
     };
     if cmd.eq_ignore_ascii_case("/help") || cmd.eq_ignore_ascii_case("/start") {
         let mut lines = vec!["🧩 Danh sách lệnh đang bật:".to_string()];
-        for p in PLUGINS.read().iter().filter(|p| p.enabled && p.bot_enabled) {
+        for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled && p.bot_enabled) {
             for c in &p.commands {
                 lines.push(format!("• {} — {} [{}]", c.trigger, c.description, p.display_name));
             }
         }
         return Some(lines.join("\n"));
     }
-    for p in PLUGINS.read().iter().filter(|p| p.enabled && p.bot_enabled) {
+    for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled && p.bot_enabled) {
         for c in &p.commands {
             if c.trigger.eq_ignore_ascii_case(cmd) {
                 if p.sound_fx != "none" {
@@ -922,10 +946,29 @@ pub fn play_mod_sound(kind: &str) {
     ));
 }
 
+fn hex_luma(hex: &str) -> Option<f32> {
+    let h = hex.trim().strip_prefix('#')?;
+    let (r, g, b) = if h.len() == 3 {
+        let mut ch = h.chars();
+        let r = u8::from_str_radix(&format!("{0}{0}", ch.next()?), 16).ok()? as f32;
+        let g = u8::from_str_radix(&format!("{0}{0}", ch.next()?), 16).ok()? as f32;
+        let b = u8::from_str_radix(&format!("{0}{0}", ch.next()?), 16).ok()? as f32;
+        (r, g, b)
+    } else if h.len() >= 6 {
+        let r = u8::from_str_radix(&h[0..2], 16).ok()? as f32;
+        let g = u8::from_str_radix(&h[2..4], 16).ok()? as f32;
+        let b = u8::from_str_radix(&h[4..6], 16).ok()? as f32;
+        (r, g, b)
+    } else {
+        return None;
+    };
+    Some(0.299 * r + 0.587 * g + 0.114 * b)
+}
+
 pub fn sync_plugins_to_dom(list: &[PluginMod]) {
     let mut css = String::new();
     let mut mech_key = false;
-    for p in list.iter().filter(|p| p.enabled) {
+    for p in list.iter().filter(|p| p.installed && p.enabled) {
         if p.sound_fx == "mech" {
             mech_key = true;
         }
@@ -934,29 +977,93 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
         }
         let t = &p.theme;
         let mut vars = String::new();
-        if !t.bg_app.is_empty() { vars.push_str(&format!("--bg-app: {} !important;", t.bg_app)); }
-        if !t.bg_sidebar.is_empty() { vars.push_str(&format!("--bg-sidebar: {} !important; --bg-primary: {} !important;", t.bg_sidebar, t.bg_sidebar)); }
-        if !t.bg_chat.is_empty() { vars.push_str(&format!("--bg-chat: {} !important;", t.bg_chat)); }
-        if !t.bg_surface.is_empty() {
-            let mix_base = if t.text_primary.is_empty() { "currentColor" } else { t.text_primary.as_str() };
+        let dark_bg = hex_luma(&t.bg_chat)
+            .or_else(|| hex_luma(&t.bg_surface))
+            .or_else(|| hex_luma(&t.bg_app))
+            .map(|l| l < 135.0);
+        let light_text = hex_luma(&t.text_primary).map(|l| l > 155.0);
+        let has_colors = !t.bg_app.is_empty()
+            || !t.bg_sidebar.is_empty()
+            || !t.bg_chat.is_empty()
+            || !t.bg_surface.is_empty()
+            || !t.text_primary.is_empty();
+        if has_colors {
+            let is_dark = dark_bg.or(light_text).unwrap_or(false);
+            let chat_bg = if !t.bg_chat.is_empty() {
+                t.bg_chat.as_str()
+            } else if !t.bg_app.is_empty() {
+                t.bg_app.as_str()
+            } else if !t.bg_surface.is_empty() {
+                t.bg_surface.as_str()
+            } else if is_dark {
+                "#191C22"
+            } else {
+                "#FFFFFF"
+            };
+            let surface = if !t.bg_surface.is_empty() {
+                t.bg_surface.as_str()
+            } else if !t.bg_chat.is_empty() {
+                t.bg_chat.as_str()
+            } else if is_dark {
+                "#22262E"
+            } else {
+                "#FFFFFF"
+            };
+            let mix_base = if !t.text_primary.is_empty() {
+                t.text_primary.as_str()
+            } else if is_dark {
+                "#E8EAED"
+            } else {
+                "#171C26"
+            };
+            vars.push_str(if is_dark { "color-scheme: dark !important;" } else { "color-scheme: light !important;" });
+            if !t.bg_app.is_empty() {
+                vars.push_str(&format!("--bg-app: {} !important;", t.bg_app));
+            }
+            if !t.bg_sidebar.is_empty() {
+                vars.push_str(&format!("--bg-sidebar: {} !important;", t.bg_sidebar));
+            }
+            if !t.bg_chat.is_empty() {
+                vars.push_str(&format!("--bg-chat: {cb} !important;", cb = t.bg_chat));
+            }
             vars.push_str(&format!(
-                "--bg-surface: {sf} !important; --bg-elevated: {sf} !important; --bg-secondary: {sf} !important; --bg-surface-hover: color-mix(in srgb, {mb} 6%, {sf}) !important; --bg-hover: color-mix(in srgb, {mb} 11%, {sf}) !important;",
-                sf = t.bg_surface, mb = mix_base
+                "--bg-primary: {cb} !important; --bg-surface: {sf} !important; --bg-elevated: color-mix(in srgb, {mb} 4%, {sf}) !important; --bg-secondary: color-mix(in srgb, {mb} 5%, {cb}) !important; --bg-surface-hover: color-mix(in srgb, {mb} 8%, {sf}) !important; --bg-hover: color-mix(in srgb, {mb} 13%, {sf}) !important; --bg-active: color-mix(in srgb, {mb} 18%, {sf}) !important; --bg-input: color-mix(in srgb, {mb} 9%, {sf}) !important; --bg-input-focus: color-mix(in srgb, {mb} 14%, {sf}) !important; --border: color-mix(in srgb, {mb} 15%, {sf}) !important; --border-subtle: color-mix(in srgb, {mb} 9%, {sf}) !important; --border-strong: color-mix(in srgb, {mb} 25%, {sf}) !important; --border-color: var(--border) !important;",
+                sf = surface, mb = mix_base, cb = chat_bg
+            ));
+            if is_dark {
+                vars.push_str("--bg-error: #3A1D20 !important; --bg-success: #15301F !important; --bg-warning: #382A12 !important; --bg-overlay: rgba(0, 0, 0, 0.56) !important; --status-warning: #F0AE3C !important; --status-success: #3DBE7E !important; --status-danger: #F2555A !important;");
+            } else {
+                vars.push_str("--bg-error: #FDEDEE !important; --bg-success: #E7F6EE !important; --bg-warning: #FDF4E3 !important; --bg-overlay: rgba(16, 22, 34, 0.42) !important; --status-warning: #D48A10 !important; --status-success: #169B62 !important; --status-danger: #E5484D !important;");
+            }
+            vars.push_str(&format!(
+                "--text-primary: {mb} !important; --text: {mb} !important; --text-secondary: color-mix(in srgb, {mb} 72%, {cb}) !important; --text-muted: color-mix(in srgb, {mb} 50%, {cb}) !important; --msg-recv-text: {mb} !important; --msg-recv-meta: color-mix(in srgb, {mb} 56%, {cb}) !important;",
+                mb = mix_base, cb = chat_bg
             ));
         }
         if !t.accent.is_empty() {
+            let is_dark = dark_bg.or(light_text).unwrap_or(false);
+            let on_acc = if hex_luma(&t.accent).is_some_and(|l| l > 155.0) { "#0B1018" } else { "#FFFFFF" };
+            let acc_txt = if is_dark {
+                format!("color-mix(in srgb, {} 65%, #FFFFFF)", t.accent)
+            } else {
+                t.accent.clone()
+            };
             vars.push_str(&format!(
-                "--accent: {a} !important; --accent-hover: color-mix(in srgb, {a} 85%, #000) !important; --accent-soft: color-mix(in srgb, {a} 16%, transparent) !important; --accent-text: {a} !important;",
-                a = t.accent
+                "--accent: {a} !important; --accent-hover: color-mix(in srgb, {a} 85%, #000) !important; --accent-soft: color-mix(in srgb, {a} 18%, var(--bg-surface)) !important; --accent-soft-strong: color-mix(in srgb, {a} 28%, var(--bg-surface)) !important; --accent-text: {at} !important; --on-accent: {oa} !important; --bg-selected: var(--accent-soft) !important; --text-selected: var(--accent-text) !important; --text-link: var(--accent-text) !important;",
+                a = t.accent, at = acc_txt, oa = on_acc
             ));
         }
-        if !t.msg_sent.is_empty() { vars.push_str(&format!("--msg-sent: {} !important;", t.msg_sent)); }
-        if !t.msg_recv.is_empty() { vars.push_str(&format!("--msg-recv: {} !important;", t.msg_recv)); }
-        if !t.text_primary.is_empty() {
+        if !t.msg_sent.is_empty() {
+            let bright_sent = hex_luma(&t.msg_sent).is_some_and(|l| l > 155.0);
+            let sent_txt = if bright_sent { "#0B1018" } else { "#FFFFFF" };
+            let sent_meta = if bright_sent { "rgba(11, 16, 24, 0.72)" } else { "rgba(255, 255, 255, 0.78)" };
             vars.push_str(&format!(
-                "--text-primary: {tp} !important; --text: {tp} !important; --text-secondary: color-mix(in srgb, {tp} 68%, transparent) !important; --text-muted: color-mix(in srgb, {tp} 48%, transparent) !important; --msg-recv-text: {tp} !important;",
-                tp = t.text_primary
+                "--msg-sent: {} !important; --msg-sent-text: {} !important; --msg-sent-meta: {} !important;",
+                t.msg_sent, sent_txt, sent_meta
             ));
+        }
+        if !t.msg_recv.is_empty() {
+            vars.push_str(&format!("--msg-recv: {} !important;", t.msg_recv));
         }
         if !t.panel_radius.is_empty() {
             vars.push_str(&format!(
@@ -975,7 +1082,7 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
         }
         match t.border_style.as_str() {
             "pixel" => {
-                css.push_str(".nav-sidebar, .chat-column, .settings-nav, .settings-body, .search-page, .result-card, .bot-card, .mod-card, .settings-row, .inv-card, .message-bubble { border: 2px solid color-mix(in srgb, var(--accent) 45%, #000) !important; }\n");
+                css.push_str(".nav-sidebar, .chat-column, .details-panel, .settings-nav, .settings-body, .search-page, .result-card, .bot-card, .mod-card, .inv-card, .message-bubble { border: 2px solid color-mix(in srgb, var(--accent) 45%, #000) !important; }\n");
             }
             "neon" => {
                 css.push_str(".nav-sidebar, .chat-column, .settings-nav, .settings-body, .search-page, .result-card, .mod-card { border: 1px solid color-mix(in srgb, var(--accent) 65%, transparent) !important; box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent) !important; }\n");
@@ -1068,11 +1175,11 @@ pub fn PluginGlobalOverlay() -> Element {
     let active_fx = plugins
         .iter()
         .rev()
-        .find(|p| p.enabled && p.screen_fx != "none" && !p.screen_fx.is_empty())
+        .find(|p| p.installed && p.enabled && p.screen_fx != "none" && !p.screen_fx.is_empty())
         .map(|p| p.screen_fx.clone())
         .unwrap_or_else(|| "none".into());
-    let hud_mod = plugins.iter().rev().find(|p| p.enabled && p.hud_enabled).cloned();
-    let enabled_count = plugins.iter().filter(|p| p.enabled).count();
+    let hud_mod = plugins.iter().rev().find(|p| p.installed && p.enabled && p.hud_enabled).cloned();
+    let enabled_count = plugins.iter().filter(|p| p.installed && p.enabled).count();
     let mut hud_collapsed = use_signal(|| false);
     let mut quick_note = use_signal(|| platform::storage_get(NOTES_KEY).unwrap_or_default());
     let clock_now = chrono::Local::now().format("%H:%M · %d/%m/%Y").to_string();
@@ -1216,10 +1323,8 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                     header { class: "chat-header",
                         button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
                         div { class: "chat-header-identity",
-                            span { class: "bot-header-icon", PluginIcon { size: 20 } }
                             div { class: "chat-header-info",
                                 h2 { class: "chat-header-title", "Plugin" }
-                                span { class: "chat-header-meta", "Tùy chỉnh giao diện, ứng dụng bên trái và lệnh" }
                             }
                         }
                     }
@@ -1260,7 +1365,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                 header { class: "chat-header",
                     button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
-                        span { class: "bot-header-icon", PluginGlyph { icon: p.page_icon.clone(), logo_url: p.logo_url.clone(), size: glyph_slot_size(&p.logo_url, 20, 34) } }
+                        span { class: "bot-header-icon", PluginGlyph { icon: p.page_icon.clone(), logo_url: p.logo_url.clone(), size: glyph_slot_size(&p.logo_url, 20, 38) } }
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "{p.page_title}" }
                             span { class: "chat-header-meta", "{p.display_name}" }
@@ -1703,7 +1808,7 @@ fn CyberDashboardPage(plugin: PluginMod, my_username: String, #[props(default = 
                     }
                     div { class: "inv-card",
                         div { class: "settings-label", "Trạng thái Plugin" }
-                        div { class: "member-sub", "{PLUGINS.read().iter().filter(|p| p.enabled).count()} Plugin đang bật" }
+                        div { class: "member-sub", "{PLUGINS.read().iter().filter(|p| p.installed && p.enabled).count()} Plugin đang bật" }
                     }
                     div { class: "inv-card",
                         div { class: "settings-label", "Hiệu ứng màn hình" }
@@ -2216,7 +2321,7 @@ pub fn PluginChatView(
     let matching_mod = PLUGINS
         .read()
         .iter()
-        .find(|p| p.id == bot.id || p.username == bot.username || p.server_bot_id.as_deref() == Some(bot.id.as_str()))
+        .find(|p| p.installed && p.enabled && (p.id == bot.id || p.username == bot.username || p.server_bot_id.as_deref() == Some(bot.id.as_str())))
         .cloned();
 
     let send_id = bot.id.clone();
@@ -2420,9 +2525,9 @@ pub fn PluginChatView(
                     div { class: "chat-header-identity",
                         div { class: "chat-item-avatar",
                             if matching_mod.is_none() && bot.avatar_url.is_some() {
-                                Avatar { name: bot.display_name.clone(), avatar_url: bot.avatar_url.clone(), size: 42 }
+                                Avatar { name: bot.display_name.clone(), avatar_url: bot.avatar_url.clone(), size: 38 }
                             } else {
-                                span { class: "bot-header-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: glyph_slot_size(&header_logo, 22, 40) } }
+                                span { class: "bot-header-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: glyph_slot_size(&header_logo, 20, 38) } }
                             }
                             span { class: "avatar-plugin-badge", "Plugin" }
                         }
@@ -2640,8 +2745,9 @@ pub fn PluginsSettings(
                             author: "Bạn".into(),
                             version: "1.0.0".into(),
                             icon: "🤖".into(),
-                            logo_url: "svg:bot".into(),
+                            logo_url: "logo:bot".into(),
                             description: sb.description.clone().unwrap_or_else(|| "Plugin kết nối API máy chủ".into()),
+                            installed: true,
                             enabled: true,
                             builtin: false,
                             server_bot_id: Some(sb.id.clone()),
@@ -2731,6 +2837,7 @@ pub fn PluginsSettings(
                 icon: ic.clone(),
                 logo_url: lg,
                 description: ds,
+                installed: true,
                 enabled: true,
                 builtin: false,
                 server_bot_id: srv_id,
@@ -2893,6 +3000,7 @@ pub fn PluginsSettings(
                                         if pm.id.is_empty() {
                                             pm.id = format!("mod:import_{}", chrono::Utc::now().timestamp_millis());
                                         }
+                                        pm.installed = true;
                                         pm.enabled = true;
                                         let mut list = PLUGINS.peek().clone();
                                         if let Some(ex) = list.iter_mut().find(|x| x.id == pm.id) {
@@ -2919,10 +3027,166 @@ pub fn PluginsSettings(
     }
 
     if editing_mod.is_none() {
+        let installed_plugins: Vec<PluginMod> = plugins_list.iter().filter(|p| p.installed).cloned().collect();
+        let store_plugins: Vec<PluginMod> = plugins_list.iter().filter(|p| !p.installed).cloned().collect();
+        let render_card = move |pm: PluginMod| {
+            let pid = pm.id.clone();
+            let pid_install = pm.id.clone();
+            let pid_uninstall = pm.id.clone();
+            let pid_edit = pm.id.clone();
+            let pid_left = pm.id.clone();
+            let pid_page = pm.id.clone();
+            let pid_del = pm.id.clone();
+            let srv_id_del = pm.server_bot_id.clone();
+            let pm_chat = pm.clone();
+            let is_installed = pm.installed;
+            let is_on = pm.installed && pm.enabled;
+            rsx! {
+                div { key: "{pm.id}", class: if is_on { "mod-card active" } else { "mod-card" },
+                    div { class: "mod-card-head",
+                        span { class: "mod-card-icon", PluginGlyph { icon: pm.icon.clone(), logo_url: pm.logo_url.clone(), size: glyph_slot_size(&pm.logo_url, 20, 36) } }
+                        div { class: "mod-card-title-wrap",
+                            div { class: "mod-card-title", "{pm.display_name}" }
+                        }
+                        if is_installed {
+                            input {
+                                r#type: "checkbox",
+                                class: "switch",
+                                checked: is_on,
+                                aria_label: "Bật {pm.display_name}",
+                                onchange: move |e| {
+                                    let v = e.checked();
+                                    if v { play_mod_sound("xp"); }
+                                    update_plugin(&pid, &|p| p.enabled = v);
+                                }
+                            }
+                        }
+                    }
+                    p { class: "mod-card-desc", "{pm.description}" }
+                    div { class: "mod-capability-pills",
+                        if pm.bot_enabled { span { class: "mod-cap-pill", "🤖 Bot" } }
+                        if pm.left_app_enabled { span { class: "mod-cap-pill", "◧ Bên trái" } }
+                        if pm.custom_page_enabled { span { class: "mod-cap-pill", "📄 Trang" } }
+                        if pm.theme_enabled { span { class: "mod-cap-pill", "🎨 Giao diện" } }
+                        if pm.hud_enabled { span { class: "mod-cap-pill", "⏱ HUD" } }
+                    }
+                    div { class: "mod-card-actions",
+                        if is_installed {
+                            if pm.left_app_enabled {
+                                button {
+                                    r#type: "button",
+                                    class: "btn-small-primary",
+                                    onclick: move |_| {
+                                        update_plugin(&pid_left, &|p| { p.installed = true; p.enabled = true; });
+                                        *ACTIVE_PLUGIN_PAGE.write() = None;
+                                        *ACTIVE_LEFT_PLUGIN.write() = Some(pid_left.clone());
+                                    },
+                                    PanelRightIcon { size: 14 } "Bên trái"
+                                }
+                            }
+                            if pm.custom_page_enabled {
+                                button {
+                                    r#type: "button",
+                                    class: "btn-small-secondary",
+                                    onclick: move |_| {
+                                        update_plugin(&pid_page, &|p| { p.installed = true; p.enabled = true; });
+                                        *ACTIVE_PLUGIN_PAGE.write() = Some(pid_page.clone());
+                                    },
+                                    "Mở"
+                                }
+                            }
+                            if pm.bot_enabled {
+                                if let Some(h) = on_open_bot_chat {
+                                    button {
+                                        r#type: "button",
+                                        class: "btn-small-secondary",
+                                        onclick: move |_| {
+                                            h.call(BotItem {
+                                                id: pm_chat.server_bot_id.clone().unwrap_or_else(|| pm_chat.id.clone()),
+                                                owner_id: "local".into(),
+                                                username: pm_chat.username.clone(),
+                                                display_name: pm_chat.display_name.clone(),
+                                                description: Some(pm_chat.description.clone()),
+                                                avatar_url: plugin_logo_data_url(&pm_chat.logo_url),
+                                                is_public: true,
+                                                verification_status: "verified".into(),
+                                                token_hint: None,
+                                                token: None,
+                                                last_text: None,
+                                            });
+                                        },
+                                        "Chat"
+                                    }
+                                }
+                            }
+                            button {
+                                r#type: "button",
+                                class: "btn-small-secondary",
+                                onclick: move |_| {
+                                    status.set(None);
+                                    *EDITING_PLUGIN_ID.write() = Some(pid_edit.clone());
+                                },
+                                SlidersIcon {} "Sửa"
+                            }
+                            button {
+                                r#type: "button",
+                                class: "btn-small-secondary",
+                                onclick: move |_| {
+                                    status.set(None);
+                                    if ACTIVE_LEFT_PLUGIN.peek().as_deref() == Some(pid_uninstall.as_str()) {
+                                        *ACTIVE_LEFT_PLUGIN.write() = None;
+                                    }
+                                    if ACTIVE_PLUGIN_PAGE.peek().as_deref() == Some(pid_uninstall.as_str()) {
+                                        *ACTIVE_PLUGIN_PAGE.write() = None;
+                                    }
+                                    if EDITING_PLUGIN_ID.peek().as_deref() == Some(pid_uninstall.as_str()) {
+                                        *EDITING_PLUGIN_ID.write() = None;
+                                    }
+                                    update_plugin(&pid_uninstall, &|p| { p.installed = false; p.enabled = false; });
+                                },
+                                TrashIcon { size: 14 } "Gỡ"
+                            }
+                        } else {
+                            button {
+                                r#type: "button",
+                                class: "btn-small-primary",
+                                onclick: move |_| {
+                                    status.set(None);
+                                    play_mod_sound("xp");
+                                    update_plugin(&pid_install, &|p| { p.installed = true; p.enabled = true; });
+                                },
+                                DownloadIcon { size: 14 } "Tải"
+                            }
+                            if !pm.builtin {
+                                button {
+                                    r#type: "button",
+                                    class: "icon-btn danger",
+                                    title: "Xóa",
+                                    onclick: move |_| {
+                                        let id = pid_del.clone();
+                                        let sid = srv_id_del.clone();
+                                        let mut list = PLUGINS.peek().clone();
+                                        list.retain(|x| x.id != id);
+                                        save_plugins(&list);
+                                        *PLUGINS.write() = list;
+                                        if let Some(s) = sid {
+                                            spawn(async move {
+                                                let _ = social::bot_delete(&s).await;
+                                            });
+                                        }
+                                    },
+                                    TrashIcon { size: 15 }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
         return rsx! {
             div { class: "settings-section",
                 div { class: "mod-studio-header",
-                    div { class: "settings-group-title", "Danh sách Plugin" }
+                    div { class: "settings-group-title", "Quản lý Plugin" }
                     div { class: "inline-form",
                         button { r#type: "button", class: "btn-primary", onclick: move |_| { creating_new.set(true); import_open.set(false); },
                             PlusIcon { size: 16 } "Tạo mới"
@@ -2937,125 +3201,22 @@ pub fn PluginsSettings(
                     div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
                 }
 
-                div { class: "mod-cards-grid",
-                    for pm in plugins_list {
-                        {
-                            let pid = pm.id.clone();
-                            let pid_edit = pm.id.clone();
-                            let pid_left = pm.id.clone();
-                            let pid_page = pm.id.clone();
-                            let pid_del = pm.id.clone();
-                            let srv_id_del = pm.server_bot_id.clone();
-                            let pm_chat = pm.clone();
-                            let is_on = pm.enabled;
-                            rsx! {
-                                div { key: "{pm.id}", class: if is_on { "mod-card active" } else { "mod-card" },
-                                    div { class: "mod-card-head",
-                                        span { class: "mod-card-icon", PluginGlyph { icon: pm.icon.clone(), logo_url: pm.logo_url.clone(), size: glyph_slot_size(&pm.logo_url, 20, 36) } }
-                                        div { class: "mod-card-title-wrap",
-                                            div { class: "mod-card-title", "{pm.display_name}" }
-                                        }
-                                        input {
-                                            r#type: "checkbox",
-                                            class: "switch",
-                                            checked: is_on,
-                                            aria_label: "Bật {pm.display_name}",
-                                            onchange: move |e| {
-                                                let v = e.checked();
-                                                if v { play_mod_sound("xp"); }
-                                                update_plugin(&pid, &|p| p.enabled = v);
-                                            }
-                                        }
-                                    }
-                                    p { class: "mod-card-desc", "{pm.description}" }
-                                    div { class: "mod-capability-pills",
-                                        if pm.bot_enabled { span { class: "mod-cap-pill", "🤖 Bot" } }
-                                        if pm.left_app_enabled { span { class: "mod-cap-pill", "◧ Bên trái" } }
-                                        if pm.custom_page_enabled { span { class: "mod-cap-pill", "📄 Trang" } }
-                                        if pm.theme_enabled { span { class: "mod-cap-pill", "🎨 Giao diện" } }
-                                        if pm.hud_enabled { span { class: "mod-cap-pill", "⏱ HUD" } }
-                                    }
-                                    div { class: "mod-card-actions",
-                                        if pm.left_app_enabled {
-                                            button {
-                                                r#type: "button",
-                                                class: "btn-small-primary",
-                                                onclick: move |_| {
-                                                    update_plugin(&pid_left, &|p| p.enabled = true);
-                                                    *ACTIVE_PLUGIN_PAGE.write() = None;
-                                                    *ACTIVE_LEFT_PLUGIN.write() = Some(pid_left.clone());
-                                                },
-                                                PanelRightIcon { size: 14 } "Bên trái"
-                                            }
-                                        }
-                                        if pm.custom_page_enabled {
-                                            button {
-                                                r#type: "button",
-                                                class: "btn-small-secondary",
-                                                onclick: move |_| {
-                                                    update_plugin(&pid_page, &|p| p.enabled = true);
-                                                    *ACTIVE_PLUGIN_PAGE.write() = Some(pid_page.clone());
-                                                },
-                                                "Mở"
-                                            }
-                                        }
-                                        if pm.bot_enabled {
-                                            if let Some(h) = on_open_bot_chat {
-                                                button {
-                                                    r#type: "button",
-                                                    class: "btn-small-secondary",
-                                                    onclick: move |_| {
-                                                        h.call(BotItem {
-                                                            id: pm_chat.server_bot_id.clone().unwrap_or_else(|| pm_chat.id.clone()),
-                                                            owner_id: "local".into(),
-                                                            username: pm_chat.username.clone(),
-                                                            display_name: pm_chat.display_name.clone(),
-                                                            description: Some(pm_chat.description.clone()),
-                                                            avatar_url: plugin_logo_data_url(&pm_chat.logo_url),
-                                                            is_public: true,
-                                                            verification_status: "verified".into(),
-                                                            token_hint: None,
-                                                            token: None,
-                                                            last_text: None,
-                                                        });
-                                                    },
-                                                    "Chat"
-                                                }
-                                            }
-                                        }
-                                        button {
-                                            r#type: "button",
-                                            class: "btn-small-secondary",
-                                            onclick: move |_| {
-                                                status.set(None);
-                                                *EDITING_PLUGIN_ID.write() = Some(pid_edit.clone());
-                                            },
-                                            SlidersIcon {} "Sửa"
-                                        }
-                                        if !pm.builtin {
-                                            button {
-                                                r#type: "button",
-                                                class: "icon-btn danger",
-                                                title: "Xóa",
-                                                onclick: move |_| {
-                                                    let id = pid_del.clone();
-                                                    let sid = srv_id_del.clone();
-                                                    let mut list = PLUGINS.peek().clone();
-                                                    list.retain(|x| x.id != id);
-                                                    save_plugins(&list);
-                                                    *PLUGINS.write() = list;
-                                                    if let Some(s) = sid {
-                                                        spawn(async move {
-                                                            let _ = social::bot_delete(&s).await;
-                                                        });
-                                                    }
-                                                },
-                                                TrashIcon { size: 15 }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                div { class: "mod-section-heading", "Đã tải ({installed_plugins.len()})" }
+                if installed_plugins.is_empty() {
+                    div { class: "mod-store-empty", "Chưa tải Plugin nào. Bấm Tải ở Kho Plugin bên dưới." }
+                } else {
+                    div { class: "mod-cards-grid",
+                        for pm in installed_plugins {
+                            {render_card(pm)}
+                        }
+                    }
+                }
+
+                if !store_plugins.is_empty() {
+                    div { class: "mod-section-heading", "Kho Plugin ({store_plugins.len()})" }
+                    div { class: "mod-cards-grid",
+                        for pm in store_plugins {
+                            {render_card(pm)}
                         }
                     }
                 }
@@ -3767,4 +3928,36 @@ pub fn PluginsSettings(
 }
 
 pub use PluginsSettings as BotsSettings;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_luma_detects_dark_light_and_bright_accents() {
+        assert!(hex_luma("#181E18").unwrap() < 135.0);
+        assert!(hex_luma("#0A0C1A").unwrap() < 135.0);
+        assert!(hex_luma("#FFF5F9").unwrap() > 135.0);
+        assert!(hex_luma("#00F0FF").unwrap() > 155.0);
+        assert!(hex_luma("#10B981").unwrap() < 155.0);
+        assert!(hex_luma("#fff").unwrap() > 250.0);
+    }
+
+    #[test]
+    fn store_plugins_split_installed_and_available() {
+        let builtins = default_builtin_plugins();
+        assert!(builtins.iter().any(|p| p.installed && p.enabled));
+        assert!(builtins.iter().any(|p| !p.installed && !p.enabled));
+    }
+
+    #[test]
+    fn legacy_plugin_json_defaults_installed_true() {
+        let mut p = default_builtin_plugins().into_iter().next().unwrap();
+        p.installed = false;
+        let mut val = serde_json::to_value(&p).unwrap();
+        val.as_object_mut().unwrap().remove("installed");
+        let parsed: PluginMod = serde_json::from_value(val).unwrap();
+        assert!(parsed.installed);
+    }
+}
 
