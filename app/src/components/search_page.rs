@@ -10,7 +10,6 @@ use crate::{
         composer::fold,
         icons::{BotIcon, CompassIcon, GroupIcon, SearchIcon, StoreIcon, UserPlusIcon},
     },
-    i18n::t,
     models::{BotItem, DirectoryEntry, DirectoryResults, FriendItem, GroupItem, ServerItem, UserSearchResult},
     platform,
     services::{api, social},
@@ -27,16 +26,6 @@ enum Tab {
     Business,
 }
 
-const TABS: [(Tab, &str); 7] = [
-    (Tab::All, "Tất cả"),
-    (Tab::Chats, "Của bạn"),
-    (Tab::People, "Mọi người"),
-    (Tab::Communities, "Cộng đồng"),
-    (Tab::Groups, "Nhóm"),
-    (Tab::Bots, "Bot"),
-    (Tab::Business, "Kinh doanh"),
-];
-
 #[component]
 pub fn SearchPage(
     friends: Vec<FriendItem>,
@@ -51,7 +40,7 @@ pub fn SearchPage(
     on_add_friend: EventHandler<String>,
 ) -> Element {
     let mut query = use_signal(String::new);
-    let mut tab = use_signal(|| Tab::All);
+    let tab = use_signal(|| Tab::All);
     let mut dir = use_signal(DirectoryResults::default);
     let mut people = use_signal(Vec::<UserSearchResult>::new);
     let mut loading = use_signal(|| false);
@@ -115,8 +104,6 @@ pub fn SearchPage(
     rsx! {
         div { class: "search-page",
             div { class: "search-hero",
-                h1 { class: "search-hero-title", "{t(\"nav.search\")}" }
-                p { class: "search-hero-sub", "Tìm cuộc trò chuyện, bạn bè, cộng đồng, nhóm, bot và trang Kinh doanh. Mục công khai luôn đã được xác minh." }
                 div { class: "search-field big",
                     SearchIcon { size: 20 }
                     input {
@@ -126,15 +113,6 @@ pub fn SearchPage(
                         aria_label: "Tìm kiếm mọi thứ",
                         value: "{query}",
                         oninput: move |e| query.set(e.value()),
-                    }
-                }
-                div { class: "sidebar-filters search-tabs", role: "tablist", aria_label: "Loại kết quả",
-                    for (tb, label) in TABS {
-                        button { key: "{label}", r#type: "button", role: "tab", aria_selected: "{cur == tb}",
-                            class: if cur == tb { "filter-chip active" } else { "filter-chip" },
-                            onclick: move |_| tab.set(tb),
-                            "{label}"
-                        }
                     }
                 }
             }
