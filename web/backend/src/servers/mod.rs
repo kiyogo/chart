@@ -95,10 +95,40 @@ async fn handle_create_server(
 
     let mut tx = state.db.begin().await?;
 
+    let is_enterprise = payload.is_enterprise.unwrap_or(false);
+    // Prevent duplicate server creation on rapid double-clicks within 5 seconds
+    if let Some(existing) = sqlx::query!(
+        r#"
+        SELECT id, name, description, icon_url, owner_id, created_at, is_enterprise
+        FROM servers
+        WHERE owner_id = $1 AND name = $2 AND is_enterprise = $3
+          AND created_at >= now() - interval '5 seconds'
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+        user.id,
+        name,
+        is_enterprise
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    {
+        return Ok(Json(ServerItem {
+            id: existing.id,
+            name: existing.name,
+            description: existing.description,
+            icon_url: existing.icon_url,
+            owner_id: existing.owner_id,
+            created_at: existing.created_at,
+            is_enterprise: existing.is_enterprise,
+            member_count: Some(1),
+            is_owner: Some(true),
+        }));
+    }
+
     let server_id = Uuid::new_v4();
     let desc = payload.description.as_deref();
 
-    let is_enterprise = payload.is_enterprise.unwrap_or(false);
     let server_row = sqlx::query!(
         r#"
         INSERT INTO servers (id, name, description, owner_id, is_enterprise)

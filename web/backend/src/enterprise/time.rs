@@ -132,7 +132,11 @@ pub async fn check_in(
         .unwrap_or("08:30");
     let grace = policy
         .as_ref()
-        .and_then(|v| v.get("late_grace_min").and_then(|x| x.as_i64()))
+        .and_then(|v| {
+            v.get("grace_minutes")
+                .or_else(|| v.get("late_grace_min"))
+                .and_then(|x| x.as_i64())
+        })
         .unwrap_or(10) as i32;
     let (sh, sm) = parse_hhmm(ws, 8, 30);
     let now_min = (local.hour() * 60 + local.minute()) as i32;

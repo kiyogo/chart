@@ -23,8 +23,13 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
     let mut q = use_signal(String::new);
     let mut status_filter = use_signal(String::new);
     let mut dept_filter = use_signal(String::new);
+    let mut sort_by = use_signal(|| "name".to_string());
     let mut selected = use_signal(HashSet::<String>::new);
     let mut editing_uid = use_signal(|| Option::<String>::None);
+    let mut show_import = use_signal(|| false);
+    let mut import_text = use_signal(String::new);
+    let mut quick_task_uid = use_signal(|| Option::<(String, String)>::None);
+    let mut quick_task_title = use_signal(String::new);
     let mut handover_from = use_signal(|| Option::<String>::None);
     let mut handover_to = use_signal(String::new);
     let mut msg = use_signal(|| Option::<(bool, String)>::None);
@@ -51,8 +56,9 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
             let qv = q();
             let sv = status_filter();
             let dv = dept_filter();
+            let sb = sort_by();
             spawn(async move {
-                if let Ok(list) = enterprise::list_employees(&sid, &qv, &sv, &dv).await {
+                if let Ok(list) = enterprise::list_employees_sorted(&sid, &qv, &sv, &dv, &sb).await {
                     employees.set(list);
                 }
                 if let Ok(dl) = enterprise::list_departments(&sid).await {
@@ -73,8 +79,9 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
             let qv = q();
             let sv = status_filter();
             let dv = dept_filter();
+            let sb = sort_by();
             spawn(async move {
-                if let Ok(list) = enterprise::list_employees(&sid, &qv, &sv, &dv).await {
+                if let Ok(list) = enterprise::list_employees_sorted(&sid, &qv, &sv, &dv, &sb).await {
                     employees.set(list);
                 }
                 if let Ok(dl) = enterprise::list_departments(&sid).await {
@@ -175,30 +182,140 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                             option { key: "{d.id}", value: "{d.id}", "{d.name}" }
                         }
                     }
+                    select { value: "{sort_by}", onchange: move |e| { sort_by.set(e.value()); load.call(()); },
+                        option { value: "name", "Sắp xếp: Họ tên" }
+                        option { value: "code", "Sắp xếp: Mã NV" }
+                        option { value: "recent", "Sắp xếp: Mới nhất" }
+                    }
                     button { r#type: "button", class: "btn-secondary", onclick: move |_| load.call(()), "Lọc" }
                 }
                 if can_manage {
-                    button {
-                        r#type: "button",
-                        class: "btn-primary",
-                        onclick: move |_| {
-                            if editing_uid().is_some() {
-                                editing_uid.set(None);
-                            } else {
-                                f_uid.set(String::new());
-                                f_name.set(String::new());
-                                f_code.set(String::new());
-                                f_title.set(String::new());
-                                editing_uid.set(Some("new".into()));
-                            }
-                        },
-                        PlusIcon { size: 15 } " Thêm hồ sơ"
+                    div { class: "ent-btn-group",
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            onclick: move |_| show_import.set(!show_import()),
+                            "Nhập danh sách"
+                        }
+                        button {
+                            r#type: "button",
+                            class: "btn-primary",
+                            onclick: move |_| {
+                                if editing_uid().is_some() {
+                                    editing_uid.set(None);
+                                } else {
+                                    f_uid.set(String::new());
+                                    f_name.set(String::new());
+                                    f_code.set(String::new());
+                                    f_title.set(String::new());
+                                    editing_uid.set(Some("new".into()));
+                                }
+                            },
+                            PlusIcon { size: 15 } " Thêm hồ sơ"
+                        }
                     }
                 }
             }
 
             if let Some((is_err, text)) = msg() {
                 div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{text}" }
+            }
+
+            if can_manage && show_import() {
+                div { class: "ent-card",
+                    label { class: "form-field",
+                        span { "Nhập danh sách nhân sự (mỗi dòng: tài_khoản, Họ tên, Chức danh, Mã phòng ban)" }
+                        textarea {
+                            rows: 3,
+                            placeholder: "alice, Nguyễn Văn A, Kỹ sư hệ thống, ENG",
+                            value: "{import_text}",
+                            oninput: move |e| import_text.set(e.value()),
+                        }
+                    }
+                    div { class: "ent-btn-group",
+                        button {
+                            r#type: "button",
+                            class: "btn-primary",
+                            onclick: {
+                                let sid = server_id.clone();
+                                move |_| {
+                                    let rows: Vec<serde_json::Value> = import_text()
+                                        .lines()
+                                        .filter_map(|line| {
+                                            let parts: Vec<&str> = line.split(',').map(str::trim).collect();
+                                            let uname = parts.first().copied().unwrap_or("");
+                                            if uname.is_empty() {
+                                                return None;
+                                            }
+                                            Some(json!({
+                                                "username": uname,
+                                                "full_name": parts.get(1).copied().filter(|s| !s.is_empty()),
+                                                "job_title": parts.get(2).copied().filter(|s| !s.is_empty()),
+                                                "department_code": parts.get(3).copied().filter(|s| !s.is_empty()),
+                                            }))
+                                        })
+                                        .collect();
+                                    if rows.is_empty() {
+                                        msg.set(Some((true, "Nhập ít nhất 1 dòng tài khoản hợp lệ".into())));
+                                        return;
+                                    }
+                                    let sid = sid.clone();
+                                    spawn(async move {
+                                        match enterprise::import_employees(&sid, json!({ "rows": rows })).await {
+                                            Ok(v) => {
+                                                let imp = v.get("imported").and_then(|x| x.as_i64()).unwrap_or(0);
+                                                import_text.set(String::new());
+                                                show_import.set(false);
+                                                msg.set(Some((false, format!("Đã nhập {imp} hồ sơ nhân sự"))));
+                                                load.call(());
+                                            }
+                                            Err(e) => msg.set(Some((true, format!("Lỗi nhập danh sách: {}", e.code)))),
+                                        }
+                                    });
+                                }
+                            },
+                            "Thực hiện nhập"
+                        }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_import.set(false), "Đóng" }
+                    }
+                }
+            }
+
+            if let Some((target_uid, target_name)) = quick_task_uid() {
+                div { class: "ent-card ent-inline-bar",
+                    span { class: "ent-pill ok", "Giao việc cho {target_name}" }
+                    input {
+                        r#type: "text",
+                        placeholder: "Nhập tiêu đề công việc cần giao",
+                        value: "{quick_task_title}",
+                        oninput: move |e| quick_task_title.set(e.value()),
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn-primary",
+                        onclick: {
+                            let sid = server_id.clone();
+                            let tuid = target_uid.clone();
+                            move |_| {
+                                let t = quick_task_title().trim().to_string();
+                                if t.is_empty() { return; }
+                                let (sid, tuid) = (sid.clone(), tuid.clone());
+                                spawn(async move {
+                                    match enterprise::create_task(&sid, json!({ "title": t, "assignee_id": tuid, "priority": "medium" })).await {
+                                        Ok(_) => {
+                                            quick_task_title.set(String::new());
+                                            quick_task_uid.set(None);
+                                            msg.set(Some((false, "Đã giao công việc thành công".into())));
+                                        }
+                                        Err(e) => msg.set(Some((true, format!("Không giao được việc: {}", e.code)))),
+                                    }
+                                });
+                            }
+                        },
+                        "Giao ngay"
+                    }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| quick_task_uid.set(None), "Hủy" }
+                }
             }
 
             if can_manage && !selected().is_empty() {
@@ -366,6 +483,16 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                 if can_manage {
                                     div { class: "ent-btn-group",
                                         button { r#type: "button", class: "btn-secondary", onclick: move |_| open_edit(e_edit.clone()), "Chỉnh sửa" }
+                                        button {
+                                            r#type: "button",
+                                            class: "btn-secondary",
+                                            onclick: {
+                                                let u = emp.user_id.clone();
+                                                let n = emp.full_name.clone();
+                                                move |_| quick_task_uid.set(Some((u.clone(), n.clone())))
+                                            },
+                                            "Giao việc"
+                                        }
                                         button { r#type: "button", class: "btn-ghost", onclick: move |_| handover_from.set(Some(emp.user_id.clone())), "Bàn giao" }
                                     }
                                 }
@@ -382,6 +509,8 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
 pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> Element {
     let mut depts = use_signal(Vec::<DepartmentItem>::new);
     let mut members = use_signal(Vec::<ServerMemberItem>::new);
+    let mut channels = use_signal(Vec::<crate::models::ChannelItem>::new);
+    let mut view_mode = use_signal(|| "grid".to_string()); // "grid" | "orgchart"
     let mut show_create = use_signal(|| false);
     let mut name = use_signal(String::new);
     let mut code = use_signal(String::new);
@@ -389,6 +518,7 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
     let mut branch = use_signal(String::new);
     let mut parent_id = use_signal(String::new);
     let mut mgr_id = use_signal(String::new);
+    let mut linked_ch_id = use_signal(String::new);
     let mut msg = use_signal(|| Option::<(bool, String)>::None);
 
     let can_manage = cfg.has(enterprise::ent_perm::MANAGE_DEPARTMENTS);
@@ -403,6 +533,9 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                 }
                 if let Ok(ml) = api::servers_get_members(&sid).await {
                     members.set(ml);
+                }
+                if let Ok(chs) = api::servers_get_channels(&sid).await {
+                    channels.set(chs);
                 }
             });
         }
@@ -419,6 +552,9 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                 }
                 if let Ok(ml) = api::servers_get_members(&sid).await {
                     members.set(ml);
+                }
+                if let Ok(chs) = api::servers_get_channels(&sid).await {
+                    channels.set(chs);
                 }
             });
         }));
@@ -441,6 +577,7 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                 "branch_name": branch(),
                 "parent_id": if parent_id().is_empty() { serde_json::Value::Null } else { json!(parent_id()) },
                 "manager_user_id": if mgr_id().is_empty() { serde_json::Value::Null } else { json!(mgr_id()) },
+                "linked_channel_id": if linked_ch_id().is_empty() { serde_json::Value::Null } else { json!(linked_ch_id()) },
             });
             spawn(async move {
                 match enterprise::create_department(&sid, body).await {
@@ -449,6 +586,7 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                         code.set(String::new());
                         desc.set(String::new());
                         branch.set(String::new());
+                        linked_ch_id.set(String::new());
                         show_create.set(false);
                         msg.set(Some((false, "Đã tạo phòng ban mới".into())));
                         r();
@@ -464,7 +602,11 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
     rsx! {
         div { class: "ent-section",
             div { class: "ent-toolbar",
-                div { class: "ent-chips",
+                div { class: "ent-inline-bar",
+                    div { class: "ent-segmented",
+                        button { r#type: "button", class: if view_mode() == "grid" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| view_mode.set("grid".into()), "Danh sách phòng ban" }
+                        button { r#type: "button", class: if view_mode() == "orgchart" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| view_mode.set("orgchart".into()), "Sơ đồ tổ chức" }
+                    }
                     span { class: "ent-pill ok", "{depts().len()} phòng ban" }
                     span { class: "ent-pill", "{total_assigned} nhân sự trực thuộc" }
                 }
@@ -486,10 +628,10 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
                         label { class: "form-field", span { "Tên phòng ban" }
-                            input { r#type: "text", placeholder: "Ví dụ: Phòng Pháp chế & Tuân thủ", value: "{name}", oninput: move |e| name.set(e.value()) }
+                            input { r#type: "text", placeholder: "Ví dụ: Phòng Kỹ thuật", value: "{name}", oninput: move |e| name.set(e.value()) }
                         }
                         label { class: "form-field", span { "Mã phòng ban" }
-                            input { r#type: "text", placeholder: "Ví dụ: LEGAL", value: "{code}", oninput: move |e| code.set(e.value()) }
+                            input { r#type: "text", placeholder: "Ví dụ: ENG", value: "{code}", oninput: move |e| code.set(e.value()) }
                         }
                         label { class: "form-field", span { "Chi nhánh" }
                             input { r#type: "text", placeholder: "Ví dụ: Trụ sở chính", value: "{branch}", oninput: move |e| branch.set(e.value()) }
@@ -506,6 +648,16 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                                 for m in members() { option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" } }
                             }
                         }
+                        label { class: "form-field", span { "Kênh chat liên kết" }
+                            select { value: "{linked_ch_id}", onchange: move |e| linked_ch_id.set(e.value()),
+                                option { value: "", "Không liên kết kênh" }
+                                for ch in channels() {
+                                    if ch.channel_type == "text" {
+                                        option { key: "{ch.id}", value: "{ch.id}", "#{ch.name}" }
+                                    }
+                                }
+                            }
+                        }
                         label { class: "form-field", span { "Chức năng & Nhiệm vụ" }
                             input { r#type: "text", placeholder: "Mô tả chức năng chính của bộ phận", value: "{desc}", oninput: move |e| desc.set(e.value()) }
                         }
@@ -517,7 +669,42 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                 }
             }
 
-            div { class: "ent-dept-grid",
+            if view_mode() == "orgchart" {
+                div { class: "ent-list",
+                    for root in depts().into_iter().filter(|d| d.parent_id.is_none()) {
+                        {
+                            let children: Vec<DepartmentItem> = depts().into_iter().filter(|c| c.parent_id.as_deref() == Some(root.id.as_str())).collect();
+                            rsx! {
+                                div { key: "org-{root.id}", class: "ent-card",
+                                    div { class: "ent-row-title",
+                                        strong { "{root.name}" }
+                                        if let Some(c) = &root.code { if !c.is_empty() { span { class: "ent-pill ok", "{c}" } } }
+                                        span { class: "ent-pill", "{root.member_count} nhân sự" }
+                                        if let Some(m) = &root.manager_name { span { class: "ent-pill", "Quản lý: {m}" } }
+                                        if let Some(ch) = &root.linked_channel_name { span { class: "ent-pill ok", "#{ch}" } }
+                                    }
+                                    if !children.is_empty() {
+                                        div { class: "ent-sub-drawer", style: "margin-top: 8px; padding-left: 16px;",
+                                            for child in children {
+                                                div { key: "org-c-{child.id}", class: "ent-row-card",
+                                                    div { class: "ent-row-title",
+                                                        strong { "↳ {child.name}" }
+                                                        if let Some(c) = &child.code { if !c.is_empty() { span { class: "ent-pill", "{c}" } } }
+                                                        span { class: "ent-pill", "{child.member_count} nhân sự" }
+                                                        if let Some(m) = &child.manager_name { span { class: "ent-pill", "Quản lý: {m}" } }
+                                                        if let Some(ch) = &child.linked_channel_name { span { class: "ent-pill ok", "#{ch}" } }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                div { class: "ent-dept-grid",
                 for d in depts() {
                     {
                         let sid_add = server_id.clone();
@@ -586,6 +773,7 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                         }
                     }
                 }
+            }
             }
         }
     }

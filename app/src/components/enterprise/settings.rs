@@ -39,8 +39,10 @@ pub fn EnterpriseSettingsPanel(
 
     let mut company_name = use_signal(String::new);
     let mut contact_email = use_signal(String::new);
+    let mut contact_phone = use_signal(String::new);
     let mut website = use_signal(String::new);
     let mut timezone = use_signal(|| "Asia/Ho_Chi_Minh".to_string());
+    let mut date_format = use_signal(|| "DD/MM/YYYY".to_string());
     let mut emp_prefix = use_signal(|| "NV".to_string());
     let mut work_start = use_signal(|| "08:30".to_string());
     let mut work_end = use_signal(|| "17:30".to_string());
@@ -52,8 +54,10 @@ pub fn EnterpriseSettingsPanel(
     let mut sync_inputs = move |c: &EnterpriseConfig| {
         company_name.set(str_val(&c.general_settings, "company_name", ""));
         contact_email.set(str_val(&c.general_settings, "contact_email", ""));
+        contact_phone.set(str_val(&c.general_settings, "contact_phone", ""));
         website.set(str_val(&c.general_settings, "website", ""));
         timezone.set(str_val(&c.general_settings, "timezone", "Asia/Ho_Chi_Minh"));
+        date_format.set(str_val(&c.general_settings, "date_format", "DD/MM/YYYY"));
         emp_prefix.set(str_val(&c.hr_policy, "code_prefix", "NV"));
         work_start.set(str_val(&c.attendance_policy, "work_start", "08:30"));
         work_end.set(str_val(&c.attendance_policy, "work_end", "17:30"));
@@ -152,11 +156,20 @@ pub fn EnterpriseSettingsPanel(
                                         label { class: "form-field", span { "Website" }
                                             input { r#type: "text", disabled: !can_ent, value: "{website}", oninput: move |e| website.set(e.value()) }
                                         }
+                                        label { class: "form-field", span { "Điện thoại liên hệ" }
+                                            input { r#type: "text", disabled: !can_ent, value: "{contact_phone}", oninput: move |e| contact_phone.set(e.value()) }
+                                        }
                                         label { class: "form-field", span { "Múi giờ" }
                                             select { disabled: !can_ent, value: "{timezone}", onchange: move |e| timezone.set(e.value()),
                                                 option { value: "Asia/Ho_Chi_Minh", "Việt Nam GMT+7" }
                                                 option { value: "Asia/Tokyo", "Tokyo GMT+9" }
                                                 option { value: "UTC", "Quốc tế UTC" }
+                                            }
+                                        }
+                                        label { class: "form-field", span { "Định dạng ngày" }
+                                            select { disabled: !can_ent, value: "{date_format}", onchange: move |e| date_format.set(e.value()),
+                                                option { value: "DD/MM/YYYY", "DD/MM/YYYY" }
+                                                option { value: "YYYY-MM-DD", "YYYY-MM-DD" }
                                             }
                                         }
                                     }
@@ -171,8 +184,10 @@ pub fn EnterpriseSettingsPanel(
                                                         let mut obj = base.as_object().cloned().unwrap_or_default();
                                                         obj.insert("company_name".into(), json!(company_name()));
                                                         obj.insert("contact_email".into(), json!(contact_email()));
+                                                        obj.insert("contact_phone".into(), json!(contact_phone()));
                                                         obj.insert("website".into(), json!(website()));
                                                         obj.insert("timezone".into(), json!(timezone()));
+                                                        obj.insert("date_format".into(), json!(date_format()));
                                                         save_patch.call((json!({ "general_settings": Value::Object(obj) }), "Đã lưu thiết lập"));
                                                     }
                                                 },
@@ -290,6 +305,24 @@ pub fn EnterpriseSettingsPanel(
                                             onchange: {
                                                 let base = c.hr_policy.clone();
                                                 move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "auto_revoke_offboarded", json!(e.checked())) }), "Đã lưu"))
+                                            }
+                                        }
+                                    }
+                                    label { class: "settings-row toggle-row",
+                                        span { class: "grow", span { class: "settings-label", "Tự khởi tạo hồ sơ khi tham gia" } }
+                                        input { r#type: "checkbox", class: "switch", checked: bool_val(&c.hr_policy, "auto_onboard_profile", true), disabled: !can_ent,
+                                            onchange: {
+                                                let base = c.hr_policy.clone();
+                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "auto_onboard_profile", json!(e.checked())) }), "Đã lưu"))
+                                            }
+                                        }
+                                    }
+                                    label { class: "settings-row toggle-row",
+                                        span { class: "grow", span { class: "settings-label", "Giới hạn số lượt liên kết mời" } }
+                                        input { r#type: "checkbox", class: "switch", checked: bool_val(&c.hr_policy, "limit_invite_uses", true), disabled: !can_ent,
+                                            onchange: {
+                                                let base = c.hr_policy.clone();
+                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "limit_invite_uses", json!(e.checked())) }), "Đã lưu"))
                                             }
                                         }
                                     }
@@ -421,6 +454,24 @@ pub fn EnterpriseSettingsPanel(
                                             }
                                         }
                                     }
+                                    label { class: "settings-row toggle-row",
+                                        span { class: "grow", span { class: "settings-label", "Kiểm tra định dạng tệp tải lên" } }
+                                        input { r#type: "checkbox", class: "switch", checked: bool_val(&c.document_policy, "verify_magic_bytes", true), disabled: !can_ent,
+                                            onchange: {
+                                                let base = c.document_policy.clone();
+                                                move |e| save_patch.call((json!({ "document_policy": with_key(&base, "verify_magic_bytes", json!(e.checked())) }), "Đã lưu"))
+                                            }
+                                        }
+                                    }
+                                    label { class: "settings-row toggle-row",
+                                        span { class: "grow", span { class: "settings-label", "Lưu lịch sử phiên bản tài liệu" } }
+                                        input { r#type: "checkbox", class: "switch", checked: bool_val(&c.document_policy, "keep_versions", true), disabled: !can_ent,
+                                            onchange: {
+                                                let base = c.document_policy.clone();
+                                                move |e| save_patch.call((json!({ "document_policy": with_key(&base, "keep_versions", json!(e.checked())) }), "Đã lưu"))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -443,6 +494,15 @@ pub fn EnterpriseSettingsPanel(
                                             onchange: {
                                                 let base = c.privacy_policy.clone();
                                                 move |e| save_patch.call((json!({ "privacy_policy": with_key(&base, "hide_contact_from_guests", json!(e.checked())) }), "Đã lưu"))
+                                            }
+                                        }
+                                    }
+                                    label { class: "settings-row toggle-row",
+                                        span { class: "grow", span { class: "settings-label", "Yêu cầu thiết bị tin cậy khi đồng bộ" } }
+                                        input { r#type: "checkbox", class: "switch", checked: bool_val(&c.security_policy, "require_trusted_device", true), disabled: !can_sec,
+                                            onchange: {
+                                                let base = c.security_policy.clone();
+                                                move |e| save_patch.call((json!({ "security_policy": with_key(&base, "require_trusted_device", json!(e.checked())) }), "Đã lưu"))
                                             }
                                         }
                                     }

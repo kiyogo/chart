@@ -448,6 +448,8 @@ pub struct ProjectItem {
     #[serde(default)]
     pub due_date: Option<String>,
     #[serde(default)]
+    pub milestones: Value,
+    #[serde(default)]
     pub task_total: i64,
     #[serde(default)]
     pub task_done: i64,
@@ -574,6 +576,8 @@ pub struct LeaveData {
 pub struct MeetingItem {
     pub id: String,
     pub server_id: String,
+    #[serde(default)]
+    pub channel_id: Option<String>,
     pub title: String,
     #[serde(default)]
     pub description: Option<String>,
@@ -582,6 +586,8 @@ pub struct MeetingItem {
     pub host_name: String,
     pub starts_at: String,
     pub ends_at: String,
+    #[serde(default)]
+    pub waiting_room: bool,
     #[serde(default)]
     pub notes: String,
     #[serde(default)]
@@ -748,18 +754,26 @@ pub async fn audit_log(sid: &str, q: &str) -> Result<Vec<EnterpriseAuditItem>, A
 
 // HR & Departments
 pub async fn list_employees(sid: &str, q: &str, status: &str, dept_id: &str) -> Result<Vec<EmployeeItem>, ApiError> {
-    call(
-        "GET",
-        &format!("/api/servers/{}/enterprise/employees?q={}&status={}&department_id={}", enc(sid), enc(q), enc(status), enc(dept_id)),
-        None,
-    )
-    .await
+    list_employees_sorted(sid, q, status, dept_id, "name").await
+}
+pub async fn list_employees_sorted(sid: &str, q: &str, status: &str, dept_id: &str, sort: &str) -> Result<Vec<EmployeeItem>, ApiError> {
+    let mut url = format!("/api/servers/{}/enterprise/employees?q={}&sort={}", enc(sid), enc(q), enc(sort));
+    if !status.is_empty() {
+        url.push_str(&format!("&status={}", enc(status)));
+    }
+    if !dept_id.is_empty() {
+        url.push_str(&format!("&department_id={}", enc(dept_id)));
+    }
+    call("GET", &url, None).await
 }
 pub async fn upsert_employee(sid: &str, body: Value) -> Result<Value, ApiError> {
     call("POST", &format!("/api/servers/{}/enterprise/employees", enc(sid)), Some(body)).await
 }
 pub async fn bulk_employees(sid: &str, body: Value) -> Result<Value, ApiError> {
     call("POST", &format!("/api/servers/{}/enterprise/employees/bulk", enc(sid)), Some(body)).await
+}
+pub async fn import_employees(sid: &str, body: Value) -> Result<Value, ApiError> {
+    call("POST", &format!("/api/servers/{}/enterprise/employees/import", enc(sid)), Some(body)).await
 }
 pub async fn handover_employee(sid: &str, user_id: &str, body: Value) -> Result<Value, ApiError> {
     call("POST", &format!("/api/servers/{}/enterprise/employees/{}/handover", enc(sid), enc(user_id)), Some(body)).await
@@ -788,7 +802,17 @@ pub async fn update_project(sid: &str, project_id: &str, body: Value) -> Result<
     call("PATCH", &format!("/api/servers/{}/enterprise/projects/{}", enc(sid), enc(project_id)), Some(body)).await
 }
 pub async fn list_tasks(sid: &str, view: &str, q: &str) -> Result<Vec<TaskItem>, ApiError> {
-    call("GET", &format!("/api/servers/{}/enterprise/tasks?view={}&q={}", enc(sid), enc(view), enc(q)), None).await
+    list_tasks_filtered(sid, view, q, "", "").await
+}
+pub async fn list_tasks_filtered(sid: &str, view: &str, q: &str, dept_id: &str, proj_id: &str) -> Result<Vec<TaskItem>, ApiError> {
+    let mut url = format!("/api/servers/{}/enterprise/tasks?view={}&q={}", enc(sid), enc(view), enc(q));
+    if !dept_id.is_empty() {
+        url.push_str(&format!("&department_id={}", enc(dept_id)));
+    }
+    if !proj_id.is_empty() {
+        url.push_str(&format!("&project_id={}", enc(proj_id)));
+    }
+    call("GET", &url, None).await
 }
 pub async fn create_task(sid: &str, body: Value) -> Result<Value, ApiError> {
     call("POST", &format!("/api/servers/{}/enterprise/tasks", enc(sid)), Some(body)).await

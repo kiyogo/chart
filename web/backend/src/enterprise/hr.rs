@@ -424,7 +424,140 @@ pub async fn bulk_update_employees(
 }
 
 #[derive(Deserialize)]
+pub struct ImportEmployeeRow {
+    pub username: String,
+    pub full_name: Option<String>,
+    pub job_title: Option<String>,
+    pub department_code: Option<String>,
+    pub member_kind: Option<String>,
+    pub work_mode: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ImportEmployeesReq {
+    pub rows: Vec<ImportEmployeeRow>,
+}
+
+pub async fn import_employees(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(server_id): Path<Uuid>,
+    Json(p): Json<ImportEmployeesReq>,
+) -> AppResult<Json<Value>> {
+    let uid = auth_user(&state, &headers).await?;
+    let ctx = load_ctx(&state.db, server_id, uid).await?;
+    ctx.require(ent_perm::MANAGE_HR)?;
+
+    if p.rows.is_empty() || p.rows.len() > 200 {
+        return Err(AppError::BadRequest("invalid_import_batch"));
+    }
+
+    let mut tx = state.db.begin().await?;
+    let mut imported = 0usize;
+    let mut skipped = 0usize;
+    let base_cnt: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM enterprise_employees WHERE server_id = $1")
+        .bind(server_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    for (idx, item) in p.rows.iter().enumerate() {
+        let uname_trim = item.username.trim();
+        if uname_trim.is_empty() {
+            skipped += 1;
+            continue;
+        }
+        let Some((target_uid, actual_uname)) = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id, username FROM users WHERE lower(username) = lower($1)",
+        )
+        .bind(uname_trim)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            skipped += 1;
+            continue;
+        };
+
+        sqlx::query("INSERT INTO server_members (server_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+            .bind(server_id)
+            .bind(target_uid)
+            .execute(&mut *tx)
+            .await?;
+
+        let dept_id: Option<Uuid> = if let Some(ref dc) = item.department_code {
+            let dc_t = dc.trim();
+            if dc_t.is_empty() {
+                None
+            } else {
+                sqlx::query_scalar(
+                    "SELECT id FROM enterprise_departments WHERE server_id = $1 AND (lower(code) = lower($2) OR lower(name) = lower($2)) LIMIT 1",
+                )
+                .bind(server_id)
+                .bind(dc_t)
+                .fetch_optional(&mut *tx)
+                .await?
+            }
+        } else {
+            None
+        };
+
+        let full_name = clean_opt(item.full_name.as_deref(), 100, "invalid_full_name")?
+            .unwrap_or_else(|| actual_uname.clone());
+        let job_title = clean_opt(item.job_title.as_deref(), 80, "invalid_job_title")?;
+        let kind = item.member_kind.as_deref().unwrap_or("employee");
+        let safe_kind = if ["employee", "guest", "partner", "bot"].contains(&kind) { kind } else { "employee" };
+        let mode = item.work_mode.as_deref().unwrap_or("onsite");
+        let safe_mode = if ["onsite", "remote", "hybrid"].contains(&mode) { mode } else { "onsite" };
+        let code = format!("NV-{:04}", base_cnt + (idx as i64) + 1);
+
+        sqlx::query(
+            r#"
+            INSERT INTO enterprise_employees (
+                server_id, user_id, employee_code, member_kind, full_name,
+                job_title, department_id, work_mode, employment_status, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', now())
+            ON CONFLICT (server_id, user_id) DO UPDATE SET
+                full_name = EXCLUDED.full_name,
+                job_title = COALESCE(EXCLUDED.job_title, enterprise_employees.job_title),
+                department_id = COALESCE(EXCLUDED.department_id, enterprise_employees.department_id),
+                member_kind = EXCLUDED.member_kind,
+                work_mode = EXCLUDED.work_mode,
+                updated_at = now()
+            "#,
+        )
+        .bind(server_id)
+        .bind(target_uid)
+        .bind(&code)
+        .bind(safe_kind)
+        .bind(&full_name)
+        .bind(job_title)
+        .bind(dept_id)
+        .bind(safe_mode)
+        .execute(&mut *tx)
+        .await?;
+
+        if let Some(did) = dept_id {
+            sqlx::query(
+                "INSERT INTO enterprise_department_members (department_id, server_id, user_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            )
+            .bind(did)
+            .bind(server_id)
+            .bind(target_uid)
+            .execute(&mut *tx)
+            .await?;
+        }
+        imported += 1;
+    }
+
+    tx.commit().await?;
+    audit(&state, server_id, uid, "ent_employee_import", &format!("imported={imported},skipped={skipped}")).await;
+    emit_enterprise(&state, server_id, "hr.updated", json!({ "imported": imported })).await;
+    Ok(Json(json!({ "imported": imported, "skipped": skipped })))
+}
+
+#[derive(Deserialize)]
 pub struct HandoverReq {
+    #[serde(alias = "handover_to")]
     pub to_user_id: Uuid,
     #[serde(default)]
     pub mark_offboarded: bool,

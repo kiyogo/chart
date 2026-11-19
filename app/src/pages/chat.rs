@@ -1385,8 +1385,10 @@ pub fn Chat(
             if let Ok(chs) = api::servers_get_channels(&srv.id).await {
                 let first_text = chs.iter().find(|c| c.channel_type == "text").cloned();
                 channels.set(chs);
-                // On wide screens open the first text channel; on mobile keep the channel list visible.
+                // On wide screens open the first text channel if the user hasn't already picked a channel or enterprise module.
                 if vw >= 768
+                    && selected_channel.peek().is_none()
+                    && active_ent_module.peek().is_none()
                     && let Some(first) = first_text {
                         select_channel(first);
                     }

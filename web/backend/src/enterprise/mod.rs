@@ -43,6 +43,7 @@ pub fn routes() -> Router<AppState> {
         // HR & Departments
         .route("/servers/{id}/enterprise/employees", get(hr::list_employees).post(hr::upsert_employee))
         .route("/servers/{id}/enterprise/employees/bulk", post(hr::bulk_update_employees))
+        .route("/servers/{id}/enterprise/employees/import", post(hr::import_employees))
         .route("/servers/{id}/enterprise/employees/{user_id}/handover", post(hr::handover_employee))
         .route("/servers/{id}/enterprise/departments", get(hr::list_departments).post(hr::create_department))
         .route("/servers/{id}/enterprise/departments/{dept_id}", delete(hr::delete_department))

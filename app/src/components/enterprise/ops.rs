@@ -17,6 +17,10 @@ use crate::{
 pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> Element {
     let mut data = use_signal(ApprovalsData::default);
     let mut show_create = use_signal(|| false);
+    let mut show_tpl_create = use_signal(|| false);
+    let mut new_tpl_name = use_signal(String::new);
+    let mut new_tpl_cat = use_signal(|| "custom".to_string());
+    let mut new_tpl_steps = use_signal(|| "Trưởng bộ phận, Ban điều hành".to_string());
     let mut tpl_id = use_signal(String::new);
     let mut title = use_signal(String::new);
     let mut category = use_signal(|| "purchase".to_string());
@@ -25,6 +29,7 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
     let mut msg = use_signal(|| Option::<(bool, String)>::None);
 
     let can_approve = cfg.has(enterprise::ent_perm::APPROVE_REQUESTS);
+    let can_manage_tpl = cfg.has(enterprise::ent_perm::MANAGE_ENTERPRISE);
 
     let reload = {
         let sid = server_id.clone();
@@ -73,16 +78,88 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                         }
                     }
                 }
-                button {
-                    r#type: "button",
-                    class: "btn-primary",
-                    onclick: move |_| show_create.set(!show_create()),
-                    PlusIcon { size: 15 } " Gửi đề xuất"
+                div { class: "ent-btn-group",
+                    if can_manage_tpl {
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            onclick: move |_| show_tpl_create.set(!show_tpl_create()),
+                            PlusIcon { size: 15 } " Tạo mẫu biểu mẫu"
+                        }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn-primary",
+                        onclick: move |_| show_create.set(!show_create()),
+                        PlusIcon { size: 15 } " Gửi đề xuất"
+                    }
                 }
             }
 
             if let Some((is_err, text)) = msg() {
                 div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{text}" }
+            }
+
+            if can_manage_tpl && show_tpl_create() {
+                div { class: "ent-card",
+                    div { class: "ent-form-grid",
+                        label { class: "form-field", span { "Tên mẫu biểu mẫu" }
+                            input { r#type: "text", placeholder: "Ví dụ: Đề nghị công tác nước ngoài", value: "{new_tpl_name}", oninput: move |e| new_tpl_name.set(e.value()) }
+                        }
+                        label { class: "form-field", span { "Phân loại" }
+                            select { value: "{new_tpl_cat}", onchange: move |e| new_tpl_cat.set(e.value()),
+                                option { value: "custom", "Tùy chỉnh" }
+                                option { value: "purchase", "Mua sắm" }
+                                option { value: "payment", "Thanh toán" }
+                                option { value: "equipment", "Thiết bị" }
+                                option { value: "travel", "Công tác" }
+                                option { value: "access_request", "Cấp quyền" }
+                            }
+                        }
+                        label { class: "form-field", span { "Các cấp phê duyệt (ngăn cách bằng dấu phẩy)" }
+                            input { r#type: "text", placeholder: "Trưởng bộ phận, Kế toán, Ban điều hành", value: "{new_tpl_steps}", oninput: move |e| new_tpl_steps.set(e.value()) }
+                        }
+                    }
+                    div { class: "ent-btn-group",
+                        button {
+                            r#type: "button",
+                            class: "btn-primary",
+                            onclick: {
+                                let sid = server_id.clone();
+                                let r = reload.clone();
+                                move |_| {
+                                    let n = new_tpl_name().trim().to_string();
+                                    if n.is_empty() { return; }
+                                    let steps: Vec<serde_json::Value> = new_tpl_steps()
+                                        .split(',')
+                                        .map(str::trim)
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| json!({ "label": s, "mode": "sequential" }))
+                                        .collect();
+                                    let (sid, r) = (sid.clone(), r.clone());
+                                    spawn(async move {
+                                        match enterprise::create_form_template(&sid, json!({
+                                            "name": n,
+                                            "category": new_tpl_cat(),
+                                            "fields": [{ "key": "summary", "label": "Nội dung chi tiết", "required": true }],
+                                            "workflow_steps": steps,
+                                        })).await {
+                                            Ok(_) => {
+                                                new_tpl_name.set(String::new());
+                                                show_tpl_create.set(false);
+                                                msg.set(Some((false, "Đã tạo mẫu biểu mẫu nhiều cấp".into())));
+                                                r();
+                                            }
+                                            Err(e) => msg.set(Some((true, format!("Không tạo được mẫu: {}", e.code)))),
+                                        }
+                                    });
+                                }
+                            },
+                            "Lưu mẫu"
+                        }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_tpl_create.set(false), "Đóng" }
+                    }
+                }
             }
 
             if show_create() {
@@ -158,6 +235,7 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                         let (s1, id1, r1) = (server_id.clone(), req.id.clone(), reload.clone());
                         let (s2, id2, r2) = (server_id.clone(), req.id.clone(), reload.clone());
                         let (s3, id3, r3) = (server_id.clone(), req.id.clone(), reload.clone());
+                        let (s4, id4, r4) = (server_id.clone(), req.id.clone(), reload.clone());
                         rsx! {
                             div { key: "{req.id}", class: "ent-row-card",
                                 div { class: "grow",
@@ -182,6 +260,10 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                                                 let (s, id, r, c) = (s1.clone(), id1.clone(), r1.clone(), comment());
                                                 spawn(async move { if enterprise::decide_approval(&s, &id, "approved", &c).await.is_ok() { r(); } });
                                             }, "Duyệt" }
+                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| {
+                                                let (s, id, r, c) = (s4.clone(), id4.clone(), r4.clone(), comment());
+                                                spawn(async move { if enterprise::decide_approval(&s, &id, "revision", &c).await.is_ok() { r(); } });
+                                            }, "Yêu cầu sửa" }
                                             button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                                 let (s, id, r, c) = (s2.clone(), id2.clone(), r2.clone(), comment());
                                                 spawn(async move { if enterprise::decide_approval(&s, &id, "rejected", &c).await.is_ok() { r(); } });
@@ -351,7 +433,10 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                     {
                         let (s_sh, d_sh) = (server_id.clone(), d.id.clone());
                         let (s_tr, d_tr) = (server_id.clone(), d.id.clone());
+                        let (s_pin, d_pin) = (server_id.clone(), d.id.clone());
+                        let (s_ver, d_ver) = (server_id.clone(), d.id.clone());
                         let act_tr = if trashed() { "restore" } else { "trash" };
+                        let act_pin = if d.pinned { "unpin" } else { "pin" };
                         rsx! {
                             div { key: "{d.id}", class: "ent-row-card",
                                 div { class: "grow",
@@ -359,6 +444,7 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                                         strong { "{d.title}" }
                                         span { class: "ent-pill", "{enterprise::vn_doc_scope(&d.scope)}" }
                                         span { class: "ent-pill", "v{d.version}" }
+                                        if d.pinned { span { class: "ent-pill ok", "Đã ghim" } }
                                     }
                                     div { class: "ent-muted",
                                         "Người tải: {d.owner_name} · {d.file_name} · {d.file_size / 1024} KB"
@@ -366,6 +452,20 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                                 }
                                 div { class: "ent-btn-group",
                                     a { class: "btn-secondary", href: "{platform::resolve_asset_url(&d.file_url)}", target: "_blank", "Mở tệp" }
+                                    if can_manage && !trashed() {
+                                        button { r#type: "button", class: "btn-secondary", onclick: move |_| {
+                                            let (s, id) = (s_pin.clone(), d_pin.clone());
+                                            spawn(async move {
+                                                if enterprise::update_document(&s, &id, json!({ "action": act_pin })).await.is_ok() { reload.call(()); }
+                                            });
+                                        }, if d.pinned { "Bỏ ghim" } else { "Ghim" } }
+                                        button { r#type: "button", class: "btn-secondary", onclick: move |_| {
+                                            let (s, id) = (s_ver.clone(), d_ver.clone());
+                                            spawn(async move {
+                                                if enterprise::update_document(&s, &id, json!({ "action": "bump_version" })).await.is_ok() { reload.call(()); }
+                                            });
+                                        }, "+ Phiên bản" }
+                                    }
                                     button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                         let (s, id) = (s_sh.clone(), d_sh.clone());
                                         spawn(async move {

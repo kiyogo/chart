@@ -188,10 +188,12 @@ pub fn valid_ymd(s: &str) -> bool {
 
 pub fn safe_upload_url(u: &str) -> bool {
     let t = u.trim();
-    t.starts_with("/uploads/")
+    (t.starts_with("/uploads/")
+        || t.starts_with("/api/attachments/")
+        || t.starts_with("/api/storage/references/"))
         && !t.contains("..")
         && t.len() <= 240
-        && t.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_'))
+        && t.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_' | '?' | '='))
 }
 
 pub fn safe_webhook_url(u: &str) -> bool {

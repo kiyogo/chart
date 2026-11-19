@@ -368,12 +368,15 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
 #[component]
 pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
     let mut meetings = use_signal(Vec::<MeetingItem>::new);
+    let mut channels = use_signal(Vec::<crate::models::ChannelItem>::new);
     let mut show_create = use_signal(|| false);
     let mut title = use_signal(String::new);
     let mut date_str = use_signal(String::new);
     let mut start_time = use_signal(|| "09:00".to_string());
     let mut end_time = use_signal(|| "10:00".to_string());
     let mut meeting_type = use_signal(|| "video".to_string());
+    let mut voice_ch_id = use_signal(String::new);
+    let mut waiting_room = use_signal(|| false);
     let mut minutes_edit = use_signal(|| Option::<(String, String)>::None);
     let mut msg = use_signal(|| Option::<(bool, String)>::None);
 
@@ -383,6 +386,7 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
             let sid = sid.clone();
             spawn(async move {
                 if let Ok(list) = enterprise::list_meetings(&sid).await { meetings.set(list); }
+                if let Ok(chs) = crate::services::api::servers_get_channels(&sid).await { channels.set(chs); }
             });
         }
     };
@@ -394,6 +398,7 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
             let _ = refresh_tick;
             spawn(async move {
                 if let Ok(list) = enterprise::list_meetings(&sid).await { meetings.set(list); }
+                if let Ok(chs) = crate::services::api::servers_get_channels(&sid).await { channels.set(chs); }
             });
         }));
     }
@@ -437,6 +442,20 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
                         label { class: "form-field", span { "Giờ kết thúc" }
                             input { r#type: "time", value: "{end_time}", oninput: move |e| end_time.set(e.value()) }
                         }
+                        label { class: "form-field", span { "Phòng thoại liên kết" }
+                            select { value: "{voice_ch_id}", onchange: move |e| voice_ch_id.set(e.value()),
+                                option { value: "", "Tự động" }
+                                for ch in channels() {
+                                    if ch.channel_type == "voice" {
+                                        option { key: "{ch.id}", value: "{ch.id}", "{ch.name}" }
+                                    }
+                                }
+                            }
+                        }
+                        label { style: "display: flex; align-items: center; gap: 6px; padding-top: 18px;",
+                            input { r#type: "checkbox", checked: waiting_room(), onchange: move |e| waiting_room.set(e.checked()) }
+                            "Bật phòng chờ duyệt"
+                        }
                     }
                     div { class: "ent-btn-group",
                         button { r#type: "button", class: "btn-primary", onclick: {
@@ -448,7 +467,14 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
                                 let s_iso = format!("{d}T{}:00+07:00", start_time());
                                 let e_iso = format!("{d}T{}:00+07:00", end_time());
                                 let (sid, r) = (sid.clone(), r.clone());
-                                let body = json!({ "title": t, "meeting_type": meeting_type(), "starts_at": s_iso, "ends_at": e_iso });
+                                let body = json!({
+                                    "title": t,
+                                    "meeting_type": meeting_type(),
+                                    "starts_at": s_iso,
+                                    "ends_at": e_iso,
+                                    "channel_id": if voice_ch_id().is_empty() { serde_json::Value::Null } else { json!(voice_ch_id()) },
+                                    "waiting_room": waiting_room(),
+                                });
                                 spawn(async move {
                                     match enterprise::create_meeting(&sid, body).await {
                                         Ok(v) => {
@@ -546,6 +572,7 @@ pub fn CalendarPanel(server_id: String, refresh_tick: u64) -> Element {
     let mut tasks = use_signal(Vec::<TaskItem>::new);
     let mut leave = use_signal(LeaveData::default);
     let mut filter = use_signal(|| "all".to_string()); // "all" | "meetings" | "tasks" | "leave"
+    let mut horizon = use_signal(|| "month".to_string()); // "day" | "week" | "month" | "all"
     let mut show_create = use_signal(|| false);
     let mut m_title = use_signal(String::new);
     let mut m_date = use_signal(|| "2026-11-20".to_string());
@@ -586,11 +613,18 @@ pub fn CalendarPanel(server_id: String, refresh_tick: u64) -> Element {
     rsx! {
         div { class: "ent-section",
             div { class: "ent-toolbar",
-                div { class: "ent-segmented",
-                    button { r#type: "button", class: if filter() == "all" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("all".into()), "Tất cả lịch trình" }
-                    button { r#type: "button", class: if filter() == "meetings" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("meetings".into()), "Cuộc họp ({meetings().len()})" }
-                    button { r#type: "button", class: if filter() == "tasks" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("tasks".into()), "Hạn công việc ({due_tasks.len()})" }
-                    button { r#type: "button", class: if filter() == "leave" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("leave".into()), "Lịch nghỉ phép ({leave().requests.len()})" }
+                div { class: "ent-inline-bar",
+                    div { class: "ent-segmented",
+                        button { r#type: "button", class: if horizon() == "day" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("day".into()), "Ngày" }
+                        button { r#type: "button", class: if horizon() == "week" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("week".into()), "Tuần" }
+                        button { r#type: "button", class: if horizon() == "month" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("month".into()), "Tháng" }
+                    }
+                    div { class: "ent-segmented",
+                        button { r#type: "button", class: if filter() == "all" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("all".into()), "Tất cả" }
+                        button { r#type: "button", class: if filter() == "meetings" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("meetings".into()), "Cuộc họp ({meetings().len()})" }
+                        button { r#type: "button", class: if filter() == "tasks" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("tasks".into()), "Hạn việc ({due_tasks.len()})" }
+                        button { r#type: "button", class: if filter() == "leave" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("leave".into()), "Nghỉ phép ({leave().requests.len()})" }
+                    }
                 }
                 button {
                     r#type: "button",

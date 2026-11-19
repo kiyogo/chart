@@ -464,9 +464,11 @@ pub async fn create_document(
 
 #[derive(Deserialize)]
 pub struct DocActionReq {
-    pub action: String, // "pin" | "unpin" | "trash" | "restore" | "rename" | "share"
+    pub action: String, // "pin" | "unpin" | "trash" | "restore" | "rename" | "share" | "bump_version"
     pub title: Option<String>,
     pub expires_hours: Option<i64>,
+    pub file_url: Option<String>,
+    pub file_size: Option<i64>,
 }
 
 pub async fn update_document(
@@ -511,6 +513,42 @@ pub async fn update_document(
             let t = clean_req(p.title.as_deref().unwrap_or(""), 1, 120, "invalid_title")?;
             sqlx::query("UPDATE enterprise_documents SET title = $3, updated_at = now() WHERE id = $1 AND server_id = $2")
                 .bind(doc_id).bind(server_id).bind(t).execute(&state.db).await?;
+        }
+        "bump_version" => {
+            if let Some(ref fu) = p.file_url {
+                if !safe_upload_url(fu) {
+                    return Err(AppError::BadRequest("invalid_file_url"));
+                }
+            }
+            let (next_ver, cur_url, cur_size): (i32, String, i64) = sqlx::query_as(
+                r#"
+                UPDATE enterprise_documents
+                SET version = version + 1,
+                    file_url = COALESCE($3, file_url),
+                    file_size = COALESCE($4, file_size),
+                    updated_at = now()
+                WHERE id = $1 AND server_id = $2
+                RETURNING version, file_url, file_size
+                "#,
+            )
+            .bind(doc_id)
+            .bind(server_id)
+            .bind(p.file_url.as_deref())
+            .bind(p.file_size)
+            .fetch_one(&state.db)
+            .await?;
+
+            sqlx::query(
+                "INSERT INTO enterprise_document_versions (document_id, version, file_url, file_size, uploaded_by) VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(doc_id)
+            .bind(next_ver)
+            .bind(&cur_url)
+            .bind(cur_size)
+            .bind(uid)
+            .execute(&state.db)
+            .await?;
+            audit(&state, server_id, uid, "ent_doc_version_bumped", &format!("{doc_id}:v{next_ver}")).await;
         }
         "share" => {
             let hours = p.expires_hours.unwrap_or(24).clamp(1, 24 * 30);

@@ -1002,7 +1002,7 @@ async fn test_enterprise_server_lifecycle() {
     assert_eq!(emps.len(), 1);
     assert_eq!(emps[0]["user_id"], owner_id.to_string());
 
-    // 3. Direct Enterprise creation initializes roles, templates, config cleanly
+    // 3. Direct Enterprise creation initializes roles, templates, config cleanly + rapid duplicate protection
     let direct_res = app
         .clone()
         .oneshot(
@@ -1017,6 +1017,23 @@ async fn test_enterprise_server_lifecycle() {
     assert_eq!(direct_res.status(), StatusCode::OK);
     let ent_srv: Value = serde_json::from_slice(&axum::body::to_bytes(direct_res.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(ent_srv["is_enterprise"], true);
+    let acme_id = ent_srv["id"].as_str().unwrap().to_string();
+
+    // Rapid duplicate click within 5s returns the same server_id
+    let dup_res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/servers")
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "name": "Acme Corp", "is_enterprise": true }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(dup_res.status(), StatusCode::OK);
+    let dup_srv: Value = serde_json::from_slice(&axum::body::to_bytes(dup_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(dup_srv["id"].as_str().unwrap(), acme_id);
 
     // 4. HR sensitive field masking + offboarding revocation + RBAC enforcement
     // Assign member "Nhân viên" role on std_id so member has VIEW_HR | CREATE_TASKS | VIEW_ATTENDANCE but NOT VIEW_SENSITIVE_HR
@@ -1264,6 +1281,99 @@ async fn test_enterprise_server_lifecycle() {
         .await
         .unwrap();
     assert_eq!(resolve_res.status(), StatusCode::OK);
+
+    // 7b. Document version bump + Batch employee import + Multi-step approval template & revision
+    let bump_res = app
+        .clone()
+        .oneshot(
+            Request::patch(format!("/api/servers/{std_id}/enterprise/documents/{doc_id}"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "action": "bump_version" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bump_res.status(), StatusCode::OK);
+
+    let member_uname = format!("Mem{}", &member_id.to_string()[..6]);
+    let import_res = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/servers/{std_id}/enterprise/employees/import"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({
+                    "rows": [
+                        { "username": member_uname, "full_name": "Imported Member", "job_title": "Engineer", "department_code": "ENG" }
+                    ]
+                }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(import_res.status(), StatusCode::OK);
+    let imp_val: Value = serde_json::from_slice(&axum::body::to_bytes(import_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(imp_val["imported"], 1);
+
+    let tpl_res = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/servers/{std_id}/enterprise/approvals/templates"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({
+                    "name": "Cap quyen san xuat",
+                    "category": "access_request",
+                    "fields": [{ "key": "summary", "label": "Chi tiet", "required": true }],
+                    "workflow_steps": [{ "label": "Buoc 1" }, { "label": "Buoc 2" }]
+                }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(tpl_res.status(), StatusCode::OK);
+    let tpl_id = serde_json::from_slice::<Value>(&axum::body::to_bytes(tpl_res.into_body(), usize::MAX).await.unwrap()).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let sub_res = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/servers/{std_id}/enterprise/approvals"))
+                .header(header::COOKIE, member_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({
+                    "template_id": tpl_id,
+                    "title": "Xin quyen DB",
+                    "category": "access_request",
+                    "form_data": { "summary": "Read replica" }
+                }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sub_res.status(), StatusCode::OK);
+    let app_req_id = serde_json::from_slice::<Value>(&axum::body::to_bytes(sub_res.into_body(), usize::MAX).await.unwrap()).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let rev_res = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/servers/{std_id}/enterprise/approvals/{app_req_id}/decide"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "decision": "revision", "comment": "Bo sung ly do" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rev_res.status(), StatusCode::OK);
+    let rev_val: Value = serde_json::from_slice(&axum::body::to_bytes(rev_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(rev_val["status"], "needs_revision");
 
     // 8. Retention lock prevents disabling enterprise mode; disabling preserves data & export
     assert_eq!(
