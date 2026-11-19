@@ -9,3 +9,4 @@
 - [x] T007 Upgrade `sync_plugins_to_dom` in `app/src/components/plugins_view.rs` with full dark/light semantic token derivation (`--bg-input`, `--bg-active`, `--bg-primary`, `--bg-warning`, `--border`, `--on-accent`, `color-scheme`, etc.) and clean `plugin_logo_data_url` circular fill.
 - [x] T008 Implement Plugin Install (`Tải`) & Uninstall (`Gỡ`) lifecycle (`installed: bool`, store migration, filtered runtime hooks, and UI sections) in `app/src/components/plugins_view.rs` and `app/assets/main.css`.
 - [x] T009 Verify `cargo check`, unit tests (`cargo test -p chatw-app --lib`), `bash app/build-web.sh`, live bundle on `127.0.0.1:8085`, mark tasks complete, and commit + push to `main`.
+- [x] T010 Remove green active outline frames on `.rail-item.has-logo` / `.rail-pin`, unify all rail icons and logos to identical `2.5rem × 2.5rem` (`40px`) tile size matching `.rail-brand` / `.rail-item.active` and equal `var(--space-2)` spacing throughout `.app-rail`.

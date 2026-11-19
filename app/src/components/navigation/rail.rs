@@ -134,7 +134,7 @@ pub fn AppRail(
                     {
                         let is_act = active_left_plugin.as_deref() == Some(pid.as_str()) && !in_mod;
                         let is_logo = !plogo.trim().is_empty() && !plogo.trim().starts_with("svg:");
-                        let g_size = if is_logo { 34 } else { 20 };
+                        let g_size = if is_logo { 40 } else { 20 };
                         let cls = match (is_logo, is_act) {
                             (true, true) => "rail-item has-logo active",
                             (true, false) => "rail-item has-logo",
@@ -170,7 +170,7 @@ pub fn AppRail(
                     {
                         let is_act = active_mod_page.as_deref() == Some(pid.as_str());
                         let is_logo = !plogo.trim().is_empty() && !plogo.trim().starts_with("svg:");
-                        let g_size = if is_logo { 34 } else { 20 };
+                        let g_size = if is_logo { 40 } else { 20 };
                         let cls = match (is_logo, is_act) {
                             (true, true) => "rail-item has-logo active",
                             (true, false) => "rail-item has-logo",
