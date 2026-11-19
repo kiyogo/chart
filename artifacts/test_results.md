@@ -102,3 +102,11 @@ xem trước "Chính mình" lộ mã thiết bị; ảnh đại diện trong h�
 - UI audit on real Chrome + real server: **313/313**, including 25 new checks (Avatar Studio, realtime motion in a
   friend's list, details, favourites, sticker menu, Send Again, save to "Chính mình", nickname, settings search, Demo
   Gallery apply, help search, settings restored from sync after clearing the browser, 409 on stale writes).
+
+## Spec 010: ChatW Studio (2026-11-19)
+- `cargo test`: new backend `drawings::document_validation`, client `gif_export` encode/decode round trip.
+- `node app/e2e/studio-check.mjs`: **30/30** on real Chrome + server — brush pixels, undo/redo, rectangle, flood fill,
+  eraser, text, layers (hide, blend), Spin preset → 8 frames with background kept, playback FPS, GIF download
+  (GIF89a, 8 frames), project save + private thumbnail, animated sticker in "My Drawings", avatar, animated GIF cover,
+  custom emoji, reopen keeps 2 layers / 8 frames / blend, server rejects non-PNG cells, other users get 404.
+- UI audit regression: 313/313.

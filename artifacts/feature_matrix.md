@@ -137,3 +137,14 @@ Status values: Tested = works end to end and covered by an automated check; Impl
 | XXV | Device selection, push-to-talk, network diagnostics for calls | Not Started |
 | XXVIII / XXIX | Media library, backup export / import | Not Started |
 | XXIII | Command palette beyond Ctrl+K switcher, notification center | Not Started |
+
+## Spec 010: ChatW Studio (prompt section VIII)
+| Item | Status |
+|---|---|
+| 11 drawing tools, colours, zoom, grid + snap, transparent background | Tested |
+| Layers ≤ 12 with opacity, blend, reorder, merge; 40-step undo / redo | Tested |
+| Frames ≤ 60, onion skin, playback, 10 motion presets, keyframe tween with 6 easings | Tested |
+| Export PNG / animated GIF / project file; import image / project; local draft | Tested (GIF, project), Implemented (import, draft) |
+| Private server projects with thumbnails, reopen for editing | Tested |
+| Use as avatar, cover, sticker, emoji, GIF, decoration, nameplate, profile effect | Tested (avatar, cover, sticker, emoji), Implemented (others) |
+| Animated WebP / APNG export, selection tool, pressure brushes, collaborative drawing | Not Started |

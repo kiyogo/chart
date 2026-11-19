@@ -31,6 +31,8 @@ uuid = { version = "1.29", features = ["v4", "serde"] }
 futures-channel = "0.3"
 futures-util = "0.3"
 tracing = "0.1"
+# Animated GIF export for ChatW Studio (image-rs, MIT / Apache-2.0; NeuQuant palette via color_quant).
+gif = "0.14"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "wasmbind"] }

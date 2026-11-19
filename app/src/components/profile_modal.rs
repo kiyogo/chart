@@ -49,6 +49,8 @@ pub fn ProfileModal(
     // Spec 009: minutes until the custom status clears (-1 = keep the current timer).
     let mut status_expiry = use_signal(|| -1i64);
     let mut interests_text = use_signal(String::new);
+    // Spec 010: the full ChatW Studio (layers, animation) for a target.
+    let mut full_studio = use_signal(|| Option::<String>::None);
 
     let uid = user_id.clone();
     use_effect(move || {
@@ -400,6 +402,27 @@ pub fn ProfileModal(
                                         }
                                     } else {
                                         div { class: "form-hint", "Tải ảnh của bạn (PNG, GIF động, WebP, AVIF, JPEG ≤ 2 MB) hoặc vẽ ngay trong ChatW." }
+                                        div { class: "inline-form",
+                                            span { class: "member-sub", "Cần nhiều lớp hoặc hoạt ảnh? ChatW Studio xuất GIF động và áp dụng thẳng lên hồ sơ." }
+                                            for (t, l) in [("decoration", "Studio: trang trí"), ("nameplate", "Studio: bảng tên"), ("effect", "Studio: hiệu ứng")] {
+                                                button { key: "{t}", r#type: "button", class: "btn-secondary", onclick: move |_| full_studio.set(Some(t.to_string())), "{l}" }
+                                            }
+                                        }
+                                        if let Some(t) = full_studio() {
+                                            crate::components::studio::Studio {
+                                                my_id: user_id.clone(),
+                                                target: t,
+                                                on_close: move |_| full_studio.set(None),
+                                                on_used: move |(t, u): (String, String)| {
+                                                    match t.as_str() {
+                                                        "nameplate" => edit(&|p| { p.nameplate = Some("custom".into()); p.custom_nameplate_url = Some(u.clone()); }),
+                                                        "effect" => edit(&|p| { p.profile_effect = Some("custom".into()); p.custom_effect_url = Some(u.clone()); }),
+                                                        "decoration" => edit(&|p| { p.avatar_decoration = Some("custom".into()); p.custom_decoration_url = Some(u.clone()); }),
+                                                        _ => {}
+                                                    }
+                                                },
+                                            }
+                                        }
                                         for (target, title, current) in [
                                             ("decoration", "Khung ảnh đại diện", d.custom_decoration_url.clone()),
                                             ("nameplate", "Bảng tên", d.custom_nameplate_url.clone()),

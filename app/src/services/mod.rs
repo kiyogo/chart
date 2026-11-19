@@ -1,6 +1,8 @@
 pub mod api;
 pub mod calls;
 pub mod dm;
+pub mod drawings;
+pub mod gif_export;
 pub mod groups;
 pub mod library;
 pub mod social;

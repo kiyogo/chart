@@ -38,9 +38,10 @@ enum SettingsTab {
     Bots,
     Language,
     Demo,
+    Studio,
 }
 
-const NAV: [(SettingsTab, &str); 16] = [
+const NAV: [(SettingsTab, &str); 17] = [
     (SettingsTab::Account, "Tài khoản của tôi"),
     (SettingsTab::Privacy, "Quyền riêng tư và chặn"),
     (SettingsTab::Security, "Bảo mật và mã hóa"),
@@ -55,6 +56,7 @@ const NAV: [(SettingsTab, &str); 16] = [
     (SettingsTab::Stickers, "Thư viện"),
     (SettingsTab::Business, "Kinh doanh"),
     (SettingsTab::Bots, "Bot"),
+    (SettingsTab::Studio, "ChatW Studio (vẽ và hoạt ảnh)"),
     (SettingsTab::Demo, "Demo Gallery"),
     (SettingsTab::Guide, "Hướng dẫn"),
 ];
@@ -77,6 +79,7 @@ fn tab_keywords(t: SettingsTab) -> &'static str {
         SettingsTab::Business => "kinh doanh ban hang san pham business",
         SettingsTab::Bots => "bot token api",
         SettingsTab::Guide => "huong dan phim tat cau hoi tro giup help faq",
+        SettingsTab::Studio => "studio ve hoat anh animation drawing layer lop khung hinh gif sticker emoji avatar anh bia ve tay",
         SettingsTab::Demo => "demo thu hieu ung avatar xoay ten bang ten nameplate hinh nen playground gallery",
     }
 }
@@ -184,7 +187,8 @@ pub fn SettingsView(
                                 SettingsTab::Business => rsx! { StoreIcon { size: 18 } },
                                 SettingsTab::Bots => rsx! { BotIcon { size: 18 } },
                                 SettingsTab::Language => rsx! { GlobeIcon { size: 18 } },
-                                SettingsTab::Demo => rsx! { PaletteIcon {} },
+                            SettingsTab::Demo => rsx! { PaletteIcon {} },
+                                SettingsTab::Studio => rsx! { crate::components::icons::SparkleIcon { size: 18 } },
                             }
                             span { "{label}" }
                             span { class: "chevron", ChevronRightIcon { size: 16 } }
@@ -214,6 +218,7 @@ pub fn SettingsView(
                                     SettingsTab::Bots => "Bot",
                                     SettingsTab::Language => "Ngôn ngữ",
                                     SettingsTab::Demo => "Demo Gallery",
+                                    SettingsTab::Studio => "ChatW Studio",
                                 }
                             }
                             p { class: "settings-page-desc",
@@ -230,6 +235,7 @@ pub fn SettingsView(
                                     SettingsTab::Business => "Trang công khai giới thiệu bạn, sản phẩm và công cụ nhắn tin cho người bán hàng.",
                                     SettingsTab::Bots => "Tạo bot, nhận token và lập trình bot của riêng bạn.",
                                     SettingsTab::Language => "Ngôn ngữ hiển thị của ứng dụng.",
+                                    SettingsTab::Studio => "Vẽ nhiều lớp, làm hoạt ảnh từng khung, xuất GIF và dùng làm avatar, ảnh bìa, sticker, emoji hoặc trang trí hồ sơ.",
                                     SettingsTab::Demo => "Thử trực tiếp hiệu ứng avatar, hiệu ứng tên, bảng tên, hiệu ứng hồ sơ và hình nền rồi áp dụng ngay.",
                                     SettingsTab::Customize => "Cột điều hướng, hình nền trò chuyện, âm báo, hiệu ứng và đồng bộ cài đặt giữa các thiết bị của bạn.",
                                     SettingsTab::Stickers => "Sticker, emoji và GIF của riêng bạn.",
@@ -610,6 +616,7 @@ pub fn SettingsView(
                             },
 
                             SettingsTab::Customize => rsx! { crate::components::settings_more::SyncMotionSettings {} CustomizationSettings {} AdvancedLookSettings {} },
+                            SettingsTab::Studio => rsx! { crate::components::studio::StudioHome { my_id: current_user_id.clone() } },
                             SettingsTab::Demo => rsx! { crate::components::demo_gallery::DemoGallery { my_id: current_user_id.clone(), my_name: current_username.clone(), my_avatar: my_avatar_url.clone() } },
                             SettingsTab::Chat => rsx! { ChatPrefsSettings {} },
                             SettingsTab::Notifications => rsx! { NotificationSettings {} },
