@@ -2418,10 +2418,13 @@ pub fn PluginChatView(
                 header { class: "chat-header",
                     button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại danh sách", onclick: move |_| on_back.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
-                        if matching_mod.is_none() && bot.avatar_url.is_some() {
-                            Avatar { name: bot.display_name.clone(), avatar_url: bot.avatar_url.clone(), size: 38 }
-                        } else {
-                            span { class: "bot-header-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: glyph_slot_size(&header_logo, 20, 34) } }
+                        div { class: "chat-item-avatar",
+                            if matching_mod.is_none() && bot.avatar_url.is_some() {
+                                Avatar { name: bot.display_name.clone(), avatar_url: bot.avatar_url.clone(), size: 42 }
+                            } else {
+                                span { class: "bot-header-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: glyph_slot_size(&header_logo, 22, 40) } }
+                            }
+                            span { class: "avatar-plugin-badge", "Plugin" }
                         }
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "{bot.display_name}" }

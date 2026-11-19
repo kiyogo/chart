@@ -251,21 +251,26 @@ pub fn ConversationList(
                     "data-conv": "{r.key}",
                     onclick: move |_| on_open.call(open.clone()),
                     match &r.open {
-                        ConvOpen::SelfChat => rsx! { span { class: "self-chat-avatar", aria_hidden: "true", DevicesIcon { size: 22 } } },
-                        ConvOpen::Channel(_) => rsx! { span { class: "self-chat-avatar channel", aria_hidden: "true", HashIcon { size: 20 } } },
+                        ConvOpen::SelfChat => rsx! { span { class: "self-chat-avatar", aria_hidden: "true", DevicesIcon { size: 24 } } },
+                        ConvOpen::Channel(_) => rsx! { span { class: "self-chat-avatar channel", aria_hidden: "true", HashIcon { size: 22 } } },
                         ConvOpen::Dm(f) => rsx! {
                             crate::components::profile_card::DecoratedAvatar {
-                                name: f.username.clone(), avatar_url: r.avatar.clone(), size: 44,
+                                name: f.username.clone(), avatar_url: r.avatar.clone(), size: 52,
                                 decoration: f.avatar_decoration.clone().filter(|d| d != "custom"),
                                 motion: f.avatar_motion.clone(), in_list: true,
                             }
                         },
-                        _ => rsx! { Avatar { name: r.name.clone(), avatar_url: r.avatar.clone(), size: 44 } },
+                        ConvOpen::Bot(_) => rsx! {
+                            div { class: "chat-item-avatar",
+                                Avatar { name: r.name.clone(), avatar_url: r.avatar.clone(), size: 52 }
+                                span { class: "avatar-plugin-badge", "Plugin" }
+                            }
+                        },
+                        _ => rsx! { Avatar { name: r.name.clone(), avatar_url: r.avatar.clone(), size: 52 } },
                     }
                     div { class: "chat-item-info",
                         div { class: "chat-item-header",
                             span { class: if r.unread > 0 { "chat-item-name unread {r.name_fx}" } else { "chat-item-name {r.name_fx}" }, "{r.name}" }
-                            if matches!(r.open, ConvOpen::Bot(_)) { span { class: "bot-tag", "PLUGIN" } }
                             if r.muted { span { class: "chat-item-icon", title: "Đã tắt thông báo", BellOffIcon { size: 13 } } }
                             if r.pinned_at.is_some() { span { class: "chat-item-icon", title: "Đã ghim", PinIcon { size: 13 } } }
                             if r.unread > 0 {

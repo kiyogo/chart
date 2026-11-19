@@ -66,7 +66,7 @@
   --bubble-max: min(40rem, 72%);
   --control-height: 2.5rem;
   --icon-btn: 2.25rem;
-  --avatar-list: 2.5rem;
+  --avatar-list: 3.375rem;
   --list-item-py: 0.5rem;
   --message-gap: 0.125rem;
   --message-group-gap: 0.875rem;
@@ -220,7 +220,7 @@
   --header-height: 3rem;
   --control-height: 2.25rem;
   --icon-btn: 2rem;
-  --avatar-list: 2.125rem;
+  --avatar-list: 2.875rem;
   --list-item-py: 0.3125rem;
   --message-group-gap: 0.5rem;
   --radius-bubble: 0.875rem;
@@ -229,7 +229,7 @@
   --header-height: 4rem;
   --control-height: 2.75rem;
   --icon-btn: 2.5rem;
-  --avatar-list: 2.875rem;
+  --avatar-list: 3.625rem;
   --list-item-py: 0.6875rem;
   --message-gap: 0.25rem;
   --message-group-gap: 1.125rem;

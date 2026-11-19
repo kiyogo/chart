@@ -369,7 +369,7 @@ pub fn MessageList(
                                                 else if let Some(h) = on_open_profile { h.call(sender_for_name.clone()) }
                                             },
                                             "{msg.sender_name}"
-                                            if msg.is_bot { span { class: "bot-tag", "PLUGIN" } }
+                                            if msg.is_bot { span { class: "bot-tag", "Plugin" } }
                                         }
                                     }
                                     if let Some(r) = rich.clone() {
