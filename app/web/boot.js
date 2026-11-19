@@ -17,6 +17,8 @@
     if (sw) root.style.setProperty('--sidebar-width', sw);
     const dw = get('chatw_details_width', '');
     if (dw) root.style.setProperty('--details-width', dw);
+    const snw = get('chatw_settings_nav_width', '');
+    if (snw) root.style.setProperty('--settings-nav-width', snw);
   } catch (_) { /* storage unavailable */ }
 })();
 

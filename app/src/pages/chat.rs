@@ -1181,6 +1181,7 @@ pub fn Chat(
 
     // Helper: select a channel
     let mut select_channel = move |ch: ChannelItem| {
+        server_settings_open.set(false);
         active_ent_module.set(None);
         selected_channel.set(Some(ch.clone()));
         active_friend.set(None);
@@ -1210,6 +1211,7 @@ pub fn Chat(
     // Helper: select a group
     let select_group = use_callback(move |grp: GroupItem| {
         is_settings_open.set(false);
+        server_settings_open.set(false);
         nav_section.set(NavSection::DirectMessages);
         group_reply_to.set(None);
         selected_channel.set(None);
@@ -1261,6 +1263,7 @@ pub fn Chat(
     // Helper: select a server
     let mut select_server = move |srv: ServerItem| {
         is_settings_open.set(false);
+        server_settings_open.set(false);
         nav_section.set(NavSection::Server(srv.id.clone()));
         selected_server.set(Some(srv.clone()));
         active_ent_module.set(None);
@@ -1316,6 +1319,7 @@ pub fn Chat(
     let pkey_for_select = preview_storage_key.clone();
     let select_friend = use_callback(move |friend: FriendItem| {
         is_settings_open.set(false);
+        server_settings_open.set(false);
         nav_section.set(NavSection::DirectMessages);
         selected_channel.set(None);
         active_group.set(None);
@@ -1455,6 +1459,7 @@ pub fn Chat(
 
     let open_bot = use_callback(move |b: BotItem| {
         is_settings_open.set(false);
+        server_settings_open.set(false);
         nav_section.set(NavSection::DirectMessages);
         active_friend.set(None);
         active_group.set(None);
@@ -1471,6 +1476,7 @@ pub fn Chat(
     // Open a channel that was popped out into Messages (stays in the Messages section).
     let open_popout = use_callback(move |ch: ChannelItem| {
         is_settings_open.set(false);
+        server_settings_open.set(false);
         if let Some(srv) = servers.peek().iter().find(|s| s.id == ch.server_id).cloned() {
             selected_server.set(Some(srv));
         }
@@ -1954,6 +1960,7 @@ pub fn Chat(
     let pending_len = pending_requests.read().len();
     let active_mod_page = crate::components::plugins_view::ACTIVE_PLUGIN_PAGE.read().clone();
     let active_left_plugin = crate::components::plugins_view::ACTIVE_LEFT_PLUGIN.read().clone();
+    let server_settings_active = server_settings_open() && selected_server().is_some();
     let is_chat_selected = active_friend().is_some()
         || active_group().is_some()
         || selected_channel().is_some()
@@ -1961,6 +1968,7 @@ pub fn Chat(
         || active_bot().is_some()
         || active_mod_page.is_some()
         || is_settings_open()
+        || server_settings_active
         || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi);
     let section = if is_settings_open() { NavSection::Settings } else { nav_section() };
 
@@ -2295,14 +2303,17 @@ pub fn Chat(
                 active_group_id: active_group().map(|g| g.id),
                 on_select_dm: move |_| {
                     is_settings_open.set(false);
+                    server_settings_open.set(false);
                     nav_section.set(NavSection::DirectMessages);
                 },
                 on_select_friends: move |_| {
                     is_settings_open.set(false);
+                    server_settings_open.set(false);
                     nav_section.set(NavSection::Friends);
                 },
                 on_select_communities: move |_| {
                     is_settings_open.set(false);
+                    server_settings_open.set(false);
                     nav_section.set(NavSection::Communities);
                     spawn(async move {
                         if let Ok(list) = api::servers_list().await {
@@ -2313,14 +2324,17 @@ pub fn Chat(
                 on_quick_switch: move |_| quick_switch_open.set(true),
                 on_select_search: move |_| {
                     is_settings_open.set(false);
+                    server_settings_open.set(false);
                     nav_section.set(NavSection::Search);
                 },
                 on_select_feed: move |_| {
                     is_settings_open.set(false);
+                    server_settings_open.set(false);
                     nav_section.set(NavSection::Feed);
                 },
                 on_select_vico_ai: move |_| {
                     is_settings_open.set(false);
+                    server_settings_open.set(false);
                     nav_section.set(NavSection::VicoAi);
                 },
                 on_select_server: move |srv: ServerItem| select_server(srv),
@@ -2329,11 +2343,14 @@ pub fn Chat(
                     let me = current_user_id.clone();
                     move |_| viewing_profile_user_id.set(Some(me.clone()))
                 },
-                on_open_settings: move |_| is_settings_open.set(true),
+                on_open_settings: move |_| {
+                    server_settings_open.set(false);
+                    is_settings_open.set(true);
+                },
                 on_logout: move |_| on_logout.call(()),
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() && !server_settings_active {
                 if let Some(lpid) = active_left_plugin.clone() {
                     aside { class: "nav-sidebar",
                         crate::components::plugins_view::PluginLeftAppView {
@@ -2397,10 +2414,14 @@ pub fn Chat(
                         }
                     },
                     community_groups: community_groups.clone(),
-                    on_open_server_settings: move |_| server_settings_open.set(true),
+                    on_open_server_settings: move |_| {
+                        is_settings_open.set(false);
+                        server_settings_open.set(true);
+                    },
                     enterprise_config: enterprise_config(),
                     active_ent_module: active_ent_module(),
                     on_select_ent_module: move |m: String| {
+                        server_settings_open.set(false);
                         selected_channel.set(None);
                         active_ent_module.set(Some(m));
                     },
@@ -2410,6 +2431,7 @@ pub fn Chat(
                     hidden_mobile: is_chat_selected,
                     on_select_communities: move |_| {
                         is_settings_open.set(false);
+                        server_settings_open.set(false);
                         nav_section.set(NavSection::Communities);
                         spawn(async move {
                             if let Ok(list) = api::servers_list().await {
@@ -2493,7 +2515,7 @@ pub fn Chat(
                 }
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() && !server_settings_active {
                 div {
                     class: "panel-resizer resizer-left",
                     "data-resizer": "sidebar",
@@ -2533,6 +2555,62 @@ pub fn Chat(
                         on_replay_tour: move |_| tour_open.set(true),
                         on_lock_now: move |_| locked.set(true),
                         on_logout: move |_| on_logout.call(()),
+                    }
+                } else if server_settings_active {
+                    if let Some(srv) = selected_server() {
+                        crate::components::server_settings::ServerSettingsView {
+                            key: "{srv.id}",
+                            server: srv.clone(),
+                            my_id: current_user_id.clone(),
+                            on_close: {
+                                let sid = srv.id.clone();
+                                move |_| {
+                                    server_settings_open.set(false);
+                                    let sid = sid.clone();
+                                    spawn(async move {
+                                        if let Ok(ms) = api::servers_get_members(&sid).await {
+                                            server_members.set(ms);
+                                        }
+                                        if let Ok(rs) = social::server_roles(&sid).await {
+                                            server_roles.set(rs);
+                                        }
+                                    });
+                                }
+                            },
+                            on_enterprise_changed: {
+                                let sid = srv.id.clone();
+                                move |_| {
+                                    let sid = sid.clone();
+                                    spawn(async move {
+                                        if let Ok(list) = api::servers_list().await {
+                                            if let Some(u) = list.iter().find(|x| x.id == sid).cloned() {
+                                                selected_server.set(Some(u));
+                                            }
+                                            servers.set(list);
+                                        }
+                                        if let Ok(ecfg) = enterprise::get_config(&sid).await {
+                                            enterprise_config.set(Some(ecfg));
+                                        } else {
+                                            enterprise_config.set(None);
+                                            active_ent_module.set(None);
+                                        }
+                                        if let Ok(cats) = api::servers_get_categories(&sid).await {
+                                            server_categories.set(cats);
+                                        }
+                                        if let Ok(chs) = api::servers_get_channels(&sid).await {
+                                            channels.set(chs);
+                                        }
+                                        if let Ok(ms) = api::servers_get_members(&sid).await {
+                                            server_members.set(ms);
+                                        }
+                                        if let Ok(rs) = social::server_roles(&sid).await {
+                                            server_roles.set(rs);
+                                        }
+                                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                                    });
+                                }
+                            },
+                        }
                     }
                 } else if section == NavSection::Search {
                     SearchPage {
@@ -3612,59 +3690,6 @@ pub fn Chat(
                 }
             }
         }
-        if server_settings_open() {
-            if let Some(srv) = selected_server() {
-                crate::components::server_settings::ServerSettingsDialog {
-                    server: srv.clone(),
-                    my_id: current_user_id.clone(),
-                    on_close: {
-                        let sid = srv.id.clone();
-                        move |_| {
-                            server_settings_open.set(false);
-                            let sid = sid.clone();
-                            spawn(async move {
-                                if let Ok(ms) = api::servers_get_members(&sid).await {
-                                    server_members.set(ms);
-                                }
-                                if let Ok(rs) = social::server_roles(&sid).await {
-                                    server_roles.set(rs);
-                                }
-                            });
-                        }
-                    },
-                    on_enterprise_changed: move |_| {
-                        let sid = srv.id.clone();
-                        spawn(async move {
-                            if let Ok(list) = api::servers_list().await {
-                                if let Some(u) = list.iter().find(|x| x.id == sid).cloned() {
-                                    selected_server.set(Some(u));
-                                }
-                                servers.set(list);
-                            }
-                            if let Ok(ecfg) = enterprise::get_config(&sid).await {
-                                enterprise_config.set(Some(ecfg));
-                            } else {
-                                enterprise_config.set(None);
-                                active_ent_module.set(None);
-                            }
-                            if let Ok(cats) = api::servers_get_categories(&sid).await {
-                                server_categories.set(cats);
-                            }
-                            if let Ok(chs) = api::servers_get_channels(&sid).await {
-                                channels.set(chs);
-                            }
-                            if let Ok(ms) = api::servers_get_members(&sid).await {
-                                server_members.set(ms);
-                            }
-                            if let Ok(rs) = social::server_roles(&sid).await {
-                                server_roles.set(rs);
-                            }
-                            ent_refresh_tick.set(ent_refresh_tick() + 1);
-                        });
-                    },
-                }
-            }
-        }
         if group_manage_open() {
             if let Some(grp) = active_group() {
                 GroupManageDialog {
@@ -3921,7 +3946,7 @@ pub fn Chat(
                 on_pick_friend: move |f: FriendItem| { quick_switch_open.set(false); select_friend.call(f); },
                 on_pick_group: move |g: GroupItem| { quick_switch_open.set(false); select_group.call(g); },
                 on_pick_server: move |srv: ServerItem| { quick_switch_open.set(false); select_server(srv); },
-                on_open_settings: move |_| { quick_switch_open.set(false); is_settings_open.set(true); },
+                on_open_settings: move |_| { quick_switch_open.set(false); server_settings_open.set(false); is_settings_open.set(true); },
             }
         }
 

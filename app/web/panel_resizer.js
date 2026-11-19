@@ -1,13 +1,43 @@
 /**
  * Panel Resizer Engine
- * Provides butter-smooth, 120fps draggable column resizing for the sidebar and right details panel.
+ * Provides butter-smooth, 120fps draggable column resizing for the sidebar, settings nav, and right details panel.
  */
 
 (function () {
   'use strict';
 
+  const CONFIGS = {
+    sidebar: {
+      selector: '.nav-sidebar',
+      cssVar: '--sidebar-width',
+      storageKey: 'chatw_sidebar_width',
+      fallbackWidth: 272,
+      minWidth: 180,
+      maxWidth: () => Math.min(500, Math.round(window.innerWidth * 0.45)),
+      direction: 1
+    },
+    'settings-nav': {
+      selector: '.settings-nav',
+      cssVar: '--settings-nav-width',
+      storageKey: 'chatw_settings_nav_width',
+      fallbackWidth: 240,
+      minWidth: 180,
+      maxWidth: () => Math.min(400, Math.round(window.innerWidth * 0.4)),
+      direction: 1
+    },
+    details: {
+      selector: '.details-panel, .partner-info-sidebar, .server-members-panel',
+      cssVar: '--details-width',
+      storageKey: 'chatw_details_width',
+      fallbackWidth: 288,
+      minWidth: 200,
+      maxWidth: () => Math.min(540, Math.round(window.innerWidth * 0.48)),
+      direction: -1
+    }
+  };
+
   let activeResizer = null;
-  let resizerType = null;
+  let activeConfig = null;
   let startX = 0;
   let startWidth = 0;
   let currentWidth = 0;
@@ -16,25 +46,20 @@
     const handle = e.target.closest('[data-resizer]');
     if (!handle) return;
 
+    const cfg = CONFIGS[handle.getAttribute('data-resizer')];
+    if (!cfg) return;
+
     e.preventDefault();
     e.stopPropagation();
 
     activeResizer = handle;
-    resizerType = handle.getAttribute('data-resizer');
+    activeConfig = cfg;
     startX = e.clientX;
 
-    // Determine current panel width
-    if (resizerType === 'sidebar') {
-      const sidebar = document.querySelector('.nav-sidebar');
-      startWidth = sidebar ? sidebar.getBoundingClientRect().width : 272;
-    } else if (resizerType === 'details') {
-      const panel = document.querySelector('.details-panel, .partner-info-sidebar, .server-members-panel');
-      startWidth = panel ? panel.getBoundingClientRect().width : 288;
-    } else {
-      return;
-    }
-
+    const panel = document.querySelector(cfg.selector);
+    startWidth = panel ? panel.getBoundingClientRect().width : cfg.fallbackWidth;
     currentWidth = startWidth;
+
     handle.classList.add('is-dragging');
     document.body.classList.add('resizing-panel');
 
@@ -48,23 +73,16 @@
   }
 
   function onPointerMove(e) {
-    if (!activeResizer) return;
+    if (!activeResizer || !activeConfig) return;
 
-    const dx = e.clientX - startX;
-    const maxSidebar = Math.min(500, Math.round(window.innerWidth * 0.45));
-    const maxDetails = Math.min(540, Math.round(window.innerWidth * 0.48));
-
-    if (resizerType === 'sidebar') {
-      currentWidth = Math.max(180, Math.min(maxSidebar, Math.round(startWidth + dx)));
-      document.documentElement.style.setProperty('--sidebar-width', currentWidth + 'px');
-    } else if (resizerType === 'details') {
-      currentWidth = Math.max(200, Math.min(maxDetails, Math.round(startWidth - dx)));
-      document.documentElement.style.setProperty('--details-width', currentWidth + 'px');
-    }
+    const dx = (e.clientX - startX) * activeConfig.direction;
+    const maxW = activeConfig.maxWidth();
+    currentWidth = Math.max(activeConfig.minWidth, Math.min(maxW, Math.round(startWidth + dx)));
+    document.documentElement.style.setProperty(activeConfig.cssVar, currentWidth + 'px');
   }
 
   function onPointerUp(e) {
-    if (!activeResizer) return;
+    if (!activeResizer || !activeConfig) return;
 
     const handle = activeResizer;
     handle.removeEventListener('pointermove', onPointerMove);
@@ -78,31 +96,25 @@
     handle.classList.remove('is-dragging');
     document.body.classList.remove('resizing-panel');
 
-    // Persist user preference
     try {
-      if (resizerType === 'sidebar' && currentWidth > 0) {
-        localStorage.setItem('chatw_sidebar_width', currentWidth + 'px');
-      } else if (resizerType === 'details' && currentWidth > 0) {
-        localStorage.setItem('chatw_details_width', currentWidth + 'px');
+      if (currentWidth > 0) {
+        localStorage.setItem(activeConfig.storageKey, currentWidth + 'px');
       }
     } catch (_) {}
 
     activeResizer = null;
-    resizerType = null;
+    activeConfig = null;
   }
 
   function onDblClick(e) {
     const handle = e.target.closest('[data-resizer]');
     if (!handle) return;
 
-    const type = handle.getAttribute('data-resizer');
-    if (type === 'sidebar') {
-      document.documentElement.style.removeProperty('--sidebar-width');
-      try { localStorage.removeItem('chatw_sidebar_width'); } catch (_) {}
-    } else if (type === 'details') {
-      document.documentElement.style.removeProperty('--details-width');
-      try { localStorage.removeItem('chatw_details_width'); } catch (_) {}
-    }
+    const cfg = CONFIGS[handle.getAttribute('data-resizer')];
+    if (!cfg) return;
+
+    document.documentElement.style.removeProperty(cfg.cssVar);
+    try { localStorage.removeItem(cfg.storageKey); } catch (_) {}
   }
 
   document.addEventListener('pointerdown', onPointerDown, { passive: false });

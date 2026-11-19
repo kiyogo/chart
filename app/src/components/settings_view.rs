@@ -207,6 +207,12 @@ pub fn SettingsView(
                     }
                 }
 
+                div {
+                    class: "panel-resizer",
+                    "data-resizer": "settings-nav",
+                    title: "Kéo để thay đổi kích thước danh mục",
+                }
+
                 // Right Settings Body
                 div { class: "settings-body",
                     div { class: "settings-content",
