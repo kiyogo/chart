@@ -359,7 +359,7 @@ input[type="color"] {
   flex-shrink: 0;
   display: block;
 }
-.rail-nav, .rail-bottom { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: 100%; position: relative; }
+.rail-nav, .rail-bottom { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); width: 100%; position: relative; }
 .rail-item.active .cw-icon, .rail-item:hover .cw-icon { transform: scale(1.06); }
 .cw-icon { transition: transform var(--dur-hover) var(--ease); }
 /* Name tooltips (icon-only rail) */
@@ -386,8 +386,9 @@ input[type="color"] {
 @keyframes tip-in { from { opacity: 0; } to { opacity: 1; } }
 .rail-item {
   position: relative;
-  width: 2.875rem;
-  height: 2.875rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -406,8 +407,10 @@ input[type="color"] {
 }
 .rail-item.has-logo .plugin-custom-logo,
 .rail-item.has-logo .plugin-brand-logo {
-  border-radius: var(--radius-lg);
-  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  width: 2.125rem;
+  height: 2.125rem;
+  border-radius: var(--radius-md);
+  transition: transform var(--dur-fast) var(--ease);
 }
 .rail-item.has-logo:hover .plugin-custom-logo,
 .rail-item.has-logo:hover .plugin-brand-logo {
@@ -415,7 +418,9 @@ input[type="color"] {
 }
 .rail-item.has-logo.active .plugin-custom-logo,
 .rail-item.has-logo.active .plugin-brand-logo {
-  box-shadow: 0 0 0 2px var(--bg-app), 0 0 0 4px var(--accent);
+  box-shadow: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .rail-icon {
   position: relative;
@@ -438,7 +443,6 @@ input[type="color"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 2px var(--bg-app);
 }
 .rail-pins {
   display: flex;
@@ -471,7 +475,7 @@ input[type="color"] {
 .rail-pin img { width: 100%; height: 100%; object-fit: cover; }
 .rail-pin.group { background: transparent; }
 .rail-pin:hover { border-radius: var(--radius-lg); }
-.rail-pin.active { border-radius: var(--radius-lg); box-shadow: 0 0 0 3px var(--bg-app), 0 0 0 5px var(--accent); }
+.rail-pin.active { border-radius: var(--radius-lg); outline: 2px solid var(--accent); outline-offset: 2px; }
 .rail-spacer { flex: 1; min-height: var(--space-2); }
 .rail-account { border-radius: 50%; padding: 2px; margin-top: var(--space-1); }
 .rail-account:hover, .rail-account[aria-expanded="true"] { background: color-mix(in srgb, var(--bg-surface) 55%, transparent); }
@@ -2627,7 +2631,6 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   border-radius: var(--radius-full);
   background: var(--accent);
   color: var(--on-accent);
-  box-shadow: 0 0 0 2px var(--bg-surface);
   font-size: 0.625rem;
   font-weight: var(--weight-semibold);
   line-height: 1.25;
@@ -2635,9 +2638,6 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   text-transform: none;
   white-space: nowrap;
   pointer-events: none;
-}
-.chat-item:hover .avatar-plugin-badge {
-  box-shadow: 0 0 0 2px var(--bg-surface-hover);
 }
 .verified-tag { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; margin-left: 0.375rem; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 0.625rem; vertical-align: middle; }
 
