@@ -583,7 +583,9 @@ input::placeholder {
   font-size: 17px;
   font-weight: 600;
   color: var(--text-primary);
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .partner-info-sub {
