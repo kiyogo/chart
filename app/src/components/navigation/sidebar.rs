@@ -184,7 +184,7 @@ pub fn NavigationSidebar(
                         }
                     }
                     div { class: "sidebar-filters", role: "tablist", aria_label: "Lọc cuộc trò chuyện",
-                        for (val, label) in [("all", "Tất cả"), ("unread", "Chưa đọc")] {
+                        for (val, label) in [("all", "")] {
                             button {
                                 key: "{val}",
                                 r#type: "button",
