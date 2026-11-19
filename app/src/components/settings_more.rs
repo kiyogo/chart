@@ -535,7 +535,7 @@ pub fn SyncMotionSettings() -> Element {
     let version = crate::services::settings_sync::known_version();
     rsx! {
         div { class: "settings-section",
-            div { class: "settings-group-title", "Đồng bộ và hiệu năng" }
+            div { class: "settings-group-title", "Đồng bộ" }
             Toggle {
                 label: "Đồng bộ cài đặt với các thiết bị khác",
                 desc: "Giao diện, tùy chỉnh, thông báo, gợi ý, sticker / GIF / emoji yêu thích đi theo tài khoản. Mã PIN khóa ứng dụng luôn chỉ ở thiết bị này.",

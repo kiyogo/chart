@@ -510,7 +510,7 @@ async function main() {
     await A.waitForTimeout(200);
     record('settings search filters pages', await A.locator('.settings-nav-item').count() === 1, String(await A.locator('.settings-nav-item').count()));
     await A.locator('input[aria-label="Tìm cài đặt"]').fill('');
-    await A.locator('.settings-nav-item', { hasText: 'Demo Gallery' }).click();
+    await A.locator('.settings-nav-item', { hasText: 'Demo' }).click();
     await A.waitForTimeout(1200);
     record('Demo Gallery shows all 40 avatar demos', await A.locator('.demo-motion-cell').count() === 40, '');
     await shot(A, 'demo_gallery_avatar_light_1366x768');
@@ -627,7 +627,7 @@ async function main() {
     await A.waitForTimeout(400);
   });
   await safe('pin lock', async () => {
-    await A.locator('.settings-nav-item', { hasText: 'Khóa ứng dụng' }).click();
+    await A.locator('.settings-nav-item', { hasText: 'Khóa PIN' }).click();
     await A.waitForTimeout(400);
     const pins = A.locator('input.pin-input');
     await pins.nth(0).fill('2468'); await pins.nth(1).fill('2468');
@@ -643,7 +643,7 @@ async function main() {
     record('correct PIN unlocks', await A.locator('.lock-screen').count() === 0, '');
   });
   await safe('settings pages render', async () => {
-    for (const tab of ['Trò chuyện', 'Thông báo và âm thanh', 'Quyền riêng tư và chặn', 'Trả lời tự động', 'Kinh doanh', 'Bot']) {
+    for (const tab of ['Trò chuyện', 'Thông báo', 'Quyền riêng tư', 'Trả lời tự động', 'Kinh doanh', 'Bot']) {
       await A.locator('.settings-nav-item', { hasText: tab }).click();
       await A.waitForTimeout(700);
       const ok = await A.locator('.settings-content .settings-group').count() > 0;
@@ -724,7 +724,7 @@ async function main() {
         await settingsBtn.click();
         await alice.page.waitForTimeout(500);
         await shot(alice.page, `settings_${theme}_${w}x${h}`);
-        const secTab = alice.page.locator('.settings-nav-item', { hasText: 'Bảo mật và mã hóa' }).first();
+        const secTab = alice.page.locator('.settings-nav-item', { hasText: 'Bảo mật' }).first();
         if (await secTab.isVisible().catch(() => false)) {
           await secTab.click();
           await alice.page.waitForTimeout(300);

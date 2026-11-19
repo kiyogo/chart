@@ -444,14 +444,14 @@ pub fn Studio(
                 }
                 if menu() == Some("export") {
                     div { class: "account-menu studio-menu", role: "menu",
-                        button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| export("png"), "PNG (khung hiện tại)" }
-                        button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| export("gif"), "GIF động (mọi khung hình)" }
-                        button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| export("project"), "Tệp dự án .chatwdraw.json (giữ lớp)" }
+                        button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| export("png"), "PNG" }
+                        button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| export("gif"), "GIF" }
+                        button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| export("project"), "Tệp dự án" }
                     }
                 }
                 if menu() == Some("use") {
                     div { class: "account-menu studio-menu right", role: "menu",
-                        for (id, label) in [("avatar", "Ảnh đại diện (khung hiện tại)"), ("cover", "Ảnh bìa (động nếu nhiều khung)"), ("sticker", "Sticker trong bộ My Drawings"), ("emoji", "Emoji tùy chỉnh"), ("gif", "My GIFs"), ("decoration", "Trang trí avatar"), ("nameplate", "Bảng tên"), ("effect", "Hiệu ứng hồ sơ")] {
+                        for (id, label) in [("avatar", "Ảnh đại diện"), ("cover", "Ảnh bìa"), ("sticker", "Sticker"), ("emoji", "Emoji"), ("gif", "My GIFs"), ("decoration", "Trang trí avatar"), ("nameplate", "Bảng tên"), ("effect", "Hiệu ứng hồ sơ")] {
                             button { key: "{id}", r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| use_as(id), "{label}" }
                         }
                     }
@@ -573,7 +573,7 @@ pub fn Studio(
                     }
                     div { class: "studio-panel",
                         div { class: "studio-panel-head",
-                            span { class: "studio-panel-title", "Lớp ({s.layers.len()}/12)" }
+                            span { class: "studio-panel-title", "Lớp" }
                             button { r#type: "button", class: "btn-small-secondary", onclick: move |_| run("ChatwStudio.addLayer()"), "+ Lớp" }
                         }
                         div { class: "studio-layers",
@@ -725,22 +725,22 @@ pub fn StudioHome(my_id: String) -> Element {
     use_hook(move || reload());
     rsx! {
         div { class: "studio-home",
-            div { class: "settings-group-title", "Bắt đầu bản vẽ mới" }
+            div { class: "settings-group-title", "Mới" }
             div { class: "studio-targets",
                 for (id, label, w, h) in TARGETS {
                     button { key: "{id}", r#type: "button", class: "studio-target", onclick: move |_| open.set(Some((Some(id.to_string()), None))),
-                        span { class: "studio-target-shape", style: "aspect-ratio: {w} / {h};" }
+                        span { class: if w > h { "studio-target-shape wide" } else { "studio-target-shape tall" }, style: "aspect-ratio: {w} / {h};" }
                         span { class: "settings-label", "{label}" }
                         span { class: "member-sub", "{w}×{h}" }
                     }
                 }
             }
-            div { class: "settings-group-title", "Dự án của tôi" }
+            div { class: "settings-group-title", "Dự án" }
             if let Some(s) = status() { div { class: "status-badge error", "{s}" } }
             if loading() {
                 div { class: "sidebar-empty", "Đang tải dự án" }
             } else if projects.read().is_empty() {
-                div { class: "sidebar-empty", "Chưa có dự án. Dự án lưu mọi lớp và khung hình để bạn sửa lại sau." }
+                div { class: "sidebar-empty", "Chưa có dự án" }
             } else {
                 div { class: "studio-projects",
                     for p in projects() {

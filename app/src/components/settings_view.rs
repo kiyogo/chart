@@ -42,26 +42,31 @@ enum SettingsTab {
     Inventory,
 }
 
-const NAV: [(SettingsTab, &str); 18] = [
-    (SettingsTab::Account, "Tài khoản của tôi"),
-    (SettingsTab::Privacy, "Quyền riêng tư và chặn"),
-    (SettingsTab::Security, "Bảo mật và mã hóa"),
-    (SettingsTab::Lock, "Khóa ứng dụng (mã PIN)"),
-    (SettingsTab::Session, "Thiết bị và phiên"),
-    (SettingsTab::Chat, "Trò chuyện"),
-    (SettingsTab::Notifications, "Thông báo và âm thanh"),
-    (SettingsTab::AutoReply, "Trả lời tự động"),
-    (SettingsTab::Appearance, "Giao diện"),
-    (SettingsTab::Customize, "Tùy chỉnh"),
-    (SettingsTab::Language, "Ngôn ngữ"),
-    (SettingsTab::Stickers, "Thư viện"),
-    (SettingsTab::Business, "Kinh doanh"),
-    (SettingsTab::Bots, "Bot"),
-    (SettingsTab::Studio, "ChatW Studio (vẽ và hoạt ảnh)"),
-    (SettingsTab::Inventory, "Kho vật phẩm và thành tích"),
-    (SettingsTab::Demo, "Demo Gallery"),
-    (SettingsTab::Guide, "Hướng dẫn"),
+/// (group title, tab, short label). Labels stay on one line; no descriptions.
+const NAV: [(&str, SettingsTab, &str); 18] = [
+    ("Tài khoản", SettingsTab::Account, "Tài khoản"),
+    ("Tài khoản", SettingsTab::Privacy, "Quyền riêng tư"),
+    ("Tài khoản", SettingsTab::Security, "Bảo mật"),
+    ("Tài khoản", SettingsTab::Lock, "Khóa PIN"),
+    ("Tài khoản", SettingsTab::Session, "Thiết bị"),
+    ("Ứng dụng", SettingsTab::Chat, "Trò chuyện"),
+    ("Ứng dụng", SettingsTab::Notifications, "Thông báo"),
+    ("Ứng dụng", SettingsTab::AutoReply, "Trả lời tự động"),
+    ("Ứng dụng", SettingsTab::Appearance, "Giao diện"),
+    ("Ứng dụng", SettingsTab::Customize, "Tùy chỉnh"),
+    ("Ứng dụng", SettingsTab::Language, "Ngôn ngữ"),
+    ("Sáng tạo", SettingsTab::Stickers, "Thư viện"),
+    ("Sáng tạo", SettingsTab::Studio, "Studio"),
+    ("Sáng tạo", SettingsTab::Inventory, "Kho đồ"),
+    ("Sáng tạo", SettingsTab::Demo, "Demo"),
+    ("Khác", SettingsTab::Business, "Kinh doanh"),
+    ("Khác", SettingsTab::Bots, "Bot"),
+    ("Khác", SettingsTab::Guide, "Hướng dẫn"),
 ];
+
+fn tab_label(t: SettingsTab) -> &'static str {
+    NAV.iter().find(|x| x.1 == t).map(|x| x.2).unwrap_or("")
+}
 
 /// Extra search words for each settings page (folded, Vietnamese and English).
 fn tab_keywords(t: SettingsTab) -> &'static str {
@@ -155,21 +160,23 @@ pub fn SettingsView(
                             oninput: move |e| nav_query.set(e.value()),
                             onkeydown: move |e| if e.key() == Key::Enter {
                                 let q = crate::components::composer::fold(nav_query().trim());
-                                if let Some((t, _)) = NAV.iter().find(|(t, l)| crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q)) {
+                                if let Some((_, t, _)) = NAV.iter().find(|(_, t, l)| crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q)) {
                                     tab.set(*t);
                                     has_detail.set(true);
                                 }
                             },
                         }
                     }
-                    div { class: "settings-nav-title", "Người dùng" }
-                    if !nav_query().trim().is_empty() && !NAV.iter().any(|(t, l)| { let q = crate::components::composer::fold(nav_query().trim()); crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
+                    if !nav_query().trim().is_empty() && !NAV.iter().any(|(_, t, l)| { let q = crate::components::composer::fold(nav_query().trim()); crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
                         div { class: "sidebar-empty", "Không tìm thấy cài đặt phù hợp" }
                     }
-                    for (t, label) in NAV.iter().copied().filter(|(t, l)| { let q = crate::components::composer::fold(nav_query().trim()); q.is_empty() || crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
+                    for (i, (group, t, label)) in NAV.iter().copied().enumerate().filter(|(_, (_, t, l))| { let q = crate::components::composer::fold(nav_query().trim()); q.is_empty() || crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
+                        if nav_query().trim().is_empty() && (i == 0 || NAV[i - 1].0 != group) {
+                            div { class: "settings-nav-title", "{group}" }
+                        }
 
                         button {
-                            key: "{label}",
+                            
                             r#type: "button",
                             class: if tab() == t { "settings-nav-item active" } else { "settings-nav-item" },
                             aria_current: if tab() == t { "page" } else { "false" },
@@ -190,9 +197,9 @@ pub fn SettingsView(
                                 SettingsTab::Business => rsx! { StoreIcon { size: 18 } },
                                 SettingsTab::Bots => rsx! { BotIcon { size: 18 } },
                                 SettingsTab::Language => rsx! { GlobeIcon { size: 18 } },
-                            SettingsTab::Demo => rsx! { PaletteIcon {} },
-                                SettingsTab::Studio => rsx! { crate::components::icons::SparkleIcon { size: 18 } },
-                                SettingsTab::Inventory => rsx! { LibraryIcon {} },
+                                SettingsTab::Demo => rsx! { crate::components::icons::SparkleIcon { size: 18 } },
+                                SettingsTab::Studio => rsx! { crate::components::icons::ImageIcon { size: 18 } },
+                                SettingsTab::Inventory => rsx! { crate::components::icons::CrownIcon { size: 18 } },
                             }
                             span { "{label}" }
                             span { class: "chevron", ChevronRightIcon { size: 16 } }
@@ -204,50 +211,7 @@ pub fn SettingsView(
                 div { class: "settings-body",
                     div { class: "settings-content",
                         div {
-                            h1 { class: "settings-page-title",
-                                match tab() {
-                                    SettingsTab::Account => "Tài khoản của tôi",
-                                    SettingsTab::Appearance => "Giao diện",
-                                    SettingsTab::Security => "Bảo mật và mã hóa",
-                                    SettingsTab::Session => "Thiết bị và phiên",
-                                    SettingsTab::Customize => "Tùy chỉnh",
-                                    SettingsTab::Stickers => "Thư viện",
-                                    SettingsTab::Guide => "Hướng dẫn",
-                                    SettingsTab::Chat => "Trò chuyện",
-                                    SettingsTab::Notifications => "Thông báo và âm thanh",
-                                    SettingsTab::Privacy => "Quyền riêng tư và chặn",
-                                    SettingsTab::Lock => "Khóa ứng dụng",
-                                    SettingsTab::AutoReply => "Trả lời tự động",
-                                    SettingsTab::Business => "Kinh doanh",
-                                    SettingsTab::Bots => "Bot",
-                                    SettingsTab::Language => "Ngôn ngữ",
-                                    SettingsTab::Demo => "Demo Gallery",
-                                    SettingsTab::Studio => "ChatW Studio",
-                                    SettingsTab::Inventory => "Kho vật phẩm",
-                                }
-                            }
-                            p { class: "settings-page-desc",
-                                match tab() {
-                                    SettingsTab::Account => "Ảnh đại diện, ảnh bìa và thông tin định danh của bạn.",
-                                    SettingsTab::Appearance => "Chủ đề màu, màu nhấn, cỡ chữ và mật độ hiển thị. Lưu trên thiết bị này.",
-                                    SettingsTab::Security => "Khóa mã hóa đầu cuối của thiết bị, vân tay khóa, sao lưu và khôi phục.",
-                                    SettingsTab::Session => "Thiết bị đã đăng nhập (tên như Windows 1, Linux 2 có thể đổi) và phiên trên trình duyệt này.",
-                                    SettingsTab::Chat => "Cách soạn, trả lời, gợi ý và trạng thái đã xem / đang soạn tin.",
-                                    SettingsTab::Notifications => "Thông báo hệ thống và âm báo khi có tin nhắn, lời mời và cuộc gọi.",
-                                    SettingsTab::Privacy => "Ai có thể liên hệ, gọi, thêm bạn vào nhóm và danh sách người bị chặn.",
-                                    SettingsTab::Lock => "Yêu cầu mã PIN khi mở lại ChatW sau thời gian không hoạt động.",
-                                    SettingsTab::AutoReply => "Tự động trả lời khi bạn vắng mặt hoặc ngoài giờ.",
-                                    SettingsTab::Business => "Trang công khai giới thiệu bạn, sản phẩm và công cụ nhắn tin cho người bán hàng.",
-                                    SettingsTab::Bots => "Tạo bot, nhận token và lập trình bot của riêng bạn.",
-                                    SettingsTab::Language => "Ngôn ngữ hiển thị của ứng dụng.",
-                                    SettingsTab::Inventory => "Mọi thứ bạn sở hữu và đang trang bị: bộ sticker, emoji, GIF, bản vẽ, bố cục hồ sơ, huy hiệu và thành tích.",
-                                    SettingsTab::Studio => "Vẽ nhiều lớp, làm hoạt ảnh từng khung, xuất GIF và dùng làm avatar, ảnh bìa, sticker, emoji hoặc trang trí hồ sơ.",
-                                    SettingsTab::Demo => "Thử trực tiếp hiệu ứng avatar, hiệu ứng tên, bảng tên, hiệu ứng hồ sơ và hình nền rồi áp dụng ngay.",
-                                    SettingsTab::Customize => "Cột điều hướng, hình nền trò chuyện, âm báo, hiệu ứng và đồng bộ cài đặt giữa các thiết bị của bạn.",
-                                    SettingsTab::Stickers => "Sticker, emoji và GIF của riêng bạn.",
-                                    SettingsTab::Guide => "Giới thiệu, hướng dẫn từng bước, phím tắt và câu hỏi thường gặp.",
-                                }
-                            }
+                            h1 { class: "settings-page-title", "{tab_label(tab())}" }
                         }
                         match tab() {
                             SettingsTab::Account => rsx! {

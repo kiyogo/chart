@@ -265,7 +265,7 @@ pub fn LayoutEditor(
     let _ = fav;
     rsx! {
         div { class: "layout-editor",
-            div { class: "settings-group-title", "Mẫu hồ sơ (21)" }
+            div { class: "settings-group-title", "Mẫu" }
             p { class: "member-sub", "Mẫu chỉ đổi thẻ hồ sơ, không đổi giao diện ứng dụng." }
             div { class: "template-grid", role: "radiogroup", aria_label: "Mẫu hồ sơ",
                 for (id, name) in pp::TEMPLATES {
@@ -282,7 +282,7 @@ pub fn LayoutEditor(
                     }
                 }
             }
-            div { class: "settings-group-title", "Các mục (kéo để đổi thứ tự)" }
+            div { class: "settings-group-title", "Các mục" }
             div { class: "section-list", role: "list",
                 for (i, s) in sections.iter().cloned().enumerate() {
                     {
@@ -324,7 +324,7 @@ pub fn LayoutEditor(
                 button { r#type: "button", class: "btn-small-secondary", onclick: { let g = g0.clone(); move |_| emit("minimal".into(), pp::default_sections(), g.clone()) }, "Khôi phục mặc định" }
             }
 
-            div { class: "settings-group-title", "Bản bố cục đã lưu (tối đa 10)" }
+            div { class: "settings-group-title", "Bản đã lưu" }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
             div { class: "inline-form",
                 input { maxlength: "40", placeholder: "Tên bản bố cục", aria_label: "Tên bản bố cục", value: "{preset_name}", oninput: move |e| preset_name.set(e.value()) }
@@ -346,7 +346,7 @@ pub fn LayoutEditor(
                         platform::copy_to_clipboard(&text);
                         msg.set(Some((false, "Đã sao chép bố cục dạng JSON (dán để chia sẻ hoặc nhập lại)".into())));
                     } },
-                    "Xuất (sao chép JSON)"
+                    "Xuất"
                 }
                 button { r#type: "button", class: "btn-small-secondary",
                     onclick: { let g = g0.clone(); move |_| {
@@ -360,7 +360,7 @@ pub fn LayoutEditor(
                             }
                         });
                     } },
-                    "Nhập (dán JSON)"
+                    "Nhập"
                 }
             }
             div { class: "preset-list",
@@ -381,7 +381,7 @@ pub fn LayoutEditor(
                 }
             }
 
-            div { class: "settings-group-title", "Khu trưng bày ({showcase.len()}/12)" }
+            div { class: "settings-group-title", "Trưng bày" }
             div { class: "showcase-manage",
                 for (i, it) in showcase.iter().cloned().enumerate() {
                     {

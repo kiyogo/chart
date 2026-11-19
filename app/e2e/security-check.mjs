@@ -46,7 +46,7 @@ const appReady = async () => {
 };
 const openSecurity = async () => {
   await page.locator('.app-rail button.rail-item[aria-label="Cài đặt"]').click();
-  await page.locator('.settings-nav-item', { hasText: 'Bảo mật và mã hóa' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Bảo mật' }).click();
   await page.waitForTimeout(800);
 };
 

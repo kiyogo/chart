@@ -68,7 +68,6 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_dm { "rail-item active" } else { "rail-item" },
-                    title: "{t(\"nav.messages\")}",
                     "data-tip": "{t(\"nav.messages\")}",
                     aria_label: "{t(\"nav.messages\")}",
                     aria_current: if in_dm { "page" } else { "false" },
@@ -80,7 +79,6 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_friends { "rail-item active" } else { "rail-item" },
-                    title: "{t(\"nav.friends\")}",
                     "data-tip": "{t(\"nav.friends\")}",
                     aria_label: "{t(\"nav.friends\")}",
                     aria_current: if in_friends { "page" } else { "false" },
@@ -92,7 +90,6 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_comm { "rail-item active" } else { "rail-item" },
-                    title: "{t(\"nav.communities\")}",
                     "data-tip": "{t(\"nav.communities\")}",
                     aria_label: "{t(\"nav.communities\")}",
                     aria_current: if in_comm { "page" } else { "false" },
@@ -102,7 +99,6 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_search { "rail-item active" } else { "rail-item" },
-                    title: "{t(\"nav.search\")} (Ctrl+K: {t(\"nav.quick\")})",
                     "data-tip": "{t(\"nav.search\")}",
                     aria_label: "{t(\"nav.search\")}",
                     aria_current: if in_search { "page" } else { "false" },
@@ -122,7 +118,6 @@ pub fn AppRail(
                                     key: "s-{srv.id}",
                                     r#type: "button",
                                     class: if active { "rail-pin community active" } else { "rail-pin community" },
-                                    title: "{srv.name}",
                                     "data-tip": "{srv.name}",
                                     aria_label: "Cộng đồng {srv.name}",
                                     onclick: move |_| on_select_server.call(s.clone()),
@@ -144,7 +139,6 @@ pub fn AppRail(
                                     key: "g-{grp.id}",
                                     r#type: "button",
                                     class: if active { "rail-pin group active" } else { "rail-pin group" },
-                                    title: "{grp.name}",
                                     "data-tip": "{grp.name}",
                                     aria_label: "Nhóm {grp.name}",
                                     onclick: move |_| on_select_group.call(g.clone()),
@@ -162,7 +156,6 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_settings { "rail-item compact active" } else { "rail-item compact" },
-                    title: "{t(\"nav.settings\")}",
                     "data-tip": "{t(\"nav.settings\")}",
                     aria_label: "{t(\"nav.settings\")}",
                     onclick: move |_| on_open_settings.call(()),

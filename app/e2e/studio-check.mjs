@@ -46,7 +46,7 @@ const pixel = (x, y, frame) => page.evaluate(([x, y, f]) => {
 
 try {
   await page.locator('.app-rail button.rail-item[aria-label="Cài đặt"]').click();
-  await page.locator('.settings-nav-item', { hasText: 'ChatW Studio' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Studio' }).click();
   await page.waitForTimeout(600);
   record('Studio home lists 8 targets', await page.locator('.studio-target').count() === 8);
   await page.locator('.studio-target', { hasText: 'Sticker' }).click();
@@ -129,7 +129,7 @@ try {
 
   // Export GIF (download) and check bytes
   await page.locator('.studio-top button', { hasText: 'Xuất' }).click();
-  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.locator('.studio-menu .account-menu-item', { hasText: 'GIF động' }).click()]);
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.locator('.studio-menu .account-menu-item', { hasText: /^GIF$/ }).click()]);
   const gifPath = path.join(OUT, 'export.gif');
   await dl.saveAs(gifPath);
   const gif = fs.readFileSync(gifPath);

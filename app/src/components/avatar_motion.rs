@@ -235,7 +235,7 @@ pub fn AvatarStudio(
                 }
             }
             div { class: "studio-controls",
-                div { class: "settings-group-title", "Hiệu ứng (40)" }
+                div { class: "settings-group-title", "Hiệu ứng" }
                 div { class: "motion-grid", role: "radiogroup", aria_label: "Avatar effects",
                     button { r#type: "button", role: "radio", aria_checked: "{current.is_none()}",
                         class: if current.is_none() { "motion-tile active" } else { "motion-tile" },

@@ -151,7 +151,7 @@ try {
 
   // Inventory
   await a.locator('.app-rail button.rail-item[aria-label="Cài đặt"]').click();
-  await a.locator('.settings-nav-item', { hasText: 'Kho vật phẩm' }).click();
+  await a.locator('.settings-nav-item', { hasText: 'Kho đồ' }).click();
   await a.waitForTimeout(1500);
   record('inventory lists equipped items', await a.locator('.inv-card', { hasText: 'Profile Template' }).filter({ hasText: 'Neon Profile' }).count() === 1);
   record('inventory lists achievements with progress', await a.locator('.inventory .achievement').count() === 15);

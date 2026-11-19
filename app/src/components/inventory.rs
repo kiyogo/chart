@@ -97,7 +97,7 @@ pub fn Inventory(my_id: String) -> Element {
         div { class: "inventory",
             div { class: "search-field",
                 crate::components::icons::SearchIcon { size: 16 }
-                input { r#type: "search", placeholder: "Tìm trong kho (Inventory Search)", aria_label: "Tìm trong kho vật phẩm", value: "{query}", oninput: move |e| query.set(e.value()) }
+                input { r#type: "search", placeholder: "Tìm", aria_label: "Tìm trong kho vật phẩm", value: "{query}", oninput: move |e| query.set(e.value()) }
             }
             div { class: "studio-presets", role: "tablist", aria_label: "Danh mục kho",
                 for (c, l) in CATS {
@@ -108,7 +108,7 @@ pub fn Inventory(my_id: String) -> Element {
 
             if show(Cat::Equipped) {
                 if let Some(pr) = p.clone() {
-                    div { class: "settings-group-title", "Đang trang bị (Equipped Items)" }
+                    div { class: "settings-group-title", "Đang dùng" }
                     div { class: "inv-grid",
                         InvCard { title: "Avatar Motion", sub: pr.avatar_motion.as_ref().and_then(|m| m.meta()).map(|m| m.1.to_string()).unwrap_or_else(|| "None".into()) }
                         InvCard { title: "Avatar Decoration", sub: pr.avatar_decoration.clone().unwrap_or_else(|| "none".into()), img: pr.custom_decoration_url.clone().filter(|_| pr.avatar_decoration.as_deref() == Some("custom")) }
@@ -130,7 +130,7 @@ pub fn Inventory(my_id: String) -> Element {
                         InvCard { key: "{u}", title: "Favorite Sticker", sub: String::new(), img: Some(u.clone()) }
                     }
                 }
-                if packs.read().is_empty() && favs.is_empty() { div { class: "sidebar-empty", "Chưa có. Tạo bộ sticker trong Thư viện hoặc vẽ trong ChatW Studio." } }
+                if packs.read().is_empty() && favs.is_empty() { div { class: "sidebar-empty", "Trống" } }
             }
             if show(Cat::Emoji) {
                 div { class: "settings-group-title", "Custom Emoji ({emojis.read().len()})" }
@@ -190,7 +190,7 @@ pub fn Inventory(my_id: String) -> Element {
                         }
                     }
                 }
-                if presets.read().is_empty() { div { class: "sidebar-empty", "Lưu bản bố cục trong Chỉnh sửa hồ sơ › Bố cục." } }
+                if presets.read().is_empty() { div { class: "sidebar-empty", "Trống" } }
             }
             if show(Cat::Achievements) {
                 if let Some(x) = plus() {

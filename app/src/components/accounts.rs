@@ -263,7 +263,7 @@ pub fn SecuritySettings() -> Element {
     let enabled = s.as_ref().is_some_and(|s| s.totp_enabled);
     rsx! {
         div { class: "settings-section security-settings",
-            div { class: "settings-group-title", "Tài khoản trên thiết bị này" }
+            div { class: "settings-group-title", "Tài khoản" }
             p { class: "settings-row-desc", "Tối đa 5 tài khoản. Mỗi tài khoản có khóa mã hóa, cài đặt, chủ đề, thông báo và mã PIN riêng; chuyển nhanh trong menu ảnh đại diện ở góc dưới." }
             div { class: "account-list",
                 for (i, a) in accounts().into_iter().enumerate() {
@@ -312,7 +312,7 @@ pub fn SecuritySettings() -> Element {
                 }
             }
 
-            div { class: "settings-group-title", "Xác minh hai bước (TOTP)" }
+            div { class: "settings-group-title", "Xác minh hai bước" }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, role: "status", "{m}" } }
             if enabled {
                 div { class: "settings-row",
@@ -353,7 +353,7 @@ pub fn SecuritySettings() -> Element {
             }
             if !codes.read().is_empty() {
                 div { class: "backup-codes",
-                    div { class: "settings-label", "Mã dự phòng (mỗi mã dùng một lần, chỉ hiện lần này)" }
+                    div { class: "settings-label", "Mã dự phòng" }
                     div { class: "backup-grid", for c in codes() { code { key: "{c}", "{c}" } } }
                     div { class: "inline-form",
                         button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&codes().join("\n")), "Sao chép" }
@@ -365,7 +365,7 @@ pub fn SecuritySettings() -> Element {
             div { class: "settings-group-title", "Nhật ký bảo mật" }
             p { class: "settings-row-desc", "100 hoạt động gần nhất. Địa chỉ IP chỉ giữ phần mạng (ví dụ 203.0.x.x)." }
             if events.read().is_empty() {
-                div { class: "sidebar-empty", "Chưa có hoạt động" }
+                div { class: "sidebar-empty", "Trống" }
             } else {
                 div { class: "security-log",
                     for (i, ev) in events().into_iter().enumerate() {

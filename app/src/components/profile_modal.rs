@@ -261,7 +261,7 @@ pub fn ProfileModal(
                                                         });
                                                     },
                                                 }
-                                                "Đổi ảnh bìa (hỗ trợ GIF động)"
+                                                "Đổi ảnh bìa"
                                             }
                                         }
                                     }
@@ -328,7 +328,7 @@ pub fn ProfileModal(
                                             oninput: move |e| { let v = e.value(); edit(&|p| p.bio = Some(v.clone())); },
                                         }
                                     }
-                                    div { class: "settings-group-title", "Thông tin thêm (tùy chọn)" }
+                                    div { class: "settings-group-title", "Thông tin thêm" }
                                     p { class: "member-sub", "Mỗi mục có quyền xem riêng. Máy chủ chỉ gửi mục đó cho người bạn cho phép." }
                                     for (key, label, ph, max) in [("pronouns", "Danh xưng", "she/her, anh/chị", 40), ("occupation", "Công việc", "Thiết kế, sinh viên", 64), ("location", "Nơi sống", "Hà Nội", 64), ("website", "Website", "https://", 200)] {
                                         {
@@ -349,7 +349,7 @@ pub fn ProfileModal(
                                     }
                                     div { class: "detail-row",
                                         label { class: "form-field grow",
-                                            span { class: "form-label", "Sở thích (cách nhau bằng dấu phẩy, tối đa 12)" }
+                                            span { class: "form-label", "Sở thích" }
                                             input { maxlength: "400", placeholder: "Music, Anime, Coding", value: "{interests_text}", oninput: move |e| interests_text.set(e.value()) }
                                         }
                                         VisibilitySelect { field: "interests".to_string(), value: d.detail_visibility.as_ref().and_then(|m| m.get("interests").cloned()).unwrap_or_else(|| "everyone".into()),
