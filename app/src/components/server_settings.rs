@@ -189,7 +189,7 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                                     for r in roles() {
                                         {
                                             let id = r.id.clone();
-                                            let count = members.read().iter().filter(|m| m.roles.contains(&r.id)).count();
+                                            let _count = members.read().iter().filter(|m| m.roles.contains(&r.id)).count();
                                             rsx! {
                                                 button { key: "{r.id}", r#type: "button", class: if editing().as_deref() == Some(r.id.as_str()) { "role-item active" } else { "role-item" },
                                                     onclick: move |_| editing.set(Some(id.clone())),

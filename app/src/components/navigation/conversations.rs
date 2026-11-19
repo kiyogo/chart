@@ -371,7 +371,7 @@ pub fn ConversationList(
                         for l in labels.iter().cloned() {
                             {
                                 let id = l.id.clone();
-                                let count = label_counts.get(&l.id).copied().unwrap_or(0);
+                                let _count = label_counts.get(&l.id).copied().unwrap_or(0);
                                 rsx! {
                                     button { key: "{l.id}", r#type: "button", role: "menuitemradio", aria_checked: "{f == l.id}", class: "account-menu-item",
                                         onclick: move |_| { filter.set(id.clone()); label_menu.set(false); },
