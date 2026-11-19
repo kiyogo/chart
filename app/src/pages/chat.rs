@@ -1573,14 +1573,20 @@ pub fn Chat(
     });
 
     // Send channel message
+    let uname_for_ch_cmd = current_username.clone();
     let trigger_send_channel_message = use_callback(move |_: ()| {
         let Some(ch) = selected_channel() else {
             return;
         };
-        let content = channel_input().trim().to_string();
-        if content.is_empty() {
+        let raw_content = channel_input().trim().to_string();
+        if raw_content.is_empty() {
             return;
         }
+        let content = if raw_content.starts_with('/') {
+            crate::components::plugins_view::try_run_plugin_command(&raw_content, &uname_for_ch_cmd).unwrap_or(raw_content)
+        } else {
+            raw_content
+        };
         channel_input.set(String::new());
         spawn(async move {
             if let Ok(posted) = api::channels_post_message(&ch.id, &content).await {
@@ -1594,14 +1600,20 @@ pub fn Chat(
     });
 
     // Send group message
+    let uname_for_grp_cmd = current_username.clone();
     let trigger_send_group_message = use_callback(move |_: ()| {
         let Some(grp) = active_group() else {
             return;
         };
-        let text = group_input().trim().to_string();
-        if text.is_empty() {
+        let raw_text = group_input().trim().to_string();
+        if raw_text.is_empty() {
             return;
         }
+        let text = if raw_text.starts_with('/') {
+            crate::components::plugins_view::try_run_plugin_command(&raw_text, &uname_for_grp_cmd).unwrap_or(raw_text)
+        } else {
+            raw_text
+        };
         group_input.set(String::new());
         let reply = group_reply_to().map(|(id, _)| id);
         group_reply_to.set(None);

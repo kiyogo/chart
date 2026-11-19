@@ -57,11 +57,11 @@
   --radius-bubble-tail: 0.375rem;
 
   /* Layout */
-  --rail-width: 4rem;
+  --rail-width: 3.375rem;
   --sidebar-width: clamp(17rem, 21vw, 22rem);
   --details-width: clamp(19rem, 22vw, 23rem);
   --header-height: 3.5rem;
-  --shell-gap: 0.5rem;
+  --shell-gap: 0.75rem;
   --panel-radius: 1.125rem;
   --bubble-max: min(40rem, 72%);
   --control-height: 2.5rem;

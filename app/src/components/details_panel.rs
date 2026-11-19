@@ -78,6 +78,8 @@ pub fn DmDetailsPanel(
     let c1 = p.as_ref().and_then(|p| p.profile_color.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| "var(--accent)".into());
     let c2 = p.as_ref().and_then(|p| p.profile_accent.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| c1.clone());
     let effect = p.as_ref().and_then(|p| p.profile_effect.clone()).unwrap_or_else(|| "none".into());
+    let custom_fx_url = p.as_ref().and_then(|p| p.custom_effect_url.clone()).filter(|u| !u.is_empty());
+    let custom_fx_anim = p.as_ref().and_then(|p| p.custom_effect_anim.clone()).unwrap_or_else(|| "none".into());
     let decoration = p.as_ref().and_then(|p| p.avatar_decoration.clone());
     let banner_style = p
         .as_ref()
@@ -126,7 +128,17 @@ pub fn DmDetailsPanel(
             tabindex: "-1",
             onclick: move |_| on_close.call(()),
         }
-        aside { class: "details-panel", aria_label: "Thông tin cuộc trò chuyện",
+        aside { class: "details-panel", style: "--pc-1: {c1}; --pc-2: {c2};", aria_label: "Thông tin cuộc trò chuyện",
+            if effects_on && effect != "none" && effect != "custom" {
+                div { class: "profile-effect effect-{effect}", aria_hidden: "true",
+                    for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
+                }
+            }
+            if effects_on && effect == "custom" {
+                if let Some(u) = custom_fx_url {
+                    img { class: "custom-effect anim-{custom_fx_anim}", src: "{platform::resolve_asset_url(&u)}", alt: "", aria_hidden: "true" }
+                }
+            }
             header { class: "details-header",
                 h3 { class: "details-title", "Thông tin" }
                 button {
@@ -140,13 +152,7 @@ pub fn DmDetailsPanel(
             }
             div { class: "details-scroll",
                 div { class: "details-hero",
-                    div { class: "details-banner", style: "{banner_style}",
-                        if effects_on && effect != "none" {
-                            div { class: "profile-effect effect-{effect}", aria_hidden: "true",
-                                for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
-                            }
-                        }
-                    }
+                    div { class: "details-banner", style: "{banner_style}" }
                     div { class: "details-avatar",
                         DecoratedAvatar { name: username.clone(), avatar_url: avatar_url.clone(), size: 80, decoration: decoration,
                             motion: if effects_on { p.as_ref().and_then(|p| p.avatar_motion.clone()) } else { None } }

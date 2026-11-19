@@ -14,13 +14,13 @@ use crate::{
     components::{
         avatar::Avatar,
         chat_extras::wallpaper_attrs,
-        icons::{BackIcon, CheckIcon, CloseIcon, CopyIcon, GroupIcon, PanelRightIcon, PluginIcon, PlusIcon, RefreshIcon, SendIcon, SlidersIcon, TrashIcon},
+        icons::{BackIcon, BotIcon, CheckIcon, CloseIcon, CopyIcon, GroupIcon, PanelRightIcon, PluginIcon, PlusIcon, RefreshIcon, SendIcon, SlidersIcon, TrashIcon},
         messages::{Composer, MessageList, ViewMessage},
     },
     models::{BotChatMessage, BotItem, GroupItem},
     platform,
     prefs::PrefsCtx,
-    services::social,
+    services::{library, social},
 };
 
 const STORAGE_KEY: &str = "chatw_plugins_v2";
@@ -79,6 +79,8 @@ pub struct PluginMod {
     pub author: String,
     pub version: String,
     pub icon: String,
+    #[serde(default)]
+    pub logo_url: String,
     pub description: String,
     pub enabled: bool,
     pub builtin: bool,
@@ -135,6 +137,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🎨".into(),
+            logo_url: "svg:voxel".into(),
             description: "Giao diện khối vuông, bảng vẽ 2D và HUD tọa độ.".into(),
             enabled: false,
             builtin: true,
@@ -191,6 +194,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "⚡".into(),
+            logo_url: "svg:cyber".into(),
             description: "Giao diện tối Neon, hiệu ứng Matrix và trạm lệnh.".into(),
             enabled: false,
             builtin: true,
@@ -245,6 +249,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🌸".into(),
+            logo_url: "svg:sakura".into(),
             description: "Giao diện kính mờ kèm hiệu ứng hoa anh đào rơi.".into(),
             enabled: false,
             builtin: true,
@@ -299,6 +304,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "📋".into(),
+            logo_url: "svg:notes".into(),
             description: "App bên trái ghi chú nhanh, việc cần làm và Pomodoro.".into(),
             enabled: true,
             builtin: true,
@@ -335,6 +341,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🎹".into(),
+            logo_url: "svg:sound".into(),
             description: "Bảng âm thanh tổng hợp và tiếng gõ phím cơ.".into(),
             enabled: false,
             builtin: true,
@@ -370,6 +377,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🤖".into(),
+            logo_url: "svg:bot".into(),
             description: "Bot tính toán, tung xúc xắc, đồng xu và xem giờ.".into(),
             enabled: true,
             builtin: true,
@@ -431,6 +439,9 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
                         s.left_app_enabled = true;
                         s.bot_enabled = false;
                     }
+                    if s.logo_url.trim().is_empty() && !existing.logo_url.is_empty() {
+                        s.logo_url = existing.logo_url.clone();
+                    }
                     *existing = s;
                 } else {
                     defaults.push(s);
@@ -439,6 +450,85 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
         }
     }
     defaults
+}
+
+pub const PLUGIN_SVG_PRESETS: [(&str, &str); 9] = [
+    ("svg:plugin", "Plugin"),
+    ("svg:notes", "Sổ tay"),
+    ("svg:sound", "Âm thanh"),
+    ("svg:bot", "Bot"),
+    ("svg:voxel", "Khối 3D"),
+    ("svg:cyber", "Tia chớp"),
+    ("svg:clock", "Đồng hồ"),
+    ("svg:code", "Mã lệnh"),
+    ("svg:sakura", "Hoa"),
+];
+
+#[component]
+pub fn PluginGlyph(icon: String, #[props(default)] logo_url: String, #[props(default = 20)] size: u32) -> Element {
+    let logo = logo_url.trim();
+    if let Some(svg_id) = logo.strip_prefix("svg:") {
+        return match svg_id {
+            "notes" => rsx! {
+                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+                    rect { x: "5", y: "3.5", width: "14", height: "17", rx: "3", fill: "currentColor", fill_opacity: "0.16" }
+                    path { d: "M9 8.5h6M9 12.5h6M9 16.5h4" }
+                }
+            },
+            "sound" => rsx! {
+                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+                    rect { x: "3.5", y: "5", width: "17", height: "14", rx: "3", fill: "currentColor", fill_opacity: "0.14" }
+                    path { d: "M7.5 14v-4M12 16V8M16.5 13v-2" }
+                }
+            },
+            "bot" => rsx! { BotIcon { size } },
+            "voxel" => rsx! {
+                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+                    polygon { points: "12 3 20 7.5 20 16.5 12 21 4 16.5 4 7.5", fill: "currentColor", fill_opacity: "0.16" }
+                    path { d: "M12 21V12M20 7.5L12 12 4 7.5" }
+                }
+            },
+            "cyber" => rsx! {
+                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+                    polygon { points: "13 2.5 5 13.5 11.5 13.5 10.5 21.5 19 10.5 12.5 10.5", fill: "currentColor", fill_opacity: "0.18" }
+                }
+            },
+            "sakura" => rsx! {
+                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+                    path { fill: "currentColor", fill_opacity: "0.16", d: "M12 3.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L4.8 8.8l5-.7z" }
+                }
+            },
+            "clock" => rsx! {
+                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+                    circle { cx: "12", cy: "12", r: "8.5", fill: "currentColor", fill_opacity: "0.16" }
+                    path { d: "M12 7.5V12l3 2" }
+                }
+            },
+            "code" => rsx! {
+                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
+                    path { d: "M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5M13.5 6l-3 12" }
+                }
+            },
+            _ => rsx! { PluginIcon { size } },
+        };
+    }
+    if !logo.is_empty() {
+        return rsx! {
+            img {
+                class: "plugin-custom-logo",
+                src: "{platform::resolve_asset_url(logo)}",
+                width: "{size}",
+                height: "{size}",
+                alt: "",
+            }
+        };
+    }
+    let ic = icon.trim();
+    if ic.is_empty() {
+        rsx! { PluginIcon { size } }
+    } else {
+        rsx! { span { style: "font-size: {size}px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;", "{ic}" } }
+    }
 }
 
 pub fn save_plugins(list: &[PluginMod]) {
@@ -454,7 +544,7 @@ pub fn init_plugins() {
 }
 
 /// Plugins that open inside the Left Column (.nav-sidebar) as an "App bên trái".
-pub fn enabled_left_apps() -> Vec<(String, String, String)> {
+pub fn enabled_left_apps() -> Vec<(String, String, String, String)> {
     PLUGINS
         .read()
         .iter()
@@ -462,13 +552,13 @@ pub fn enabled_left_apps() -> Vec<(String, String, String)> {
         .map(|p| {
             let icon = if p.page_icon.trim().is_empty() { p.icon.clone() } else { p.page_icon.clone() };
             let title = if p.page_title.trim().is_empty() { p.display_name.clone() } else { p.page_title.clone() };
-            (p.id.clone(), icon, title)
+            (p.id.clone(), icon, p.logo_url.clone(), title)
         })
         .collect()
 }
 
 /// Plugins that open as full Main Stage pages (when not already docked as Left App).
-pub fn enabled_rail_pages() -> Vec<(String, String, String)> {
+pub fn enabled_rail_pages() -> Vec<(String, String, String, String)> {
     PLUGINS
         .read()
         .iter()
@@ -476,9 +566,27 @@ pub fn enabled_rail_pages() -> Vec<(String, String, String)> {
         .map(|p| {
             let icon = if p.page_icon.trim().is_empty() { p.icon.clone() } else { p.page_icon.clone() };
             let title = if p.page_title.trim().is_empty() { p.display_name.clone() } else { p.page_title.clone() };
-            (p.id.clone(), icon, title)
+            (p.id.clone(), icon, p.logo_url.clone(), title)
         })
         .collect()
+}
+
+/// Enabled `/commands` across all active Plugins for the Composer `/` autocomplete popup.
+pub fn enabled_slash_commands() -> Vec<(String, String, String, String)> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for p in PLUGINS.read().iter().filter(|p| p.enabled && p.bot_enabled) {
+        for c in &p.commands {
+            let tr = c.trigger.trim();
+            if tr.starts_with('/') && seen.insert(tr.to_lowercase()) {
+                out.push((p.icon.clone(), p.logo_url.clone(), tr.to_string(), c.description.clone()));
+            }
+        }
+    }
+    if !out.is_empty() && seen.insert("/help".to_string()) {
+        out.push(("🧩".into(), "svg:plugin".into(), "/help".into(), "Xem tất cả lệnh đang bật".into()));
+    }
+    out
 }
 
 pub fn enabled_composer_buttons() -> Vec<(String, String, String)> {
@@ -1001,7 +1109,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                 header { class: "chat-header",
                     button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
-                        span { class: "bot-header-icon", "{p.page_icon}" }
+                        span { class: "bot-header-icon", PluginGlyph { icon: p.page_icon.clone(), logo_url: p.logo_url.clone(), size: 20 } }
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "{p.page_title}" }
                             span { class: "chat-header-meta", "{p.display_name}" }
@@ -1091,7 +1199,10 @@ pub fn PluginLeftAppView(plugin_id: String, my_username: String, on_close: Event
     let show_title = if p.page_title.trim().is_empty() { p.display_name.clone() } else { p.page_title.clone() };
     rsx! {
         div { class: "sidebar-top-header",
-            h2 { class: "sidebar-title", "{p.icon} {show_title}" }
+            div { class: "mod-card-title", style: "gap: 8px; flex: 1; min-width: 0;",
+                PluginGlyph { icon: p.icon.clone(), logo_url: p.logo_url.clone(), size: 20 }
+                h2 { class: "sidebar-title", "{show_title}" }
+            }
             div { class: "sidebar-header-actions",
                 if p.custom_page_enabled {
                     button {
@@ -2141,13 +2252,13 @@ pub fn PluginChatView(
     let can_add = !is_local && (bot.owner_id == my_id || (bot.is_public && bot.verification_status == "verified"));
     let quick_cmds: Vec<PluginCommand> = matching_mod.as_ref().map(|m| m.commands.clone()).unwrap_or_default();
     let header_icon = matching_mod.as_ref().map(|m| m.icon.clone()).unwrap_or_else(|| "🤖".to_string());
+    let header_logo = matching_mod.as_ref().map(|m| m.logo_url.clone()).unwrap_or_else(|| "svg:bot".to_string());
     let bot_desc = bot
         .description
         .clone()
         .filter(|d| !d.trim().is_empty())
-        .unwrap_or_else(|| "Chọn lệnh nhanh bên dưới hoặc nhắn tin để tương tác với Plugin.".to_string());
+        .unwrap_or_else(|| "Chọn lệnh nhanh bên dưới hoặc gõ / để xem gợi ý lệnh.".to_string());
     let send_text_composer = send_text.clone();
-    let send_text_cmds = send_text.clone();
     let send_text_welcome = send_text.clone();
 
     rsx! {
@@ -2159,7 +2270,7 @@ pub fn PluginChatView(
                         if bot.avatar_url.is_some() {
                             Avatar { name: bot.display_name.clone(), avatar_url: bot.avatar_url.clone(), size: 38 }
                         } else {
-                            span { class: "bot-header-icon", "{header_icon}" }
+                            span { class: "bot-header-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: 20 } }
                         }
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "{bot.display_name}" }
@@ -2186,7 +2297,7 @@ pub fn PluginChatView(
                                     rsx! {
                                         button { r#type: "button", class: "btn-secondary",
                                             onclick: move |_| *ACTIVE_PLUGIN_PAGE.write() = Some(pid.clone()),
-                                            "{pm.page_icon} Mở"
+                                            PluginGlyph { icon: pm.page_icon.clone(), logo_url: pm.logo_url.clone(), size: 15 } "Mở"
                                         }
                                     }
                                 }
@@ -2257,7 +2368,7 @@ pub fn PluginChatView(
                 if view.is_empty() {
                     div { class: "chat-messages", id: "chat-messages-scroll",
                         div { class: "bot-welcome-card",
-                            span { class: "bot-welcome-icon", "{header_icon}" }
+                            span { class: "bot-welcome-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: 28 } }
                             h3 { class: "bot-welcome-title", "{bot.display_name}" }
                             p { class: "bot-welcome-desc", "{bot_desc}" }
                             if !quick_cmds.is_empty() {
@@ -2292,27 +2403,6 @@ pub fn PluginChatView(
                         on_open_profile: move |_| {},
                         on_profile_click: move |_| {},
                         on_react: move |_| {},
-                    }
-                }
-                if !quick_cmds.is_empty() && !msgs().is_empty() {
-                    div { class: "plugin-composer-bar",
-                        for c in quick_cmds {
-                            {
-                                let trig = c.trigger.clone();
-                                let desc = c.description.clone();
-                                let send_chip = send_text_cmds.clone();
-                                rsx! {
-                                    button {
-                                        key: "{trig}",
-                                        r#type: "button",
-                                        class: "plugin-cmd-chip",
-                                        title: "{desc}",
-                                        onclick: move |_| send_chip(trig.clone()),
-                                        "{trig}"
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
                 Composer {
@@ -2395,6 +2485,7 @@ pub fn PluginsSettings(
                             author: "Bạn".into(),
                             version: "1.0.0".into(),
                             icon: "🤖".into(),
+                            logo_url: "svg:bot".into(),
                             description: sb.description.clone().unwrap_or_else(|| "Plugin kết nối API máy chủ".into()),
                             enabled: true,
                             builtin: false,
@@ -2482,6 +2573,7 @@ pub fn PluginsSettings(
                 author: author_name,
                 version: "1.0.0".into(),
                 icon: ic.clone(),
+                logo_url: "svg:plugin".into(),
                 description: ds,
                 enabled: true,
                 builtin: false,
@@ -2663,7 +2755,7 @@ pub fn PluginsSettings(
                             rsx! {
                                 div { key: "{pm.id}", class: if is_on { "mod-card active" } else { "mod-card" },
                                     div { class: "mod-card-head",
-                                        span { class: "mod-card-icon", "{pm.icon}" }
+                                        span { class: "mod-card-icon", PluginGlyph { icon: pm.icon.clone(), logo_url: pm.logo_url.clone(), size: 20 } }
                                         div { class: "mod-card-title-wrap",
                                             div { class: "mod-card-title", "{pm.display_name}" }
                                         }
@@ -2799,7 +2891,7 @@ pub fn PluginsSettings(
                         onclick: move |_| *EDITING_PLUGIN_ID.write() = None,
                         BackIcon {} "Quay lại"
                     }
-                    span { class: "mod-card-icon", "{em.icon}" }
+                    span { class: "mod-card-icon", PluginGlyph { icon: em.icon.clone(), logo_url: em.logo_url.clone(), size: 20 } }
                     div { class: "settings-group-title", "{em.display_name}" }
                 }
                 div { class: "inline-form",
@@ -2856,7 +2948,55 @@ pub fn PluginsSettings(
                     label { class: "form-field",
                         span { "Biểu tượng" }
                         input { r#type: "text", maxlength: "8", value: "{em.icon}",
-                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.icon = v.clone()); } } }
+                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.icon = v.clone(); p.logo_url.clear(); }); } } }
+                    }
+                    label { class: "form-field wide",
+                        span { "Logo riêng hoặc SVG URL" }
+                        div { class: "inline-form",
+                            input { r#type: "text", placeholder: "svg:notes hoặc đường dẫn ảnh Logo", value: "{em.logo_url}",
+                                oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.logo_url = v.clone()); } } }
+                            label { class: "btn-avatar-upload",
+                                input {
+                                    id: "plugin-logo-input",
+                                    r#type: "file",
+                                    accept: "image/png,image/jpeg,image/webp,image/svg+xml,image/avif,image/gif",
+                                    style: "display: none;",
+                                    onchange: {
+                                        let id = eid_basic.clone();
+                                        move |_| {
+                                            let id = id.clone();
+                                            spawn(async move {
+                                                if let Ok((bytes, mime)) = platform::read_selected_file_raw("plugin-logo-input").await {
+                                                    if let Ok(u) = library::upload_media(bytes, &mime).await {
+                                                        update_plugin(&id, &|p| p.logo_url = u.clone());
+                                                        status.set(Some((false, "Đã cập nhật logo riêng.".into())));
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                                "Tải Logo"
+                            }
+                        }
+                    }
+                    div { class: "form-field wide",
+                        span { "Chọn biểu tượng Vector" }
+                        div { class: "mod-preset-chips",
+                            for (svg_key, svg_lbl) in PLUGIN_SVG_PRESETS {
+                                button {
+                                    key: "{svg_key}",
+                                    r#type: "button",
+                                    class: if em.logo_url == svg_key { "btn-small-primary" } else { "btn-small-secondary" },
+                                    onclick: {
+                                        let id = eid_basic.clone();
+                                        move |_| update_plugin(&id, &|p| p.logo_url = svg_key.into())
+                                    },
+                                    PluginGlyph { icon: em.icon.clone(), logo_url: svg_key.to_string(), size: 15 }
+                                    "{svg_lbl}"
+                                }
+                            }
+                        }
                     }
                     label { class: "form-field wide",
                         span { "Mô tả" }

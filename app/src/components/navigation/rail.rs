@@ -9,7 +9,7 @@ use crate::i18n::t;
 use crate::{
     components::{
         avatar::Avatar,
-        plugins_view::{ACTIVE_LEFT_PLUGIN, ACTIVE_PLUGIN_PAGE, EDITING_PLUGIN_ID, enabled_left_apps, enabled_rail_pages},
+        plugins_view::{ACTIVE_LEFT_PLUGIN, ACTIVE_PLUGIN_PAGE, EDITING_PLUGIN_ID, PluginGlyph, enabled_left_apps, enabled_rail_pages},
         icons::{CompassIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, PluginIcon, SearchIcon, SettingsIcon, UserIcon},
         navigation::NavSection,
     },
@@ -130,7 +130,7 @@ pub fn AppRail(
                     },
                     span { class: "rail-icon", PluginIcon { size: 20 } }
                 }
-                for (pid, picon, ptitle) in left_apps {
+                for (pid, picon, plogo, ptitle) in left_apps {
                     {
                         let is_act = active_left_plugin.as_deref() == Some(pid.as_str()) && !in_mod;
                         let pid2 = pid.clone();
@@ -153,12 +153,12 @@ pub fn AppRail(
                                         }
                                     }
                                 },
-                                span { class: "rail-icon", style: "font-size: 1.15rem;", "{picon}" }
+                                span { class: "rail-icon", PluginGlyph { icon: picon, logo_url: plogo, size: 20 } }
                             }
                         }
                     }
                 }
-                for (pid, picon, ptitle) in custom_pages {
+                for (pid, picon, plogo, ptitle) in custom_pages {
                     {
                         let is_act = active_mod_page.as_deref() == Some(pid.as_str());
                         let pid2 = pid.clone();
@@ -173,7 +173,7 @@ pub fn AppRail(
                                     *ACTIVE_LEFT_PLUGIN.write() = None;
                                     *ACTIVE_PLUGIN_PAGE.write() = Some(pid2.clone());
                                 },
-                                span { class: "rail-icon", style: "font-size: 1.15rem;", "{picon}" }
+                                span { class: "rail-icon", PluginGlyph { icon: picon, logo_url: plogo, size: 20 } }
                             }
                         }
                     }

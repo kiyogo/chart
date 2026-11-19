@@ -130,6 +130,7 @@ enum Suggest {
     Mention(MentionCandidate),
     Emoji { emoji: String, name: String },
     Quick { shortcut: String, text: String },
+    PluginCmd { icon: String, logo: String, trigger: String, desc: String },
 }
 
 /// The token being typed at the end of the input: (start byte index, token).
@@ -139,7 +140,13 @@ fn trailing_token(value: &str) -> Option<(usize, &str)> {
     (!tok.is_empty()).then_some((start, tok))
 }
 
-fn build_suggestions(value: &str, mentions: &[MentionCandidate], quick: &[(String, String)], emoji_on: bool) -> Vec<Suggest> {
+fn build_suggestions(
+    value: &str,
+    mentions: &[MentionCandidate],
+    quick: &[(String, String)],
+    plugin_cmds: &[(String, String, String, String)],
+    emoji_on: bool,
+) -> Vec<Suggest> {
     let Some((start, tok)) = trailing_token(value) else {
         return Vec::new();
     };
@@ -155,15 +162,28 @@ fn build_suggestions(value: &str, mentions: &[MentionCandidate], quick: &[(Strin
     }
     if start == 0 {
         if let Some(q) = tok.strip_prefix('/') {
-            if !quick.is_empty() {
-                let q = q.to_lowercase();
-                return quick
-                    .iter()
-                    .filter(|(s, _)| s.to_lowercase().starts_with(&q))
-                    .take(6)
-                    .map(|(s, t)| Suggest::Quick { shortcut: s.clone(), text: t.clone() })
-                    .collect();
+            let ql = q.to_lowercase();
+            let mut out: Vec<Suggest> = quick
+                .iter()
+                .filter(|(s, _)| s.to_lowercase().starts_with(&ql))
+                .take(4)
+                .map(|(s, t)| Suggest::Quick { shortcut: s.clone(), text: t.clone() })
+                .collect();
+            for (icon, logo, trig, desc) in plugin_cmds {
+                let t_name = trig.trim_start_matches('/').to_lowercase();
+                if ql.is_empty() || t_name.contains(&ql) || fold(desc).contains(&fold(&ql)) {
+                    out.push(Suggest::PluginCmd {
+                        icon: icon.clone(),
+                        logo: logo.clone(),
+                        trigger: trig.clone(),
+                        desc: desc.clone(),
+                    });
+                    if out.len() >= 8 {
+                        break;
+                    }
+                }
             }
+            return out;
         }
     }
     if emoji_on {
@@ -195,6 +215,7 @@ fn apply_suggestion(value: &str, s: &Suggest) -> String {
         Suggest::Mention(m) => format!("{}@{} ", &value[..start], m.username),
         Suggest::Emoji { emoji, .. } => format!("{}{} ", &value[..start], emoji),
         Suggest::Quick { text, .. } => text.clone(),
+        Suggest::PluginCmd { trigger, .. } => format!("{trigger} "),
     }
 }
 
@@ -323,7 +344,7 @@ pub fn Composer(
     use_effect(move || {
         let pending = crate::components::plugins_view::PENDING_COMPOSER_TEXT.read().clone();
         if let Some(txt) = pending {
-            if !disabled && (insert_id == "dm-chat-input" || insert_id == "bot-chat-input") {
+            if !disabled && matches!(insert_id.as_str(), "dm-chat-input" | "group-chat-input" | "channel-chat-input" | "bot-chat-input") {
                 *crate::components::plugins_view::PENDING_COMPOSER_TEXT.write() = None;
                 let current = paste_value.read().clone();
                 let next = if current.is_empty() {
@@ -340,11 +361,12 @@ pub fn Composer(
         }
     });
 
+    let plugin_cmds = crate::components::plugins_view::enabled_slash_commands();
     let suggestions: Vec<Suggest> = if disabled || dismissed_for() == value {
         Vec::new()
     } else {
         let mentions_on = prefs.mention_suggest;
-        build_suggestions(&value, if mentions_on { &mentions } else { &[] }, &quick_replies, prefs.emoji_suggest)
+        build_suggestions(&value, if mentions_on { &mentions } else { &[] }, &quick_replies, &plugin_cmds, prefs.emoji_suggest)
     };
     let sticker_hits: Vec<StickerItem> = if suggestions.is_empty() && wants_stickers && !disabled && dismissed_for() != value {
         let mut hits = STICKERS.read().as_ref().map(|all| suggest_stickers(&value, all)).unwrap_or_default();
@@ -454,6 +476,7 @@ pub fn Composer(
                                 let v = value.clone();
                                 let sg2 = sg.clone();
                                 let active = i == cur_sel;
+                                let focus_id = input_id.clone();
                                 rsx! {
                                     button {
                                         key: "{i}",
@@ -462,7 +485,12 @@ pub fn Composer(
                                         aria_selected: "{active}",
                                         class: if active { "suggest-item active" } else { "suggest-item" },
                                         onmousedown: move |e| e.prevent_default(),
-                                        onclick: move |_| { on_input.call(apply_suggestion(&v, &sg2)); sel.set(0); platform::focus_chat_input(); },
+                                        onclick: move |_| {
+                                            on_input.call(apply_suggestion(&v, &sg2));
+                                            sel.set(0);
+                                            let focus_js = format!("const el = document.getElementById({:?}); if (el) el.focus();", focus_id);
+                                            let _ = dioxus::document::eval(&focus_js);
+                                        },
                                         match sg {
                                             Suggest::Mention(m) => rsx! {
                                                 Avatar { name: m.username.clone(), avatar_url: m.avatar_url.clone(), size: 24 }
@@ -476,6 +504,13 @@ pub fn Composer(
                                             Suggest::Quick { shortcut, text } => rsx! {
                                                 span { class: "suggest-main", "/{shortcut}" }
                                                 span { class: "suggest-sub", "{text}" }
+                                            },
+                                            Suggest::PluginCmd { icon, logo, trigger, desc } => rsx! {
+                                                span { class: "suggest-cmd-badge",
+                                                    crate::components::plugins_view::PluginGlyph { icon, logo_url: logo, size: 15 }
+                                                }
+                                                span { class: "suggest-main", "{trigger}" }
+                                                span { class: "suggest-sub", "{desc}" }
                                             },
                                         }
                                     }
@@ -529,38 +564,6 @@ pub fn Composer(
                 if let Some(reason) = disabled_reason.as_ref() {
                     div { class: "composer-disabled", role: "status", "{reason}" }
                 } else {
-                    {
-                        let mod_btns = crate::components::plugins_view::enabled_composer_buttons();
-                        if !mod_btns.is_empty() && input_id != "bot-chat-input" {
-                            rsx! {
-                                div { class: "plugin-composer-bar",
-                                    for (blabel, bcontent, pname) in mod_btns {
-                                        {
-                                            let cur_v = value.clone();
-                                            let bc = bcontent.clone();
-                                            rsx! {
-                                                button {
-                                                    key: "{pname}-{blabel}",
-                                                    r#type: "button",
-                                                    class: "plugin-cmd-chip",
-                                                    title: "Plugin: {pname}",
-                                                    onclick: move |_| {
-                                                        let out = crate::components::plugins_view::try_run_plugin_command(&bc, "Bạn")
-                                                            .unwrap_or_else(|| if cur_v.is_empty() { bc.clone() } else { format!("{cur_v} {bc}") });
-                                                        on_input.call(out);
-                                                        platform::focus_chat_input();
-                                                    },
-                                                    "{blabel}"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            rsx! {}
-                        }
-                    }
                     div { class: "composer-box",
                         if on_raw.is_some() || on_image.is_some() {
                             ComposerTools {
@@ -658,9 +661,9 @@ pub fn Composer(
                     }
                     div { class: "composer-hint hide-mobile",
                         if enter_sends {
-                            span { class: "kbd", "Enter" } " gửi · " span { class: "kbd", "Shift + Enter" } " xuống dòng · " span { class: "kbd", "@" } " nhắc tên · " span { class: "kbd", ":" } " emoji"
+                            span { class: "kbd", "Enter" } " gửi · " span { class: "kbd", "Shift + Enter" } " xuống dòng · " span { class: "kbd", "/" } " lệnh · " span { class: "kbd", "@" } " nhắc tên · " span { class: "kbd", ":" } " emoji"
                         } else {
-                            span { class: "kbd", "Ctrl + Enter" } " gửi · " span { class: "kbd", "Enter" } " xuống dòng · " span { class: "kbd", "@" } " nhắc tên"
+                            span { class: "kbd", "Ctrl + Enter" } " gửi · " span { class: "kbd", "Enter" } " xuống dòng · " span { class: "kbd", "/" } " lệnh · " span { class: "kbd", "@" } " nhắc tên"
                         }
                     }
                 }
@@ -708,19 +711,23 @@ mod tests {
     #[test]
     fn mention_and_quick_suggestions() {
         let m = vec![MentionCandidate { username: "ngson".into(), display: "Sơn".into(), avatar_url: None }];
-        let s = build_suggestions("chào @ng", &m, &[], true);
+        let s = build_suggestions("chào @ng", &m, &[], &[], true);
         assert_eq!(s.len(), 1);
         assert_eq!(apply_suggestion("chào @ng", &s[0]), "chào @ngson ");
         let q = vec![("gia".to_string(), "Giá sản phẩm là 100k".to_string())];
-        let s = build_suggestions("/gi", &[], &q, true);
+        let s = build_suggestions("/gi", &[], &q, &[], true);
         assert_eq!(apply_suggestion("/gi", &s[0]), "Giá sản phẩm là 100k");
-        assert!(build_suggestions("a /gi", &[], &q, true).is_empty());
+        let cmds = vec![("🎲".to_string(), "svg:bot".to_string(), "/roll".to_string(), "Tung xúc xắc".to_string())];
+        let s2 = build_suggestions("/", &[], &[], &cmds, true);
+        assert_eq!(s2.len(), 1);
+        assert_eq!(apply_suggestion("/", &s2[0]), "/roll ");
+        assert!(build_suggestions("a /gi", &[], &q, &[], true).is_empty());
     }
 
     #[test]
     fn emoji_suggestions() {
-        let s = build_suggestions("hi :grin", &[], &[], true);
+        let s = build_suggestions("hi :grin", &[], &[], &[], true);
         assert!(!s.is_empty());
-        assert!(build_suggestions("hi :grin", &[], &[], false).is_empty());
+        assert!(build_suggestions("hi :grin", &[], &[], &[], false).is_empty());
     }
 }

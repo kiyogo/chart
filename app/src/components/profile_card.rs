@@ -213,11 +213,10 @@ pub fn ProfileCard(
 
     rsx! {
         div { class: "{cls}{tpl}", style: "--pc-1: {c1}; --pc-2: {c2};",
-            div { class: "profile-card-banner", style: "{banner_img}",
-                if effects_enabled && effect != "none" && effect != "custom" {
-                    div { class: "profile-effect effect-{effect}", aria_hidden: "true",
-                        for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
-                    }
+            div { class: "profile-card-banner", style: "{banner_img}" }
+            if effects_enabled && effect != "none" && effect != "custom" {
+                div { class: "profile-effect effect-{effect}", aria_hidden: "true",
+                    for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
                 }
             }
             if effects_enabled && effect == "custom" {
