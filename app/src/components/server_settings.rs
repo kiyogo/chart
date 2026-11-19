@@ -195,7 +195,6 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                                                     onclick: move |_| editing.set(Some(id.clone())),
                                                     span { class: "label-dot", style: "--label: {r.color};" }
                                                     span { class: "grow", "{r.name}" }
-                                                    if r.name != "@everyone" { span { class: "menu-count", "{count}" } }
                                                 }
                                             }
                                         }

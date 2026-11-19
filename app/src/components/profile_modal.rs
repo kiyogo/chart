@@ -319,7 +319,7 @@ pub fn ProfileModal(
                                         }
                                     }
                                     label { class: "form-field",
-                                        span { class: "form-label", "Giới thiệu ({d.bio.clone().unwrap_or_default().chars().count()}/256)" }
+                                        span { class: "form-label", "Giới thiệu" }
                                         textarea {
                                             rows: "4",
                                             maxlength: "256",

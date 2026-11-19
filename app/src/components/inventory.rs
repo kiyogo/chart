@@ -194,7 +194,7 @@ pub fn Inventory(my_id: String) -> Element {
             }
             if show(Cat::Achievements) {
                 if let Some(x) = plus() {
-                    div { class: "settings-group-title", "Thành tích ({x.achievements.iter().filter(|a| a.unlocked).count()}/{x.achievements.len()})" }
+                    div { class: "settings-group-title", "Thành tích" }
                     div { class: "achievement-grid wide",
                         for a in x.achievements.iter().cloned() {
                             {

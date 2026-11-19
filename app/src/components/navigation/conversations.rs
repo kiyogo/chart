@@ -334,7 +334,7 @@ pub fn ConversationList(
             }
         }
         div { class: "sidebar-filters", role: "tablist", aria_label: "Lọc cuộc trò chuyện",
-            for (val, label) in [("all", ""), ("unread", "")] {
+            for (val, label) in [("all", t("chat.all")), ("unread", t("chat.unread"))] {
                 button {
                     key: "{val}",
                     r#type: "button",
@@ -358,6 +358,7 @@ pub fn ConversationList(
                         "{l.name}"
                     } else {
                         TagIcon { size: 14 }
+                        "Phân loại"
                     }
                     ChevronDownIcon { size: 14 }
                 }
@@ -376,7 +377,6 @@ pub fn ConversationList(
                                         onclick: move |_| { filter.set(id.clone()); label_menu.set(false); },
                                         span { class: "label-dot", style: "--label: {l.color};" }
                                         span { class: "grow", "{l.name}" }
-                                        span { class: "menu-count", "{count}" }
                                     }
                                 }
                             }
