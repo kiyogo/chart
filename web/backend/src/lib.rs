@@ -11,6 +11,7 @@ pub mod convo;
 pub mod crypto;
 pub mod db;
 pub mod directory;
+pub mod enterprise;
 pub mod error;
 pub mod friends;
 pub mod groups;

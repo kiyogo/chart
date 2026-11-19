@@ -8,13 +8,15 @@ use serde_json::json;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{CloseIcon, GlobeIcon, PlusIcon, ShieldIcon, TrashIcon},
+        enterprise::settings::EnterpriseSettingsPanel,
+        icons::{BuildingIcon, CloseIcon, DownloadIcon, GlobeIcon, PlusIcon, ShieldIcon, TrashIcon},
         navigation::conversations::LABEL_COLORS,
     },
     models::{ServerItem, ServerMemberItem, ServerSettings},
     platform,
     services::{
         api,
+        enterprise::{ENT_PERMS_META, export_all_json_url},
         social::{self, ServerRole},
     },
 };
@@ -66,16 +68,23 @@ enum Tab {
     Welcome,
     Expressions,
     Audit,
+    Enterprise,
 }
 
 #[component]
-pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHandler<()>) -> Element {
+pub fn ServerSettingsDialog(
+    server: ServerItem,
+    my_id: String,
+    on_close: EventHandler<()>,
+    #[props(default)] on_enterprise_changed: Option<EventHandler<()>>,
+) -> Element {
     let mut tab = use_signal(|| Tab::Roles);
     let mut roles = use_signal(Vec::<ServerRole>::new);
     let mut members = use_signal(Vec::<ServerMemberItem>::new);
     let mut settings = use_signal(|| Option::<ServerSettings>::None);
-    let mut mine = use_signal(|| (0i64, false));
+    let mut mine = use_signal(|| (0i64, 0i64, false));
     let mut editing = use_signal(|| Option::<String>::None);
+    let mut confirm_disable_ent = use_signal(|| false);
     let mut msg = use_signal(|| Option::<(bool, String)>::None);
     use_hook(|| platform::focus_selector(".manage-dialog"));
     let sid = server.id.clone();
@@ -84,7 +93,7 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
         move || {
             let sid = sid.clone();
             spawn(async move {
-                if let Ok(p) = social::server_my_permissions(&sid).await {
+                if let Ok(p) = social::server_my_permissions_all(&sid).await {
                     mine.set(p);
                 }
                 if let Ok(r) = social::server_roles(&sid).await {
@@ -103,9 +112,11 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
         let r = reload.clone();
         use_hook(move || r());
     }
-    let (bits, is_owner) = mine();
+    let (bits, ent_bits, is_owner) = mine();
     let can_roles = bits & MANAGE_ROLES != 0;
     let can_kick = bits & KICK_MEMBERS != 0;
+    let is_ent = settings().as_ref().map(|s| s.is_enterprise).unwrap_or(server.is_enterprise);
+    let can_ent_settings = is_owner || (ent_bits & ((1 << 16) | (1 << 15)) != 0);
     let editing_role = editing().and_then(|id| roles.read().iter().find(|r| r.id == id).cloned());
 
     rsx! {
@@ -124,14 +135,33 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                     for (tb, label) in [(Tab::Overview, "Tổng quan"), (Tab::Roles, "Vai trò và quyền"), (Tab::Members, "Thành viên"), (Tab::Welcome, "Chào mừng và nội quy"), (Tab::Expressions, "Emoji và Sticker"), (Tab::Audit, "Nhật ký kiểm duyệt")] {
                         button { key: "{label}", r#type: "button", role: "tab", aria_selected: "{tab() == tb}", class: if tab() == tb { "filter-chip active" } else { "filter-chip" }, onclick: move |_| tab.set(tb), "{label}" }
                     }
+                    if is_ent && can_ent_settings {
+                        button { r#type: "button", role: "tab", aria_selected: "{tab() == Tab::Enterprise}", class: if tab() == Tab::Enterprise { "filter-chip active" } else { "filter-chip" }, onclick: move |_| tab.set(Tab::Enterprise), "Doanh nghiệp" }
+                    }
                 }
                 if let Some((is_err, m)) = msg() { div { class: if is_err { "status-badge error" } else { "status-badge success" }, role: "status", "{m}" } }
                 div { class: "manage-body",
                     match tab() {
+                        Tab::Enterprise => {
+                            let reload_ent = reload.clone();
+                            rsx! {
+                                if is_ent {
+                                    EnterpriseSettingsPanel {
+                                        server_id: sid.clone(),
+                                        on_changed: move |_| {
+                                            reload_ent();
+                                            if let Some(h) = on_enterprise_changed { h.call(()); }
+                                        },
+                                    }
+                                } else {
+                                    p { class: "settings-group-desc", "Chế độ doanh nghiệp hiện đang tắt." }
+                                }
+                            }
+                        },
                         Tab::Overview => rsx! {
                             if let Some(st) = settings() {
                                 {
-                                    let (s1, s2, s3) = (sid.clone(), sid.clone(), sid.clone());
+                                    let (s1, s2, s3, s4, s5) = (sid.clone(), sid.clone(), sid.clone(), sid.clone(), sid.clone());
                                     rsx! {
                                         label { class: "settings-row toggle-row",
                                             span { class: "grow",
@@ -160,6 +190,71 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                                                 onchange: move |e| { let s = s2.clone(); let v = e.checked(); spawn(async move {
                                                     match social::server_settings_set(&s, json!({ "public_index": v })).await { Ok(n) => settings.set(Some(n)), Err(_) => msg.set(Some((true, "Không lưu được".into()))) }
                                                 }); },
+                                            }
+                                        }
+                                        label { class: "settings-row toggle-row",
+                                            span { class: "grow",
+                                                span { class: "settings-label", BuildingIcon { size: 16 } " Chế độ doanh nghiệp" }
+                                                span { class: "settings-row-desc",
+                                                    if st.is_enterprise && st.retention_locked {
+                                                        "Đang bật khóa bảo toàn dữ liệu doanh nghiệp. Không thể tắt khi chính sách lưu trữ còn hiệu lực."
+                                                    } else {
+                                                        "Bổ sung công cụ quản lý và làm việc dành cho doanh nghiệp mà vẫn giữ nguyên máy chủ và lịch sử hiện tại."
+                                                    }
+                                                }
+                                            }
+                                            input {
+                                                r#type: "checkbox",
+                                                class: "switch",
+                                                checked: st.is_enterprise,
+                                                disabled: !is_owner || (st.is_enterprise && st.retention_locked),
+                                                onchange: move |e| {
+                                                    let next = e.checked();
+                                                    if !next {
+                                                        confirm_disable_ent.set(true);
+                                                        return;
+                                                    }
+                                                    let s = s4.clone();
+                                                    spawn(async move {
+                                                        match social::server_settings_set(&s, json!({ "is_enterprise": true })).await {
+                                                            Ok(n) => {
+                                                                settings.set(Some(n));
+                                                                msg.set(Some((false, "Đã bật chế độ doanh nghiệp".into())));
+                                                                if let Some(h) = on_enterprise_changed { h.call(()); }
+                                                            }
+                                                            Err(err) => msg.set(Some((true, format!("Không bật được: {}", err.code)))),
+                                                        }
+                                                    });
+                                                },
+                                            }
+                                        }
+                                        if confirm_disable_ent() && st.is_enterprise {
+                                            div { class: "ent-card",
+                                                p { class: "settings-row-desc", "Xác nhận tắt chế độ doanh nghiệp? Dữ liệu nhân sự, công việc và tài liệu vẫn được giữ nguyên an toàn và không bị xóa." }
+                                                div { class: "inline-form",
+                                                    button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_disable_ent.set(false), "Giữ lại" }
+                                                    a { class: "btn-secondary", href: "{export_all_json_url(&s5)}", download: "enterprise-export.json", DownloadIcon { size: 14 } " Xuất dữ liệu JSON" }
+                                                    button { r#type: "button", class: "btn-danger-outline", onclick: {
+                                                        let s = s5.clone();
+                                                        move |_| {
+                                                            let s = s.clone();
+                                                            spawn(async move {
+                                                                match social::server_settings_set(&s, json!({ "is_enterprise": false })).await {
+                                                                    Ok(n) => {
+                                                                        confirm_disable_ent.set(false);
+                                                                        settings.set(Some(n));
+                                                                        msg.set(Some((false, "Đã tắt chế độ doanh nghiệp; dữ liệu cũ vẫn được bảo toàn".into())));
+                                                                        if let Some(h) = on_enterprise_changed { h.call(()); }
+                                                                    }
+                                                                    Err(err) => {
+                                                                        confirm_disable_ent.set(false);
+                                                                        msg.set(Some((true, if err.code == "retention_locked" { "Không thể tắt vì đang bật khóa bảo toàn dữ liệu".into() } else { format!("Lỗi: {}", err.code) })));
+                                                                    }
+                                                                }
+                                                            });
+                                                        }
+                                                    }, "Xác nhận tắt" }
+                                                }
                                             }
                                         }
                                         div { class: "inline-form",
@@ -213,7 +308,7 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
                                     }
                                 }
                                 if let Some(r) = editing_role {
-                                    RoleEditor { key: "{r.id}", server_id: sid.clone(), role: r.clone(), my_bits: bits, can_edit: can_roles,
+                                    RoleEditor { key: "{r.id}", server_id: sid.clone(), role: r.clone(), my_bits: bits, is_enterprise: is_ent, my_ent_bits: ent_bits, can_edit: can_roles,
                                         on_saved: move |nr: ServerRole| { roles.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nr.id) { *x = nr.clone(); }); msg.set(Some((false, "Đã lưu vai trò".into()))); },
                                         on_deleted: move |id: String| { roles.with_mut(|l| l.retain(|x| x.id != id)); editing.set(None); },
                                         on_error: move |code: String| msg.set(Some((true, role_error(&code).into()))),
@@ -304,15 +399,20 @@ pub fn ServerSettingsDialog(server: ServerItem, my_id: String, on_close: EventHa
 }
 
 #[component]
-fn RoleEditor(server_id: String, role: ServerRole, my_bits: i64, can_edit: bool, on_saved: EventHandler<ServerRole>, on_deleted: EventHandler<String>, on_error: EventHandler<String>) -> Element {
+fn RoleEditor(server_id: String, role: ServerRole, my_bits: i64, is_enterprise: bool, my_ent_bits: i64, can_edit: bool, on_saved: EventHandler<ServerRole>, on_deleted: EventHandler<String>, on_error: EventHandler<String>) -> Element {
     let mut name = use_signal(|| role.name.clone());
     let mut color = use_signal(|| role.color.clone());
     let mut bits = use_signal(|| role.permissions);
+    let mut ent_bits = use_signal(|| role.enterprise_permissions);
     let is_everyone = role.name == "@everyone";
     let (s_save, r_save) = (server_id.clone(), role.id.clone());
     let save = move |_| {
         let (s, r) = (s_save.clone(), r_save.clone());
-        let body = if is_everyone { json!({ "permissions": bits(), "color": color() }) } else { json!({ "name": name().trim(), "color": color(), "permissions": bits() }) };
+        let body = if is_everyone {
+            json!({ "permissions": bits(), "enterprise_permissions": ent_bits(), "color": color() })
+        } else {
+            json!({ "name": name().trim(), "color": color(), "permissions": bits(), "enterprise_permissions": ent_bits() })
+        };
         spawn(async move {
             match social::server_role_update(&s, &r, body).await {
                 Ok(nr) => on_saved.call(nr),
@@ -331,7 +431,7 @@ fn RoleEditor(server_id: String, role: ServerRole, my_bits: i64, can_edit: bool,
                     input { r#type: "color", value: "{color}", disabled: !can_edit, oninput: move |e| color.set(e.value().to_uppercase()) }
                 }
             }
-            div { class: "settings-group-title", ShieldIcon { size: 16 } " Quyền" }
+            div { class: "settings-group-title", ShieldIcon { size: 16 } " Quyền máy chủ" }
             for (bit, label, desc) in PERMS {
                 {
                     let on = bits() & bit != 0;
@@ -341,6 +441,22 @@ fn RoleEditor(server_id: String, role: ServerRole, my_bits: i64, can_edit: bool,
                             span { class: "grow", span { class: "settings-label", "{label}" } span { class: "settings-row-desc", "{desc}" } }
                             input { r#type: "checkbox", class: "switch", checked: on, disabled: !allowed,
                                 onchange: move |e| bits.set(if e.checked() { bits() | bit } else { bits() & !bit }) }
+                        }
+                    }
+                }
+            }
+            if is_enterprise {
+                div { class: "settings-group-title", BuildingIcon { size: 16 } " Quyền doanh nghiệp" }
+                for (bit, label, desc) in ENT_PERMS_META {
+                    {
+                        let on = ent_bits() & bit != 0;
+                        let allowed = can_edit && my_ent_bits & bit != 0;
+                        rsx! {
+                            label { key: "ent-{bit}", class: "settings-row toggle-row",
+                                span { class: "grow", span { class: "settings-label", "{label}" } span { class: "settings-row-desc", "{desc}" } }
+                                input { r#type: "checkbox", class: "switch", checked: on, disabled: !allowed,
+                                    onchange: move |e| ent_bits.set(if e.checked() { ent_bits() | bit } else { ent_bits() & !bit }) }
+                            }
                         }
                     }
                 }

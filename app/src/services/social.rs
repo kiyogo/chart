@@ -134,6 +134,8 @@ pub struct ServerRole {
     #[serde(default)]
     pub position: i32,
     pub permissions: i64,
+    #[serde(default)]
+    pub enterprise_permissions: i64,
 }
 pub async fn server_roles(server_id: &str) -> Result<Vec<ServerRole>, ApiError> { call("GET", &format!("/api/servers/{}/roles", enc(server_id)), None).await }
 pub async fn server_role_create(server_id: &str, name: &str, color: &str, permissions: i64) -> Result<ServerRole, ApiError> {
@@ -155,4 +157,13 @@ pub async fn server_kick(server_id: &str, user_id: &str) -> Result<Value, ApiErr
 pub async fn server_my_permissions(server_id: &str) -> Result<(i64, bool), ApiError> {
     let v: Value = call("GET", &format!("/api/servers/{}/my-permissions", enc(server_id)), None).await?;
     Ok((v.get("permissions").and_then(|p| p.as_i64()).unwrap_or(0), v.get("is_owner").and_then(|p| p.as_bool()).unwrap_or(false)))
+}
+
+pub async fn server_my_permissions_all(server_id: &str) -> Result<(i64, i64, bool), ApiError> {
+    let v: Value = call("GET", &format!("/api/servers/{}/my-permissions", enc(server_id)), None).await?;
+    Ok((
+        v.get("permissions").and_then(|p| p.as_i64()).unwrap_or(0),
+        v.get("enterprise_permissions").and_then(|p| p.as_i64()).unwrap_or(0),
+        v.get("is_owner").and_then(|p| p.as_bool()).unwrap_or(false),
+    ))
 }

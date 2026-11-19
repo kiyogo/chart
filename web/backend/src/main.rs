@@ -18,7 +18,7 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache},
     calls, community,
     config::Config,
-    admin, bots, business, convo, crypto, db, directory, drawings, friends, groups, library, messages, privacy, public_pages, servers,
+    admin, bots, business, convo, crypto, db, directory, drawings, enterprise, friends, groups, library, messages, privacy, public_pages, servers,
     profile_ext, profile_plus, security, stickers, typing, users, webrtc,
     websocket::{self, WsHub},
 };
@@ -128,6 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/attachments", attachments::routes())
         .nest("/audit", audit::routes())
         .nest("/servers", servers::server_routes())
+        .merge(enterprise::routes())
         .nest("/channels", servers::channel_routes())
         .nest("/stickers", stickers::routes())
         .nest("/media", library::routes())

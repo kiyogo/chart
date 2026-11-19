@@ -14,6 +14,7 @@ pub fn CommunityModal(
 ) -> Element {
     let mut tab = use_signal(|| "create"); // "create" | "join" | "discover"
     let mut name = use_signal(String::new);
+    let mut is_enterprise = use_signal(|| false);
     let mut invite_code = use_signal(String::new);
     let mut discover_list = use_signal(Vec::<ServerItem>::new);
     let mut error = use_signal(|| Option::<String>::None);
@@ -75,15 +76,19 @@ pub fn CommunityModal(
                             style: "display: flex; flex-direction: column; gap: 12px;",
                             onsubmit: move |e| {
                                 e.prevent_default();
+                                if loading() {
+                                    return;
+                                }
                                 let n = name().trim().to_string();
                                 if n.len() < 2 {
                                     error.set(Some("Tên cộng đồng phải từ 2 ký tự trở lên".into()));
                                     return;
                                 }
+                                let ent = is_enterprise();
                                 loading.set(true);
                                 error.set(None);
                                 spawn(async move {
-                                    match api::servers_create(&n).await {
+                                    match api::servers_create(&n, ent).await {
                                         Ok(srv) => on_server_ready.call(srv),
                                         Err(err) => error.set(Some(format!("Không thể tạo cộng đồng: {}", err.code))),
                                     }
@@ -97,6 +102,18 @@ pub fn CommunityModal(
                                     placeholder: "Ví dụ: Cộng đồng Rust Việt Nam",
                                     value: "{name}",
                                     oninput: move |e| name.set(e.value()),
+                                }
+                            }
+                            label { class: "settings-row toggle-row", style: "margin: 0;",
+                                span { class: "grow",
+                                    span { class: "settings-label", "Chế độ doanh nghiệp" }
+                                    span { class: "settings-row-desc", "Bổ sung công cụ quản lý và làm việc dành cho doanh nghiệp." }
+                                }
+                                input {
+                                    r#type: "checkbox",
+                                    class: "switch",
+                                    checked: is_enterprise(),
+                                    onchange: move |e| is_enterprise.set(e.checked()),
                                 }
                             }
                             if let Some(err) = error() {

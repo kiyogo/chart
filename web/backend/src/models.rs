@@ -27,6 +27,8 @@ pub struct ServerItem {
     pub icon_url: Option<String>,
     pub owner_id: Uuid,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub is_enterprise: bool,
     /// Filled by the list endpoint; omitted elsewhere (additive, backwards compatible).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub member_count: Option<i64>,
@@ -38,6 +40,7 @@ pub struct ServerItem {
 pub struct CreateServerRequest {
     pub name: String,
     pub description: Option<String>,
+    pub is_enterprise: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -84,6 +87,8 @@ pub struct ServerRoleItem {
     pub color: String,
     pub position: i32,
     pub permissions: i64,
+    #[serde(default)]
+    pub enterprise_permissions: i64,
     pub created_at: DateTime<Utc>,
 }
 
@@ -93,6 +98,7 @@ pub struct CreateRoleRequest {
     pub color: Option<String>,
     pub position: Option<i32>,
     pub permissions: Option<i64>,
+    pub enterprise_permissions: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

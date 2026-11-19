@@ -232,8 +232,8 @@ pub async fn servers_list() -> Result<Vec<ServerItem>, ApiError> {
     get_json("/api/servers").await
 }
 
-pub async fn servers_create(name: &str) -> Result<ServerItem, ApiError> {
-    post_json("/api/servers", json!({ "name": name })).await
+pub async fn servers_create(name: &str, is_enterprise: bool) -> Result<ServerItem, ApiError> {
+    post_json("/api/servers", json!({ "name": name, "is_enterprise": is_enterprise })).await
 }
 
 pub async fn servers_join(code: &str) -> Result<ServerItem, ApiError> {

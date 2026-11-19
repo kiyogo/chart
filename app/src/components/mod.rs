@@ -13,6 +13,7 @@ pub mod details_panel;
 pub mod draw_studio;
 pub mod emoji_data;
 pub mod emoji_picker;
+pub mod enterprise;
 pub mod fx_gifs;
 pub mod groups;
 pub mod group_manage;

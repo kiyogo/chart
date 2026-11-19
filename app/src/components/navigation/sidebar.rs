@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     components::{
         avatar::Avatar,
+        enterprise::module_icon,
         icons::{
             ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, HashIcon, MegaphoneIcon, MicIcon,
             MicOffIcon, PhoneOffIcon, PlusIcon, SearchIcon, UserPlusIcon, VolumeIcon,
@@ -15,6 +16,7 @@ use crate::{
         UserSearchResult, VoiceStateItem,
     },
     platform,
+    services::enterprise::{EnterpriseConfig, module_label},
 };
 
 fn server_initials(name: &str) -> String {
@@ -86,6 +88,10 @@ pub fn NavigationSidebar(
     /// Groups moved to Communities, listed above the servers.
     #[props(default)] community_groups: Vec<GroupItem>,
     #[props(default)] on_open_server_settings: Option<EventHandler<()>>,
+    /// Enterprise workspace state for the active server (optional & backwards-compatible).
+    #[props(default)] enterprise_config: Option<EnterpriseConfig>,
+    #[props(default)] active_ent_module: Option<String>,
+    #[props(default)] on_select_ent_module: Option<EventHandler<String>>,
 ) -> Element {
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
     let mut dm_query = use_signal(String::new);
@@ -439,6 +445,9 @@ pub fn NavigationSidebar(
                                 ChevronLeftIcon { size: 18 }
                             }
                             span { class: "sidebar-server-name", title: "{srv.name}", "{srv.name}" }
+                            if srv.is_enterprise {
+                                span { class: "ent-nav-badge", "Doanh nghiệp" }
+                            }
                             div { style: "display: flex; align-items: center; gap: 2px;",
                                 button {
                                     r#type: "button",
@@ -470,6 +479,53 @@ pub fn NavigationSidebar(
                         }
 
                         div { class: "sidebar-scrollable",
+                            if srv.is_enterprise {
+                                if let (Some(cfg), Some(on_mod)) = (&enterprise_config, on_select_ent_module) {
+                                    {
+                                        let is_ws_collapsed = collapsed_categories.read().contains("__ent_ws__");
+                                        let visible_mods: Vec<String> = if cfg.module_order.is_empty() {
+                                            cfg.enabled_modules.iter().filter(|k| cfg.can_see_module(k)).cloned().collect()
+                                        } else {
+                                            cfg.module_order.iter().filter(|k| cfg.can_see_module(k)).cloned().collect()
+                                        };
+                                        rsx! {
+                                            div { class: "category-block",
+                                                div { class: "category-row",
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "category-row-left",
+                                                        onclick: move |_| {
+                                                            collapsed_categories.with_mut(|s| {
+                                                                if s.contains("__ent_ws__") { s.remove("__ent_ws__"); } else { s.insert("__ent_ws__".into()); }
+                                                            });
+                                                        },
+                                                        if is_ws_collapsed { ChevronRightIcon { size: 13 } } else { ChevronDownIcon { size: 13 } }
+                                                        span { class: "category-name", "Không gian làm việc" }
+                                                    }
+                                                }
+                                                if !is_ws_collapsed {
+                                                    for mod_key in visible_mods {
+                                                        {
+                                                            let is_active = active_ent_module.as_deref() == Some(mod_key.as_str());
+                                                            let mk = mod_key.clone();
+                                                            rsx! {
+                                                                button {
+                                                                    key: "ent-nav-{mod_key}",
+                                                                    r#type: "button",
+                                                                    class: if is_active { "channel-item active" } else { "channel-item" },
+                                                                    onclick: move |_| on_mod.call(mk.clone()),
+                                                                    span { class: "channel-icon", {module_icon(&mod_key)} }
+                                                                    span { class: "channel-name", "{module_label(&mod_key)}" }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             // Channels without a category
                             {
                                 let uncategorized: Vec<ChannelItem> = server_channels

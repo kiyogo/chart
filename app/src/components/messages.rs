@@ -259,6 +259,8 @@ pub fn MessageList(
     #[props(default)] on_open_invite: Option<EventHandler<(String, String)>>,
     /// Keep a copy of a message in "Chính mình" (end-to-end encrypted).
     #[props(default)] on_save_self: Option<EventHandler<String>>,
+    /// Create an enterprise task directly from a channel message `(msg_id, preview)`.
+    #[props(default)] on_create_task: Option<EventHandler<(String, String)>>,
 ) -> Element {
     let mut full_picker_for = use_signal(|| Option::<String>::None);
     let mut sticker_menu_for = use_signal(|| Option::<String>::None);
@@ -554,6 +556,16 @@ pub fn MessageList(
                                                 aria_label: "Trả lời",
                                                 onclick: move |_| if let Some(h) = on_reply { h.call(m_reply.clone()) },
                                                 ReplyIcon {}
+                                            }
+                                        }
+                                        if let Some(h) = on_create_task {
+                                            button {
+                                                r#type: "button",
+                                                class: "message-action-btn",
+                                                title: "Tạo công việc",
+                                                aria_label: "Tạo công việc",
+                                                onclick: { let id = mid.clone(); let t = m_copy.clone(); move |_| h.call((id.clone(), t.clone())) },
+                                                crate::components::icons::ListChecksIcon { size: 16 }
                                             }
                                         }
                                         if let Some(h) = on_save_self {

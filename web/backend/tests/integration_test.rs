@@ -19,7 +19,7 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache, session::create_session},
     config::Config,
     crypto::{self, Envelope, PROTOCOL_VERSION, compute_fingerprint},
-    db, friends, messages, servers, typing, users, webrtc,
+    db, enterprise, friends, messages, servers, typing, users, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -71,6 +71,7 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         .nest("/api/audit", audit::routes())
         .nest("/api/servers", servers::server_routes())
         .nest("/api/channels", servers::channel_routes())
+        .nest("/api", enterprise::routes())
         .nest("/api/webrtc", webrtc::routes())
         .nest("/api/typing", typing::routes())
         .merge(websocket::routes())
@@ -841,4 +842,493 @@ async fn test_full_e2ee_chat_flow() {
     assert_eq!(res.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
     assert!(String::from_utf8_lossy(&bytes).contains("chatw"));
+}
+
+#[tokio::test]
+async fn test_enterprise_server_lifecycle() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let config = create_test_config();
+    let pool = db::connect(&config.database_url, config.db_max_connections)
+        .await
+        .expect("connect to postgres");
+    db::run_migrations(&pool).await.expect("migrations");
+
+    let app = build_test_app(pool.clone(), config.clone()).await;
+
+    let owner_id = Uuid::new_v4();
+    let member_id = Uuid::new_v4();
+    for (uid, prefix) in [(owner_id, "ent_own"), (member_id, "ent_mem")] {
+        sqlx::query("INSERT INTO users (id, google_sub) VALUES ($1, $2)")
+            .bind(uid)
+            .bind(format!("{prefix}_{uid}"))
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let owner_cookie = create_session(&pool, &config, owner_id, None).await.unwrap();
+    let member_cookie = create_session(&pool, &config, member_id, None).await.unwrap();
+    let owner_hdr = owner_cookie.split(';').next().unwrap().to_string();
+    let member_hdr = member_cookie.split(';').next().unwrap().to_string();
+
+    for (hdr, uname) in [
+        (&owner_hdr, format!("Owner{}", &owner_id.to_string()[..6])),
+        (&member_hdr, format!("Mem{}", &member_id.to_string()[..6])),
+    ] {
+        let req = Request::post("/api/users/name")
+            .header(header::COOKIE, hdr.as_str())
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(json!({ "name": uname }).to_string()))
+            .unwrap();
+        assert_eq!(app.clone().oneshot(req).await.unwrap().status(), StatusCode::OK);
+    }
+
+    // 1. Default server creation keeps Enterprise OFF and behaves identically to standard server
+    let res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/servers")
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "name": "Community Std" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let std_srv: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(std_srv["is_enterprise"], false);
+    let std_id = std_srv["id"].as_str().unwrap().to_string();
+
+    // Calling enterprise config on regular server must fail cleanly
+    let res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/servers/{std_id}/enterprise/config"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // Create a channel message & join member before converting existing server to Enterprise
+    let chs_res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/servers/{std_id}/channels"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let chs: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(chs_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let general_ch_id = chs[0]["id"].as_str().unwrap().to_string();
+
+    let msg_res = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/channels/{general_ch_id}/messages"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "content": "Legacy channel message stays intact" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(msg_res.status(), StatusCode::OK);
+    let legacy_msg: Value = serde_json::from_slice(&axum::body::to_bytes(msg_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let legacy_msg_id = legacy_msg["id"].as_str().unwrap().to_string();
+
+    // Add member via DB invite simulation (existing server member prior to enterprise conversion)
+    sqlx::query("INSERT INTO server_members (server_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(Uuid::parse_str(&std_id).unwrap())
+        .bind(member_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Owner enables Enterprise Mode on existing server -> preserves ID/channels/messages & does not force member into employees
+    let conv_res = app
+        .clone()
+        .oneshot(
+            Request::put(format!("/api/servers/{std_id}/settings"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "is_enterprise": true }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(conv_res.status(), StatusCode::OK);
+    let conv_settings: Value = serde_json::from_slice(&axum::body::to_bytes(conv_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(conv_settings["is_enterprise"], true);
+
+    // Check legacy message is still there
+    let ch_msgs_res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/channels/{general_ch_id}/messages"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let ch_msgs: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(ch_msgs_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(ch_msgs.iter().any(|m| m["id"] == legacy_msg_id));
+
+    // Only owner was seeded into enterprise_employees, existing member was NOT auto-converted to employee
+    let emp_res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/servers/{std_id}/enterprise/employees"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(emp_res.status(), StatusCode::OK);
+    let emps: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(emp_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(emps.len(), 1);
+    assert_eq!(emps[0]["user_id"], owner_id.to_string());
+
+    // 3. Direct Enterprise creation initializes roles, templates, config cleanly
+    let direct_res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/servers")
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "name": "Acme Corp", "is_enterprise": true }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(direct_res.status(), StatusCode::OK);
+    let ent_srv: Value = serde_json::from_slice(&axum::body::to_bytes(direct_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(ent_srv["is_enterprise"], true);
+
+    // 4. HR sensitive field masking + offboarding revocation + RBAC enforcement
+    // Assign member "Nhân viên" role on std_id so member has VIEW_HR | CREATE_TASKS | VIEW_ATTENDANCE but NOT VIEW_SENSITIVE_HR
+    let roles_res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/servers/{std_id}/roles"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let roles_list: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(roles_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let staff_role_id = roles_list.iter().find(|r| r["name"] == "Nhân viên").unwrap()["id"].as_str().unwrap().to_string();
+
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::put(format!("/api/servers/{std_id}/members/{member_id}/roles/{staff_role_id}"))
+                    .header(header::COOKIE, owner_hdr.as_str())
+                    .body(Body::empty())
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    // Owner updates own sensitive fields (work_email, work_phone, internal_notes)
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::post(format!("/api/servers/{std_id}/enterprise/employees"))
+                    .header(header::COOKIE, owner_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({
+                        "user_id": owner_id,
+                        "full_name": "Boss Sensitive",
+                        "work_email": "boss@acme.local",
+                        "work_phone": "0900111222",
+                        "internal_notes": "Confidential review"
+                    }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    // Member lists employees -> CANNOT see owner's sensitive fields!
+    let mem_emp_res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/servers/{std_id}/enterprise/employees"))
+                .header(header::COOKIE, member_hdr.as_str())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(mem_emp_res.status(), StatusCode::OK);
+    let mem_emps: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(mem_emp_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(mem_emps[0]["work_email"].is_null());
+    assert!(mem_emps[0]["work_phone"].is_null());
+    assert!(mem_emps[0]["internal_notes"].is_null());
+
+    // Member cannot create department (lacks MANAGE_DEPARTMENTS) -> 403 Forbidden
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::post(format!("/api/servers/{std_id}/enterprise/departments"))
+                    .header(header::COOKIE, member_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "name": "Unauthorized Dept" }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+
+    // 5. Private channel message task-creation does NOT leak private content preview
+    let priv_ch_id = Uuid::new_v4();
+    let priv_msg_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO channels (id, server_id, name, channel_type, is_private) VALUES ($1, $2, 'secret-exec', 'text', TRUE)")
+        .bind(priv_ch_id)
+        .bind(Uuid::parse_str(&std_id).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO channel_messages (id, channel_id, sender_id, content) VALUES ($1, $2, $3, 'TOP SECRET BUDGET')")
+        .bind(priv_msg_id)
+        .bind(priv_ch_id)
+        .bind(owner_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::post(format!("/api/servers/{std_id}/enterprise/tasks"))
+                    .header(header::COOKIE, owner_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({
+                        "title": "Follow up secret",
+                        "source_channel_id": priv_ch_id,
+                        "source_message_id": priv_msg_id
+                    }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let tasks_res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/servers/{std_id}/enterprise/tasks"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let tasks: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(tasks_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(tasks[0]["source_message_preview"].is_null());
+
+    // 6. Server-clock Attendance Check-in / Check-out & Leave Request + Timed Doc Share
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::post(format!("/api/servers/{std_id}/enterprise/attendance/check-in"))
+                    .header(header::COOKIE, member_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "work_mode": "remote", "note": "WFH" }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::post(format!("/api/servers/{std_id}/enterprise/attendance/check-out"))
+                    .header(header::COOKIE, member_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "note": "Done" }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let leave_create = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/servers/{std_id}/enterprise/leave"))
+                .header(header::COOKIE, member_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({
+                    "leave_type": "annual",
+                    "start_date": "2026-12-01",
+                    "end_date": "2026-12-02",
+                    "half_day": "full",
+                    "reason": "Family trip"
+                }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(leave_create.status(), StatusCode::OK);
+    let lv: Value = serde_json::from_slice(&axum::body::to_bytes(leave_create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let leave_id = lv["id"].as_str().unwrap();
+
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::post(format!("/api/servers/{std_id}/enterprise/leave/{leave_id}/decide"))
+                    .header(header::COOKIE, owner_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "status": "approved", "note": "Approved" }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    // 7. Timed Document Share & Resolution
+    let doc_create = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/api/servers/{std_id}/enterprise/documents"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({
+                    "title": "Handbook",
+                    "scope": "company",
+                    "file_url": "/uploads/media/handbook.pdf",
+                    "file_name": "handbook.pdf",
+                    "file_size": 2048
+                }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(doc_create.status(), StatusCode::OK);
+    let dc: Value = serde_json::from_slice(&axum::body::to_bytes(doc_create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let doc_id = dc["id"].as_str().unwrap();
+
+    let share_res = app
+        .clone()
+        .oneshot(
+            Request::patch(format!("/api/servers/{std_id}/enterprise/documents/{doc_id}"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "action": "share", "expires_hours": 12 }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(share_res.status(), StatusCode::OK);
+    let share_tok = serde_json::from_slice::<Value>(&axum::body::to_bytes(share_res.into_body(), usize::MAX).await.unwrap()).unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let resolve_res = app
+        .clone()
+        .oneshot(Request::get(format!("/api/enterprise/shared/{share_tok}")).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(resolve_res.status(), StatusCode::OK);
+
+    // 8. Retention lock prevents disabling enterprise mode; disabling preserves data & export
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::patch(format!("/api/servers/{std_id}/enterprise/config"))
+                    .header(header::COOKIE, owner_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "retention_locked": true }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::put(format!("/api/servers/{std_id}/settings"))
+                    .header(header::COOKIE, owner_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "is_enterprise": false }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+
+    // Unlock retention -> disable succeeds while preserving export-all JSON
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::patch(format!("/api/servers/{std_id}/enterprise/config"))
+                    .header(header::COOKIE, owner_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "retention_locked": false }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::put(format!("/api/servers/{std_id}/settings"))
+                    .header(header::COOKIE, owner_hdr.as_str())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "is_enterprise": false }).to_string()))
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let export_res = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/servers/{std_id}/enterprise/export-all"))
+                .header(header::COOKIE, owner_hdr.as_str())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(export_res.status(), StatusCode::OK);
+    let exported: Value = serde_json::from_slice(&axum::body::to_bytes(export_res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(!exported["tasks"].as_array().unwrap().is_empty());
+    assert!(!exported["documents"].as_array().unwrap().is_empty());
 }

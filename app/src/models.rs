@@ -135,6 +135,8 @@ pub struct ServerItem {
     pub icon_url: Option<String>,
     pub owner_id: String,
     #[serde(default)]
+    pub is_enterprise: bool,
+    #[serde(default)]
     pub is_owner: bool,
     #[serde(default)]
     pub member_count: i64,
@@ -324,6 +326,8 @@ pub enum WsEvent {
     ProfileUpdated(serde_json::Value),
     #[serde(rename = "security.alert")]
     SecurityAlert(serde_json::Value),
+    #[serde(rename = "enterprise.event")]
+    EnterpriseEvent(serde_json::Value),
     #[serde(other)]
     Unknown,
 }
@@ -792,6 +796,10 @@ pub struct ServerSettings {
     pub banner_url: Option<String>,
     #[serde(default)]
     pub is_owner: bool,
+    #[serde(default)]
+    pub is_enterprise: bool,
+    #[serde(default)]
+    pub retention_locked: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

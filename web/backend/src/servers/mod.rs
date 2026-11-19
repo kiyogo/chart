@@ -90,16 +90,18 @@ async fn handle_create_server(
     let server_id = Uuid::new_v4();
     let desc = payload.description.as_deref();
 
+    let is_enterprise = payload.is_enterprise.unwrap_or(false);
     let server_row = sqlx::query!(
         r#"
-        INSERT INTO servers (id, name, description, owner_id)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, name, description, icon_url, owner_id, created_at
+        INSERT INTO servers (id, name, description, owner_id, is_enterprise)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, name, description, icon_url, owner_id, created_at, is_enterprise
         "#,
         server_id,
         name,
         desc,
-        user.id
+        user.id,
+        is_enterprise
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -183,6 +185,10 @@ async fn handle_create_server(
     .execute(&mut *tx)
     .await?;
 
+    if is_enterprise {
+        crate::enterprise::init_enterprise_tx(&mut tx, server_id, user.id).await?;
+    }
+
     tx.commit().await?;
 
     Ok(Json(ServerItem {
@@ -192,8 +198,9 @@ async fn handle_create_server(
         icon_url: server_row.icon_url,
         owner_id: server_row.owner_id,
         created_at: server_row.created_at,
+        is_enterprise: server_row.is_enterprise,
         member_count: None,
-        is_owner: None,
+        is_owner: Some(true),
     }))
 }
 
@@ -207,7 +214,7 @@ async fn handle_list_servers(
 
     let rows = sqlx::query!(
         r#"
-        SELECT s.id, s.name, s.description, s.icon_url, s.owner_id, s.created_at,
+        SELECT s.id, s.name, s.description, s.icon_url, s.owner_id, s.created_at, s.is_enterprise,
                (SELECT COUNT(*) FROM server_members sm WHERE sm.server_id = s.id) AS "member_count!"
         FROM servers s
         JOIN server_members m ON s.id = m.server_id
@@ -229,6 +236,7 @@ async fn handle_list_servers(
             is_owner: Some(r.owner_id == user.id),
             owner_id: r.owner_id,
             created_at: r.created_at,
+            is_enterprise: r.is_enterprise,
             member_count: Some(r.member_count),
         })
         .collect();
@@ -246,7 +254,7 @@ async fn handle_discover_servers(
 
     let rows = sqlx::query!(
         r#"
-        SELECT s.id, s.name, s.description, s.icon_url, s.owner_id, s.created_at
+        SELECT s.id, s.name, s.description, s.icon_url, s.owner_id, s.created_at, s.is_enterprise
         FROM servers s
         WHERE s.is_public AND s.verification_status = 'verified'
         ORDER BY s.created_at DESC
@@ -265,6 +273,7 @@ async fn handle_discover_servers(
             icon_url: r.icon_url,
             owner_id: r.owner_id,
             created_at: r.created_at,
+            is_enterprise: r.is_enterprise,
             member_count: None,
             is_owner: None,
         })
@@ -284,7 +293,7 @@ async fn handle_join_server_direct(
 
     // Direct join (without an invite) is only possible for verified public communities.
     let srv = sqlx::query!(
-        "SELECT id, name, description, icon_url, owner_id, created_at FROM servers WHERE id = $1 AND is_public AND verification_status = 'verified'",
+        "SELECT id, name, description, icon_url, owner_id, created_at, is_enterprise FROM servers WHERE id = $1 AND is_public AND verification_status = 'verified'",
         server_id
     )
     .fetch_optional(&state.db)
@@ -306,6 +315,7 @@ async fn handle_join_server_direct(
         icon_url: srv.icon_url,
         owner_id: srv.owner_id,
         created_at: srv.created_at,
+        is_enterprise: srv.is_enterprise,
         member_count: None,
         is_owner: None,
     }))
@@ -335,7 +345,7 @@ async fn handle_get_server(
     }
 
     let r = sqlx::query!(
-        "SELECT id, name, description, icon_url, owner_id, created_at FROM servers WHERE id = $1",
+        "SELECT id, name, description, icon_url, owner_id, created_at, is_enterprise FROM servers WHERE id = $1",
         server_id
     )
     .fetch_optional(&state.db)
@@ -349,6 +359,7 @@ async fn handle_get_server(
         icon_url: r.icon_url,
         owner_id: r.owner_id,
         created_at: r.created_at,
+        is_enterprise: r.is_enterprise,
         member_count: None,
         is_owner: None,
     }))
@@ -679,7 +690,7 @@ async fn handle_list_roles(
 
     let rows = sqlx::query!(
         r#"
-        SELECT id, server_id, name, color, position, permissions, created_at
+        SELECT id, server_id, name, color, position, permissions, enterprise_permissions, created_at
         FROM server_roles
         WHERE server_id = $1
         ORDER BY position ASC
@@ -698,6 +709,7 @@ async fn handle_list_roles(
             color: r.color,
             position: r.position,
             permissions: r.permissions,
+            enterprise_permissions: r.enterprise_permissions,
             created_at: r.created_at,
         })
         .collect();
@@ -715,13 +727,10 @@ async fn handle_create_role(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
-    permissions::require_server_permission(
-        &state.db,
-        server_id,
-        user.id,
-        perm_flags::MANAGE_ROLES,
-    )
-    .await?;
+    let (mine, my_ent, _) = roles::effective_all(&state.db, server_id, user.id).await?;
+    if mine & perm_flags::MANAGE_ROLES == 0 {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
 
     let name = payload.name.trim();
     if name.is_empty() || name.len() > 32 {
@@ -731,20 +740,25 @@ async fn handle_create_role(
     let color = payload.color.as_deref().unwrap_or("#99AAB5");
     let pos = payload.position.unwrap_or(0);
     let perms = payload.permissions.unwrap_or(0);
+    let eperms = payload.enterprise_permissions.unwrap_or(0);
+    if perms & !mine != 0 || eperms & !my_ent != 0 {
+        return Err(AppError::Forbidden("cannot_grant_missing_permissions"));
+    }
     let role_id = Uuid::new_v4();
 
     let row = sqlx::query!(
         r#"
-        INSERT INTO server_roles (id, server_id, name, color, position, permissions)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, server_id, name, color, position, permissions, created_at
+        INSERT INTO server_roles (id, server_id, name, color, position, permissions, enterprise_permissions)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, server_id, name, color, position, permissions, enterprise_permissions, created_at
         "#,
         role_id,
         server_id,
         name,
         color,
         pos,
-        perms
+        perms,
+        eperms
     )
     .fetch_one(&state.db)
     .await?;
@@ -757,6 +771,7 @@ async fn handle_create_role(
         color: row.color,
         position: row.position,
         permissions: row.permissions,
+        enterprise_permissions: row.enterprise_permissions,
         created_at: row.created_at,
     }))
 }
@@ -857,7 +872,7 @@ async fn handle_join_server_by_invite(
     .await?;
 
     let server_row = sqlx::query!(
-        "SELECT id, name, description, icon_url, owner_id, created_at FROM servers WHERE id = $1",
+        "SELECT id, name, description, icon_url, owner_id, created_at, is_enterprise FROM servers WHERE id = $1",
         invite.server_id
     )
     .fetch_one(&mut *tx)
@@ -872,6 +887,7 @@ async fn handle_join_server_by_invite(
         icon_url: server_row.icon_url,
         owner_id: server_row.owner_id,
         created_at: server_row.created_at,
+        is_enterprise: server_row.is_enterprise,
         member_count: None,
         is_owner: None,
     }))
@@ -1053,6 +1069,8 @@ struct ServerSettings {
     verification_status: String,
     banner_url: Option<String>,
     is_owner: bool,
+    is_enterprise: bool,
+    retention_locked: bool,
 }
 
 async fn handle_get_settings(
@@ -1062,7 +1080,7 @@ async fn handle_get_settings(
 ) -> AppResult<Json<ServerSettings>> {
     let uid = crate::privacy::auth_user(&state, &headers).await?;
     let r = sqlx::query!(
-        r#"SELECT s.owner_id, s.is_public, s.public_index, s.verification_status, s.banner_url
+        r#"SELECT s.owner_id, s.is_public, s.public_index, s.verification_status, s.banner_url, s.is_enterprise, s.retention_locked
            FROM servers s JOIN server_members m ON m.server_id = s.id AND m.user_id = $2
            WHERE s.id = $1"#,
         server_id,
@@ -1077,6 +1095,8 @@ async fn handle_get_settings(
         verification_status: r.verification_status,
         banner_url: r.banner_url,
         is_owner: r.owner_id == uid,
+        is_enterprise: r.is_enterprise,
+        retention_locked: r.retention_locked,
     }))
 }
 
@@ -1085,6 +1105,7 @@ struct UpdateServerSettings {
     is_public: Option<bool>,
     public_index: Option<bool>,
     banner_url: Option<String>,
+    is_enterprise: Option<bool>,
 }
 
 async fn handle_update_settings(
@@ -1094,18 +1115,26 @@ async fn handle_update_settings(
     Json(p): Json<UpdateServerSettings>,
 ) -> AppResult<Json<ServerSettings>> {
     let uid = crate::privacy::auth_user(&state, &headers).await?;
-    let owner = sqlx::query_scalar!("SELECT owner_id FROM servers WHERE id = $1", server_id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or(AppError::NotFound("server_not_found"))?;
-    if owner != uid {
+    let srv = sqlx::query!(
+        "SELECT owner_id, is_enterprise, retention_locked FROM servers WHERE id = $1",
+        server_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("server_not_found"))?;
+    if srv.owner_id != uid {
         return Err(AppError::Forbidden("owner_only"));
+    }
+    if p.is_enterprise == Some(false) && srv.is_enterprise && srv.retention_locked {
+        return Err(AppError::Forbidden("retention_locked"));
     }
     if let Some(ref b) = p.banner_url {
         if !b.is_empty() && (!b.starts_with("/uploads/media/") || b.contains("..")) {
             return Err(AppError::BadRequest("invalid_banner_url"));
         }
     }
+
+    let mut tx = state.db.begin().await?;
     sqlx::query!(
         r#"UPDATE servers SET
             is_public = COALESCE($1, is_public),
@@ -1121,11 +1150,45 @@ async fn handle_update_settings(
         p.banner_url,
         server_id
     )
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
+
+    if let Some(enable_ent) = p.is_enterprise {
+        if enable_ent {
+            sqlx::query!(
+                "UPDATE servers SET is_enterprise = TRUE, enterprise_disabled_at = NULL WHERE id = $1",
+                server_id
+            )
+            .execute(&mut *tx)
+            .await?;
+            crate::enterprise::init_enterprise_tx(&mut tx, server_id, uid).await?;
+        } else {
+            sqlx::query!(
+                "UPDATE servers SET is_enterprise = FALSE, enterprise_disabled_at = now() WHERE id = $1",
+                server_id
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    tx.commit().await?;
+
     if let Ok(t) = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized) {
         if let Ok(u) = authenticate_session(&state.db, &state.config, t).await {
-            crate::community::audit(&state, server_id, u.id, "settings_updated", "").await;
+            if let Some(enable_ent) = p.is_enterprise {
+                let action = if enable_ent { "enterprise_enabled" } else { "enterprise_disabled" };
+                crate::community::audit(&state, server_id, u.id, action, "").await;
+                crate::enterprise::models::emit_enterprise(
+                    &state,
+                    server_id,
+                    "server.enterprise_toggled",
+                    serde_json::json!({ "is_enterprise": enable_ent }),
+                )
+                .await;
+            } else {
+                crate::community::audit(&state, server_id, u.id, "settings_updated", "").await;
+            }
         }
     }
     handle_get_settings(State(state), headers, Path(server_id)).await

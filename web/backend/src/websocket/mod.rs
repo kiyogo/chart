@@ -205,6 +205,9 @@ pub enum WsEvent {
     /// Sign-in from a device this account never used before.
     #[serde(rename = "security.alert")]
     SecurityAlert(serde_json::Value),
+    /// Enterprise workspace state updated (config, tasks, HR, approvals, docs, meetings).
+    #[serde(rename = "enterprise.event")]
+    EnterpriseEvent(serde_json::Value),
 }
 
 pub struct WsHub {

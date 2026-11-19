@@ -3,6 +3,7 @@ pub mod calls;
 pub mod community;
 pub mod dm;
 pub mod drawings;
+pub mod enterprise;
 pub mod gif_export;
 pub mod groups;
 pub mod library;

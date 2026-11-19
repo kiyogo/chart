@@ -632,3 +632,85 @@ pub fn DownloadIcon(#[props(default = 16)] size: u32) -> Element {
         path { d: "M12 4v11M7.5 11.5L12 16l4.5-4.5M5 19.5h14" }
     } }
 }
+
+#[component]
+pub fn BuildingIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "4", y: "3", width: "10", height: "18", rx: "1.5", fill: "currentColor", fill_opacity: "0.16" }
+        path { d: "M4 21h16M14 9h6v12M8 7.5h2M8 11.5h2M8 15.5h2M17 13h.5M17 16.5h.5" }
+    } }
+}
+
+#[component]
+pub fn BriefcaseIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "3", y: "7", width: "18", height: "13", rx: "2", fill: "currentColor", fill_opacity: "0.16" }
+        path { d: "M8.5 7V5a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 5v2M3 12.5h18" }
+    } }
+}
+
+#[component]
+pub fn ListChecksIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "3.5", y: "4", width: "17", height: "16", rx: "2.5", fill: "currentColor", fill_opacity: "0.12" }
+        path { d: "M6.5 9l1.5 1.5 2.5-3M6.5 15l1.5 1.5 2.5-3M13 9h4.5M13 15h4.5" }
+    } }
+}
+
+#[component]
+pub fn CalendarIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "3.5", y: "5", width: "17", height: "15.5", rx: "2", fill: "currentColor", fill_opacity: "0.16" }
+        path { d: "M3.5 9.5h17M8 3.5v3M16 3.5v3M8 13.5h2M12 13.5h2M16 13.5h.5" }
+    } }
+}
+
+#[component]
+pub fn FileTextIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { fill: "currentColor", fill_opacity: "0.16", d: "M6 3.5h8.5L18.5 7.5V20a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V5A1.5 1.5 0 0 1 6 3.5z" }
+        path { d: "M14.5 3.5V7.5h4M8.5 12h7M8.5 15.5h7M8.5 18.5h4" }
+    } }
+}
+
+#[component]
+pub fn ClipboardCheckIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "5", y: "4.5", width: "14", height: "16.5", rx: "2", fill: "currentColor", fill_opacity: "0.16" }
+        path { d: "M9.5 4.5a2 2 0 0 1 5 0M9 13l2 2 4-4" }
+    } }
+}
+
+#[component]
+pub fn BarChartIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "4", y: "12", width: "3.5", height: "7.5", rx: "1", fill: "currentColor", fill_opacity: "0.18" }
+        rect { x: "10.2", y: "7.5", width: "3.5", height: "12", rx: "1", fill: "currentColor", fill_opacity: "0.18" }
+        rect { x: "16.5", y: "4.5", width: "3.5", height: "15", rx: "1", fill: "currentColor", fill_opacity: "0.18" }
+    } }
+}
+
+#[component]
+pub fn NetworkIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "9.5", y: "3.5", width: "5", height: "4", rx: "1", fill: "currentColor", fill_opacity: "0.16" }
+        rect { x: "3.5", y: "16.5", width: "5", height: "4", rx: "1", fill: "currentColor", fill_opacity: "0.16" }
+        rect { x: "15.5", y: "16.5", width: "5", height: "4", rx: "1", fill: "currentColor", fill_opacity: "0.16" }
+        path { d: "M12 7.5V12M6 16.5V12h12v4.5" }
+    } }
+}
+
+#[component]
+pub fn EditIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { d: "M14.5 4.5l5 5L8 21H3v-5L14.5 4.5zM12 7l5 5" }
+    } }
+}
+
+#[component]
+pub fn PlugIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { fill: "currentColor", fill_opacity: "0.16", d: "M7 8h10v3.5a5 5 0 0 1-10 0V8z" }
+        path { d: "M9.5 3.5V8M14.5 3.5V8M12 16.5V21" }
+    } }
+}

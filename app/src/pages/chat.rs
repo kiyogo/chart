@@ -8,6 +8,7 @@ use crate::{
         avatar::Avatar,
         calls::{ActiveCallOverlay, IncomingCallModal},
         details_panel::DmDetailsPanel,
+        enterprise::{EnterpriseWorkspace, tasks_projects::CreateTaskFromMsgDialog},
         groups::{AddMemberModal, CreateGroupModal, GroupInfoPanel},
         icons::{
             BackIcon, BlockIcon, DevicesIcon, GroupIcon, HashIcon, MessageIcon, MicIcon, MicOffIcon, MoreIcon,
@@ -46,7 +47,7 @@ use crate::{
         PrivacySettings, SessionItem,
     },
     platform,
-    services::{api, calls, dm, groups, library, social, ws},
+    services::{api, calls, dm, enterprise, groups, library, social, ws},
     i18n::{t, tn},
 };
 
@@ -163,6 +164,10 @@ pub fn Chat(
     let mut highlight_msg = use_signal(|| Option::<String>::None);
     let mut servers = use_signal(Vec::<ServerItem>::new);
     let mut selected_server = use_signal(|| Option::<ServerItem>::None);
+    let mut enterprise_config = use_signal(|| Option::<enterprise::EnterpriseConfig>::None);
+    let mut active_ent_module = use_signal(|| Option::<String>::None);
+    let mut ent_refresh_tick = use_signal(|| 0u64);
+    let mut create_task_from = use_signal(|| Option::<(String, String, String)>::None);
     let mut channels = use_signal(Vec::<ChannelItem>::new);
     let mut selected_channel = use_signal(|| Option::<ChannelItem>::None);
     let mut channel_messages = use_signal(Vec::<ChannelMessageItem>::new);
@@ -1062,6 +1067,27 @@ pub fn Chat(
                             chat_labels.set(l);
                         }
                     }
+                    WsEvent::EnterpriseEvent(v) => {
+                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                        let srv_id = v.get("server_id").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+                        if selected_server().as_ref().is_some_and(|s| s.id == srv_id) {
+                            let sid = srv_id.clone();
+                            spawn(async move {
+                                if let Ok(list) = api::servers_list().await {
+                                    if let Some(updated) = list.iter().find(|x| x.id == sid).cloned() {
+                                        selected_server.set(Some(updated));
+                                    }
+                                    servers.set(list);
+                                }
+                                if let Ok(cfg) = enterprise::get_config(&sid).await {
+                                    enterprise_config.set(Some(cfg));
+                                } else {
+                                    enterprise_config.set(None);
+                                    active_ent_module.set(None);
+                                }
+                            });
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1092,6 +1118,7 @@ pub fn Chat(
 
     // Helper: select a channel
     let mut select_channel = move |ch: ChannelItem| {
+        active_ent_module.set(None);
         selected_channel.set(Some(ch.clone()));
         active_friend.set(None);
         active_group.set(None);
@@ -1173,6 +1200,8 @@ pub fn Chat(
         is_settings_open.set(false);
         nav_section.set(NavSection::Server(srv.id.clone()));
         selected_server.set(Some(srv.clone()));
+        active_ent_module.set(None);
+        enterprise_config.set(None);
         active_friend.set(None);
         active_group.set(None);
         active_bot.set(None);
@@ -1181,6 +1210,11 @@ pub fn Chat(
         server_categories.set(Vec::new());
         channels.set(Vec::new());
         spawn(async move {
+            if srv.is_enterprise {
+                if let Ok(ecfg) = enterprise::get_config(&srv.id).await {
+                    enterprise_config.set(Some(ecfg));
+                }
+            }
             if let Ok(cats) = api::servers_get_categories(&srv.id).await {
                 server_categories.set(cats);
             }
@@ -1677,6 +1711,7 @@ pub fn Chat(
     let is_chat_selected = active_friend().is_some()
         || active_group().is_some()
         || selected_channel().is_some()
+        || active_ent_module().is_some()
         || active_bot().is_some()
         || active_mod_page.is_some()
         || is_settings_open()
@@ -2097,6 +2132,12 @@ pub fn Chat(
                     },
                     community_groups: community_groups.clone(),
                     on_open_server_settings: move |_| server_settings_open.set(true),
+                    enterprise_config: enterprise_config(),
+                    active_ent_module: active_ent_module(),
+                    on_select_ent_module: move |m: String| {
+                        selected_channel.set(None);
+                        active_ent_module.set(Some(m));
+                    },
                     active_section: section.clone(),
                     current_username: current_username.clone(),
                     current_avatar_url: my_avatar_url(),
@@ -2805,6 +2846,21 @@ pub fn Chat(
                             }
                         }
                     }
+                } else if let (Some(srv), Some(mod_key), Some(cfg)) = (selected_server(), active_ent_module(), enterprise_config()) {
+                    if srv.is_enterprise {
+                        EnterpriseWorkspace {
+                            server_id: srv.id.clone(),
+                            server_name: srv.name.clone(),
+                            my_id: current_user_id.clone(),
+                            module: mod_key,
+                            cfg,
+                            refresh_tick: ent_refresh_tick(),
+                            on_select_module: move |m: String| active_ent_module.set(Some(m)),
+                            on_close: move |_| active_ent_module.set(None),
+                        }
+                    } else {
+                        div { class: "empty-state", div { class: "empty-state-title", "Chế độ doanh nghiệp hiện đang tắt" } }
+                    }
                 } else if let Some(ch) = selected_channel() {
                     div { class: "chat-main-container",
                         div { class: "chat-column wp-{prefs.read().wallpaper}",
@@ -2858,13 +2914,28 @@ pub fn Chat(
                                     crate::components::community_ui::EventsPanel { server_id: srv.id.clone(), can_manage: can_manage_channels() }
                                 }
                             } else if ch.channel_type != "voice" {
-                                MessageList {
-                                    messages: channel_view.clone(),
-                                    show_sender_names: true,
-                                    intro_title: format!("Chào mừng đến #{}", ch.name),
-                                    intro_sub: "Đây là khởi đầu của kênh. Tin nhắn kênh cộng đồng được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.".to_string(),
-                                    on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
-                                on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
+                                {
+                                    let on_task_handler = if selected_server().is_some_and(|s| s.is_enterprise)
+                                        && enterprise_config().is_some_and(|c| c.has(enterprise::ent_perm::CREATE_TASKS))
+                                    {
+                                        let cid = ch.id.clone();
+                                        Some(EventHandler::new(move |(mid, txt): (String, String)| {
+                                            create_task_from.set(Some((cid.clone(), mid, txt)));
+                                        }))
+                                    } else {
+                                        None
+                                    };
+                                    rsx! {
+                                        MessageList {
+                                            messages: channel_view.clone(),
+                                            show_sender_names: true,
+                                            intro_title: format!("Chào mừng đến #{}", ch.name),
+                                            intro_sub: "Đây là khởi đầu của kênh. Tin nhắn kênh cộng đồng được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.".to_string(),
+                                            on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                                            on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
+                                            on_create_task: on_task_handler,
+                                        }
+                                    }
                                 }
                                 Composer {
                                     input_id: "channel-chat-input".to_string(),
@@ -3139,12 +3210,46 @@ pub fn Chat(
                 },
             }
         }
+        if let Some((cid, mid, preview)) = create_task_from() {
+            if let Some(srv) = selected_server() {
+                CreateTaskFromMsgDialog {
+                    server_id: srv.id.clone(),
+                    channel_id: cid,
+                    message_id: mid,
+                    preview,
+                    on_close: move |_| create_task_from.set(None),
+                    on_created: move |_| {
+                        create_task_from.set(None);
+                        ent_refresh_tick.set(ent_refresh_tick() + 1);
+                        toast.set(Some("Đã tạo công việc từ tin nhắn".into()));
+                    },
+                }
+            }
+        }
         if server_settings_open() {
             if let Some(srv) = selected_server() {
                 crate::components::server_settings::ServerSettingsDialog {
                     server: srv.clone(),
                     my_id: current_user_id.clone(),
                     on_close: move |_| server_settings_open.set(false),
+                    on_enterprise_changed: move |_| {
+                        let sid = srv.id.clone();
+                        spawn(async move {
+                            if let Ok(list) = api::servers_list().await {
+                                if let Some(u) = list.iter().find(|x| x.id == sid).cloned() {
+                                    selected_server.set(Some(u));
+                                }
+                                servers.set(list);
+                            }
+                            if let Ok(ecfg) = enterprise::get_config(&sid).await {
+                                enterprise_config.set(Some(ecfg));
+                            } else {
+                                enterprise_config.set(None);
+                                active_ent_module.set(None);
+                            }
+                            ent_refresh_tick.set(ent_refresh_tick() + 1);
+                        });
+                    },
                 }
             }
         }
