@@ -770,8 +770,9 @@ pub fn VicoAiIcon(#[props(default = 18)] size: u32, #[props(default = false)] fu
 #[component]
 pub fn FeedThreadsIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3", y: "3.5", width: "18", height: "17", rx: "5", fill: "currentColor", fill_opacity: "0.14" }
-        path { d: "M15.4 10.6c-.4-2.1-1.9-3.1-3.9-3.1-2.5 0-4.2 1.8-4.2 4.5s1.7 4.5 4.3 4.5c2.2 0 3.7-1.1 4.1-3.1.2-1.1-.4-2.3-1.8-2.6-1.2-.3-2.5.3-2.6 1.5-.1 1 .7 1.7 1.8 1.7 1.3 0 2.3-1 2.5-2.6" }
+        circle { cx: "12", cy: "12", r: "9", fill: duo_fill!(), fill_opacity: "0.14", stroke: "none" }
+        circle { cx: "12", cy: "12", r: "3.5" }
+        path { d: "M15.5 11.4v1.4a2.65 2.65 0 0 0 5.3 0V12a8.8 8.8 0 1 0-3.2 6.79" }
     } }
 }
 

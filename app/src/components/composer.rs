@@ -668,13 +668,6 @@ pub fn Composer(
                             SendIcon {}
                         }
                     }
-                    div { class: "composer-hint hide-mobile",
-                        if enter_sends {
-                            span { class: "kbd", "Enter" } " gửi · " span { class: "kbd", "Shift + Enter" } " xuống dòng · " span { class: "kbd", "/" } " lệnh · " span { class: "kbd", "@" } " nhắc tên · " span { class: "kbd", ":" } " emoji"
-                        } else {
-                            span { class: "kbd", "Ctrl + Enter" } " gửi · " span { class: "kbd", "Enter" } " xuống dòng · " span { class: "kbd", "/" } " lệnh · " span { class: "kbd", "@" } " nhắc tên"
-                        }
-                    }
                 }
             }
         }

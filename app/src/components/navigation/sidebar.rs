@@ -19,6 +19,39 @@ use crate::{
     services::enterprise::{EnterpriseConfig, module_label},
 };
 
+/// Normalizes channel/category names so hyphens become spaces and only the
+/// first letter is capitalized (while keeping acronyms like AI).
+pub fn format_display_label(raw: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .map(|c| match c {
+            '-' | '_' | '—' | '–' => ' ',
+            _ => c,
+        })
+        .collect();
+    let words: Vec<&str> = cleaned.split_whitespace().collect();
+    if words.is_empty() {
+        return String::new();
+    }
+    let mut out = Vec::with_capacity(words.len());
+    for (idx, word) in words.iter().enumerate() {
+        if word.eq_ignore_ascii_case("ai") {
+            out.push("AI".to_string());
+        } else if idx == 0 {
+            let lower = word.to_lowercase();
+            let mut chars = lower.chars();
+            if let Some(first) = chars.next() {
+                let mut s = first.to_uppercase().to_string();
+                s.push_str(chars.as_str());
+                out.push(s);
+            }
+        } else {
+            out.push(word.to_lowercase());
+        }
+    }
+    out.join(" ")
+}
+
 fn server_initials(name: &str) -> String {
     let parts: Vec<&str> = name.split_whitespace().collect();
     if parts.len() >= 2 {
@@ -88,6 +121,7 @@ pub fn NavigationSidebar(
     /// Groups moved to Communities, listed above the servers.
     #[props(default)] community_groups: Vec<GroupItem>,
     #[props(default)] on_open_server_settings: Option<EventHandler<()>>,
+    #[props(default)] is_server_settings_open: bool,
     /// Enterprise workspace state for the active server (optional & backwards-compatible).
     #[props(default)] enterprise_config: Option<EnterpriseConfig>,
     #[props(default)] active_ent_module: Option<String>,
@@ -451,8 +485,8 @@ pub fn NavigationSidebar(
                                 if let Some(h) = on_open_server_settings {
                                     button {
                                         r#type: "button",
-                                        class: "icon-btn",
-                                        title: "Cài đặt cộng đồng: vai trò, quyền, thành viên",
+                                        class: if is_server_settings_open { "icon-btn active" } else { "icon-btn" },
+                                        title: "Cài đặt cộng đồng",
                                         aria_label: "Cài đặt cộng đồng",
                                         onclick: move |_| h.call(()),
                                         crate::components::icons::SettingsIcon {}
@@ -570,12 +604,12 @@ pub fn NavigationSidebar(
                                                     } else {
                                                         ChevronDownIcon { size: 13 }
                                                     }
-                                                    span { class: "category-name", "{cat.name}" }
+                                                    span { class: "category-name", "{format_display_label(&cat.name)}" }
                                                 }
                                                 button {
                                                     r#type: "button",
                                                     class: "sidebar-section-btn",
-                                                    title: "Tạo kênh trong {cat.name}",
+                                                    title: "Tạo kênh trong {format_display_label(&cat.name)}",
                                                     aria_label: "Tạo kênh trong danh mục",
                                                     onclick: move |_| on_open_create_channel.call(Some(cat_id_add.clone())),
                                                     PlusIcon { size: 13 }
@@ -777,7 +811,7 @@ fn ChannelRowItem(
                 } else {
                     HashIcon { size: 16 }
                 }
-                span { class: "channel-row-name", "{channel.name}" }
+                span { class: "channel-row-name", "{format_display_label(&channel.name)}" }
             }
             if is_voice && !participants_in_this.is_empty() {
                 div { class: "voice-participants-list",
@@ -797,6 +831,21 @@ fn ChannelRowItem(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_display_label;
+
+    #[test]
+    fn cleans_hyphens_and_enforces_sentence_case() {
+        assert_eq!(format_display_label("thông-báo-nội-bộ"), "Thông báo nội bộ");
+        assert_eq!(format_display_label("ban-điều-hành"), "Ban điều hành");
+        assert_eq!(format_display_label("Không gian Doanh nghiệp"), "Không gian doanh nghiệp");
+        assert_eq!(format_display_label("Phòng họp Trực tuyến"), "Phòng họp trực tuyến");
+        assert_eq!(format_display_label("general"), "General");
+        assert_eq!(format_display_label("Vico AI"), "Vico AI");
     }
 }
 

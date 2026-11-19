@@ -1171,12 +1171,11 @@ input[type="checkbox"].switch:focus-visible { outline: none; box-shadow: 0 0 0 2
   width: 2px;
   background: transparent;
   border-radius: 999px;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 .panel-resizer:hover::after,
 .panel-resizer.is-dragging::after {
-  background: var(--accent);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);
+  background: transparent;
+  box-shadow: none;
 }
 body.resizing-panel {
   cursor: col-resize !important;
@@ -1303,7 +1302,7 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   display: flex;
   flex-direction: column-reverse;
   overscroll-behavior: contain;
-  padding: var(--space-4) clamp(var(--space-3), 2.5vw, var(--space-8));
+  padding: var(--space-4) clamp(var(--space-3), 2.5vw, var(--space-8)) calc(var(--space-4) + 4.75rem);
 }
 .message-stream {
   width: 100%;
@@ -1516,14 +1515,20 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
 @media (hover: none) { .message-actions { display: none; } }
 
 .typing-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4.5rem;
+  z-index: 11;
+  pointer-events: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) clamp(var(--space-3), 2.5vw, var(--space-8));
   font-size: var(--text-sm);
   color: var(--text-secondary);
-  min-height: 1.5rem;
 }
+.typing-indicator:empty { display: none; }
 .typing-dots { display: inline-flex; gap: 3px; }
 .typing-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted); animation: typing 1.2s infinite ease-in-out; }
 .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
@@ -1532,20 +1537,24 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
 
 /* ---------- Composer ---------- */
 .composer {
-  flex-shrink: 0;
-  padding: var(--space-2) clamp(var(--space-3), 2.5vw, var(--space-8)) var(--space-3);
-  padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
-  background: var(--bg-chat);
-  position: relative;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 12;
+  pointer-events: none;
+  padding: var(--space-1) clamp(var(--space-3), 2.5vw, var(--space-8)) max(var(--space-3), env(safe-area-inset-bottom));
+  background: transparent !important;
 }
-.composer-inner { max-width: 68rem; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-2); position: relative; }
+.composer-inner { max-width: 68rem; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-2); position: relative; pointer-events: auto; }
 .composer-context {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-lg);
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent-soft) 92%, var(--bg-primary));
+  backdrop-filter: blur(14px);
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
@@ -1556,7 +1565,9 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   gap: var(--space-1);
   padding: var(--space-1);
   border-radius: var(--radius-xl);
-  background: var(--bg-input);
+  background: color-mix(in srgb, var(--bg-input) 92%, var(--bg-primary));
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-md);
   transition: border-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease), background-color var(--dur-hover) var(--ease);
 }
 .composer-box:focus-within { background: var(--bg-input-focus); box-shadow: var(--focus-ring); }
@@ -1881,6 +1892,9 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
+}
+.server-settings-stage .settings-nav {
+  width: var(--settings-nav-width, 12.75rem);
 }
 .settings-nav-footer {
   margin-top: auto;
@@ -2308,9 +2322,11 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   .nav-sidebar.hidden-mobile, .main-stage.hidden-mobile { display: none; }
   .main-stage { width: 100%; }
   .chat-header { padding: var(--space-2); gap: var(--space-2); }
-  .chat-messages { padding: var(--space-3) var(--space-3); }
+  .chat-messages { padding: var(--space-3) var(--space-3) 5.25rem; }
   .composer { padding-left: var(--space-2); padding-right: var(--space-2); }
   .composer-hint { display: none; }
+  .typing-indicator { bottom: 4.25rem; }
+  .server-settings-stage .settings-nav { width: 100%; }
   .message-avatar-slot { width: 2rem; min-width: 2rem; }
   .message-avatar-slot .user-avatar { width: 2rem !important; height: 2rem !important; }
 
@@ -5155,7 +5171,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-4) clamp(var(--space-3), 3vw, var(--space-8));
+  padding: var(--space-4) clamp(var(--space-3), 3vw, var(--space-8)) calc(var(--space-4) + 4.75rem);
 }
 .vico-chat-stream {
   width: 100%;
@@ -5366,10 +5382,8 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   gap: 2px;
 }
 .header-search-group {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--text-muted);
   padding: 6px 8px 3px;
 }
@@ -5440,10 +5454,8 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   opacity: 0.56;
 }
 .discord-role-header {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   color: var(--text-muted);
   padding: 2px 8px 4px;
 }

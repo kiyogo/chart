@@ -7,6 +7,7 @@ use crate::{
     components::{
         avatar::Avatar,
         icons::{CloseIcon, HashIcon, PanelRightIcon, SearchIcon},
+        navigation::sidebar::format_display_label,
         profile_card::{name_effect_class, nameplate_style},
     },
     models::{ServerMemberItem, ServerMessageSearchHit},
@@ -103,7 +104,7 @@ fn build_member_groups(
         sort_bucket(&mut owner_bucket);
         out.push(MemberGroup {
             key: "__owner__".into(),
-            label: format!("Chủ sở hữu — {}", owner_bucket.len()),
+            label: format!("Chủ sở hữu {}", owner_bucket.len()),
             is_offline: false,
             members: owner_bucket,
         });
@@ -116,7 +117,7 @@ fn build_member_groups(
         sort_bucket(&mut list);
         out.push(MemberGroup {
             key: format!("role:{}", r.id),
-            label: format!("{} — {}", r.name, list.len()),
+            label: format!("{} {}", r.name, list.len()),
             is_offline: false,
             members: list,
         });
@@ -126,7 +127,7 @@ fn build_member_groups(
         sort_bucket(&mut plain_bucket);
         out.push(MemberGroup {
             key: "__members__".into(),
-            label: format!("Thành viên — {}", plain_bucket.len()),
+            label: format!("Thành viên {}", plain_bucket.len()),
             is_offline: false,
             members: plain_bucket,
         });
@@ -136,7 +137,7 @@ fn build_member_groups(
         sort_bucket(&mut offline_bucket);
         out.push(MemberGroup {
             key: "__offline__".into(),
-            label: format!("Ngoại tuyến — {}", offline_bucket.len()),
+            label: format!("Ngoại tuyến {}", offline_bucket.len()),
             is_offline: true,
             members: offline_bucket,
         });
@@ -333,7 +334,7 @@ pub fn ServerHeaderTools(
                                             HashIcon { size: 15 }
                                             div { class: "header-search-hit-body",
                                                 span { class: "header-search-hit-title", "{h.content}" }
-                                                span { class: "header-search-hit-sub", "#{h.channel_name} · {h.sender_name}" }
+                                                span { class: "header-search-hit-sub", "#{format_display_label(&h.channel_name)} · {h.sender_name}" }
                                             }
                                         }
                                     }

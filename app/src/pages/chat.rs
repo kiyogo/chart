@@ -2350,7 +2350,7 @@ pub fn Chat(
                 on_logout: move |_| on_logout.call(()),
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() && !server_settings_active {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() {
                 if let Some(lpid) = active_left_plugin.clone() {
                     aside { class: "nav-sidebar",
                         crate::components::plugins_view::PluginLeftAppView {
@@ -2416,10 +2416,11 @@ pub fn Chat(
                     community_groups: community_groups.clone(),
                     on_open_server_settings: move |_| {
                         is_settings_open.set(false);
-                        server_settings_open.set(true);
+                        server_settings_open.set(!server_settings_open());
                     },
+                    is_server_settings_open: server_settings_active,
                     enterprise_config: enterprise_config(),
-                    active_ent_module: active_ent_module(),
+                    active_ent_module: if server_settings_active { None } else { active_ent_module() },
                     on_select_ent_module: move |m: String| {
                         server_settings_open.set(false);
                         selected_channel.set(None);
@@ -2485,7 +2486,7 @@ pub fn Chat(
                     selected_server: selected_server(),
                     server_categories: server_categories(),
                     server_channels: channels(),
-                    selected_channel_id: selected_channel().map(|c| c.id),
+                    selected_channel_id: if server_settings_active { None } else { selected_channel().map(|c| c.id) },
                     active_voice_channel: active_voice_channel(),
                     voice_participants: voice_participants(),
                     is_voice_muted: is_voice_muted(),
@@ -2515,7 +2516,7 @@ pub fn Chat(
                 }
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() && !server_settings_active {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() {
                 div {
                     class: "panel-resizer resizer-left",
                     "data-resizer": "sidebar",
@@ -3109,7 +3110,7 @@ pub fn Chat(
                                                             platform::scroll_chat_to_bottom(true);
                                                         });
                                                     },
-                                                    "# {ch.name}"
+                                                    "# {crate::components::navigation::sidebar::format_display_label(&ch.name)}"
                                                 }
                                             }
                                         }
@@ -3277,7 +3278,7 @@ pub fn Chat(
                                         if ch.channel_type == "voice" { VolumeIcon { size: 20 } } else { HashIcon { size: 20 } }
                                     }
                                     div { class: "chat-header-info",
-                                        h2 { class: "chat-header-title", "{ch.name}" }
+                                        h2 { class: "chat-header-title", "{crate::components::navigation::sidebar::format_display_label(&ch.name)}" }
                                         if let Some(srv) = selected_server() {
                                             span { class: "chat-header-meta", "{srv.name}" }
                                         }
@@ -3357,7 +3358,7 @@ pub fn Chat(
                                         MessageList {
                                             messages: channel_view.clone(),
                                             show_sender_names: true,
-                                            intro_title: format!("Chào mừng đến #{}", ch.name),
+                                            intro_title: format!("Chào mừng đến #{}", crate::components::navigation::sidebar::format_display_label(&ch.name)),
                                             intro_sub: "Đây là khởi đầu của kênh. Tin nhắn kênh cộng đồng được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.".to_string(),
                                             highlight_id: highlight_msg(),
                                             on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
@@ -3370,13 +3371,13 @@ pub fn Chat(
                                     input_id: "channel-chat-input".to_string(),
                                     value: channel_input(),
                                     placeholder: if selected_server().is_some_and(|s| s.is_enterprise) {
-                                        format!("Nhắn tin tới #{} (gõ / để dùng lệnh doanh nghiệp)", ch.name)
+                                        format!("Nhắn tin tới #{} (gõ / để dùng lệnh doanh nghiệp)", crate::components::navigation::sidebar::format_display_label(&ch.name))
                                     } else {
-                                        format!("Nhắn tin tới #{}", ch.name)
+                                        format!("Nhắn tin tới #{}", crate::components::navigation::sidebar::format_display_label(&ch.name))
                                     },
                                     extra_commands: if selected_server().is_some_and(|s| s.is_enterprise) {
                                         vec![
-                                            ("".into(), "svg:workspace".into(), "/workspace".into(), "Mở bảng Tổng quan Không gian Doanh nghiệp".into()),
+                                            ("".into(), "svg:workspace".into(), "/workspace".into(), "Mở tổng quan không gian doanh nghiệp".into()),
                                             ("".into(), "svg:task".into(), "/task".into(), "Tạo công việc mới: /task <tiêu đề công việc>".into()),
                                             ("".into(), "svg:checkin".into(), "/checkin".into(), "Chấm công vào ca làm việc: /checkin [ghi chú]".into()),
                                             ("".into(), "svg:checkout".into(), "/checkout".into(), "Chấm công tan ca làm việc: /checkout [ghi chú]".into()),
@@ -3404,7 +3405,7 @@ pub fn Chat(
                                         div { class: "voice-room-stage",
                                             div { class: "empty-state-icon", VolumeIcon { size: 28 } }
                                             div {
-                                                div { class: "voice-room-title", "{ch.name}" }
+                                                div { class: "voice-room-title", "{crate::components::navigation::sidebar::format_display_label(&ch.name)}" }
                                                 div { class: "voice-room-sub",
                                                     if connected { "Bạn đang ở trong kênh thoại" } else { "Bạn chưa tham gia kênh thoại này" }
                                                 }

@@ -1,7 +1,4 @@
-//! Community server settings page (matching App Settings full-page two-pane layout):
-//! overview (banner, public listing, search-engine indexing, enterprise mode),
-//! roles with permission bits, members, welcome & rules, expressions, audit log,
-//! and enterprise settings.
+//! Community server settings view rendered inside the main chat stage while keeping the left server sidebar intact.
 
 use dioxus::prelude::*;
 use serde_json::json;
@@ -11,9 +8,9 @@ use crate::{
         avatar::Avatar,
         enterprise::settings::EnterpriseSettingsPanel,
         icons::{
-            BackIcon, BookIcon, BuildingIcon, ChevronRightIcon, DownloadIcon, FileTextIcon,
-            FriendsIcon, GlobeIcon, ImageIcon, PlusIcon, RefreshIcon, SearchIcon, ShieldIcon,
-            TrashIcon,
+            BackIcon, BookIcon, BriefcaseIcon, BuildingIcon, CalendarIcon, ChevronRightIcon,
+            ClipboardCheckIcon, DownloadIcon, FileTextIcon, FriendsIcon, GlobeIcon, ImageIcon,
+            ListChecksIcon, LockIcon, PlusIcon, SearchIcon, ShieldIcon, SlidersIcon, TrashIcon,
         },
         navigation::conversations::LABEL_COLORS,
     },
@@ -41,7 +38,7 @@ pub const MANAGE_EXPRESSIONS: i64 = 1 << 10;
 pub const PERMS: [(i64, &str, &str); 11] = [
     (VIEW_CHANNELS, "Xem kênh", "Thấy các kênh và đọc tin nhắn"),
     (SEND_MESSAGES, "Gửi tin nhắn", "Nhắn tin trong các kênh văn bản"),
-    (MENTION_EVERYONE, "Nhắc @everyone và @here", "Gửi tin nhắn có @everyone hoặc @here"),
+    (MENTION_EVERYONE, "Nhắc mọi người", "Gửi tin nhắn có nhắc hàng loạt"),
     (CONNECT_VOICE, "Vào kênh thoại", "Tham gia kênh thoại và gọi trong cộng đồng"),
     (CREATE_INVITES, "Tạo lời mời", "Tạo liên kết và thẻ mời bạn bè"),
     (MANAGE_CHANNELS, "Quản lý kênh", "Tạo, sửa, xóa kênh và danh mục"),
@@ -49,15 +46,15 @@ pub const PERMS: [(i64, &str, &str); 11] = [
     (MANAGE_ROLES, "Quản lý vai trò", "Tạo vai trò và gán vai trò thấp hơn quyền của mình"),
     (MANAGE_SERVER, "Quản lý cộng đồng", "Đổi cài đặt chung của cộng đồng"),
     (MANAGE_EXPRESSIONS, "Quản lý biểu cảm", "Thêm, xóa emoji và sticker của cộng đồng"),
-    (ADMINISTRATOR, "Quản trị viên", "Toàn quyền. Chỉ cấp cho người thật sự tin tưởng"),
+    (ADMINISTRATOR, "Quản trị viên", "Toàn quyền trong cộng đồng"),
 ];
 
 fn role_error(code: &str) -> &'static str {
     match code {
         "cannot_grant_missing_permissions" => "Bạn không thể cấp hoặc thu hồi quyền mà chính bạn không có",
         "insufficient_permissions" => "Bạn không có quyền làm việc này",
-        "cannot_delete_everyone" => "Không thể xóa vai trò @everyone",
-        "cannot_rename_everyone" => "Không thể đổi tên vai trò @everyone",
+        "cannot_delete_everyone" => "Không thể xóa vai trò này",
+        "cannot_rename_everyone" => "Không thể đổi tên vai trò này",
         "invalid_role_name" => "Tên vai trò từ 1 đến 32 ký tự",
         "cannot_kick_owner" => "Không thể mời chủ sở hữu ra",
         "cannot_kick_administrator" => "Chỉ chủ sở hữu mới mời được quản trị viên ra",
@@ -68,22 +65,62 @@ fn role_error(code: &str) -> &'static str {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Overview,
-    Roles,
-    Members,
     Welcome,
     Expressions,
+    Roles,
+    Members,
     Audit,
-    Enterprise,
+    EntGeneral,
+    EntHr,
+    EntWork,
+    EntTime,
+    EntDocs,
+    EntSecurity,
+    EntAudit,
 }
 
-const NAV: [(&str, Tab, &str); 7] = [
+impl Tab {
+    fn is_enterprise(self) -> bool {
+        matches!(
+            self,
+            Self::EntGeneral
+                | Self::EntHr
+                | Self::EntWork
+                | Self::EntTime
+                | Self::EntDocs
+                | Self::EntSecurity
+                | Self::EntAudit
+        )
+    }
+
+    fn ent_section(self) -> Option<&'static str> {
+        match self {
+            Self::EntGeneral => Some("general"),
+            Self::EntHr => Some("hr"),
+            Self::EntWork => Some("work"),
+            Self::EntTime => Some("time"),
+            Self::EntDocs => Some("docs"),
+            Self::EntSecurity => Some("security"),
+            Self::EntAudit => Some("advanced"),
+            _ => None,
+        }
+    }
+}
+
+const NAV: [(&str, Tab, &str); 13] = [
     ("Cộng đồng", Tab::Overview, "Tổng quan"),
-    ("Cộng đồng", Tab::Welcome, "Chào mừng và nội quy"),
-    ("Cộng đồng", Tab::Expressions, "Emoji và Sticker"),
-    ("Quản lý", Tab::Roles, "Vai trò và quyền"),
+    ("Cộng đồng", Tab::Welcome, "Chào mừng"),
+    ("Cộng đồng", Tab::Expressions, "Biểu cảm"),
+    ("Quản lý", Tab::Roles, "Vai trò"),
     ("Quản lý", Tab::Members, "Thành viên"),
-    ("Quản lý", Tab::Audit, "Nhật ký kiểm duyệt"),
-    ("Doanh nghiệp", Tab::Enterprise, "Doanh nghiệp"),
+    ("Quản lý", Tab::Audit, "Kiểm duyệt"),
+    ("Doanh nghiệp", Tab::EntGeneral, "Thiết lập"),
+    ("Doanh nghiệp", Tab::EntHr, "Nhân sự"),
+    ("Doanh nghiệp", Tab::EntWork, "Công việc"),
+    ("Doanh nghiệp", Tab::EntTime, "Chấm công"),
+    ("Doanh nghiệp", Tab::EntDocs, "Phê duyệt"),
+    ("Doanh nghiệp", Tab::EntSecurity, "Bảo mật"),
+    ("Doanh nghiệp", Tab::EntAudit, "Kiểm toán"),
 ];
 
 fn tab_label(t: Tab) -> &'static str {
@@ -93,24 +130,36 @@ fn tab_label(t: Tab) -> &'static str {
 fn tab_keywords(t: Tab) -> &'static str {
     match t {
         Tab::Overview => "tong quan cong khai tim kiem google doanh nghiep anh bia banner",
-        Tab::Roles => "vai tro quyen admin quan tri vien permissions role",
-        Tab::Members => "thanh vien member kick gan vai tro",
         Tab::Welcome => "chao mung noi quy welcome rules",
         Tab::Expressions => "emoji sticker bieu cam tuy chinh",
-        Tab::Audit => "nhat ky kiem duyet audit log lich su",
-        Tab::Enterprise => "doanh nghiep workspace phong ban nhan su cau hinh",
+        Tab::Roles => "vai tro quyen admin quan tri vien permissions role",
+        Tab::Members => "thanh vien member kick gan vai tro",
+        Tab::Audit => "kiem duyet audit log lich su",
+        Tab::EntGeneral => "thiet lap chung giao dien thanh ben mui gio website",
+        Tab::EntHr => "nhan su ma nhan vien khach moi nghi viec",
+        Tab::EntWork => "cong viec du an kenh nhac han duyet",
+        Tab::EntTime => "cham cong nghi phep gio vao ca tan ca",
+        Tab::EntDocs => "phe duyet tai lieu thong bao han muc quota",
+        Tab::EntSecurity => "bao mat rieng tu mfa hai buoc ai vico",
+        Tab::EntAudit => "kiem toan bao toan du lieu xuat csv json",
     }
 }
 
 fn tab_icon(t: Tab) -> Element {
     match t {
         Tab::Overview => rsx! { GlobeIcon { size: 18 } },
-        Tab::Roles => rsx! { ShieldIcon { size: 18 } },
-        Tab::Members => rsx! { FriendsIcon { size: 18 } },
         Tab::Welcome => rsx! { BookIcon { size: 18 } },
         Tab::Expressions => rsx! { ImageIcon { size: 18 } },
+        Tab::Roles => rsx! { ShieldIcon { size: 18 } },
+        Tab::Members => rsx! { FriendsIcon { size: 18 } },
         Tab::Audit => rsx! { FileTextIcon { size: 18 } },
-        Tab::Enterprise => rsx! { BuildingIcon { size: 18 } },
+        Tab::EntGeneral => rsx! { SlidersIcon { size: 18 } },
+        Tab::EntHr => rsx! { BriefcaseIcon { size: 18 } },
+        Tab::EntWork => rsx! { ListChecksIcon { size: 18 } },
+        Tab::EntTime => rsx! { CalendarIcon { size: 18 } },
+        Tab::EntDocs => rsx! { ClipboardCheckIcon { size: 18 } },
+        Tab::EntSecurity => rsx! { LockIcon { size: 18 } },
+        Tab::EntAudit => rsx! { BuildingIcon { size: 18 } },
     }
 }
 
@@ -165,7 +214,14 @@ pub fn ServerSettingsView(
     let can_kick = bits & KICK_MEMBERS != 0;
     let is_ent = settings().as_ref().map(|s| s.is_enterprise).unwrap_or(server.is_enterprise);
     let can_ent_settings = is_owner || (ent_bits & ((1 << 16) | (1 << 15)) != 0);
-    let show_enterprise_tab = is_ent && can_ent_settings;
+    let show_enterprise_tabs = is_ent && can_ent_settings;
+
+    let active_tab = if tab().is_enterprise() && !show_enterprise_tabs {
+        Tab::Overview
+    } else {
+        tab()
+    };
+
     let editing_role = editing().and_then(|id| roles.read().iter().find(|r| r.id == id).cloned());
 
     let query_folded = crate::components::composer::fold(nav_query().trim());
@@ -173,7 +229,7 @@ pub fn ServerSettingsView(
         .iter()
         .copied()
         .filter(|(_, t, label)| {
-            if *t == Tab::Enterprise && !show_enterprise_tab {
+            if t.is_enterprise() && !show_enterprise_tabs {
                 return false;
             }
             query_folded.is_empty()
@@ -193,49 +249,22 @@ pub fn ServerSettingsView(
             class: "main-stage server-settings-stage",
             tabindex: "-1",
             onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()); },
-            header { class: "chat-header",
-                button {
-                    r#type: "button",
-                    class: "icon-btn",
-                    aria_label: "Quay lại cộng đồng",
-                    onclick: move |_| {
-                        spawn(async move {
-                            if has_detail() && platform::get_viewport_width().await < 768 {
-                                has_detail.set(false);
-                            } else {
-                                on_close.call(());
-                            }
-                        });
-                    },
-                    BackIcon {}
-                }
-                Avatar { name: server.name.clone(), avatar_url: server.icon_url.clone(), size: 28 }
-                h2 { class: "chat-header-title", "Cài đặt cộng đồng · {server.name}" }
-                div { class: "chat-header-spacer" }
-                button {
-                    r#type: "button",
-                    class: "btn-ghost",
-                    onclick: move |_| reload(),
-                    RefreshIcon { size: 15 }
-                    span { "Tải lại" }
-                }
-                button {
-                    r#type: "button",
-                    class: "btn-primary",
-                    onclick: move |_| on_close.call(()),
-                    "Xong"
-                }
-            }
-
             div { class: if has_detail() { "settings-page has-detail" } else { "settings-page" },
                 // Left Settings Nav
-                nav { class: "settings-nav", aria_label: "Danh mục cài đặt cộng đồng",
+                nav { class: "settings-nav", aria_label: "Danh mục cài đặt",
+                    button {
+                        r#type: "button",
+                        class: "settings-nav-item only-mobile",
+                        onclick: move |_| on_close.call(()),
+                        BackIcon { size: 18 }
+                        span { "Quay lại" }
+                    }
                     div { class: "settings-search search-field",
                         SearchIcon { size: 16 }
                         input {
                             r#type: "search",
                             placeholder: "Tìm cài đặt",
-                            aria_label: "Tìm cài đặt cộng đồng",
+                            aria_label: "Tìm cài đặt",
                             value: "{nav_query}",
                             oninput: move |e| nav_query.set(e.value()),
                             onkeydown: {
@@ -261,8 +290,8 @@ pub fn ServerSettingsView(
 
                         button {
                             r#type: "button",
-                            class: if tab() == t { "settings-nav-item active" } else { "settings-nav-item" },
-                            aria_current: if tab() == t { "page" } else { "false" },
+                            class: if active_tab == t { "settings-nav-item active" } else { "settings-nav-item" },
+                            aria_current: if active_tab == t { "page" } else { "false" },
                             onclick: move |_| { tab.set(t); has_detail.set(true); },
                             {tab_icon(t)}
                             span { "{label}" }
@@ -276,7 +305,7 @@ pub fn ServerSettingsView(
                             class: "settings-nav-item",
                             onclick: move |_| on_close.call(()),
                             BackIcon { size: 18 }
-                            span { "Quay lại cộng đồng" }
+                            span { "Quay lại" }
                         }
                     }
                 }
@@ -284,366 +313,346 @@ pub fn ServerSettingsView(
                 div {
                     class: "panel-resizer",
                     "data-resizer": "settings-nav",
-                    title: "Kéo để thay đổi kích thước danh mục",
+                    title: "Kéo để thay đổi kích thước",
                 }
 
                 // Right Settings Body
                 div { class: "settings-body",
                     div { class: "settings-content wide",
-                        div {
-                            h1 { class: "settings-page-title", "{tab_label(tab())}" }
+                        div { style: "display: flex; align-items: center; gap: var(--space-2);",
+                            button {
+                                r#type: "button",
+                                class: "icon-btn only-mobile",
+                                aria_label: "Quay lại danh mục",
+                                onclick: move |_| has_detail.set(false),
+                                BackIcon {}
+                            }
+                            h1 { class: "settings-page-title", "{tab_label(active_tab)}" }
                         }
 
                         if let Some((is_err, m)) = msg() {
                             div { class: if is_err { "status-badge error" } else { "status-badge success" }, role: "status", "{m}" }
                         }
 
-                        match tab() {
-                            Tab::Enterprise => {
+                        if let Some(ent_sec) = active_tab.ent_section() {
+                            {
                                 let reload_ent = reload.clone();
                                 rsx! {
-                                    if is_ent {
-                                        EnterpriseSettingsPanel {
-                                            server_id: sid.clone(),
-                                            on_changed: move |_| {
-                                                reload_ent();
-                                                if let Some(h) = on_enterprise_changed { h.call(()); }
-                                            },
-                                        }
-                                    } else {
-                                        div { class: "settings-group",
-                                            div { class: "settings-list",
-                                                div { class: "settings-row",
-                                                    span { class: "settings-label", "Chế độ doanh nghiệp hiện đang tắt." }
-                                                }
-                                            }
-                                        }
+                                    EnterpriseSettingsPanel {
+                                        key: "{ent_sec}",
+                                        server_id: sid.clone(),
+                                        active_section: Some(ent_sec),
+                                        on_changed: move |_| {
+                                            reload_ent();
+                                            if let Some(h) = on_enterprise_changed { h.call(()); }
+                                        },
                                     }
                                 }
-                            },
-                            Tab::Overview => rsx! {
-                                if let Some(st) = settings() {
-                                    {
-                                        let (s1, s2, s3, s4, s5) = (sid.clone(), sid.clone(), sid.clone(), sid.clone(), sid.clone());
-                                        let mode_sub = if st.is_enterprise {
-                                            if st.is_public { "Không gian doanh nghiệp · Công khai" } else { "Không gian doanh nghiệp" }
-                                        } else if st.is_public {
-                                            "Cộng đồng công khai"
-                                        } else {
-                                            "Cộng đồng riêng tư"
-                                        };
-                                        rsx! {
-                                            div { class: "settings-profile-card",
-                                                div { class: "settings-profile-banner", style: "{banner_bg}" }
-                                                div { class: "settings-profile-main",
-                                                    div { class: "settings-avatar-wrapper",
-                                                        Avatar {
-                                                            name: server.name.clone(),
-                                                            avatar_url: server.icon_url.clone(),
-                                                            size: 72,
+                            }
+                        } else {
+                            match active_tab {
+                                Tab::Overview => rsx! {
+                                    if let Some(st) = settings() {
+                                        {
+                                            let (s1, s2, s3, s4, s5) = (sid.clone(), sid.clone(), sid.clone(), sid.clone(), sid.clone());
+                                            let mode_sub = if st.is_enterprise {
+                                                if st.is_public { "Doanh nghiệp công khai" } else { "Doanh nghiệp" }
+                                            } else if st.is_public {
+                                                "Cộng đồng công khai"
+                                            } else {
+                                                "Cộng đồng riêng tư"
+                                            };
+                                            rsx! {
+                                                div { class: "settings-profile-card",
+                                                    div { class: "settings-profile-banner", style: "{banner_bg}" }
+                                                    div { class: "settings-profile-main",
+                                                        div { class: "settings-avatar-wrapper",
+                                                            Avatar {
+                                                                name: server.name.clone(),
+                                                                avatar_url: server.icon_url.clone(),
+                                                                size: 72,
+                                                            }
+                                                        }
+                                                        div { class: "settings-profile-info",
+                                                            div { class: "settings-profile-name", "{server.name}" }
+                                                            div { class: "settings-profile-sub", "{mode_sub}" }
+                                                        }
+                                                        if is_owner {
+                                                            div { class: "settings-profile-action",
+                                                                input {
+                                                                    id: "srv-banner-file",
+                                                                    r#type: "file",
+                                                                    accept: "image/png,image/jpeg,image/webp,image/avif",
+                                                                    style: "display: none;",
+                                                                    onchange: move |_| {
+                                                                        let s = s3.clone();
+                                                                        spawn(async move {
+                                                                            if let Ok((bytes, mime)) = platform::read_selected_file_raw("srv-banner-file").await {
+                                                                                match crate::services::library::upload_media(bytes, &mime).await {
+                                                                                    Ok(url) => match social::server_settings_set(&s, json!({ "banner_url": url })).await {
+                                                                                        Ok(n) => {
+                                                                                            settings.set(Some(n));
+                                                                                            msg.set(Some((false, "Đã cập nhật ảnh bìa".into())));
+                                                                                        }
+                                                                                        Err(_) => msg.set(Some((true, "Không lưu được ảnh bìa".into()))),
+                                                                                    },
+                                                                                    Err(_) => msg.set(Some((true, "Không tải ảnh bìa lên được".into()))),
+                                                                                }
+                                                                            }
+                                                                        });
+                                                                    },
+                                                                }
+                                                                label {
+                                                                    r#for: "srv-banner-file",
+                                                                    class: "btn-avatar-upload",
+                                                                    role: "button",
+                                                                    tabindex: "0",
+                                                                    "Đổi ảnh bìa"
+                                                                }
+                                                            }
                                                         }
                                                     }
-                                                    div { class: "settings-profile-info",
-                                                        div { class: "settings-profile-name", "{server.name}" }
-                                                        div { class: "settings-profile-sub", "{mode_sub}" }
-                                                    }
-                                                    if is_owner {
-                                                        div { class: "settings-profile-action",
+                                                }
+
+                                                div { class: "settings-group",
+                                                    h2 { class: "settings-group-title", "Thiết lập cộng đồng" }
+                                                    div { class: "settings-list",
+                                                        label { class: "settings-row toggle-row",
+                                                            span { class: "grow", span { class: "settings-label", "Cộng đồng công khai" } }
                                                             input {
-                                                                id: "srv-banner-file",
-                                                                r#type: "file",
-                                                                accept: "image/png,image/jpeg,image/webp,image/avif",
-                                                                style: "display: none;",
-                                                                onchange: move |_| {
-                                                                    let s = s3.clone();
+                                                                r#type: "checkbox",
+                                                                class: "switch",
+                                                                checked: st.is_public,
+                                                                disabled: !is_owner,
+                                                                onchange: move |e| {
+                                                                    let s = s1.clone();
+                                                                    let v = e.checked();
                                                                     spawn(async move {
-                                                                        if let Ok((bytes, mime)) = platform::read_selected_file_raw("srv-banner-file").await {
-                                                                            match crate::services::library::upload_media(bytes, &mime).await {
-                                                                                Ok(url) => match social::server_settings_set(&s, json!({ "banner_url": url })).await {
-                                                                                    Ok(n) => {
-                                                                                        settings.set(Some(n));
-                                                                                        msg.set(Some((false, "Đã cập nhật ảnh bìa cộng đồng".into())));
-                                                                                    }
-                                                                                    Err(_) => msg.set(Some((true, "Không lưu được ảnh bìa".into()))),
-                                                                                },
-                                                                                Err(_) => msg.set(Some((true, "Không tải ảnh bìa lên được".into()))),
-                                                                            }
+                                                                        match social::server_settings_set(&s, json!({ "is_public": v })).await {
+                                                                            Ok(n) => settings.set(Some(n)),
+                                                                            Err(_) => msg.set(Some((true, "Không lưu được".into()))),
                                                                         }
                                                                     });
                                                                 },
                                                             }
-                                                            label {
-                                                                r#for: "srv-banner-file",
-                                                                class: "btn-avatar-upload",
-                                                                role: "button",
-                                                                tabindex: "0",
-                                                                "Đổi ảnh bìa"
-                                                            }
                                                         }
-                                                    }
-                                                }
-                                            }
-
-                                            div { class: "settings-group",
-                                                h2 { class: "settings-group-title", "Thiết lập cộng đồng" }
-                                                div { class: "settings-list",
-                                                    label { class: "settings-row toggle-row",
-                                                        span { class: "grow",
-                                                            span { class: "settings-label", "Cộng đồng công khai" }
-                                                            span { class: "settings-row-desc",
-                                                                match (st.is_public, st.verification_status.as_str()) {
-                                                                    (false, _) => "Chỉ người có liên kết mời mới tham gia được",
-                                                                    (true, "verified") => "Đã xác minh · hiện trong Tìm kiếm, ai cũng tham gia được",
-                                                                    (true, "rejected") => "Bị từ chối xác minh",
-                                                                    _ => "Đang chờ đội ngũ ChatW xác minh",
-                                                                }
-                                                            }
-                                                        }
-                                                        input {
-                                                            r#type: "checkbox",
-                                                            class: "switch",
-                                                            checked: st.is_public,
-                                                            disabled: !is_owner,
-                                                            onchange: move |e| {
-                                                                let s = s1.clone();
-                                                                let v = e.checked();
-                                                                spawn(async move {
-                                                                    match social::server_settings_set(&s, json!({ "is_public": v })).await {
-                                                                        Ok(n) => settings.set(Some(n)),
-                                                                        Err(_) => msg.set(Some((true, "Không lưu được".into()))),
-                                                                    }
-                                                                });
-                                                            },
-                                                        }
-                                                    }
-                                                    label { class: "settings-row toggle-row",
-                                                        span { class: "grow",
-                                                            span { class: "settings-label", "Cho phép Google và công cụ tìm kiếm hiển thị" }
-                                                            span { class: "settings-row-desc", "Trang công khai của cộng đồng đã xác minh hiển thị tin nhắn được ghim và tin nhắn mới trong các kênh văn bản để công cụ tìm kiếm lập chỉ mục" }
-                                                        }
-                                                        input {
-                                                            r#type: "checkbox",
-                                                            class: "switch",
-                                                            checked: st.public_index,
-                                                            disabled: !is_owner || !st.is_public,
-                                                            onchange: move |e| {
-                                                                let s = s2.clone();
-                                                                let v = e.checked();
-                                                                spawn(async move {
-                                                                    match social::server_settings_set(&s, json!({ "public_index": v })).await {
-                                                                        Ok(n) => settings.set(Some(n)),
-                                                                        Err(_) => msg.set(Some((true, "Không lưu được".into()))),
-                                                                    }
-                                                                });
-                                                            },
-                                                        }
-                                                    }
-                                                    label { class: "settings-row toggle-row",
-                                                        span { class: "grow",
-                                                            span { class: "settings-label", "Chế độ doanh nghiệp" }
-                                                            span { class: "ent-switch-desc",
-                                                                if st.is_enterprise && st.retention_locked {
-                                                                    "Đang bật khóa bảo toàn dữ liệu doanh nghiệp. Không thể tắt khi chính sách lưu trữ còn hiệu lực."
-                                                                } else {
-                                                                    "Bổ sung công cụ quản lý và làm việc dành cho doanh nghiệp."
-                                                                }
-                                                            }
-                                                        }
-                                                        input {
-                                                            r#type: "checkbox",
-                                                            class: "switch",
-                                                            checked: st.is_enterprise,
-                                                            disabled: !is_owner || (st.is_enterprise && st.retention_locked),
-                                                            onchange: move |e| {
-                                                                let next = e.checked();
-                                                                if !next {
-                                                                    confirm_disable_ent.set(true);
-                                                                    return;
-                                                                }
-                                                                let s = s4.clone();
-                                                                spawn(async move {
-                                                                    match social::server_settings_set(&s, json!({ "is_enterprise": true })).await {
-                                                                        Ok(n) => {
-                                                                            settings.set(Some(n));
-                                                                            msg.set(Some((false, "Đã bật chế độ doanh nghiệp".into())));
-                                                                            if let Some(h) = on_enterprise_changed { h.call(()); }
-                                                                        }
-                                                                        Err(err) => msg.set(Some((true, format!("Không bật được: {}", err.code)))),
-                                                                    }
-                                                                });
-                                                            },
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            if confirm_disable_ent() && st.is_enterprise {
-                                                div { class: "ent-card",
-                                                    p { class: "settings-row-desc", "Xác nhận tắt chế độ doanh nghiệp? Dữ liệu nhân sự, công việc và tài liệu vẫn được giữ nguyên an toàn và không bị xóa." }
-                                                    div { class: "inline-form",
-                                                        button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_disable_ent.set(false), "Giữ lại" }
-                                                        a { class: "btn-secondary", href: "{export_all_json_url(&s5)}", download: "enterprise-export.json", DownloadIcon { size: 14 } " Xuất dữ liệu JSON" }
-                                                        button {
-                                                            r#type: "button",
-                                                            class: "btn-danger-outline",
-                                                            onclick: {
-                                                                let s = s5.clone();
-                                                                move |_| {
-                                                                    let s = s.clone();
+                                                        label { class: "settings-row toggle-row",
+                                                            span { class: "grow", span { class: "settings-label", "Hiển thị trên tìm kiếm" } }
+                                                            input {
+                                                                r#type: "checkbox",
+                                                                class: "switch",
+                                                                checked: st.public_index,
+                                                                disabled: !is_owner || !st.is_public,
+                                                                onchange: move |e| {
+                                                                    let s = s2.clone();
+                                                                    let v = e.checked();
                                                                     spawn(async move {
-                                                                        match social::server_settings_set(&s, json!({ "is_enterprise": false })).await {
-                                                                            Ok(n) => {
-                                                                                confirm_disable_ent.set(false);
-                                                                                settings.set(Some(n));
-                                                                                msg.set(Some((false, "Đã tắt chế độ doanh nghiệp; dữ liệu cũ vẫn được bảo toàn".into())));
-                                                                                if let Some(h) = on_enterprise_changed { h.call(()); }
-                                                                            }
-                                                                            Err(err) => {
-                                                                                confirm_disable_ent.set(false);
-                                                                                msg.set(Some((true, if err.code == "retention_locked" { "Không thể tắt vì đang bật khóa bảo toàn dữ liệu".into() } else { format!("Lỗi: {}", err.code) })));
-                                                                            }
+                                                                        match social::server_settings_set(&s, json!({ "public_index": v })).await {
+                                                                            Ok(n) => settings.set(Some(n)),
+                                                                            Err(_) => msg.set(Some((true, "Không lưu được".into()))),
                                                                         }
                                                                     });
-                                                                }
-                                                            },
-                                                            "Xác nhận tắt"
+                                                                },
+                                                            }
+                                                        }
+                                                        label { class: "settings-row toggle-row",
+                                                            span { class: "grow", span { class: "settings-label", "Chế độ doanh nghiệp" } }
+                                                            input {
+                                                                r#type: "checkbox",
+                                                                class: "switch",
+                                                                checked: st.is_enterprise,
+                                                                disabled: !is_owner || (st.is_enterprise && st.retention_locked),
+                                                                onchange: move |e| {
+                                                                    let next = e.checked();
+                                                                    if !next {
+                                                                        confirm_disable_ent.set(true);
+                                                                        return;
+                                                                    }
+                                                                    let s = s4.clone();
+                                                                    spawn(async move {
+                                                                        match social::server_settings_set(&s, json!({ "is_enterprise": true })).await {
+                                                                            Ok(n) => {
+                                                                                settings.set(Some(n));
+                                                                                msg.set(Some((false, "Đã bật chế độ doanh nghiệp".into())));
+                                                                                if let Some(h) = on_enterprise_changed { h.call(()); }
+                                                                            }
+                                                                            Err(err) => msg.set(Some((true, format!("Không bật được: {}", err.code)))),
+                                                                        }
+                                                                    });
+                                                                },
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                if confirm_disable_ent() && st.is_enterprise {
+                                                    div { class: "ent-card",
+                                                        p { class: "settings-row-desc", "Xác nhận tắt chế độ doanh nghiệp? Dữ liệu vẫn được giữ nguyên an toàn." }
+                                                        div { class: "inline-form",
+                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_disable_ent.set(false), "Giữ lại" }
+                                                            a { class: "btn-secondary", href: "{export_all_json_url(&s5)}", download: "enterprise-export.json", DownloadIcon { size: 14 } " Xuất dữ liệu JSON" }
+                                                            button {
+                                                                r#type: "button",
+                                                                class: "btn-danger-outline",
+                                                                onclick: {
+                                                                    let s = s5.clone();
+                                                                    move |_| {
+                                                                        let s = s.clone();
+                                                                        spawn(async move {
+                                                                            match social::server_settings_set(&s, json!({ "is_enterprise": false })).await {
+                                                                                Ok(n) => {
+                                                                                    confirm_disable_ent.set(false);
+                                                                                    settings.set(Some(n));
+                                                                                    msg.set(Some((false, "Đã tắt chế độ doanh nghiệp".into())));
+                                                                                    if let Some(h) = on_enterprise_changed { h.call(()); }
+                                                                                }
+                                                                                Err(err) => {
+                                                                                    confirm_disable_ent.set(false);
+                                                                                    msg.set(Some((true, if err.code == "retention_locked" { "Đang khóa bảo toàn dữ liệu".into() } else { format!("Lỗi: {}", err.code) })));
+                                                                                }
+                                                                            }
+                                                                        });
+                                                                    }
+                                                                },
+                                                                "Xác nhận tắt"
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                }
-                            },
-                            Tab::Roles => rsx! {
-                                div { class: "role-layout",
-                                    div { class: "role-list",
-                                        for r in roles() {
-                                            {
-                                                let id = r.id.clone();
-                                                rsx! {
-                                                    button {
-                                                        key: "{r.id}",
-                                                        r#type: "button",
-                                                        class: if editing().as_deref() == Some(r.id.as_str()) { "role-item active" } else { "role-item" },
-                                                        onclick: move |_| editing.set(Some(id.clone())),
-                                                        span { class: "label-dot", style: "--label: {r.color};" }
-                                                        span { class: "grow", "{r.name}" }
+                                },
+                                Tab::Roles => rsx! {
+                                    div { class: "role-layout",
+                                        div { class: "role-list",
+                                            for r in roles() {
+                                                {
+                                                    let id = r.id.clone();
+                                                    rsx! {
+                                                        button {
+                                                            key: "{r.id}",
+                                                            r#type: "button",
+                                                            class: if editing().as_deref() == Some(r.id.as_str()) { "role-item active" } else { "role-item" },
+                                                            onclick: move |_| editing.set(Some(id.clone())),
+                                                            span { class: "label-dot", style: "--label: {r.color};" }
+                                                            span { class: "grow", "{r.name}" }
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
-                                        if can_roles {
-                                            button {
-                                                r#type: "button",
-                                                class: "btn-secondary",
-                                                onclick: {
-                                                    let s = sid.clone();
-                                                    move |_| {
-                                                        let s = s.clone();
-                                                        spawn(async move {
-                                                            let n = roles.read().len();
-                                                            match social::server_role_create(&s, &format!("Vai trò {n}"), LABEL_COLORS[n % LABEL_COLORS.len()], VIEW_CHANNELS | SEND_MESSAGES).await {
-                                                                Ok(r) => {
-                                                                    editing.set(Some(r.id.clone()));
-                                                                    roles.with_mut(|l| l.push(r));
+                                            if can_roles {
+                                                button {
+                                                    r#type: "button",
+                                                    class: "btn-secondary",
+                                                    onclick: {
+                                                        let s = sid.clone();
+                                                        move |_| {
+                                                            let s = s.clone();
+                                                            spawn(async move {
+                                                                let n = roles.read().len();
+                                                                match social::server_role_create(&s, &format!("Vai trò {n}"), LABEL_COLORS[n % LABEL_COLORS.len()], VIEW_CHANNELS | SEND_MESSAGES).await {
+                                                                    Ok(r) => {
+                                                                        editing.set(Some(r.id.clone()));
+                                                                        roles.with_mut(|l| l.push(r));
+                                                                    }
+                                                                    Err(e) => msg.set(Some((true, role_error(&e.code).into()))),
                                                                 }
-                                                                Err(e) => msg.set(Some((true, role_error(&e.code).into()))),
-                                                            }
-                                                        });
-                                                    }
+                                                            });
+                                                        }
+                                                    },
+                                                    PlusIcon { size: 16 }
+                                                    " Tạo vai trò"
+                                                }
+                                            }
+                                        }
+                                        if let Some(r) = editing_role {
+                                            RoleEditor {
+                                                key: "{r.id}",
+                                                server_id: sid.clone(),
+                                                role: r.clone(),
+                                                my_bits: bits,
+                                                is_enterprise: is_ent,
+                                                my_ent_bits: ent_bits,
+                                                can_edit: can_roles,
+                                                on_saved: move |nr: ServerRole| {
+                                                    roles.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nr.id) { *x = nr.clone(); });
+                                                    msg.set(Some((false, "Đã lưu vai trò".into())));
                                                 },
-                                                PlusIcon { size: 16 }
-                                                " Tạo vai trò"
+                                                on_deleted: move |id: String| {
+                                                    roles.with_mut(|l| l.retain(|x| x.id != id));
+                                                    editing.set(None);
+                                                },
+                                                on_error: move |code: String| msg.set(Some((true, role_error(&code).into()))),
+                                            }
+                                        } else {
+                                            div { class: "settings-list",
+                                                div { class: "settings-row",
+                                                    span { class: "settings-label", "Chọn một vai trò bên trái để chỉnh sửa" }
+                                                }
                                             }
                                         }
                                     }
-                                    if let Some(r) = editing_role {
-                                        RoleEditor {
-                                            key: "{r.id}",
-                                            server_id: sid.clone(),
-                                            role: r.clone(),
-                                            my_bits: bits,
-                                            is_enterprise: is_ent,
-                                            my_ent_bits: ent_bits,
-                                            can_edit: can_roles,
-                                            on_saved: move |nr: ServerRole| {
-                                                roles.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nr.id) { *x = nr.clone(); });
-                                                msg.set(Some((false, "Đã lưu vai trò".into())));
-                                            },
-                                            on_deleted: move |id: String| {
-                                                roles.with_mut(|l| l.retain(|x| x.id != id));
-                                                editing.set(None);
-                                            },
-                                            on_error: move |code: String| msg.set(Some((true, role_error(&code).into()))),
-                                        }
-                                    } else {
+                                },
+                                Tab::Welcome => rsx! {
+                                    div { class: "settings-group",
+                                        crate::components::community_ui::WelcomeEditor { server_id: server.id.clone() }
+                                    }
+                                },
+                                Tab::Expressions => rsx! {
+                                    div { class: "settings-group",
+                                        crate::components::community_ui::ExpressionsManager { server_id: server.id.clone() }
+                                    }
+                                },
+                                Tab::Audit => rsx! {
+                                    div { class: "settings-group",
+                                        crate::components::community_ui::AuditLogView { server_id: server.id.clone() }
+                                    }
+                                },
+                                Tab::Members => rsx! {
+                                    div { class: "settings-group",
+                                        h2 { class: "settings-group-title", "Thành viên ({members.read().len()})" }
                                         div { class: "settings-list",
-                                            div { class: "settings-row",
-                                                span { class: "settings-label", "Chọn một vai trò bên trái để xem và chỉnh sửa quyền" }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            Tab::Welcome => rsx! {
-                                div { class: "settings-group",
-                                    crate::components::community_ui::WelcomeEditor { server_id: server.id.clone() }
-                                }
-                            },
-                            Tab::Expressions => rsx! {
-                                div { class: "settings-group",
-                                    crate::components::community_ui::ExpressionsManager { server_id: server.id.clone() }
-                                }
-                            },
-                            Tab::Audit => rsx! {
-                                div { class: "settings-group",
-                                    crate::components::community_ui::AuditLogView { server_id: server.id.clone() }
-                                }
-                            },
-                            Tab::Members => rsx! {
-                                div { class: "settings-group",
-                                    h2 { class: "settings-group-title", "Danh sách thành viên ({members.read().len()})" }
-                                    div { class: "settings-list",
-                                        for m in members() {
-                                            {
-                                                let is_me = m.user_id == my_id;
-                                                let is_srv_owner = m.user_id == server.owner_id;
-                                                let my_roles: Vec<ServerRole> = roles.read().iter().filter(|r| m.roles.contains(&r.id)).cloned().collect();
-                                                let assignable: Vec<ServerRole> = roles.read().iter().filter(|r| r.name != "@everyone" && !m.roles.contains(&r.id) && r.permissions & !bits == 0).cloned().collect();
-                                                let (s_add, s_kick) = (sid.clone(), sid.clone());
-                                                let (u_add, u_kick) = (m.user_id.clone(), m.user_id.clone());
-                                                rsx! {
-                                                    div { key: "{m.user_id}", class: "member-row",
-                                                        Avatar { name: m.username.clone(), avatar_url: m.avatar_url.clone(), size: 36 }
-                                                        div { class: "grow",
-                                                            div { class: "member-name",
-                                                                "{m.username}"
-                                                                if is_srv_owner { span { class: "member-sub", " · chủ sở hữu" } }
-                                                                if is_me { span { class: "member-sub", " · bạn" } }
-                                                            }
-                                                            div { class: "role-chips",
-                                                                for r in my_roles {
-                                                                    {
-                                                                        let (s, u, rid) = (sid.clone(), m.user_id.clone(), r.id.clone());
-                                                                        rsx! {
-                                                                            span { key: "{r.id}", class: "label-pill", style: "--label: {r.color};",
-                                                                                "{r.name}"
-                                                                                if can_roles && r.permissions & !bits == 0 {
-                                                                                    button {
-                                                                                        r#type: "button",
-                                                                                        class: "chip-x",
-                                                                                        aria_label: "Gỡ vai trò {r.name}",
-                                                                                        onclick: move |_| {
-                                                                                            let (s, u, rid) = (s.clone(), u.clone(), rid.clone());
-                                                                                            spawn(async move {
-                                                                                                match social::server_member_role(&s, &u, &rid, false).await {
-                                                                                                    Ok(_) => members.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.user_id == u) { x.roles.retain(|y| y != &rid); }),
-                                                                                                    Err(e) => msg.set(Some((true, role_error(&e.code).into()))),
-                                                                                                }
-                                                                                            });
-                                                                                        },
-                                                                                        "×"
+                                            for m in members() {
+                                                {
+                                                    let is_me = m.user_id == my_id;
+                                                    let is_srv_owner = m.user_id == server.owner_id;
+                                                    let my_roles: Vec<ServerRole> = roles.read().iter().filter(|r| m.roles.contains(&r.id)).cloned().collect();
+                                                    let assignable: Vec<ServerRole> = roles.read().iter().filter(|r| r.name != "@everyone" && !m.roles.contains(&r.id) && r.permissions & !bits == 0).cloned().collect();
+                                                    let (s_add, s_kick) = (sid.clone(), sid.clone());
+                                                    let (u_add, u_kick) = (m.user_id.clone(), m.user_id.clone());
+                                                    rsx! {
+                                                        div { key: "{m.user_id}", class: "member-row",
+                                                            Avatar { name: m.username.clone(), avatar_url: m.avatar_url.clone(), size: 36 }
+                                                            div { class: "grow",
+                                                                div { class: "member-name",
+                                                                    "{m.username}"
+                                                                    if is_srv_owner { span { class: "member-sub", " · chủ sở hữu" } }
+                                                                    if is_me { span { class: "member-sub", " · bạn" } }
+                                                                }
+                                                                div { class: "role-chips",
+                                                                    for r in my_roles {
+                                                                        {
+                                                                            let (s, u, rid) = (sid.clone(), m.user_id.clone(), r.id.clone());
+                                                                            rsx! {
+                                                                                span { key: "{r.id}", class: "label-pill", style: "--label: {r.color};",
+                                                                                    "{r.name}"
+                                                                                    if can_roles && r.permissions & !bits == 0 {
+                                                                                        button {
+                                                                                            r#type: "button",
+                                                                                            class: "chip-x",
+                                                                                            aria_label: "Gỡ vai trò {r.name}",
+                                                                                            onclick: move |_| {
+                                                                                                let (s, u, rid) = (s.clone(), u.clone(), rid.clone());
+                                                                                                spawn(async move {
+                                                                                                    match social::server_member_role(&s, &u, &rid, false).await {
+                                                                                                        Ok(_) => members.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.user_id == u) { x.roles.retain(|y| y != &rid); }),
+                                                                                                        Err(e) => msg.set(Some((true, role_error(&e.code).into()))),
+                                                                                                    }
+                                                                                                });
+                                                                                            },
+                                                                                            "×"
+                                                                                        }
                                                                                     }
                                                                                 }
                                                                             }
@@ -651,42 +660,42 @@ pub fn ServerSettingsView(
                                                                     }
                                                                 }
                                                             }
-                                                        }
-                                                        if can_roles && !assignable.is_empty() {
-                                                            select {
-                                                                aria_label: "Thêm vai trò cho {m.username}",
-                                                                class: "role-select",
-                                                                onchange: move |e| {
-                                                                    let rid = e.value();
-                                                                    if rid.is_empty() { return; }
-                                                                    let (s, u) = (s_add.clone(), u_add.clone());
-                                                                    spawn(async move {
-                                                                        match social::server_member_role(&s, &u, &rid, true).await {
-                                                                            Ok(_) => members.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.user_id == u) { if !x.roles.contains(&rid) { x.roles.push(rid.clone()); } }),
-                                                                            Err(e) => msg.set(Some((true, role_error(&e.code).into()))),
-                                                                        }
-                                                                    });
-                                                                },
-                                                                option { value: "", "+ Vai trò" }
-                                                                for r in assignable { option { key: "{r.id}", value: "{r.id}", "{r.name}" } }
+                                                            if can_roles && !assignable.is_empty() {
+                                                                select {
+                                                                    aria_label: "Thêm vai trò cho {m.username}",
+                                                                    class: "role-select",
+                                                                    onchange: move |e| {
+                                                                        let rid = e.value();
+                                                                        if rid.is_empty() { return; }
+                                                                        let (s, u) = (s_add.clone(), u_add.clone());
+                                                                        spawn(async move {
+                                                                            match social::server_member_role(&s, &u, &rid, true).await {
+                                                                                Ok(_) => members.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.user_id == u) { if !x.roles.contains(&rid) { x.roles.push(rid.clone()); } }),
+                                                                                Err(e) => msg.set(Some((true, role_error(&e.code).into()))),
+                                                                            }
+                                                                        });
+                                                                    },
+                                                                    option { value: "", "+ Vai trò" }
+                                                                    for r in assignable { option { key: "{r.id}", value: "{r.id}", "{r.name}" } }
+                                                                }
                                                             }
-                                                        }
-                                                        if can_kick && !is_me && !is_srv_owner {
-                                                            button {
-                                                                r#type: "button",
-                                                                class: "icon-btn danger",
-                                                                title: "Mời ra khỏi cộng đồng",
-                                                                aria_label: "Mời {m.username} ra khỏi cộng đồng",
-                                                                onclick: move |_| {
-                                                                    let (s, u) = (s_kick.clone(), u_kick.clone());
-                                                                    spawn(async move {
-                                                                        match social::server_kick(&s, &u).await {
-                                                                            Ok(_) => members.with_mut(|l| l.retain(|x| x.user_id != u)),
-                                                                            Err(e) => msg.set(Some((true, role_error(&e.code).into()))),
-                                                                        }
-                                                                    });
-                                                                },
-                                                                TrashIcon { size: 16 }
+                                                            if can_kick && !is_me && !is_srv_owner {
+                                                                button {
+                                                                    r#type: "button",
+                                                                    class: "icon-btn danger",
+                                                                    title: "Mời ra khỏi cộng đồng",
+                                                                    aria_label: "Mời {m.username} ra khỏi cộng đồng",
+                                                                    onclick: move |_| {
+                                                                        let (s, u) = (s_kick.clone(), u_kick.clone());
+                                                                        spawn(async move {
+                                                                            match social::server_kick(&s, &u).await {
+                                                                                Ok(_) => members.with_mut(|l| l.retain(|x| x.user_id != u)),
+                                                                                Err(e) => msg.set(Some((true, role_error(&e.code).into()))),
+                                                                            }
+                                                                        });
+                                                                    },
+                                                                    TrashIcon { size: 16 }
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -694,8 +703,9 @@ pub fn ServerSettingsView(
                                             }
                                         }
                                     }
-                                }
-                            },
+                                },
+                                Tab::EntGeneral | Tab::EntHr | Tab::EntWork | Tab::EntTime | Tab::EntDocs | Tab::EntSecurity | Tab::EntAudit => rsx! {},
+                            }
                         }
                     }
                 }
