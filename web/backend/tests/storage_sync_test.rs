@@ -1,0 +1,536 @@
+use axum::{
+    body::Body,
+    http::{Request, StatusCode, header},
+};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use image::{DynamicImage, Rgba, RgbaImage, codecs::png::PngEncoder};
+use p256::{
+    SecretKey,
+    ecdsa::SigningKey,
+    elliptic_curve::{rand_core::OsRng, sec1::ToEncodedPoint},
+};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::{sync::Arc, time::Duration};
+use tower::ServiceExt;
+use uuid::Uuid;
+
+use chatw::{
+    attachments, audit,
+    auth::{self, AppState, google::GoogleJwksCache, session::create_session},
+    config::Config,
+    crypto::{self, compute_fingerprint},
+    db, devices_sync, friends, groups, messages, privacy, servers, storage, users,
+    websocket::{self, WsHub},
+};
+
+fn test_config(tag: &str) -> Config {
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgresql://chatw:chatw_dev_password@%2Ftmp%2Fkiyo-pg-run/chatw".into()
+    });
+    Config {
+        database_url,
+        db_max_connections: 5,
+        bind_addr: "127.0.0.1:0".parse().unwrap(),
+        public_origin: "http://localhost:8085".into(),
+        google_client_id: "test-client-id".into(),
+        google_client_secret: "test-client-secret".into(),
+        google_redirect_url: "http://localhost:8085/api/auth/google/callback".into(),
+        session_secret: b"test-session-secret-at-least-32-bytes-long!".to_vec(),
+        session_ttl: Duration::from_secs(3600),
+        cookie_secure: false,
+        static_dir: None,
+        uploads_dir: std::env::temp_dir().join(format!("chatw_spec022_{tag}_{}", Uuid::new_v4().simple())),
+        max_ws_connections: 100,
+        trust_proxy: false,
+        dev_login_enabled: false,
+        google_configured: false,
+    }
+}
+
+async fn build_app(pool: sqlx::PgPool, config: Config) -> (axum::Router, Arc<storage::StorageRegistry>) {
+    let storage_reg = Arc::new(storage::StorageRegistry::from_uploads_dir(&config.uploads_dir));
+    let state = AppState {
+        config: Arc::new(config),
+        db: pool,
+        http_client: reqwest::Client::new(),
+        jwks_cache: Arc::new(tokio::sync::RwLock::new(GoogleJwksCache::new())),
+        ws_hub: Arc::new(WsHub::new(100)),
+        oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        storage: storage_reg.clone(),
+    };
+    let router = axum::Router::new()
+        .nest("/api/auth", auth::routes())
+        .nest("/api/users", users::routes())
+        .nest("/api/keys", crypto::keys::routes().merge(devices_sync::key_backup_routes()))
+        .nest("/api/devices", devices_sync::device_routes())
+        .nest("/api/sync", devices_sync::sync_routes())
+        .nest("/api/recovery", devices_sync::recovery_routes())
+        .nest("/api/storage", storage::router::routes())
+        .nest("/api/friends", friends::routes())
+        .nest("/api/groups", groups::routes())
+        .nest("/api/messages", messages::routes())
+        .nest("/api/attachments", attachments::routes())
+        .nest("/api/audit", audit::routes())
+        .nest("/api/servers", servers::server_routes())
+        .nest("/api/channels", servers::channel_routes())
+        .nest("/api/privacy", privacy::routes())
+        .merge(websocket::routes())
+        .with_state(state);
+    (router, storage_reg)
+}
+
+async fn setup_db() -> sqlx::PgPool {
+    let cfg = test_config("mig");
+    let pool = db::connect(&cfg.database_url, 5).await.expect("connect pg");
+    db::run_migrations(&pool).await.expect("migrations");
+    pool
+}
+
+async fn create_test_user(pool: &sqlx::PgPool, config: &Config, name: &str) -> (Uuid, String, String) {
+    let uid = Uuid::new_v4();
+    let suffix = &Uuid::new_v4().simple().to_string()[..6];
+    let uname = format!("{name}_{suffix}");
+    let norm = uname.to_lowercase();
+    let sub = format!("sub_{uid}");
+    sqlx::query("INSERT INTO users (id, google_sub, username, username_norm) VALUES ($1, $2, $3, $4)")
+        .bind(uid)
+        .bind(&sub)
+        .bind(&uname)
+        .bind(&norm)
+        .execute(pool)
+        .await
+        .expect("insert user");
+    let cookie = create_session(pool, config, uid, Some("Mozilla/5.0 Linux")).await.expect("session");
+    let cookie_kv = cookie.split(';').next().unwrap().to_string();
+    (uid, uname, cookie_kv)
+}
+
+async fn make_friends(pool: &sqlx::PgPool, a: Uuid, b: Uuid) {
+    let (u_a, u_b) = if a < b { (a, b) } else { (b, a) };
+    sqlx::query("INSERT INTO friendships (user_a, user_b) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(u_a)
+        .bind(u_b)
+        .execute(pool)
+        .await
+        .expect("friendship");
+}
+
+async fn req_json(
+    app: &axum::Router,
+    method: &str,
+    uri: &str,
+    cookie: &str,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut b = Request::builder().method(method).uri(uri).header(header::COOKIE, cookie);
+    let body_obj = if let Some(val) = body {
+        b = b.header(header::CONTENT_TYPE, "application/json");
+        Body::from(val.to_string())
+    } else {
+        Body::empty()
+    };
+    let resp = app.clone().oneshot(b.body(body_obj).unwrap()).await.unwrap();
+    let st = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), 32 * 1024 * 1024).await.unwrap();
+    let val = serde_json::from_slice(&bytes).unwrap_or(json!({ "raw": String::from_utf8_lossy(&bytes).to_string() }));
+    (st, val)
+}
+
+async fn req_bytes(
+    app: &axum::Router,
+    method: &str,
+    uri: &str,
+    cookie: &str,
+    ct: &str,
+    bytes: Vec<u8>,
+    extra_headers: &[(&str, &str)],
+) -> (StatusCode, Vec<u8>, axum::http::HeaderMap) {
+    let mut b = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::COOKIE, cookie)
+        .header(header::CONTENT_TYPE, ct);
+    for (k, v) in extra_headers {
+        b = b.header(*k, *v);
+    }
+    let resp = app.clone().oneshot(b.body(Body::from(bytes)).unwrap()).await.unwrap();
+    let st = resp.status();
+    let hdrs = resp.headers().clone();
+    let out = axum::body::to_bytes(resp.into_body(), 32 * 1024 * 1024).await.unwrap().to_vec();
+    (st, out, hdrs)
+}
+
+fn sha_hex(b: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(b);
+    hex::encode(h.finalize())
+}
+
+fn sample_png_bytes(w: u32, h: u32) -> Vec<u8> {
+    let mut img = RgbaImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            img.put_pixel(x, y, Rgba([((x * 3) % 255) as u8, ((y * 5) % 255) as u8, 200, 255]));
+        }
+    }
+    let mut out = Vec::new();
+    DynamicImage::ImageRgba8(img).write_with_encoder(PngEncoder::new(&mut out)).unwrap();
+    out
+}
+
+#[tokio::test]
+async fn scenario_01_to_05_tiers_rbac_idor_and_legacy_compat() {
+    let pool = setup_db().await;
+    let cfg = test_config("s1");
+    let (app, _reg) = build_app(pool.clone(), cfg.clone()).await;
+
+    let (alice, _, c_alice) = create_test_user(&pool, &cfg, "alice").await;
+    let (bob, _, c_bob) = create_test_user(&pool, &cfg, "bob").await;
+    let (_eve, _, c_eve) = create_test_user(&pool, &cfg, "eve").await;
+    make_friends(&pool, alice, bob).await;
+
+    // 1. DM Temp Relay upload & strict IDOR block for Eve
+    let dm_payload = b"encrypted_dm_cipher_blob_xyz".to_vec();
+    let (st, raw_dm, _) = req_bytes(
+        &app,
+        "POST",
+        &format!("/api/attachments?scope_type=dm&scope_id={bob}&is_e2ee=true&file_name=secret.bin"),
+        &c_alice,
+        "application/octet-stream",
+        dm_payload.clone(),
+        &[],
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let dm_json: Value = serde_json::from_slice(&raw_dm).unwrap();
+    assert_eq!(dm_json["storage_tier"], "temp_relay");
+    let dm_url = dm_json["download_url"].as_str().unwrap();
+
+    // Alice & Bob can download; Eve MUST get 403 Forbidden (IDOR fixed!)
+    let (st_bob, got_bob, _) = req_bytes(&app, "GET", dm_url, &c_bob, "", vec![], &[]).await;
+    assert_eq!(st_bob, StatusCode::OK);
+    assert_eq!(got_bob, dm_payload);
+    let (st_eve, _, _) = req_bytes(&app, "GET", dm_url, &c_eve, "", vec![], &[]).await;
+    assert_eq!(st_eve, StatusCode::FORBIDDEN);
+
+    // 2. Group chat durable storage + RBAC enforcement
+    let (gst, gval) = req_json(&app, "POST", "/api/groups", &c_alice, Some(json!({ "name": "DevGroup" }))).await;
+    assert_eq!(gst, StatusCode::OK);
+    let gid = gval["id"].as_str().unwrap();
+    req_json(&app, "POST", &format!("/api/groups/{gid}/members"), &c_alice, Some(json!({ "user_id": bob }))).await;
+
+    let grp_png = sample_png_bytes(600, 400);
+    let (st_gup, gup_raw, _) = req_bytes(
+        &app,
+        "POST",
+        &format!("/api/attachments?scope_type=group&scope_id={gid}&is_e2ee=false&preserve_original=false&file_name=diagram.png"),
+        &c_alice,
+        "image/png",
+        grp_png.clone(),
+        &[],
+    )
+    .await;
+    assert_eq!(st_gup, StatusCode::OK);
+    let gup_json: Value = serde_json::from_slice(&gup_raw).unwrap();
+    assert_eq!(gup_json["storage_tier"], "server_durable");
+    let g_url = gup_json["download_url"].as_str().unwrap();
+
+    let (st_gb, got_gb, _) = req_bytes(&app, "GET", g_url, &c_bob, "", vec![], &[]).await;
+    assert_eq!(st_gb, StatusCode::OK);
+    assert_eq!(got_gb, grp_png); // Original preserved byte-for-byte!
+    let (st_ge, _, _) = req_bytes(&app, "GET", g_url, &c_eve, "", vec![], &[]).await;
+    assert_eq!(st_ge, StatusCode::FORBIDDEN);
+
+    // 3. Server channel durable storage + strict RBAC & no_media check
+    let (sst, sval) = req_json(&app, "POST", "/api/servers", &c_alice, Some(json!({ "name": "OpsServer" }))).await;
+    assert_eq!(sst, StatusCode::OK);
+    let sid = sval["id"].as_str().unwrap();
+    let (_, chans) = req_json(&app, "GET", &format!("/api/servers/{sid}/channels"), &c_alice, None).await;
+    let ch_id = chans[0]["id"].as_str().unwrap();
+
+    let (st_ch_up, ch_raw, _) = req_bytes(
+        &app,
+        "POST",
+        &format!("/api/attachments?scope_type=channel&scope_id={ch_id}&is_e2ee=false&file_name=spec.png"),
+        &c_alice,
+        "image/png",
+        grp_png.clone(),
+        &[],
+    )
+    .await;
+    assert_eq!(st_ch_up, StatusCode::OK);
+    let ch_json: Value = serde_json::from_slice(&ch_raw).unwrap();
+    assert_eq!(ch_json["storage_tier"], "server_durable");
+    let ch_url = ch_json["download_url"].as_str().unwrap();
+    let (st_ch_eve, _, _) = req_bytes(&app, "GET", ch_url, &c_eve, "", vec![], &[]).await;
+    assert_eq!(st_ch_eve, StatusCode::FORBIDDEN);
+
+    // 4. Legacy attachments backward compatibility & unacquainted block
+    let legacy_id = Uuid::new_v4();
+    let legacy_dir = cfg.uploads_dir.join("attachments");
+    std::fs::create_dir_all(&legacy_dir).unwrap();
+    let legacy_file = legacy_dir.join(format!("{legacy_id}.bin"));
+    std::fs::write(&legacy_file, b"legacy_hello").unwrap();
+    sqlx::query(
+        "INSERT INTO attachments (id, uploader_id, file_path, file_name, file_size, mime_type) VALUES ($1, $2, $3, 'old.bin', 12, 'application/octet-stream')",
+    )
+    .bind(legacy_id)
+    .bind(alice)
+    .bind(legacy_file.to_string_lossy().to_string())
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (st_leg_bob, leg_bytes, _) = req_bytes(&app, "GET", &format!("/api/attachments/{legacy_id}"), &c_bob, "", vec![], &[]).await;
+    assert_eq!(st_leg_bob, StatusCode::OK);
+    assert_eq!(leg_bytes, b"legacy_hello");
+    let (st_leg_eve, _, _) = req_bytes(&app, "GET", &format!("/api/attachments/{legacy_id}"), &c_eve, "", vec![], &[]).await;
+    assert_eq!(st_leg_eve, StatusCode::FORBIDDEN);
+
+    let _ = std::fs::remove_dir_all(&cfg.uploads_dir);
+}
+
+#[tokio::test]
+async fn scenario_06_to_14_avatar_honesty_dedup_forward_chunking_and_relay_safety() {
+    let pool = setup_db().await;
+    let cfg = test_config("s6");
+    let (app, storage_reg) = build_app(pool.clone(), cfg.clone()).await;
+
+    let (alice, _, c_alice) = create_test_user(&pool, &cfg, "av_alice").await;
+    let (bob, _, c_bob) = create_test_user(&pool, &cfg, "av_bob").await;
+    make_friends(&pool, alice, bob).await;
+
+    // 6. Avatar upload format honesty (PNG uploaded -> genuine 512x512 matching extension & magic bytes)
+    let png = sample_png_bytes(700, 500);
+    let (st_av, av_raw, _) = req_bytes(&app, "POST", "/api/users/avatar", &c_alice, "image/png", png.clone(), &[]).await;
+    assert_eq!(st_av, StatusCode::OK);
+    let av_json: Value = serde_json::from_slice(&av_raw).unwrap();
+    let av_url = av_json["avatar_url"].as_str().unwrap();
+    let rel_path = av_url.split('?').next().unwrap().trim_start_matches("/uploads/");
+    let disk_bytes = std::fs::read(cfg.uploads_dir.join(rel_path)).unwrap();
+    let sniffed = chatw::media_opt::sniff_media_bytes(&disk_bytes);
+    assert!(av_url.contains(&format!(".{}", sniffed.ext)), "extension must match real magic bytes ({av_url} vs {})", sniffed.ext);
+
+    // 7. Dedup & refcount GC in Group scope
+    let (_, gval) = req_json(&app, "POST", "/api/groups", &c_alice, Some(json!({ "name": "DedupGrp" }))).await;
+    let gid = gval["id"].as_str().unwrap();
+    req_json(&app, "POST", &format!("/api/groups/{gid}/members"), &c_alice, Some(json!({ "user_id": bob }))).await;
+    let blob = b"repeatable-group-document-payload-for-dedup-test-12345".to_vec();
+    let (_, r1_raw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=group&scope_id={gid}&file_name=doc1.bin"), &c_alice, "application/octet-stream", blob.clone(), &[]).await;
+    let (_, r2_raw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=group&scope_id={gid}&file_name=doc2.bin"), &c_alice, "application/octet-stream", blob.clone(), &[]).await;
+    let r1: Value = serde_json::from_slice(&r1_raw).unwrap();
+    let r2: Value = serde_json::from_slice(&r2_raw).unwrap();
+    assert_eq!(r1["deduplicated"], false);
+    assert_eq!(r2["deduplicated"], true);
+    let ref1 = r1["ref_id"].as_str().unwrap();
+    let ref2 = r2["ref_id"].as_str().unwrap();
+
+    // Forward without physical duplication
+    let (fst, fval) = req_json(&app, "POST", "/api/storage/forward", &c_alice, Some(json!({
+        "from_ref_id": ref1,
+        "target_scope_type": "group",
+        "target_scope_id": gid,
+    }))).await;
+    assert_eq!(fst, StatusCode::OK);
+    assert_eq!(fval["reused_object"], true);
+    let ref3 = fval["ref_id"].as_str().unwrap();
+
+    // Check ref_count == 3, delete all 3 -> physical file deleted ONLY on last delete!
+    let rc3: i32 = sqlx::query_scalar("SELECT o.ref_count FROM media_references r JOIN media_objects o ON o.id = r.object_id WHERE r.id = $1::uuid")
+        .bind(ref1).fetch_one(&pool).await.unwrap();
+    assert_eq!(rc3, 3);
+    req_json(&app, "DELETE", &format!("/api/storage/references/{ref1}?scope=everyone"), &c_alice, None).await;
+    req_json(&app, "DELETE", &format!("/api/storage/references/{ref2}?scope=everyone"), &c_alice, None).await;
+    let rc1: i32 = sqlx::query_scalar("SELECT o.ref_count FROM media_references r JOIN media_objects o ON o.id = r.object_id WHERE r.id = $1::uuid")
+        .bind(ref3).fetch_one(&pool).await.unwrap();
+    assert_eq!(rc1, 1);
+    req_json(&app, "DELETE", &format!("/api/storage/references/{ref3}?scope=everyone"), &c_alice, None).await;
+    let remaining_objs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM media_objects WHERE sha256 = $1")
+        .bind(&storage::sha256_bytes(&blob)[..]).fetch_one(&pool).await.unwrap();
+    assert_eq!(remaining_objs, 0);
+
+    // 11. Chunked multipart resumable upload + Range download
+    let mut big = vec![0x42u8; 10_000];
+    big[0..16].copy_from_slice(Uuid::new_v4().as_bytes());
+    big[5000..5010].copy_from_slice(b"HELLO_RNG!");
+    let total_sha = sha_hex(&big);
+    let (ist, ival) = req_json(&app, "POST", "/api/storage/uploads/init", &c_alice, Some(json!({
+        "scope_type": "group",
+        "scope_id": gid,
+        "file_name": "chunked.bin",
+        "mime_type": "application/octet-stream",
+        "total_size": big.len(),
+        "chunk_size": 5000,
+        "sha256_cipher": total_sha,
+    }))).await;
+    assert_eq!(ist, StatusCode::OK);
+    let tid = ival["transfer_id"].as_str().unwrap();
+
+    // Chunk 0 valid
+    let c0 = big[0..5000].to_vec();
+    let (st_c0, _, _) = req_bytes(&app, "PUT", &format!("/api/storage/uploads/{tid}/chunks/0"), &c_alice, "application/octet-stream", c0, &[("x-chunk-sha256", &sha_hex(&big[0..5000]))]).await;
+    assert_eq!(st_c0, StatusCode::OK);
+    // Resume status reports missing chunk [1]
+    let (_, st_val) = req_json(&app, "GET", &format!("/api/storage/uploads/{tid}"), &c_alice, None).await;
+    assert_eq!(st_val["missing_chunks"], json!([1]));
+    // Corrupted chunk SHA rejected
+    let (st_bad, _, _) = req_bytes(&app, "PUT", &format!("/api/storage/uploads/{tid}/chunks/1"), &c_alice, "application/octet-stream", big[5000..].to_vec(), &[("x-chunk-sha256", &"0".repeat(64))]).await;
+    assert_eq!(st_bad, StatusCode::BAD_REQUEST);
+    // Correct chunk 1 accepted & assembled
+    let (st_c1, _, _) = req_bytes(&app, "PUT", &format!("/api/storage/uploads/{tid}/chunks/1"), &c_alice, "application/octet-stream", big[5000..].to_vec(), &[]).await;
+    assert_eq!(st_c1, StatusCode::OK);
+    let (st_comp, comp_val) = req_json(&app, "POST", &format!("/api/storage/uploads/{tid}/complete"), &c_alice, Some(json!({}))).await;
+    assert_eq!(st_comp, StatusCode::OK);
+    let chunk_ref = comp_val["ref_id"].as_str().unwrap();
+
+    // Byte Range check
+    let (st_rng, rng_bytes, _) = req_bytes(&app, "GET", &format!("/api/attachments/{chunk_ref}"), &c_bob, "", vec![], &[("Range", "bytes=5000-5009")]).await;
+    assert_eq!(st_rng, StatusCode::PARTIAL_CONTENT);
+    assert_eq!(rng_bytes, b"HELLO_RNG!");
+
+    // 13. Temp relay safe deletion guard: force expired timestamp, verify unacked stays alive, after both ack -> cleaned!
+    // Register Alice & Bob devices first so ack tracks devices cleanly.
+    req_json(&app, "POST", "/api/devices/register", &c_alice, Some(json!({ "client_device_id": format!("dev-a-{}", Uuid::new_v4().simple()), "platform": "web" }))).await;
+    req_json(&app, "POST", "/api/devices/register", &c_bob, Some(json!({ "client_device_id": format!("dev-b-{}", Uuid::new_v4().simple()), "platform": "web" }))).await;
+    let (_, dm_r_raw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=dm&scope_id={bob}&is_e2ee=true"), &c_alice, "application/octet-stream", b"relay_protected".to_vec(), &[]).await;
+    let dm_r_id = serde_json::from_slice::<Value>(&dm_r_raw).unwrap()["ref_id"].as_str().unwrap().to_string();
+    sqlx::query("UPDATE media_references SET relay_expires_at = now() - interval '1 hour' WHERE id = $1::uuid").bind(&dm_r_id).execute(&pool).await.unwrap();
+    let cl1 = storage::migration::cleanup_relays_safely(&pool, &storage_reg).await.unwrap();
+    assert!(cl1.expiring_without_safe_copies >= 1);
+    let still_exists: Option<Uuid> = sqlx::query_scalar("SELECT object_id FROM media_references WHERE id = $1::uuid").bind(&dm_r_id).fetch_one(&pool).await.unwrap();
+    assert!(still_exists.is_some(), "unacked relay must NOT be purged prematurely!");
+
+    // Both Alice & Bob ack copies -> safe purge executes!
+    req_json(&app, "POST", &format!("/api/storage/relay/{dm_r_id}/ack"), &c_alice, Some(json!({ "local_tier": "opfs", "sha256_hex": sha_hex(b"relay_protected") }))).await;
+    let (_, ack_b) = req_json(&app, "POST", &format!("/api/storage/relay/{dm_r_id}/ack"), &c_bob, Some(json!({ "local_tier": "indexeddb", "sha256_hex": sha_hex(b"relay_protected") }))).await;
+    assert_eq!(ack_b["relay_cleaned"], true);
+
+    let _ = std::fs::remove_dir_all(&cfg.uploads_dir);
+}
+
+#[tokio::test]
+async fn scenario_15_to_25_devices_approval_sync_and_peer_recovery() {
+    let pool = setup_db().await;
+    let cfg = test_config("s15");
+    let (app, _) = build_app(pool.clone(), cfg.clone()).await;
+
+    let (alice, _, c_alice_dev1) = create_test_user(&pool, &cfg, "sync_alice").await;
+    let (bob, _, c_bob_dev1) = create_test_user(&pool, &cfg, "sync_bob").await;
+    make_friends(&pool, alice, bob).await;
+
+    // 15. Device 1 auto-trusted; second session / device enters 'pending' and cannot delta sync until approved!
+    let (st_d1, d1) = req_json(&app, "POST", "/api/devices/register", &c_alice_dev1, Some(json!({
+        "client_device_id": format!("alice-primary-{}", Uuid::new_v4().simple()),
+        "platform": "desktop",
+        "device_name": "Linux Desktop",
+    }))).await;
+    assert_eq!(st_d1, StatusCode::OK);
+    assert_eq!(d1["trust_state"], "trusted");
+
+    let s_alice2 = create_session(&pool, &cfg, alice, Some("Mozilla/5.0 Android")).await.unwrap();
+    let c_alice_dev2 = s_alice2.split(';').next().unwrap().to_string();
+    let (_, d2) = req_json(&app, "POST", "/api/devices/register", &c_alice_dev2, Some(json!({
+        "client_device_id": format!("alice-phone-{}", Uuid::new_v4().simple()),
+        "platform": "mobile",
+        "device_name": "Android Phone",
+    }))).await;
+    assert_eq!(d2["trust_state"], "pending");
+    let code = d2["verification_code"].as_str().unwrap();
+    let req_id = d2["request_id"].as_str().unwrap();
+
+    // Pending device blocked from delta sync!
+    let (st_block, _) = req_json(&app, "GET", "/api/sync/delta?dm_since=0", &c_alice_dev2, None).await;
+    assert_eq!(st_block, StatusCode::FORBIDDEN);
+
+    // Wrong code fails; right code unlocks delta sync
+    let (st_wc, _) = req_json(&app, "POST", &format!("/api/devices/requests/{req_id}/approve"), &c_alice_dev1, Some(json!({ "verification_code": "999999" }))).await;
+    assert_eq!(st_wc, StatusCode::BAD_REQUEST);
+    let (st_ok, _) = req_json(&app, "POST", &format!("/api/devices/requests/{req_id}/approve"), &c_alice_dev1, Some(json!({ "verification_code": code }))).await;
+    assert_eq!(st_ok, StatusCode::OK);
+    let (st_sync, _) = req_json(&app, "GET", "/api/sync/delta?dm_since=0", &c_alice_dev2, None).await;
+    assert_eq!(st_sync, StatusCode::OK);
+
+    // 16 & 17. Third device rejected + revoked immediately loses auth
+    let s_alice3 = create_session(&pool, &cfg, alice, Some("Unknown Browser")).await.unwrap();
+    let c_alice_dev3 = s_alice3.split(';').next().unwrap().to_string();
+    let (_, d3) = req_json(&app, "POST", "/api/devices/register", &c_alice_dev3, Some(json!({
+        "client_device_id": format!("alice-rogue-{}", Uuid::new_v4().simple()),
+        "platform": "web",
+    }))).await;
+    let req3 = d3["request_id"].as_str().unwrap();
+    let (st_rej, _) = req_json(&app, "POST", &format!("/api/devices/requests/{req3}/reject"), &c_alice_dev1, Some(json!({}))).await;
+    assert_eq!(st_rej, StatusCode::OK);
+    let (st_after_rej, _) = req_json(&app, "GET", "/api/auth/me", &c_alice_dev3, None).await;
+    assert_eq!(st_after_rej, StatusCode::UNAUTHORIZED);
+
+    // 18. Encrypted key backup + Lost-all-device fallback recovery
+    let ecdh = SecretKey::random(&mut OsRng);
+    let ecdh_pub = ecdh.public_key().to_encoded_point(false);
+    let fp = compute_fingerprint(ecdh_pub.as_bytes());
+    let fp_b64 = URL_SAFE_NO_PAD.encode(fp);
+    let ecdsa = SigningKey::random(&mut OsRng);
+    let _ = ecdsa;
+    let (st_kb, _) = req_json(&app, "PUT", "/api/keys/backup", &c_alice_dev1, Some(json!({
+        "wrapped_keys_b64": "dGVzdF93cmFwcGVkX2Jsb2I",
+        "kdf_salt_b64": "dGVzdF9zYWx0",
+        "kdf_iterations": 50000,
+        "key_fingerprint_b64": fp_b64,
+    }))).await;
+    assert_eq!(st_kb, StatusCode::OK);
+
+    let s_alice4 = create_session(&pool, &cfg, alice, Some("Fresh Laptop")).await.unwrap();
+    let c_alice_dev4 = s_alice4.split(';').next().unwrap().to_string();
+    req_json(&app, "POST", "/api/devices/register", &c_alice_dev4, Some(json!({ "client_device_id": format!("alice-lost-{}", Uuid::new_v4().simple()), "platform": "desktop" }))).await;
+    let (st_rec, rec_val) = req_json(&app, "POST", "/api/devices/recover-lost", &c_alice_dev4, Some(json!({ "revoke_unreachable_devices": false }))).await;
+    assert_eq!(st_rec, StatusCode::OK);
+    assert_eq!(rec_val["trust_state"], "trusted");
+    assert_eq!(rec_val["key_backup"]["wrapped_keys_b64"], "dGVzdF93cmFwcGVkX2Jsb2I");
+
+    // 21-23. Two-Way DM Peer Recovery: happy path + SHA verify + denied by peer + no remaining copies honesty
+    req_json(&app, "POST", "/api/devices/register", &c_bob_dev1, Some(json!({ "client_device_id": format!("bob-dev-{}", Uuid::new_v4().simple()), "platform": "web" }))).await;
+    let file_bytes = b"precious_dm_photo_bytes_to_recover".to_vec();
+    let file_sha = sha_hex(&file_bytes);
+    let (_, fraw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=dm&scope_id={bob}&is_e2ee=true&sha256_plain={file_sha}"), &c_alice_dev1, "application/octet-stream", file_bytes.clone(), &[]).await;
+    let fref = serde_json::from_slice::<Value>(&fraw).unwrap()["ref_id"].as_str().unwrap().to_string();
+    // Both ack local copy -> server deletes relay -> Bob deletes local cache!
+    req_json(&app, "POST", &format!("/api/storage/relay/{fref}/ack"), &c_alice_dev1, Some(json!({ "local_tier": "opfs", "sha256_hex": file_sha }))).await;
+    req_json(&app, "POST", &format!("/api/storage/relay/{fref}/ack"), &c_bob_dev1, Some(json!({ "local_tier": "indexeddb", "sha256_hex": file_sha }))).await;
+    // Wait simulate relay cleanup removing object_id so server has zero copies:
+    sqlx::query("UPDATE media_references SET object_id = NULL, storage_tier = 'dm_client_preferred' WHERE id = $1::uuid").bind(&fref).execute(&pool).await.unwrap();
+    // Deleting Bob's local cache removes Bob's media_device_locations entry; Alice still has copy!
+    let (st_lc, _) = req_json(&app, "DELETE", &format!("/api/storage/references/{fref}?scope=local_cache"), &c_bob_dev1, None).await;
+    assert_eq!(st_lc, StatusCode::OK);
+
+    // Bob requests recovery from Alice -> Alice accepts -> Bob completes with verified SHA-256!
+    let (st_rr, rr_val) = req_json(&app, "POST", "/api/recovery/requests", &c_bob_dev1, Some(json!({ "ref_id": fref, "preferred_transport": "webrtc_p2p" }))).await;
+    assert_eq!(st_rr, StatusCode::OK);
+    let rr_id = rr_val["request_id"].as_str().unwrap();
+    let (st_resp, _) = req_json(&app, "POST", &format!("/api/recovery/requests/{rr_id}/respond"), &c_alice_dev1, Some(json!({ "action": "accept", "transport_mode": "webrtc_p2p" }))).await;
+    assert_eq!(st_resp, StatusCode::OK);
+    let (st_done, done_val) = req_json(&app, "POST", &format!("/api/recovery/requests/{rr_id}/complete"), &c_bob_dev1, Some(json!({ "sha256_hex": file_sha, "local_tier": "opfs" }))).await;
+    assert_eq!(st_done, StatusCode::OK);
+    assert_eq!(done_val["availability_state"], "restored_from_peer");
+
+    // 22. Per-conversation peer recovery policy disable blocks future peer requests
+    req_json(&app, "PUT", &format!("/api/storage/conversations/{bob}"), &c_alice_dev1, Some(json!({ "allow_peer_recovery": false, "dm_encrypted_backup": false }))).await;
+    let (_, denied_val) = req_json(&app, "POST", "/api/recovery/requests", &c_bob_dev1, Some(json!({ "ref_id": fref }))).await;
+    assert_eq!(denied_val["status"], "denied");
+    assert_eq!(denied_val["reason"], "peer_recovery_disabled");
+
+    // 23. Zero copies anywhere & peer offline -> honestly returns no_remaining_copies
+    sqlx::query("DELETE FROM media_device_locations WHERE ref_id = $1::uuid").bind(&fref).execute(&pool).await.unwrap();
+    req_json(&app, "PUT", &format!("/api/storage/conversations/{bob}"), &c_alice_dev1, Some(json!({ "allow_peer_recovery": true, "dm_encrypted_backup": false }))).await;
+    let (_, zero_val) = req_json(&app, "POST", "/api/recovery/requests", &c_bob_dev1, Some(json!({ "ref_id": fref }))).await;
+    assert_eq!(zero_val["status"], "no_remaining_copies");
+
+    // 24 & 25. Metrics & S3 Migration dry-run verification
+    let (st_met, met_val) = req_json(&app, "GET", "/api/storage/metrics", &c_alice_dev1, None).await;
+    assert_eq!(st_met, StatusCode::OK);
+    assert!(met_val["server"]["physical_bytes"].as_i64().is_some());
+    let (st_mig, mig_val) = req_json(&app, "POST", "/api/storage/migration/run", &c_alice_dev1, Some(json!({ "dry_run": true }))).await;
+    assert_eq!(st_mig, StatusCode::OK);
+    assert_eq!(mig_val["dry_run"], true);
+    assert_eq!(mig_val["status"], "completed");
+
+    let _ = std::fs::remove_dir_all(&cfg.uploads_dir);
+}

@@ -211,6 +211,27 @@ pub enum WsEvent {
     /// Threads-style social feed post / reply / delete update.
     #[serde(rename = "feed.updated")]
     FeedUpdated(serde_json::Value),
+    /// New untrusted device requested login & sync approval on an online trusted device.
+    #[serde(rename = "device.approval.request")]
+    DeviceApprovalRequest(serde_json::Value),
+    /// Pending device login request was approved or rejected.
+    #[serde(rename = "device.approval.resolved")]
+    DeviceApprovalResolved(serde_json::Value),
+    /// A device was revoked and must immediately lock/wipe active session.
+    #[serde(rename = "device.revoked")]
+    DeviceRevoked(serde_json::Value),
+    /// Two-way DM file recovery request arriving at peer/same-account device.
+    #[serde(rename = "recovery.request.incoming")]
+    RecoveryRequestIncoming(serde_json::Value),
+    /// Status update for an active file recovery request.
+    #[serde(rename = "recovery.request.updated")]
+    RecoveryRequestUpdated(serde_json::Value),
+    /// WebRTC DataChannel signaling relay scoped to a recovery request.
+    #[serde(rename = "recovery.p2p.signal")]
+    RecoveryP2pSignal(serde_json::Value),
+    /// Authoritative remote cache wipe when sender deletes media for everyone.
+    #[serde(rename = "media.delete_for_all")]
+    MediaDeleteForAll(serde_json::Value),
 }
 
 pub struct WsHub {

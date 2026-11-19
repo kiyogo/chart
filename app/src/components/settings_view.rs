@@ -29,6 +29,8 @@ enum SettingsTab {
     Guide,
     Security,
     Session,
+    Storage,
+    SyncRecovery,
     Chat,
     Notifications,
     Privacy,
@@ -43,12 +45,14 @@ enum SettingsTab {
 }
 
 /// (group title, tab, short label). Labels stay on one line; no descriptions.
-const NAV: [(&str, SettingsTab, &str); 18] = [
+const NAV: [(&str, SettingsTab, &str); 20] = [
     ("Tài khoản", SettingsTab::Account, "Tài khoản"),
     ("Tài khoản", SettingsTab::Privacy, "Quyền riêng tư"),
     ("Tài khoản", SettingsTab::Security, "Bảo mật"),
     ("Tài khoản", SettingsTab::Lock, "Khóa PIN"),
     ("Tài khoản", SettingsTab::Session, "Thiết bị"),
+    ("Tài khoản", SettingsTab::Storage, "Lưu trữ"),
+    ("Tài khoản", SettingsTab::SyncRecovery, "Đồng bộ"),
     ("Ứng dụng", SettingsTab::Chat, "Trò chuyện"),
     ("Ứng dụng", SettingsTab::Notifications, "Thông báo"),
     ("Ứng dụng", SettingsTab::AutoReply, "Trả lời tự động"),
@@ -76,6 +80,8 @@ fn tab_keywords(t: SettingsTab) -> &'static str {
         SettingsTab::Security => "bao mat ma hoa khoa sao luu e2ee van tay backup security xac minh hai buoc 2fa totp ma du phong nhat ky tai khoan da tai khoan chuyen tai khoan",
         SettingsTab::Lock => "khoa pin ma pin lock",
         SettingsTab::Session => "thiet bi phien dang xuat device session",
+        SettingsTab::Storage => "luu tru bo nho dem quota opfs indexeddb s3 minio",
+        SettingsTab::SyncRecovery => "dong bo khoi phuc da thiet bi backup webrtc",
         SettingsTab::Chat => "tro chuyen goi y sticker dan excel bang enter tra loi bam dup chat",
         SettingsTab::Notifications => "thong bao am thanh am bao notification sound",
         SettingsTab::AutoReply => "tra loi tu dong vang mat auto reply",
@@ -186,6 +192,8 @@ pub fn SettingsView(
                                 SettingsTab::Appearance => rsx! { PaletteIcon {} },
                                 SettingsTab::Security => rsx! { ShieldIcon { size: 18 } },
                                 SettingsTab::Session => rsx! { crate::components::icons::DevicesIcon { size: 18 } },
+                                SettingsTab::Storage => rsx! { SlidersIcon {} },
+                                SettingsTab::SyncRecovery => rsx! { crate::components::icons::RefreshIcon { size: 18 } },
                                 SettingsTab::Customize => rsx! { SlidersIcon {} },
                                 SettingsTab::Stickers => rsx! { LibraryIcon {} },
                                 SettingsTab::Guide => rsx! { BookIcon {} },
@@ -606,7 +614,16 @@ pub fn SettingsView(
                             SettingsTab::Language => rsx! { LanguageSettings {} },
                             SettingsTab::Stickers => rsx! { LibrarySettings { current_user_id: current_user_id.clone() } },
                             SettingsTab::Guide => rsx! { GuideSettings { on_replay_tour: move |_| on_replay_tour.call(()) } },
+                            SettingsTab::Storage => rsx! { crate::components::storage_ui::StorageSettingsPanel {} },
+                            SettingsTab::SyncRecovery => rsx! {
+                                crate::components::storage_ui::SyncRecoverySettingsPanel {
+                                    current_user_id: current_user_id.clone(),
+                                    user_keys: user_keys.clone(),
+                                    on_keys_imported: on_keys_imported,
+                                }
+                            },
                             SettingsTab::Session => rsx! {
+                                crate::components::storage_ui::DeviceTrustPanel {}
                                 div { class: "settings-group",
                                     div { class: "settings-group-title", "Quản lý phiên" }
                                     div { class: "settings-row",

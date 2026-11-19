@@ -1,0 +1,147 @@
+#[cfg(target_arch = "wasm32")]
+pub mod browser;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod native;
+pub mod media_opt;
+pub mod recovery;
+pub mod sync_manager;
+
+use dioxus::prelude::GlobalSignal;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+/// Global live device trust state for UI banners and approval prompts.
+pub static DEVICE_TRUST_STATE: GlobalSignal<Option<DeviceTrustInfo>> = GlobalSignal::new(|| None);
+/// Pending incoming new-device approval challenge on an active trusted session.
+pub static PENDING_APPROVAL_ALERT: GlobalSignal<Option<IncomingDeviceApproval>> = GlobalSignal::new(|| None);
+/// Live two-phase sync progress summary.
+pub static SYNC_PROGRESS: GlobalSignal<SyncProgressState> = GlobalSignal::new(SyncProgressState::default);
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DeviceTrustInfo {
+    pub device_id: String,
+    pub client_device_id: String,
+    pub trust_state: String,
+    pub verification_code: Option<String>,
+    pub request_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct IncomingDeviceApproval {
+    pub request_id: String,
+    pub requesting_device_id: String,
+    pub device_name: String,
+    pub platform: String,
+    pub verification_code: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SyncProgressState {
+    pub phase_a_done: bool,
+    pub phase_b_running: bool,
+    pub phase_b_paused: bool,
+    pub queued_count: usize,
+    pub completed_count: usize,
+    pub last_sync_label: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LocalQuotaInfo {
+    pub limit_mb: i32,
+    pub browser_quota_bytes: u64,
+    pub browser_usage_bytes: u64,
+    pub persisted: bool,
+    pub opfs_supported: bool,
+    pub local_object_count: usize,
+    pub total_local_bytes: u64,
+    pub disposable_cache_bytes: u64,
+    pub pinned_unique_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LocalObjectMeta {
+    pub ref_id: String,
+    pub scope_type: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub sha256_plain: Option<String>,
+    pub availability_state: String,
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(bytes);
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Extract attachment/reference UUID from `/api/attachments/{uuid}` URL.
+pub fn extract_ref_id(url: &str) -> Option<String> {
+    let path = url.split('?').next().unwrap_or(url);
+    path.strip_prefix("/api/attachments/")
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.contains('/'))
+        .map(str::to_string)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub use browser::{
+    clear_safe_cache, delete_local_object, get_client_device_info, get_local_object,
+    get_quota_estimate, init_local_storage, list_local_locations, load_sync_cursors,
+    put_local_object, save_sync_cursors,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use native::{
+    clear_safe_cache, delete_local_object, get_client_device_info, get_local_object,
+    get_quota_estimate, init_local_storage, list_local_locations, load_sync_cursors,
+    put_local_object, save_sync_cursors,
+};
+
+pub fn format_bytes_human(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", (bytes as f64) / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", (bytes as f64) / (1024.0 * 1024.0))
+    } else {
+        format!("{:.2} GB", (bytes as f64) / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
+pub fn availability_badge_label(state: &str) -> &'static str {
+    match state {
+        "local_only" => "Chỉ có trên thiết bị này",
+        "pending_delivery" => "Chờ thiết bị nhận",
+        "available_on_peer" => "Có trên thiết bị đối phương",
+        "replicated_multi_device" => "Đã đồng bộ nhiều thiết bị",
+        "backed_up_encrypted" => "Đã sao lưu mã hóa",
+        "server_durable" => "Lưu bền vững máy chủ",
+        "restored_from_peer" => "Đã khôi phục từ bạn bè",
+        "recovery_pending" => "Đang khôi phục",
+        "queued_offline_peer" => "Chờ thiết bị kia trực tuyến",
+        "denied_by_peer" => "Đối phương tắt khôi phục",
+        "no_remaining_copies" => "Không còn bản sao nào",
+        "deleted_for_everyone" => "Đã xóa với mọi người",
+        _ => "Không rõ trạng thái",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_attachment_ref_ids_cleanly() {
+        assert_eq!(extract_ref_id("/api/attachments/550e8400-e29b-41d4-a716-446655440000?variant=thumb").as_deref(), Some("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(extract_ref_id("/uploads/media/abc.png"), None);
+    }
+
+    #[test]
+    fn formats_bytes_and_badges_human_readably() {
+        assert_eq!(format_bytes_human(512), "512 B");
+        assert_eq!(format_bytes_human(2 * 1024 * 1024), "2.0 MB");
+        assert_eq!(availability_badge_label("local_only"), "Chỉ có trên thiết bị này");
+        assert_eq!(availability_badge_label("restored_from_peer"), "Đã khôi phục từ bạn bè");
+    }
+}

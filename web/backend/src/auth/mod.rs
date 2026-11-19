@@ -35,6 +35,7 @@ pub struct AppState {
     pub jwks_cache: Arc<tokio::sync::RwLock<google::GoogleJwksCache>>,
     pub ws_hub: Arc<crate::websocket::WsHub>,
     pub oauth_tickets: Arc<tokio::sync::RwLock<std::collections::HashMap<Uuid, Option<String>>>>,
+    pub storage: Arc<crate::storage::StorageRegistry>,
 }
 
 #[derive(Serialize)]
@@ -43,6 +44,7 @@ pub struct MeResponse {
     pub username: Option<String>,
     pub avatar_url: Option<String>,
     pub has_keys: bool,
+    pub device_id: Option<Uuid>,
 }
 
 #[derive(serde::Deserialize)]
@@ -324,6 +326,7 @@ async fn handle_me(
         username: user.username,
         avatar_url: user.avatar_url,
         has_keys: key_count > 0,
+        device_id: user.device_id,
     }))
 }
 

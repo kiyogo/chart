@@ -568,6 +568,43 @@ async fn handle_delete_message(
     .execute(&state.db)
     .await?;
 
+    // Release any media references linked to this message cleanly and tell peers to purge caches.
+    use sqlx::Row;
+    if let Ok(refs) = sqlx::query(
+        "SELECT id, object_id, optimized_object_id, thumb_object_id FROM media_references WHERE message_id = $1 AND deleted_for_all = FALSE",
+    )
+    .bind(message_id)
+    .fetch_all(&state.db)
+    .await
+    {
+        for r in refs {
+            if let Ok(rid) = r.try_get::<Uuid, _>("id") {
+                for col in ["object_id", "optimized_object_id", "thumb_object_id"] {
+                    if let Ok(Some(oid)) = r.try_get::<Option<Uuid>, _>(col) {
+                        let _ = crate::storage::migration::release_object_reference(&state.db, &state.storage, oid).await;
+                    }
+                }
+                let _ = sqlx::query(
+                    "UPDATE media_references SET object_id = NULL, optimized_object_id = NULL, thumb_object_id = NULL, deleted_for_all = TRUE, availability_state = 'deleted_for_everyone', updated_at = now() WHERE id = $1",
+                )
+                .bind(rid)
+                .execute(&state.db)
+                .await;
+                let _ = sqlx::query("DELETE FROM media_device_locations WHERE ref_id = $1")
+                    .bind(rid)
+                    .execute(&state.db)
+                    .await;
+                state
+                    .ws_hub
+                    .send_to_users(
+                        &[msg.sender_id, msg.receiver_id],
+                        WsEvent::MediaDeleteForAll(serde_json::json!({ "ref_id": rid, "message_id": message_id })),
+                    )
+                    .await;
+            }
+        }
+    }
+
     let event = WsEvent::MessageDeleted { message_id };
     state.ws_hub.send_to_user(&msg.sender_id, event.clone()).await;
     state.ws_hub.send_to_user(&msg.receiver_id, event).await;

@@ -281,10 +281,12 @@ async fn handle_upload_avatar(
     if body.len() > 5 * 1024 * 1024 {
         return Err(AppError::BadRequest("avatar_too_large"));
     }
-    // The client re-encodes avatars; anything that is not a still image is refused.
-    if !matches!(sniff_image(&body), Some("avif" | "webp" | "png" | "jpg")) {
-        return Err(AppError::BadRequest("unsupported_avatar_format"));
-    }
+    // Real magic-byte inspection + genuine 512x512 AVIF (or honest matching format) + 128x128 thumbnail.
+    let body_vec = body.to_vec();
+    let processed = tokio::task::spawn_blocking(move || crate::media_opt::process_avatar_honest(&body_vec))
+        .await
+        .map_err(|_| AppError::Internal)?
+        .map_err(AppError::BadRequest)?;
 
     let avatar_dir = state.config.uploads_dir.join("avatars");
     tokio::fs::create_dir_all(&avatar_dir).await.map_err(|e| {
@@ -292,13 +294,17 @@ async fn handle_upload_avatar(
         AppError::Internal
     })?;
 
-    let filename = format!("{}.avif", user.id);
+    let filename = format!("{}.{}", user.id, processed.ext);
     let filepath = avatar_dir.join(&filename);
 
-    tokio::fs::write(&filepath, &body).await.map_err(|e| {
+    tokio::fs::write(&filepath, &processed.main_bytes).await.map_err(|e| {
         tracing::error!(error = %e, "failed to write avatar file");
         AppError::Internal
     })?;
+    if !processed.thumb_bytes.is_empty() {
+        let thumb_name = format!("{}_thumb.{}", user.id, processed.ext);
+        let _ = tokio::fs::write(avatar_dir.join(&thumb_name), &processed.thumb_bytes).await;
+    }
 
     let now_ts = chrono::Utc::now().timestamp_millis();
     let avatar_url = format!("/uploads/avatars/{}?t={}", filename, now_ts);

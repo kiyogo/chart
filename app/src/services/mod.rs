@@ -15,6 +15,7 @@ pub mod profile_plus;
 pub mod security;
 pub mod settings_sync;
 pub mod stickers;
+pub mod storage_sync;
 pub mod vico;
 pub mod ws;
 

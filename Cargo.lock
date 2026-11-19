@@ -564,6 +564,7 @@ dependencies = [
  "hex",
  "hkdf 0.12.4",
  "hmac 0.12.1",
+ "image",
  "jsonwebtoken",
  "p256",
  "reqwest 0.13.5",

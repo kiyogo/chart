@@ -251,6 +251,8 @@ pub fn Composer(
     #[props(default)] on_raw: Option<EventHandler<String>>,
     /// Images (picked or pasted): bytes + mime.
     #[props(default)] on_image: Option<EventHandler<(Vec<u8>, String)>>,
+    /// Rich attachments (adapted images, video, Opus voice, documents).
+    #[props(default)] on_media: Option<EventHandler<crate::storage::media_opt::OptimizedMediaPayload>>,
     #[props(default = true)] allow_poll: bool,
     #[props(default = true)] allow_note: bool,
     #[props(default = true)] allow_reminder: bool,
@@ -574,13 +576,14 @@ pub fn Composer(
                     div { class: "composer-disabled", role: "status", "{reason}" }
                 } else {
                     div { class: "composer-box",
-                        if on_raw.is_some() || on_image.is_some() {
+                        if on_raw.is_some() || on_image.is_some() || on_media.is_some() {
                             ComposerTools {
                                 input_id: input_id.clone(),
                                 on_raw: move |raw: String| if let Some(h) = on_raw { h.call(raw) },
                                 on_image: move |img: (Vec<u8>, String)| {
                                     if let Some(h) = on_image { h.call(img) } else { notice.set(Some("Cuộc trò chuyện này chưa hỗ trợ gửi ảnh".into())) }
                                 },
+                                on_media: on_media,
                                 allow_poll: allow_poll && on_raw.is_some(),
                                 allow_note: allow_note && on_raw.is_some(),
                                 allow_reminder: allow_reminder && on_raw.is_some(),

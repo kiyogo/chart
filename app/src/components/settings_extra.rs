@@ -420,7 +420,10 @@ fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> E
                 }
                 div { class: "story-body",
                     h2 { class: "story-title", "Thiết bị đã đăng nhập" }
-                    p { class: "story-text", "Đăng xuất những thiết bị bạn không nhận ra. Thiết bị bị đăng xuất cần đăng nhập lại." }
+                    p { class: "story-text", "Đăng xuất hoặc thu hồi quyền những thiết bị bạn không nhận ra. Thiết bị mới cần xác nhận từ thiết bị tin cậy." }
+                }
+                div { style: "padding: 0 var(--space-5);",
+                    crate::components::storage_ui::DeviceTrustPanel {}
                 }
                 div { class: "device-list",
                     if loading() { div { class: "empty-chat-inner", "Đang tải" } }

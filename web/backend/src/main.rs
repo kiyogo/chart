@@ -18,8 +18,8 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache},
     calls, community,
     config::Config,
-    admin, bots, business, convo, crypto, db, directory, drawings, enterprise, feed, friends, groups, library, messages, privacy, public_pages, servers,
-    profile_ext, profile_plus, security, stickers, typing, users, vico, webrtc,
+    admin, bots, business, convo, crypto, db, devices_sync, directory, drawings, enterprise, feed, friends, groups, library, messages, privacy, public_pages, servers,
+    profile_ext, profile_plus, security, stickers, storage, typing, users, vico, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -106,6 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let http_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()?;
+    let storage_registry = Arc::new(storage::StorageRegistry::from_uploads_dir(&config.uploads_dir));
 
     let state = AppState {
         config: Arc::new(config.clone()),
@@ -114,13 +115,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jwks_cache,
         ws_hub,
         oauth_tickets,
+        storage: storage_registry,
     };
 
     // 6. Build API router
     let api_router = Router::new()
         .nest("/auth", auth::routes())
         .nest("/users", users::routes())
-        .nest("/keys", crypto::keys::routes())
+        .nest("/keys", crypto::keys::routes().merge(devices_sync::key_backup_routes()))
+        .nest("/devices", devices_sync::device_routes())
+        .nest("/sync", devices_sync::sync_routes())
+        .nest("/recovery", devices_sync::recovery_routes())
+        .nest("/storage", storage::router::routes())
         .nest("/friends", friends::routes())
         .nest("/feed", feed::routes())
         .nest("/vico", vico::routes())
@@ -151,6 +157,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(websocket::routes())
         .with_state(state.clone());
     profile_ext::spawn_status_expiry(state.clone());
+    {
+        let bg_state = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(3600));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                let _ = storage::migration::cleanup_relays_safely(&bg_state.db, &bg_state.storage).await;
+            }
+        });
+    }
     let public_pages = public_pages::routes().with_state(state.clone());
     admin::bootstrap_admins(&state.db).await;
 

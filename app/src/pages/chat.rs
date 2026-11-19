@@ -539,6 +539,10 @@ pub fn Chat(
         let pkey = pkey_for_mount.clone();
         spawn(async move {
             user_keys.set(get_user_keys(Some(&uid)));
+            let uk = user_keys.peek().clone();
+            spawn(async move {
+                crate::storage::sync_manager::bootstrap_device_and_sync(uk).await;
+            });
             if let Ok(list) = api::friends_list().await {
                 friends.set(list);
             }
@@ -1151,6 +1155,82 @@ pub fn Chat(
                             });
                         }
                     }
+                    WsEvent::DeviceApprovalRequest(v) => {
+                        let req_id = v.get("request_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let req_did = v.get("requesting_device_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let req_cid = v.get("client_device_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let dname = v.get("device_name").and_then(|s| s.as_str()).unwrap_or("Thiết bị mới").to_string();
+                        let plat = v.get("platform").and_then(|s| s.as_str()).unwrap_or("web").to_string();
+                        let code = v.get("verification_code").and_then(|s| s.as_str()).unwrap_or("000000").to_string();
+                        let can_approve = crate::storage::DEVICE_TRUST_STATE
+                            .peek()
+                            .as_ref()
+                            .is_some_and(|d| d.trust_state == "trusted" && d.device_id != req_did && (req_cid.is_empty() || d.client_device_id != req_cid));
+                        if can_approve && !req_id.is_empty() {
+                            *crate::storage::PENDING_APPROVAL_ALERT.write() = Some(crate::storage::IncomingDeviceApproval {
+                                request_id: req_id,
+                                requesting_device_id: req_did,
+                                device_name: dname.clone(),
+                                platform: plat,
+                                verification_code: code.clone(),
+                            });
+                            toast.set(Some(format!("Thiết bị mới {dname} đang chờ duyệt (mã {code})")));
+                        }
+                    }
+                    WsEvent::DeviceApprovalResolved(v) => {
+                        let approved = v.get("approved").and_then(|b| b.as_bool()).unwrap_or(false);
+                        let req_did = v.get("requesting_device_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let is_me = crate::storage::DEVICE_TRUST_STATE.peek().as_ref().is_some_and(|d| d.device_id == req_did);
+                        if is_me {
+                            if approved {
+                                crate::storage::DEVICE_TRUST_STATE.with_mut(|st| {
+                                    if let Some(d) = st.as_mut() {
+                                        d.trust_state = "trusted".into();
+                                    }
+                                });
+                                spawn(async move {
+                                    let _ = crate::storage::sync_manager::run_incremental_delta_sync().await;
+                                });
+                                toast.set(Some("Thiết bị đã được phê duyệt đồng bộ".into()));
+                            } else {
+                                on_logout.call(());
+                            }
+                        }
+                    }
+                    WsEvent::DeviceRevoked(v) => {
+                        let revoked_did = v.get("device_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        if crate::storage::DEVICE_TRUST_STATE.peek().as_ref().is_some_and(|d| d.device_id == revoked_did) {
+                            on_logout.call(());
+                        }
+                    }
+                    WsEvent::RecoveryRequestIncoming(v) => {
+                        let rid = v.get("request_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let ref_id = v.get("ref_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let mode = v.get("transport_mode").and_then(|s| s.as_str()).unwrap_or("webrtc_p2p").to_string();
+                        if !rid.is_empty() && !ref_id.is_empty() {
+                            toast.set(Some("Có yêu cầu khôi phục tệp chat riêng từ bạn bè".into()));
+                            spawn(async move {
+                                crate::storage::recovery::respond_to_incoming_recovery(&rid, &ref_id, &mode).await;
+                            });
+                        }
+                    }
+                    WsEvent::RecoveryP2pSignal(v) => {
+                        let rid = v.get("request_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let sig = v.get("signal_type").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let data = v.get("data").cloned().unwrap_or_default();
+                        if !rid.is_empty() && !sig.is_empty() {
+                            spawn(async move {
+                                crate::storage::recovery::relay_recovery_p2p_signal(&rid, &sig, &data).await;
+                            });
+                        }
+                    }
+                    WsEvent::MediaDeleteForAll(v) => {
+                        if let Some(ref_id) = v.get("ref_id").and_then(|s| s.as_str()).map(str::to_string) {
+                            spawn(async move {
+                                let _ = crate::storage::delete_local_object(&ref_id, true).await;
+                            });
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1658,31 +1738,78 @@ pub fn Chat(
         });
     });
 
-    // End-to-end encrypted image for direct messages: the image is sealed with a
-    // fresh AES-256-GCM key, the ciphertext is uploaded, and the key travels only
-    // inside the E2EE message.
-    let send_dm_image = use_callback(move |(bytes, mime): (Vec<u8>, String)| {
-        if bytes.len() > 8 * 1024 * 1024 {
-            toast.set(Some("Ảnh lớn hơn 8 MB".into()));
+    // End-to-end encrypted media/image/voice/file for direct messages: cached locally first (OPFS/IndexedDB),
+    // ciphertext uploaded to server Temp Relay / Encrypted Backup with scope authorization.
+    let send_dm_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
+        if payload.bytes.len() > 25 * 1024 * 1024 {
+            toast.set(Some("Tệp lớn hơn 25 MB".into()));
             return;
         }
+        let peer_id = active_friend().map(|f| f.id);
         spawn(async move {
-            let sealed = match crate::crypto::blob::seal(&bytes) {
+            let sealed = match crate::crypto::blob::seal(&payload.bytes) {
                 Ok(s) => s,
                 Err(_) => {
-                    toast.set(Some("Không mã hóa được ảnh".into()));
+                    toast.set(Some("Không mã hóa được tệp".into()));
                     return;
                 }
             };
-            match api::attachments_upload(sealed.cipher, "application/octet-stream").await {
-                Ok(url) => {
-                    let data = crate::components::rich::ImageData { u: url, k: sealed.key_b64, n: sealed.nonce_b64, m: mime };
-                    if let Ok(json) = serde_json::to_string(&data) {
-                        send_dm_text.call((format!("img:{json}"), None));
+            match crate::services::storage_sync::upload_attachment_scoped(
+                sealed.cipher,
+                "application/octet-stream",
+                "dm",
+                peer_id.as_deref(),
+                Some(&payload.file_name),
+                Some(&payload.mime),
+                Some(&payload.sha256_plain),
+                true,
+                true,
+            )
+            .await
+            {
+                Ok(resp) => {
+                    let url = resp["download_url"].as_str().unwrap_or_default().to_string();
+                    if let Some(ref_id) = resp["ref_id"].as_str() {
+                        let meta = crate::storage::LocalObjectMeta {
+                            ref_id: ref_id.to_string(),
+                            scope_type: "dm".into(),
+                            file_name: payload.file_name.clone(),
+                            mime_type: payload.mime.clone(),
+                            sha256_plain: Some(payload.sha256_plain.clone()),
+                            availability_state: resp["availability_state"].as_str().unwrap_or("pending_delivery").to_string(),
+                        };
+                        let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
                     }
+                    let msg_str = crate::components::rich::build_rich_media_wire(
+                        url,
+                        sealed.key_b64,
+                        sealed.nonce_b64,
+                        "dm",
+                        &payload,
+                    );
+                    send_dm_text.call((msg_str, None));
                 }
-                Err(_) => toast.set(Some("Không tải ảnh lên được".into())),
+                Err(_) => toast.set(Some("Không tải tệp lên được".into())),
             }
+        });
+    });
+
+    let send_dm_image = use_callback(move |(bytes, mime): (Vec<u8>, String)| {
+        let sha = crate::storage::sha256_hex(&bytes);
+        let len = bytes.len();
+        send_dm_media.call(crate::storage::media_opt::OptimizedMediaPayload {
+            bytes,
+            mime,
+            ext: "bin".into(),
+            file_name: "image".into(),
+            original_size: len,
+            optimized_size: len,
+            is_crisp_text: false,
+            media_kind: "image".into(),
+            sha256_plain: sha,
+            thumb_b64: None,
+            thumb_mime: None,
+            duration_ms: None,
         });
     });
 
@@ -1939,16 +2066,124 @@ pub fn Chat(
             }
         });
     });
-    let send_group_image = use_callback(move |(bytes, mime): (Vec<u8>, String)| {
+    let send_group_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
+        let gid = active_group().map(|g| g.id);
+        let bytes_for_cache = payload.bytes.clone();
         spawn(async move {
-            match library::upload_media(bytes, &mime).await {
-                Ok(url) => {
-                    let data = crate::components::rich::ImageData { u: url, k: String::new(), n: String::new(), m: mime };
-                    if let Ok(json) = serde_json::to_string(&data) {
-                        send_group_raw.call(format!("img:{json}"));
+            let Some(group_id) = gid else {
+                toast.set(Some("Chưa chọn nhóm".into()));
+                return;
+            };
+            match crate::services::storage_sync::upload_attachment_scoped(
+                payload.bytes.clone(),
+                &payload.mime,
+                "group",
+                Some(&group_id),
+                Some(&payload.file_name),
+                Some(&payload.mime),
+                Some(&payload.sha256_plain),
+                false,
+                false,
+            )
+            .await
+            {
+                Ok(resp) => {
+                    let url = resp["download_url"].as_str().unwrap_or_default().to_string();
+                    if let Some(ref_id) = resp["ref_id"].as_str() {
+                        let meta = crate::storage::LocalObjectMeta {
+                            ref_id: ref_id.to_string(),
+                            scope_type: "group".into(),
+                            file_name: payload.file_name.clone(),
+                            mime_type: payload.mime.clone(),
+                            sha256_plain: Some(payload.sha256_plain.clone()),
+                            availability_state: "server_durable".into(),
+                        };
+                        let _ = crate::storage::put_local_object(&meta, &bytes_for_cache).await;
+                    }
+                    let msg_str = crate::components::rich::build_rich_media_wire(
+                        url,
+                        String::new(),
+                        String::new(),
+                        "group",
+                        &payload,
+                    );
+                    send_group_raw.call(msg_str);
+                }
+                Err(_) => toast.set(Some("Không tải tệp lên được".into())),
+            }
+        });
+    });
+
+    let send_group_image = use_callback(move |(bytes, mime): (Vec<u8>, String)| {
+        let sha = crate::storage::sha256_hex(&bytes);
+        let len = bytes.len();
+        send_group_media.call(crate::storage::media_opt::OptimizedMediaPayload {
+            bytes,
+            mime,
+            ext: "bin".into(),
+            file_name: "image".into(),
+            original_size: len,
+            optimized_size: len,
+            is_crisp_text: false,
+            media_kind: "image".into(),
+            sha256_plain: sha,
+            thumb_b64: None,
+            thumb_mime: None,
+            duration_ms: None,
+        });
+    });
+
+    let send_channel_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
+        let cid = selected_channel().map(|c| c.id);
+        let bytes_for_cache = payload.bytes.clone();
+        spawn(async move {
+            let Some(channel_id) = cid else {
+                toast.set(Some("Chưa chọn kênh".into()));
+                return;
+            };
+            match crate::services::storage_sync::upload_attachment_scoped(
+                payload.bytes.clone(),
+                &payload.mime,
+                "channel",
+                Some(&channel_id),
+                Some(&payload.file_name),
+                Some(&payload.mime),
+                Some(&payload.sha256_plain),
+                false,
+                false,
+            )
+            .await
+            {
+                Ok(resp) => {
+                    let url = resp["download_url"].as_str().unwrap_or_default().to_string();
+                    if let Some(ref_id) = resp["ref_id"].as_str() {
+                        let meta = crate::storage::LocalObjectMeta {
+                            ref_id: ref_id.to_string(),
+                            scope_type: "channel".into(),
+                            file_name: payload.file_name.clone(),
+                            mime_type: payload.mime.clone(),
+                            sha256_plain: Some(payload.sha256_plain.clone()),
+                            availability_state: "server_durable".into(),
+                        };
+                        let _ = crate::storage::put_local_object(&meta, &bytes_for_cache).await;
+                    }
+                    let msg_str = crate::components::rich::build_rich_media_wire(
+                        url,
+                        String::new(),
+                        String::new(),
+                        "channel",
+                        &payload,
+                    );
+                    if let Ok(msg) = api::channels_post_message(&channel_id, &msg_str).await {
+                        channel_messages.with_mut(|list| {
+                            if !list.iter().any(|m| m.id == msg.id) {
+                                list.push(msg);
+                            }
+                        });
+                        platform::scroll_chat_to_bottom(false);
                     }
                 }
-                Err(_) => toast.set(Some("Không tải ảnh lên được".into())),
+                Err(_) => toast.set(Some("Không tải tệp lên kênh được".into())),
             }
         });
     });
@@ -2937,6 +3172,7 @@ pub fn Chat(
                                 },
                                 on_raw: move |raw: String| send_dm_text.call((raw, None)),
                                 on_image: move |img: (Vec<u8>, String)| send_dm_image.call(img),
+                                on_media: move |m| send_dm_media.call(m),
                             }
                         }
 
@@ -3172,6 +3408,7 @@ pub fn Chat(
                                 allow_reminder: g_reminder,
                                 on_raw: move |raw: String| send_group_raw.call(raw),
                                 on_image: move |img: (Vec<u8>, String)| send_group_image.call(img),
+                                on_media: move |m| send_group_media.call(m),
                                 reply_to: group_reply_to().map(|(_, t)| t),
                                 on_cancel_reply: move |_| group_reply_to.set(None),
                                 on_input: move |v: String| group_input.set(v),
@@ -3391,6 +3628,7 @@ pub fn Chat(
                                     },
                                     on_input: move |v: String| channel_input.set(v),
                                     on_send: move |_| trigger_send_channel_message.call(()),
+                                    on_media: move |m| send_channel_media.call(m),
                                     on_sticker: move |url: String| {
                                         channel_input.set(url);
                                         trigger_send_channel_message.call(());
@@ -3950,6 +4188,8 @@ pub fn Chat(
                 on_open_settings: move |_| { quick_switch_open.set(false); server_settings_open.set(false); is_settings_open.set(true); },
             }
         }
+
+        crate::components::storage_ui::IncomingDeviceApprovalModal {}
 
         if let Some(uid) = viewing_profile_user_id() {
             {

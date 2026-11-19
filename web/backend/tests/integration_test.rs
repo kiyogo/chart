@@ -53,18 +53,23 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
     let http_client = reqwest::Client::new();
 
     let state = AppState {
-        config: Arc::new(config),
+        config: Arc::new(config.clone()),
         db: pool,
         http_client,
         jwks_cache,
         ws_hub,
         oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        storage: Arc::new(chatw::storage::StorageRegistry::from_uploads_dir(&config.uploads_dir)),
     };
 
     axum::Router::new()
         .nest("/api/auth", auth::routes())
         .nest("/api/users", users::routes())
-        .nest("/api/keys", crypto::keys::routes())
+        .nest("/api/keys", crypto::keys::routes().merge(chatw::devices_sync::key_backup_routes()))
+        .nest("/api/devices", chatw::devices_sync::device_routes())
+        .nest("/api/sync", chatw::devices_sync::sync_routes())
+        .nest("/api/recovery", chatw::devices_sync::recovery_routes())
+        .nest("/api/storage", chatw::storage::router::routes())
         .nest("/api/friends", friends::routes())
         .nest("/api/feed", feed::routes())
         .nest("/api/vico", vico::routes())

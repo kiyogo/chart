@@ -65,9 +65,11 @@ pub async fn users_search(q: &str) -> Result<Vec<UserSearchResult>, ApiError> {
     get_json(&format!("/api/users/search?q={encoded}")).await
 }
 
-pub async fn users_upload_avatar(avif_bytes: Vec<u8>) -> Result<AvatarUploadResponse, ApiError> {
+pub async fn users_upload_avatar(bytes: Vec<u8>) -> Result<AvatarUploadResponse, ApiError> {
+    let (sniff_mime, _) = crate::storage::media_opt::sniff_mime_from_bytes(&bytes);
+    let content_type = if sniff_mime.starts_with("image/") { sniff_mime } else { "image/avif" };
     let (_, body) =
-        platform::http_request("POST", "/api/users/avatar", None, Some((avif_bytes, "image/avif")))
+        platform::http_request("POST", "/api/users/avatar", None, Some((bytes, content_type)))
             .await?;
     serde_json::from_str(&body).map_err(|_| ApiError {
         code: "invalid_json".into(),

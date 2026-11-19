@@ -20,8 +20,12 @@ TS="$(date +%s)"
 sed "s|/boot.js|/boot.js?v=${TS}|g" app/web/index.html > app/dist/index.html
 sed -i "s|/canvas_scrollbars.js|/canvas_scrollbars.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/panel_resizer.js|/panel_resizer.js?v=${TS}|g" app/dist/index.html
+sed -i "s|/storage_engine.js|/storage_engine.js?v=${TS}|g" app/dist/index.html
+sed -i "s|/media_optimizer.js|/media_optimizer.js?v=${TS}|g" app/dist/index.html
 cp app/web/canvas_scrollbars.js app/dist/canvas_scrollbars.js
 cp app/web/panel_resizer.js app/dist/panel_resizer.js
+cp app/web/storage_engine.js app/dist/storage_engine.js
+cp app/web/media_optimizer.js app/dist/media_optimizer.js
 sed "s|/pkg/chatw_app.js|/pkg/chatw_app.js?v=${TS}|g" app/web/boot.js > app/dist/boot.js
 sed -i "s|chatw_app_bg.wasm|chatw_app_bg.wasm?v=${TS}|g" app/dist/pkg/chatw_app.js
 cp -r app/public/. app/dist/

@@ -7,6 +7,7 @@ pub mod pages;
 pub mod platform;
 pub mod prefs;
 pub mod services;
+pub mod storage;
 
 use dioxus::prelude::*;
 

@@ -14,10 +14,15 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BellIcon, CheckIcon, CloseIcon, PlusIcon},
+        icons::{BellIcon, CheckIcon, CloseIcon, DownloadIcon, MicIcon, PlusIcon, RefreshIcon},
     },
-    crypto::blob,
     platform,
+    services::storage_sync,
+    storage::{
+        availability_badge_label, format_bytes_human,
+        media_opt::{self, OptimizedMediaPayload},
+        recovery::{self, MediaFetchOutcome},
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -53,6 +58,35 @@ pub struct ImageData {
     pub n: String,
     #[serde(default)]
     pub m: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub sha: String,
+    #[serde(default)]
+    pub scope: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MediaFileData {
+    pub u: String,
+    #[serde(default)]
+    pub k: String,
+    #[serde(default)]
+    pub n: String,
+    #[serde(default)]
+    pub m: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub sha: String,
+    #[serde(default)]
+    pub dur_ms: u64,
+    #[serde(default)]
+    pub scope: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -78,6 +112,9 @@ pub enum Rich {
     Reminder(ReminderData),
     Table(Vec<Vec<String>>),
     Image(ImageData),
+    File(MediaFileData),
+    Audio(MediaFileData),
+    Video(MediaFileData),
     Invite(InviteData),
 }
 
@@ -110,6 +147,15 @@ pub fn parse_rich(text: &str) -> Option<Rich> {
     if let Some(rest) = t.strip_prefix("img:") {
         return serde_json::from_str::<ImageData>(rest).ok().filter(|i| valid_image_url(&i.u)).map(Rich::Image);
     }
+    if let Some(rest) = t.strip_prefix("file:") {
+        return serde_json::from_str::<MediaFileData>(rest).ok().filter(|f| valid_image_url(&f.u)).map(Rich::File);
+    }
+    if let Some(rest) = t.strip_prefix("audio:") {
+        return serde_json::from_str::<MediaFileData>(rest).ok().filter(|f| valid_image_url(&f.u)).map(Rich::Audio);
+    }
+    if let Some(rest) = t.strip_prefix("video:") {
+        return serde_json::from_str::<MediaFileData>(rest).ok().filter(|f| valid_image_url(&f.u)).map(Rich::Video);
+    }
     if let Some(rest) = t.strip_prefix("invite:") {
         return serde_json::from_str::<InviteData>(rest)
             .ok()
@@ -117,6 +163,45 @@ pub fn parse_rich(text: &str) -> Option<Rich> {
             .map(Rich::Invite);
     }
     None
+}
+
+pub fn build_rich_media_wire(
+    url: String,
+    key_b64: String,
+    nonce_b64: String,
+    scope: &str,
+    payload: &OptimizedMediaPayload,
+) -> String {
+    if payload.media_kind == "image" {
+        let data = ImageData {
+            u: url,
+            k: key_b64,
+            n: nonce_b64,
+            m: payload.mime.clone(),
+            name: payload.file_name.clone(),
+            size: payload.bytes.len() as u64,
+            sha: payload.sha256_plain.clone(),
+            scope: scope.to_string(),
+        };
+        return format!("img:{}", serde_json::to_string(&data).unwrap_or_default());
+    }
+    let prefix = match payload.media_kind.as_str() {
+        "audio" => "audio:",
+        "video" => "video:",
+        _ => "file:",
+    };
+    let data = MediaFileData {
+        u: url,
+        k: key_b64,
+        n: nonce_b64,
+        m: payload.mime.clone(),
+        name: payload.file_name.clone(),
+        size: payload.bytes.len() as u64,
+        sha: payload.sha256_plain.clone(),
+        dur_ms: payload.duration_ms.unwrap_or(0),
+        scope: scope.to_string(),
+    };
+    format!("{prefix}{}", serde_json::to_string(&data).unwrap_or_default())
 }
 
 fn valid_image_url(u: &str) -> bool {
@@ -132,6 +217,9 @@ pub fn rich_preview(r: &Rich) -> String {
         Rich::Reminder(r) => format!("Nhắc hẹn: {}", r.t),
         Rich::Table(_) => "Bảng tính".into(),
         Rich::Image(_) => "Hình ảnh".into(),
+        Rich::File(f) => format!("Tệp: {}", if f.name.is_empty() { "Đính kèm" } else { &f.name }),
+        Rich::Audio(_) => "Tin nhắn thoại".into(),
+        Rich::Video(_) => "Video".into(),
         Rich::Invite(i) => format!("Lời mời tham gia {}", i.name),
     }
 }
@@ -144,28 +232,42 @@ pub fn reminder_due(r: &ReminderData) -> Option<DateTime<Local>> {
 /// Votes per poll: poll_id -> (voter -> option index). The latest vote wins.
 pub type VoteTally = std::collections::HashMap<String, std::collections::HashMap<String, usize>>;
 
-/// Image message (decrypts client-side when a key is present).
+/// Image message (local OPFS/IndexedDB cache first, transparent E2EE decrypt, and two-way peer recovery).
 #[component]
 pub fn RichImage(data: ImageData) -> Element {
     let mut src = use_signal(|| Option::<String>::None);
+    let mut missing = use_signal(|| Option::<(String, String, String)>::None);
+    let mut rec_status = use_signal(|| Option::<String>::None);
     let mut failed = use_signal(|| false);
     let mut open = use_signal(|| false);
     let d = data.clone();
     use_effect(use_reactive!(|d| {
+        src.set(None);
+        missing.set(None);
+        failed.set(false);
         spawn(async move {
-            if d.k.is_empty() {
+            let mime = if d.m.starts_with("image/") { d.m.clone() } else { "image/png".into() };
+            if d.k.is_empty() && d.u.starts_with("/uploads/") {
                 src.set(Some(platform::resolve_asset_url(&d.u)));
                 return;
             }
-            match platform::fetch_bytes(&d.u).await.and_then(|c| blob::open(&c, &d.k, &d.n)) {
-                Ok(bytes) => {
-                    let mime = if d.m.starts_with("image/") { d.m.clone() } else { "image/png".into() };
-                    src.set(Some(platform::image_bytes_to_data_url(&bytes, &mime).await));
+            let scope = if d.scope.is_empty() {
+                if d.k.is_empty() { "group" } else { "dm" }
+            } else {
+                d.scope.as_str()
+            };
+            match recovery::load_or_fetch_media(&d.u, &d.k, &d.n, &mime, scope, "original").await {
+                MediaFetchOutcome::Ready { bytes, mime: m, .. } => {
+                    src.set(Some(platform::image_bytes_to_data_url(&bytes, &m).await));
                 }
-                Err(_) => failed.set(true),
+                MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
+                    missing.set(Some((ref_id, availability_state, reason)));
+                }
+                MediaFetchOutcome::Error(_) => failed.set(true),
             }
         });
     }));
+
     rsx! {
         div { class: "rich-image",
             if let Some(s) = src() {
@@ -175,13 +277,140 @@ pub fn RichImage(data: ImageData) -> Element {
                 if open() {
                     div { class: "lightbox", role: "dialog", aria_label: "Ảnh", onclick: move |_| open.set(false),
                         img { src: "{s}", alt: "Hình ảnh" }
-                        button { r#type: "button", class: "icon-btn lightbox-close", aria_label: "Đóng", CloseIcon {} }
+                        div { class: "lightbox-actions", onclick: move |e| e.stop_propagation(),
+                            a { href: "{s}", download: if data.name.is_empty() { "chatw-image" } else { data.name.as_str() }, class: "btn-secondary", DownloadIcon { size: 15 } "Tải bản gốc" }
+                            button { r#type: "button", class: "icon-btn lightbox-close", aria_label: "Đóng", onclick: move |_| open.set(false), CloseIcon {} }
+                        }
+                    }
+                }
+            } else if let Some((rid, avail, reason)) = missing() {
+                div { class: "rich-card media-recovery-card",
+                    div { class: "rich-kind", "{availability_badge_label(&avail)}" }
+                    div { class: "rich-body muted", "{reason}" }
+                    if let Some(st) = rec_status() {
+                        div { class: "form-hint", "{st}" }
+                    }
+                    if avail != "no_remaining_copies" && avail != "denied_by_peer" && avail != "deleted_for_everyone" {
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            onclick: move |_| {
+                                let id = rid.clone();
+                                spawn(async move {
+                                    rec_status.set(Some("Đang gửi yêu cầu khôi phục".into()));
+                                    if let Ok(res) = storage_sync::create_recovery_request(&id, Some("webrtc_p2p")).await {
+                                        let st = res.get("status").and_then(|s| s.as_str()).unwrap_or("pending");
+                                        if let Some(req_id) = res.get("request_id").and_then(|s| s.as_str()) {
+                                            if st == "pending" {
+                                                recovery::initiate_p2p_recovery_offer(req_id).await;
+                                            }
+                                        }
+                                        rec_status.set(Some(availability_badge_label(st).to_string()));
+                                    }
+                                });
+                            },
+                            RefreshIcon { size: 14 } "Khôi phục từ bạn bè"
+                        }
                     }
                 }
             } else if failed() {
-                div { class: "rich-image-error", "Không giải mã được ảnh" }
+                div { class: "rich-image-error", "Không tải hoặc giải mã được ảnh" }
             } else {
                 div { class: "rich-image-loading", span { class: "spinner" } }
+            }
+        }
+    }
+}
+
+/// File, Voice Note (Opus) and Video message renderer using local OPFS/IndexedDB cache first + Peer Recovery.
+#[component]
+pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
+    let mut data_url = use_signal(|| Option::<String>::None);
+    let mut avail_note = use_signal(|| Option::<(String, String, String)>::None);
+    let mut rec_status = use_signal(|| Option::<String>::None);
+    let d = data.clone();
+    let knd = kind.clone();
+
+    use_effect(use_reactive!(|d, knd| {
+        data_url.set(None);
+        avail_note.set(None);
+        spawn(async move {
+            let scope = if d.scope.is_empty() {
+                if d.k.is_empty() { "group" } else { "dm" }
+            } else {
+                d.scope.as_str()
+            };
+            let fallback_mime = if !d.m.is_empty() { d.m.clone() } else if knd == "audio" { "audio/webm".into() } else if knd == "video" { "video/mp4".into() } else { "application/octet-stream".into() };
+            match recovery::load_or_fetch_media(&d.u, &d.k, &d.n, &fallback_mime, scope, "original").await {
+                MediaFetchOutcome::Ready { bytes, mime, .. } => {
+                    data_url.set(Some(platform::image_bytes_to_data_url(&bytes, &mime).await));
+                }
+                MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
+                    avail_note.set(Some((ref_id, availability_state, reason)));
+                }
+                MediaFetchOutcome::Error(_) => {
+                    if d.k.is_empty() {
+                        data_url.set(Some(platform::resolve_asset_url(&d.u)));
+                    }
+                }
+            }
+        });
+    }));
+
+    let fname = if data.name.is_empty() {
+        match kind.as_str() {
+            "audio" => "Tin nhắn thoại".to_string(),
+            "video" => "Video".to_string(),
+            _ => "Tệp đính kèm".to_string(),
+        }
+    } else {
+        data.name.clone()
+    };
+
+    rsx! {
+        div { class: "rich-card media-attachment-card",
+            div { class: "rich-kind",
+                if kind == "audio" { "Tin nhắn thoại" } else if kind == "video" { "Video" } else { "Tệp đính kèm" }
+                if data.size > 0 { " · {format_bytes_human(data.size)}" }
+            }
+            div { class: "rich-title", "{fname}" }
+            if let Some(u) = data_url() {
+                if kind == "audio" {
+                    audio { controls: true, src: "{u}", style: "width: 100%; max-width: 280px;" }
+                } else if kind == "video" {
+                    video { controls: true, src: "{u}", style: "width: 100%; max-width: 320px; border-radius: 8px;" }
+                }
+                a { href: "{u}", download: "{fname}", class: "btn-secondary", style: "margin-top: 6px; display: inline-flex; gap: 6px;",
+                    DownloadIcon { size: 14 } "Tải xuống bản gốc"
+                }
+            } else if let Some((rid, avail, reason)) = avail_note() {
+                div { class: "rich-body muted", "{availability_badge_label(&avail)} · {reason}" }
+                if let Some(st) = rec_status() {
+                    div { class: "form-hint", "{st}" }
+                }
+                if avail != "no_remaining_copies" && avail != "denied_by_peer" && avail != "deleted_for_everyone" {
+                    button {
+                        r#type: "button",
+                        class: "btn-secondary",
+                        onclick: move |_| {
+                            let id = rid.clone();
+                            spawn(async move {
+                                if let Ok(res) = storage_sync::create_recovery_request(&id, Some("webrtc_p2p")).await {
+                                    let st = res.get("status").and_then(|s| s.as_str()).unwrap_or("pending");
+                                    if let Some(req_id) = res.get("request_id").and_then(|s| s.as_str()) {
+                                        if st == "pending" {
+                                            recovery::initiate_p2p_recovery_offer(req_id).await;
+                                        }
+                                    }
+                                    rec_status.set(Some(availability_badge_label(st).to_string()));
+                                }
+                            });
+                        },
+                        RefreshIcon { size: 14 } "Khôi phục tệp"
+                    }
+                }
+            } else {
+                span { class: "spinner" }
             }
         }
     }
@@ -265,6 +494,9 @@ pub fn RichContent(
             }
         },
         Rich::Image(d) => rsx! { RichImage { data: d } },
+        Rich::File(f) => rsx! { RichMediaAttachment { data: f, kind: "file".to_string() } },
+        Rich::Audio(a) => rsx! { RichMediaAttachment { data: a, kind: "audio".to_string() } },
+        Rich::Video(v) => rsx! { RichMediaAttachment { data: v, kind: "video".to_string() } },
         Rich::Invite(i) => {
             let kind_label = if i.kind == "server" { "Cộng đồng" } else { "Nhóm" };
             // Card fields come from another user: only same-origin asset paths are rendered.
@@ -303,6 +535,7 @@ pub fn ComposerTools(
     input_id: String,
     on_raw: EventHandler<String>,
     on_image: EventHandler<(Vec<u8>, String)>,
+    #[props(default)] on_media: Option<EventHandler<OptimizedMediaPayload>>,
     #[props(default = true)] allow_poll: bool,
     #[props(default = true)] allow_note: bool,
     #[props(default = true)] allow_reminder: bool,
@@ -314,15 +547,38 @@ pub fn ComposerTools(
     let mut title = use_signal(String::new);
     let mut body = use_signal(String::new);
     let mut at = use_signal(now_local_input);
-    let file_id = format!("{input_id}-image");
-    let file_id2 = file_id.clone();
+    let mut preserve_original = use_signal(|| false);
+    let mut recording = use_signal(|| false);
+    let img_id = format!("{input_id}-image");
+    let img_id2 = img_id.clone();
+    let doc_id = format!("{input_id}-file");
+    let doc_id2 = doc_id.clone();
     rsx! {
         div { class: "composer-tools",
+            if recording() {
+                button {
+                    r#type: "button",
+                    class: "icon-btn active",
+                    title: "Dừng và gửi ghi âm thoại",
+                    aria_label: "Dừng ghi âm",
+                    onclick: move |_| {
+                        recording.set(false);
+                        spawn(async move {
+                            if let Ok(payload) = media_opt::stop_voice_recording().await {
+                                if let Some(h) = on_media {
+                                    h.call(payload);
+                                }
+                            }
+                        });
+                    },
+                    MicIcon { size: 18 }
+                }
+            }
             button {
                 r#type: "button",
                 class: if open() { "icon-btn active" } else { "icon-btn" },
                 title: "Thêm",
-                aria_label: "Thêm ảnh, bình chọn, ghi chú, nhắc hẹn",
+                aria_label: "Thêm ảnh, video, tệp, ghi âm, bình chọn",
                 aria_expanded: "{open()}",
                 onclick: move |e| { e.stop_propagation(); open.set(!open()); },
                 PlusIcon { size: 20 }
@@ -332,21 +588,72 @@ pub fn ComposerTools(
                 div { class: "account-menu tools-menu", role: "menu",
                     label { class: "menu-item", role: "menuitem",
                         input {
-                            id: "{file_id}",
+                            id: "{img_id}",
                             r#type: "file",
-                            accept: "image/png,image/jpeg,image/webp,image/gif",
+                            accept: "image/*,video/mp4,video/webm",
                             style: "display: none;",
                             onchange: move |_| {
                                 open.set(false);
-                                let fid = file_id2.clone();
+                                let fid = img_id2.clone();
+                                let orig = preserve_original();
                                 spawn(async move {
-                                    if let Ok((bytes, mime)) = platform::read_selected_file_raw(&fid).await {
+                                    if let Ok(payload) = media_opt::pick_and_optimize_from_input(&fid, orig).await {
+                                        if let Some(h) = on_media {
+                                            h.call(payload);
+                                        } else {
+                                            on_image.call((payload.bytes, payload.mime));
+                                        }
+                                    } else if let Ok((bytes, mime)) = platform::read_selected_file_raw(&fid).await {
                                         on_image.call((bytes, mime));
                                     }
                                 });
                             },
                         }
-                        "Ảnh"
+                        "Ảnh và video"
+                    }
+                    if on_media.is_some() {
+                        label { class: "menu-item", role: "menuitem",
+                            input {
+                                id: "{doc_id}",
+                                r#type: "file",
+                                style: "display: none;",
+                                onchange: move |_| {
+                                    open.set(false);
+                                    let fid = doc_id2.clone();
+                                    spawn(async move {
+                                        if let Ok(payload) = media_opt::pick_and_optimize_from_input(&fid, true).await {
+                                            if let Some(h) = on_media {
+                                                h.call(payload);
+                                            }
+                                        }
+                                    });
+                                },
+                            }
+                            "Tệp đính kèm"
+                        }
+                        button {
+                            r#type: "button",
+                            class: "menu-item",
+                            role: "menuitem",
+                            onclick: move |_| {
+                                open.set(false);
+                                spawn(async move {
+                                    if media_opt::start_voice_recording().await.is_ok() {
+                                        recording.set(true);
+                                    }
+                                });
+                            },
+                            "Ghi âm thoại"
+                        }
+                    }
+                    label { class: "menu-item", role: "menuitemcheckbox",
+                        onclick: move |e| e.stop_propagation(),
+                        input {
+                            r#type: "checkbox",
+                            checked: preserve_original(),
+                            onchange: move |e| preserve_original.set(e.checked()),
+                        }
+                        "Giữ nguyên bản gốc"
                     }
                     if allow_poll { button { r#type: "button", class: "menu-item", role: "menuitem", onclick: move |_| { open.set(false); dialog.set(Some("poll")); }, "Bình chọn" } }
                     if allow_note { button { r#type: "button", class: "menu-item", role: "menuitem", onclick: move |_| { open.set(false); dialog.set(Some("note")); }, "Ghi chú" } }

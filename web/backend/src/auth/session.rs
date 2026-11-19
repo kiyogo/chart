@@ -20,6 +20,8 @@ pub struct AuthUser {
     pub id: Uuid,
     pub username: Option<String>,
     pub avatar_url: Option<String>,
+    pub session_id: Option<Uuid>,
+    pub device_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug)]
@@ -152,23 +154,28 @@ pub async fn authenticate_session(
 
     let token_hash = hash_session_token(&config.session_secret, &token_bytes);
 
-    let row = sqlx::query!(
+    let row = sqlx::query(
         r#"
-        SELECT s.user_id, u.username, u.avatar_url
+        SELECT s.id AS session_id, s.device_id, s.user_id, u.username, u.avatar_url
         FROM sessions s
         JOIN users u ON u.id = s.user_id
+        LEFT JOIN devices d ON d.id = s.device_id
         WHERE s.token_hash = $1 AND s.expires_at > now() AND u.suspended_at IS NULL
+          AND (d.trust_state IS NULL OR d.trust_state <> 'revoked')
         "#,
-        &token_hash[..]
     )
+    .bind(&token_hash[..])
     .fetch_optional(pool)
     .await?
     .ok_or(AppError::Unauthorized)?;
 
+    use sqlx::Row;
     Ok(AuthUser {
-        id: row.user_id,
-        username: row.username,
-        avatar_url: row.avatar_url,
+        id: row.try_get("user_id")?,
+        username: row.try_get("username")?,
+        avatar_url: row.try_get("avatar_url")?,
+        session_id: row.try_get("session_id")?,
+        device_id: row.try_get("device_id")?,
     })
 }
 

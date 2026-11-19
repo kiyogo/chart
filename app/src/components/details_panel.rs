@@ -269,8 +269,60 @@ pub fn DmDetailsPanel(
                             span { class: "details-row-label", "Mã người dùng" }
                         }
                         div { class: "fingerprint", "{user_id}" }
+                        PeerRecoveryConvToggle { peer_id: user_id.clone() }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Per-conversation toggle allowing two-way missing DM file recovery via WebRTC/relay.
+#[component]
+fn PeerRecoveryConvToggle(peer_id: String) -> Element {
+    let mut allow_rec = use_signal(|| true);
+    let mut dm_backup = use_signal(|| false);
+    let mut status_msg = use_signal(|| Option::<String>::None);
+    let pid = peer_id.clone();
+    use_effect(use_reactive!(|pid| {
+        spawn(async move {
+            if let Ok(pol) = crate::services::storage_sync::get_conv_policy(&pid).await {
+                allow_rec.set(pol.allow_peer_recovery);
+                dm_backup.set(pol.dm_encrypted_backup);
+            }
+        });
+    }));
+
+    rsx! {
+        div { class: "details-recovery-box",
+            label { class: "details-toggle-row",
+                span { "Cho phép khôi phục file hai chiều" }
+                input {
+                    r#type: "checkbox",
+                    checked: allow_rec(),
+                    onchange: {
+                        let p = peer_id.clone();
+                        move |e: Event<FormData>| {
+                            let val = e.checked();
+                            allow_rec.set(val);
+                            let peer = p.clone();
+                            let bkup = dm_backup();
+                            spawn(async move {
+                                let pol = crate::services::storage_sync::ConvStoragePolicy {
+                                    allow_peer_recovery: val,
+                                    dm_encrypted_backup: bkup,
+                                };
+                                match crate::services::storage_sync::update_conv_policy(&peer, &pol).await {
+                                    Ok(_) => status_msg.set(Some(if val { "Đã bật khôi phục hai chiều".into() } else { "Đã tắt khôi phục hai chiều".into() })),
+                                    Err(_) => status_msg.set(Some("Không lưu được cài đặt".into())),
+                                }
+                            });
+                        }
+                    },
+                }
+            }
+            if let Some(m) = status_msg() {
+                div { class: "form-hint", "{m}" }
             }
         }
     }

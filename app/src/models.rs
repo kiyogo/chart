@@ -13,6 +13,8 @@ pub struct MeResponse {
     pub username: Option<String>,
     pub avatar_url: Option<String>,
     pub has_keys: bool,
+    #[serde(default)]
+    pub device_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -361,6 +363,20 @@ pub enum WsEvent {
     EnterpriseEvent(serde_json::Value),
     #[serde(rename = "feed.updated")]
     FeedUpdated(serde_json::Value),
+    #[serde(rename = "device.approval.request")]
+    DeviceApprovalRequest(serde_json::Value),
+    #[serde(rename = "device.approval.resolved")]
+    DeviceApprovalResolved(serde_json::Value),
+    #[serde(rename = "device.revoked")]
+    DeviceRevoked(serde_json::Value),
+    #[serde(rename = "recovery.request.incoming")]
+    RecoveryRequestIncoming(serde_json::Value),
+    #[serde(rename = "recovery.request.updated")]
+    RecoveryRequestUpdated(serde_json::Value),
+    #[serde(rename = "recovery.p2p.signal")]
+    RecoveryP2pSignal(serde_json::Value),
+    #[serde(rename = "media.delete_for_all")]
+    MediaDeleteForAll(serde_json::Value),
     #[serde(other)]
     Unknown,
 }
