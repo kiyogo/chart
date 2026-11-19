@@ -109,6 +109,11 @@ pub fn EnterpriseWorkspace(
             }
 
             if members_open {
+                div {
+                    class: "panel-resizer resizer-right",
+                    "data-resizer": "details",
+                    title: "Kéo để thay đổi kích thước danh sách thành viên",
+                }
                 ServerMembersPanel {
                     owner_id: owner_id,
                     members: members,

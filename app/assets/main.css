@@ -1148,6 +1148,49 @@ input[type="checkbox"].switch:focus-visible { outline: none; box-shadow: 0 0 0 2
   position: relative;
   gap: var(--shell-gap);
 }
+
+/* Resizable Columns / Splitters */
+.panel-resizer {
+  position: relative;
+  z-index: 15;
+  width: 6px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  user-select: none;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.panel-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  border-radius: 999px;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.panel-resizer:hover::after,
+.panel-resizer.is-dragging::after {
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+body.resizing-panel {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.resizing-panel * {
+  user-select: none !important;
+}
+
+@media (max-width: 767px) {
+  .panel-resizer {
+    display: none !important;
+  }
+}
 .chat-column {
   flex: 1;
   display: flex;
@@ -5366,7 +5409,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 }
 
 .details-panel.server-members-panel {
-  width: clamp(15rem, 18vw, 17.5rem);
+  width: var(--details-width, clamp(15rem, 18vw, 17.5rem));
   background: var(--bg-primary);
 }
 .server-members-scroll {

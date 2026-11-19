@@ -2493,6 +2493,14 @@ pub fn Chat(
                 }
             }
 
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() {
+                div {
+                    class: "panel-resizer resizer-left",
+                    "data-resizer": "sidebar",
+                    title: "Kéo để thay đổi kích thước danh sách",
+                }
+            }
+
             main { class: if is_chat_selected && active_left_plugin.is_none() { "main-stage" } else { "main-stage hidden-mobile" },
                 if let Some(pid) = active_mod_page.clone() {
                     crate::components::plugins_view::PluginCustomPageView {
@@ -2854,6 +2862,11 @@ pub fn Chat(
                         }
 
                         if is_partner_info_open() && !self_mode {
+                            div {
+                                class: "panel-resizer resizer-right",
+                                "data-resizer": "details",
+                                title: "Kéo để thay đổi kích thước chi tiết",
+                            }
                             DmDetailsPanel {
                                 user_id: active.id.clone(),
                                 username: active.username.clone(),
@@ -3383,6 +3396,11 @@ pub fn Chat(
 
                         if is_server_members_open() {
                             if let Some(srv) = selected_server() {
+                                div {
+                                    class: "panel-resizer resizer-right",
+                                    "data-resizer": "details",
+                                    title: "Kéo để thay đổi kích thước danh sách thành viên",
+                                }
                                 ServerMembersPanel {
                                     owner_id: srv.owner_id.clone(),
                                     members: server_members(),
