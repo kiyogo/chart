@@ -157,3 +157,16 @@ Status values: Tested = works end to end and covered by an automated check; Impl
 | Second step for every sign-in (Google and test login) and for signing out all other devices | Tested |
 | New-device login alert (realtime + system notification) and security log with masked IP | Tested |
 | Passkeys / WebAuthn, biometric unlock, SMS / email codes | Not Started |
+
+## Spec 012: advanced profile (sections IV, XVII, XVIII, XIX)
+| Item | Status |
+|---|---|
+| Drag-and-drop profile layout (order, show / hide, normal / wide), reset | Tested |
+| 21 profile templates (card only) | Tested |
+| Layout presets (≤ 10), export / import JSON | Tested (presets), Implemented (export / import via clipboard) |
+| Preview as owner / friend / stranger, desktop / mobile | Tested (as), Implemented (mobile) |
+| Showcase (links, images, GIFs, favourite stickers), pin, order | Tested |
+| Guestbook with off / friends / everyone, deletion rules, rate limit | Tested |
+| 15 achievements from real activity, progress, hidden achievement, unlock history | Tested |
+| Inventory (equipped, packs, emoji, GIFs, drawings, presets, achievements) with search | Tested |
+| Profile visitors, collections, item trading | Not Started |

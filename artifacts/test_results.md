@@ -119,3 +119,13 @@ xem trước "Chính mình" lộ mã thiết bị; ảnh đại diện trong h�
   without signing in again, both accounts kept, new device challenged, realtime "Firefox trên Windows" alert, security
   log, disable with a backup code, "sign out all accounts".
 - UI audit regression: 313/313.
+
+## Spec 012: advanced profile (2026-11-19)
+- `cargo test`: backend section normalisation + showcase refs; client layout export / import round trip.
+- `node app/e2e/profile-check.mjs`: **23/23** — 21 templates, keyboard reorder, native drag and drop, show / hide,
+  wide size, preset save, showcase link + uploaded image + pin, preview as stranger / friend (friends-only location),
+  server-side layout, pinned-first showcase, achievements from real activity, hidden section not sent to others,
+  others see only unlocked achievements, friend signs the guestbook in the UI, over-long entry / external image /
+  unknown template refused, others can't delete entries, owner can, inventory equipped items + 15 achievements +
+  apply preset.
+- UI audit regression: 313/313.

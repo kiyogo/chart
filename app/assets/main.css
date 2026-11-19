@@ -3042,3 +3042,102 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 .security-event { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--bg-secondary); }
 .security-event.warn { box-shadow: inset 3px 0 0 #F59E0B; }
 .btn-secondary.danger { color: var(--danger, #DC2626); }
+
+/* ============ Spec 012: profile layout, templates, showcase, guestbook, inventory ============ */
+.pc-sections { display: grid; grid-template-columns: 1fr; gap: var(--space-2); container-type: inline-size; }
+@container (min-width: 520px) { .pc-sections { grid-template-columns: 1fr 1fr; } .pc-section.wide { grid-column: 1 / -1; } }
+.pc-section { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: color-mix(in srgb, var(--bg-primary) 70%, transparent); min-width: 0; }
+.pc-section.is-hidden { opacity: 0.55; outline: 1px dashed var(--text-muted); }
+.showcase-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr)); gap: var(--space-2); }
+.showcase-item { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.showcase-item img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: var(--radius-md); }
+.showcase-item figcaption { font-size: 0.7rem; color: var(--text-muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.showcase-link { grid-column: 1 / -1; border: 0; background: var(--bg-secondary); border-radius: var(--radius-md); padding: var(--space-2); text-align: left; color: var(--accent); cursor: pointer; }
+.pin-dot { color: #F59E0B; margin-right: 4px; }
+.achievement-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr)); gap: var(--space-2); }
+.achievement-grid.wide { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
+.achievement { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: var(--space-2); border-radius: var(--radius-md); background: var(--bg-secondary); text-align: center; opacity: 0.7; }
+.achievement.unlocked { opacity: 1; box-shadow: inset 0 0 0 1px color-mix(in srgb, #F59E0B 55%, transparent); }
+.achievement-medal { font-size: 1.4rem; line-height: 1; }
+.achievement-name { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.achievement-progress { width: 100%; height: 4px; border-radius: 4px; background: var(--bg-hover); overflow: hidden; }
+.achievement-bar { display: block; height: 100%; background: var(--accent); }
+.guestbook-form { display: flex; gap: var(--space-2); }
+.guestbook-form input { flex: 1; min-width: 0; }
+.guestbook-entry { display: flex; gap: var(--space-2); align-items: flex-start; font-size: var(--text-sm); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.icon-btn.small { width: 1.5rem; height: 1.5rem; }
+.preview-toolbar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); flex-wrap: wrap; }
+.profile-editor-preview.mobile .profile-card { max-width: 360px; margin: 0 auto; }
+.layout-editor { display: flex; flex-direction: column; gap: var(--space-3); }
+.template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: var(--space-2); max-height: 15rem; overflow-y: auto; }
+.template-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: var(--space-2); border: 0; border-radius: var(--radius-md); background: var(--bg-secondary); cursor: pointer; font-size: 0.72rem; }
+.template-tile.active { box-shadow: inset 0 0 0 2px var(--accent); }
+.template-swatch { display: block; width: 100%; height: 2.5rem; border-radius: var(--radius-md); background: linear-gradient(135deg, var(--pc-1, var(--accent)), var(--pc-2, #A78BFA)); }
+.section-list { display: flex; flex-direction: column; gap: 4px; }
+.section-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-md); background: var(--bg-secondary); cursor: grab; }
+.section-row.dragging { opacity: 0.5; }
+.drag-handle { color: var(--text-muted); letter-spacing: -2px; }
+.preset-list, .showcase-manage { display: flex; flex-direction: column; gap: 4px; }
+.preset-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-md); background: var(--bg-secondary); }
+.showcase-thumb { width: 2rem; height: 2rem; object-fit: contain; border-radius: 6px; }
+.showcase-kind { width: 2rem; text-align: center; }
+.showcase-pick { width: 2.75rem; height: 2.75rem; padding: 2px; border: 0; border-radius: var(--radius-md); background: var(--bg-secondary); cursor: pointer; }
+.showcase-pick img { width: 100%; height: 100%; object-fit: contain; }
+.btn-small-secondary.active { color: #B45309; }
+.inventory { display: flex; flex-direction: column; gap: var(--space-3); }
+.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--space-2); }
+.inv-grid.compact { grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); }
+.inv-card { display: flex; flex-direction: column; gap: 4px; padding: var(--space-2); border-radius: var(--radius-lg); background: var(--bg-secondary); min-width: 0; }
+.inv-card img { width: 100%; height: 5rem; object-fit: contain; border-radius: var(--radius-md); background: var(--bg-primary); }
+.inv-card .settings-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 21 profile templates: only the profile card changes, never the app theme. */
+.pc-tpl-modern { --pc-radius: 20px; }
+.pc-tpl-modern .pc-section { background: color-mix(in srgb, var(--pc-1) 8%, var(--bg-primary)); }
+.pc-tpl-anime .profile-card-banner, .template-swatch.pc-tpl-anime { background: linear-gradient(135deg, #F9A8D4, #A5B4FC 55%, #FDE68A) !important; }
+.pc-tpl-anime .profile-card-name { color: #DB2777; }
+.pc-tpl-gaming .profile-card-banner, .template-swatch.pc-tpl-gaming { background: linear-gradient(135deg, #111827, #7C3AED 60%, #22D3EE) !important; }
+.pc-tpl-gaming .pc-section { box-shadow: inset 2px 0 0 #22D3EE; }
+.pc-tpl-developer .pc-section, .pc-tpl-developer .profile-card-name { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; }
+.pc-tpl-developer .profile-card-banner, .template-swatch.pc-tpl-developer { background: repeating-linear-gradient(0deg, #0F172A 0 6px, #111C33 6px 12px) !important; }
+.pc-tpl-creator .profile-card-banner, .template-swatch.pc-tpl-creator { background: linear-gradient(120deg, #F97316, #EF4444, #DB2777) !important; }
+.pc-tpl-artist .profile-card-banner, .template-swatch.pc-tpl-artist { background: radial-gradient(circle at 20% 30%, #FDE047 0 18%, transparent 19%), radial-gradient(circle at 70% 60%, #38BDF8 0 22%, transparent 23%), #F472B6 !important; }
+.pc-tpl-music .profile-card-banner, .template-swatch.pc-tpl-music { background: repeating-linear-gradient(90deg, #1E1B4B 0 10px, #4338CA 10px 12px) !important; }
+.pc-tpl-retro .profile-card-banner, .template-swatch.pc-tpl-retro { background: linear-gradient(180deg, #F59E0B, #EF4444 50%, #7C2D12) !important; }
+.pc-tpl-retro .profile-card-name { font-family: Georgia, serif; }
+.pc-tpl-pixel, .pc-tpl-pixel .pc-section, .pc-tpl-pixel .profile-card-banner { border-radius: 0 !important; }
+.pc-tpl-pixel .profile-card-name { font-family: ui-monospace, monospace; letter-spacing: 0.06em; text-transform: uppercase; }
+.pc-tpl-pixel .profile-card-banner, .template-swatch.pc-tpl-pixel { background: conic-gradient(#22C55E 25%, #16A34A 0 50%, #22C55E 0 75%, #16A34A 0) 0 0 / 16px 16px !important; }
+.pc-tpl-neon { background: #0B1020 !important; color: #E2E8F0; }
+.pc-tpl-neon .pc-section { background: #111833; box-shadow: 0 0 0 1px color-mix(in srgb, #22D3EE 45%, transparent); }
+.pc-tpl-neon .profile-card-name { color: #fff; text-shadow: 0 0 8px #22D3EE; }
+.template-swatch.pc-tpl-neon { background: #0B1020 !important; box-shadow: inset 0 0 0 2px #22D3EE; }
+.pc-tpl-glass .pc-section { background: color-mix(in srgb, #fff 18%, transparent); backdrop-filter: blur(10px); }
+.pc-tpl-glass .profile-card-banner, .template-swatch.pc-tpl-glass { background: linear-gradient(135deg, #93C5FD, #C4B5FD) !important; }
+.pc-tpl-elegant .profile-card-name { font-family: Georgia, "Times New Roman", serif; letter-spacing: 0.02em; }
+.pc-tpl-elegant .profile-card-banner, .template-swatch.pc-tpl-elegant { background: linear-gradient(135deg, #1F2937, #B45309) !important; }
+.pc-tpl-dark { background: #0F172A !important; color: #E2E8F0; }
+.pc-tpl-dark .pc-section { background: #1E293B; }
+.template-swatch.pc-tpl-dark { background: #0F172A !important; }
+.pc-tpl-light { background: #FFFFFF !important; color: #0F172A; }
+.pc-tpl-light .pc-section { background: #F1F5F9; }
+.template-swatch.pc-tpl-light { background: #F8FAFC !important; box-shadow: inset 0 0 0 1px #E2E8F0; }
+.pc-tpl-pastel .profile-card-banner, .template-swatch.pc-tpl-pastel { background: linear-gradient(135deg, #FBCFE8, #BFDBFE, #BBF7D0) !important; }
+.pc-tpl-pastel .pc-section { background: color-mix(in srgb, #FBCFE8 22%, var(--bg-primary)); }
+.pc-tpl-nature .profile-card-banner, .template-swatch.pc-tpl-nature { background: linear-gradient(180deg, #86EFAC, #15803D) !important; }
+.pc-tpl-nature .pc-section { background: color-mix(in srgb, #22C55E 10%, var(--bg-primary)); }
+.pc-tpl-cyber .profile-card-banner, .template-swatch.pc-tpl-cyber { background: linear-gradient(135deg, #0F172A 30%, #FDE047 30% 34%, #0F172A 34% 70%, #F43F5E 70%) !important; }
+.pc-tpl-cyber .profile-card-name { font-family: ui-monospace, monospace; color: #F43F5E; }
+.pc-tpl-vintage { filter: sepia(0.25); }
+.pc-tpl-vintage .profile-card-banner, .template-swatch.pc-tpl-vintage { background: linear-gradient(135deg, #D6C7A1, #8B6F47) !important; }
+.pc-tpl-professional .profile-card-banner, .template-swatch.pc-tpl-professional { background: linear-gradient(135deg, #1E3A8A, #334155) !important; }
+.pc-tpl-professional .pc-section { border-radius: 6px; }
+.pc-tpl-community .profile-card-banner, .template-swatch.pc-tpl-community { background: linear-gradient(135deg, #0EA5E9, #22C55E, #F59E0B) !important; }
+.pc-tpl-minimal .pc-section { background: transparent; padding-left: 0; padding-right: 0; }
+/* Dark-card templates: keep every inner surface dark so text stays readable. */
+.pc-tpl-neon .achievement, .pc-tpl-dark .achievement, .pc-tpl-neon .showcase-link, .pc-tpl-dark .showcase-link,
+.pc-tpl-neon .interest-chip, .pc-tpl-dark .interest-chip { background: #1E293B; color: #E2E8F0; }
+.pc-tpl-neon .member-sub, .pc-tpl-dark .member-sub, .pc-tpl-neon .profile-card-label, .pc-tpl-dark .profile-card-label, .pc-tpl-neon .pd-k, .pc-tpl-dark .pd-k { color: #94A3B8; }
+.pc-tpl-neon .guestbook-form input, .pc-tpl-dark .guestbook-form input { background: #0F172A; color: #E2E8F0; }
+.pc-tpl-light .achievement, .pc-tpl-light .interest-chip { background: #E2E8F0; color: #0F172A; }

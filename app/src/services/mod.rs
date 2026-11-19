@@ -8,6 +8,7 @@ pub mod library;
 pub mod social;
 pub mod openmoji;
 pub mod profile_ext;
+pub mod profile_plus;
 pub mod security;
 pub mod settings_sync;
 pub mod stickers;

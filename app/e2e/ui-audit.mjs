@@ -426,7 +426,7 @@ async function main() {
     record('avatar motion saved on server', !!m && m.effect === 'orbit' && m.speed === 2 && m.reverse === true, JSON.stringify(m));
     record('profile details saved', ext.body && ext.body.details && ext.body.details.pronouns === 'she/her' && (ext.body.details.interests || []).length === 2, JSON.stringify(ext.body && ext.body.details));
     record('status expiry set', !!(ext.body && ext.body.status_expires_at), String(ext.body && ext.body.status_expires_at));
-    record('profile card shows motion + details', await A.locator('.profile-card .avm-orbit').count() > 0 && await A.locator('.profile-card .interest-chip').count() === 2, '');
+    record('profile card shows motion + details', await A.locator('.profile-card .avm-orbit').count() > 0 && await A.locator('.profile-card .interest-chip:not(.community-chip)').count() === 2, '');
     await shot(A, 'profile_motion_details_light_1366x768');
     await A.locator('.profile-modal button[aria-label="Đóng hồ sơ"]').click().catch(() => {});
     await A.keyboard.press('Escape');

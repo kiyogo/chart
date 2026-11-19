@@ -24,6 +24,7 @@ use crate::{
 enum EditTab {
     Info,
     Motion,
+    Layout,
     Style,
     Effects,
     Create,
@@ -51,6 +52,21 @@ pub fn ProfileModal(
     let mut interests_text = use_signal(String::new);
     // Spec 010: the full ChatW Studio (layers, animation) for a target.
     let mut full_studio = use_signal(|| Option::<String>::None);
+    // Spec 012: layout / template / showcase / guestbook, plus the draft layout while editing.
+    let mut plus = use_signal(|| Option::<crate::services::profile_plus::ProfilePlus>::None);
+    let mut draft_layout = use_signal(|| Option::<(String, Vec<crate::services::profile_plus::Section>, String)>::None);
+    let mut view_as = use_signal(|| "self".to_string());
+    let mut preview_mobile = use_signal(|| false);
+    let uid_plus = user_id.clone();
+    let reload_plus = use_callback(move |_: ()| {
+        let u = uid_plus.clone();
+        spawn(async move {
+            if let Ok(x) = crate::services::profile_plus::get(&u).await {
+                plus.set(Some(x));
+            }
+        });
+    });
+    use_hook(move || reload_plus.call(()));
 
     let uid = user_id.clone();
     use_effect(move || {
@@ -113,6 +129,11 @@ pub fn ProfileModal(
             if status_expiry() >= 0 {
                 ext["status_expires_in_minutes"] = json!(if d.status_text.as_deref().unwrap_or_default().trim().is_empty() { 0 } else { status_expiry() });
             }
+            if let Some((t, sec, g)) = draft_layout() {
+                if let Err(e) = crate::services::profile_plus::save_layout(&t, &sec, &g).await {
+                    notice.set(Some((true, format!("Không lưu được bố cục ({})", e.code))));
+                }
+            }
             let result = match update_my_profile_fields(fields).await {
                 Ok(mut updated) => match crate::services::profile_ext::update_me(ext).await {
                     Ok(v) => {
@@ -126,6 +147,8 @@ pub fn ProfileModal(
             match result {
                 Ok(updated) => {
                     status_expiry.set(-1);
+                    draft_layout.set(None);
+                    reload_plus.call(());
                     profile.set(Some(updated.clone()));
                     draft.set(None);
                     if let Some(h) = on_profile_updated {
@@ -169,6 +192,7 @@ pub fn ProfileModal(
                             div { class: "segmented", style: "margin: 0 var(--space-5);", role: "tablist",
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Info { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Info), "Thông tin" }
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Motion { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Motion), "Avatar Studio" }
+                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Layout { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Layout), "Bố cục" }
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Style { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Style), "Trang trí" }
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Effects { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Effects), "Hiệu ứng" }
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Create { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Create), "Tự tạo" }
@@ -330,6 +354,18 @@ pub fn ProfileModal(
                                         }
                                         VisibilitySelect { field: "interests".to_string(), value: d.detail_visibility.as_ref().and_then(|m| m.get("interests").cloned()).unwrap_or_else(|| "everyone".into()),
                                             on_change: move |v: String| edit(&|p| { p.detail_visibility.get_or_insert_with(Default::default).insert("interests".to_string(), v.clone()); }) }
+                                    }
+                                } else if tab() == EditTab::Layout {
+                                    {
+                                        let cur = draft_layout().or_else(|| plus().map(|x| (x.template, x.sections, x.guestbook_mode))).unwrap_or_else(|| ("minimal".into(), crate::services::profile_plus::default_sections(), "friends".into()));
+                                        rsx! {
+                                            crate::components::profile_plus_ui::LayoutEditor {
+                                                template: cur.0, sections: cur.1, guestbook_mode: cur.2,
+                                                showcase: plus().map(|x| x.showcase).unwrap_or_default(),
+                                                on_change: move |v| draft_layout.set(Some(v)),
+                                                on_showcase_changed: move |_| reload_plus.call(()),
+                                            }
+                                        }
                                     }
                                 } else if tab() == EditTab::Motion {
                                     p { class: "member-sub", "Chọn một trong 40 hiệu ứng, chỉnh tốc độ, cường độ, màu, hướng xoay và cách kích hoạt. Hiệu ứng hiện trên hồ sơ, danh sách trò chuyện và danh sách bạn bè của mọi người." }
@@ -584,15 +620,27 @@ pub fn ProfileModal(
                                 }
                             }
                         }
-                        div { class: "profile-editor-preview",
-                            div { class: "form-label", "Xem trước" }
-                            ProfileCard { profile: d.clone(), effects_enabled: effects_enabled }
+                        div { class: if preview_mobile() { "profile-editor-preview mobile" } else { "profile-editor-preview" },
+                            div { class: "preview-toolbar",
+                                span { class: "form-label", "Xem trước" }
+                                select { aria_label: "Xem hồ sơ như", value: "{view_as}", onchange: move |e| view_as.set(e.value()),
+                                    option { value: "self", "Như chủ tài khoản" }
+                                    option { value: "friend", "Như bạn bè" }
+                                    option { value: "stranger", "Như người lạ" }
+                                }
+                                button { r#type: "button", class: "btn-small-secondary", aria_pressed: "{preview_mobile()}", onclick: move |_| preview_mobile.set(!preview_mobile()),
+                                    if preview_mobile() { "Desktop" } else { "Mobile" } }
+                            }
+                            {
+                                let pl = plus().map(|mut x| { if let Some((t, sec, g)) = draft_layout() { x.template = t; x.sections = sec; x.guestbook_mode = g; } x });
+                                rsx! { ProfileCard { profile: d.clone(), effects_enabled: effects_enabled, plus: pl, is_self: true, view_as: view_as() } }
+                            }
                         }
                     }
                 } else if let Some(p) = profile() {
                     div { class: "profile-modal-view",
                         button { r#type: "button", class: "icon-btn profile-close", aria_label: "Đóng hồ sơ", onclick: move |_| on_close.call(()), CloseIcon {} }
-                        ProfileCard { profile: p.clone(), effects_enabled: effects_enabled,
+                        ProfileCard { profile: p.clone(), effects_enabled: effects_enabled, plus: plus(), is_self: is_self, on_plus_changed: move |_| reload_plus.call(()),
                             div { class: "profile-card-actions",
                                 if is_self {
                                     button { r#type: "button", class: "btn-primary btn-block", onclick: move |_| draft.set(profile()), "Chỉnh sửa hồ sơ" }

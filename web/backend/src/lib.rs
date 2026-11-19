@@ -21,6 +21,7 @@ pub mod models;
 pub mod servers;
 pub mod drawings;
 pub mod profile_ext;
+pub mod profile_plus;
 pub mod security;
 pub mod stickers;
 pub mod typing;

@@ -19,7 +19,7 @@ use chatw::{
     calls,
     config::Config,
     admin, bots, business, convo, crypto, db, directory, drawings, friends, groups, library, messages, privacy, public_pages, servers,
-    profile_ext, security, stickers, typing, users, webrtc,
+    profile_ext, profile_plus, security, stickers, typing, users, webrtc,
     websocket::{self, WsHub},
 };
 
@@ -138,6 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/typing", typing::routes())
         .nest("/drawings", drawings::routes())
         .nest("/security", security::routes())
+        .nest("/profile-plus", profile_plus::routes())
         .merge(profile_ext::routes())
         .merge(websocket::routes())
         .with_state(state.clone());
