@@ -712,7 +712,7 @@ input.switch:checked::after { transform: translateX(1.125rem); }
   width: 100%;
   min-width: 0;
   color: var(--text-primary);
-  flex-shrink: 0;
+  margin-bottom: 4px;
 }
 .chat-item:hover { background: var(--bg-hover); }
 .chat-item.selected { background: var(--bg-selected); }
