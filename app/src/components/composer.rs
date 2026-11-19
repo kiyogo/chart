@@ -319,6 +319,27 @@ pub fn Composer(
         }
     });
 
+    let insert_id = input_id.clone();
+    use_effect(move || {
+        let pending = crate::components::plugins_view::PENDING_COMPOSER_TEXT.read().clone();
+        if let Some(txt) = pending {
+            if !disabled && (insert_id == "dm-chat-input" || insert_id == "bot-chat-input") {
+                *crate::components::plugins_view::PENDING_COMPOSER_TEXT.write() = None;
+                let current = paste_value.read().clone();
+                let next = if current.is_empty() {
+                    txt
+                } else if current.ends_with('\n') || current.ends_with(' ') {
+                    format!("{current}{txt}")
+                } else {
+                    format!("{current}\n{txt}")
+                };
+                on_input.call(next);
+                let focus_js = format!("const el = document.getElementById({:?}); if (el) el.focus();", insert_id);
+                let _ = dioxus::document::eval(&focus_js);
+            }
+        }
+    });
+
     let suggestions: Vec<Suggest> = if disabled || dismissed_for() == value {
         Vec::new()
     } else {

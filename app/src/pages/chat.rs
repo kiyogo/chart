@@ -1661,6 +1661,7 @@ pub fn Chat(
     let total_unread: usize = unread_counts.read().values().copied().sum();
     let pending_len = pending_requests.read().len();
     let active_mod_page = crate::components::plugins_view::ACTIVE_PLUGIN_PAGE.read().clone();
+    let active_left_plugin = crate::components::plugins_view::ACTIVE_LEFT_PLUGIN.read().clone();
     let is_chat_selected = active_friend().is_some()
         || active_group().is_some()
         || selected_channel().is_some()
@@ -1991,7 +1992,7 @@ pub fn Chat(
             crate::components::plugins_view::PluginGlobalOverlay {}
             AppRail {
                 active_section: section.clone(),
-                hidden_mobile: is_chat_selected,
+                hidden_mobile: is_chat_selected && active_left_plugin.is_none(),
                 unread_dm_count: total_unread,
                 pending_friend_count: pending_len,
                 current_username: current_username.clone(),
@@ -2032,7 +2033,17 @@ pub fn Chat(
             }
 
             if section != NavSection::Settings && section != NavSection::Search && active_mod_page.is_none() {
-                NavigationSidebar {
+                if let Some(lpid) = active_left_plugin.clone() {
+                    aside { class: "nav-sidebar",
+                        crate::components::plugins_view::PluginLeftAppView {
+                            key: "{lpid}",
+                            plugin_id: lpid,
+                            my_username: current_username.clone(),
+                            on_close: move |_| *crate::components::plugins_view::ACTIVE_LEFT_PLUGIN.write() = None,
+                        }
+                    }
+                } else {
+                    NavigationSidebar {
                     dm_content: rsx! {
                         ConversationList {
                             my_id: current_user_id.clone(),
@@ -2159,10 +2170,11 @@ pub fn Chat(
                             });
                         }
                     },
+                    }
                 }
             }
 
-            main { class: if is_chat_selected { "main-stage" } else { "main-stage hidden-mobile" },
+            main { class: if is_chat_selected && active_left_plugin.is_none() { "main-stage" } else { "main-stage hidden-mobile" },
                 if let Some(pid) = active_mod_page.clone() {
                     crate::components::plugins_view::PluginCustomPageView {
                         key: "{pid}",

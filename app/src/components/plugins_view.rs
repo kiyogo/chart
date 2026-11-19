@@ -13,11 +13,13 @@ use serde_json::json;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BackIcon, CheckIcon, CopyIcon, GroupIcon, PluginIcon, PlusIcon, RefreshIcon, SlidersIcon, TrashIcon},
+        chat_extras::wallpaper_attrs,
+        icons::{BackIcon, CheckIcon, CloseIcon, CopyIcon, GroupIcon, PanelRightIcon, PluginIcon, PlusIcon, RefreshIcon, SendIcon, SlidersIcon, TrashIcon},
         messages::{Composer, MessageList, ViewMessage},
     },
     models::{BotChatMessage, BotItem, GroupItem},
     platform,
+    prefs::PrefsCtx,
     services::social,
 };
 
@@ -39,12 +41,16 @@ pub struct PluginComposerBtn {
     pub content: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct PluginCustomBlock {
+    #[serde(default)]
+    pub kind: String, // "card" | "button" | "counter" | "checklist" | "input_action" | "timer" | "link"
     pub title: String,
     pub body: String,
     pub action_label: String,
     pub action_command: String,
+    #[serde(default)]
+    pub action_type: String, // "command" | "insert_chat" | "copy" | "sound" | "url" | "webhook"
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
@@ -77,13 +83,19 @@ pub struct PluginMod {
     pub enabled: bool,
     pub builtin: bool,
     pub server_bot_id: Option<String>,
-    // Module 1: Bot & Automation
+    // Bot & Automation
     pub bot_enabled: bool,
     pub commands: Vec<PluginCommand>,
-    // Module 2: Full-App UI Overhaul
+    #[serde(default)]
+    pub auto_reply: String,
+    #[serde(default)]
+    pub webhook_url: String,
+    // Full-App UI Overhaul
     pub theme_enabled: bool,
     pub theme: PluginTheme,
-    // Module 3: New UI Surfaces & FX
+    // UI Surfaces: Left Sidebar App & Main Stage Page & Custom Blocks
+    #[serde(default)]
+    pub left_app_enabled: bool,
     pub custom_page_enabled: bool,
     pub page_title: String,
     pub page_icon: String,
@@ -94,7 +106,9 @@ pub struct PluginMod {
     pub hud_coords: bool,
     pub hud_clock: bool,
     pub hud_note: bool,
-    pub screen_fx: String, // "none" | "sakura" | "snow" | "matrix" | "voxel" | "crt"
+    #[serde(default)]
+    pub hud_pomodoro: bool,
+    pub screen_fx: String, // "none" | "sakura" | "snow" | "matrix" | "voxel"
     pub sound_fx: String,  // "none" | "minecraft" | "mech" | "scifi"
     pub composer_buttons: Vec<PluginComposerBtn>,
 }
@@ -108,28 +122,32 @@ struct TodoItem {
 
 pub static PLUGINS: GlobalSignal<Vec<PluginMod>> = Signal::global(load_plugins_from_storage);
 pub static ACTIVE_PLUGIN_PAGE: GlobalSignal<Option<String>> = Signal::global(|| None);
+pub static ACTIVE_LEFT_PLUGIN: GlobalSignal<Option<String>> = Signal::global(|| None);
 pub static EDITING_PLUGIN_ID: GlobalSignal<Option<String>> = Signal::global(|| None);
+pub static PENDING_COMPOSER_TEXT: GlobalSignal<Option<String>> = Signal::global(|| None);
 
 fn default_builtin_plugins() -> Vec<PluginMod> {
     vec![
         PluginMod {
             id: "mod:minecraft_voxel".into(),
             username: "voxel_plugin".into(),
-            display_name: "Giao diện Voxel 3D".into(),
+            display_name: "Bảng vẽ Voxel".into(),
             author: "ChatW".into(),
             version: "1.0.0".into(),
-            icon: "⛏".into(),
+            icon: "🎨".into(),
             description: "Giao diện khối vuông, bảng vẽ 2D và HUD tọa độ.".into(),
             enabled: false,
             builtin: true,
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/craft".into(), description: "Chế tạo vật phẩm".into(), response: "⛏ [{user}] đã chế tạo vật phẩm thành công!".into() },
-                PluginCommand { trigger: "/coords".into(), description: "Xem tọa độ hiện tại".into(), response: "🧭 Tọa độ của {user}: X: 128, Y: 64, Z: -256".into() },
-                PluginCommand { trigger: "/seed".into(), description: "Tạo mã ngẫu nhiên".into(), response: "🌱 Seed: 849201749201 · Số may mắn: {rand100}".into() },
-                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc".into(), response: "🎲 {user} tung xúc xắc được: {dice} điểm!".into() },
+                PluginCommand { trigger: "/craft".into(), description: "Tạo vật phẩm".into(), response: "⛏ [{user}] đã chế tạo thành công!".into() },
+                PluginCommand { trigger: "/coords".into(), description: "Xem tọa độ".into(), response: "🧭 Tọa độ của {user}: X: 128, Y: 64, Z: -256".into() },
+                PluginCommand { trigger: "/seed".into(), description: "Mã ngẫu nhiên".into(), response: "🌱 Seed: 849201749201 · Số: {rand100}".into() },
+                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc".into(), response: "🎲 {user} tung xúc xắc được: {dice}".into() },
             ],
+            auto_reply: String::new(),
+            webhook_url: String::new(),
             theme_enabled: true,
             theme: PluginTheme {
                 bg_app: "#141814".into(),
@@ -147,9 +165,10 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
                 font_style: "pixel".into(),
                 custom_css: ".chat-item, .btn-primary, .btn-secondary, .result-card, .settings-row { box-shadow: inset -2px -2px 0 rgba(0,0,0,0.45), inset 2px 2px 0 rgba(255,255,255,0.12); }".into(),
             },
+            left_app_enabled: false,
             custom_page_enabled: true,
             page_title: "Bảng Voxel".into(),
-            page_icon: "⛏".into(),
+            page_icon: "🎨".into(),
             page_kind: "voxel".into(),
             custom_blocks: Vec::new(),
             hud_enabled: true,
@@ -157,10 +176,11 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             hud_coords: true,
             hud_clock: true,
             hud_note: false,
+            hud_pomodoro: false,
             screen_fx: "voxel".into(),
             sound_fx: "minecraft".into(),
             composer_buttons: vec![
-                PluginComposerBtn { label: "⛏ /craft".into(), content: "/craft".into() },
+                PluginComposerBtn { label: "🎨 /craft".into(), content: "/craft".into() },
                 PluginComposerBtn { label: "🧭 /coords".into(), content: "/coords".into() },
             ],
         },
@@ -171,15 +191,17 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "⚡".into(),
-            description: "Giao diện Neon tối, hiệu ứng Matrix và bảng lệnh.".into(),
+            description: "Giao diện tối Neon, hiệu ứng Matrix và trạm lệnh.".into(),
             enabled: false,
             builtin: true,
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/neon".into(), description: "Kích hoạt hiệu ứng".into(), response: "⚡ Hệ thống đồng bộ {rand100}%!".into() },
+                PluginCommand { trigger: "/neon".into(), description: "Kích hoạt hiệu ứng".into(), response: "⚡ Hệ thống đồng bộ {rand100}%".into() },
                 PluginCommand { trigger: "/status".into(), description: "Kiểm tra trạng thái".into(), response: "🛰 Trực tuyến · Mã hóa E2EE P-256 + AES-256-GCM".into() },
             ],
+            auto_reply: String::new(),
+            webhook_url: String::new(),
             theme_enabled: true,
             theme: PluginTheme {
                 bg_app: "#070812".into(),
@@ -197,6 +219,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
                 font_style: "pixel".into(),
                 custom_css: String::new(),
             },
+            left_app_enabled: false,
             custom_page_enabled: true,
             page_title: "Trạm Cyber".into(),
             page_icon: "⚡".into(),
@@ -207,6 +230,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             hud_coords: false,
             hud_clock: true,
             hud_note: false,
+            hud_pomodoro: false,
             screen_fx: "matrix".into(),
             sound_fx: "scifi".into(),
             composer_buttons: vec![
@@ -225,11 +249,13 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             enabled: false,
             builtin: true,
             server_bot_id: None,
-            bot_enabled: true,
+            bot_enabled: false,
             commands: vec![
-                PluginCommand { trigger: "/sakura".into(), description: "Gửi lời chúc".into(), response: "🌸 Chúc {user} một ngày tốt lành lúc {time}!".into() },
-                PluginCommand { trigger: "/fortune".into(), description: "Rút quẻ may mắn".into(), response: "🎴 Năng lượng của {user}: {rand100}/100 ✨".into() },
+                PluginCommand { trigger: "/sakura".into(), description: "Gửi lời chúc".into(), response: "🌸 Chúc {user} một ngày tốt lành lúc {time}".into() },
+                PluginCommand { trigger: "/fortune".into(), description: "Rút quẻ may mắn".into(), response: "🎴 Năng lượng của {user}: {rand100}/100".into() },
             ],
+            auto_reply: String::new(),
+            webhook_url: String::new(),
             theme_enabled: true,
             theme: PluginTheme {
                 bg_app: "#FDF2F8".into(),
@@ -247,6 +273,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
                 font_style: "rounded".into(),
                 custom_css: String::new(),
             },
+            left_app_enabled: false,
             custom_page_enabled: false,
             page_title: "Sakura".into(),
             page_icon: "🌸".into(),
@@ -257,10 +284,11 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             hud_coords: false,
             hud_clock: true,
             hud_note: false,
+            hud_pomodoro: false,
             screen_fx: "sakura".into(),
             sound_fx: "none".into(),
             composer_buttons: vec![
-                PluginComposerBtn { label: "🌸 Hoa anh đào".into(), content: "🌸 Chúc một ngày tốt lành ✨".into() },
+                PluginComposerBtn { label: "🌸 Hoa anh đào".into(), content: "🌸 Chúc một ngày tốt lành".into() },
                 PluginComposerBtn { label: "🎴 /fortune".into(), content: "/fortune".into() },
             ],
         },
@@ -271,17 +299,20 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "📋".into(),
-            description: "Ghi chú nhanh và quản lý việc cần làm.".into(),
+            description: "App bên trái ghi chú nhanh, việc cần làm và Pomodoro.".into(),
             enabled: true,
             builtin: true,
             server_bot_id: None,
-            bot_enabled: true,
+            bot_enabled: false,
             commands: vec![
                 PluginCommand { trigger: "/todo".into(), description: "Thêm việc cần làm".into(), response: "✅ Đã thêm việc cho {user}: {args}".into() },
                 PluginCommand { trigger: "/note".into(), description: "Lưu ghi chú".into(), response: "📝 Đã lưu ghi chú lúc {time}: {args}".into() },
             ],
+            auto_reply: String::new(),
+            webhook_url: String::new(),
             theme_enabled: false,
             theme: PluginTheme::default(),
+            left_app_enabled: true,
             custom_page_enabled: true,
             page_title: "Sổ tay".into(),
             page_icon: "📋".into(),
@@ -292,6 +323,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             hud_coords: false,
             hud_clock: true,
             hud_note: true,
+            hud_pomodoro: true,
             screen_fx: "none".into(),
             sound_fx: "none".into(),
             composer_buttons: Vec::new(),
@@ -307,12 +339,15 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             enabled: false,
             builtin: true,
             server_bot_id: None,
-            bot_enabled: true,
+            bot_enabled: false,
             commands: vec![
-                PluginCommand { trigger: "/sound".into(), description: "Phát âm thanh".into(), response: "🔊 Đã phát âm thanh cho {user}!".into() },
+                PluginCommand { trigger: "/sound".into(), description: "Phát âm thanh".into(), response: "🔊 Đã phát âm thanh cho {user}".into() },
             ],
+            auto_reply: String::new(),
+            webhook_url: String::new(),
             theme_enabled: false,
             theme: PluginTheme::default(),
+            left_app_enabled: true,
             custom_page_enabled: true,
             page_title: "Soundboard".into(),
             page_icon: "🎹".into(),
@@ -323,6 +358,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             hud_coords: false,
             hud_clock: false,
             hud_note: false,
+            hud_pomodoro: false,
             screen_fx: "none".into(),
             sound_fx: "mech".into(),
             composer_buttons: Vec::new(),
@@ -334,7 +370,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🤖".into(),
-            description: "Tính toán, tung xúc xắc, đồng xu và xem giờ.".into(),
+            description: "Bot tính toán, tung xúc xắc, đồng xu và xem giờ.".into(),
             enabled: true,
             builtin: true,
             server_bot_id: None,
@@ -346,8 +382,11 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
                 PluginCommand { trigger: "/calc".into(), description: "Tính biểu thức".into(), response: "🧮 Kết quả: {calc}".into() },
                 PluginCommand { trigger: "/upper".into(), description: "Chữ in hoa".into(), response: "🔠 {upper}".into() },
             ],
+            auto_reply: "Đã nhận tin nhắn từ {user}. Gõ /help để xem danh sách lệnh nhanh.".into(),
+            webhook_url: String::new(),
             theme_enabled: false,
             theme: PluginTheme::default(),
+            left_app_enabled: false,
             custom_page_enabled: false,
             page_title: "Trợ lý".into(),
             page_icon: "🤖".into(),
@@ -358,6 +397,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             hud_coords: false,
             hud_clock: false,
             hud_note: false,
+            hud_pomodoro: false,
             screen_fx: "none".into(),
             sound_fx: "none".into(),
             composer_buttons: vec![
@@ -373,6 +413,7 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
     let mut defaults = default_builtin_plugins();
     if let Some(raw) = platform::storage_get(STORAGE_KEY) {
         if let Ok(saved) = serde_json::from_str::<Vec<PluginMod>>(&raw) {
+            let any_left = saved.iter().any(|x| x.left_app_enabled);
             for mut s in saved {
                 if let Some(existing) = defaults.iter_mut().find(|d| d.id == s.id) {
                     let lname = s.display_name.to_lowercase();
@@ -385,6 +426,10 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
                         s.username = existing.username.clone();
                         s.author = existing.author.clone();
                         s.page_title = existing.page_title.clone();
+                    }
+                    if !any_left && s.id == "mod:workspace_notes" {
+                        s.left_app_enabled = true;
+                        s.bot_enabled = false;
                     }
                     *existing = s;
                 } else {
@@ -408,11 +453,26 @@ pub fn init_plugins() {
     sync_plugins_to_dom(&list);
 }
 
+/// Plugins that open inside the Left Column (.nav-sidebar) as an "App bên trái".
+pub fn enabled_left_apps() -> Vec<(String, String, String)> {
+    PLUGINS
+        .read()
+        .iter()
+        .filter(|p| p.enabled && p.left_app_enabled)
+        .map(|p| {
+            let icon = if p.page_icon.trim().is_empty() { p.icon.clone() } else { p.page_icon.clone() };
+            let title = if p.page_title.trim().is_empty() { p.display_name.clone() } else { p.page_title.clone() };
+            (p.id.clone(), icon, title)
+        })
+        .collect()
+}
+
+/// Plugins that open as full Main Stage pages (when not already docked as Left App).
 pub fn enabled_rail_pages() -> Vec<(String, String, String)> {
     PLUGINS
         .read()
         .iter()
-        .filter(|p| p.enabled && p.custom_page_enabled)
+        .filter(|p| p.enabled && p.custom_page_enabled && !p.left_app_enabled)
         .map(|p| {
             let icon = if p.page_icon.trim().is_empty() { p.icon.clone() } else { p.page_icon.clone() };
             let title = if p.page_title.trim().is_empty() { p.display_name.clone() } else { p.page_title.clone() };
@@ -618,10 +678,16 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
         if !t.bg_app.is_empty() { vars.push_str(&format!("--bg-app: {} !important;", t.bg_app)); }
         if !t.bg_sidebar.is_empty() { vars.push_str(&format!("--bg-sidebar: {} !important; --bg-primary: {} !important;", t.bg_sidebar, t.bg_sidebar)); }
         if !t.bg_chat.is_empty() { vars.push_str(&format!("--bg-chat: {} !important;", t.bg_chat)); }
-        if !t.bg_surface.is_empty() { vars.push_str(&format!("--bg-surface: {} !important; --bg-elevated: {} !important; --bg-secondary: {} !important;", t.bg_surface, t.bg_surface, t.bg_surface)); }
+        if !t.bg_surface.is_empty() {
+            let mix_base = if t.text_primary.is_empty() { "currentColor" } else { t.text_primary.as_str() };
+            vars.push_str(&format!(
+                "--bg-surface: {sf} !important; --bg-elevated: {sf} !important; --bg-secondary: {sf} !important; --bg-surface-hover: color-mix(in srgb, {mb} 6%, {sf}) !important; --bg-hover: color-mix(in srgb, {mb} 11%, {sf}) !important;",
+                sf = t.bg_surface, mb = mix_base
+            ));
+        }
         if !t.accent.is_empty() {
             vars.push_str(&format!(
-                "--accent: {a} !important; --accent-hover: color-mix(in srgb, {a} 85%, #000) !important; --accent-soft: color-mix(in srgb, {a} 18%, transparent) !important; --accent-text: {a} !important;",
+                "--accent: {a} !important; --accent-hover: color-mix(in srgb, {a} 85%, #000) !important; --accent-soft: color-mix(in srgb, {a} 16%, transparent) !important; --accent-text: {a} !important;",
                 a = t.accent
             ));
         }
@@ -629,7 +695,7 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
         if !t.msg_recv.is_empty() { vars.push_str(&format!("--msg-recv: {} !important;", t.msg_recv)); }
         if !t.text_primary.is_empty() {
             vars.push_str(&format!(
-                "--text-primary: {tp} !important; --text: {tp} !important; --msg-recv-text: {tp} !important;",
+                "--text-primary: {tp} !important; --text: {tp} !important; --text-secondary: color-mix(in srgb, {tp} 68%, transparent) !important; --text-muted: color-mix(in srgb, {tp} 48%, transparent) !important; --msg-recv-text: {tp} !important;",
                 tp = t.text_primary
             ));
         }
@@ -650,16 +716,16 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
         }
         match t.border_style.as_str() {
             "pixel" => {
-                css.push_str(".nav-sidebar, .main-stage, .chat-column, .result-card, .bot-card, .mod-card, .settings-row, .inv-card, .message-bubble { border: 2px solid color-mix(in srgb, var(--accent) 45%, #000) !important; }\n");
+                css.push_str(".nav-sidebar, .chat-column, .settings-nav, .settings-body, .search-page, .result-card, .bot-card, .mod-card, .settings-row, .inv-card, .message-bubble { border: 2px solid color-mix(in srgb, var(--accent) 45%, #000) !important; }\n");
             }
             "neon" => {
-                css.push_str(".nav-sidebar, .main-stage, .chat-column, .result-card, .mod-card { border: 1px solid color-mix(in srgb, var(--accent) 65%, transparent) !important; box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent) !important; }\n");
+                css.push_str(".nav-sidebar, .chat-column, .settings-nav, .settings-body, .search-page, .result-card, .mod-card { border: 1px solid color-mix(in srgb, var(--accent) 65%, transparent) !important; box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent) !important; }\n");
                 css.push_str(".message-row.sent .message-bubble { box-shadow: 0 0 12px color-mix(in srgb, var(--msg-sent) 45%, transparent) !important; }\n");
             }
             "glass" => {
                 let b = t.glass_blur.max(8);
                 css.push_str(&format!(
-                    ".nav-sidebar, .main-stage, .chat-column, .result-card, .mod-card, .settings-row {{ background: color-mix(in srgb, var(--bg-surface) 74%, transparent) !important; backdrop-filter: blur({b}px) !important; border: 1px solid color-mix(in srgb, var(--accent) 22%, rgba(255,255,255,0.35)) !important; }}\n"
+                    ".nav-sidebar, .chat-column, .settings-nav, .settings-body, .search-page {{ background: color-mix(in srgb, var(--bg-surface) 76%, transparent) !important; backdrop-filter: blur({b}px) !important; }}\n"
                 ));
             }
             _ => {}
@@ -733,7 +799,7 @@ fn plugin_error(code: &str) -> &'static str {
 }
 
 /// Global overlay rendered inside `Chat` workspace shell: renders full-app Screen FX
-/// particles and the Floating HUD from active Plugins/Mods.
+/// particles and the Floating HUD from active Plugins.
 #[component]
 pub fn PluginGlobalOverlay() -> Element {
     use_effect(move || {
@@ -793,6 +859,9 @@ pub fn PluginGlobalOverlay() -> Element {
                         if hm.hud_clock {
                             div { class: "plugin-hud-row", "🕒 {clock_now}" }
                         }
+                        if hm.hud_pomodoro {
+                            PomodoroTimer { compact: true }
+                        }
                         if hm.hud_note {
                             textarea {
                                 class: "plugin-hud-note",
@@ -813,27 +882,94 @@ pub fn PluginGlobalOverlay() -> Element {
     }
 }
 
-/// Renders a custom page added to the Navigation Rail by a Plugin, or the Plugin workspace.
+fn active_wallpaper_attrs() -> (String, String) {
+    let default_wp = try_use_context::<PrefsCtx>()
+        .map(|c| c.prefs.read().wallpaper.clone())
+        .unwrap_or_else(|| "none".into());
+    wallpaper_attrs(None, &default_wp)
+}
+
 #[component]
-pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: EventHandler<()>, on_open_bot_chat: EventHandler<BotItem>) -> Element {
-    if plugin_id == "studio" {
-        return rsx! {
-            div { class: "main-stage",
-                header { class: "chat-header",
-                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
-                    div { class: "chat-header-identity",
-                        span { class: "self-chat-avatar", PluginIcon { size: 20 } }
-                        div { class: "chat-header-info",
-                            h2 { class: "chat-header-title", "Plugin" }
-                            span { class: "chat-header-meta", "Tùy chỉnh giao diện, trang và lệnh" }
+fn PomodoroTimer(#[props(default = false)] compact: bool) -> Element {
+    let mut running = use_signal(|| false);
+    let mut secs = use_signal(|| 25 * 60_u32);
+    use_effect(move || {
+        spawn(async move {
+            loop {
+                platform::sleep_ms(1000).await;
+                if *running.peek() {
+                    let mut finished = false;
+                    secs.with_mut(|s| {
+                        if *s > 0 {
+                            *s -= 1;
+                            if *s == 0 {
+                                finished = true;
+                            }
                         }
+                    });
+                    if finished {
+                        running.set(false);
+                        play_mod_sound("chime");
                     }
                 }
-                div { class: "settings-body", style: "flex: 1; overflow-y: auto;",
-                    div { class: "settings-content", style: "max-width: 66rem; width: 100%;",
-                        BotsSettings {
-                            my_username: my_username,
-                            on_open_bot_chat: on_open_bot_chat,
+            }
+        });
+    });
+    let s = secs();
+    let clock_str = format!("{:02}:{:02}", s / 60, s % 60);
+    let is_run = running();
+    rsx! {
+        div { class: if compact { "left-app-card" } else { "ui-block-card" },
+            div { class: "ui-counter-row",
+                span { class: "settings-label", "⏱ Pomodoro" }
+                span { class: if compact { "ui-counter-val" } else { "ui-timer-display" }, "{clock_str}" }
+            }
+            div { class: "inline-form",
+                button { r#type: "button", class: "btn-small-primary",
+                    onclick: move |_| running.set(!is_run),
+                    if is_run { "Tạm dừng" } else { "Bắt đầu" }
+                }
+                button { r#type: "button", class: "btn-ghost",
+                    onclick: move |_| {
+                        running.set(false);
+                        secs.set(25 * 60);
+                    },
+                    "Đặt lại"
+                }
+                button { r#type: "button", class: "btn-secondary",
+                    onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(format!("⏱ Pomodoro: {clock_str}")),
+                    SendIcon { size: 14 } "Gửi"
+                }
+            }
+        }
+    }
+}
+
+/// Renders a custom page added to the Navigation Rail by a Plugin, or the Plugin management panel.
+#[component]
+pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: EventHandler<()>, on_open_bot_chat: EventHandler<BotItem>) -> Element {
+    let (wp_cls, wp_style) = active_wallpaper_attrs();
+
+    if plugin_id == "studio" {
+        return rsx! {
+            div { class: "chat-main-container",
+                div { class: "chat-column plugin-panel {wp_cls}", style: "{wp_style}",
+                    header { class: "chat-header",
+                        button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
+                        div { class: "chat-header-identity",
+                            span { class: "bot-header-icon", PluginIcon { size: 20 } }
+                            div { class: "chat-header-info",
+                                h2 { class: "chat-header-title", "Plugin" }
+                                span { class: "chat-header-meta", "Tùy chỉnh giao diện, ứng dụng bên trái và lệnh" }
+                            }
+                        }
+                    }
+                    div { class: "plugin-custom-stage",
+                        div { class: "settings-content", style: "max-width: 66rem; width: 100%; margin: 0 auto;",
+                            BotsSettings {
+                                my_username: my_username,
+                                on_open_bot_chat: on_open_bot_chat,
+                            }
                         }
                     }
                 }
@@ -844,11 +980,13 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
     let plugin = PLUGINS.read().iter().find(|p| p.id == plugin_id).cloned();
     let Some(p) = plugin else {
         return rsx! {
-            div { class: "main-stage",
-                div { class: "empty-chat-view",
-                    div { class: "empty-chat-inner",
-                        div { class: "empty-chat-title", "Không tìm thấy trang Plugin" }
-                        button { r#type: "button", class: "btn-primary", onclick: move |_| on_close.call(()), "Quay lại" }
+            div { class: "chat-main-container",
+                div { class: "chat-column plugin-panel {wp_cls}", style: "{wp_style}",
+                    div { class: "empty-chat-view",
+                        div { class: "empty-chat-inner",
+                            div { class: "empty-chat-title", "Không tìm thấy trang Plugin" }
+                            button { r#type: "button", class: "btn-primary", onclick: move |_| on_close.call(()), "Quay lại" }
+                        }
                     }
                 }
             }
@@ -856,61 +994,148 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
     };
 
     let edit_pid = p.id.clone();
+    let left_pid = p.id.clone();
     rsx! {
-        div { class: "main-stage",
-            header { class: "chat-header",
-                button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
-                div { class: "chat-header-identity",
-                    span { class: "self-chat-avatar", style: "font-size: 1.25rem;", "{p.page_icon}" }
-                    div { class: "chat-header-info",
-                        h2 { class: "chat-header-title", "{p.page_title}" }
-                        span { class: "chat-header-meta", "{p.display_name}" }
-                    }
-                }
-                div { class: "chat-header-actions",
-                    if p.bot_enabled {
-                        button {
-                            r#type: "button",
-                            class: "btn-secondary",
-                            onclick: {
-                                let p_bot = p.clone();
-                                move |_| {
-                                    on_open_bot_chat.call(BotItem {
-                                        id: p_bot.server_bot_id.clone().unwrap_or_else(|| p_bot.id.clone()),
-                                        owner_id: "local".into(),
-                                        username: p_bot.username.clone(),
-                                        display_name: format!("{} {}", p_bot.icon, p_bot.display_name),
-                                        description: Some(p_bot.description.clone()),
-                                        avatar_url: None,
-                                        is_public: true,
-                                        verification_status: "verified".into(),
-                                        token_hint: None,
-                                        token: None,
-                                        last_text: None,
-                                    });
-                                }
-                            },
-                            "Trò chuyện"
+        div { class: "chat-main-container",
+            div { class: "chat-column plugin-panel {wp_cls}", style: "{wp_style}",
+                header { class: "chat-header",
+                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
+                    div { class: "chat-header-identity",
+                        span { class: "bot-header-icon", "{p.page_icon}" }
+                        div { class: "chat-header-info",
+                            h2 { class: "chat-header-title", "{p.page_title}" }
+                            span { class: "chat-header-meta", "{p.display_name}" }
                         }
                     }
-                    button {
-                        r#type: "button",
-                        class: "btn-ghost",
-                        onclick: move |_| {
-                            *EDITING_PLUGIN_ID.write() = Some(edit_pid.clone());
-                            *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
-                        },
-                        SlidersIcon {} "Sửa"
+                    div { class: "chat-header-actions",
+                        if p.left_app_enabled {
+                            button {
+                                r#type: "button",
+                                class: "btn-secondary",
+                                title: "Mở ở cột bên trái",
+                                onclick: move |_| {
+                                    *ACTIVE_PLUGIN_PAGE.write() = None;
+                                    *ACTIVE_LEFT_PLUGIN.write() = Some(left_pid.clone());
+                                },
+                                PanelRightIcon { size: 15 } "Bên trái"
+                            }
+                        }
+                        if p.bot_enabled {
+                            button {
+                                r#type: "button",
+                                class: "btn-secondary",
+                                onclick: {
+                                    let p_bot = p.clone();
+                                    move |_| {
+                                        on_open_bot_chat.call(BotItem {
+                                            id: p_bot.server_bot_id.clone().unwrap_or_else(|| p_bot.id.clone()),
+                                            owner_id: "local".into(),
+                                            username: p_bot.username.clone(),
+                                            display_name: p_bot.display_name.clone(),
+                                            description: Some(p_bot.description.clone()),
+                                            avatar_url: None,
+                                            is_public: true,
+                                            verification_status: "verified".into(),
+                                            token_hint: None,
+                                            token: None,
+                                            last_text: None,
+                                        });
+                                    }
+                                },
+                                "Trò chuyện"
+                            }
+                        }
+                        button {
+                            r#type: "button",
+                            class: "btn-ghost",
+                            onclick: move |_| {
+                                *EDITING_PLUGIN_ID.write() = Some(edit_pid.clone());
+                                *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
+                            },
+                            SlidersIcon {} "Sửa"
+                        }
+                    }
+                }
+                div { class: "plugin-custom-stage",
+                    match p.page_kind.as_str() {
+                        "voxel" => rsx! { VoxelSandboxPage { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
+                        "notes" => rsx! { NotesAndTodoPage { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
+                        "soundboard" => rsx! { SoundboardPage { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
+                        "cyber" => rsx! { CyberDashboardPage { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
+                        _ => rsx! { CustomBlocksView { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
                     }
                 }
             }
-            div { class: "plugin-custom-stage",
+        }
+    }
+}
+
+/// Compact Left-Sidebar App view rendered inside `.nav-sidebar` so users can run a Plugin
+/// side-by-side while chatting in `.main-stage`.
+#[component]
+pub fn PluginLeftAppView(plugin_id: String, my_username: String, on_close: EventHandler<()>) -> Element {
+    let plugin = PLUGINS.read().iter().find(|p| p.id == plugin_id).cloned();
+    let Some(p) = plugin else {
+        return rsx! {
+            div { class: "sidebar-top-header",
+                h2 { class: "sidebar-title", "Plugin" }
+                div { class: "sidebar-header-actions",
+                    button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon {} }
+                }
+            }
+            div { class: "sidebar-empty", "Không tìm thấy Plugin" }
+        };
+    };
+    let expand_pid = p.id.clone();
+    let edit_pid = p.id.clone();
+    let show_title = if p.page_title.trim().is_empty() { p.display_name.clone() } else { p.page_title.clone() };
+    rsx! {
+        div { class: "sidebar-top-header",
+            h2 { class: "sidebar-title", "{p.icon} {show_title}" }
+            div { class: "sidebar-header-actions",
+                if p.custom_page_enabled {
+                    button {
+                        r#type: "button",
+                        class: "icon-btn",
+                        title: "Mở trang chính",
+                        aria_label: "Mở trang chính",
+                        onclick: move |_| {
+                            *ACTIVE_LEFT_PLUGIN.write() = None;
+                            *ACTIVE_PLUGIN_PAGE.write() = Some(expand_pid.clone());
+                        },
+                        PanelRightIcon { size: 17 }
+                    }
+                }
+                button {
+                    r#type: "button",
+                    class: "icon-btn",
+                    title: "Sửa Plugin",
+                    aria_label: "Sửa Plugin",
+                    onclick: move |_| {
+                        *ACTIVE_LEFT_PLUGIN.write() = None;
+                        *EDITING_PLUGIN_ID.write() = Some(edit_pid.clone());
+                        *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
+                    },
+                    SlidersIcon { size: 17 }
+                }
+                button {
+                    r#type: "button",
+                    class: "icon-btn",
+                    title: "Đóng",
+                    aria_label: "Đóng",
+                    onclick: move |_| on_close.call(()),
+                    CloseIcon { size: 17 }
+                }
+            }
+        }
+        div { class: "sidebar-scrollable",
+            div { class: "left-app-body",
                 match p.page_kind.as_str() {
-                    "voxel" => rsx! { VoxelSandboxPage { plugin: p.clone() } },
-                    "notes" => rsx! { NotesAndTodoPage { plugin: p.clone() } },
-                    "soundboard" => rsx! { SoundboardPage { plugin: p.clone() } },
-                    "cyber" => rsx! { CyberDashboardPage { plugin: p.clone(), my_username: my_username.clone() } },
-                    _ => rsx! { CustomBlocksPage { plugin: p.clone(), my_username: my_username.clone() } },
+                    "voxel" => rsx! { VoxelSandboxPage { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
+                    "notes" => rsx! { NotesAndTodoPage { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
+                    "soundboard" => rsx! { SoundboardPage { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
+                    "cyber" => rsx! { CyberDashboardPage { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
+                    _ => rsx! { CustomBlocksView { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
                 }
             }
         }
@@ -927,13 +1152,13 @@ const VOXEL_PALETTE: [(&str, &str); 12] = [
     ("Ngọc lục bảo", "#10B981"),
     ("Vàng", "#FACC15"),
     ("Đá đỏ", "#EF4444"),
-    ("TNT", "#DC2626"),
+    ("Hồng ngọc", "#DC2626"),
     ("Nước", "#2563EB"),
     ("Dung nham", "#F97316"),
 ];
 
 #[component]
-fn VoxelSandboxPage(plugin: PluginMod) -> Element {
+fn VoxelSandboxPage(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
     let mut selected_color = use_signal(|| "#10B981".to_string());
     let mut grid = use_signal(|| -> Vec<String> {
         if let Some(raw) = platform::storage_get(VOXEL_KEY) {
@@ -943,7 +1168,7 @@ fn VoxelSandboxPage(plugin: PluginMod) -> Element {
                 }
             }
         }
-        let mut g = vec![String::new(); 192]; // 16 x 12
+        let mut g = vec![String::new(); 192];
         for x in 0..16 {
             g[9 * 16 + x] = "#22C55E".into();
             g[10 * 16 + x] = "#92400E".into();
@@ -958,34 +1183,36 @@ fn VoxelSandboxPage(plugin: PluginMod) -> Element {
     };
 
     rsx! {
-        div { class: "mod-page-container",
-            div { class: "mod-hero-card",
-                div {
-                    h3 { class: "mod-hero-title", "⛏ Thế Giới Khối Voxel 2D — {plugin.display_name}" }
-                    p { class: "mod-hero-sub", "Chọn loại khối bên dưới và bấm vào lưới thế giới để đặt hoặc phá khối. Tự động lưu thế giới của bạn trên thiết bị." }
-                }
-                div { class: "inline-form",
-                    button { r#type: "button", class: "btn-secondary",
-                        onclick: move |_| {
-                            play_mod_sound("xp");
-                            let mut g = vec![String::new(); 192];
-                            for x in 0..16 {
-                                g[9 * 16 + x] = "#22C55E".into();
-                                g[10 * 16 + x] = "#92400E".into();
-                                g[11 * 16 + x] = "#64748B".into();
-                            }
-                            save_grid(&g);
-                            grid.set(g);
-                        },
-                        "Tạo lại địa hình"
+        div { class: if compact { "left-app-body" } else { "mod-page-container" },
+            if !compact {
+                div { class: "mod-hero-card",
+                    div {
+                        h3 { class: "mod-hero-title", "⛏ Lưới Khối Voxel 2D — {plugin.display_name}" }
+                        p { class: "mod-hero-sub", "Chọn màu khối bên dưới và bấm lên lưới để vẽ hoặc xóa khối." }
                     }
-                    button { r#type: "button", class: "btn-ghost",
-                        onclick: move |_| {
-                            let g = vec![String::new(); 192];
-                            save_grid(&g);
-                            grid.set(g);
-                        },
-                        "Xóa trắng"
+                    div { class: "inline-form",
+                        button { r#type: "button", class: "btn-secondary",
+                            onclick: move |_| {
+                                play_mod_sound("xp");
+                                let mut g = vec![String::new(); 192];
+                                for x in 0..16 {
+                                    g[9 * 16 + x] = "#22C55E".into();
+                                    g[10 * 16 + x] = "#92400E".into();
+                                    g[11 * 16 + x] = "#64748B".into();
+                                }
+                                save_grid(&g);
+                                grid.set(g);
+                            },
+                            "Tạo lại địa hình"
+                        }
+                        button { r#type: "button", class: "btn-ghost",
+                            onclick: move |_| {
+                                let g = vec![String::new(); 192];
+                                save_grid(&g);
+                                grid.set(g);
+                            },
+                            "Xóa trắng"
+                        }
                     }
                 }
             }
@@ -1000,14 +1227,14 @@ fn VoxelSandboxPage(plugin: PluginMod) -> Element {
                             play_mod_sound("mech");
                         },
                         span { class: "voxel-swatch", style: "background: {hex};" }
-                        span { "{name}" }
+                        if !compact { span { "{name}" } }
                     }
                 }
                 button {
                     r#type: "button",
                     class: if selected_color().is_empty() { "voxel-block-btn active" } else { "voxel-block-btn" },
                     onclick: move |_| selected_color.set(String::new()),
-                    "🔨 Phá khối"
+                    "🔨 Xóa"
                 }
             }
             div { class: "voxel-world-grid",
@@ -1030,12 +1257,15 @@ fn VoxelSandboxPage(plugin: PluginMod) -> Element {
                     }
                 }
             }
+            if !plugin.custom_blocks.is_empty() {
+                CustomBlocksView { plugin: plugin.clone(), my_username: my_username.clone(), compact: compact }
+            }
         }
     }
 }
 
 #[component]
-fn NotesAndTodoPage(plugin: PluginMod) -> Element {
+fn NotesAndTodoPage(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
     let mut notes = use_signal(|| platform::storage_get(NOTES_KEY).unwrap_or_default());
     let mut todos = use_signal(|| -> Vec<TodoItem> {
         platform::storage_get(TODOS_KEY)
@@ -1053,10 +1283,11 @@ fn NotesAndTodoPage(plugin: PluginMod) -> Element {
     };
 
     rsx! {
-        div { class: "mod-page-container",
-            div { class: "mod-two-col",
-                div { class: "settings-group",
-                    div { class: "settings-group-title", "📋 Danh sách việc cần làm — {plugin.display_name}" }
+        div { class: if compact { "left-app-body" } else { "mod-page-container" },
+            PomodoroTimer { compact: compact }
+            div { class: if compact { "left-app-body" } else { "mod-two-col" },
+                div { class: if compact { "left-app-card" } else { "settings-group" },
+                    div { class: "settings-group-title", "📋 Việc cần làm" }
                     form {
                         class: "inline-form",
                         onsubmit: move |e| {
@@ -1071,7 +1302,7 @@ fn NotesAndTodoPage(plugin: PluginMod) -> Element {
                             new_todo.set(String::new());
                         },
                         input { r#type: "text", placeholder: "Thêm công việc mới", value: "{new_todo}", oninput: move |e| new_todo.set(e.value()) }
-                        button { r#type: "submit", class: "btn-primary", PlusIcon { size: 16 } "Thêm" }
+                        button { r#type: "submit", class: "btn-primary", PlusIcon { size: 16 } if !compact { "Thêm" } }
                     }
                     div { class: "mod-todo-list",
                         if todos.read().is_empty() {
@@ -1112,12 +1343,12 @@ fn NotesAndTodoPage(plugin: PluginMod) -> Element {
                         }
                     }
                 }
-                div { class: "settings-group",
-                    div { class: "settings-group-title", "📝 Sổ tay ghi chú nhanh" }
+                div { class: if compact { "left-app-card" } else { "settings-group" },
+                    div { class: "settings-group-title", "📝 Ghi chú nhanh" }
                     textarea {
                         class: "mod-notes-area",
-                        rows: "14",
-                        placeholder: "Viết ghi chú, ý tưởng, đoạn mã hoặc danh sách tại đây. Tự động lưu ngay khi gõ.",
+                        rows: if compact { "5" } else { "12" },
+                        placeholder: "Viết ghi chú hoặc nội dung cần lưu tại đây",
                         value: "{notes}",
                         oninput: move |e| {
                             let v = e.value();
@@ -1126,36 +1357,50 @@ fn NotesAndTodoPage(plugin: PluginMod) -> Element {
                         }
                     }
                     div { class: "inline-form",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&notes()), CopyIcon {} "Sao chép ghi chú" }
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| { notes.set(String::new()); platform::storage_set(NOTES_KEY, ""); }, "Xóa sổ tay" }
+                        button { r#type: "button", class: "btn-small-primary",
+                            onclick: move |_| {
+                                let v = notes();
+                                if !v.trim().is_empty() {
+                                    *PENDING_COMPOSER_TEXT.write() = Some(v);
+                                }
+                            },
+                            SendIcon { size: 14 } "Gửi vào chat"
+                        }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&notes()), CopyIcon {} "Chép" }
+                        button { r#type: "button", class: "btn-ghost", onclick: move |_| { notes.set(String::new()); platform::storage_set(NOTES_KEY, ""); }, "Xóa" }
                     }
                 }
+            }
+            if !plugin.custom_blocks.is_empty() {
+                CustomBlocksView { plugin: plugin.clone(), my_username: my_username.clone(), compact: compact }
             }
         }
     }
 }
 
 #[component]
-fn SoundboardPage(plugin: PluginMod) -> Element {
+fn SoundboardPage(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
     let pads = [
         ("💎 Ngọc XP", "xp", "#10B981"),
-        ("🆙 Lên Cấp Level Up", "levelup", "#22C55E"),
-        ("🔨 Đe Sắt Anvil", "anvil", "#64748B"),
-        ("⌨ Switch Cơ Blue", "mech", "#3B82F6"),
-        ("⚡ Tia Laser Sci-Fi", "laser", "#06B6D4"),
-        ("🪙 Đồng Xu 8-Bit", "coin", "#F59E0B"),
-        ("🔔 Chuông Thông Báo", "chime", "#8B5CF6"),
+        ("🆙 Lên Cấp", "levelup", "#22C55E"),
+        ("🔨 Tiếng Đe", "anvil", "#64748B"),
+        ("⌨ Switch Cơ", "mech", "#3B82F6"),
+        ("⚡ Tia Laser", "laser", "#06B6D4"),
+        ("🪙 Đồng Xu", "coin", "#F59E0B"),
+        ("🔔 Chuông Báo", "chime", "#8B5CF6"),
         ("✨ Hiệu Ứng Pop", "pop", "#EC4899"),
     ];
     rsx! {
-        div { class: "mod-page-container",
-            div { class: "mod-hero-card",
-                div {
-                    h3 { class: "mod-hero-title", "🎹 Bàn Phím Cơ & Soundboard — {plugin.display_name}" }
-                    p { class: "mod-hero-sub", "Bấm vào các ô âm thanh bên dưới để phát âm thanh tổng hợp thời gian thực bằng WebAudio API." }
+        div { class: if compact { "left-app-body" } else { "mod-page-container" },
+            if !compact {
+                div { class: "mod-hero-card",
+                    div {
+                        h3 { class: "mod-hero-title", "🎹 Bàn Phím Cơ & Soundboard — {plugin.display_name}" }
+                        p { class: "mod-hero-sub", "Bấm vào các ô bên dưới để phát âm thanh tổng hợp thời gian thực." }
+                    }
                 }
             }
-            div { class: "soundboard-grid",
+            div { class: if compact { "soundboard-grid compact" } else { "soundboard-grid" },
                 for (label, kind, color) in pads {
                     button {
                         key: "{label}",
@@ -1163,39 +1408,50 @@ fn SoundboardPage(plugin: PluginMod) -> Element {
                         class: "soundboard-pad",
                         style: "--pad-color: {color};",
                         onclick: move |_| play_mod_sound(kind),
-                        span { class: "soundboard-pad-title", "{label}" }
-                        span { class: "soundboard-pad-sub", "Bấm để phát" }
+                        div { class: "soundboard-pad-head",
+                            span { class: "soundboard-dot" }
+                            span { class: "soundboard-pad-title", "{label}" }
+                        }
+                        if !compact {
+                            span { class: "soundboard-pad-sub", "Bấm để phát" }
+                        }
                     }
                 }
+            }
+            if !plugin.custom_blocks.is_empty() {
+                CustomBlocksView { plugin: plugin.clone(), my_username: my_username.clone(), compact: compact }
             }
         }
     }
 }
 
 #[component]
-fn CyberDashboardPage(plugin: PluginMod, my_username: String) -> Element {
-    let mut terminal_out = use_signal(|| format!("🛰 Trạm Điều Khiển {} sẵn sàng.\nNgười vận hành: @{}\nGõ hoặc bấm lệnh nhanh bên dưới để kiểm tra.", plugin.display_name, my_username));
+fn CyberDashboardPage(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
+    let mut terminal_out = use_signal(|| format!("🛰 Trạm Điều Khiển {} sẵn sàng.\nNgười vận hành: @{}\nNhập lệnh bên dưới để kiểm tra.", plugin.display_name, my_username));
+    let mut last_reply = use_signal(String::new);
     let mut cmd_in = use_signal(String::new);
 
     rsx! {
-        div { class: "mod-page-container",
-            div { class: "inv-grid",
-                div { class: "inv-card",
-                    div { class: "settings-label", "Mã hóa đầu cuối" }
-                    div { class: "member-sub", "ECDH P-256 · AES-256-GCM · ECDSA" }
-                }
-                div { class: "inv-card",
-                    div { class: "settings-label", "Trạng thái Plugin" }
-                    div { class: "member-sub", "{PLUGINS.read().iter().filter(|p| p.enabled).count()} Plugin đang bật" }
-                }
-                div { class: "inv-card",
-                    div { class: "settings-label", "Hiệu ứng màn hình" }
-                    div { class: "member-sub", "Matrix Cyber Rain · 60 FPS" }
+        div { class: if compact { "left-app-body" } else { "mod-page-container" },
+            if !compact {
+                div { class: "inv-grid",
+                    div { class: "inv-card",
+                        div { class: "settings-label", "Mã hóa đầu cuối" }
+                        div { class: "member-sub", "ECDH P-256 · AES-256-GCM · ECDSA" }
+                    }
+                    div { class: "inv-card",
+                        div { class: "settings-label", "Trạng thái Plugin" }
+                        div { class: "member-sub", "{PLUGINS.read().iter().filter(|p| p.enabled).count()} Plugin đang bật" }
+                    }
+                    div { class: "inv-card",
+                        div { class: "settings-label", "Hiệu ứng màn hình" }
+                        div { class: "member-sub", "Matrix Cyber Rain · 60 FPS" }
+                    }
                 }
             }
-            div { class: "settings-group",
-                div { class: "settings-group-title", "💻 Bảng điều khiển lệnh Plugin" }
-                pre { class: "code-block", style: "min-height: 10rem;", "{terminal_out}" }
+            div { class: if compact { "left-app-card" } else { "settings-group" },
+                div { class: "settings-group-title", "💻 Bảng lệnh nhanh" }
+                pre { class: "code-block", style: if compact { "min-height: 6rem; max-height: 11rem; overflow-y: auto;" } else { "min-height: 10rem;" }, "{terminal_out}" }
                 form {
                     class: "inline-form",
                     onsubmit: move |e| {
@@ -1203,53 +1459,226 @@ fn CyberDashboardPage(plugin: PluginMod, my_username: String) -> Element {
                         let c = cmd_in().trim().to_string();
                         if c.is_empty() { return; }
                         let reply = try_run_plugin_command(&c, &my_username).unwrap_or_else(|| format!("Đã thực thi: {c}"));
+                        last_reply.set(reply.clone());
                         terminal_out.with_mut(|t| {
                             t.push_str(&format!("\n\n> {c}\n{reply}"));
                         });
                         cmd_in.set(String::new());
                     },
-                    input { r#type: "text", placeholder: "Nhập lệnh như /neon, /hack, /status, /roll, /calc 24*7", value: "{cmd_in}", oninput: move |e| cmd_in.set(e.value()) }
-                    button { r#type: "submit", class: "btn-primary", "Chạy lệnh" }
+                    input { r#type: "text", placeholder: "Nhập lệnh /neon, /hack, /roll, /calc 24*7", value: "{cmd_in}", oninput: move |e| cmd_in.set(e.value()) }
+                    button { r#type: "submit", class: "btn-primary", "Chạy" }
+                    if !last_reply().is_empty() {
+                        button { r#type: "button", class: "btn-secondary",
+                            onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(last_reply()),
+                            SendIcon { size: 14 } "Chèn"
+                        }
+                    }
                 }
+            }
+            if !plugin.custom_blocks.is_empty() {
+                CustomBlocksView { plugin: plugin.clone(), my_username: my_username.clone(), compact: compact }
             }
         }
     }
 }
 
+fn load_block_state(plugin_id: &str) -> serde_json::Map<String, serde_json::Value> {
+    let key = format!("chatw_plugin_state_{plugin_id}");
+    platform::storage_get(&key)
+        .and_then(|s| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_block_state(plugin_id: &str, map: &serde_json::Map<String, serde_json::Value>) {
+    let key = format!("chatw_plugin_state_{plugin_id}");
+    if let Ok(s) = serde_json::to_string(map) {
+        platform::storage_set(&key, &s);
+    }
+}
+
+fn parse_timer_secs(raw: &str) -> u32 {
+    let t = raw.trim().to_lowercase();
+    if let Some(m) = t.strip_suffix('m') {
+        m.trim().parse::<u32>().unwrap_or(5).saturating_mul(60).max(10)
+    } else if let Some(s) = t.strip_suffix('s') {
+        s.trim().parse::<u32>().unwrap_or(60).max(5)
+    } else if let Ok(v) = t.parse::<u32>() {
+        v.max(5)
+    } else {
+        300
+    }
+}
+
+fn run_block_action(plugin: &PluginMod, block: &PluginCustomBlock, user: &str, arg: &str, mut output: Signal<String>) {
+    let cmd = block.action_command.trim();
+    let atype = if block.action_type.is_empty() { "command" } else { block.action_type.as_str() };
+    match atype {
+        "insert_chat" => {
+            let txt = expand_template(cmd, user, arg);
+            *PENDING_COMPOSER_TEXT.write() = Some(txt);
+            output.set("Đã chèn nội dung vào ô nhập chat".into());
+        }
+        "copy" => {
+            let txt = expand_template(cmd, user, arg);
+            platform::copy_to_clipboard(&txt);
+            output.set("Đã sao chép vào bộ nhớ tạm".into());
+        }
+        "sound" => {
+            play_mod_sound(if cmd.is_empty() { "pop" } else { cmd });
+            output.set("Đã phát âm thanh".into());
+        }
+        "url" => {
+            if cmd.starts_with("http://") || cmd.starts_with("https://") {
+                platform::open_external_url(cmd);
+                output.set(format!("Đã mở liên kết: {cmd}"));
+            } else {
+                output.set("Liên kết phải bắt đầu bằng http hoặc https".into());
+            }
+        }
+        "webhook" => {
+            if cmd.starts_with("http://") || cmd.starts_with("https://") {
+                let url = cmd.to_string();
+                let payload = json!({
+                    "plugin_id": plugin.id,
+                    "plugin_name": plugin.display_name,
+                    "username": user,
+                    "block": block.title,
+                    "input": arg,
+                });
+                output.set("Đang gửi Webhook".into());
+                spawn(async move {
+                    match platform::http_request("POST", &url, Some(payload.to_string()), None).await {
+                        Ok((code, body)) => {
+                            let preview = body.trim();
+                            if preview.is_empty() {
+                                output.set(format!("Webhook thành công {code}"));
+                            } else {
+                                output.set(preview.chars().take(240).collect());
+                            }
+                        }
+                        Err(e) => output.set(format!("Lỗi Webhook {}", e.status)),
+                    }
+                });
+            } else {
+                output.set("URL Webhook phải bắt đầu bằng http hoặc https".into());
+            }
+        }
+        _ => {
+            let full_cmd = if arg.is_empty() {
+                cmd.to_string()
+            } else if cmd.contains("{args}") {
+                expand_template(cmd, user, arg)
+            } else if cmd.starts_with('/') {
+                format!("{cmd} {arg}")
+            } else {
+                arg.to_string()
+            };
+            let (c_head, c_rest) = match full_cmd.trim().split_once(char::is_whitespace) {
+                Some((h, r)) => (h.trim(), r.trim()),
+                None => (full_cmd.trim(), ""),
+            };
+            let res = plugin
+                .commands
+                .iter()
+                .find(|c| c.trigger.eq_ignore_ascii_case(c_head))
+                .map(|c| expand_template(&c.response, user, c_rest))
+                .or_else(|| try_run_plugin_command(&full_cmd, user))
+                .unwrap_or_else(|| expand_template(&full_cmd, user, arg));
+            output.set(res);
+        }
+    }
+}
+
 #[component]
-fn CustomBlocksPage(plugin: PluginMod, my_username: String) -> Element {
+fn CustomBlocksView(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
+    let pid = plugin.id.clone();
     let mut output = use_signal(String::new);
+    let mut block_state = use_signal(move || load_block_state(&pid));
+    let mut input_vals = use_signal(std::collections::BTreeMap::<usize, String>::new);
+    let mut timers = use_signal(std::collections::BTreeMap::<usize, (bool, u32)>::new);
+
+    use_effect(move || {
+        spawn(async move {
+            loop {
+                platform::sleep_ms(1000).await;
+                let has_running = timers.peek().values().any(|(r, _)| *r);
+                if has_running {
+                    let mut chime = false;
+                    timers.with_mut(|map| {
+                        for (run, rem) in map.values_mut() {
+                            if *run && *rem > 0 {
+                                *rem -= 1;
+                                if *rem == 0 {
+                                    *run = false;
+                                    chime = true;
+                                }
+                            }
+                        }
+                    });
+                    if chime {
+                        play_mod_sound("chime");
+                    }
+                }
+            }
+        });
+    });
+
     rsx! {
-        div { class: "mod-page-container",
-            div { class: "mod-hero-card",
-                div {
-                    h3 { class: "mod-hero-title", "{plugin.icon} {plugin.display_name}" }
-                    p { class: "mod-hero-sub", "{plugin.description}" }
+        div { class: if compact { "left-app-body" } else { "mod-page-container" },
+            if !compact && plugin.page_kind == "custom" {
+                div { class: "mod-hero-card",
+                    div {
+                        h3 { class: "mod-hero-title", "{plugin.icon} {plugin.display_name}" }
+                        p { class: "mod-hero-sub", "{plugin.description}" }
+                    }
                 }
             }
             if !output().is_empty() {
-                div { class: "status-badge success", "{output}" }
+                div { class: "left-app-card",
+                    div { class: "ui-counter-row",
+                        span { class: "status-badge success", "{output}" }
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            title: "Gửi kết quả vào ô nhập chat",
+                            onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(output()),
+                            SendIcon { size: 14 } "Chèn"
+                        }
+                    }
+                }
             }
             if plugin.custom_blocks.is_empty() {
-                div { class: "inv-grid",
+                div { class: if compact { "left-app-body" } else { "ui-blocks-grid" },
                     for c in plugin.commands.iter() {
                         {
                             let trig = c.trigger.clone();
                             let desc = c.description.clone();
                             let u = my_username.clone();
                             rsx! {
-                                div { key: "{trig}", class: "inv-card",
+                                div { key: "{trig}", class: if compact { "left-app-card" } else { "ui-block-card" },
                                     div { class: "settings-label", "{trig}" }
                                     div { class: "member-sub", "{desc}" }
-                                    button {
-                                        r#type: "button",
-                                        class: "btn-small-primary",
-                                        onclick: move |_| {
-                                            if let Some(res) = try_run_plugin_command(&trig, &u) {
-                                                output.set(res);
-                                            }
-                                        },
-                                        "Chạy {trig}"
+                                    div { class: "inline-form",
+                                        button {
+                                            r#type: "button",
+                                            class: "btn-small-primary",
+                                            onclick: {
+                                                let tr = trig.clone();
+                                                let u = u.clone();
+                                                move |_| {
+                                                    if let Some(res) = try_run_plugin_command(&tr, &u) {
+                                                        output.set(res);
+                                                    }
+                                                }
+                                            },
+                                            "Chạy {trig}"
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            class: "btn-secondary",
+                                            onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(trig.clone()),
+                                            SendIcon { size: 14 }
+                                        }
                                     }
                                 }
                             }
@@ -1257,24 +1686,207 @@ fn CustomBlocksPage(plugin: PluginMod, my_username: String) -> Element {
                     }
                 }
             } else {
-                div { class: "inv-grid",
+                div { class: if compact { "left-app-body" } else { "ui-blocks-grid" },
                     for (i, b) in plugin.custom_blocks.iter().enumerate() {
                         {
-                            let cmd = b.action_command.clone();
+                            let p_clone = plugin.clone();
+                            let b_clone = b.clone();
                             let u = my_username.clone();
+                            let kind = if b.kind.is_empty() { "card" } else { b.kind.as_str() };
+                            let bkey = format!("b_{i}");
                             rsx! {
-                                div { key: "{i}", class: "inv-card",
+                                div { key: "{i}", class: if compact { "left-app-card" } else { "ui-block-card" },
                                     div { class: "settings-label", "{b.title}" }
-                                    div { class: "member-sub", "{b.body}" }
-                                    if !b.action_label.is_empty() {
-                                        button {
-                                            r#type: "button",
-                                            class: "btn-small-primary",
-                                            onclick: move |_| {
-                                                let res = try_run_plugin_command(&cmd, &u).unwrap_or_else(|| expand_template(&cmd, &u, ""));
-                                                output.set(res);
-                                            },
-                                            "{b.action_label}"
+                                    if kind == "counter" {
+                                        {
+                                            let val = block_state().get(&bkey).and_then(|v| v.as_i64()).unwrap_or(0);
+                                            let pid_s = p_clone.id.clone();
+                                            let bk_dec = bkey.clone();
+                                            let bk_inc = bkey.clone();
+                                            let bk_rst = bkey.clone();
+                                            let b_title = b.title.clone();
+                                            rsx! {
+                                                if !b.body.is_empty() { div { class: "member-sub", "{b.body}" } }
+                                                div { class: "ui-counter-row",
+                                                    span { class: "ui-counter-val", "{val}" }
+                                                    div { class: "inline-form",
+                                                        button { r#type: "button", class: "btn-secondary",
+                                                            onclick: {
+                                                                let pid_s = pid_s.clone();
+                                                                move |_| {
+                                                                    block_state.with_mut(|m| {
+                                                                        let cur = m.get(&bk_dec).and_then(|v| v.as_i64()).unwrap_or(0);
+                                                                        m.insert(bk_dec.clone(), json!(cur - 1));
+                                                                        save_block_state(&pid_s, m);
+                                                                    });
+                                                                }
+                                                            },
+                                                            "−"
+                                                        }
+                                                        button { r#type: "button", class: "btn-small-primary",
+                                                            onclick: {
+                                                                let pid_s = pid_s.clone();
+                                                                move |_| {
+                                                                    block_state.with_mut(|m| {
+                                                                        let cur = m.get(&bk_inc).and_then(|v| v.as_i64()).unwrap_or(0);
+                                                                        m.insert(bk_inc.clone(), json!(cur + 1));
+                                                                        save_block_state(&pid_s, m);
+                                                                    });
+                                                                }
+                                                            },
+                                                            "+"
+                                                        }
+                                                        button { r#type: "button", class: "btn-ghost",
+                                                            onclick: {
+                                                                let pid_s = pid_s.clone();
+                                                                move |_| {
+                                                                    block_state.with_mut(|m| {
+                                                                        m.insert(bk_rst.clone(), json!(0));
+                                                                        save_block_state(&pid_s, m);
+                                                                    });
+                                                                }
+                                                            },
+                                                            "0"
+                                                        }
+                                                        button { r#type: "button", class: "btn-secondary",
+                                                            onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(format!("{b_title}: {val}")),
+                                                            SendIcon { size: 14 }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if kind == "checklist" {
+                                        {
+                                            let items: Vec<String> = b.body
+                                                .split(|c| c == '\n' || c == ',')
+                                                .map(|s| s.trim().to_string())
+                                                .filter(|s| !s.is_empty())
+                                                .collect();
+                                            let pid_s = p_clone.id.clone();
+                                            rsx! {
+                                                div { class: "mod-todo-list",
+                                                    for (j, item_txt) in items.into_iter().enumerate() {
+                                                        {
+                                                            let ckey = format!("{bkey}_{j}");
+                                                            let checked = block_state().get(&ckey).and_then(|v| v.as_bool()).unwrap_or(false);
+                                                            let pid_c = pid_s.clone();
+                                                            rsx! {
+                                                                label { key: "{j}", class: if checked { "mod-todo-row done" } else { "mod-todo-row" },
+                                                                    input {
+                                                                        r#type: "checkbox",
+                                                                        checked: checked,
+                                                                        onchange: move |e| {
+                                                                            let d = e.checked();
+                                                                            block_state.with_mut(|m| {
+                                                                                m.insert(ckey.clone(), json!(d));
+                                                                                save_block_state(&pid_c, m);
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                    span { class: "grow", "{item_txt}" }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if kind == "timer" {
+                                        {
+                                            let default_sec = parse_timer_secs(&b.action_command);
+                                            let (t_run, t_rem) = timers().get(&i).copied().unwrap_or((false, default_sec));
+                                            let clock = format!("{:02}:{:02}", t_rem / 60, t_rem % 60);
+                                            let lbl = if b.action_label.is_empty() { "Bắt đầu".to_string() } else { b.action_label.clone() };
+                                            let t_title = b.title.clone();
+                                            rsx! {
+                                                if !b.body.is_empty() { div { class: "member-sub", "{b.body}" } }
+                                                div { class: "ui-counter-row",
+                                                    span { class: "ui-timer-display", "{clock}" }
+                                                    div { class: "inline-form",
+                                                        button { r#type: "button", class: "btn-small-primary",
+                                                            onclick: move |_| {
+                                                                timers.with_mut(|m| {
+                                                                    let cur = m.get(&i).copied().unwrap_or((false, default_sec));
+                                                                    m.insert(i, (!cur.0, cur.1));
+                                                                });
+                                                            },
+                                                            if t_run { "Tạm dừng" } else { "{lbl}" }
+                                                        }
+                                                        button { r#type: "button", class: "btn-ghost",
+                                                            onclick: move |_| {
+                                                                timers.with_mut(|m| {
+                                                                    m.insert(i, (false, default_sec));
+                                                                });
+                                                            },
+                                                            "Đặt lại"
+                                                        }
+                                                        button { r#type: "button", class: "btn-secondary",
+                                                            onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(format!("⏱ {t_title}: {clock}")),
+                                                            SendIcon { size: 14 }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if kind == "input_action" {
+                                        {
+                                            let cur_val = input_vals().get(&i).cloned().unwrap_or_default();
+                                            let lbl = if b.action_label.is_empty() { "Thực hiện".to_string() } else { b.action_label.clone() };
+                                            rsx! {
+                                                if !b.body.is_empty() { div { class: "member-sub", "{b.body}" } }
+                                                form {
+                                                    class: "inline-form",
+                                                    onsubmit: move |e| {
+                                                        e.prevent_default();
+                                                        let arg = input_vals().get(&i).cloned().unwrap_or_default();
+                                                        run_block_action(&p_clone, &b_clone, &u, &arg, output);
+                                                    },
+                                                    input {
+                                                        r#type: "text",
+                                                        placeholder: "Nhập nội dung",
+                                                        value: "{cur_val}",
+                                                        oninput: move |e| {
+                                                            let v = e.value();
+                                                            input_vals.with_mut(|m| { m.insert(i, v); });
+                                                        }
+                                                    }
+                                                    button { r#type: "submit", class: "btn-small-primary", "{lbl}" }
+                                                }
+                                            }
+                                        }
+                                    } else if kind == "link" {
+                                        {
+                                            let href = b.action_command.clone();
+                                            let lbl = if b.action_label.is_empty() { "Mở liên kết".to_string() } else { b.action_label.clone() };
+                                            rsx! {
+                                                if !b.body.is_empty() { div { class: "member-sub", "{b.body}" } }
+                                                button {
+                                                    r#type: "button",
+                                                    class: "btn-secondary",
+                                                    onclick: move |_| {
+                                                        if href.starts_with("http://") || href.starts_with("https://") {
+                                                            platform::open_external_url(&href);
+                                                        }
+                                                    },
+                                                    "{lbl}"
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        {
+                                            let lbl = if b.action_label.is_empty() && kind == "button" { "Thực hiện".to_string() } else { b.action_label.clone() };
+                                            rsx! {
+                                                if !b.body.is_empty() { div { class: "member-sub", "{b.body}" } }
+                                                if !lbl.is_empty() {
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "btn-small-primary",
+                                                        onclick: move |_| run_block_action(&p_clone, &b_clone, &u, "", output),
+                                                        "{lbl}"
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1287,7 +1899,7 @@ fn CustomBlocksPage(plugin: PluginMod, my_username: String) -> Element {
     }
 }
 
-/// Chat with a Plugin (works for both server `/api/bots` AND local Mod Plugins!).
+/// Chat with a Plugin (works for both server `/api/bots` AND local device Plugins).
 #[component]
 pub fn PluginChatView(
     bot: BotItem,
@@ -1304,6 +1916,7 @@ pub fn PluginChatView(
     let mut add_open = use_signal(|| false);
     let is_local = bot.id.starts_with("mod:");
     let local_storage_key = format!("chatw_plugin_chat_{}", bot.id);
+    let (wp_cls, wp_style) = active_wallpaper_attrs();
 
     let bot_id = bot.id.clone();
     let storage_key_load = local_storage_key.clone();
@@ -1368,30 +1981,32 @@ pub fn PluginChatView(
             let sk = sk_send.clone();
             let m_opt = mod_for_send.clone();
 
-            // Check if this plugin or any enabled plugin has an instant command/auto-reply match
-            let local_reply = if let Some(ref pm) = m_opt {
+            let (cmd_reply, webhook_url, fallback_reply) = if let Some(ref pm) = m_opt {
                 let (cmd, args) = match text.split_once(char::is_whitespace) {
                     Some((c, a)) => (c.trim(), a.trim()),
                     None => (text.as_str(), ""),
                 };
-                pm.commands
+                let direct_cmd = pm
+                    .commands
                     .iter()
                     .find(|c| c.trigger.eq_ignore_ascii_case(cmd))
                     .map(|c| expand_template(&c.response, &u_name, args))
-                    .or_else(|| try_run_plugin_command(&text, &u_name))
                     .or_else(|| {
-                        if id.starts_with("mod:") {
-                            Some(expand_template(
-                                "🧩 Plugin {user}: Đã nhận '{args}'. Gõ /help hoặc bấm các nút lệnh nhanh bên dưới để chạy tính năng của Plugin!",
-                                &u_name,
-                                &text,
-                            ))
+                        if text.starts_with('/') {
+                            try_run_plugin_command(&text, &u_name)
                         } else {
                             None
                         }
-                    })
+                    });
+                let auto_tpl = if !pm.auto_reply.trim().is_empty() {
+                    Some(expand_template(&pm.auto_reply, &u_name, &text))
+                } else {
+                    None
+                };
+                let wh = pm.webhook_url.trim().to_string();
+                (direct_cmd, wh, auto_tpl)
             } else {
-                try_run_plugin_command(&text, &u_name)
+                (try_run_plugin_command(&text, &u_name), String::new(), None)
             };
 
             if id.starts_with("mod:") {
@@ -1404,24 +2019,77 @@ pub fn PluginChatView(
                     text: text.clone(),
                     created_at: now.clone(),
                 };
+                let immediate_reply = cmd_reply.or_else(|| {
+                    if !webhook_url.is_empty() {
+                        None
+                    } else {
+                        fallback_reply.clone().or_else(|| {
+                            Some(expand_template("Đã nhận: {args}. Dùng /help để xem lệnh.", &u_name, &text))
+                        })
+                    }
+                });
                 msgs.with_mut(|l| {
                     l.push(user_msg);
-                    if let Some(rep) = local_reply {
+                    if let Some(ref rep) = immediate_reply {
                         l.push(BotChatMessage {
                             id: format!("b-{}", now_ts + 1),
                             seq: now_ts + 1,
                             from_bot: true,
-                            text: rep,
-                            created_at: now,
+                            text: rep.clone(),
+                            created_at: now.clone(),
                         });
                     }
                     if let Ok(s) = serde_json::to_string(l) {
                         platform::storage_set(&sk, &s);
                     }
                 });
-                sending.set(false);
-                platform::scroll_chat_to_bottom(false);
+
+                if immediate_reply.is_none() && (webhook_url.starts_with("http://") || webhook_url.starts_with("https://")) {
+                    let payload = json!({
+                        "plugin_id": id,
+                        "username": u_name,
+                        "text": text,
+                    });
+                    spawn(async move {
+                        let reply_text = match platform::http_request("POST", &webhook_url, Some(payload.to_string()), None).await {
+                            Ok((_, body)) => {
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                                    v.get("reply")
+                                        .or_else(|| v.get("text"))
+                                        .or_else(|| v.get("message"))
+                                        .and_then(|s| s.as_str())
+                                        .map(|s| s.to_string())
+                                        .unwrap_or_else(|| body.trim().to_string())
+                                } else {
+                                    body.trim().to_string()
+                                }
+                            }
+                            Err(_) => fallback_reply.unwrap_or_else(|| "Không kết nối được Webhook của Plugin".into()),
+                        };
+                        let r_ts = chrono::Utc::now().timestamp_millis();
+                        msgs.with_mut(|l| {
+                            if !reply_text.is_empty() {
+                                l.push(BotChatMessage {
+                                    id: format!("w-{}", r_ts),
+                                    seq: r_ts,
+                                    from_bot: true,
+                                    text: reply_text,
+                                    created_at: chrono::Utc::now().to_rfc3339(),
+                                });
+                                if let Ok(s) = serde_json::to_string(l) {
+                                    platform::storage_set(&sk, &s);
+                                }
+                            }
+                        });
+                        sending.set(false);
+                        platform::scroll_chat_to_bottom(false);
+                    });
+                } else {
+                    sending.set(false);
+                    platform::scroll_chat_to_bottom(false);
+                }
             } else {
+                let local_reply = cmd_reply.or(fallback_reply);
                 spawn(async move {
                     match social::bot_send(&id, &text).await {
                         Ok(m) => {
@@ -1472,25 +2140,46 @@ pub fn PluginChatView(
     let admin_groups: Vec<GroupItem> = groups.into_iter().filter(|g| matches!(g.role.as_deref(), Some("owner") | Some("admin"))).collect();
     let can_add = !is_local && (bot.owner_id == my_id || (bot.is_public && bot.verification_status == "verified"));
     let quick_cmds: Vec<PluginCommand> = matching_mod.as_ref().map(|m| m.commands.clone()).unwrap_or_default();
+    let header_icon = matching_mod.as_ref().map(|m| m.icon.clone()).unwrap_or_else(|| "🤖".to_string());
+    let bot_desc = bot
+        .description
+        .clone()
+        .filter(|d| !d.trim().is_empty())
+        .unwrap_or_else(|| "Chọn lệnh nhanh bên dưới hoặc nhắn tin để tương tác với Plugin.".to_string());
     let send_text_composer = send_text.clone();
     let send_text_cmds = send_text.clone();
+    let send_text_welcome = send_text.clone();
 
     rsx! {
         div { class: "chat-main-container",
-            div { class: "chat-column wp-none",
+            div { class: "chat-column {wp_cls}", style: "{wp_style}",
                 header { class: "chat-header",
                     button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại danh sách", onclick: move |_| on_back.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
-                        Avatar { name: bot.display_name.clone(), avatar_url: bot.avatar_url.clone(), size: 38 }
+                        if bot.avatar_url.is_some() {
+                            Avatar { name: bot.display_name.clone(), avatar_url: bot.avatar_url.clone(), size: 38 }
+                        } else {
+                            span { class: "bot-header-icon", "{header_icon}" }
+                        }
                         div { class: "chat-header-info",
-                            h2 { class: "chat-header-title", "{bot.display_name}" span { class: "bot-tag", "PLUGIN" } }
-                            span { class: "chat-header-meta",
-                                if is_local { "@{bot.username} · Plugin trên thiết bị" } else { "@{bot.username} · Plugin API" }
-                            }
+                            h2 { class: "chat-header-title", "{bot.display_name}" }
+                            span { class: "chat-header-meta", "@{bot.username}" }
                         }
                     }
                     div { class: "chat-header-actions",
                         if let Some(ref pm) = matching_mod {
+                            if pm.left_app_enabled {
+                                {
+                                    let pid = pm.id.clone();
+                                    rsx! {
+                                        button { r#type: "button", class: "btn-secondary",
+                                            title: "Mở ở cột bên trái",
+                                            onclick: move |_| *ACTIVE_LEFT_PLUGIN.write() = Some(pid.clone()),
+                                            PanelRightIcon { size: 15 } "Bên trái"
+                                        }
+                                    }
+                                }
+                            }
                             if pm.custom_page_enabled {
                                 {
                                     let pid = pm.id.clone();
@@ -1565,16 +2254,47 @@ pub fn PluginChatView(
                 if let Some(e) = error() {
                     div { class: "chat-banner", role: "status", span { "{e}" } button { r#type: "button", class: "btn-ghost", onclick: move |_| error.set(None), "Đóng" } }
                 }
-                MessageList {
-                    messages: view,
-                    show_sender_names: true,
-                    intro_title: bot.display_name.clone(),
-                    intro_sub: bot.description.clone().filter(|d| !d.trim().is_empty()).unwrap_or_else(|| "Gửi /help để xem danh sách lệnh của Plugin.".to_string()),
-                    on_open_profile: move |_| {},
-                    on_profile_click: move |_| {},
-                    on_react: move |_| {},
+                if view.is_empty() {
+                    div { class: "chat-messages", id: "chat-messages-scroll",
+                        div { class: "bot-welcome-card",
+                            span { class: "bot-welcome-icon", "{header_icon}" }
+                            h3 { class: "bot-welcome-title", "{bot.display_name}" }
+                            p { class: "bot-welcome-desc", "{bot_desc}" }
+                            if !quick_cmds.is_empty() {
+                                div { class: "bot-welcome-cmds",
+                                    for c in quick_cmds.iter() {
+                                        {
+                                            let trig = c.trigger.clone();
+                                            let desc = c.description.clone();
+                                            let send_chip = send_text_welcome.clone();
+                                            rsx! {
+                                                button {
+                                                    key: "{trig}",
+                                                    r#type: "button",
+                                                    class: "plugin-cmd-chip",
+                                                    title: "{desc}",
+                                                    onclick: move |_| send_chip(trig.clone()),
+                                                    "{trig}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    MessageList {
+                        messages: view,
+                        show_sender_names: false,
+                        intro_title: bot.display_name.clone(),
+                        intro_sub: bot_desc,
+                        on_open_profile: move |_| {},
+                        on_profile_click: move |_| {},
+                        on_react: move |_| {},
+                    }
                 }
-                if !quick_cmds.is_empty() {
+                if !quick_cmds.is_empty() && !msgs().is_empty() {
                     div { class: "plugin-composer-bar",
                         for c in quick_cmds {
                             {
@@ -1647,6 +2367,14 @@ pub fn PluginsSettings(
     let mut cmd_desc = use_signal(String::new);
     let mut cmd_resp = use_signal(String::new);
 
+    // Custom block builder signals
+    let mut blk_kind = use_signal(|| "card".to_string());
+    let mut blk_title = use_signal(String::new);
+    let mut blk_body = use_signal(String::new);
+    let mut blk_action_label = use_signal(String::new);
+    let mut blk_action_type = use_signal(|| "command".to_string());
+    let mut blk_action_cmd = use_signal(String::new);
+
     // Composer button editor signals
     let mut btn_label = use_signal(String::new);
     let mut btn_content = use_signal(String::new);
@@ -1656,7 +2384,6 @@ pub fn PluginsSettings(
         spawn(async move {
             origin.set(platform::app_origin().await);
             if let Ok(list) = social::bots_mine().await {
-                // Ensure every server bot also has a corresponding PluginMod entry so it can be modded!
                 let mut current = PLUGINS.peek().clone();
                 let mut changed = false;
                 for sb in &list {
@@ -1676,8 +2403,11 @@ pub fn PluginsSettings(
                             commands: vec![
                                 PluginCommand { trigger: "/start".into(), description: "Khởi động plugin".into(), response: format!("Xin chào {{user}}! Đây là plugin @{}.", sb.username) },
                             ],
+                            auto_reply: String::new(),
+                            webhook_url: String::new(),
                             theme_enabled: false,
                             theme: PluginTheme::default(),
+                            left_app_enabled: false,
                             custom_page_enabled: false,
                             page_title: sb.display_name.clone(),
                             page_icon: "🤖".into(),
@@ -1688,6 +2418,7 @@ pub fn PluginsSettings(
                             hud_coords: false,
                             hud_clock: false,
                             hud_note: false,
+                            hud_pomodoro: false,
                             screen_fx: "none".into(),
                             sound_fx: "none".into(),
                             composer_buttons: Vec::new(),
@@ -1759,8 +2490,11 @@ pub fn PluginsSettings(
                 commands: vec![
                     PluginCommand { trigger: "/hello".into(), description: "Chào người dùng".into(), response: format!("{ic} Xin chào {{user}} từ Plugin {d}!") },
                 ],
+                auto_reply: String::new(),
+                webhook_url: String::new(),
                 theme_enabled: false,
                 theme: PluginTheme::default(),
+                left_app_enabled: false,
                 custom_page_enabled: false,
                 page_title: d,
                 page_icon: ic,
@@ -1771,6 +2505,7 @@ pub fn PluginsSettings(
                 hud_coords: false,
                 hud_clock: true,
                 hud_note: false,
+                hud_pomodoro: false,
                 screen_fx: "none".into(),
                 sound_fx: "none".into(),
                 composer_buttons: Vec::new(),
@@ -1919,6 +2654,7 @@ pub fn PluginsSettings(
                         {
                             let pid = pm.id.clone();
                             let pid_edit = pm.id.clone();
+                            let pid_left = pm.id.clone();
                             let pid_page = pm.id.clone();
                             let pid_del = pm.id.clone();
                             let srv_id_del = pm.server_bot_id.clone();
@@ -1944,11 +2680,30 @@ pub fn PluginsSettings(
                                         }
                                     }
                                     p { class: "mod-card-desc", "{pm.description}" }
+                                    div { class: "mod-capability-pills",
+                                        if pm.bot_enabled { span { class: "mod-cap-pill", "🤖 Bot" } }
+                                        if pm.left_app_enabled { span { class: "mod-cap-pill", "◧ Bên trái" } }
+                                        if pm.custom_page_enabled { span { class: "mod-cap-pill", "📄 Trang" } }
+                                        if pm.theme_enabled { span { class: "mod-cap-pill", "🎨 Giao diện" } }
+                                        if pm.hud_enabled { span { class: "mod-cap-pill", "⏱ HUD" } }
+                                    }
                                     div { class: "mod-card-actions",
-                                        if pm.custom_page_enabled {
+                                        if pm.left_app_enabled {
                                             button {
                                                 r#type: "button",
                                                 class: "btn-small-primary",
+                                                onclick: move |_| {
+                                                    update_plugin(&pid_left, &|p| p.enabled = true);
+                                                    *ACTIVE_PLUGIN_PAGE.write() = None;
+                                                    *ACTIVE_LEFT_PLUGIN.write() = Some(pid_left.clone());
+                                                },
+                                                PanelRightIcon { size: 14 } "Bên trái"
+                                            }
+                                        }
+                                        if pm.custom_page_enabled {
+                                            button {
+                                                r#type: "button",
+                                                class: "btn-small-secondary",
                                                 onclick: move |_| {
                                                     update_plugin(&pid_page, &|p| p.enabled = true);
                                                     *ACTIVE_PLUGIN_PAGE.write() = Some(pid_page.clone());
@@ -1966,7 +2721,7 @@ pub fn PluginsSettings(
                                                             id: pm_chat.server_bot_id.clone().unwrap_or_else(|| pm_chat.id.clone()),
                                                             owner_id: "local".into(),
                                                             username: pm_chat.username.clone(),
-                                                            display_name: format!("{} {}", pm_chat.icon, pm_chat.display_name),
+                                                            display_name: pm_chat.display_name.clone(),
                                                             description: Some(pm_chat.description.clone()),
                                                             avatar_url: None,
                                                             is_public: true,
@@ -2116,14 +2871,19 @@ pub fn PluginsSettings(
                             onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.bot_enabled = v); } } }
                     }
                     label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Tùy chỉnh giao diện App" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.theme_enabled,
-                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.theme_enabled = v); } } }
+                        span { class: "grow", span { class: "settings-label", "Ứng dụng ở cột bên trái" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.left_app_enabled,
+                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.left_app_enabled = v); } } }
                     }
                     label { class: "settings-row toggle-row",
                         span { class: "grow", span { class: "settings-label", "Thêm trang lên thanh điều hướng" } }
                         input { r#type: "checkbox", class: "switch", checked: em.custom_page_enabled,
                             onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.custom_page_enabled = v); } } }
+                    }
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Tùy chỉnh giao diện App" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.theme_enabled,
+                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.theme_enabled = v); } } }
                     }
                     label { class: "settings-row toggle-row",
                         span { class: "grow", span { class: "settings-label", "Hiển thị HUD nổi" } }
@@ -2268,14 +3028,19 @@ pub fn PluginsSettings(
             } else if editor_tab() == "ui" {
                 div { class: "settings-group",
                     label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Hiển thị ở cột bên trái" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.left_app_enabled,
+                            onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.left_app_enabled = v); } } }
+                    }
+                    label { class: "settings-row toggle-row",
                         span { class: "grow", span { class: "settings-label", "Thêm trang lên thanh điều hướng" } }
                         input { r#type: "checkbox", class: "switch", checked: em.custom_page_enabled,
                             onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.custom_page_enabled = v); } } }
                     }
-                    if em.custom_page_enabled {
+                    if em.custom_page_enabled || em.left_app_enabled {
                         div { class: "form-grid",
                             label { class: "form-field",
-                                span { "Tiêu đề trang" }
+                                span { "Tiêu đề" }
                                 input { r#type: "text", value: "{em.page_title}",
                                     oninput: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_title = v.clone()); } } }
                             }
@@ -2285,15 +3050,105 @@ pub fn PluginsSettings(
                                     oninput: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_icon = v.clone()); } } }
                             }
                             label { class: "form-field",
-                                span { "Loại trang" }
+                                span { "Loại giao diện" }
                                 select {
                                     value: "{em.page_kind}",
                                     onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_kind = v.clone()); } },
-                                    option { value: "voxel", "Bảng Voxel 2D" }
-                                    option { value: "notes", "Sổ tay & Việc làm" }
-                                    option { value: "soundboard", "Soundboard 8-Bit" }
+                                    option { value: "custom", "Khối tùy chỉnh" }
+                                    option { value: "notes", "Sổ tay & Pomodoro" }
+                                    option { value: "soundboard", "Soundboard" }
                                     option { value: "cyber", "Trạm lệnh" }
-                                    option { value: "custom", "Tùy chỉnh" }
+                                    option { value: "voxel", "Lưới Voxel 2D" }
+                                }
+                            }
+                        }
+
+                        div { class: "settings-group-title", "Thành phần giao diện tùy chỉnh" }
+                        div { class: "form-grid",
+                            label { class: "form-field",
+                                span { "Loại khối" }
+                                select {
+                                    value: "{blk_kind}",
+                                    onchange: move |e| blk_kind.set(e.value()),
+                                    option { value: "card", "Thẻ thông tin" }
+                                    option { value: "button", "Nút bấm hành động" }
+                                    option { value: "counter", "Bộ đếm số" }
+                                    option { value: "checklist", "Danh sách đánh dấu" }
+                                    option { value: "input_action", "Ô nhập và chạy" }
+                                    option { value: "timer", "Đồng hồ đếm ngược" }
+                                    option { value: "link", "Liên kết ngoài" }
+                                }
+                            }
+                            label { class: "form-field",
+                                span { "Tiêu đề khối" }
+                                input { r#type: "text", placeholder: "vd: Đếm bước", value: "{blk_title}", oninput: move |e| blk_title.set(e.value()) }
+                            }
+                            label { class: "form-field",
+                                span { "Kiểu hành động" }
+                                select {
+                                    value: "{blk_action_type}",
+                                    onchange: move |e| blk_action_type.set(e.value()),
+                                    option { value: "command", "Chạy lệnh Plugin" }
+                                    option { value: "insert_chat", "Chèn vào ô chat" }
+                                    option { value: "copy", "Sao chép" }
+                                    option { value: "sound", "Phát âm thanh" }
+                                    option { value: "url", "Mở liên kết" }
+                                    option { value: "webhook", "Gọi Webhook POST" }
+                                }
+                            }
+                            label { class: "form-field",
+                                span { "Nhãn nút" }
+                                input { r#type: "text", placeholder: "vd: Chạy", value: "{blk_action_label}", oninput: move |e| blk_action_label.set(e.value()) }
+                            }
+                            label { class: "form-field wide",
+                                span { "Nội dung hoặc các mục cách nhau dấu phẩy" }
+                                textarea { rows: "2", placeholder: "Mô tả ngắn hoặc danh sách mục", value: "{blk_body}", oninput: move |e| blk_body.set(e.value()) }
+                            }
+                            label { class: "form-field wide",
+                                span { "Lệnh, mẫu nội dung, thời gian hoặc URL" }
+                                input { r#type: "text", placeholder: "vd: /roll hoặc 5m hoặc https://example.com", value: "{blk_action_cmd}", oninput: move |e| blk_action_cmd.set(e.value()) }
+                            }
+                        }
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            onclick: {
+                                let id = eid_ui.clone();
+                                move |_| {
+                                    let t = blk_title().trim().to_string();
+                                    if t.is_empty() { return; }
+                                    let blk = PluginCustomBlock {
+                                        kind: blk_kind(),
+                                        title: t,
+                                        body: blk_body().trim().to_string(),
+                                        action_label: blk_action_label().trim().to_string(),
+                                        action_command: blk_action_cmd().trim().to_string(),
+                                        action_type: blk_action_type(),
+                                    };
+                                    update_plugin(&id, &|p| p.custom_blocks.push(blk.clone()));
+                                    blk_title.set(String::new());
+                                    blk_body.set(String::new());
+                                    blk_action_label.set(String::new());
+                                    blk_action_cmd.set(String::new());
+                                }
+                            },
+                            PlusIcon { size: 15 } "Thêm khối giao diện"
+                        }
+                        div { class: "mod-todo-list",
+                            for (bi, b) in em.custom_blocks.iter().enumerate() {
+                                div { key: "{bi}", class: "mod-todo-row",
+                                    code { class: "kbd", "{b.kind}" }
+                                    span { class: "settings-label", "{b.title}" }
+                                    span { class: "grow member-sub", "{b.action_command}" }
+                                    button {
+                                        r#type: "button",
+                                        class: "icon-btn danger",
+                                        onclick: {
+                                            let id = eid_ui.clone();
+                                            move |_| update_plugin(&id, &|p| { if bi < p.custom_blocks.len() { p.custom_blocks.remove(bi); } })
+                                        },
+                                        TrashIcon { size: 15 }
+                                    }
                                 }
                             }
                         }
@@ -2318,7 +3173,7 @@ pub fn PluginsSettings(
                                 value: "{em.sound_fx}",
                                 onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); play_mod_sound(&v); update_plugin(&id, &|p| p.sound_fx = v.clone()); } },
                                 option { value: "none", "Mặc định" }
-                                option { value: "minecraft", "Âm thanh 8-Bit" }
+                                option { value: "minecraft", "Âm thanh Retro" }
                                 option { value: "mech", "Phím cơ" }
                                 option { value: "scifi", "Laser Sci-Fi" }
                             }
@@ -2333,9 +3188,14 @@ pub fn PluginsSettings(
                     if em.hud_enabled {
                         div { class: "studio-toggles",
                             label { class: "demo-check",
+                                input { r#type: "checkbox", checked: em.hud_pomodoro,
+                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_pomodoro = v); } } }
+                                "Pomodoro"
+                            }
+                            label { class: "demo-check",
                                 input { r#type: "checkbox", checked: em.hud_coords,
                                     onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_coords = v); } } }
-                                "Tọa độ XYZ & FPS"
+                                "Tọa độ & FPS"
                             }
                             label { class: "demo-check",
                                 input { r#type: "checkbox", checked: em.hud_clock,
@@ -2390,6 +3250,23 @@ pub fn PluginsSettings(
                 }
             } else {
                 div { class: "settings-group",
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Bật Bot trò chuyện" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.bot_enabled,
+                            onchange: { let id = eid_bot.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.bot_enabled = v); } } }
+                    }
+                    div { class: "form-grid",
+                        label { class: "form-field wide",
+                            span { "Phản hồi tự động khi nhắn tin thường" }
+                            input { r#type: "text", placeholder: "{resp_placeholder}", value: "{em.auto_reply}",
+                                oninput: { let id = eid_bot.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.auto_reply = v.clone()); } } }
+                        }
+                        label { class: "form-field wide",
+                            span { "Webhook HTTP POST" }
+                            input { r#type: "url", placeholder: "https://api.example.com/plugin-hook", value: "{em.webhook_url}",
+                                oninput: { let id = eid_bot.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.webhook_url = v.clone()); } } }
+                        }
+                    }
                     div { class: "settings-group-title", "Lệnh Bot" }
                     div { class: "member-sub", "{var_guide}" }
                     div { class: "form-grid",
