@@ -185,7 +185,7 @@ pub fn ConversationList(
         });
     }
     let mut all_bots = bots.clone();
-    for lb in crate::components::bots_view::enabled_bot_plugins_as_items() {
+    for lb in crate::components::plugins_view::enabled_bot_plugins_as_items() {
         if !all_bots.iter().any(|x| x.id == lb.id || x.username == lb.username) {
             all_bots.push(lb);
         }

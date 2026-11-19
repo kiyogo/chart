@@ -259,7 +259,7 @@ pub fn SearchPage(
                 if show(Tab::Bots) {
                     {
                         let mut plugin_entries = d.bots.clone();
-                        for pm in crate::components::bots_view::PLUGINS.read().iter() {
+                        for pm in crate::components::plugins_view::PLUGINS.read().iter() {
                             if q.is_empty() || fold(&pm.display_name).contains(&q) || fold(&pm.username).contains(&q) || fold(&pm.description).contains(&q) {
                                 if !plugin_entries.iter().any(|x| x.username.as_deref() == Some(pm.username.as_str())) {
                                     plugin_entries.push(DirectoryEntry {

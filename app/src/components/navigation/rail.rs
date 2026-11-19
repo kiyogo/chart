@@ -9,7 +9,7 @@ use crate::i18n::t;
 use crate::{
     components::{
         avatar::Avatar,
-        bots_view::{ACTIVE_PLUGIN_PAGE, enabled_rail_pages},
+        plugins_view::{ACTIVE_PLUGIN_PAGE, enabled_rail_pages},
         icons::{BotIcon, CompassIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, SearchIcon, SettingsIcon, UserIcon},
         navigation::NavSection,
     },

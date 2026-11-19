@@ -8,7 +8,7 @@ use crate::{
         settings_extra::{AccountSecurity, CustomizationSettings, LibrarySettings},
         settings_more::{AdvancedLookSettings, AutoReplySettings, ChatPrefsSettings, LanguageSettings, LockSettings, NotificationSettings, PrivacySettingsPanel},
         business_view::BusinessSettings,
-        bots_view::BotsSettings,
+        plugins_view::BotsSettings,
         icons::{
             BackIcon, CheckIcon, ChevronRightIcon, KeyIcon, LogoutIcon, MonitorIcon,
             MoonIcon, BookIcon, LibraryIcon, PaletteIcon, ShieldIcon, SlidersIcon, SunIcon, UserIcon,

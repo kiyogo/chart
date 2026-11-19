@@ -1273,7 +1273,7 @@ fn CustomBlocksPage(plugin: PluginMod, my_username: String) -> Element {
 
 /// Chat with a Plugin (works for both server `/api/bots` AND local Mod Plugins!).
 #[component]
-pub fn BotChatView(
+pub fn PluginChatView(
     bot: BotItem,
     my_id: String,
     my_name: String,
@@ -1583,9 +1583,11 @@ const THEME_PRESETS: [(&str, &str, &str, &str, &str, &str, &str, &str, &str); 6]
     ("Retro Terminal", "#051005", "#0A1C0A", "#071407", "#0F290F", "#22C55E", "#16A34A", "#4ADE80", "pixel"),
 ];
 
+pub use PluginChatView as BotChatView;
+
 /// Settings › Plugin & Mod Studio: manage, toggle, customize, and build Plugins & Mods.
 #[component]
-pub fn BotsSettings(
+pub fn PluginsSettings(
     my_username: String,
     #[props(default)] on_open_bot_chat: Option<EventHandler<BotItem>>,
 ) -> Element {
@@ -2486,3 +2488,6 @@ pub fn BotsSettings(
         }
     }
 }
+
+pub use PluginsSettings as BotsSettings;
+

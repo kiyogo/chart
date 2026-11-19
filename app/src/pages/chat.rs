@@ -15,7 +15,7 @@ use crate::{
         },
         messages::{Composer, MentionCandidate, MessageList, ViewMessage, preview_text},
         search_page::SearchPage,
-        bots_view::BotChatView,
+        plugins_view::BotChatView,
         chat_extras::{ChatAction, ChatMoreMenu, PinnedBar, RenameDeviceDialog, WallpaperPicker, wallpaper_attrs},
         group_manage::GroupManageDialog,
         invite::{InviteDialog, InviteFriendsDialog},
@@ -1504,7 +1504,7 @@ pub fn Chat(
             return;
         }
         let text = if raw_text.starts_with('/') {
-            crate::components::bots_view::try_run_plugin_command(&raw_text, &uname_for_dm_cmd).unwrap_or(raw_text)
+            crate::components::plugins_view::try_run_plugin_command(&raw_text, &uname_for_dm_cmd).unwrap_or(raw_text)
         } else {
             raw_text
         };
@@ -1660,7 +1660,7 @@ pub fn Chat(
     // ---------------------------------------------------------------------
     let total_unread: usize = unread_counts.read().values().copied().sum();
     let pending_len = pending_requests.read().len();
-    let active_mod_page = crate::components::bots_view::ACTIVE_PLUGIN_PAGE.read().clone();
+    let active_mod_page = crate::components::plugins_view::ACTIVE_PLUGIN_PAGE.read().clone();
     let is_chat_selected = active_friend().is_some()
         || active_group().is_some()
         || selected_channel().is_some()
@@ -1988,7 +1988,7 @@ pub fn Chat(
 
     rsx! {
         div { class: "workspace-shell",
-            crate::components::bots_view::PluginGlobalOverlay {}
+            crate::components::plugins_view::PluginGlobalOverlay {}
             AppRail {
                 active_section: section.clone(),
                 hidden_mobile: is_chat_selected,
@@ -2164,13 +2164,13 @@ pub fn Chat(
 
             main { class: if is_chat_selected { "main-stage" } else { "main-stage hidden-mobile" },
                 if let Some(pid) = active_mod_page.clone() {
-                    crate::components::bots_view::PluginCustomPageView {
+                    crate::components::plugins_view::PluginCustomPageView {
                         key: "{pid}",
                         plugin_id: pid,
                         my_username: current_username.clone(),
-                        on_close: move |_| *crate::components::bots_view::ACTIVE_PLUGIN_PAGE.write() = None,
+                        on_close: move |_| *crate::components::plugins_view::ACTIVE_PLUGIN_PAGE.write() = None,
                         on_open_bot_chat: move |b: BotItem| {
-                            *crate::components::bots_view::ACTIVE_PLUGIN_PAGE.write() = None;
+                            *crate::components::plugins_view::ACTIVE_PLUGIN_PAGE.write() = None;
                             open_bot.call(b);
                         },
                     }

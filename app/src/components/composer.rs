@@ -509,7 +509,7 @@ pub fn Composer(
                     div { class: "composer-disabled", role: "status", "{reason}" }
                 } else {
                     {
-                        let mod_btns = crate::components::bots_view::enabled_composer_buttons();
+                        let mod_btns = crate::components::plugins_view::enabled_composer_buttons();
                         if !mod_btns.is_empty() && input_id != "bot-chat-input" {
                             rsx! {
                                 div { class: "plugin-composer-bar",
@@ -524,7 +524,7 @@ pub fn Composer(
                                                     class: "plugin-cmd-chip",
                                                     title: "Plugin: {pname}",
                                                     onclick: move |_| {
-                                                        let out = crate::components::bots_view::try_run_plugin_command(&bc, "Bạn")
+                                                        let out = crate::components::plugins_view::try_run_plugin_command(&bc, "Bạn")
                                                             .unwrap_or_else(|| if cur_v.is_empty() { bc.clone() } else { format!("{cur_v} {bc}") });
                                                         on_input.call(out);
                                                         platform::focus_chat_input();
