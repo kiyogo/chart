@@ -179,10 +179,10 @@ const GUIDES: [(&str, &str, &[&str]); 16] = [
         "Chọn thời gian không hoạt động trước khi khóa, hoặc khóa mỗi lần mở.",
         "Quên mã PIN: đăng xuất trên màn hình khóa rồi đăng nhập lại.",
     ]),
-    ("library", "Tạo Plugin & Mod giao diện của riêng bạn", &[
-        "Bấm biểu tượng Plugin & Mod trên thanh điều hướng trái hoặc vào Cài đặt › Plugin.",
-        "Bật các Mod có sẵn như Minecraft Voxel, Cyberpunk Neon, Sakura Glass, Sổ tay hoặc tạo Plugin mới.",
-        "Mỗi Plugin có thể làm Bot trò chuyện, biến đổi toàn bộ giao diện CSS, thêm trang mới lên thanh điều hướng, bật HUD nổi và kết nối HTTP API Token.",
+    ("library", "Plugin và tùy chỉnh giao diện", &[
+        "Bấm biểu tượng Plugin trên thanh điều hướng trái hoặc vào Cài đặt › Plugin.",
+        "Bật các Plugin có sẵn hoặc tạo Plugin mới.",
+        "Mỗi Plugin có thể làm Bot trò chuyện, đổi giao diện, thêm trang và bật HUD.",
     ]),
     ("shield", "Xác minh mã hóa với bạn bè", &[
         "Mở cuộc trò chuyện, bấm biểu tượng bảng Thông tin ở góc phải.",

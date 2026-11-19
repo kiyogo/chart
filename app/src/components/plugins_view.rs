@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BackIcon, CheckIcon, CopyIcon, GroupIcon, PaletteIcon, PluginIcon, PlusIcon, RefreshIcon, SlidersIcon, SparkleIcon, TrashIcon},
+        icons::{BackIcon, CheckIcon, CopyIcon, GroupIcon, PluginIcon, PlusIcon, RefreshIcon, SlidersIcon, TrashIcon},
         messages::{Composer, MessageList, ViewMessage},
     },
     models::{BotChatMessage, BotItem, GroupItem},
@@ -108,26 +108,27 @@ struct TodoItem {
 
 pub static PLUGINS: GlobalSignal<Vec<PluginMod>> = Signal::global(load_plugins_from_storage);
 pub static ACTIVE_PLUGIN_PAGE: GlobalSignal<Option<String>> = Signal::global(|| None);
+pub static EDITING_PLUGIN_ID: GlobalSignal<Option<String>> = Signal::global(|| None);
 
 fn default_builtin_plugins() -> Vec<PluginMod> {
     vec![
         PluginMod {
             id: "mod:minecraft_voxel".into(),
-            username: "minecraft_mod".into(),
-            display_name: "Minecraft Voxel UI & Sandbox".into(),
-            author: "ChatW Forge".into(),
-            version: "1.20.4".into(),
+            username: "voxel_plugin".into(),
+            display_name: "Giao diện Voxel 3D".into(),
+            author: "ChatW".into(),
+            version: "1.0.0".into(),
             icon: "⛏".into(),
-            description: "Biến toàn bộ giao diện thành phong cách khối Voxel Minecraft, thêm trang Thế giới Khối 2D trên thanh điều hướng, HUD tọa độ XYZ, hạt XP lấp lánh, âm thanh 8-Bit và bot lệnh /craft, /coords, /roll.".into(),
+            description: "Giao diện khối vuông, bảng vẽ 2D và HUD tọa độ.".into(),
             enabled: false,
             builtin: true,
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/craft".into(), description: "Chế tạo vật phẩm ngẫu nhiên".into(), response: "⛏ [{user}] đã chế tạo thành công: Kiếm Kim Cương Bền Bỉ III + Cúp Ngọc Lục Bảo!".into() },
-                PluginCommand { trigger: "/coords".into(), description: "Xem tọa độ thế giới hiện tại".into(), response: "🧭 Tọa độ của {user}: X: 128, Y: 64, Z: -256 · Quần xã: Đồng bằng Ngọc Lục Bảo".into() },
-                PluginCommand { trigger: "/seed".into(), description: "Tạo hạt giống thế giới".into(), response: "🌱 World Seed: 849201749201 · Số may mắn: {rand100}".into() },
-                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc may mắn".into(), response: "🎲 {user} tung xúc xắc được: {dice} điểm!".into() },
+                PluginCommand { trigger: "/craft".into(), description: "Chế tạo vật phẩm".into(), response: "⛏ [{user}] đã chế tạo vật phẩm thành công!".into() },
+                PluginCommand { trigger: "/coords".into(), description: "Xem tọa độ hiện tại".into(), response: "🧭 Tọa độ của {user}: X: 128, Y: 64, Z: -256".into() },
+                PluginCommand { trigger: "/seed".into(), description: "Tạo mã ngẫu nhiên".into(), response: "🌱 Seed: 849201749201 · Số may mắn: {rand100}".into() },
+                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc".into(), response: "🎲 {user} tung xúc xắc được: {dice} điểm!".into() },
             ],
             theme_enabled: true,
             theme: PluginTheme {
@@ -147,7 +148,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
                 custom_css: ".chat-item, .btn-primary, .btn-secondary, .result-card, .settings-row { box-shadow: inset -2px -2px 0 rgba(0,0,0,0.45), inset 2px 2px 0 rgba(255,255,255,0.12); }".into(),
             },
             custom_page_enabled: true,
-            page_title: "Thế giới Voxel".into(),
+            page_title: "Bảng Voxel".into(),
             page_icon: "⛏".into(),
             page_kind: "voxel".into(),
             custom_blocks: Vec::new(),
@@ -161,25 +162,23 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             composer_buttons: vec![
                 PluginComposerBtn { label: "⛏ /craft".into(), content: "/craft".into() },
                 PluginComposerBtn { label: "🧭 /coords".into(), content: "/coords".into() },
-                PluginComposerBtn { label: "💎 Kim cương".into(), content: "💎 Đã tìm thấy mạch Kim Cương tại Y=-58!".into() },
             ],
         },
         PluginMod {
             id: "mod:cyberpunk_hud".into(),
-            username: "cyberpunk_mod".into(),
-            display_name: "Cyberpunk Neon Overhaul".into(),
-            author: "NightCity Labs".into(),
-            version: "2.0.77".into(),
+            username: "cyber_plugin".into(),
+            display_name: "Giao diện Cyber Neon".into(),
+            author: "ChatW".into(),
+            version: "1.0.0".into(),
             icon: "⚡".into(),
-            description: "Giao diện Neon Cyberpunk phát sáng với viền laser, mưa ma trận Matrix toàn màn hình, trang Trạm Điều Khiển Cyber trên thanh điều hướng, HUD đồng hồ số và bot lệnh /neon, /hack.".into(),
+            description: "Giao diện Neon tối, hiệu ứng Matrix và bảng lệnh.".into(),
             enabled: false,
             builtin: true,
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/neon".into(), description: "Kích hoạt xung nhịp Neon".into(), response: "⚡ [NEON PULSE] Hệ thống quang học của {user} đã đồng bộ ở mức {rand100}%!".into() },
-                PluginCommand { trigger: "/hack".into(), description: "Mô phỏng giải mã".into(), response: "💻 Giải mã nút mạng hoàn tất lúc {time} · Bảo mật E2EE: Bất khả xâm phạm.".into() },
-                PluginCommand { trigger: "/status".into(), description: "Kiểm tra trạng thái trạm".into(), response: "🛰 Trạng thái Cyber: Trực tuyến · Độ trễ: 2ms · Mã hóa: P-256 + AES-256-GCM".into() },
+                PluginCommand { trigger: "/neon".into(), description: "Kích hoạt hiệu ứng".into(), response: "⚡ Hệ thống đồng bộ {rand100}%!".into() },
+                PluginCommand { trigger: "/status".into(), description: "Kiểm tra trạng thái".into(), response: "🛰 Trực tuyến · Mã hóa E2EE P-256 + AES-256-GCM".into() },
             ],
             theme_enabled: true,
             theme: PluginTheme {
@@ -217,19 +216,19 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
         },
         PluginMod {
             id: "mod:sakura_glass".into(),
-            username: "sakura_mod".into(),
-            display_name: "Sakura Acrylic & Hoa Anh Đào".into(),
-            author: "Haru Studio".into(),
-            version: "1.4.0".into(),
+            username: "sakura_plugin".into(),
+            display_name: "Giao diện Sakura".into(),
+            author: "ChatW".into(),
+            version: "1.0.0".into(),
             icon: "🌸".into(),
-            description: "Giao diện kính mờ Acrylic trong suốt mềm mại, hiệu ứng cánh hoa anh đào rơi nhẹ trên toàn ứng dụng, thanh biểu cảm Kaomoji nhanh trong khung chat và bot /sakura, /fortune.".into(),
+            description: "Giao diện kính mờ kèm hiệu ứng hoa anh đào rơi.".into(),
             enabled: false,
             builtin: true,
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/sakura".into(), description: "Gửi lời chúc hoa anh đào".into(), response: "🌸 Cánh hoa anh đào mang lời chúc tốt lành tới {user} lúc {time}!".into() },
-                PluginCommand { trigger: "/fortune".into(), description: "Rút quẻ may mắn đầu ngày".into(), response: "🎴 Quẻ may mắn của {user}: Đại Cát · Chỉ số năng lượng: {rand100}/100 ✨".into() },
+                PluginCommand { trigger: "/sakura".into(), description: "Gửi lời chúc".into(), response: "🌸 Chúc {user} một ngày tốt lành lúc {time}!".into() },
+                PluginCommand { trigger: "/fortune".into(), description: "Rút quẻ may mắn".into(), response: "🎴 Năng lượng của {user}: {rand100}/100 ✨".into() },
             ],
             theme_enabled: true,
             theme: PluginTheme {
@@ -249,7 +248,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
                 custom_css: String::new(),
             },
             custom_page_enabled: false,
-            page_title: "Vườn Sakura".into(),
+            page_title: "Sakura".into(),
             page_icon: "🌸".into(),
             page_kind: "custom".into(),
             custom_blocks: Vec::new(),
@@ -262,30 +261,29 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             sound_fx: "none".into(),
             composer_buttons: vec![
                 PluginComposerBtn { label: "🌸 Hoa anh đào".into(), content: "🌸 Chúc một ngày tốt lành ✨".into() },
-                PluginComposerBtn { label: "💖 Lời chúc".into(), content: "💖 Luôn vui vẻ và may mắn nhé ✨".into() },
                 PluginComposerBtn { label: "🎴 /fortune".into(), content: "/fortune".into() },
             ],
         },
         PluginMod {
             id: "mod:workspace_notes".into(),
             username: "workspace_notes".into(),
-            display_name: "Sổ Tay, Việc Cần Làm & Pomodoro".into(),
-            author: "ChatW Productivity".into(),
-            version: "1.2.0".into(),
+            display_name: "Sổ tay & Việc làm".into(),
+            author: "ChatW".into(),
+            version: "1.0.0".into(),
             icon: "📋".into(),
-            description: "Thêm trang Sổ tay ghi chú nhanh, bảng quản lý việc cần làm và đồng hồ tập trung Pomodoro ngay trên thanh điều hướng bên trái, kèm HUD ghi chú nổi và bot /todo, /note.".into(),
+            description: "Ghi chú nhanh và quản lý việc cần làm.".into(),
             enabled: true,
             builtin: true,
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/todo".into(), description: "Thêm nhanh việc cần làm".into(), response: "✅ Đã ghi nhận công việc mới cho {user}: {args}".into() },
-                PluginCommand { trigger: "/note".into(), description: "Lưu ghi chú nhanh".into(), response: "📝 Đã lưu vào sổ tay lúc {time}: {args}".into() },
+                PluginCommand { trigger: "/todo".into(), description: "Thêm việc cần làm".into(), response: "✅ Đã thêm việc cho {user}: {args}".into() },
+                PluginCommand { trigger: "/note".into(), description: "Lưu ghi chú".into(), response: "📝 Đã lưu ghi chú lúc {time}: {args}".into() },
             ],
             theme_enabled: false,
             theme: PluginTheme::default(),
             custom_page_enabled: true,
-            page_title: "Sổ tay & Việc làm".into(),
+            page_title: "Sổ tay".into(),
             page_icon: "📋".into(),
             page_kind: "notes".into(),
             custom_blocks: Vec::new(),
@@ -300,18 +298,18 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
         },
         PluginMod {
             id: "mod:soundboard_mech".into(),
-            username: "soundboard_mod".into(),
-            display_name: "Bàn Phím Cơ & Soundboard 8-Bit".into(),
-            author: "AudioCraft".into(),
-            version: "1.1.0".into(),
+            username: "soundboard_plugin".into(),
+            display_name: "Soundboard 8-Bit".into(),
+            author: "ChatW".into(),
+            version: "1.0.0".into(),
             icon: "🎹".into(),
-            description: "Thêm trang Bàn phím cơ & Soundboard tổng hợp âm thanh WebAudio trực tiếp trên thanh điều hướng, phát tiếng switch bàn phím cơ khi gõ phím và âm báo 8-Bit.".into(),
+            description: "Bảng âm thanh tổng hợp và tiếng gõ phím cơ.".into(),
             enabled: false,
             builtin: true,
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
-                PluginCommand { trigger: "/sound".into(), description: "Phát hiệu ứng âm thanh".into(), response: "🔊 Đã phát hiệu ứng âm thanh tổng hợp cho {user}!".into() },
+                PluginCommand { trigger: "/sound".into(), description: "Phát âm thanh".into(), response: "🔊 Đã phát âm thanh cho {user}!".into() },
             ],
             theme_enabled: false,
             theme: PluginTheme::default(),
@@ -332,26 +330,26 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
         PluginMod {
             id: "mod:smart_assistant".into(),
             username: "smart_plugin".into(),
-            display_name: "Trợ Lý Lệnh Nhanh & Máy Tính".into(),
-            author: "ChatW Core".into(),
-            version: "1.5.0".into(),
+            display_name: "Trợ lý lệnh nhanh".into(),
+            author: "ChatW".into(),
+            version: "1.0.0".into(),
             icon: "🤖".into(),
-            description: "Plugin Bot đa năng chạy ngay trên thiết bị: tính toán biểu thức với /calc, tung xúc xắc /roll, tung đồng xu /flip, xem giờ /time, đổi chữ hoa /upper và tự trả lời thông minh.".into(),
+            description: "Tính toán, tung xúc xắc, đồng xu và xem giờ.".into(),
             enabled: true,
             builtin: true,
             server_bot_id: None,
             bot_enabled: true,
             commands: vec![
                 PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc 1-6".into(), response: "🎲 Kết quả xúc xắc của {user}: {dice}".into() },
-                PluginCommand { trigger: "/flip".into(), description: "Tung đồng xu Sấp/Ngửa".into(), response: "🪙 Đồng xu rơi vào mặt: {coin}".into() },
-                PluginCommand { trigger: "/time".into(), description: "Xem giờ hiện tại".into(), response: "🕒 Giờ hệ thống hiện tại: {time} · Ngày {date}".into() },
-                PluginCommand { trigger: "/calc".into(), description: "Tính nhanh biểu thức số học".into(), response: "🧮 Kết quả tính toán: {calc}".into() },
-                PluginCommand { trigger: "/upper".into(), description: "Chuyển văn bản thành chữ in hoa".into(), response: "🔠 {upper}".into() },
+                PluginCommand { trigger: "/flip".into(), description: "Tung đồng xu".into(), response: "🪙 Đồng xu rơi vào mặt: {coin}".into() },
+                PluginCommand { trigger: "/time".into(), description: "Xem giờ hiện tại".into(), response: "🕒 Giờ hiện tại: {time} · {date}".into() },
+                PluginCommand { trigger: "/calc".into(), description: "Tính biểu thức".into(), response: "🧮 Kết quả: {calc}".into() },
+                PluginCommand { trigger: "/upper".into(), description: "Chữ in hoa".into(), response: "🔠 {upper}".into() },
             ],
             theme_enabled: false,
             theme: PluginTheme::default(),
             custom_page_enabled: false,
-            page_title: "Trợ lý lệnh".into(),
+            page_title: "Trợ lý".into(),
             page_icon: "🤖".into(),
             page_kind: "custom".into(),
             custom_blocks: Vec::new(),
@@ -375,8 +373,19 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
     let mut defaults = default_builtin_plugins();
     if let Some(raw) = platform::storage_get(STORAGE_KEY) {
         if let Ok(saved) = serde_json::from_str::<Vec<PluginMod>>(&raw) {
-            for s in saved {
+            for mut s in saved {
                 if let Some(existing) = defaults.iter_mut().find(|d| d.id == s.id) {
+                    let lname = s.display_name.to_lowercase();
+                    let ldesc = s.description.to_lowercase();
+                    let luser = s.username.to_lowercase();
+                    let lauth = s.author.to_lowercase();
+                    if lname.contains("minecraft") || ldesc.contains("minecraft") || luser.contains("_mod") || lauth.contains("forge") || lname.contains("overhaul") || ldesc.len() > 75 {
+                        s.display_name = existing.display_name.clone();
+                        s.description = existing.description.clone();
+                        s.username = existing.username.clone();
+                        s.author = existing.author.clone();
+                        s.page_title = existing.page_title.clone();
+                    }
                     *existing = s;
                 } else {
                     defaults.push(s);
@@ -438,7 +447,7 @@ pub fn enabled_bot_plugins_as_items() -> Vec<BotItem> {
             avatar_url: None,
             is_public: true,
             verification_status: "verified".into(),
-            token_hint: Some(format!("Mod v{}", p.version)),
+            token_hint: Some(format!("Plugin v{}", p.version)),
             token: None,
             last_text: Some(p.description.clone()),
         })
@@ -521,7 +530,7 @@ pub fn try_run_plugin_command(input: &str, user_name: &str) -> Option<String> {
         None => (trimmed, ""),
     };
     if cmd.eq_ignore_ascii_case("/help") || cmd.eq_ignore_ascii_case("/start") {
-        let mut lines = vec!["🧩 Danh sách lệnh từ các Plugin & Mod đang bật:".to_string()];
+        let mut lines = vec!["🧩 Danh sách lệnh đang bật:".to_string()];
         for p in PLUGINS.read().iter().filter(|p| p.enabled && p.bot_enabled) {
             for c in &p.commands {
                 lines.push(format!("• {} — {} [{}]", c.trigger, c.description, p.display_name));
@@ -763,10 +772,13 @@ pub fn PluginGlobalOverlay() -> Element {
             div { class: "plugin-floating-hud pos-{hm.hud_position}",
                 div { class: "plugin-hud-bar",
                     span { class: "plugin-hud-title", "{hm.icon} {hm.display_name}" }
-                    span { class: "plugin-hud-badge", "{enabled_count} Mod" }
-                    button { r#type: "button", class: "plugin-hud-btn", title: "Mở Studio Plugin & Mod",
-                        onclick: move |_| *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into()),
-                        "Mod"
+                    span { class: "plugin-hud-badge", "{enabled_count} bật" }
+                    button { r#type: "button", class: "plugin-hud-btn", title: "Mở Plugin",
+                        onclick: move |_| {
+                            *EDITING_PLUGIN_ID.write() = None;
+                            *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
+                        },
+                        "Plugin"
                     }
                     button { r#type: "button", class: "plugin-hud-btn",
                         onclick: move |_| hud_collapsed.set(!hud_collapsed()),
@@ -801,7 +813,7 @@ pub fn PluginGlobalOverlay() -> Element {
     }
 }
 
-/// Renders a custom page added to the Navigation Rail by a Plugin/Mod, or the full Mod Studio.
+/// Renders a custom page added to the Navigation Rail by a Plugin, or the Plugin workspace.
 #[component]
 pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: EventHandler<()>, on_open_bot_chat: EventHandler<BotItem>) -> Element {
     if plugin_id == "studio" {
@@ -812,8 +824,8 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                     div { class: "chat-header-identity",
                         span { class: "self-chat-avatar", PluginIcon { size: 20 } }
                         div { class: "chat-header-info",
-                            h2 { class: "chat-header-title", "Kho Plugin & Mod Giao Diện" span { class: "bot-tag", "MOD" } }
-                            span { class: "chat-header-meta", "Tùy biến toàn bộ ứng dụng, thêm trang mới, hiệu ứng, HUD và lập trình Bot" }
+                            h2 { class: "chat-header-title", "Plugin" }
+                            span { class: "chat-header-meta", "Tùy chỉnh giao diện, trang và lệnh" }
                         }
                     }
                 }
@@ -843,6 +855,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
         };
     };
 
+    let edit_pid = p.id.clone();
     rsx! {
         div { class: "main-stage",
             header { class: "chat-header",
@@ -850,8 +863,8 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                 div { class: "chat-header-identity",
                     span { class: "self-chat-avatar", style: "font-size: 1.25rem;", "{p.page_icon}" }
                     div { class: "chat-header-info",
-                        h2 { class: "chat-header-title", "{p.page_title}" span { class: "bot-tag", "PLUGIN" } }
-                        span { class: "chat-header-meta", "@{p.username} · v{p.version} · bởi {p.author}" }
+                        h2 { class: "chat-header-title", "{p.page_title}" }
+                        span { class: "chat-header-meta", "{p.display_name}" }
                     }
                 }
                 div { class: "chat-header-actions",
@@ -877,14 +890,17 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                                     });
                                 }
                             },
-                            "Mở trò chuyện Plugin"
+                            "Trò chuyện"
                         }
                     }
                     button {
                         r#type: "button",
                         class: "btn-ghost",
-                        onclick: move |_| *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into()),
-                        SlidersIcon {} "Cấu hình Mod"
+                        onclick: move |_| {
+                            *EDITING_PLUGIN_ID.write() = Some(edit_pid.clone());
+                            *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
+                        },
+                        SlidersIcon {} "Sửa"
                     }
                 }
             }
@@ -1025,8 +1041,8 @@ fn NotesAndTodoPage(plugin: PluginMod) -> Element {
         platform::storage_get(TODOS_KEY)
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_else(|| vec![
-                TodoItem { id: "1".into(), text: "Thử bật Mod giao diện Minecraft hoặc Cyberpunk".into(), done: false },
-                TodoItem { id: "2".into(), text: "Tạo một Plugin tùy chỉnh riêng trong Mod Studio".into(), done: false },
+                TodoItem { id: "1".into(), text: "Bật một Plugin giao diện".into(), done: false },
+                TodoItem { id: "2".into(), text: "Tạo một Plugin mới".into(), done: false },
             ])
     });
     let mut new_todo = use_signal(String::new);
@@ -1122,7 +1138,7 @@ fn NotesAndTodoPage(plugin: PluginMod) -> Element {
 #[component]
 fn SoundboardPage(plugin: PluginMod) -> Element {
     let pads = [
-        ("⛏ Ngọc XP Minecraft", "xp", "#10B981"),
+        ("💎 Ngọc XP", "xp", "#10B981"),
         ("🆙 Lên Cấp Level Up", "levelup", "#22C55E"),
         ("🔨 Đe Sắt Anvil", "anvil", "#64748B"),
         ("⌨ Switch Cơ Blue", "mech", "#3B82F6"),
@@ -1169,8 +1185,8 @@ fn CyberDashboardPage(plugin: PluginMod, my_username: String) -> Element {
                     div { class: "member-sub", "ECDH P-256 · AES-256-GCM · ECDSA" }
                 }
                 div { class: "inv-card",
-                    div { class: "settings-label", "Trạng thái Mod Loader" }
-                    div { class: "member-sub", "{PLUGINS.read().iter().filter(|p| p.enabled).count()} Plugin đang kích hoạt" }
+                    div { class: "settings-label", "Trạng thái Plugin" }
+                    div { class: "member-sub", "{PLUGINS.read().iter().filter(|p| p.enabled).count()} Plugin đang bật" }
                 }
                 div { class: "inv-card",
                     div { class: "settings-label", "Hiệu ứng màn hình" }
@@ -1469,7 +1485,7 @@ pub fn PluginChatView(
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "{bot.display_name}" span { class: "bot-tag", "PLUGIN" } }
                             span { class: "chat-header-meta",
-                                if is_local { "@{bot.username} · Plugin & Mod chạy trực tiếp trên thiết bị" } else { "@{bot.username} · Plugin kết nối API" }
+                                if is_local { "@{bot.username} · Plugin trên thiết bị" } else { "@{bot.username} · Plugin API" }
                             }
                         }
                     }
@@ -1481,15 +1497,33 @@ pub fn PluginChatView(
                                     rsx! {
                                         button { r#type: "button", class: "btn-secondary",
                                             onclick: move |_| *ACTIVE_PLUGIN_PAGE.write() = Some(pid.clone()),
-                                            "{pm.page_icon} Mở {pm.page_title}"
+                                            "{pm.page_icon} Mở"
                                         }
                                     }
                                 }
                             }
                         }
-                        button { r#type: "button", class: "btn-ghost", title: "Cấu hình Plugin & Mod",
-                            onclick: move |_| *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into()),
-                            SlidersIcon {} "Tùy chỉnh"
+                        if let Some(ref pm) = matching_mod {
+                            {
+                                let edit_id = pm.id.clone();
+                                rsx! {
+                                    button { r#type: "button", class: "btn-ghost", title: "Sửa Plugin",
+                                        onclick: move |_| {
+                                            *EDITING_PLUGIN_ID.write() = Some(edit_id.clone());
+                                            *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
+                                        },
+                                        SlidersIcon {} "Sửa"
+                                    }
+                                }
+                            }
+                        } else {
+                            button { r#type: "button", class: "btn-ghost", title: "Sửa Plugin",
+                                onclick: move |_| {
+                                    *EDITING_PLUGIN_ID.write() = None;
+                                    *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
+                                },
+                                SlidersIcon {} "Sửa"
+                            }
                         }
                         if can_add && !admin_groups.is_empty() {
                             button { r#type: "button", class: if add_open() { "icon-btn active" } else { "icon-btn" }, title: "Thêm plugin vào nhóm", aria_label: "Thêm plugin vào nhóm",
@@ -1535,7 +1569,7 @@ pub fn PluginChatView(
                     messages: view,
                     show_sender_names: true,
                     intro_title: bot.display_name.clone(),
-                    intro_sub: bot.description.clone().filter(|d| !d.trim().is_empty()).unwrap_or_else(|| "Gửi /help để xem danh sách lệnh của Plugin, hoặc tùy chỉnh giao diện & tính năng trong Mod Studio.".to_string()),
+                    intro_sub: bot.description.clone().filter(|d| !d.trim().is_empty()).unwrap_or_else(|| "Gửi /help để xem danh sách lệnh của Plugin.".to_string()),
                     on_open_profile: move |_| {},
                     on_profile_click: move |_| {},
                     on_react: move |_| {},
@@ -1575,24 +1609,23 @@ pub fn PluginChatView(
 }
 
 const THEME_PRESETS: [(&str, &str, &str, &str, &str, &str, &str, &str, &str); 6] = [
-    ("Minecraft Voxel", "#141814", "#1D241D", "#181E18", "#242D24", "#10B981", "#059669", "#ECFDF5", "pixel"),
-    ("Cyberpunk Neon", "#070812", "#0D1021", "#0A0C1A", "#141830", "#00F0FF", "#D900FF", "#E0FAFF", "neon"),
-    ("Sakura Glass", "#FDF2F8", "#FCE7F3", "#FFF5F9", "#FFFFFF", "#EC4899", "#DB2777", "#4A152B", "glass"),
-    ("AMOLED Pitch Black", "#000000", "#08080A", "#040406", "#101014", "#3B82F6", "#2563EB", "#F8FAFC", "default"),
-    ("Dracula Purple", "#1E1F29", "#282A36", "#21222C", "#343746", "#BD93F9", "#FF79C6", "#F8F8F2", "neon"),
-    ("Retro Terminal", "#051005", "#0A1C0A", "#071407", "#0F290F", "#22C55E", "#16A34A", "#4ADE80", "pixel"),
+    ("Voxel 3D", "#141814", "#1D241D", "#181E18", "#242D24", "#10B981", "#059669", "#ECFDF5", "pixel"),
+    ("Cyber Neon", "#070812", "#0D1021", "#0A0C1A", "#141830", "#00F0FF", "#D900FF", "#E0FAFF", "neon"),
+    ("Sakura", "#FDF2F8", "#FCE7F3", "#FFF5F9", "#FFFFFF", "#EC4899", "#DB2777", "#4A152B", "glass"),
+    ("AMOLED Đen", "#000000", "#08080A", "#040406", "#101014", "#3B82F6", "#2563EB", "#F8FAFC", "default"),
+    ("Dracula", "#1E1F29", "#282A36", "#21222C", "#343746", "#BD93F9", "#FF79C6", "#F8F8F2", "neon"),
+    ("Terminal", "#051005", "#0A1C0A", "#071407", "#0F290F", "#22C55E", "#16A34A", "#4ADE80", "pixel"),
 ];
 
 pub use PluginChatView as BotChatView;
 
-/// Settings › Plugin & Mod Studio: manage, toggle, customize, and build Plugins & Mods.
+/// Settings › Plugin: quản lý, bật/tắt và chỉnh sửa Plugin.
 #[component]
 pub fn PluginsSettings(
     my_username: String,
     #[props(default)] on_open_bot_chat: Option<EventHandler<BotItem>>,
 ) -> Element {
     let mut server_bots = use_signal(Vec::<BotItem>::new);
-    let mut editing_id = use_signal(|| Option::<String>::None);
     let mut editor_tab = use_signal(|| "basic"); // "basic" | "theme" | "ui" | "bot"
     let mut creating_new = use_signal(|| false);
     let mut import_open = use_signal(|| false);
@@ -1687,7 +1720,7 @@ pub fn PluginsSettings(
             return;
         }
         let ic = if new_icon().trim().is_empty() { "🧩".to_string() } else { new_icon().trim().to_string() };
-        let ds = if new_desc().trim().is_empty() { "Plugin & Mod tùy chỉnh cho ChatW".to_string() } else { new_desc().trim().to_string() };
+        let ds = if new_desc().trim().is_empty() { "Plugin tùy chỉnh cho ChatW.".to_string() } else { new_desc().trim().to_string() };
         let want_srv = new_with_server();
         let author_name = my_username.clone();
         busy.set(true);
@@ -1750,54 +1783,80 @@ pub fn PluginsSettings(
             new_display.set(String::new());
             new_desc.set(String::new());
             creating_new.set(false);
-            editing_id.set(Some(pid));
-            status.set(Some((false, "Đã tạo Plugin mới. Bạn có thể tùy chỉnh giao diện, thêm trang, HUD và lệnh Bot bên dưới!".into())));
+            *EDITING_PLUGIN_ID.write() = Some(pid);
+            status.set(Some((false, "Đã tạo Plugin mới.".into())));
             busy.set(false);
         });
     };
 
     let base = if origin().is_empty() { "http://127.0.0.1:8085".to_string() } else { origin() };
     let plugins_list = PLUGINS.read().clone();
-    let editing_mod = editing_id().and_then(|id| plugins_list.iter().find(|p| p.id == id).cloned());
+    let editing_mod = EDITING_PLUGIN_ID().and_then(|id| plugins_list.iter().find(|p| p.id == id).cloned());
 
-    rsx! {
-        div { class: "settings-section",
-            div { class: "mod-studio-header",
-                div {
-                    div { class: "settings-group-title", "🧩 Quản lý Plugin & Mod — Giống Mod Minecraft" }
-                    div { class: "member-sub", "Mỗi Plugin có thể làm Bot trò chuyện, biến đổi toàn bộ giao diện ứng dụng, thêm trang mới lên thanh điều hướng, bật HUD nổi, hiệu ứng hạt và âm thanh." }
-                }
-                div { class: "inline-form",
-                    button { r#type: "button", class: "btn-primary", onclick: move |_| { creating_new.set(!creating_new()); import_open.set(false); },
-                        PlusIcon { size: 16 } "Tạo Plugin mới"
-                    }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| { import_open.set(!import_open()); creating_new.set(false); },
-                        "Nhập gói Mod JSON"
+    // Dedicated Create Plugin Page
+    if creating_new() {
+        return rsx! {
+            div { class: "settings-section",
+                div { class: "mod-editor-top",
+                    div { class: "mod-editor-title",
+                        button { r#type: "button", class: "btn-ghost", onclick: move |_| creating_new.set(false), BackIcon {} "Quay lại" }
+                        div { class: "settings-group-title", "Tạo Plugin mới" }
                     }
                 }
-            }
-
-            if let Some((is_err, msg)) = status() {
-                div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
-            }
-
-            if let Some((name, tok)) = fresh_token() {
-                div { class: "token-reveal", role: "alert",
-                    div { class: "settings-group-title", "Token API của Plugin @{name}" }
-                    code { class: "token-code", "{tok}" }
-                    div { class: "inline-form",
-                        button { r#type: "button", class: "btn-secondary", onclick: { let t = tok.clone(); move |_| platform::copy_to_clipboard(&t) }, CopyIcon {} "Sao chép token" }
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| fresh_token.set(None), "Đã lưu" }
-                    }
+                if let Some((is_err, msg)) = status() {
+                    div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
                 }
-            }
-
-            if import_open() {
                 div { class: "settings-group mod-builder-box",
-                    div { class: "settings-group-title", "Nhập gói Plugin / Mod từ JSON" }
+                    div { class: "form-grid",
+                        label { class: "form-field",
+                            span { "Mã @username" }
+                            input { r#type: "text", maxlength: "32", placeholder: "vd: my_plugin", value: "{new_username}", oninput: move |e| new_username.set(e.value()) }
+                        }
+                        label { class: "form-field",
+                            span { "Tên hiển thị" }
+                            input { r#type: "text", maxlength: "64", placeholder: "vd: Plugin của tôi", value: "{new_display}", oninput: move |e| new_display.set(e.value()) }
+                        }
+                        label { class: "form-field",
+                            span { "Biểu tượng" }
+                            input { r#type: "text", maxlength: "8", placeholder: "🧩", value: "{new_icon}", oninput: move |e| new_icon.set(e.value()) }
+                        }
+                        label { class: "form-field wide",
+                            span { "Mô tả" }
+                            textarea { rows: "2", maxlength: "512", placeholder: "Mô tả ngắn", value: "{new_desc}", oninput: move |e| new_desc.set(e.value()) }
+                        }
+                    }
+                    label { class: "demo-check",
+                        input { r#type: "checkbox", checked: new_with_server(), onchange: move |e| new_with_server.set(e.checked()) }
+                        "Đăng ký kèm Token API"
+                    }
+                    div { class: "inline-form",
+                        button { r#type: "button", class: "btn-primary", disabled: busy() || new_username().trim().is_empty() || new_display().trim().is_empty(), onclick: create_plugin,
+                            PlusIcon { size: 16 } "Tạo & Sửa"
+                        }
+                        button { r#type: "button", class: "btn-ghost", onclick: move |_| creating_new.set(false), "Hủy" }
+                    }
+                }
+            }
+        };
+    }
+
+    // Dedicated Import JSON Page
+    if import_open() {
+        return rsx! {
+            div { class: "settings-section",
+                div { class: "mod-editor-top",
+                    div { class: "mod-editor-title",
+                        button { r#type: "button", class: "btn-ghost", onclick: move |_| import_open.set(false), BackIcon {} "Quay lại" }
+                        div { class: "settings-group-title", "Nhập Plugin JSON" }
+                    }
+                }
+                if let Some((is_err, msg)) = status() {
+                    div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
+                }
+                div { class: "settings-group mod-builder-box",
                     textarea {
-                        rows: "4",
-                        placeholder: "Dán chuỗi JSON của Plugin / Mod tại đây",
+                        rows: "6",
+                        placeholder: "Dán JSON tại đây",
                         value: "{import_json}",
                         oninput: move |e| import_json.set(e.value()),
                     }
@@ -1822,558 +1881,39 @@ pub fn PluginsSettings(
                                         *PLUGINS.write() = list;
                                         import_json.set(String::new());
                                         import_open.set(false);
-                                        status.set(Some((false, "Đã cài đặt và kích hoạt gói Mod thành công!".into())));
+                                        status.set(Some((false, "Đã cài đặt Plugin.".into())));
                                     }
-                                    Err(_) => status.set(Some((true, "Chuỗi JSON Mod không hợp lệ".into()))),
+                                    Err(_) => status.set(Some((true, "JSON không hợp lệ".into()))),
                                 }
                             },
-                            "Cài đặt Mod"
+                            "Cài đặt"
                         }
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| import_open.set(false), "Đóng" }
+                        button { r#type: "button", class: "btn-ghost", onclick: move |_| import_open.set(false), "Hủy" }
                     }
                 }
             }
+        };
+    }
 
-            if creating_new() {
-                div { class: "settings-group mod-builder-box",
-                    div { class: "settings-group-title", "Tạo Plugin & Mod mới" }
-                    div { class: "form-grid",
-                        label { class: "form-field",
-                            span { "Mã định danh @username" }
-                            input { r#type: "text", maxlength: "32", placeholder: "vd: my_super_mod", value: "{new_username}", oninput: move |e| new_username.set(e.value()) }
-                        }
-                        label { class: "form-field",
-                            span { "Tên hiển thị Plugin" }
-                            input { r#type: "text", maxlength: "64", placeholder: "vd: Mod Giao Diện & Trợ Lý", value: "{new_display}", oninput: move |e| new_display.set(e.value()) }
-                        }
-                        label { class: "form-field",
-                            span { "Biểu tượng" }
-                            input { r#type: "text", maxlength: "8", placeholder: "🧩", value: "{new_icon}", oninput: move |e| new_icon.set(e.value()) }
-                        }
-                        label { class: "form-field wide",
-                            span { "Mô tả chức năng" }
-                            textarea { rows: "2", maxlength: "512", placeholder: "Plugin này biến đổi giao diện hoặc làm bot gì", value: "{new_desc}", oninput: move |e| new_desc.set(e.value()) }
-                        }
-                    }
-                    label { class: "demo-check",
-                        input { r#type: "checkbox", checked: new_with_server(), onchange: move |e| new_with_server.set(e.checked()) }
-                        "Đồng thời đăng ký Token HTTP API trên máy chủ để lập trình Bot từ bên ngoài"
-                    }
+    if editing_mod.is_none() {
+        return rsx! {
+            div { class: "settings-section",
+                div { class: "mod-studio-header",
+                    div { class: "settings-group-title", "Danh sách Plugin" }
                     div { class: "inline-form",
-                        button { r#type: "button", class: "btn-primary", disabled: busy() || new_username().trim().is_empty() || new_display().trim().is_empty(), onclick: create_plugin,
-                            PlusIcon { size: 16 } "Khởi tạo & Mở Mod Studio"
+                        button { r#type: "button", class: "btn-primary", onclick: move |_| { creating_new.set(true); import_open.set(false); },
+                            PlusIcon { size: 16 } "Tạo mới"
                         }
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| creating_new.set(false), "Hủy" }
-                    }
-                }
-            }
-
-            // Full Visual Mod Studio Editor when editing a specific Plugin/Mod
-            if let Some(em) = editing_mod {
-                {
-                    let eid = em.id.clone();
-                    let eid_basic = em.id.clone();
-                    let eid_theme = em.id.clone();
-                    let eid_ui = em.id.clone();
-                    let eid_bot = em.id.clone();
-                    let srv_bot = em.server_bot_id.as_ref().and_then(|sid| server_bots.read().iter().find(|b| &b.id == sid).cloned());
-                    let var_guide = "Biến hỗ trợ trong câu trả lời: {user}, {time}, {date}, {dice}, {rand100}, {coin}, {args}, {upper}, {calc}";
-                    let resp_placeholder = "vd: Xin chào {user}! Số may mắn của bạn là {rand100}";
-                    let curl_snippet = format!(
-                        "# Gọi HTTP API cho Plugin có Token\ncurl {}/api/bot/TOKEN/getMe\ncurl \"{}/api/bot/TOKEN/getUpdates?offset=0&timeout=25\"\ncurl -X POST {}/api/bot/TOKEN/sendMessage -H 'Content-Type: application/json' -d '{{\"chat_id\": \"CHAT_ID\", \"text\": \"Xin chào từ Plugin!\"}}'",
-                        base, base, base
-                    );
-                    rsx! {
-                        div { class: "settings-group mod-studio-editor",
-                            div { class: "mod-editor-top",
-                                div { class: "mod-editor-title",
-                                    span { class: "mod-card-icon", "{em.icon}" }
-                                    div {
-                                        div { class: "settings-group-title", "Chỉnh sửa Mod: {em.display_name}" }
-                                        div { class: "member-sub", "@{em.username} · v{em.version} · Mọi thay đổi được áp dụng trực tiếp lên toàn ứng dụng" }
-                                    }
-                                }
-                                div { class: "inline-form",
-                                    button {
-                                        r#type: "button",
-                                        class: "btn-secondary",
-                                        onclick: {
-                                            let em_json = serde_json::to_string_pretty(&em).unwrap_or_default();
-                                            move |_| {
-                                                platform::copy_to_clipboard(&em_json);
-                                                status.set(Some((false, "Đã sao chép gói Mod dạng JSON vào bộ nhớ tạm!".into())));
-                                            }
-                                        },
-                                        CopyIcon {} "Xuất JSON"
-                                    }
-                                    button { r#type: "button", class: "btn-primary", onclick: move |_| editing_id.set(None), CheckIcon { size: 16 } "Hoàn tất" }
-                                }
-                            }
-
-                            div { class: "segmented",
-                                button { r#type: "button", class: if editor_tab() == "basic" { "active" } else { "" }, onclick: move |_| editor_tab.set("basic"), "1. Mô-đun & Vai trò" }
-                                button { r#type: "button", class: if editor_tab() == "theme" { "active" } else { "" }, onclick: move |_| editor_tab.set("theme"), "2. Giao diện & CSS toàn App" }
-                                button { r#type: "button", class: if editor_tab() == "ui" { "active" } else { "" }, onclick: move |_| editor_tab.set("ui"), "3. Thêm Trang, HUD & Hiệu ứng" }
-                                button { r#type: "button", class: if editor_tab() == "bot" { "active" } else { "" }, onclick: move |_| editor_tab.set("bot"), "4. Bot, Lệnh & API Token" }
-                            }
-
-                            if editor_tab() == "basic" {
-                                div { class: "form-grid",
-                                    label { class: "form-field",
-                                        span { "Tên Plugin / Mod" }
-                                        input { r#type: "text", value: "{em.display_name}",
-                                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.display_name = v.clone()); } } }
-                                    }
-                                    label { class: "form-field",
-                                        span { "Biểu tượng" }
-                                        input { r#type: "text", maxlength: "8", value: "{em.icon}",
-                                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.icon = v.clone()); } } }
-                                    }
-                                    label { class: "form-field",
-                                        span { "Phiên bản" }
-                                        input { r#type: "text", maxlength: "16", value: "{em.version}",
-                                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.version = v.clone()); } } }
-                                    }
-                                    label { class: "form-field wide",
-                                        span { "Mô tả" }
-                                        textarea { rows: "2", value: "{em.description}",
-                                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.description = v.clone()); } } }
-                                    }
-                                }
-                                div { class: "settings-list",
-                                    label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "🤖 Chế độ Bot trò chuyện & Xử lý lệnh /command" } }
-                                        input { r#type: "checkbox", class: "switch", checked: em.bot_enabled,
-                                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.bot_enabled = v); } } }
-                                    }
-                                    label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "🎨 Biến đổi & Tùy chỉnh giao diện toàn App" } }
-                                        input { r#type: "checkbox", class: "switch", checked: em.theme_enabled,
-                                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.theme_enabled = v); } } }
-                                    }
-                                    label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "🧭 Thêm trang giao diện mới lên thanh điều hướng chính" } }
-                                        input { r#type: "checkbox", class: "switch", checked: em.custom_page_enabled,
-                                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.custom_page_enabled = v); } } }
-                                    }
-                                    label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "🛰 Hiển thị bảng HUD nổi trên góc màn hình" } }
-                                        input { r#type: "checkbox", class: "switch", checked: em.hud_enabled,
-                                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_enabled = v); } } }
-                                    }
-                                }
-                            } else if editor_tab() == "theme" {
-                                div { class: "settings-group",
-                                    label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Bật ghi đè giao diện toàn ứng dụng bởi Mod này" } }
-                                        input { r#type: "checkbox", class: "switch", checked: em.theme_enabled,
-                                            onchange: { let id = eid_theme.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.theme_enabled = v); } } }
-                                    }
-                                    div { class: "settings-group-title", "Mẫu giao diện nhanh" }
-                                    div { class: "mod-preset-chips",
-                                        for (pname, bg_a, bg_s, bg_c, bg_sf, acc, sent, txt, bstyle) in THEME_PRESETS {
-                                            button {
-                                                key: "{pname}",
-                                                r#type: "button",
-                                                class: "btn-small-secondary",
-                                                onclick: {
-                                                    let id = eid_theme.clone();
-                                                    move |_| {
-                                                        update_plugin(&id, &|p| {
-                                                            p.theme_enabled = true;
-                                                            p.theme.bg_app = bg_a.into();
-                                                            p.theme.bg_sidebar = bg_s.into();
-                                                            p.theme.bg_chat = bg_c.into();
-                                                            p.theme.bg_surface = bg_sf.into();
-                                                            p.theme.accent = acc.into();
-                                                            p.theme.msg_sent = sent.into();
-                                                            p.theme.text_primary = txt.into();
-                                                            p.theme.border_style = bstyle.into();
-                                                        });
-                                                    }
-                                                },
-                                                span { class: "voxel-swatch", style: "background: {acc};" }
-                                                "{pname}"
-                                            }
-                                        }
-                                    }
-                                    div { class: "mod-color-grid",
-                                        div { class: "settings-row",
-                                            span { class: "grow", span { class: "settings-label", "Màu nền toàn App" } }
-                                            input { r#type: "color", value: if em.theme.bg_app.is_empty() { "#0C0E12" } else { em.theme.bg_app.as_str() },
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_app = v.clone(); }); } } }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "grow", span { class: "settings-label", "Màu cột danh sách" } }
-                                            input { r#type: "color", value: if em.theme.bg_sidebar.is_empty() { "#171A20" } else { em.theme.bg_sidebar.as_str() },
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_sidebar = v.clone(); }); } } }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "grow", span { class: "settings-label", "Màu nền khung Chat" } }
-                                            input { r#type: "color", value: if em.theme.bg_chat.is_empty() { "#191C22" } else { em.theme.bg_chat.as_str() },
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_chat = v.clone(); }); } } }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "grow", span { class: "settings-label", "Màu thẻ & bề mặt" } }
-                                            input { r#type: "color", value: if em.theme.bg_surface.is_empty() { "#22262E" } else { em.theme.bg_surface.as_str() },
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_surface = v.clone(); }); } } }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "grow", span { class: "settings-label", "Màu nhấn chủ đạo" } }
-                                            input { r#type: "color", value: if em.theme.accent.is_empty() { "#2764E7" } else { em.theme.accent.as_str() },
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.accent = v.clone(); }); } } }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "grow", span { class: "settings-label", "Màu bong bóng tin gửi" } }
-                                            input { r#type: "color", value: if em.theme.msg_sent.is_empty() { "#2764E7" } else { em.theme.msg_sent.as_str() },
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.msg_sent = v.clone(); }); } } }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "grow", span { class: "settings-label", "Màu bong bóng tin nhận" } }
-                                            input { r#type: "color", value: if em.theme.msg_recv.is_empty() { "#262C35" } else { em.theme.msg_recv.as_str() },
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.msg_recv = v.clone(); }); } } }
-                                        }
-                                        div { class: "settings-row",
-                                            span { class: "grow", span { class: "settings-label", "Màu chữ chính" } }
-                                            input { r#type: "color", value: if em.theme.text_primary.is_empty() { "#E8EAED" } else { em.theme.text_primary.as_str() },
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.text_primary = v.clone(); }); } } }
-                                        }
-                                    }
-                                    div { class: "form-grid",
-                                        label { class: "form-field",
-                                            span { "Kiểu khung viền Mod" }
-                                            select {
-                                                value: "{em.theme.border_style}",
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.border_style = v.clone(); }); } },
-                                                option { value: "default", "Mặc định tối giản" }
-                                                option { value: "pixel", "Khối Pixel Minecraft 2px" }
-                                                option { value: "neon", "Neon phát sáng" }
-                                                option { value: "glass", "Kính mờ Acrylic Glass" }
-                                            }
-                                        }
-                                        label { class: "form-field",
-                                            span { "Độ bo góc toàn App" }
-                                            select {
-                                                value: "{em.theme.panel_radius}",
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.panel_radius = v.clone(); }); } },
-                                                option { value: "", "Mặc định" }
-                                                option { value: "0px", "0px · Vuông khối Voxel" }
-                                                option { value: "6px", "6px · Gọn sắc nét" }
-                                                option { value: "14px", "14px · Mềm mại" }
-                                                option { value: "22px", "22px · Bo tròn tối đa" }
-                                            }
-                                        }
-                                        label { class: "form-field",
-                                            span { "Vị trí thanh điều hướng chính" }
-                                            select {
-                                                value: "{em.theme.rail_position}",
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.rail_position = v.clone(); }); } },
-                                                option { value: "left", "Cột bên trái" }
-                                                option { value: "right", "Cột bên phải" }
-                                                option { value: "top", "Thanh ngang phía trên" }
-                                            }
-                                        }
-                                        label { class: "form-field",
-                                            span { "Phông chữ Mod" }
-                                            select {
-                                                value: "{em.theme.font_style}",
-                                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.font_style = v.clone(); }); } },
-                                                option { value: "default", "Mặc định hệ thống" }
-                                                option { value: "pixel", "Pixel / Monospace" }
-                                                option { value: "rounded", "Bo tròn mềm mại" }
-                                                option { value: "serif", "Cổ điển có chân" }
-                                            }
-                                        }
-                                    }
-                                    label { class: "form-field",
-                                        span { "Mã CSS tùy chỉnh toàn App" }
-                                        textarea {
-                                            rows: "5",
-                                            style: "font-family: var(--font-mono); font-size: 12px;",
-                                            placeholder: "Viết bất kỳ quy tắc CSS nào để biến đổi giao diện toàn bộ ứng dụng",
-                                            value: "{em.theme.custom_css}",
-                                            oninput: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.custom_css = v.clone(); }); } }
-                                        }
-                                    }
-                                }
-                            } else if editor_tab() == "ui" {
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "1. Trang riêng trên thanh điều hướng" }
-                                    label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Thêm nút mở trang của Plugin này lên thanh điều hướng chính" } }
-                                        input { r#type: "checkbox", class: "switch", checked: em.custom_page_enabled,
-                                            onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.custom_page_enabled = v); } } }
-                                    }
-                                    if em.custom_page_enabled {
-                                        div { class: "form-grid",
-                                            label { class: "form-field",
-                                                span { "Tiêu đề trang" }
-                                                input { r#type: "text", value: "{em.page_title}",
-                                                    oninput: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_title = v.clone()); } } }
-                                            }
-                                            label { class: "form-field",
-                                                span { "Biểu tượng trên thanh điều hướng" }
-                                                input { r#type: "text", maxlength: "8", value: "{em.page_icon}",
-                                                    oninput: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_icon = v.clone()); } } }
-                                            }
-                                            label { class: "form-field",
-                                                span { "Loại giao diện trang" }
-                                                select {
-                                                    value: "{em.page_kind}",
-                                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_kind = v.clone()); } },
-                                                    option { value: "voxel", "Thế giới Khối Voxel 2D Minecraft" }
-                                                    option { value: "notes", "Sổ tay & Danh sách việc cần làm" }
-                                                    option { value: "soundboard", "Bàn phím cơ & Soundboard 8-Bit" }
-                                                    option { value: "cyber", "Trạm Điều Khiển & Terminal Lệnh" }
-                                                    option { value: "custom", "Bảng chức năng tùy chỉnh" }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    div { class: "settings-group-title", "2. Hiệu ứng toàn màn hình & Âm thanh Mod" }
-                                    div { class: "form-grid",
-                                        label { class: "form-field",
-                                            span { "Hiệu ứng hạt toàn màn hình" }
-                                            select {
-                                                value: "{em.screen_fx}",
-                                                onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.screen_fx = v.clone()); } },
-                                                option { value: "none", "Không bật" }
-                                                option { value: "voxel", "Hạt Voxel XP lấp lánh" }
-                                                option { value: "sakura", "Hoa anh đào rơi" }
-                                                option { value: "snow", "Tuyết rơi mùa đông" }
-                                                option { value: "matrix", "Mưa ma trận Matrix" }
-                                            }
-                                        }
-                                        label { class: "form-field",
-                                            span { "Gói âm thanh & Bàn phím" }
-                                            select {
-                                                value: "{em.sound_fx}",
-                                                onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); play_mod_sound(&v); update_plugin(&id, &|p| p.sound_fx = v.clone()); } },
-                                                option { value: "none", "Mặc định" }
-                                                option { value: "minecraft", "Âm thanh 8-Bit Minecraft" }
-                                                option { value: "mech", "Tiếng gõ bàn phím cơ trực tiếp" }
-                                                option { value: "scifi", "Âm thanh Laser Sci-Fi" }
-                                            }
-                                        }
-                                    }
-
-                                    div { class: "settings-group-title", "3. Bảng HUD nổi trên màn hình" }
-                                    label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Hiển thị HUD nổi của Mod này" } }
-                                        input { r#type: "checkbox", class: "switch", checked: em.hud_enabled,
-                                            onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_enabled = v); } } }
-                                    }
-                                    if em.hud_enabled {
-                                        div { class: " studio-toggles",
-                                            label { class: "demo-check",
-                                                input { r#type: "checkbox", checked: em.hud_coords,
-                                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_coords = v); } } }
-                                                "Hiện tọa độ XYZ & FPS"
-                                            }
-                                            label { class: "demo-check",
-                                                input { r#type: "checkbox", checked: em.hud_clock,
-                                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_clock = v); } } }
-                                                "Hiện đồng hồ số"
-                                            }
-                                            label { class: "demo-check",
-                                                input { r#type: "checkbox", checked: em.hud_note,
-                                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_note = v); } } }
-                                                "Hiện ô ghi chú nhanh trên HUD"
-                                            }
-                                        }
-                                    }
-
-                                    div { class: "settings-group-title", "4. Thanh nút nhanh trong khung soạn tin nhắn" }
-                                    div { class: "inline-form",
-                                        input { r#type: "text", placeholder: "Nhãn nút, vd: ⛏ /craft", value: "{btn_label}", oninput: move |e| btn_label.set(e.value()) }
-                                        input { r#type: "text", placeholder: "Nội dung hoặc lệnh gửi đi", value: "{btn_content}", oninput: move |e| btn_content.set(e.value()) }
-                                        button {
-                                            r#type: "button",
-                                            class: "btn-secondary",
-                                            onclick: {
-                                                let id = eid_ui.clone();
-                                                move |_| {
-                                                    let l = btn_label().trim().to_string();
-                                                    let c = btn_content().trim().to_string();
-                                                    if l.is_empty() || c.is_empty() { return; }
-                                                    update_plugin(&id, &|p| p.composer_buttons.push(PluginComposerBtn { label: l.clone(), content: c.clone() }));
-                                                    btn_label.set(String::new());
-                                                    btn_content.set(String::new());
-                                                }
-                                            },
-                                            PlusIcon { size: 14 } "Thêm nút"
-                                        }
-                                    }
-                                    div { class: "mod-preset-chips",
-                                        for (bi, b) in em.composer_buttons.iter().enumerate() {
-                                            span { key: "{bi}", class: "plugin-cmd-chip",
-                                                "{b.label} → {b.content}"
-                                                button {
-                                                    r#type: "button",
-                                                    class: "chip-del",
-                                                    onclick: {
-                                                        let id = eid_ui.clone();
-                                                        move |_| update_plugin(&id, &|p| { if bi < p.composer_buttons.len() { p.composer_buttons.remove(bi); } })
-                                                    },
-                                                    "×"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Lệnh /command & Tự động trả lời của Plugin" }
-                                    div { class: "member-sub", "{var_guide}" }
-                                    div { class: "form-grid",
-                                        label { class: "form-field",
-                                            span { "Lệnh kích hoạt" }
-                                            input { r#type: "text", placeholder: "vd: /hello hoặc /craft", value: "{cmd_trigger}", oninput: move |e| cmd_trigger.set(e.value()) }
-                                        }
-                                        label { class: "form-field",
-                                            span { "Mô tả ngắn" }
-                                            input { r#type: "text", placeholder: "Lệnh này làm gì", value: "{cmd_desc}", oninput: move |e| cmd_desc.set(e.value()) }
-                                        }
-                                        label { class: "form-field wide",
-                                            span { "Nội dung Plugin phản hồi" }
-                                            input { r#type: "text", placeholder: "{resp_placeholder}", value: "{cmd_resp}", oninput: move |e| cmd_resp.set(e.value()) }
-                                        }
-                                    }
-                                    button {
-                                        r#type: "button",
-                                        class: "btn-secondary",
-                                        onclick: {
-                                            let id = eid_bot.clone();
-                                            move |_| {
-                                                let mut trig = cmd_trigger().trim().to_string();
-                                                let resp = cmd_resp().trim().to_string();
-                                                if trig.is_empty() || resp.is_empty() { return; }
-                                                if !trig.starts_with('/') { trig = format!("/{trig}"); }
-                                                let d = if cmd_desc().trim().is_empty() { "Lệnh tùy chỉnh".to_string() } else { cmd_desc().trim().to_string() };
-                                                update_plugin(&id, &|p| {
-                                                    p.bot_enabled = true;
-                                                    p.commands.push(PluginCommand { trigger: trig.clone(), description: d.clone(), response: resp.clone() });
-                                                });
-                                                cmd_trigger.set(String::new());
-                                                cmd_desc.set(String::new());
-                                                cmd_resp.set(String::new());
-                                            }
-                                        },
-                                        PlusIcon { size: 15 } "Thêm lệnh cho Plugin"
-                                    }
-                                    div { class: "mod-todo-list",
-                                        for (ci, c) in em.commands.iter().enumerate() {
-                                            div { key: "{ci}", class: "mod-todo-row",
-                                                code { class: "kbd", "{c.trigger}" }
-                                                span { class: "settings-label", "{c.description}" }
-                                                span { class: "grow member-sub", "→ {c.response}" }
-                                                button {
-                                                    r#type: "button",
-                                                    class: "icon-btn danger",
-                                                    onclick: {
-                                                        let id = eid_bot.clone();
-                                                        move |_| update_plugin(&id, &|p| { if ci < p.commands.len() { p.commands.remove(ci); } })
-                                                    },
-                                                    TrashIcon { size: 15 }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    div { class: "settings-group-title", "Kết nối HTTP API Token máy chủ" }
-                                    if let Some(sb) = srv_bot {
-                                        div { class: "bot-card",
-                                            div { class: "bot-card-info",
-                                                div { class: "bot-card-name", "@{sb.username}" span { class: "bot-tag", "API TOKEN" } }
-                                                if let Some(h) = sb.token_hint.as_ref() { div { class: "bot-card-sub mono", "Token: {h}" } }
-                                            }
-                                            div { class: "bot-card-actions",
-                                                button {
-                                                    r#type: "button",
-                                                    class: "btn-secondary",
-                                                    onclick: {
-                                                        let sid = sb.id.clone();
-                                                        move |_| {
-                                                            let sid = sid.clone();
-                                                            spawn(async move {
-                                                                if let Ok(nb) = social::bot_rotate(&sid).await {
-                                                                    if let Some(t) = nb.token.clone() {
-                                                                        fresh_token.set(Some((nb.username.clone(), t)));
-                                                                    }
-                                                                    server_bots.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nb.id) { *x = nb; });
-                                                                }
-                                                            });
-                                                        }
-                                                    },
-                                                    RefreshIcon { size: 15 } "Cấp lại Token mới"
-                                                }
-                                                button {
-                                                    r#type: "button",
-                                                    class: "btn-ghost",
-                                                    onclick: {
-                                                        let sid = sb.id.clone();
-                                                        let next = !sb.is_public;
-                                                        move |_| {
-                                                            let sid = sid.clone();
-                                                            spawn(async move {
-                                                                if let Ok(nb) = social::bot_update(&sid, json!({ "is_public": next })).await {
-                                                                    server_bots.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nb.id) { *x = nb; });
-                                                                }
-                                                            });
-                                                        }
-                                                    },
-                                                    if sb.is_public { "Chuyển về riêng tư" } else { "Công khai lên danh bạ" }
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        button {
-                                            r#type: "button",
-                                            class: "btn-secondary",
-                                            onclick: {
-                                                let id = eid.clone();
-                                                let u = em.username.clone();
-                                                let d = em.display_name.clone();
-                                                let ds = em.description.clone();
-                                                move |_| {
-                                                    let (id, u, d, ds) = (id.clone(), u.clone(), d.clone(), ds.clone());
-                                                    spawn(async move {
-                                                        match social::bot_create(&u, &d, &ds).await {
-                                                            Ok(b) => {
-                                                                if let Some(tok) = b.token.clone() {
-                                                                    fresh_token.set(Some((b.username.clone(), tok)));
-                                                                }
-                                                                let sid = b.id.clone();
-                                                                server_bots.with_mut(|l| l.insert(0, b));
-                                                                let mut list = PLUGINS.peek().clone();
-                                                                if let Some(pm) = list.iter_mut().find(|p| p.id == id) {
-                                                                    pm.server_bot_id = Some(sid);
-                                                                }
-                                                                save_plugins(&list);
-                                                                *PLUGINS.write() = list;
-                                                            }
-                                                            Err(e) => status.set(Some((true, plugin_error(&e.code).to_string()))),
-                                                        }
-                                                    });
-                                                }
-                                            },
-                                            PluginIcon { size: 16 } "Tạo Token HTTP API trên máy chủ cho Plugin này"
-                                        }
-                                    }
-                                    pre { class: "code-block",
-                                        "{curl_snippet}"
-                                    }
-                                }
-                            }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| { import_open.set(true); creating_new.set(false); },
+                            "Nhập JSON"
                         }
                     }
                 }
-            }
 
-            // Installed & Built-in Mods Grid
-            div { class: "settings-group",
-                div { class: "settings-group-title", "Kho Plugin & Mod trên thiết bị" }
+                if let Some((is_err, msg)) = status() {
+                    div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
+                }
+
                 div { class: "mod-cards-grid",
                     for pm in plugins_list {
                         {
@@ -2389,11 +1929,7 @@ pub fn PluginsSettings(
                                     div { class: "mod-card-head",
                                         span { class: "mod-card-icon", "{pm.icon}" }
                                         div { class: "mod-card-title-wrap",
-                                            div { class: "mod-card-title",
-                                                "{pm.display_name}"
-                                                span { class: "bot-tag", if pm.server_bot_id.is_some() { "PLUGIN API" } else { "MOD" } }
-                                            }
-                                            div { class: "mod-card-meta", "@{pm.username} · v{pm.version} · {pm.author}" }
+                                            div { class: "mod-card-title", "{pm.display_name}" }
                                         }
                                         input {
                                             r#type: "checkbox",
@@ -2408,13 +1944,6 @@ pub fn PluginsSettings(
                                         }
                                     }
                                     p { class: "mod-card-desc", "{pm.description}" }
-                                    div { class: "mod-capability-pills",
-                                        if pm.theme_enabled { span { class: "mod-cap-pill", PaletteIcon {} "Giao diện App" } }
-                                        if pm.custom_page_enabled { span { class: "mod-cap-pill", "🧭 Trang: {pm.page_title}" } }
-                                        if pm.hud_enabled { span { class: "mod-cap-pill", "🛰 HUD nổi" } }
-                                        if pm.screen_fx != "none" { span { class: "mod-cap-pill", SparkleIcon { size: 13 } "FX: {pm.screen_fx}" } }
-                                        if pm.bot_enabled { span { class: "mod-cap-pill", PluginIcon { size: 13 } "{pm.commands.len()} lệnh Bot" } }
-                                    }
                                     div { class: "mod-card-actions",
                                         if pm.custom_page_enabled {
                                             button {
@@ -2424,7 +1953,7 @@ pub fn PluginsSettings(
                                                     update_plugin(&pid_page, &|p| p.enabled = true);
                                                     *ACTIVE_PLUGIN_PAGE.write() = Some(pid_page.clone());
                                                 },
-                                                "{pm.page_icon} Mở trang"
+                                                "Mở"
                                             }
                                         }
                                         if pm.bot_enabled {
@@ -2447,21 +1976,24 @@ pub fn PluginsSettings(
                                                             last_text: None,
                                                         });
                                                     },
-                                                    "Trò chuyện"
+                                                    "Chat"
                                                 }
                                             }
                                         }
                                         button {
                                             r#type: "button",
                                             class: "btn-small-secondary",
-                                            onclick: move |_| editing_id.set(if editing_id().as_deref() == Some(pid_edit.as_str()) { None } else { Some(pid_edit.clone()) }),
-                                            SlidersIcon {} "Tùy chỉnh Mod"
+                                            onclick: move |_| {
+                                                status.set(None);
+                                                *EDITING_PLUGIN_ID.write() = Some(pid_edit.clone());
+                                            },
+                                            SlidersIcon {} "Sửa"
                                         }
                                         if !pm.builtin {
                                             button {
                                                 r#type: "button",
                                                 class: "icon-btn danger",
-                                                title: "Xóa Plugin",
+                                                title: "Xóa",
                                                 onclick: move |_| {
                                                     let id = pid_del.clone();
                                                     let sid = srv_id_del.clone();
@@ -2483,6 +2015,519 @@ pub fn PluginsSettings(
                             }
                         }
                     }
+                }
+            }
+        };
+    }
+
+    let em = editing_mod.unwrap();
+    let eid = em.id.clone();
+    let eid_basic = em.id.clone();
+    let eid_theme = em.id.clone();
+    let eid_ui = em.id.clone();
+    let eid_bot = em.id.clone();
+    let srv_bot = em.server_bot_id.as_ref().and_then(|sid| server_bots.read().iter().find(|b| &b.id == sid).cloned());
+    let var_guide = "Biến hỗ trợ: {user}, {time}, {date}, {dice}, {rand100}, {coin}, {args}, {upper}, {calc}";
+    let resp_placeholder = "vd: Xin chào {user}";
+    let curl_snippet = format!(
+        "curl {}/api/bot/TOKEN/getMe\ncurl \"{}/api/bot/TOKEN/getUpdates?offset=0&timeout=25\"\ncurl -X POST {}/api/bot/TOKEN/sendMessage -H 'Content-Type: application/json' -d '{{\"chat_id\": \"CHAT_ID\", \"text\": \"Xin chào\"}}'",
+        base, base, base
+    );
+
+    rsx! {
+        div { class: "settings-section",
+            div { class: "mod-editor-top",
+                div { class: "mod-editor-title",
+                    button {
+                        r#type: "button",
+                        class: "btn-ghost",
+                        onclick: move |_| *EDITING_PLUGIN_ID.write() = None,
+                        BackIcon {} "Quay lại"
+                    }
+                    span { class: "mod-card-icon", "{em.icon}" }
+                    div { class: "settings-group-title", "{em.display_name}" }
+                }
+                div { class: "inline-form",
+                    button {
+                        r#type: "button",
+                        class: "btn-secondary",
+                        onclick: {
+                            let em_json = serde_json::to_string_pretty(&em).unwrap_or_default();
+                            move |_| {
+                                platform::copy_to_clipboard(&em_json);
+                                status.set(Some((false, "Đã sao chép JSON.".into())));
+                            }
+                        },
+                        CopyIcon {} "Xuất JSON"
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn-primary",
+                        onclick: move |_| *EDITING_PLUGIN_ID.write() = None,
+                        CheckIcon { size: 16 } "Xong"
+                    }
+                }
+            }
+
+            if let Some((is_err, msg)) = status() {
+                div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
+            }
+
+            if let Some((name, tok)) = fresh_token() {
+                div { class: "token-reveal", role: "alert",
+                    div { class: "settings-group-title", "Token @{name}" }
+                    code { class: "token-code", "{tok}" }
+                    div { class: "inline-form",
+                        button { r#type: "button", class: "btn-secondary", onclick: { let t = tok.clone(); move |_| platform::copy_to_clipboard(&t) }, CopyIcon {} "Sao chép" }
+                        button { r#type: "button", class: "btn-ghost", onclick: move |_| fresh_token.set(None), "Đóng" }
+                    }
+                }
+            }
+
+            div { class: "segmented",
+                button { r#type: "button", class: if editor_tab() == "basic" { "active" } else { "" }, onclick: move |_| editor_tab.set("basic"), "Cơ bản" }
+                button { r#type: "button", class: if editor_tab() == "theme" { "active" } else { "" }, onclick: move |_| editor_tab.set("theme"), "Giao diện" }
+                button { r#type: "button", class: if editor_tab() == "ui" { "active" } else { "" }, onclick: move |_| editor_tab.set("ui"), "Trang & HUD" }
+                button { r#type: "button", class: if editor_tab() == "bot" { "active" } else { "" }, onclick: move |_| editor_tab.set("bot"), "Bot & Lệnh" }
+            }
+
+            if editor_tab() == "basic" {
+                div { class: "form-grid",
+                    label { class: "form-field",
+                        span { "Tên Plugin" }
+                        input { r#type: "text", value: "{em.display_name}",
+                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.display_name = v.clone()); } } }
+                    }
+                    label { class: "form-field",
+                        span { "Biểu tượng" }
+                        input { r#type: "text", maxlength: "8", value: "{em.icon}",
+                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.icon = v.clone()); } } }
+                    }
+                    label { class: "form-field wide",
+                        span { "Mô tả" }
+                        textarea { rows: "2", value: "{em.description}",
+                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.description = v.clone()); } } }
+                    }
+                }
+                div { class: "settings-list",
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Chế độ Bot trò chuyện" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.bot_enabled,
+                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.bot_enabled = v); } } }
+                    }
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Tùy chỉnh giao diện App" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.theme_enabled,
+                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.theme_enabled = v); } } }
+                    }
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Thêm trang lên thanh điều hướng" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.custom_page_enabled,
+                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.custom_page_enabled = v); } } }
+                    }
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Hiển thị HUD nổi" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.hud_enabled,
+                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_enabled = v); } } }
+                    }
+                }
+            } else if editor_tab() == "theme" {
+                div { class: "settings-group",
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Bật giao diện tùy chỉnh" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.theme_enabled,
+                            onchange: { let id = eid_theme.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.theme_enabled = v); } } }
+                    }
+                    div { class: "settings-group-title", "Mẫu nhanh" }
+                    div { class: "mod-preset-chips",
+                        for (pname, bg_a, bg_s, bg_c, bg_sf, acc, sent, txt, bstyle) in THEME_PRESETS {
+                            button {
+                                key: "{pname}",
+                                r#type: "button",
+                                class: "btn-small-secondary",
+                                onclick: {
+                                    let id = eid_theme.clone();
+                                    move |_| {
+                                        update_plugin(&id, &|p| {
+                                            p.theme_enabled = true;
+                                            p.theme.bg_app = bg_a.into();
+                                            p.theme.bg_sidebar = bg_s.into();
+                                            p.theme.bg_chat = bg_c.into();
+                                            p.theme.bg_surface = bg_sf.into();
+                                            p.theme.accent = acc.into();
+                                            p.theme.msg_sent = sent.into();
+                                            p.theme.text_primary = txt.into();
+                                            p.theme.border_style = bstyle.into();
+                                        });
+                                    }
+                                },
+                                span { class: "voxel-swatch", style: "background: {acc};" }
+                                "{pname}"
+                            }
+                        }
+                    }
+                    div { class: "mod-color-grid",
+                        div { class: "settings-row",
+                            span { class: "grow", span { class: "settings-label", "Nền ứng dụng" } }
+                            input { r#type: "color", value: if em.theme.bg_app.is_empty() { "#0C0E12" } else { em.theme.bg_app.as_str() },
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_app = v.clone(); }); } } }
+                        }
+                        div { class: "settings-row",
+                            span { class: "grow", span { class: "settings-label", "Cột danh sách" } }
+                            input { r#type: "color", value: if em.theme.bg_sidebar.is_empty() { "#171A20" } else { em.theme.bg_sidebar.as_str() },
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_sidebar = v.clone(); }); } } }
+                        }
+                        div { class: "settings-row",
+                            span { class: "grow", span { class: "settings-label", "Khung Chat" } }
+                            input { r#type: "color", value: if em.theme.bg_chat.is_empty() { "#191C22" } else { em.theme.bg_chat.as_str() },
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_chat = v.clone(); }); } } }
+                        }
+                        div { class: "settings-row",
+                            span { class: "grow", span { class: "settings-label", "Bề mặt thẻ" } }
+                            input { r#type: "color", value: if em.theme.bg_surface.is_empty() { "#22262E" } else { em.theme.bg_surface.as_str() },
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_surface = v.clone(); }); } } }
+                        }
+                        div { class: "settings-row",
+                            span { class: "grow", span { class: "settings-label", "Màu nhấn" } }
+                            input { r#type: "color", value: if em.theme.accent.is_empty() { "#2764E7" } else { em.theme.accent.as_str() },
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.accent = v.clone(); }); } } }
+                        }
+                        div { class: "settings-row",
+                            span { class: "grow", span { class: "settings-label", "Tin nhắn gửi" } }
+                            input { r#type: "color", value: if em.theme.msg_sent.is_empty() { "#2764E7" } else { em.theme.msg_sent.as_str() },
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.msg_sent = v.clone(); }); } } }
+                        }
+                        div { class: "settings-row",
+                            span { class: "grow", span { class: "settings-label", "Tin nhắn nhận" } }
+                            input { r#type: "color", value: if em.theme.msg_recv.is_empty() { "#262C35" } else { em.theme.msg_recv.as_str() },
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.msg_recv = v.clone(); }); } } }
+                        }
+                        div { class: "settings-row",
+                            span { class: "grow", span { class: "settings-label", "Chữ chính" } }
+                            input { r#type: "color", value: if em.theme.text_primary.is_empty() { "#E8EAED" } else { em.theme.text_primary.as_str() },
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.text_primary = v.clone(); }); } } }
+                        }
+                    }
+                    div { class: "form-grid",
+                        label { class: "form-field",
+                            span { "Khung viền" }
+                            select {
+                                value: "{em.theme.border_style}",
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.border_style = v.clone(); }); } },
+                                option { value: "default", "Mặc định" }
+                                option { value: "pixel", "Pixel 2px" }
+                                option { value: "neon", "Neon" }
+                                option { value: "glass", "Kính mờ" }
+                            }
+                        }
+                        label { class: "form-field",
+                            span { "Bo góc" }
+                            select {
+                                value: "{em.theme.panel_radius}",
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.panel_radius = v.clone(); }); } },
+                                option { value: "", "Mặc định" }
+                                option { value: "0px", "0px Vuông" }
+                                option { value: "6px", "6px Gọn" }
+                                option { value: "14px", "14px Mềm" }
+                                option { value: "22px", "22px Tròn" }
+                            }
+                        }
+                        label { class: "form-field",
+                            span { "Thanh điều hướng" }
+                            select {
+                                value: "{em.theme.rail_position}",
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.rail_position = v.clone(); }); } },
+                                option { value: "left", "Bên trái" }
+                                option { value: "right", "Bên phải" }
+                                option { value: "top", "Phía trên" }
+                            }
+                        }
+                        label { class: "form-field",
+                            span { "Phông chữ" }
+                            select {
+                                value: "{em.theme.font_style}",
+                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.font_style = v.clone(); }); } },
+                                option { value: "default", "Hệ thống" }
+                                option { value: "pixel", "Monospace" }
+                                option { value: "rounded", "Bo tròn" }
+                                option { value: "serif", "Có chân" }
+                            }
+                        }
+                    }
+                    label { class: "form-field",
+                        span { "CSS tùy chỉnh" }
+                        textarea {
+                            rows: "4",
+                            style: "font-family: var(--font-mono); font-size: 12px;",
+                            placeholder: "Nhập CSS tùy chỉnh",
+                            value: "{em.theme.custom_css}",
+                            oninput: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.custom_css = v.clone(); }); } }
+                        }
+                    }
+                }
+            } else if editor_tab() == "ui" {
+                div { class: "settings-group",
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Thêm trang lên thanh điều hướng" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.custom_page_enabled,
+                            onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.custom_page_enabled = v); } } }
+                    }
+                    if em.custom_page_enabled {
+                        div { class: "form-grid",
+                            label { class: "form-field",
+                                span { "Tiêu đề trang" }
+                                input { r#type: "text", value: "{em.page_title}",
+                                    oninput: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_title = v.clone()); } } }
+                            }
+                            label { class: "form-field",
+                                span { "Biểu tượng" }
+                                input { r#type: "text", maxlength: "8", value: "{em.page_icon}",
+                                    oninput: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_icon = v.clone()); } } }
+                            }
+                            label { class: "form-field",
+                                span { "Loại trang" }
+                                select {
+                                    value: "{em.page_kind}",
+                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_kind = v.clone()); } },
+                                    option { value: "voxel", "Bảng Voxel 2D" }
+                                    option { value: "notes", "Sổ tay & Việc làm" }
+                                    option { value: "soundboard", "Soundboard 8-Bit" }
+                                    option { value: "cyber", "Trạm lệnh" }
+                                    option { value: "custom", "Tùy chỉnh" }
+                                }
+                            }
+                        }
+                    }
+
+                    div { class: "form-grid",
+                        label { class: "form-field",
+                            span { "Hiệu ứng màn hình" }
+                            select {
+                                value: "{em.screen_fx}",
+                                onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.screen_fx = v.clone()); } },
+                                option { value: "none", "Không" }
+                                option { value: "voxel", "Hạt sáng" }
+                                option { value: "sakura", "Hoa anh đào" }
+                                option { value: "snow", "Tuyết rơi" }
+                                option { value: "matrix", "Matrix" }
+                            }
+                        }
+                        label { class: "form-field",
+                            span { "Âm thanh" }
+                            select {
+                                value: "{em.sound_fx}",
+                                onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); play_mod_sound(&v); update_plugin(&id, &|p| p.sound_fx = v.clone()); } },
+                                option { value: "none", "Mặc định" }
+                                option { value: "minecraft", "Âm thanh 8-Bit" }
+                                option { value: "mech", "Phím cơ" }
+                                option { value: "scifi", "Laser Sci-Fi" }
+                            }
+                        }
+                    }
+
+                    label { class: "settings-row toggle-row",
+                        span { class: "grow", span { class: "settings-label", "Hiển thị HUD nổi" } }
+                        input { r#type: "checkbox", class: "switch", checked: em.hud_enabled,
+                            onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_enabled = v); } } }
+                    }
+                    if em.hud_enabled {
+                        div { class: "studio-toggles",
+                            label { class: "demo-check",
+                                input { r#type: "checkbox", checked: em.hud_coords,
+                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_coords = v); } } }
+                                "Tọa độ XYZ & FPS"
+                            }
+                            label { class: "demo-check",
+                                input { r#type: "checkbox", checked: em.hud_clock,
+                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_clock = v); } } }
+                                "Đồng hồ"
+                            }
+                            label { class: "demo-check",
+                                input { r#type: "checkbox", checked: em.hud_note,
+                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_note = v); } } }
+                                "Ghi chú nhanh"
+                            }
+                        }
+                    }
+
+                    div { class: "settings-group-title", "Nút nhanh khung chat" }
+                    div { class: "inline-form",
+                        input { r#type: "text", placeholder: "Nhãn nút", value: "{btn_label}", oninput: move |e| btn_label.set(e.value()) }
+                        input { r#type: "text", placeholder: "Nội dung gửi", value: "{btn_content}", oninput: move |e| btn_content.set(e.value()) }
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            onclick: {
+                                let id = eid_ui.clone();
+                                move |_| {
+                                    let l = btn_label().trim().to_string();
+                                    let c = btn_content().trim().to_string();
+                                    if l.is_empty() || c.is_empty() { return; }
+                                    update_plugin(&id, &|p| p.composer_buttons.push(PluginComposerBtn { label: l.clone(), content: c.clone() }));
+                                    btn_label.set(String::new());
+                                    btn_content.set(String::new());
+                                }
+                            },
+                            PlusIcon { size: 14 } "Thêm"
+                        }
+                    }
+                    div { class: "mod-preset-chips",
+                        for (bi, b) in em.composer_buttons.iter().enumerate() {
+                            span { key: "{bi}", class: "plugin-cmd-chip",
+                                "{b.label} → {b.content}"
+                                button {
+                                    r#type: "button",
+                                    class: "chip-del",
+                                    onclick: {
+                                        let id = eid_ui.clone();
+                                        move |_| update_plugin(&id, &|p| { if bi < p.composer_buttons.len() { p.composer_buttons.remove(bi); } })
+                                    },
+                                    "×"
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Lệnh Bot" }
+                    div { class: "member-sub", "{var_guide}" }
+                    div { class: "form-grid",
+                        label { class: "form-field",
+                            span { "Lệnh" }
+                            input { r#type: "text", placeholder: "vd: /hello", value: "{cmd_trigger}", oninput: move |e| cmd_trigger.set(e.value()) }
+                        }
+                        label { class: "form-field",
+                            span { "Mô tả" }
+                            input { r#type: "text", placeholder: "Mô tả ngắn", value: "{cmd_desc}", oninput: move |e| cmd_desc.set(e.value()) }
+                        }
+                        label { class: "form-field wide",
+                            span { "Phản hồi" }
+                            input { r#type: "text", placeholder: "{resp_placeholder}", value: "{cmd_resp}", oninput: move |e| cmd_resp.set(e.value()) }
+                        }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn-secondary",
+                        onclick: {
+                            let id = eid_bot.clone();
+                            move |_| {
+                                let mut trig = cmd_trigger().trim().to_string();
+                                let resp = cmd_resp().trim().to_string();
+                                if trig.is_empty() || resp.is_empty() { return; }
+                                if !trig.starts_with('/') { trig = format!("/{trig}"); }
+                                let d = if cmd_desc().trim().is_empty() { "Lệnh tùy chỉnh".to_string() } else { cmd_desc().trim().to_string() };
+                                update_plugin(&id, &|p| {
+                                    p.bot_enabled = true;
+                                    p.commands.push(PluginCommand { trigger: trig.clone(), description: d.clone(), response: resp.clone() });
+                                });
+                                cmd_trigger.set(String::new());
+                                cmd_desc.set(String::new());
+                                cmd_resp.set(String::new());
+                            }
+                        },
+                        PlusIcon { size: 15 } "Thêm lệnh"
+                    }
+                    div { class: "mod-todo-list",
+                        for (ci, c) in em.commands.iter().enumerate() {
+                            div { key: "{ci}", class: "mod-todo-row",
+                                code { class: "kbd", "{c.trigger}" }
+                                span { class: "settings-label", "{c.description}" }
+                                span { class: "grow member-sub", "→ {c.response}" }
+                                button {
+                                    r#type: "button",
+                                    class: "icon-btn danger",
+                                    onclick: {
+                                        let id = eid_bot.clone();
+                                        move |_| update_plugin(&id, &|p| { if ci < p.commands.len() { p.commands.remove(ci); } })
+                                    },
+                                    TrashIcon { size: 15 }
+                                }
+                            }
+                        }
+                    }
+
+                    div { class: "settings-group-title", "API Token" }
+                    if let Some(sb) = srv_bot {
+                        div { class: "bot-card",
+                            div { class: "bot-card-info",
+                                div { class: "bot-card-name", "@{sb.username}" span { class: "bot-tag", "API" } }
+                                if let Some(h) = sb.token_hint.as_ref() { div { class: "bot-card-sub mono", "Token: {h}" } }
+                            }
+                            div { class: "bot-card-actions",
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    onclick: {
+                                        let sid = sb.id.clone();
+                                        move |_| {
+                                            let sid = sid.clone();
+                                            spawn(async move {
+                                                if let Ok(nb) = social::bot_rotate(&sid).await {
+                                                    if let Some(t) = nb.token.clone() {
+                                                        fresh_token.set(Some((nb.username.clone(), t)));
+                                                    }
+                                                    server_bots.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nb.id) { *x = nb; });
+                                                }
+                                            });
+                                        }
+                                    },
+                                    RefreshIcon { size: 15 } "Cấp lại Token"
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-ghost",
+                                    onclick: {
+                                        let sid = sb.id.clone();
+                                        let next = !sb.is_public;
+                                        move |_| {
+                                            let sid = sid.clone();
+                                            spawn(async move {
+                                                if let Ok(nb) = social::bot_update(&sid, json!({ "is_public": next })).await {
+                                                    server_bots.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nb.id) { *x = nb; });
+                                                }
+                                            });
+                                        }
+                                    },
+                                    if sb.is_public { "Đặt riêng tư" } else { "Công khai" }
+                                }
+                            }
+                        }
+                    } else {
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            onclick: {
+                                let id = eid.clone();
+                                let u = em.username.clone();
+                                let d = em.display_name.clone();
+                                let ds = em.description.clone();
+                                move |_| {
+                                    let (id, u, d, ds) = (id.clone(), u.clone(), d.clone(), ds.clone());
+                                    spawn(async move {
+                                        match social::bot_create(&u, &d, &ds).await {
+                                            Ok(b) => {
+                                                if let Some(tok) = b.token.clone() {
+                                                    fresh_token.set(Some((b.username.clone(), tok)));
+                                                }
+                                                let sid = b.id.clone();
+                                                server_bots.with_mut(|l| l.insert(0, b));
+                                                let mut list = PLUGINS.peek().clone();
+                                                if let Some(pm) = list.iter_mut().find(|p| p.id == id) {
+                                                    pm.server_bot_id = Some(sid);
+                                                }
+                                                save_plugins(&list);
+                                                *PLUGINS.write() = list;
+                                            }
+                                            Err(e) => status.set(Some((true, plugin_error(&e.code).to_string()))),
+                                        }
+                                    });
+                                }
+                            },
+                            PluginIcon { size: 16 } "Tạo Token API"
+                        }
+                    }
+                    pre { class: "code-block", "{curl_snippet}" }
                 }
             }
         }

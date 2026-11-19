@@ -9,7 +9,7 @@ use crate::i18n::t;
 use crate::{
     components::{
         avatar::Avatar,
-        plugins_view::{ACTIVE_PLUGIN_PAGE, enabled_rail_pages},
+        plugins_view::{ACTIVE_PLUGIN_PAGE, EDITING_PLUGIN_ID, enabled_rail_pages},
         icons::{CompassIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, PluginIcon, SearchIcon, SettingsIcon, UserIcon},
         navigation::NavSection,
     },
@@ -115,10 +115,11 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if active_mod_page.as_deref() == Some("studio") { "rail-item active" } else { "rail-item" },
-                    "data-tip": "Plugin & Mod",
-                    aria_label: "Plugin & Mod",
+                    "data-tip": "Plugin",
+                    aria_label: "Plugin",
                     aria_current: if active_mod_page.as_deref() == Some("studio") { "page" } else { "false" },
                     onclick: move |_| {
+                        *EDITING_PLUGIN_ID.write() = None;
                         *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
                     },
                     span { class: "rail-icon", PluginIcon { size: 20 } }
