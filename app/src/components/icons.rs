@@ -545,8 +545,10 @@ pub fn BotIcon(#[props(default = 18)] size: u32) -> Element {
 #[component]
 pub fn PluginIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M14 7V4.5a2.5 2.5 0 0 0-5 0V7H6a2 2 0 0 0-2 2v3a2.5 2.5 0 0 0 0 5v3a2 2 0 0 0 2 2h3v-2.5a2.5 2.5 0 0 1 5 0V22h3a2 2 0 0 0 2-2v-3a2.5 2.5 0 0 1 0-5V9a2 2 0 0 0-2-2h-3z" }
-        path { d: "M14 7V4.5a2.5 2.5 0 0 0-5 0V7H6a2 2 0 0 0-2 2v3a2.5 2.5 0 0 0 0 5v3a2 2 0 0 0 2 2h3v-2.5a2.5 2.5 0 0 1 5 0V22h3a2 2 0 0 0 2-2v-3a2.5 2.5 0 0 1 0-5V9a2 2 0 0 0-2-2h-3z" }
+        rect { x: "3.5", y: "3.5", width: "7", height: "7", rx: "2", fill: duo_fill!(), fill_opacity: "0.16" }
+        rect { x: "3.5", y: "13.5", width: "7", height: "7", rx: "2" }
+        rect { x: "13.5", y: "13.5", width: "7", height: "7", rx: "2" }
+        rect { x: "14.2", y: "4.2", width: "5.8", height: "5.8", rx: "1.6", transform: "rotate(45 17.1 7.1)", fill: duo_fill!(), fill_opacity: "0.22" }
     } }
 }
 

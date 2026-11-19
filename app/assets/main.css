@@ -353,11 +353,29 @@ input[type="color"] {
   margin: calc((var(--header-height) - 2.5rem) / 2) 0 var(--space-1);
   flex-shrink: 0;
 }
-.plugin-custom-logo {
-  border-radius: var(--radius-sm);
+.plugin-custom-logo, .plugin-brand-logo {
+  border-radius: 9px;
   object-fit: cover;
   flex-shrink: 0;
   display: block;
+}
+.rail-item.has-logo {
+  padding: 0;
+  border-radius: var(--radius-lg);
+}
+.rail-item.has-logo .plugin-custom-logo, .rail-item.has-logo .plugin-brand-logo {
+  border-radius: 10px;
+  transition: transform var(--dur-fast) var(--ease), border-radius var(--dur-menu) var(--ease);
+}
+.rail-item.has-logo:hover .plugin-custom-logo, .rail-item.has-logo:hover .plugin-brand-logo {
+  transform: scale(1.06);
+}
+.rail-item.has-logo.active {
+  background: transparent;
+  box-shadow: none;
+}
+.rail-item.has-logo.active .plugin-custom-logo, .rail-item.has-logo.active .plugin-brand-logo {
+  box-shadow: 0 0 0 2px var(--bg-app), 0 0 0 4px var(--accent);
 }
 .rail-nav, .rail-bottom { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: 100%; position: relative; }
 .rail-item.active .cw-icon, .rail-item:hover .cw-icon { transform: scale(1.06); }

@@ -133,12 +133,20 @@ pub fn AppRail(
                 for (pid, picon, plogo, ptitle) in left_apps {
                     {
                         let is_act = active_left_plugin.as_deref() == Some(pid.as_str()) && !in_mod;
+                        let is_logo = !plogo.trim().is_empty() && !plogo.trim().starts_with("svg:");
+                        let g_size = if is_logo { 30 } else { 20 };
+                        let cls = match (is_logo, is_act) {
+                            (true, true) => "rail-item has-logo active",
+                            (true, false) => "rail-item has-logo",
+                            (false, true) => "rail-item active",
+                            (false, false) => "rail-item",
+                        };
                         let pid2 = pid.clone();
                         rsx! {
                             button {
                                 key: "left-{pid}",
                                 r#type: "button",
-                                class: if is_act { "rail-item active" } else { "rail-item" },
+                                class: "{cls}",
                                 "data-tip": "{ptitle}",
                                 aria_label: "{ptitle}",
                                 aria_current: if is_act { "page" } else { "false" },
@@ -153,7 +161,7 @@ pub fn AppRail(
                                         }
                                     }
                                 },
-                                span { class: "rail-icon", PluginGlyph { icon: picon, logo_url: plogo, size: 20 } }
+                                span { class: "rail-icon", PluginGlyph { icon: picon, logo_url: plogo, size: g_size } }
                             }
                         }
                     }
@@ -161,19 +169,27 @@ pub fn AppRail(
                 for (pid, picon, plogo, ptitle) in custom_pages {
                     {
                         let is_act = active_mod_page.as_deref() == Some(pid.as_str());
+                        let is_logo = !plogo.trim().is_empty() && !plogo.trim().starts_with("svg:");
+                        let g_size = if is_logo { 30 } else { 20 };
+                        let cls = match (is_logo, is_act) {
+                            (true, true) => "rail-item has-logo active",
+                            (true, false) => "rail-item has-logo",
+                            (false, true) => "rail-item active",
+                            (false, false) => "rail-item",
+                        };
                         let pid2 = pid.clone();
                         rsx! {
                             button {
                                 key: "mod-{pid}",
                                 r#type: "button",
-                                class: if is_act { "rail-item active" } else { "rail-item" },
+                                class: "{cls}",
                                 "data-tip": "{ptitle}",
                                 aria_label: "{ptitle}",
                                 onclick: move |_| {
                                     *ACTIVE_LEFT_PLUGIN.write() = None;
                                     *ACTIVE_PLUGIN_PAGE.write() = Some(pid2.clone());
                                 },
-                                span { class: "rail-icon", PluginGlyph { icon: picon, logo_url: plogo, size: 20 } }
+                                span { class: "rail-icon", PluginGlyph { icon: picon, logo_url: plogo, size: g_size } }
                             }
                         }
                     }

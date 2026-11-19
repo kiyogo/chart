@@ -137,7 +137,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🎨".into(),
-            logo_url: "svg:voxel".into(),
+            logo_url: "logo:voxel".into(),
             description: "Giao diện khối vuông, bảng vẽ 2D và HUD tọa độ.".into(),
             enabled: false,
             builtin: true,
@@ -194,7 +194,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "⚡".into(),
-            logo_url: "svg:cyber".into(),
+            logo_url: "logo:cyber".into(),
             description: "Giao diện tối Neon, hiệu ứng Matrix và trạm lệnh.".into(),
             enabled: false,
             builtin: true,
@@ -249,7 +249,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🌸".into(),
-            logo_url: "svg:sakura".into(),
+            logo_url: "logo:sakura".into(),
             description: "Giao diện kính mờ kèm hiệu ứng hoa anh đào rơi.".into(),
             enabled: false,
             builtin: true,
@@ -304,7 +304,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "📋".into(),
-            logo_url: "svg:notes".into(),
+            logo_url: "logo:notes".into(),
             description: "App bên trái ghi chú nhanh, việc cần làm và Pomodoro.".into(),
             enabled: true,
             builtin: true,
@@ -341,7 +341,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🎹".into(),
-            logo_url: "svg:sound".into(),
+            logo_url: "logo:sound".into(),
             description: "Bảng âm thanh tổng hợp và tiếng gõ phím cơ.".into(),
             enabled: false,
             builtin: true,
@@ -377,7 +377,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             author: "ChatW".into(),
             version: "1.0.0".into(),
             icon: "🤖".into(),
-            logo_url: "svg:bot".into(),
+            logo_url: "logo:bot".into(),
             description: "Bot tính toán, tung xúc xắc, đồng xu và xem giờ.".into(),
             enabled: true,
             builtin: true,
@@ -419,6 +419,7 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
 
 fn load_plugins_from_storage() -> Vec<PluginMod> {
     let mut defaults = default_builtin_plugins();
+    let logo_migrated = platform::storage_get("chatw_plugin_logos_v2").is_some();
     if let Some(raw) = platform::storage_get(STORAGE_KEY) {
         if let Ok(saved) = serde_json::from_str::<Vec<PluginMod>>(&raw) {
             let any_left = saved.iter().any(|x| x.left_app_enabled);
@@ -439,7 +440,7 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
                         s.left_app_enabled = true;
                         s.bot_enabled = false;
                     }
-                    if s.logo_url.trim().is_empty() && !existing.logo_url.is_empty() {
+                    if (s.logo_url.trim().is_empty() || (!logo_migrated && s.logo_url.starts_with("svg:"))) && !existing.logo_url.is_empty() {
                         s.logo_url = existing.logo_url.clone();
                     }
                     *existing = s;
@@ -449,8 +450,25 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
             }
         }
     }
+    if !logo_migrated {
+        platform::storage_set("chatw_plugin_logos_v2", "1");
+        if let Ok(s) = serde_json::to_string(&defaults) {
+            platform::storage_set(STORAGE_KEY, &s);
+        }
+    }
     defaults
 }
+
+pub const PLUGIN_LOGO_PRESETS: [(&str, &str); 8] = [
+    ("logo:notes", "Sổ tay"),
+    ("logo:sound", "Âm thanh"),
+    ("logo:bot", "Trợ lý"),
+    ("logo:voxel", "Khối 3D"),
+    ("logo:cyber", "Cyber"),
+    ("logo:sakura", "Sakura"),
+    ("logo:clock", "Đồng hồ"),
+    ("logo:code", "Terminal"),
+];
 
 pub const PLUGIN_SVG_PRESETS: [(&str, &str); 9] = [
     ("svg:plugin", "Plugin"),
@@ -464,21 +482,141 @@ pub const PLUGIN_SVG_PRESETS: [(&str, &str); 9] = [
     ("svg:sakura", "Hoa"),
 ];
 
+fn logo_palette(logo_id: &str) -> (&'static str, &'static str) {
+    match logo_id {
+        "notes" => ("#10B981", "#059669"),
+        "sound" => ("#6366F1", "#8B5CF6"),
+        "bot" => ("#2563EB", "#06B6D4"),
+        "voxel" => ("#16A34A", "#22C55E"),
+        "cyber" => ("#0F172A", "#06B6D4"),
+        "sakura" => ("#EC4899", "#F43F5E"),
+        "clock" => ("#F59E0B", "#EA580C"),
+        "code" => ("#18181B", "#22C55E"),
+        _ => ("#2764E7", "#6366F1"),
+    }
+}
+
+fn encode_svg_data_uri(svg_raw: &str) -> String {
+    let mut out = String::with_capacity(svg_raw.len() + 32);
+    out.push_str("data:image/svg+xml;utf8,");
+    for ch in svg_raw.chars() {
+        match ch {
+            '#' => out.push_str("%23"),
+            '<' => out.push_str("%3C"),
+            '>' => out.push_str("%3E"),
+            '"' => out.push('\''),
+            '&' => out.push_str("%26"),
+            '%' => out.push_str("%25"),
+            '\n' | '\r' => out.push(' '),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+pub fn plugin_logo_data_url(logo_url: &str) -> Option<String> {
+    let logo = logo_url.trim();
+    if logo.is_empty() || logo.starts_with("svg:") {
+        return None;
+    }
+    if logo.starts_with("<svg") {
+        return Some(encode_svg_data_uri(logo));
+    }
+    if let Some(lid) = logo.strip_prefix("logo:") {
+        let (c1, c2) = logo_palette(lid);
+        let glyph = match lid {
+            "notes" => r##"<path fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M13 11.5h14l3 3v14a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2z"/><path fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" d="M15.5 18h9M15.5 23h6"/>"##,
+            "sound" => r##"<path fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" d="M10 18v4M15 13v14M20 9.5v21M25 14v12M30 17.5v5"/>"##,
+            "bot" => r##"<rect x="10" y="13" width="20" height="15" rx="5.5" fill="none" stroke="#fff" stroke-width="2.4"/><path fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" d="M20 8.5V13M16 20v1.5M24 20v1.5"/>"##,
+            "voxel" => r##"<polygon points="20 8.5 30.5 14.5 30.5 25.5 20 31.5 9.5 25.5 9.5 14.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/><path fill="none" stroke="#fff" stroke-width="2.2" d="M20 31.5V20M30.5 14.5L20 20 9.5 14.5"/>"##,
+            "cyber" => r##"<polygon points="21.5 7.5 11.5 21.5 19 21.5 17.5 32.5 28.5 18.5 20.5 18.5" fill="#22D3EE"/>"##,
+            "sakura" => r##"<path fill="#fff" d="M20 8.5c1.3 6.2 3.3 8.2 9.5 9.5-6.2 1.3-8.2 3.3-9.5 9.5-1.3-6.2-3.3-8.2-9.5-9.5 6.2-1.3 8.2-3.3 9.5-9.5z"/>"##,
+            "clock" => r##"<circle cx="20" cy="21" r="9.5" fill="none" stroke="#fff" stroke-width="2.4"/><path fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" d="M17 8.5h6M20 15.5V21l3.5 2.5"/>"##,
+            "code" => r##"<path fill="none" stroke="#22C55E" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M12.5 15l5 5-5 5M21 25h7"/>"##,
+            _ => r##"<rect x="10" y="10" width="8.5" height="8.5" rx="2.2" fill="#fff"/><rect x="10" y="21.5" width="8.5" height="8.5" rx="2.2" fill="#fff"/><rect x="21.5" y="21.5" width="8.5" height="8.5" rx="2.2" fill="#fff"/><rect x="22.2" y="10.8" width="7" height="7" rx="2" transform="rotate(45 25.7 14.3)" fill="#fff"/>"##,
+        };
+        let raw_svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="12" fill="{c1}"/><path d="M0 0h40v21L0 33z" fill="{c2}" fill-opacity="0.32"/>{glyph}</svg>"#
+        );
+        return Some(encode_svg_data_uri(&raw_svg));
+    }
+    Some(logo.to_string())
+}
+
+fn glyph_slot_size(logo_url: &str, icon_sz: u32, logo_sz: u32) -> u32 {
+    let l = logo_url.trim();
+    if !l.is_empty() && !l.starts_with("svg:") {
+        logo_sz
+    } else {
+        icon_sz
+    }
+}
+
 #[component]
 pub fn PluginGlyph(icon: String, #[props(default)] logo_url: String, #[props(default = 20)] size: u32) -> Element {
     let logo = logo_url.trim();
+    if let Some(lid) = logo.strip_prefix("logo:") {
+        let (c1, c2) = logo_palette(lid);
+        return rsx! {
+            svg {
+                class: "plugin-brand-logo",
+                width: "{size}",
+                height: "{size}",
+                view_box: "0 0 40 40",
+                fill: "none",
+                "aria-hidden": "true",
+                rect { width: "40", height: "40", rx: "12", fill: "{c1}" }
+                path { d: "M0 0h40v21L0 33z", fill: "{c2}", fill_opacity: "0.35" }
+                match lid {
+                    "notes" => rsx! {
+                        path { stroke: "#fff", stroke_width: "2.4", stroke_linecap: "round", stroke_linejoin: "round", d: "M13 11.5h14l3 3v14a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2z" }
+                        path { stroke: "#fff", stroke_width: "2.4", stroke_linecap: "round", d: "M15.5 18h9M15.5 23h6" }
+                    },
+                    "sound" => rsx! {
+                        path { stroke: "#fff", stroke_width: "2.8", stroke_linecap: "round", d: "M10 18v4M15 13v14M20 9.5v21M25 14v12M30 17.5v5" }
+                    },
+                    "bot" => rsx! {
+                        rect { x: "10", y: "13", width: "20", height: "15", rx: "5.5", stroke: "#fff", stroke_width: "2.4" }
+                        path { stroke: "#fff", stroke_width: "2.4", stroke_linecap: "round", d: "M20 8.5V13M16 20v1.5M24 20v1.5" }
+                    },
+                    "voxel" => rsx! {
+                        polygon { points: "20 8.5 30.5 14.5 30.5 25.5 20 31.5 9.5 25.5 9.5 14.5", stroke: "#fff", stroke_width: "2.4", stroke_linejoin: "round" }
+                        path { stroke: "#fff", stroke_width: "2.2", d: "M20 31.5V20M30.5 14.5L20 20 9.5 14.5" }
+                    },
+                    "cyber" => rsx! {
+                        polygon { points: "21.5 7.5 11.5 21.5 19 21.5 17.5 32.5 28.5 18.5 20.5 18.5", fill: "#22D3EE" }
+                    },
+                    "sakura" => rsx! {
+                        path { fill: "#fff", d: "M20 8.5c1.3 6.2 3.3 8.2 9.5 9.5-6.2 1.3-8.2 3.3-9.5 9.5-1.3-6.2-3.3-8.2-9.5-9.5 6.2-1.3 8.2-3.3 9.5-9.5z" }
+                    },
+                    "clock" => rsx! {
+                        circle { cx: "20", cy: "21", r: "9.5", stroke: "#fff", stroke_width: "2.4" }
+                        path { stroke: "#fff", stroke_width: "2.4", stroke_linecap: "round", d: "M17 8.5h6M20 15.5V21l3.5 2.5" }
+                    },
+                    "code" => rsx! {
+                        path { stroke: "#22C55E", stroke_width: "2.8", stroke_linecap: "round", stroke_linejoin: "round", d: "M12.5 15l5 5-5 5M21 25h7" }
+                    },
+                    _ => rsx! {
+                        rect { x: "10", y: "10", width: "8.5", height: "8.5", rx: "2.2", fill: "#fff" }
+                        rect { x: "10", y: "21.5", width: "8.5", height: "8.5", rx: "2.2", fill: "#fff" }
+                        rect { x: "21.5", y: "21.5", width: "8.5", height: "8.5", rx: "2.2", fill: "#fff" }
+                        rect { x: "22.2", y: "10.8", width: "7", height: "7", rx: "2", transform: "rotate(45 25.7 14.3)", fill: "#fff" }
+                    },
+                }
+            }
+        };
+    }
     if let Some(svg_id) = logo.strip_prefix("svg:") {
         return match svg_id {
             "notes" => rsx! {
                 svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
-                    rect { x: "5", y: "3.5", width: "14", height: "17", rx: "3", fill: "currentColor", fill_opacity: "0.16" }
-                    path { d: "M9 8.5h6M9 12.5h6M9 16.5h4" }
+                    path { fill: "currentColor", fill_opacity: "0.16", d: "M6.5 3.5h8l4 4v12a1.8 1.8 0 0 1-1.8 1.8H6.5A1.8 1.8 0 0 1 4.7 19.5V5.3a1.8 1.8 0 0 1 1.8-1.8z" }
+                    path { d: "M14.5 3.5v4h4M8.5 12h7M8.5 16h5" }
                 }
             },
             "sound" => rsx! {
-                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
-                    rect { x: "3.5", y: "5", width: "17", height: "14", rx: "3", fill: "currentColor", fill_opacity: "0.14" }
-                    path { d: "M7.5 14v-4M12 16V8M16.5 13v-2" }
+                svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "2", stroke_linecap: "round", "aria-hidden": "true",
+                    path { d: "M4 10v4M8 6.5v11M12 3.5v17M16 7.5v9M20 10.5v3" }
                 }
             },
             "bot" => rsx! { BotIcon { size } },
@@ -495,21 +633,34 @@ pub fn PluginGlyph(icon: String, #[props(default)] logo_url: String, #[props(def
             },
             "sakura" => rsx! {
                 svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
-                    path { fill: "currentColor", fill_opacity: "0.16", d: "M12 3.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L4.8 8.8l5-.7z" }
+                    path { fill: "currentColor", fill_opacity: "0.18", d: "M12 3.5c1.1 5 2.7 6.6 7.5 7.5-4.8 1.1-6.4 2.7-7.5 7.5-1.1-4.8-2.7-6.4-7.5-7.5 4.8-.9 6.4-2.5 7.5-7.5z" }
                 }
             },
             "clock" => rsx! {
                 svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
-                    circle { cx: "12", cy: "12", r: "8.5", fill: "currentColor", fill_opacity: "0.16" }
-                    path { d: "M12 7.5V12l3 2" }
+                    circle { cx: "12", cy: "13", r: "8", fill: "currentColor", fill_opacity: "0.16" }
+                    path { d: "M9.5 2.5h5M12 9v4l2.8 2" }
                 }
             },
             "code" => rsx! {
                 svg { class: "cw-icon", width: "{size}", height: "{size}", view_box: "0 0 24 24", fill: "none", stroke: "currentColor", stroke_width: "1.8", stroke_linecap: "round", stroke_linejoin: "round", "aria-hidden": "true",
-                    path { d: "M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5M13.5 6l-3 12" }
+                    rect { x: "3.5", y: "4.5", width: "17", height: "15", rx: "3", fill: "currentColor", fill_opacity: "0.14" }
+                    path { d: "M8 10l3 2.5-3 2.5M12.5 15h3.5" }
                 }
             },
             _ => rsx! { PluginIcon { size } },
+        };
+    }
+    if logo.starts_with("<svg") {
+        let src = encode_svg_data_uri(logo);
+        return rsx! {
+            img {
+                class: "plugin-custom-logo",
+                src: "{src}",
+                width: "{size}",
+                height: "{size}",
+                alt: "",
+            }
         };
     }
     if !logo.is_empty() {
@@ -610,9 +761,9 @@ pub fn enabled_bot_plugins_as_items() -> Vec<BotItem> {
             id: p.id.clone(),
             owner_id: "local".into(),
             username: p.username.clone(),
-            display_name: format!("{} {}", p.icon, p.display_name),
+            display_name: p.display_name.clone(),
             description: Some(p.description.clone()),
-            avatar_url: None,
+            avatar_url: plugin_logo_data_url(&p.logo_url),
             is_public: true,
             verification_status: "verified".into(),
             token_hint: Some(format!("Plugin v{}", p.version)),
@@ -1109,7 +1260,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                 header { class: "chat-header",
                     button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
-                        span { class: "bot-header-icon", PluginGlyph { icon: p.page_icon.clone(), logo_url: p.logo_url.clone(), size: 20 } }
+                        span { class: "bot-header-icon", PluginGlyph { icon: p.page_icon.clone(), logo_url: p.logo_url.clone(), size: glyph_slot_size(&p.logo_url, 20, 34) } }
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "{p.page_title}" }
                             span { class: "chat-header-meta", "{p.display_name}" }
@@ -1141,7 +1292,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                                             username: p_bot.username.clone(),
                                             display_name: p_bot.display_name.clone(),
                                             description: Some(p_bot.description.clone()),
-                                            avatar_url: None,
+                                            avatar_url: plugin_logo_data_url(&p_bot.logo_url),
                                             is_public: true,
                                             verification_status: "verified".into(),
                                             token_hint: None,
@@ -2267,10 +2418,10 @@ pub fn PluginChatView(
                 header { class: "chat-header",
                     button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại danh sách", onclick: move |_| on_back.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
-                        if bot.avatar_url.is_some() {
+                        if matching_mod.is_none() && bot.avatar_url.is_some() {
                             Avatar { name: bot.display_name.clone(), avatar_url: bot.avatar_url.clone(), size: 38 }
                         } else {
-                            span { class: "bot-header-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: 20 } }
+                            span { class: "bot-header-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: glyph_slot_size(&header_logo, 20, 34) } }
                         }
                         div { class: "chat-header-info",
                             h2 { class: "chat-header-title", "{bot.display_name}" }
@@ -2368,7 +2519,7 @@ pub fn PluginChatView(
                 if view.is_empty() {
                     div { class: "chat-messages", id: "chat-messages-scroll",
                         div { class: "bot-welcome-card",
-                            span { class: "bot-welcome-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: 28 } }
+                            span { class: "bot-welcome-icon", PluginGlyph { icon: header_icon.clone(), logo_url: header_logo.clone(), size: glyph_slot_size(&header_logo, 28, 46) } }
                             h3 { class: "bot-welcome-title", "{bot.display_name}" }
                             p { class: "bot-welcome-desc", "{bot_desc}" }
                             if !quick_cmds.is_empty() {
@@ -2449,6 +2600,7 @@ pub fn PluginsSettings(
     let mut new_username = use_signal(String::new);
     let mut new_display = use_signal(String::new);
     let mut new_icon = use_signal(|| "🧩".to_string());
+    let mut new_logo = use_signal(|| "logo:bot".to_string());
     let mut new_desc = use_signal(String::new);
     let mut new_with_server = use_signal(|| false);
 
@@ -2542,6 +2694,7 @@ pub fn PluginsSettings(
             return;
         }
         let ic = if new_icon().trim().is_empty() { "🧩".to_string() } else { new_icon().trim().to_string() };
+        let lg = new_logo().trim().to_string();
         let ds = if new_desc().trim().is_empty() { "Plugin tùy chỉnh cho ChatW.".to_string() } else { new_desc().trim().to_string() };
         let want_srv = new_with_server();
         let author_name = my_username.clone();
@@ -2573,7 +2726,7 @@ pub fn PluginsSettings(
                 author: author_name,
                 version: "1.0.0".into(),
                 icon: ic.clone(),
-                logo_url: "svg:plugin".into(),
+                logo_url: lg,
                 description: ds,
                 enabled: true,
                 builtin: false,
@@ -2646,6 +2799,46 @@ pub fn PluginsSettings(
                         label { class: "form-field",
                             span { "Biểu tượng" }
                             input { r#type: "text", maxlength: "8", placeholder: "🧩", value: "{new_icon}", oninput: move |e| new_icon.set(e.value()) }
+                        }
+                        label { class: "form-field wide",
+                            span { "Logo hoặc Icon" }
+                            div { class: "inline-form",
+                                PluginGlyph { icon: new_icon(), logo_url: new_logo(), size: 32 }
+                                input { r#type: "text", placeholder: "logo:bot, đường dẫn ảnh hoặc mã <svg>", value: "{new_logo}", oninput: move |e| new_logo.set(e.value()) }
+                                label { class: "btn-avatar-upload",
+                                    input {
+                                        id: "new-plugin-logo-input",
+                                        r#type: "file",
+                                        accept: "image/png,image/jpeg,image/webp,image/svg+xml,image/avif,image/gif",
+                                        style: "display: none;",
+                                        onchange: move |_| {
+                                            spawn(async move {
+                                                if let Ok((bytes, mime)) = platform::read_selected_file_raw("new-plugin-logo-input").await {
+                                                    if let Ok(u) = library::upload_media(bytes, &mime).await {
+                                                        new_logo.set(u);
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
+                                    "Tải Logo"
+                                }
+                            }
+                        }
+                        div { class: "form-field wide",
+                            span { "Chọn Logo màu" }
+                            div { class: "mod-preset-chips",
+                                for (lkey, llbl) in PLUGIN_LOGO_PRESETS {
+                                    button {
+                                        key: "{lkey}",
+                                        r#type: "button",
+                                        class: if new_logo() == lkey { "btn-small-primary" } else { "btn-small-secondary" },
+                                        onclick: move |_| new_logo.set(lkey.to_string()),
+                                        PluginGlyph { icon: new_icon(), logo_url: lkey.to_string(), size: 18 }
+                                        "{llbl}"
+                                    }
+                                }
+                            }
                         }
                         label { class: "form-field wide",
                             span { "Mô tả" }
@@ -2755,7 +2948,7 @@ pub fn PluginsSettings(
                             rsx! {
                                 div { key: "{pm.id}", class: if is_on { "mod-card active" } else { "mod-card" },
                                     div { class: "mod-card-head",
-                                        span { class: "mod-card-icon", PluginGlyph { icon: pm.icon.clone(), logo_url: pm.logo_url.clone(), size: 20 } }
+                                        span { class: "mod-card-icon", PluginGlyph { icon: pm.icon.clone(), logo_url: pm.logo_url.clone(), size: glyph_slot_size(&pm.logo_url, 20, 36) } }
                                         div { class: "mod-card-title-wrap",
                                             div { class: "mod-card-title", "{pm.display_name}" }
                                         }
@@ -2815,7 +3008,7 @@ pub fn PluginsSettings(
                                                             username: pm_chat.username.clone(),
                                                             display_name: pm_chat.display_name.clone(),
                                                             description: Some(pm_chat.description.clone()),
-                                                            avatar_url: None,
+                                                            avatar_url: plugin_logo_data_url(&pm_chat.logo_url),
                                                             is_public: true,
                                                             verification_status: "verified".into(),
                                                             token_hint: None,
@@ -2891,7 +3084,7 @@ pub fn PluginsSettings(
                         onclick: move |_| *EDITING_PLUGIN_ID.write() = None,
                         BackIcon {} "Quay lại"
                     }
-                    span { class: "mod-card-icon", PluginGlyph { icon: em.icon.clone(), logo_url: em.logo_url.clone(), size: 20 } }
+                    span { class: "mod-card-icon", PluginGlyph { icon: em.icon.clone(), logo_url: em.logo_url.clone(), size: glyph_slot_size(&em.logo_url, 20, 36) } }
                     div { class: "settings-group-title", "{em.display_name}" }
                 }
                 div { class: "inline-form",
@@ -2951,9 +3144,10 @@ pub fn PluginsSettings(
                             oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.icon = v.clone(); p.logo_url.clear(); }); } } }
                     }
                     label { class: "form-field wide",
-                        span { "Logo riêng hoặc SVG URL" }
+                        span { "Logo riêng, đường dẫn ảnh hoặc mã SVG" }
                         div { class: "inline-form",
-                            input { r#type: "text", placeholder: "svg:notes hoặc đường dẫn ảnh Logo", value: "{em.logo_url}",
+                            PluginGlyph { icon: em.icon.clone(), logo_url: em.logo_url.clone(), size: 32 }
+                            input { r#type: "text", placeholder: "logo:notes, svg:bot, URL ảnh hoặc mã <svg>", value: "{em.logo_url}",
                                 oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.logo_url = v.clone()); } } }
                             label { class: "btn-avatar-upload",
                                 input {
@@ -2981,7 +3175,25 @@ pub fn PluginsSettings(
                         }
                     }
                     div { class: "form-field wide",
-                        span { "Chọn biểu tượng Vector" }
+                        span { "Chọn Logo màu" }
+                        div { class: "mod-preset-chips",
+                            for (lkey, llbl) in PLUGIN_LOGO_PRESETS {
+                                button {
+                                    key: "{lkey}",
+                                    r#type: "button",
+                                    class: if em.logo_url == lkey { "btn-small-primary" } else { "btn-small-secondary" },
+                                    onclick: {
+                                        let id = eid_basic.clone();
+                                        move |_| update_plugin(&id, &|p| p.logo_url = lkey.into())
+                                    },
+                                    PluginGlyph { icon: em.icon.clone(), logo_url: lkey.to_string(), size: 18 }
+                                    "{llbl}"
+                                }
+                            }
+                        }
+                    }
+                    div { class: "form-field wide",
+                        span { "Hoặc chọn Icon Vector" }
                         div { class: "mod-preset-chips",
                             for (svg_key, svg_lbl) in PLUGIN_SVG_PRESETS {
                                 button {
@@ -2992,7 +3204,7 @@ pub fn PluginsSettings(
                                         let id = eid_basic.clone();
                                         move |_| update_plugin(&id, &|p| p.logo_url = svg_key.into())
                                     },
-                                    PluginGlyph { icon: em.icon.clone(), logo_url: svg_key.to_string(), size: 15 }
+                                    PluginGlyph { icon: em.icon.clone(), logo_url: svg_key.to_string(), size: 16 }
                                     "{svg_lbl}"
                                 }
                             }
