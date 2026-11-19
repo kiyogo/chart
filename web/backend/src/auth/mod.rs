@@ -19,8 +19,8 @@ use crate::{
             CallbackQuery, exchange_code_for_token, google_login_handler, verify_google_id_token,
         },
         session::{
-            OAUTH_COOKIE_NAME, SESSION_COOKIE_NAME, authenticate_session, create_session,
-            create_session_raw, destroy_session, parse_cookie,
+            OAUTH_COOKIE_NAME, SESSION_COOKIE_NAME, authenticate_session,
+            destroy_session, parse_cookie,
         },
     },
     config::Config,
@@ -79,6 +79,7 @@ pub fn routes() -> Router<AppState> {
         .route("/sessions", get(handle_list_sessions).delete(handle_delete_other_sessions))
         .route("/sessions/{session_id}", axum::routing::delete(handle_delete_session).patch(handle_rename_session))
         .route("/logout", post(handle_logout))
+        .merge(crate::security::auth_routes())
 }
 
 async fn handle_create_oauth_ticket(State(state): State<AppState>) -> Json<CreateTicketResponse> {
@@ -232,9 +233,18 @@ async fn handle_google_callback(
         id
     };
 
-    // Create session cookie
-    let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok());
-    let (raw_token, session_cookie) = create_session_raw(&state.db, &state.config, user_id, ua).await?;
+    // Create the session, or ask for the second step first (spec 011).
+    let (raw_token, session_cookie) = match crate::security::complete_login(&state, user_id, &headers).await? {
+        crate::security::LoginOutcome::Session(raw, cookie) => (raw, cookie),
+        crate::security::LoginOutcome::Challenge(_, challenge_cookie) => {
+            let secure_flag = if state.config.cookie_secure { "; Secure" } else { "" };
+            let clear_oauth = format!("{OAUTH_COOKIE_NAME}=; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}");
+            let mut response = Redirect::temporary("/?twofa=1").into_response();
+            response.headers_mut().append(header::SET_COOKIE, challenge_cookie.parse().map_err(|_| AppError::Internal)?);
+            response.headers_mut().append(header::SET_COOKIE, clear_oauth.parse().map_err(|_| AppError::Internal)?);
+            return Ok(response);
+        }
+    };
 
     if let Some(ticket_id) = saved.ticket {
         state
@@ -385,15 +395,19 @@ async fn handle_dev_login(
     };
     tx.commit().await?;
 
-    let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok());
-    let session_cookie = create_session(&state.db, &state.config, user_id, ua).await?;
-    let mut response = StatusCode::OK.into_response();
-    response.headers_mut().insert(
-        header::SET_COOKIE,
-        session_cookie.parse().map_err(|_| AppError::Internal)?,
-    );
-
-    Ok(response)
+    // Spec 011: two-step verification and login alerts apply to every login.
+    match crate::security::complete_login(&state, user_id, &headers).await? {
+        crate::security::LoginOutcome::Session(_, session_cookie) => {
+            let mut response = StatusCode::OK.into_response();
+            response.headers_mut().insert(header::SET_COOKIE, session_cookie.parse().map_err(|_| AppError::Internal)?);
+            Ok(response)
+        }
+        crate::security::LoginOutcome::Challenge(_, challenge_cookie) => {
+            let mut response = Json(serde_json::json!({ "requires_2fa": true })).into_response();
+            response.headers_mut().insert(header::SET_COOKIE, challenge_cookie.parse().map_err(|_| AppError::Internal)?);
+            Ok(response)
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -487,10 +501,14 @@ async fn handle_rename_session(
 async fn handle_delete_other_sessions(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Query(q): Query<std::collections::HashMap<String, String>>,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    // Signing out every other device is sensitive: ask for the second step when it is on.
+    crate::security::require_second_factor(&state, user.id, q.get("code").map(String::as_str), &headers).await?;
+    crate::security::log_event(&state, user.id, "sessions_revoked_others", &headers).await;
     let token_bytes = hex::decode(session_token).map_err(|_| AppError::Unauthorized)?;
     if token_bytes.len() != 32 {
         return Err(AppError::Unauthorized);

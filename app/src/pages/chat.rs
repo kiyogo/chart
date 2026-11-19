@@ -1037,6 +1037,13 @@ pub fn Chat(
                     WsEvent::PrefsUpdated(v) if v.get("kind").and_then(|k| k.as_str()) == Some("contacts") => {
                         let _ = crate::services::profile_ext::load_contacts().await;
                     }
+                    WsEvent::SecurityAlert(v) => {
+                        let device = v.get("device").and_then(|x| x.as_str()).unwrap_or("thiết bị mới").to_string();
+                        let ip = v.get("ip").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+                        let text = format!("Tài khoản vừa đăng nhập từ {device} ({ip}). Không phải bạn? Vào Cài đặt › Thiết bị và phiên để đăng xuất thiết bị đó.");
+                        toast.set(Some(text.clone()));
+                        platform::show_notification("ChatW: đăng nhập mới", &text, "security-alert");
+                    }
                     WsEvent::ProfileUpdated(_) => {
                         if let Ok(list) = api::friends_list().await {
                             friends.set(list);

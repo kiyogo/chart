@@ -394,6 +394,8 @@ fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> E
     let mut sessions = use_signal(Vec::<SessionItem>::new);
     let mut loading = use_signal(|| true);
     let mut confirm_all = use_signal(|| false);
+    let mut need_code = use_signal(|| false);
+    let mut twofa_code = use_signal(String::new);
     let mut confirm_one = use_signal(|| Option::<String>::None);
     let mut notice = use_signal(|| Option::<(bool, String)>::None);
     let mut renaming = use_signal(|| Option::<(String, String)>::None);
@@ -492,14 +494,26 @@ fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> E
                 }
                 div { class: "story-actions",
                     if confirm_all() {
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_all.set(false), "Hủy" }
+                        if need_code() {
+                            input { r#type: "text", maxlength: "12", aria_label: "Mã xác minh hai bước", placeholder: "Mã 6 số hoặc mã dự phòng", value: "{twofa_code}", oninput: move |e| twofa_code.set(e.value()) }
+                        }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| { confirm_all.set(false); need_code.set(false); }, "Hủy" }
                         button { r#type: "button", class: "btn-danger",
                             onclick: move |_| {
                                 spawn(async move {
-                                    match library::sessions_revoke_others().await {
+                                    // Spec 011: the server asks for the second step when it is on.
+                                    let c = twofa_code().trim().to_string();
+                                    match crate::services::security::revoke_other_sessions(if c.is_empty() { None } else { Some(&c) }).await {
                                         Ok(_) => notice.set(Some((false, "Đã đăng xuất mọi thiết bị khác".into()))),
-                                        Err(_) => notice.set(Some((true, "Không thực hiện được".into()))),
+                                        Err(e) if e.code == "second_factor_required" => {
+                                            need_code.set(true);
+                                            notice.set(Some((true, "Nhập mã xác minh hai bước để tiếp tục".into())));
+                                            return;
+                                        }
+                                        Err(e) => notice.set(Some((true, crate::services::security::error_text(&e.code)))),
                                     }
+                                    twofa_code.set(String::new());
+                                    need_code.set(false);
                                     confirm_all.set(false);
                                     reload();
                                 });

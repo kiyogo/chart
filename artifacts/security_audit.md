@@ -56,3 +56,10 @@ end-to-end, WebSocket auth, WebRTC authorization.
 - Settings sync never carries the PIN lock (stripped by client and server); writes are versioned (409 on stale base).
 - Avatar uploads must be AVIF / WebP / PNG / JPEG by magic bytes; covers additionally accept GIF; anything else 400.
 - Saving a message to "Chính mình" re-encrypts it to the user's own key; nothing is stored in plaintext.
+
+## Spec 011
+- Parked accounts' session tokens are only in an HttpOnly, SameSite=Lax cookie scoped to /api/auth; scripts can't read them.
+- TOTP secrets encrypted at rest (AES-256-GCM, key = SHA-256(label ‖ server secret)); backup codes stored as SHA-256.
+- TOTP: ±1 step, constant-time compare, last accepted step stored (no replay); 5 attempts per challenge, 5-minute
+  challenges, 10 failures / 15 min → 429. Disable / regenerate / sign out other devices need a valid code.
+- Security log keeps only the network part of the IP (a.b.x.x).

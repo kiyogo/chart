@@ -322,6 +322,8 @@ pub enum WsEvent {
     PrefsUpdated(serde_json::Value),
     #[serde(rename = "profile.updated")]
     ProfileUpdated(serde_json::Value),
+    #[serde(rename = "security.alert")]
+    SecurityAlert(serde_json::Value),
     #[serde(other)]
     Unknown,
 }

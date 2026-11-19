@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod avatar;
 pub mod avatar_motion;
 pub mod business_view;

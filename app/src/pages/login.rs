@@ -13,9 +13,14 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
     let mut error = use_signal(|| Option::<String>::None);
     let mut dev_username = use_signal(String::new);
     let mut providers = use_signal(|| Option::<ProvidersResponse>::None);
+    // Spec 011: the second step (TOTP / backup code) after Google or test sign-in.
+    let mut twofa = use_signal(|| false);
 
     use_effect(move || {
         spawn(async move {
+            if crate::services::security::twofa_pending().await {
+                twofa.set(true);
+            }
             match api::auth_providers().await {
                 Ok(p) => providers.set(Some(p)),
                 Err(_) => error.set(Some("Không kết nối được máy chủ".to_string())),
@@ -52,7 +57,13 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
         let uname_opt = if uname.is_empty() { None } else { Some(uname) };
         spawn(async move {
             match api::auth_dev_login(uname_opt).await {
-                Ok(()) => on_login_success.call(()),
+                Ok(()) => {
+                    if crate::services::security::twofa_pending().await {
+                        twofa.set(true);
+                    } else {
+                        on_login_success.call(());
+                    }
+                }
                 Err(err) => {
                     let msg = if err.code.is_empty() {
                         "Đăng nhập không thành công".to_string()
@@ -109,7 +120,16 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
             }
 
             main { class: "auth-panel",
+                if twofa() {
+                    div { class: "auth-card",
+                        crate::components::accounts::TwoFactorPrompt {
+                            on_done: move |_| { twofa.set(false); on_login_success.call(()); },
+                            on_cancel: move |_| twofa.set(false),
+                        }
+                    }
+                } else {
                 div { class: "auth-card",
+                    crate::components::accounts::SignedInAccounts {}
                     div { class: "auth-card-head",
                         div { class: "auth-brand auth-card-brand",
                             span { class: "brand-mark", LogoIcon { size: 22 } }
@@ -165,6 +185,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                     p { class: "auth-legal",
                         "Khi tiếp tục, khóa mã hóa của bạn được tạo và lưu trên thiết bị này. Máy chủ chỉ nhận khóa công khai."
                     }
+                }
                 }
             }
         }

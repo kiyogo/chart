@@ -110,3 +110,12 @@ xem trước "Chính mình" lộ mã thiết bị; ảnh đại diện trong h�
   (GIF89a, 8 frames), project save + private thumbnail, animated sticker in "My Drawings", avatar, animated GIF cover,
   custom emoji, reopen keeps 2 layers / 8 frames / blend, server rejects non-PNG cells, other users get 404.
 - UI audit regression: 313/313.
+
+## Spec 011: accounts and security (2026-11-19)
+- `cargo test`: RFC 6238 test vectors (SHA1), base32, backup-code normalisation, IP masking.
+- `node app/e2e/security-check.mjs`: **21/21** — QR + secret, wrong code refused, enable with TOTP + 10 backup codes,
+  "sign out other devices" needs the second step (403), sign-in challenge, wrong code refused, TOTP sign-in (no replay of
+  the enabling code), backup-code sign-in (one-time), add a second account, parked account listed on sign-in, switch
+  without signing in again, both accounts kept, new device challenged, realtime "Firefox trên Windows" alert, security
+  log, disable with a backup code, "sign out all accounts".
+- UI audit regression: 313/313.

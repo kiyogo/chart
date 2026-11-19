@@ -148,3 +148,12 @@ Status values: Tested = works end to end and covered by an automated check; Impl
 | Private server projects with thumbnails, reopen for editing | Tested |
 | Use as avatar, cover, sticker, emoji, GIF, decoration, nameplate, profile effect | Tested (avatar, cover, sticker, emoji), Implemented (others) |
 | Animated WebP / APNG export, selection tool, pressure brushes, collaborative drawing | Not Started |
+
+## Spec 011: several accounts and account security (sections III, XXVI)
+| Item | Status |
+|---|---|
+| Up to 5 accounts per browser, quick switch, add / sign out one / sign out all, order + hide, unread per account | Tested |
+| TOTP two-step verification with QR, backup codes, replay guard, rate limit, challenge expiry | Tested |
+| Second step for every sign-in (Google and test login) and for signing out all other devices | Tested |
+| New-device login alert (realtime + system notification) and security log with masked IP | Tested |
+| Passkeys / WebAuthn, biometric unlock, SMS / email codes | Not Started |

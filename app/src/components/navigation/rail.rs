@@ -190,6 +190,7 @@ pub fn AppRail(
                             onclick: move |_| { menu_open.set(false); on_open_settings.call(()); },
                             SettingsIcon {} span { "Cài đặt" }
                         }
+                        crate::components::accounts::AccountSwitcher { on_close: move |_| menu_open.set(false) }
                         button { r#type: "button", class: "menu-item danger", role: "menuitem",
                             onclick: move |_| { menu_open.set(false); on_logout.call(()); },
                             LogoutIcon {} span { "Đăng xuất" }

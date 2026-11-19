@@ -66,7 +66,7 @@ fn tab_keywords(t: SettingsTab) -> &'static str {
     match t {
         SettingsTab::Account => "tai khoan ho so avatar anh dai dien anh bia ten username profile avatar studio hieu ung trang thai danh xung website so thich",
         SettingsTab::Privacy => "quyen rieng tu chan block da xem dang soan ket ban goi privacy",
-        SettingsTab::Security => "bao mat ma hoa khoa sao luu e2ee van tay backup security",
+        SettingsTab::Security => "bao mat ma hoa khoa sao luu e2ee van tay backup security xac minh hai buoc 2fa totp ma du phong nhat ky tai khoan da tai khoan chuyen tai khoan",
         SettingsTab::Lock => "khoa pin ma pin lock",
         SettingsTab::Session => "thiet bi phien dang xuat device session",
         SettingsTab::Chat => "tro chuyen goi y sticker dan excel bang enter tra loi bam dup chat",
@@ -499,6 +499,7 @@ pub fn SettingsView(
                             },
 
                             SettingsTab::Security => rsx! {
+                                crate::components::accounts::SecuritySettings {}
                                 div { class: "settings-group",
                                     div { class: "settings-group-title", "Mã hóa đầu cuối (E2EE)" }
                                     div { class: "settings-row",
