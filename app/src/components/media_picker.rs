@@ -43,6 +43,19 @@ fn GifPane(on_select: EventHandler<String>) -> Element {
             loading.set(false);
         });
     });
+    let prefs_ctx = try_consume_context::<crate::prefs::PrefsCtx>();
+    let fav_gifs: Vec<String> = prefs_ctx.map(|c| c.prefs.read().fav_gifs.clone()).unwrap_or_default();
+    let toggle = move |url: String| {
+        if let Some(c) = prefs_ctx {
+            c.update(move |p| {
+                if p.fav_gifs.contains(&url) {
+                    p.fav_gifs.retain(|u| u != &url);
+                } else {
+                    p.fav_gifs.insert(0, url.clone());
+                }
+            });
+        }
+    };
     let q = query().trim().to_lowercase();
     let mine_shown: Vec<LibraryItem> = mine().into_iter().filter(|g| q.is_empty() || g.name.to_lowercase().contains(&q)).collect();
     let builtin_shown: Vec<(&str, &str)> = BUILTIN_GIFS.iter().copied().filter(|(n, _)| q.is_empty() || n.to_lowercase().contains(&q)).collect();
@@ -55,6 +68,26 @@ fn GifPane(on_select: EventHandler<String>) -> Element {
             }
         }
         div { class: "picker-body",
+            if q.is_empty() && !fav_gifs.is_empty() {
+                div { class: "picker-section-title", "★ Favorite GIFs" }
+                div { class: "gif-grid",
+                    for u in fav_gifs.clone() {
+                        {
+                            let (send, un) = (u.clone(), u.clone());
+                            rsx! {
+                                div { key: "fav-{u}", class: "sticker-cell-wrap",
+                                    button { r#type: "button", class: "gif-cell", title: "Send GIF", aria_label: "Send favorite GIF",
+                                        onclick: move |_| on_select.call(send.clone()),
+                                        img { src: "{platform::resolve_asset_url(&u)}", alt: "Favorite GIF", loading: "lazy" }
+                                    }
+                                    button { r#type: "button", class: "sticker-fav on", aria_pressed: "true", title: "Remove from Favorite GIFs", aria_label: "Remove from Favorite GIFs",
+                                        onclick: move |e| { e.stop_propagation(); toggle(un.clone()) }, "★" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             div { class: "picker-section-title", "My GIFs" }
             if loading() {
                 div { class: "picker-empty", "Loading" }
@@ -64,13 +97,9 @@ fn GifPane(on_select: EventHandler<String>) -> Element {
                 div { class: "gif-grid",
                     for g in mine_shown {
                         {
-                            let url = g.file_url.clone();
+                            let fav = fav_gifs.contains(&g.file_url);
                             rsx! {
-                                button { key: "{g.id}", r#type: "button", class: "gif-cell", title: "{g.name}", aria_label: "Send GIF {g.name}",
-                                    onclick: move |_| on_select.call(url.clone()),
-                                    img { src: "{platform::resolve_asset_url(&g.file_url)}", alt: "{g.name}", loading: "lazy" }
-                                    span { class: "gif-name", "{g.name}" }
-                                }
+                                GifCell { key: "{g.id}", name: g.name.clone(), url: g.file_url.clone(), builtin: false, fav, on_select, on_fav: move |u: String| toggle(u) }
                             }
                         }
                     }
@@ -80,23 +109,36 @@ fn GifPane(on_select: EventHandler<String>) -> Element {
                 div { class: "picker-section-title", "Reactions" }
                 div { class: "gif-grid",
                     for (name, url) in fx_shown {
-                        button { key: "{url}", r#type: "button", class: "gif-cell builtin", title: "{name}", aria_label: "Send GIF {name}",
-                            onclick: move |_| on_select.call(url.to_string()),
-                            img { src: "{url}", alt: "{name}", loading: "lazy" }
-                            span { class: "gif-name", "{name}" }
-                        }
+                        GifCell { key: "{url}", name: name.to_string(), url: url.to_string(), builtin: true, fav: fav_gifs.iter().any(|f| f == url), on_select, on_fav: move |u: String| toggle(u) }
                     }
                 }
             }
             div { class: "picker-section-title", "ChatW Motion" }
             div { class: "gif-grid",
                 for (name, url) in builtin_shown {
-                    button { key: "{url}", r#type: "button", class: "gif-cell builtin", title: "{name}", aria_label: "Send GIF {name}",
-                        onclick: move |_| on_select.call(url.to_string()),
-                        img { src: "{url}", alt: "{name}", loading: "lazy" }
-                        span { class: "gif-name", "{name}" }
-                    }
+                    GifCell { key: "{url}", name: name.to_string(), url: url.to_string(), builtin: true, fav: fav_gifs.iter().any(|f| f == url), on_select, on_fav: move |u: String| toggle(u) }
                 }
+            }
+        }
+    }
+}
+
+/// One GIF with a ☆ Favorite GIFs toggle.
+#[component]
+fn GifCell(name: String, url: String, builtin: bool, fav: bool, on_select: EventHandler<String>, on_fav: EventHandler<String>) -> Element {
+    let (send, f) = (url.clone(), url.clone());
+    rsx! {
+        div { class: "sticker-cell-wrap",
+            button { r#type: "button", class: if builtin { "gif-cell builtin" } else { "gif-cell" }, title: "{name}", aria_label: "Send GIF {name}",
+                onclick: move |_| on_select.call(send.clone()),
+                img { src: "{platform::resolve_asset_url(&url)}", alt: "{name}", loading: "lazy" }
+                span { class: "gif-name", "{name}" }
+            }
+            button { r#type: "button", class: if fav { "sticker-fav on" } else { "sticker-fav" }, aria_pressed: "{fav}",
+                title: if fav { "Remove from Favorite GIFs" } else { "Add to Favorite GIFs" },
+                aria_label: if fav { "Remove {name} from Favorite GIFs" } else { "Add {name} to Favorite GIFs" },
+                onclick: move |e| { e.stop_propagation(); on_fav.call(f.clone()) },
+                if fav { "★" } else { "☆" }
             }
         }
     }

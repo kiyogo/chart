@@ -78,6 +78,10 @@ pub struct FriendItem {
     pub status_emoji: Option<String>,
     #[serde(default)]
     pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub avatar_decoration: Option<String>,
+    #[serde(default)]
+    pub avatar_motion: Option<crate::components::avatar_motion::AvatarMotion>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -316,6 +320,8 @@ pub enum WsEvent {
     GroupSettings(serde_json::Value),
     #[serde(rename = "prefs.updated")]
     PrefsUpdated(serde_json::Value),
+    #[serde(rename = "profile.updated")]
+    ProfileUpdated(serde_json::Value),
     #[serde(other)]
     Unknown,
 }
@@ -507,6 +513,40 @@ pub struct UserProfileResponse {
     pub custom_effect_url: Option<String>,
     #[serde(default)]
     pub custom_effect_anim: Option<String>,
+    // Spec 009 (merged from /api/profile-ext)
+    #[serde(default)]
+    pub avatar_motion: Option<crate::components::avatar_motion::AvatarMotion>,
+    #[serde(default)]
+    pub details: ProfileDetails,
+    #[serde(default)]
+    pub nickname: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub detail_visibility: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(default)]
+    pub status_expires_at: Option<String>,
+}
+
+/// Optional profile details; each one is only present when its owner lets the viewer see it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProfileDetails {
+    #[serde(default)]
+    pub pronouns: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub website: Option<String>,
+    #[serde(default)]
+    pub occupation: Option<String>,
+    #[serde(default)]
+    pub interests: Vec<String>,
+}
+
+impl ProfileDetails {
+    pub fn has_any(&self) -> bool {
+        [&self.location, &self.website, &self.occupation].iter().any(|v| v.as_ref().is_some_and(|x| !x.is_empty())) || !self.interests.is_empty()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

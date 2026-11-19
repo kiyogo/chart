@@ -37,6 +37,48 @@ enum SettingsTab {
     Business,
     Bots,
     Language,
+    Demo,
+}
+
+const NAV: [(SettingsTab, &str); 16] = [
+    (SettingsTab::Account, "Tài khoản của tôi"),
+    (SettingsTab::Privacy, "Quyền riêng tư và chặn"),
+    (SettingsTab::Security, "Bảo mật và mã hóa"),
+    (SettingsTab::Lock, "Khóa ứng dụng (mã PIN)"),
+    (SettingsTab::Session, "Thiết bị và phiên"),
+    (SettingsTab::Chat, "Trò chuyện"),
+    (SettingsTab::Notifications, "Thông báo và âm thanh"),
+    (SettingsTab::AutoReply, "Trả lời tự động"),
+    (SettingsTab::Appearance, "Giao diện"),
+    (SettingsTab::Customize, "Tùy chỉnh"),
+    (SettingsTab::Language, "Ngôn ngữ"),
+    (SettingsTab::Stickers, "Thư viện"),
+    (SettingsTab::Business, "Kinh doanh"),
+    (SettingsTab::Bots, "Bot"),
+    (SettingsTab::Demo, "Demo Gallery"),
+    (SettingsTab::Guide, "Hướng dẫn"),
+];
+
+/// Extra search words for each settings page (folded, Vietnamese and English).
+fn tab_keywords(t: SettingsTab) -> &'static str {
+    match t {
+        SettingsTab::Account => "tai khoan ho so avatar anh dai dien anh bia ten username profile avatar studio hieu ung trang thai danh xung website so thich",
+        SettingsTab::Privacy => "quyen rieng tu chan block da xem dang soan ket ban goi privacy",
+        SettingsTab::Security => "bao mat ma hoa khoa sao luu e2ee van tay backup security",
+        SettingsTab::Lock => "khoa pin ma pin lock",
+        SettingsTab::Session => "thiet bi phien dang xuat device session",
+        SettingsTab::Chat => "tro chuyen goi y sticker dan excel bang enter tra loi bam dup chat",
+        SettingsTab::Notifications => "thong bao am thanh am bao notification sound",
+        SettingsTab::AutoReply => "tra loi tu dong vang mat auto reply",
+        SettingsTab::Appearance => "giao dien chu de toi sang mau nhan co chu theme dark light",
+        SettingsTab::Customize => "tuy chinh mau bong bong hinh nen phong chu dong bo thiet bi hieu ung avatar danh sach sync wallpaper",
+        SettingsTab::Language => "ngon ngu language tieng anh",
+        SettingsTab::Stickers => "thu vien sticker emoji gif tai len upload library",
+        SettingsTab::Business => "kinh doanh ban hang san pham business",
+        SettingsTab::Bots => "bot token api",
+        SettingsTab::Guide => "huong dan phim tat cau hoi tro giup help faq",
+        SettingsTab::Demo => "demo thu hieu ung avatar xoay ten bang ten nameplate hinh nen playground gallery",
+    }
 }
 
 #[component]
@@ -56,6 +98,7 @@ pub fn SettingsView(
 ) -> Element {
     let on_replay_tour = on_replay_tour.unwrap_or_else(|| EventHandler::new(|_| {}));
     let mut tab = use_signal(|| SettingsTab::Account);
+    let mut nav_query = use_signal(String::new);
     let mut has_detail = use_signal(|| false);
     let mut appearance = use_signal(platform::load_appearance);
     let mut update_appearance = move |f: &dyn Fn(&mut platform::Appearance)| {
@@ -100,24 +143,25 @@ pub fn SettingsView(
             div { class: if has_detail() { "settings-page has-detail" } else { "settings-page" },
                 // Left Settings Nav (on mobile this is the first screen)
                 nav { class: "settings-nav", aria_label: "Danh mục cài đặt",
+                    div { class: "settings-search search-field",
+                        crate::components::icons::SearchIcon { size: 16 }
+                        input { r#type: "search", placeholder: "Tìm cài đặt", aria_label: "Tìm cài đặt", value: "{nav_query}",
+                            oninput: move |e| nav_query.set(e.value()),
+                            onkeydown: move |e| if e.key() == Key::Enter {
+                                let q = crate::components::composer::fold(nav_query().trim());
+                                if let Some((t, _)) = NAV.iter().find(|(t, l)| crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q)) {
+                                    tab.set(*t);
+                                    has_detail.set(true);
+                                }
+                            },
+                        }
+                    }
                     div { class: "settings-nav-title", "Người dùng" }
-                    for (t, label) in [
-                        (SettingsTab::Account, "Tài khoản của tôi"),
-                        (SettingsTab::Privacy, "Quyền riêng tư và chặn"),
-                        (SettingsTab::Security, "Bảo mật và mã hóa"),
-                        (SettingsTab::Lock, "Khóa ứng dụng (mã PIN)"),
-                        (SettingsTab::Session, "Thiết bị và phiên"),
-                        (SettingsTab::Chat, "Trò chuyện"),
-                        (SettingsTab::Notifications, "Thông báo và âm thanh"),
-                        (SettingsTab::AutoReply, "Trả lời tự động"),
-                        (SettingsTab::Appearance, "Giao diện"),
-                        (SettingsTab::Customize, "Tùy chỉnh"),
-                        (SettingsTab::Language, "Ngôn ngữ"),
-                        (SettingsTab::Stickers, "Thư viện"),
-                        (SettingsTab::Business, "Kinh doanh"),
-                        (SettingsTab::Bots, "Bot"),
-                        (SettingsTab::Guide, "Hướng dẫn"),
-                    ] {
+                    if !nav_query().trim().is_empty() && !NAV.iter().any(|(t, l)| { let q = crate::components::composer::fold(nav_query().trim()); crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
+                        div { class: "sidebar-empty", "Không tìm thấy cài đặt phù hợp" }
+                    }
+                    for (t, label) in NAV.iter().copied().filter(|(t, l)| { let q = crate::components::composer::fold(nav_query().trim()); q.is_empty() || crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
+
                         button {
                             key: "{label}",
                             r#type: "button",
@@ -140,6 +184,7 @@ pub fn SettingsView(
                                 SettingsTab::Business => rsx! { StoreIcon { size: 18 } },
                                 SettingsTab::Bots => rsx! { BotIcon { size: 18 } },
                                 SettingsTab::Language => rsx! { GlobeIcon { size: 18 } },
+                                SettingsTab::Demo => rsx! { PaletteIcon {} },
                             }
                             span { "{label}" }
                             span { class: "chevron", ChevronRightIcon { size: 16 } }
@@ -168,6 +213,7 @@ pub fn SettingsView(
                                     SettingsTab::Business => "Kinh doanh",
                                     SettingsTab::Bots => "Bot",
                                     SettingsTab::Language => "Ngôn ngữ",
+                                    SettingsTab::Demo => "Demo Gallery",
                                 }
                             }
                             p { class: "settings-page-desc",
@@ -184,7 +230,8 @@ pub fn SettingsView(
                                     SettingsTab::Business => "Trang công khai giới thiệu bạn, sản phẩm và công cụ nhắn tin cho người bán hàng.",
                                     SettingsTab::Bots => "Tạo bot, nhận token và lập trình bot của riêng bạn.",
                                     SettingsTab::Language => "Ngôn ngữ hiển thị của ứng dụng.",
-                                    SettingsTab::Customize => "Cột điều hướng, hình nền trò chuyện, âm báo và hiệu ứng. Lưu riêng cho tài khoản trên thiết bị này.",
+                                    SettingsTab::Demo => "Thử trực tiếp hiệu ứng avatar, hiệu ứng tên, bảng tên, hiệu ứng hồ sơ và hình nền rồi áp dụng ngay.",
+                                    SettingsTab::Customize => "Cột điều hướng, hình nền trò chuyện, âm báo, hiệu ứng và đồng bộ cài đặt giữa các thiết bị của bạn.",
                                     SettingsTab::Stickers => "Sticker, emoji và GIF của riêng bạn.",
                                     SettingsTab::Guide => "Giới thiệu, hướng dẫn từng bước, phím tắt và câu hỏi thường gặp.",
                                 }
@@ -562,7 +609,8 @@ pub fn SettingsView(
                                 }
                             },
 
-                            SettingsTab::Customize => rsx! { CustomizationSettings {} AdvancedLookSettings {} },
+                            SettingsTab::Customize => rsx! { crate::components::settings_more::SyncMotionSettings {} CustomizationSettings {} AdvancedLookSettings {} },
+                            SettingsTab::Demo => rsx! { crate::components::demo_gallery::DemoGallery { my_id: current_user_id.clone(), my_name: current_username.clone(), my_avatar: my_avatar_url.clone() } },
                             SettingsTab::Chat => rsx! { ChatPrefsSettings {} },
                             SettingsTab::Notifications => rsx! { NotificationSettings {} },
                             SettingsTab::Privacy => rsx! { PrivacySettingsPanel {} },

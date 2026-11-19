@@ -336,6 +336,8 @@ pub fn Chat(
             if let Ok(s) = library::sessions_list().await {
                 my_sessions.set(s);
             }
+            let _ = crate::services::profile_ext::load_contacts().await;
+            crate::services::settings_sync::pull(prefs_ctx).await;
         });
     });
 
@@ -1026,6 +1028,20 @@ pub fn Chat(
                             groups.set(grps);
                         }
                     }
+                    WsEvent::PrefsUpdated(v) if v.get("kind").and_then(|k| k.as_str()) == Some("settings") => {
+                        let newer = v.get("version").and_then(|x| x.as_i64()).unwrap_or(0) > crate::services::settings_sync::known_version();
+                        if newer {
+                            crate::services::settings_sync::pull(prefs_ctx).await;
+                        }
+                    }
+                    WsEvent::PrefsUpdated(v) if v.get("kind").and_then(|k| k.as_str()) == Some("contacts") => {
+                        let _ = crate::services::profile_ext::load_contacts().await;
+                    }
+                    WsEvent::ProfileUpdated(_) => {
+                        if let Ok(list) = api::friends_list().await {
+                            friends.set(list);
+                        }
+                    }
                     WsEvent::PrefsUpdated(_) => {
                         if let Ok(p) = social::prefs_list().await {
                             conv_prefs.set(p);
@@ -1304,6 +1320,8 @@ pub fn Chat(
             status_text: None,
             status_emoji: None,
             avatar_url: None,
+            avatar_decoration: None,
+            avatar_motion: None,
         });
     });
 
@@ -1478,6 +1496,26 @@ pub fn Chat(
         let reply = dm_reply_to().map(|(id, _)| id);
         dm_reply_to.set(None);
         send_dm_text.call((text, reply));
+    });
+
+    // Keep a copy of any message in "Chính mình": sent to myself, end-to-end encrypted.
+    let uid_for_save = current_user_id.clone();
+    let save_to_self = use_callback(move |text: String| {
+        let uid = uid_for_save.clone();
+        let current = my_sessions.peek().iter().find(|x| x.is_current).cloned();
+        let wire = match current {
+            Some(sess) => {
+                let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Thiết bị".into());
+                format!("\u{2060}{}|{}\u{2060}{}", sess.id, label.replace(['|', '\u{2060}'], " "), text)
+            }
+            None => text,
+        };
+        spawn(async move {
+            match dm::send_encrypted_dm(&uid, &uid, &wire, None).await {
+                Ok(_) => toast.set(Some("Đã lưu vào \"Chính mình\"".into())),
+                Err(_) => toast.set(Some("Không lưu được vào \"Chính mình\"".into())),
+            }
+        });
     });
 
     // End-to-end encrypted image for direct messages: the image is sealed with a
@@ -2353,6 +2391,7 @@ pub fn Chat(
                                     });
                                 },
                                 on_send_raw: move |raw: String| send_dm_text.call((raw, None)),
+                                on_save_self: if self_mode { None } else { Some(EventHandler::new(move |t: String| save_to_self.call(t))) },
                                 on_open_invite: move |(kind, code): (String, String)| invite_open.set(Some((kind, code))),
                             }
 
@@ -2625,6 +2664,7 @@ pub fn Chat(
                                     }
                                 })) } else { None },
                                 on_send_raw: move |raw: String| send_group_raw.call(raw),
+                                on_save_self: move |t: String| save_to_self.call(t),
                                 on_open_invite: move |(kind, code): (String, String)| invite_open.set(Some((kind, code))),
                             }
 

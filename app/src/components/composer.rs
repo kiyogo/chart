@@ -236,6 +236,12 @@ pub fn Composer(
     let prefs_ctx = try_use_context::<PrefsCtx>();
     let prefs = prefs_ctx.map(|c| c.prefs.read().clone()).unwrap_or_default();
     let mut picker = use_signal(|| Option::<MediaTab>::None);
+    // A sticker's "Find similar" opens the sticker picker with its name as the search.
+    use_effect(move || {
+        if crate::components::sticker_picker::PICKER_REQUEST.read().is_some() {
+            picker.set(Some(MediaTab::Sticker));
+        }
+    });
     let mut sel = use_signal(|| 0usize);
     let mut dismissed_for = use_signal(String::new);
     let mut pending_table = use_signal(|| Option::<String>::None);

@@ -19,6 +19,7 @@ pub mod privacy;
 pub mod public_pages;
 pub mod models;
 pub mod servers;
+pub mod profile_ext;
 pub mod stickers;
 pub mod typing;
 pub mod users;

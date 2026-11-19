@@ -90,3 +90,15 @@ xem trước "Chính mình" lộ mã thiết bị; ảnh đại diện trong h�
   image load, Vietnamese search "mèo", send + receive in an E2EE DM, "pizza" suggestion).
 - Found and fixed while testing: sticker pack tabs squashed into each other once there were 10+ packs;
   backend failed to start (`VersionMissing(14)`) because embedded migrations were stale (added `build.rs`).
+
+## Spec 009 (2026-11-19)
+
+- `cargo test --workspace`: all pass. New: backend `profile_ext` motion / website / visibility tests; client avatar motion
+  catalogue + render tests, prefs sync tests (PIN fields never synced, unsafe sticker paths dropped).
+- API smoke (`smoke9.sh`, 23 checks): motion validation (bad effect, CSS-injection colour, unknown field), details with
+  friends-only location hidden from strangers, private notes not visible to the other person, settings sync v1 + stale
+  write 409 + PIN stripped, status expiry cleared by the server task within a minute, GIF cover accepted, HTML disguised
+  as cover / avatar rejected.
+- UI audit on real Chrome + real server: **313/313**, including 25 new checks (Avatar Studio, realtime motion in a
+  friend's list, details, favourites, sticker menu, Send Again, save to "Chính mình", nickname, settings search, Demo
+  Gallery apply, help search, settings restored from sync after clearing the browser, 409 on stale writes).

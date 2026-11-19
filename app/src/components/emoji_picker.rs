@@ -74,6 +74,21 @@ pub fn EmojiPicker(
         );
     });
 
+    // Favorite Emoji (synced with my other devices). Right-click an emoji or use ☆ in the footer.
+    let prefs_ctx = try_consume_context::<crate::prefs::PrefsCtx>();
+    let favs: Vec<String> = prefs_ctx.map(|c| c.prefs.read().fav_emoji.clone()).unwrap_or_default();
+    let toggle_fav = move |em: String| {
+        if let Some(c) = prefs_ctx {
+            c.update(move |p| {
+                if p.fav_emoji.contains(&em) {
+                    p.fav_emoji.retain(|e| e != &em);
+                } else {
+                    p.fav_emoji.insert(0, em.clone());
+                }
+            });
+        }
+    };
+
     let mut choose = move |emoji: String| {
         recent.set(push_recent(&emoji));
         on_select.call(emoji);
@@ -258,6 +273,26 @@ pub fn EmojiPicker(
                         }
                     }
                 } else {
+                    if !favs.is_empty() {
+                        div { id: "emoji-cat-favorites",
+                            div { class: "picker-section-title", "Favorites" }
+                            div { class: "emoji-grid",
+                                for em in favs.clone() {
+                                    {
+                                        let pick = em.clone();
+                                        let unfav = em.clone();
+                                        rsx! {
+                                            button { key: "f-{em}", r#type: "button", class: "emoji-btn", aria_label: "{em}", title: "Right-click to remove from Favorites",
+                                                oncontextmenu: move |e| { e.prevent_default(); toggle_fav(unfav.clone()) },
+                                                onclick: move |_| choose(pick.clone()),
+                                                "{em}"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     div { id: "emoji-cat-recent",
                         div { class: "picker-section-title", "Recently used" }
                         if recent.read().is_empty() {
@@ -290,6 +325,7 @@ pub fn EmojiPicker(
                                     {
                                         let shown = with_skin_tone(em, &tone_now);
                                         let pick = shown.clone();
+                                        let fav = shown.clone();
                                         let hover = (shown.clone(), keyword_label(kw));
                                         rsx! {
                                             button {
@@ -297,6 +333,7 @@ pub fn EmojiPicker(
                                                 r#type: "button",
                                                 class: "emoji-btn",
                                                 aria_label: "{kw}",
+                                                oncontextmenu: move |e| { e.prevent_default(); toggle_fav(fav.clone()) },
                                                 onmouseenter: move |_| hovered.set(Some(hover.clone())),
                                                 onclick: move |_| choose(pick.clone()),
                                                 "{shown}"
@@ -314,6 +351,20 @@ pub fn EmojiPicker(
                 if let Some((em, label)) = hovered() {
                     span { class: "picker-footer-emoji", "{em}" }
                     span { class: "truncate", "{label}" }
+                    if !em.is_empty() && prefs_ctx.is_some() {
+                        {
+                            let on = favs.contains(&em);
+                            let e2 = em.clone();
+                            rsx! {
+                                button { r#type: "button", class: if on { "sticker-fav static on" } else { "sticker-fav static" }, aria_pressed: "{on}",
+                                    title: if on { "Remove from Favorites" } else { "Add to Favorites" },
+                                    aria_label: if on { "Remove {em} from Favorites" } else { "Add {em} to Favorites" },
+                                    onclick: move |_| toggle_fav(e2.clone()),
+                                    if on { "★" } else { "☆" }
+                                }
+                            }
+                        }
+                    }
                 } else {
                     span { class: "muted", "Arrow keys to move, Enter to pick" }
                 }

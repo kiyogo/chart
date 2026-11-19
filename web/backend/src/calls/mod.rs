@@ -582,8 +582,8 @@ async fn fetch_call_session(db: &sqlx::PgPool, call_id: Uuid) -> AppResult<CallS
         SELECT c.id as "id!", c.call_type as "call_type!", c.caller_id as "caller_id!", c.receiver_id, c.group_id, c.status as "status!",
                c.started_at, c.ended_at, c.created_at as "created_at!",
                u_caller.username AS caller_name, u_caller.avatar_url AS caller_avatar,
-               u_recv.username AS receiver_name,
-               g.name AS group_name
+               u_recv.username AS "receiver_name?",
+               g.name AS "group_name?"
         FROM call_sessions c
         JOIN users u_caller ON c.caller_id = u_caller.id
         LEFT JOIN users u_recv ON c.receiver_id = u_recv.id

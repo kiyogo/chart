@@ -1,9 +1,11 @@
 pub mod avatar;
+pub mod avatar_motion;
 pub mod business_view;
 pub mod bots_view;
 pub mod calls;
 pub mod chat_extras;
 pub mod composer;
+pub mod demo_gallery;
 pub mod details_panel;
 pub mod draw_studio;
 pub mod emoji_data;

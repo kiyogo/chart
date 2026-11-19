@@ -61,6 +61,11 @@ pub fn parse(body: &str) -> Option<Catalog> {
     Some(c)
 }
 
+/// The catalogue if it was already loaded this session.
+pub fn cached() -> Option<Rc<Catalog>> {
+    CACHE.with(|c| c.borrow().clone())
+}
+
 pub async fn load() -> Result<Rc<Catalog>, ApiError> {
     if let Some(c) = CACHE.with(|c| c.borrow().clone()) {
         return Ok(c);

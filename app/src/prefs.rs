@@ -80,6 +80,16 @@ pub struct Prefs {
     pub reduce_motion: bool,
     /// UI language (BCP-47)
     pub language: String,
+
+    // Spec 009: library favourites / recents (English names, synced across devices)
+    pub fav_stickers: Vec<String>,
+    pub recent_stickers: Vec<String>,
+    pub fav_gifs: Vec<String>,
+    pub fav_emoji: Vec<String>,
+    /// Avatar motion in lists (conversations, friends): always | hover | off
+    pub avatar_fx_lists: String,
+    /// Sync these preferences to my other devices (the PIN lock never leaves the device).
+    pub sync_settings: bool,
 }
 
 impl Default for Prefs {
@@ -126,8 +136,30 @@ impl Default for Prefs {
             time_24h: true,
             reduce_motion: false,
             language: "vi".to_string(),
+            fav_stickers: Vec::new(),
+            recent_stickers: Vec::new(),
+            fav_gifs: Vec::new(),
+            fav_emoji: Vec::new(),
+            avatar_fx_lists: "hover".to_string(),
+            sync_settings: true,
         }
     }
+}
+
+/// Never synced: the PIN lock belongs to one device.
+pub const DEVICE_ONLY: [&str; 5] = ["pin_salt", "pin_hash", "lock_enabled", "lock_minutes", "lock_on_start"];
+
+fn dedupe(list: &mut Vec<String>) {
+    let mut seen = std::collections::HashSet::new();
+    list.retain(|x| seen.insert(x.clone()));
+}
+
+/// Sticker / GIF paths we serve ourselves.
+pub fn valid_media_path(u: &str) -> bool {
+    (u.starts_with("/stickers/") || u.starts_with("/uploads/"))
+        && u.len() <= 200
+        && !u.contains("..")
+        && u.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_'))
 }
 
 pub const WALLPAPERS: [&str; 9] = ["none", "dots", "bubbles", "aurora", "paper", "sunset", "ocean", "mint", "night"];
@@ -191,6 +223,47 @@ impl Prefs {
         if !crate::i18n::LANGUAGES.iter().any(|(code, _, _)| *code == self.language) {
             self.language = d.language;
         }
+        pick(&mut self.avatar_fx_lists, &["always", "hover", "off"], "hover");
+        for (list, max) in [(&mut self.fav_stickers, 60), (&mut self.recent_stickers, 24), (&mut self.fav_gifs, 60)] {
+            list.retain(|u| valid_media_path(u));
+            dedupe(list);
+            list.truncate(max);
+        }
+        self.fav_emoji.retain(|e| !e.is_empty() && e.len() <= 32 && !e.chars().any(|c| c.is_ascii() && !c.is_ascii_digit() && c != '#' && c != '*'));
+        dedupe(&mut self.fav_emoji);
+        self.fav_emoji.truncate(40);
+    }
+
+    /// Preferences that may leave this device (the PIN lock never does).
+    pub fn sync_payload(&self) -> serde_json::Map<String, serde_json::Value> {
+        let mut m = match serde_json::to_value(self) {
+            Ok(serde_json::Value::Object(m)) => m,
+            _ => serde_json::Map::new(),
+        };
+        for k in DEVICE_ONLY {
+            m.remove(k);
+        }
+        m
+    }
+
+    /// Apply preferences from another device, keeping this device's own PIN lock.
+    pub fn merged_with(&self, remote: &serde_json::Map<String, serde_json::Value>) -> Prefs {
+        let mut mine = match serde_json::to_value(self) {
+            Ok(serde_json::Value::Object(m)) => m,
+            _ => return self.clone(),
+        };
+        for (k, v) in remote {
+            if !DEVICE_ONLY.contains(&k.as_str()) && mine.contains_key(k) {
+                mine.insert(k.clone(), v.clone());
+            }
+        }
+        let mut p: Prefs = serde_json::from_value(serde_json::Value::Object(mine)).unwrap_or_else(|_| self.clone());
+        p.sanitize();
+        p
+    }
+
+    pub fn sanitize_pub(&mut self) {
+        self.sanitize();
     }
 
     pub fn save(&self, user_id: &str) {
@@ -216,6 +289,44 @@ impl PrefsCtx {
         p.save(&self.user_id.read());
         crate::platform::apply_customization(&p);
         crate::i18n::set_language(&p.language);
+        let sync = p.sync_settings;
         self.prefs.set(p);
+        if sync {
+            crate::services::settings_sync::schedule_push(&self);
+        }
+    }
+
+    /// Replace preferences with ones that came from another device (no push back).
+    pub fn apply_remote(mut self, p: Prefs) {
+        use dioxus::prelude::*;
+        p.save(&self.user_id.read());
+        crate::platform::apply_customization(&p);
+        crate::i18n::set_language(&p.language);
+        self.prefs.set(p);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sync_never_carries_the_pin_lock() {
+        let mut p = Prefs::default();
+        p.pin_hash = "h".into();
+        p.lock_enabled = true;
+        let payload = p.sync_payload();
+        assert!(!payload.contains_key("pin_hash") && !payload.contains_key("lock_enabled"));
+        assert!(payload.contains_key("fav_stickers"));
+        let mut remote = payload.clone();
+        remote.insert("pin_hash".into(), serde_json::json!("evil"));
+        remote.insert("lock_enabled".into(), serde_json::json!(false));
+        remote.insert("custom_accent".into(), serde_json::json!("#112233"));
+        remote.insert("fav_stickers".into(), serde_json::json!(["/stickers/openmoji/1F600.svg", "javascript:x", "/stickers/../x"]));
+        let merged = p.merged_with(&remote);
+        assert_eq!(merged.pin_hash, "h");
+        assert!(merged.lock_enabled);
+        assert_eq!(merged.custom_accent, "#112233");
+        assert_eq!(merged.fav_stickers, vec!["/stickers/openmoji/1F600.svg".to_string()]);
     }
 }

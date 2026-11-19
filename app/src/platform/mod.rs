@@ -843,3 +843,45 @@ pub async fn image_bytes_to_data_url(bytes: &[u8], mime: &str) -> String {
     use base64::Engine;
     format!("data:{};base64,{}", mime, base64::engine::general_purpose::STANDARD.encode(bytes))
 }
+
+/// Minutes left until local midnight (custom status "until the end of today").
+pub fn minutes_until_midnight() -> i64 {
+    use chrono::Timelike;
+    let now = chrono::Local::now();
+    let used = now.hour() as i64 * 60 + now.minute() as i64;
+    (24 * 60 - used).clamp(1, 24 * 60)
+}
+
+/// If the chosen file is a GIF or WebP, return its bytes untouched (so an
+/// animated cover keeps moving); `Ok(None)` for other images. The server checks
+/// the real type again.
+pub async fn read_animated_image(input_id: &str, max_bytes: u32) -> Result<Option<Vec<u8>>, String> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            const input = document.getElementById({id_json});
+            if (!input || !input.files || input.files.length === 0) {{ dioxus.send({{ error: 'no_file' }}); return; }}
+            const file = input.files[0];
+            if (file.type !== 'image/gif' && file.type !== 'image/webp') {{ dioxus.send({{ skip: true }}); return; }}
+            if (file.size > {max_bytes}) {{ input.value = ''; dioxus.send({{ error: 'too_large' }}); return; }}
+            const buf = new Uint8Array(await file.arrayBuffer());
+            let bin = '';
+            for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+            input.value = '';
+            dioxus.send({{ b64: btoa(bin) }});
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val: serde_json::Value = eval.recv().await.map_err(|_| "eval_failed".to_string())?;
+    if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+        return Err(err.to_string());
+    }
+    if val.get("skip").is_some() {
+        return Ok(None);
+    }
+    let b64 = val.get("b64").and_then(|v| v.as_str()).ok_or_else(|| "missing_b64".to_string())?;
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.decode(b64).map(Some).map_err(|_| "bad_b64".to_string())
+}

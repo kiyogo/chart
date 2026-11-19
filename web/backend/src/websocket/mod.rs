@@ -199,6 +199,9 @@ pub enum WsEvent {
     /// Labels / pins / conversation preferences changed on another device.
     #[serde(rename = "prefs.updated")]
     PrefsUpdated(serde_json::Value),
+    /// A friend's (or my own) avatar motion / profile details changed.
+    #[serde(rename = "profile.updated")]
+    ProfileUpdated(serde_json::Value),
 }
 
 pub struct WsHub {

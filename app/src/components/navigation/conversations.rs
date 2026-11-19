@@ -121,7 +121,9 @@ pub fn ConversationList(
             key: format!("dm:{}", f.id),
             conv_type: "dm",
             conv_id: f.id.clone(),
-            name: f.display_name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| f.username.clone()),
+            name: crate::services::profile_ext::nickname_of(&f.id)
+                .or_else(|| f.display_name.clone().filter(|n| !n.trim().is_empty()))
+                .unwrap_or_else(|| f.username.clone()),
             avatar: f.avatar_url.clone(),
             preview: last_previews.get(&f.id).map(|s| preview_text(s)).unwrap_or_else(|| "Bắt đầu trò chuyện".to_string()),
             unread: unread_counts.get(&f.id).copied().unwrap_or(0),
@@ -254,6 +256,13 @@ pub fn ConversationList(
                     match &r.open {
                         ConvOpen::SelfChat => rsx! { span { class: "self-chat-avatar", aria_hidden: "true", DevicesIcon { size: 22 } } },
                         ConvOpen::Channel(_) => rsx! { span { class: "self-chat-avatar channel", aria_hidden: "true", HashIcon { size: 20 } } },
+                        ConvOpen::Dm(f) => rsx! {
+                            crate::components::profile_card::DecoratedAvatar {
+                                name: f.username.clone(), avatar_url: r.avatar.clone(), size: 44,
+                                decoration: f.avatar_decoration.clone().filter(|d| d != "custom"),
+                                motion: f.avatar_motion.clone(), in_list: true,
+                            }
+                        },
                         _ => rsx! { Avatar { name: r.name.clone(), avatar_url: r.avatar.clone(), size: 44 } },
                     }
                     div { class: "chat-item-info",

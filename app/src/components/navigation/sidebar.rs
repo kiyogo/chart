@@ -225,10 +225,13 @@ pub fn NavigationSidebar(
                                             class: if is_selected { "chat-item selected {np_cls}" } else { "chat-item {np_cls}" },
                                             style: "{np_style}",
                                             onclick: move |_| on_select_friend.call(f_click.clone()),
-                                            Avatar {
+                                            crate::components::profile_card::DecoratedAvatar {
                                                 name: friend.username.clone(),
                                                 avatar_url: friend.avatar_url.clone(),
                                                 size: 44,
+                                                decoration: friend.avatar_decoration.clone().filter(|d| d != "custom"),
+                                                motion: friend.avatar_motion.clone(),
+                                                in_list: true,
                                             }
                                             div { class: "chat-item-info",
                                                 div { class: "chat-item-header",

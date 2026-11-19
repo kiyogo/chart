@@ -46,3 +46,13 @@ end-to-end, WebSocket auth, WebRTC authorization.
 - Bot: token chỉ lưu SHA-256, hiện một lần; bot riêng tư chỉ nói chuyện với chủ; tên bot không được trùng tên tài khoản người khác.
 - Tin nhắn nhóm, kênh cộng đồng và bot không mã hóa đầu cuối (máy chủ đọc được) — ghi rõ trong giao diện.
 - Trả lời tự động và lời chào Kinh doanh gửi từ thiết bị của bạn (mã hóa đầu cuối); có dấu `[Tự động]` để hai tài khoản tự động không trả lời nhau vô hạn.
+
+## Spec 009
+- Avatar motion is a declarative object (`deny_unknown_fields`, enum ids, bounded numbers, `#RRGGBB` only); the client
+  re-validates before writing CSS variables, so a profile cannot inject CSS or run code.
+- Profile details are filtered by the server per viewer (everyone / friends / nobody; blocked users get 404).
+- Contact notes are private to their owner (never returned to the other person); they are stored on the server without
+  end-to-end encryption and the UI says they are private, not encrypted.
+- Settings sync never carries the PIN lock (stripped by client and server); writes are versioned (409 on stale base).
+- Avatar uploads must be AVIF / WebP / PNG / JPEG by magic bytes; covers additionally accept GIF; anything else 400.
+- Saving a message to "Chính mình" re-encrypts it to the user's own key; nothing is stored in plaintext.

@@ -8,7 +8,7 @@ use crate::{
         icons::{CloseIcon, MessageIcon},
         draw_studio::DrawStudio,
         profile_card::{
-            AVATAR_EFFECTS, DECORATIONS, DecoratedAvatar, EFFECTS, EFFECT_ANIMS, NAME_EFFECTS, NAMEPLATES, ProfileCard,
+            DECORATIONS, DecoratedAvatar, EFFECTS, EFFECT_ANIMS, NAME_EFFECTS, NAMEPLATES, ProfileCard,
             THEME_PRESETS, name_effect_class, nameplate_style,
         },
     },
@@ -23,6 +23,7 @@ use crate::{
 #[derive(Clone, Copy, PartialEq)]
 enum EditTab {
     Info,
+    Motion,
     Style,
     Effects,
     Create,
@@ -45,6 +46,9 @@ pub fn ProfileModal(
     let mut saving = use_signal(|| false);
     let mut notice = use_signal(|| Option::<(bool, String)>::None);
     let mut studio_target = use_signal(|| Option::<String>::None);
+    // Spec 009: minutes until the custom status clears (-1 = keep the current timer).
+    let mut status_expiry = use_signal(|| -1i64);
+    let mut interests_text = use_signal(String::new);
 
     let uid = user_id.clone();
     use_effect(move || {
@@ -53,6 +57,7 @@ pub fn ProfileModal(
             match get_user_profile(&u).await {
                 Ok(p) => {
                     if start_editing && is_self {
+                        interests_text.set(p.details.interests.join(", "));
                         draft.set(Some(p.clone()));
                     }
                     profile.set(Some(p));
@@ -93,15 +98,43 @@ pub fn ProfileModal(
                 "custom_effect_url": d.custom_effect_url.clone().unwrap_or_default(),
                 "custom_effect_anim": d.custom_effect_anim.clone().unwrap_or_else(|| "none".into()),
             });
-            match update_my_profile_fields(fields).await {
+            let interests: Vec<String> = interests_text().split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).take(12).collect();
+            let mut ext = json!({
+                "avatar_motion": d.avatar_motion.clone(),
+                "pronouns": d.details.pronouns.clone().unwrap_or_default(),
+                "location": d.details.location.clone().unwrap_or_default(),
+                "website": d.details.website.clone().unwrap_or_default(),
+                "occupation": d.details.occupation.clone().unwrap_or_default(),
+                "interests": interests,
+                "detail_visibility": d.detail_visibility.clone().unwrap_or_default(),
+            });
+            if status_expiry() >= 0 {
+                ext["status_expires_in_minutes"] = json!(if d.status_text.as_deref().unwrap_or_default().trim().is_empty() { 0 } else { status_expiry() });
+            }
+            let result = match update_my_profile_fields(fields).await {
+                Ok(mut updated) => match crate::services::profile_ext::update_me(ext).await {
+                    Ok(v) => {
+                        crate::services::profile_ext::merge_into(&mut updated, &v);
+                        Ok(updated)
+                    }
+                    Err(e) => Err(e),
+                },
+                Err(e) => Err(e),
+            };
+            match result {
                 Ok(updated) => {
+                    status_expiry.set(-1);
                     profile.set(Some(updated.clone()));
                     draft.set(None);
                     if let Some(h) = on_profile_updated {
                         h.call(updated);
                     }
                 }
-                Err(e) => notice.set(Some((true, format!("Không lưu được hồ sơ ({})", e.code)))),
+                Err(e) => notice.set(Some((true, match e.code.as_str() {
+                    "invalid_website" => "Website phải bắt đầu bằng https:// hoặc http://".to_string(),
+                    "too_many_interests" => "Tối đa 12 sở thích".to_string(),
+                    c => format!("Không lưu được hồ sơ ({c})"),
+                }))),
             }
             saving.set(false);
         });
@@ -133,6 +166,7 @@ pub fn ProfileModal(
                             }
                             div { class: "segmented", style: "margin: 0 var(--space-5);", role: "tablist",
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Info { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Info), "Thông tin" }
+                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Motion { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Motion), "Avatar Studio" }
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Style { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Style), "Trang trí" }
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Effects { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Effects), "Hiệu ứng" }
                                 button { r#type: "button", role: "tab", class: if tab() == EditTab::Create { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Create), "Tự tạo" }
@@ -162,6 +196,7 @@ pub fn ProfileModal(
                                                                     Err(_) => notice.set(Some((true, "Không thể tải ảnh đại diện".into()))),
                                                                 },
                                                                 Err(e) if e == "no_file" => {}
+                                                                Err(e) if e == "too_large" => notice.set(Some((true, "Ảnh bìa động phải nhỏ hơn 8 MB".into()))),
                                                                 Err(_) => notice.set(Some((true, "Không thể xử lý ảnh".into()))),
                                                             }
                                                         });
@@ -178,7 +213,14 @@ pub fn ProfileModal(
                                                     onchange: move |_| {
                                                         notice.set(None);
                                                         spawn(async move {
-                                                            match platform::process_banner_from_input("profile-banner-input").await {
+                                                            // GIF / WebP covers are uploaded untouched so they keep their animation.
+                                                            let animated = platform::read_animated_image("profile-banner-input", 8 * 1024 * 1024).await;
+                                                            let processed = match animated {
+                                                                Ok(Some(bytes)) => Ok(bytes),
+                                                                Ok(None) => platform::process_banner_from_input("profile-banner-input").await,
+                                                                Err(e) => Err(e),
+                                                            };
+                                                            match processed {
                                                                 Ok(bytes) => match users_upload_banner(bytes).await {
                                                                     Ok(url) => {
                                                                         draft.with_mut(|d| if let Some(p) = d { p.custom_banner_url = Some(url.clone()); });
@@ -193,7 +235,7 @@ pub fn ProfileModal(
                                                         });
                                                     },
                                                 }
-                                                "Đổi ảnh bìa"
+                                                "Đổi ảnh bìa (hỗ trợ GIF động)"
                                             }
                                         }
                                     }
@@ -225,6 +267,19 @@ pub fn ProfileModal(
                                                 oninput: move |e| { let v = e.value(); edit(&|p| p.status_text = Some(v.clone())); },
                                             }
                                         }
+                                        div { class: "inline-form", style: "margin-top: var(--space-2);",
+                                            span { class: "member-sub", "Tự xóa trạng thái sau" }
+                                            select { aria_label: "Tự xóa trạng thái sau",
+                                                onchange: move |e| status_expiry.set(e.value().parse().unwrap_or(-1)),
+                                                option { value: "-1", selected: status_expiry() == -1, if d.status_expires_at.is_some() { "Giữ hẹn giờ hiện tại" } else { "Không tự xóa" } }
+                                                option { value: "0", selected: status_expiry() == 0, "Không bao giờ" }
+                                                option { value: "30", selected: status_expiry() == 30, "30 phút" }
+                                                option { value: "60", selected: status_expiry() == 60, "1 giờ" }
+                                                option { value: "240", selected: status_expiry() == 240, "4 giờ" }
+                                                option { value: "{platform::minutes_until_midnight()}", "Hết hôm nay" }
+                                                option { value: "10080", selected: status_expiry() == 10080, "7 ngày" }
+                                            }
+                                        }
                                     }
                                     label { class: "form-field",
                                         span { class: "form-label", "Chế độ" }
@@ -247,20 +302,47 @@ pub fn ProfileModal(
                                             oninput: move |e| { let v = e.value(); edit(&|p| p.bio = Some(v.clone())); },
                                         }
                                     }
+                                    div { class: "settings-group-title", "Thông tin thêm (tùy chọn)" }
+                                    p { class: "member-sub", "Mỗi mục có quyền xem riêng. Máy chủ chỉ gửi mục đó cho người bạn cho phép." }
+                                    for (key, label, ph, max) in [("pronouns", "Danh xưng", "she/her, anh/chị", 40), ("occupation", "Công việc", "Thiết kế, sinh viên", 64), ("location", "Nơi sống", "Hà Nội", 64), ("website", "Website", "https://", 200)] {
+                                        {
+                                            let cur = match key { "pronouns" => d.details.pronouns.clone(), "occupation" => d.details.occupation.clone(), "location" => d.details.location.clone(), _ => d.details.website.clone() }.unwrap_or_default();
+                                            let vis = d.detail_visibility.as_ref().and_then(|m| m.get(key).cloned()).unwrap_or_else(|| if key == "location" { "friends".into() } else { "everyone".into() });
+                                            rsx! {
+                                                div { key: "{key}", class: "detail-row",
+                                                    label { class: "form-field grow",
+                                                        span { class: "form-label", "{label}" }
+                                                        input { maxlength: "{max}", placeholder: "{ph}", value: "{cur}",
+                                                            oninput: move |e| { let v = e.value(); edit(&|p| { let t = Some(v.clone()); match key { "pronouns" => p.details.pronouns = t, "occupation" => p.details.occupation = t, "location" => p.details.location = t, _ => p.details.website = t } }); },
+                                                        }
+                                                    }
+                                                    VisibilitySelect { field: key.to_string(), value: vis, on_change: move |v: String| edit(&|p| { p.detail_visibility.get_or_insert_with(Default::default).insert(key.to_string(), v.clone()); }) }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    div { class: "detail-row",
+                                        label { class: "form-field grow",
+                                            span { class: "form-label", "Sở thích (cách nhau bằng dấu phẩy, tối đa 12)" }
+                                            input { maxlength: "400", placeholder: "Music, Anime, Coding", value: "{interests_text}", oninput: move |e| interests_text.set(e.value()) }
+                                        }
+                                        VisibilitySelect { field: "interests".to_string(), value: d.detail_visibility.as_ref().and_then(|m| m.get("interests").cloned()).unwrap_or_else(|| "everyone".into()),
+                                            on_change: move |v: String| edit(&|p| { p.detail_visibility.get_or_insert_with(Default::default).insert("interests".to_string(), v.clone()); }) }
+                                    }
+                                } else if tab() == EditTab::Motion {
+                                    p { class: "member-sub", "Chọn một trong 40 hiệu ứng, chỉnh tốc độ, cường độ, màu, hướng xoay và cách kích hoạt. Hiệu ứng hiện trên hồ sơ, danh sách trò chuyện và danh sách bạn bè của mọi người." }
+                                    crate::components::avatar_motion::AvatarStudio {
+                                        name: d.username.clone(),
+                                        avatar_url: d.avatar_url.clone(),
+                                        value: d.avatar_motion.clone(),
+                                        on_change: move |m: Option<crate::components::avatar_motion::AvatarMotion>| edit(&|p| p.avatar_motion = m.clone()),
+                                    }
                                 } else if tab() == EditTab::Effects {
                                     div { class: "form-field",
                                         span { class: "form-label", "Hiệu ứng ảnh đại diện" }
-                                        div { class: "option-tiles",
-                                            for (val, label) in AVATAR_EFFECTS {
-                                                button {
-                                                    key: "{val}",
-                                                    r#type: "button",
-                                                    class: if d.avatar_effect.as_deref().unwrap_or("none") == val { "option-tile active" } else { "option-tile" },
-                                                    onclick: move |_| edit(&|p| p.avatar_effect = Some(val.into())),
-                                                    DecoratedAvatar { name: d.username.clone(), avatar_url: d.avatar_url.clone(), size: 44, avatar_effect: Some(val.to_string()) }
-                                                    span { "{label}" }
-                                                }
-                                            }
+                                        div { class: "inline-form",
+                                            span { class: "member-sub", "40 hiệu ứng có chỉnh tốc độ, màu và cách kích hoạt nằm trong Avatar Studio." }
+                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| tab.set(EditTab::Motion), "Mở Avatar Studio" }
                                         }
                                     }
                                     div { class: "form-field",
@@ -562,6 +644,18 @@ pub fn ProfilePopover(
             } else {
                 div { class: "empty-chat-inner", "Đang tải hồ sơ" }
             }
+        }
+    }
+}
+
+/// Who may see one profile detail (enforced by the server).
+#[component]
+fn VisibilitySelect(field: String, value: String, on_change: EventHandler<String>) -> Element {
+    rsx! {
+        select { class: "vis-select", aria_label: "Ai xem được {field}", value: "{value}", onchange: move |e| on_change.call(e.value()),
+            option { value: "everyone", selected: value == "everyone", "Mọi người" }
+            option { value: "friends", selected: value == "friends", "Bạn bè" }
+            option { value: "nobody", selected: value == "nobody", "Chỉ mình tôi" }
         }
     }
 }

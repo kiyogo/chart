@@ -337,7 +337,14 @@ async function main() {
     await back.click(); await A.waitForTimeout(300);
   }
   // ---------------- Feature checks (spec 007) ----------------
-  const safe = async (name, fn) => { try { await fn(); } catch (e) { record(name, false, String(e).split('\n')[0].slice(0, 160)); } };
+  const safe = async (name, fn) => {
+    try { await fn(); } catch (e) {
+      const lines = String(e).split('\n');
+      const where = lines.find((l) => l.includes('waiting for')) || '';
+      record(name, false, (lines[0].slice(0, 120) + ' ' + where.trim()).slice(0, 260));
+      await shot(A, 'fail_' + name.replace(/[^a-z0-9]+/gi, '_')).catch(() => {});
+    }
+  };
   await safe('self chat flow', async () => {
     const selfRow = A.locator('[data-conv="self"]');
     record('"Chính mình" is listed in Messages', await selfRow.count() > 0, '');
@@ -389,6 +396,144 @@ async function main() {
     await A.waitForTimeout(900);
     record('typing "pizza" suggests the OpenMoji sticker', await A.locator('.sticker-suggest img[src*="/stickers/openmoji/1F355.svg"]').count() > 0, '');
     await dmInput.fill('');
+  });
+  // ---------- Spec 009 ----------
+  await safe('avatar studio', async () => {
+    await A.keyboard.press('Escape').catch(() => {});
+    await A.locator('.rail-account').click();
+    await A.locator('.rail-menu .menu-item', { hasText: 'Hồ sơ của tôi' }).click();
+    await A.waitForTimeout(800);
+    await A.locator('.profile-modal button', { hasText: 'Chỉnh sửa hồ sơ' }).click();
+    await A.waitForTimeout(400);
+    await A.locator('.profile-editor input[placeholder="she/her, anh/chị"]').fill('she/her');
+    await A.locator('.profile-editor input[placeholder="Thiết kế, sinh viên"]').fill('Designer');
+    await A.locator('.profile-editor input[placeholder="Hà Nội"]').fill('Hà Nội');
+    await A.locator('.profile-editor input[placeholder="Music, Anime, Coding"]').fill('Music, Anime');
+    await A.locator('.profile-editor select[aria-label="Tự xóa trạng thái sau"]').selectOption('60');
+    await A.locator('.profile-editor .segmented button', { hasText: 'Avatar Studio' }).click();
+    await A.waitForTimeout(400);
+    record('Avatar Studio lists 40 effects', await A.locator('.motion-grid .motion-tile').count() === 41, String(await A.locator('.motion-grid .motion-tile').count()));
+    await A.locator('.motion-tile[title="Orbit"]').click();
+    await A.locator('input[aria-label="Tốc độ"]').fill('2');
+    await A.locator('.segmented button', { hasText: 'Ngược chiều' }).click();
+    await A.waitForTimeout(500);
+    record('studio preview animates the chosen effect', await A.locator('.studio-preview .avm-orbit.avm-t-always .avm-fx i').count() === 6, '');
+    await shot(A, 'avatar_studio_light_1366x768');
+    await A.locator('.profile-editor button', { hasText: 'Lưu thay đổi' }).click();
+    await A.waitForTimeout(1200);
+    const ext = await api(alice, 'GET', `/api/profile-ext/${alice.me.id}`);
+    const m = ext.body && ext.body.avatar_motion;
+    record('avatar motion saved on server', !!m && m.effect === 'orbit' && m.speed === 2 && m.reverse === true, JSON.stringify(m));
+    record('profile details saved', ext.body && ext.body.details && ext.body.details.pronouns === 'she/her' && (ext.body.details.interests || []).length === 2, JSON.stringify(ext.body && ext.body.details));
+    record('status expiry set', !!(ext.body && ext.body.status_expires_at), String(ext.body && ext.body.status_expires_at));
+    record('profile card shows motion + details', await A.locator('.profile-card .avm-orbit').count() > 0 && await A.locator('.profile-card .interest-chip').count() === 2, '');
+    await shot(A, 'profile_motion_details_light_1366x768');
+    await A.locator('.profile-modal button[aria-label="Đóng hồ sơ"]').click().catch(() => {});
+    await A.keyboard.press('Escape');
+    await A.waitForTimeout(300);
+    if (await A.locator('.profile-modal').isVisible().catch(() => false)) await A.locator('.modal-overlay').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await B.waitForTimeout(1500);
+    record('friend sees the avatar motion in their list (realtime)', await B.locator('.conv-row .deco-wrap.avm-orbit, .chat-item .deco-wrap.avm-orbit').count() > 0, '');
+    const bView = await api(bob, 'GET', `/api/profile-ext/${alice.me.id}`);
+    record('friend sees location (friends-only default)', bView.body && bView.body.details && bView.body.details.location === 'Hà Nội' && !('detail_visibility' in bView.body), JSON.stringify(bView.body && bView.body.details));
+    const bad = await api(alice, 'PUT', '/api/profile-ext/me', { avatar_motion: { effect: 'spin', color: 'red;background:url(x)' } });
+    record('unsafe motion color rejected', bad.status === 400, `status ${bad.status}`);
+  });
+  await safe('favorites, sticker menu, save to self', async () => {
+    await openDm(A, NAMES.bob);
+    await A.locator('button[aria-label="Chọn sticker"]').first().click();
+    await A.waitForTimeout(900);
+    await A.locator('.picker-popover .picker-tab', { hasText: 'OpenMoji' }).click();
+    await A.waitForTimeout(900);
+    const cell = A.locator('.openmoji-grid .sticker-cell-wrap').first();
+    await cell.hover();
+    await cell.locator('.sticker-fav').click();
+    await A.locator('.picker-popover .picker-tab', { hasText: 'Favorites' }).click();
+    await A.waitForTimeout(400);
+    record('sticker added to Favorite Stickers', await A.locator('.picker-popover .sticker-grid .sticker-cell').count() === 1, '');
+    await A.locator('.picker-popover .sticker-grid .sticker-cell').first().click();
+    await A.waitForTimeout(1500);
+    const before = await A.locator('.message-row.sent .sticker-img').count();
+    await A.locator('.message-row.sent .sticker-open').last().click();
+    await A.waitForTimeout(300);
+    record('sticker message menu opens', await A.locator('.sticker-menu .account-menu-item').count() === 3, '');
+    await shot(A, 'sticker_menu_light_1366x768');
+    await A.locator('.sticker-menu .account-menu-item', { hasText: 'Send Again' }).click();
+    await A.waitForTimeout(1500);
+    record('Send Again sends the sticker again', await A.locator('.message-row.sent .sticker-img').count() === before + 1, `${before}`);
+    await A.locator('button[aria-label="Chọn sticker"]').first().click();
+    await A.waitForTimeout(700);
+    record('Recently Used lists sent stickers', await A.locator('.picker-popover .picker-tab', { hasText: 'Recently Used' }).count() === 1, '');
+    await A.locator('.picker-popover .picker-tab', { hasText: 'Recently Used' }).click();
+    await A.waitForTimeout(300);
+    record('recent stickers shown', await A.locator('.picker-popover .sticker-grid .sticker-cell').count() >= 1, '');
+    await A.keyboard.press('Escape');
+    await A.locator('button[aria-label="Chọn sticker"]').first().click().catch(() => {});
+    await A.waitForTimeout(200);
+    if (await A.locator('.picker-popover').isVisible().catch(() => false)) await A.locator('button[aria-label="Chọn sticker"]').first().click();
+    await sendText(A, 'Tin để lưu lại');
+    await A.waitForTimeout(1200);
+    const row = A.locator('.message-row.sent', { hasText: 'Tin để lưu lại' }).last();
+    await row.hover();
+    await row.locator('button[aria-label="Lưu vào Chính mình"]').click();
+    await A.waitForTimeout(1500);
+    await A.locator('[data-conv="self"]').click();
+    await A.waitForTimeout(1500);
+    record('message saved into "Chính mình" (E2EE)', await A.locator('.message-row', { hasText: 'Tin để lưu lại' }).count() > 0, '');
+    await openDm(A, NAMES.bob);
+    const sync = await api(alice, 'GET', '/api/settings-sync');
+    record('favorites synced to the server (no PIN data)', sync.body && (sync.body.data.fav_stickers || []).length === 1 && !('pin_hash' in sync.body.data), JSON.stringify(sync.body && sync.body.version));
+  });
+  await safe('nickname and note', async () => {
+    await openDm(B, NAMES.alice);
+    const info = B.locator('button[title="Thông tin cuộc trò chuyện"]').first();
+    if (!(await B.locator('.details-panel').isVisible().catch(() => false))) await info.click().catch(() => {});
+    await B.waitForTimeout(800);
+    await B.locator('.details-section-toggle').click();
+    await B.locator('.details-panel input[aria-label="Biệt danh"]').fill('Chị Alice');
+    await B.locator('.details-panel textarea[aria-label="Ghi chú riêng"]').fill('Gặp ở hội thảo thiết kế');
+    await B.locator('.details-panel button', { hasText: 'Lưu' }).click();
+    await B.waitForTimeout(1000);
+    record('nickname replaces the name in my list', await B.locator('.conv-row', { hasText: 'Chị Alice' }).count() > 0, '');
+    await shot(B, 'contact_note_light_1366x768');
+    const aSees = await api(alice, 'GET', `/api/profile-ext/${bob.me.id}`);
+    record('the other person never sees my note', aSees.body && aSees.body.note == null && aSees.body.nickname == null, '');
+    // Clear it again so later steps can find the chat by its real name.
+    await api(bob, 'PUT', `/api/contacts/${alice.me.id}/note`, { nickname: '', note: '' });
+    await B.waitForTimeout(1000);
+    record('clearing the nickname syncs to my devices', await B.locator('.conv-row', { hasText: 'Chị Alice' }).count() === 0, '');
+  });
+  await safe('settings search and Demo Gallery', async () => {
+    await A.locator('.app-rail button.rail-item[aria-label="Cài đặt"]').click();
+    await A.waitForTimeout(500);
+    await A.locator('input[aria-label="Tìm cài đặt"]').fill('pin');
+    await A.waitForTimeout(200);
+    record('settings search filters pages', await A.locator('.settings-nav-item').count() === 1, String(await A.locator('.settings-nav-item').count()));
+    await A.locator('input[aria-label="Tìm cài đặt"]').fill('');
+    await A.locator('.settings-nav-item', { hasText: 'Demo Gallery' }).click();
+    await A.waitForTimeout(1200);
+    record('Demo Gallery shows all 40 avatar demos', await A.locator('.demo-motion-cell').count() === 40, '');
+    await shot(A, 'demo_gallery_avatar_light_1366x768');
+    await A.locator('.demo-toolbar .segmented button', { hasText: 'Hiệu ứng tên' }).click();
+    await A.waitForTimeout(300);
+    record('Demo Gallery lists 16 name effects', await A.locator('.demo-row').count() === 16, '');
+    await A.locator('.demo-row', { hasText: 'Phát sáng' }).locator('button', { hasText: 'Áp dụng' }).click();
+    await A.waitForTimeout(1000);
+    const prof = await api(alice, 'GET', `/api/users/${alice.me.id}/profile`);
+    record('Demo Gallery "Áp dụng" saves to the real profile', prof.body && prof.body.name_effect === 'glow', String(prof.body && prof.body.name_effect));
+    await A.locator('.demo-toolbar .segmented button', { hasText: 'Mobile' }).click();
+    await A.locator('.demo-toolbar .segmented button', { hasText: 'Hình nền chat' }).click();
+    await A.waitForTimeout(400);
+    await shot(A, 'demo_gallery_wallpapers_mobile_light_1366x768');
+    record('mobile preview narrows the stage', ((await A.locator('.demo-stage').boundingBox()) || { width: 999 }).width <= 392, '');
+    await A.locator('.settings-nav-item', { hasText: 'Hướng dẫn' }).click();
+    await A.waitForTimeout(300);
+    await A.locator('input[aria-label="Tìm trong hướng dẫn"]').fill('avatar');
+    await A.waitForTimeout(200);
+    record('help search finds the Avatar Studio guide', await A.locator('.guide-card', { hasText: 'Avatar Studio' }).count() > 0, '');
+    await A.locator('.app-rail button.rail-item[aria-label="Tin nhắn"]').click().catch(() => {});
+    await A.waitForTimeout(500);
+    await openDm(A, NAMES.bob);
   });
   await safe('spreadsheet paste', async () => {
     await A.evaluate(() => {
@@ -512,9 +657,20 @@ async function main() {
     await back.click(); await A.waitForTimeout(300);
   }
 
-  // reset wallpaper/pins for the layout sweep that follows
+  // Settings sync: clearing this browser's copy brings the account's settings back from the server.
   await A.evaluate((id) => localStorage.removeItem('chatw_prefs_' + id), alice.me.id);
   await A.reload(); await waitApp(A);
+  await A.waitForTimeout(1500);
+  record('settings come back from sync after clearing this device', await A.locator('.rail-pin').count() > 0, String(await A.locator('.rail-pin').count()));
+  // Reset wallpaper/pins (server copy and this device) for the layout sweep that follows.
+  const cur = await api(alice, 'GET', '/api/settings-sync');
+  const reset = await api(alice, 'PUT', '/api/settings-sync', { data: {}, base_version: cur.body.version });
+  record('stale-safe settings write accepted', reset.status === 200, `status ${reset.status}`);
+  const stale = await api(alice, 'PUT', '/api/settings-sync', { data: {}, base_version: cur.body.version });
+  record('write based on an old version is refused (409)', stale.status === 409, `status ${stale.status}`);
+  await A.evaluate((id) => localStorage.removeItem('chatw_prefs_' + id), alice.me.id);
+  await A.reload(); await waitApp(A);
+  await A.waitForTimeout(1500);
   await openDm(A, NAMES.bob);
 
   // Viewport sweep on Alice's DM view

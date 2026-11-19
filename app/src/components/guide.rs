@@ -122,7 +122,43 @@ const SHORTCUTS: [(&str, &str); 11] = [
     ("Tab", "Di chuyển giữa các nút"),
 ];
 
-const GUIDES: [(&str, &str, &[&str]); 10] = [
+const GUIDES: [(&str, &str, &[&str]); 16] = [
+    ("user", "Avatar Studio: avatar xoay và 40 hiệu ứng", &[
+        "Mở hồ sơ của bạn › Chỉnh sửa hồ sơ › thẻ Avatar Studio.",
+        "Chọn một hiệu ứng (Spin, Orbit, Hearts, Glitch...), chỉnh Tốc độ, Cường độ, Màu và Hướng xoay.",
+        "Kích hoạt: Luôn chạy, Khi rê chuột hoặc Khi nhấp. Đặt Số lần lặp nếu không muốn chạy mãi.",
+        "Bấm Lưu. Bạn bè thấy hiệu ứng trên hồ sơ, danh sách trò chuyện và danh sách bạn bè.",
+    ]),
+    ("chat", "Demo Gallery: thử trước khi dùng", &[
+        "Cài đặt › Demo Gallery.",
+        "Chọn nhóm: Avatar, Hiệu ứng tên, Bảng tên, Hiệu ứng hồ sơ hoặc Hình nền chat.",
+        "Đổi chế độ xem Desktop / Mobile / Gọn, hoặc xem như khi giảm chuyển động.",
+        "Bấm Áp dụng: thay đổi được lưu thật vào hồ sơ hoặc cài đặt.",
+    ]),
+    ("user", "Thông tin hồ sơ và quyền xem", &[
+        "Chỉnh sửa hồ sơ › Thông tin: thêm danh xưng, công việc, nơi sống, website, sở thích.",
+        "Mỗi mục có quyền riêng: Mọi người, Bạn bè hoặc Chỉ mình tôi. Máy chủ chỉ gửi mục đó cho người được phép.",
+        "Trạng thái tùy chỉnh có thể tự xóa sau 30 phút, 1 giờ, 4 giờ, hết hôm nay hoặc 7 ngày.",
+        "Ảnh bìa GIF hoặc WebP động giữ nguyên chuyển động (tối đa 8 MB).",
+    ]),
+    ("chat", "Sticker, GIF và emoji yêu thích", &[
+        "Rê chuột lên sticker hoặc GIF trong bảng chọn và bấm ☆ để thêm vào Favorites.",
+        "Thẻ Recently Used giữ 24 sticker bạn gửi gần nhất.",
+        "Bấm vào sticker trong tin nhắn: Add to Favorite Stickers, Send Again hoặc Find Similar Stickers.",
+        "Emoji: nhấp chuột phải vào emoji, hoặc bấm ☆ ở chân bảng chọn. Danh sách yêu thích đồng bộ giữa các thiết bị.",
+    ]),
+    ("devices", "Đồng bộ cài đặt giữa các thiết bị", &[
+        "Cài đặt › Tùy chỉnh › Đồng bộ cài đặt với các thiết bị khác (bật sẵn).",
+        "Giao diện, gợi ý, thông báo và danh sách yêu thích đi theo tài khoản.",
+        "Mã PIN khóa ứng dụng không bao giờ rời khỏi thiết bị.",
+        "Hai thiết bị cùng sửa: bản ghi sau cùng được giữ, không thiết bị nào ghi đè dữ liệu mới hơn mà không đọc lại.",
+    ]),
+    ("lock", "Biệt danh, ghi chú riêng và lưu tin nhắn", &[
+        "Mở bảng Thông tin của một cuộc trò chuyện › Biệt danh và ghi chú riêng.",
+        "Biệt danh thay tên người đó trong danh sách của bạn; chỉ bạn thấy.",
+        "Rê chuột lên một tin nhắn và bấm biểu tượng thiết bị để lưu bản sao vào \"Chính mình\" (vẫn mã hóa đầu cuối).",
+        "Tìm cài đặt nhanh bằng ô Tìm cài đặt ở đầu trang Cài đặt.",
+    ]),
     ("devices", "\"Chính mình\": ghi chú giữa các thiết bị", &[
         "Mở \"Chính mình\" ở đầu danh sách Tin nhắn; tin nhắn được mã hóa bằng khóa của bạn.",
         "Mỗi tin ghi tên thiết bị đã gửi, ví dụ Linux 1, Windows 2. Bấm tên thiết bị để đổi tên.",
@@ -191,7 +227,20 @@ const FAQ: [(&str, &str); 9] = [
 
 #[component]
 pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
+    let mut query = use_signal(String::new);
+    let q = crate::components::composer::fold(query().trim());
+    let matches = |parts: &[&str]| q.is_empty() || parts.iter().any(|p| crate::components::composer::fold(p).contains(&q));
+    let guides: Vec<_> = GUIDES.iter().filter(|(_, t, st)| matches(&[t]) || matches(st)).collect();
+    let faq: Vec<_> = FAQ.iter().filter(|(qq, a)| matches(&[qq, a])).collect();
+    let shortcuts: Vec<_> = SHORTCUTS.iter().filter(|(k, d)| matches(&[k, d])).collect();
     rsx! {
+        div { class: "search-field help-search",
+            crate::components::icons::SearchIcon { size: 16 }
+            input { r#type: "search", placeholder: "Tìm trong hướng dẫn (ví dụ: avatar, sticker, PIN)", aria_label: "Tìm trong hướng dẫn", value: "{query}", oninput: move |e| query.set(e.value()) }
+        }
+        if !q.is_empty() && guides.is_empty() && faq.is_empty() && shortcuts.is_empty() {
+            div { class: "sidebar-empty", "Không có hướng dẫn phù hợp" }
+        }
         div { class: "guide-hero",
             Illustration { kind: "chat".to_string() }
             div {
@@ -203,7 +252,7 @@ pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
         div { class: "settings-group",
             div { class: "settings-group-title", "Hướng dẫn" }
             div { class: "guide-grid",
-                for (art, title, steps) in GUIDES {
+                for (art, title, steps) in guides.iter().copied().copied() {
                     div { key: "{title}", class: "guide-card",
                         Illustration { kind: art.to_string() }
                         div { class: "settings-label", "{title}" }
@@ -217,14 +266,14 @@ pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
         div { class: "settings-group",
             div { class: "settings-group-title", "Phím tắt" }
             div { class: "settings-list",
-                for (k, d) in SHORTCUTS {
+                for (k, d) in shortcuts.iter().copied().copied() {
                     div { key: "{k}", class: "settings-row", span { class: "settings-label", "{d}" } span { class: "kbd", "{k}" } }
                 }
             }
         }
         div { class: "settings-group",
             div { class: "settings-group-title", "Câu hỏi thường gặp" }
-            for (q, a) in FAQ {
+            for (q, a) in faq.iter().copied().copied() {
                 details { key: "{q}", class: "faq-item",
                     summary { "{q}" }
                     p { "{a}" }

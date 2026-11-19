@@ -3,6 +3,7 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 
 use crate::{
+    prefs::PrefsCtx,
     components::{composer::fold, icons::SearchIcon},
     models::{StickerItem, StickerPackItem},
     platform,
@@ -15,14 +16,67 @@ use crate::{
 /// Most search results rendered at once (OpenMoji alone has about 2,000 stickers).
 const SEARCH_LIMIT: usize = 120;
 
+/// "Find similar" from a sticker in a message: open the sticker picker with this search.
+pub static PICKER_REQUEST: GlobalSignal<Option<String>> = Signal::global(|| None);
+
+const FAV_TAB: &str = "__favorites";
+const RECENT_TAB: &str = "__recent";
+
+/// Add or remove a sticker from Favorite Stickers (synced with my other devices).
+pub fn toggle_favorite(ctx: PrefsCtx, url: &str) {
+    let url = url.to_string();
+    ctx.update(move |p| {
+        if p.fav_stickers.contains(&url) {
+            p.fav_stickers.retain(|u| u != &url);
+        } else {
+            p.fav_stickers.insert(0, url.clone());
+        }
+    });
+}
+
+/// Remember a sent sticker in Recently Used.
+pub fn push_recent(ctx: PrefsCtx, url: &str) {
+    let url = url.to_string();
+    ctx.update(move |p| {
+        p.recent_stickers.retain(|u| u != &url);
+        p.recent_stickers.insert(0, url.clone());
+        p.recent_stickers.truncate(24);
+    });
+}
+
+/// English name for a sticker URL from my packs or the OpenMoji catalogue.
+pub fn sticker_name(url: &str, packs: &[StickerPackItem], catalog: Option<&Catalog>) -> String {
+    if let Some(s) = packs.iter().flat_map(|p| p.stickers.iter()).find(|s| s.file_url == url) {
+        return s.name.clone();
+    }
+    if let (Some(c), Some(hex)) = (catalog, url.strip_prefix("/stickers/openmoji/").and_then(|h| h.strip_suffix(".svg"))) {
+        if let Some(i) = c.items.iter().find(|i| i.0 == hex) {
+            return i.1.clone();
+        }
+    }
+    "Sticker".to_string()
+}
+
 #[component]
-fn StickerCell(st: StickerItem, on_select: EventHandler<String>) -> Element {
+fn StickerCell(st: StickerItem, on_select: EventHandler<String>, #[props(default)] fav: bool, #[props(default)] on_fav: Option<EventHandler<String>>) -> Element {
     let url = st.file_url.clone();
+    let url2 = st.file_url.clone();
     let title = if st.name.is_empty() { "Sticker".to_string() } else { st.name.clone() };
     rsx! {
-        button { r#type: "button", class: "sticker-cell", title: "{title}", aria_label: "Send sticker {title}",
-            onclick: move |_| on_select.call(url.clone()),
-            img { src: "{platform::resolve_asset_url(&st.file_url)}", alt: "{title}", loading: "lazy", decoding: "async" }
+        div { class: "sticker-cell-wrap",
+            button { r#type: "button", class: "sticker-cell", title: "{title}", aria_label: "Send sticker {title}",
+                onclick: move |_| on_select.call(url.clone()),
+                img { src: "{platform::resolve_asset_url(&st.file_url)}", alt: "{title}", loading: "lazy", decoding: "async" }
+            }
+            if let Some(h) = on_fav {
+                button { r#type: "button", class: if fav { "sticker-fav on" } else { "sticker-fav" },
+                    title: if fav { "Remove from Favorite Stickers" } else { "Add to Favorite Stickers" },
+                    aria_label: if fav { "Remove {title} from Favorite Stickers" } else { "Add {title} to Favorite Stickers" },
+                    aria_pressed: "{fav}",
+                    onclick: move |e| { e.stop_propagation(); h.call(url2.clone()) },
+                    if fav { "★" } else { "☆" }
+                }
+            }
         }
     }
 }
@@ -39,17 +93,28 @@ pub fn StickerPicker(
     let mut active_pack_id = use_signal(|| Option::<String>::None);
     let mut is_loading = use_signal(|| true);
     let mut load_error = use_signal(|| false);
-    let mut query = use_signal(String::new);
+    let mut query = use_signal(|| PICKER_REQUEST.write().take().unwrap_or_default());
     let mut catalog = use_signal(|| Option::<Rc<Catalog>>::None);
     let mut om_failed = use_signal(|| false);
     let mut om_cat = use_signal(|| 0usize);
+    let prefs_ctx = use_context::<PrefsCtx>();
+    let favs = prefs_ctx.prefs.read().fav_stickers.clone();
+    let recents = prefs_ctx.prefs.read().recent_stickers.clone();
+    let on_select = EventHandler::new(move |url: String| {
+        push_recent(prefs_ctx, &url);
+        on_select.call(url);
+    });
+    let on_fav = EventHandler::new(move |url: String| toggle_favorite(prefs_ctx, &url));
 
+    let favs_start = favs.clone();
     use_effect(move || {
+        let favs_start = favs_start.clone();
         spawn(async move {
             match stickers_list_packs().await {
                 Ok(list) => {
                     if active_pack_id.peek().is_none() {
-                        active_pack_id.set(Some(list.first().map(|p| p.id.clone()).unwrap_or_else(|| openmoji::PACK_ID.to_string())));
+                        let start = if !favs_start.is_empty() { FAV_TAB.to_string() } else { list.first().map(|p| p.id.clone()).unwrap_or_else(|| openmoji::PACK_ID.to_string()) };
+                        active_pack_id.set(Some(start));
                     }
                     packs.set(list);
                 }
@@ -88,6 +153,14 @@ pub fn StickerPicker(
                 }
             }
             div { class: "picker-tabs", role: "tablist",
+                for (tid, tlabel) in [(FAV_TAB, "★ Favorites"), (RECENT_TAB, "Recently Used")] {
+                    button { key: "{tid}", r#type: "button", role: "tab",
+                        aria_selected: "{active.as_deref() == Some(tid)}",
+                        class: if active.as_deref() == Some(tid) { "picker-tab text active" } else { "picker-tab text" },
+                        onclick: move |_| { query.set(String::new()); active_pack_id.set(Some(tid.to_string())) },
+                        "{tlabel}"
+                    }
+                }
                 for p in packs() {
                     {
                         let pid = p.id.clone();
@@ -145,7 +218,29 @@ pub fn StickerPicker(
                             } else {
                                 div { class: "sticker-grid",
                                     for st in hits {
-                                        StickerCell { key: "{st.id}", st: st.clone(), on_select }
+                                        StickerCell { key: "{st.id}", st: st.clone(), on_select, fav: favs.contains(&st.file_url), on_fav }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if active.as_deref() == Some(FAV_TAB) || active.as_deref() == Some(RECENT_TAB) {
+                    {
+                        let is_fav = active.as_deref() == Some(FAV_TAB);
+                        let list = if is_fav { favs.clone() } else { recents.clone() };
+                        let all = packs();
+                        let cat = catalog();
+                        rsx! {
+                            div { class: "picker-section-title", if is_fav { "Favorite Stickers" } else { "Recently Used" } }
+                            if list.is_empty() {
+                                div { class: "picker-empty",
+                                    if is_fav { "Chưa có sticker yêu thích. Bấm ☆ trên một sticker để thêm." } else { "Sticker bạn gửi sẽ hiện ở đây." }
+                                }
+                            } else {
+                                div { class: "sticker-grid",
+                                    for u in list {
+                                        StickerCell { key: "{u}", st: StickerItem { id: u.clone(), pack_id: String::new(), name: sticker_name(&u, &all, cat.as_deref()), file_url: u.clone(), is_animated: false, created_at: String::new() },
+                                            on_select, fav: favs.contains(&u), on_fav }
                                     }
                                 }
                             }
@@ -160,7 +255,7 @@ pub fn StickerPicker(
                                 div { class: "picker-section-title", "{label}" }
                                 div { class: "sticker-grid openmoji-grid",
                                     for it in c.items.iter().filter(|i| i.2 == idx) {
-                                        StickerCell { key: "{it.0}", st: it.as_sticker(), on_select }
+                                        StickerCell { key: "{it.0}", st: it.as_sticker(), on_select, fav: favs.contains(&it.url()), on_fav }
                                     }
                                 }
                                 div { class: "picker-credit",
@@ -184,7 +279,7 @@ pub fn StickerPicker(
                     } else {
                         div { class: "sticker-grid",
                             for st in pack.stickers {
-                                StickerCell { key: "{st.id}", st: st.clone(), on_select }
+                                StickerCell { key: "{st.id}", st: st.clone(), on_select, fav: favs.contains(&st.file_url), on_fav }
                             }
                         }
                     }

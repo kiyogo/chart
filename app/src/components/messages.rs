@@ -81,6 +81,22 @@ pub fn sticker_url_of(text: &str) -> Option<String> {
     if is_image { Some(t.to_string()) } else { None }
 }
 
+/// A search word for "Find similar": the OpenMoji name if known, else the file name.
+pub fn sticker_search_term(url: &str) -> String {
+    let file = url.rsplit('/').next().unwrap_or_default();
+    let stem = file.split('.').next().unwrap_or_default();
+    if url.starts_with("/stickers/openmoji/") {
+        // Hexcodes are not searchable; the picker resolves names from its catalogue.
+        if let Some(c) = crate::services::openmoji::cached() {
+            if let Some(i) = c.items.iter().find(|i| i.0 == stem) {
+                return i.1.split_whitespace().last().unwrap_or(&i.1).to_lowercase();
+            }
+        }
+        return String::new();
+    }
+    stem.replace(['-', '_'], " ")
+}
+
 /// `gif:<url>` messages are rendered as large animated media.
 pub fn gif_url_of(text: &str) -> Option<String> {
     let t = text.trim().strip_prefix("gif:")?;
@@ -241,8 +257,13 @@ pub fn MessageList(
     /// Send a raw rich payload (e.g. a poll vote) into this conversation.
     #[props(default)] on_send_raw: Option<EventHandler<String>>,
     #[props(default)] on_open_invite: Option<EventHandler<(String, String)>>,
+    /// Keep a copy of a message in "Chính mình" (end-to-end encrypted).
+    #[props(default)] on_save_self: Option<EventHandler<String>>,
 ) -> Element {
     let mut full_picker_for = use_signal(|| Option::<String>::None);
+    let mut sticker_menu_for = use_signal(|| Option::<String>::None);
+    let prefs_ctx = try_consume_context::<crate::prefs::PrefsCtx>();
+    let fav_stickers = prefs_ctx.map(|c| c.prefs.read().fav_stickers.clone()).unwrap_or_default();
     // Poll votes are messages too: tally them and hide them from the list.
     let mut tally: VoteTally = VoteTally::new();
     for m in &messages {
@@ -372,8 +393,41 @@ pub fn MessageList(
                                         }
                                         span { class: "message-time-standalone", "{time_str}" }
                                     } else if let Some(url) = sticker {
-                                        div { class: "message-media", title: "{full_time}",
-                                            img { class: "sticker-img", src: "{platform::resolve_asset_url(&url)}", alt: "Sticker", loading: "lazy" }
+                                        {
+                                            let menu_open = sticker_menu_for().as_deref() == Some(msg.id.as_str());
+                                            let mid = msg.id.clone();
+                                            let is_fav = fav_stickers.contains(&url);
+                                            let (u1, u2, u3) = (url.clone(), url.clone(), url.clone());
+                                            rsx! {
+                                                div { class: "message-media sticker-media", title: "{full_time}",
+                                                    button { r#type: "button", class: "sticker-open", aria_label: "Sticker options", aria_haspopup: "menu", aria_expanded: "{menu_open}",
+                                                        onclick: move |_| sticker_menu_for.set(if menu_open { None } else { Some(mid.clone()) }),
+                                                        img { class: "sticker-img", src: "{platform::resolve_asset_url(&url)}", alt: "Sticker", loading: "lazy" }
+                                                    }
+                                                    if menu_open {
+                                                        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| sticker_menu_for.set(None) }
+                                                        div { class: "account-menu sticker-menu", role: "menu",
+                                                            onkeydown: move |e| if e.key() == Key::Escape { sticker_menu_for.set(None) },
+                                                            if let Some(ctx) = prefs_ctx {
+                                                                button { r#type: "button", role: "menuitem", class: "account-menu-item",
+                                                                    onclick: move |_| { sticker_menu_for.set(None); crate::components::sticker_picker::toggle_favorite(ctx, &u1) },
+                                                                    if is_fav { "★ Remove from Favorite Stickers" } else { "☆ Add to Favorite Stickers" }
+                                                                }
+                                                            }
+                                                            if let Some(h) = on_send_raw {
+                                                                button { r#type: "button", role: "menuitem", class: "account-menu-item",
+                                                                    onclick: move |_| { sticker_menu_for.set(None); h.call(u2.clone()) }, "Send Again" }
+                                                            }
+                                                            button { r#type: "button", role: "menuitem", class: "account-menu-item",
+                                                                onclick: move |_| {
+                                                                    sticker_menu_for.set(None);
+                                                                    let name = sticker_search_term(&u3);
+                                                                    *crate::components::sticker_picker::PICKER_REQUEST.write() = Some(name);
+                                                                }, "Find Similar Stickers" }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                         span { class: "message-time-standalone", "{time_str}" }
                                     } else {
@@ -500,6 +554,16 @@ pub fn MessageList(
                                                 aria_label: "Trả lời",
                                                 onclick: move |_| if let Some(h) = on_reply { h.call(m_reply.clone()) },
                                                 ReplyIcon {}
+                                            }
+                                        }
+                                        if let Some(h) = on_save_self {
+                                            button {
+                                                r#type: "button",
+                                                class: "message-action-btn",
+                                                title: "Lưu vào Chính mình",
+                                                aria_label: "Lưu vào Chính mình",
+                                                onclick: { let t = m_copy.clone(); move |_| h.call(t.clone()) },
+                                                crate::components::icons::DevicesIcon { size: 16 }
                                             }
                                         }
                                         button {

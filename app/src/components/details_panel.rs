@@ -148,9 +148,13 @@ pub fn DmDetailsPanel(
                         }
                     }
                     div { class: "details-avatar",
-                        DecoratedAvatar { name: username.clone(), avatar_url: avatar_url.clone(), size: 80, decoration: decoration }
+                        DecoratedAvatar { name: username.clone(), avatar_url: avatar_url.clone(), size: 80, decoration: decoration,
+                            motion: if effects_on { p.as_ref().and_then(|p| p.avatar_motion.clone()) } else { None } }
                     }
-                    div { class: "details-name", "{display_name}" }
+                    div { class: "details-name", "{crate::services::profile_ext::nickname_of(&user_id).unwrap_or_else(|| display_name.clone())}" }
+                    if crate::services::profile_ext::nickname_of(&user_id).is_some() {
+                        div { class: "details-username", "{display_name}" }
+                    }
                     div { class: "details-username", "@{username}" }
                     if let Some(st) = status_line {
                         div { class: "details-status", "{st}" }
@@ -177,6 +181,8 @@ pub fn DmDetailsPanel(
                         div { class: "details-bio", "{b}" }
                     }
                 }
+
+                ContactNoteEditor { key: "{user_id}", user_id: user_id.clone() }
 
                 div { class: "details-section",
                     div { class: "details-section-title", "Tìm trong cuộc trò chuyện" }
@@ -261,6 +267,52 @@ pub fn DmDetailsPanel(
                         }
                         div { class: "fingerprint", "{user_id}" }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// My private nickname and note for this person (only I can see them).
+#[component]
+fn ContactNoteEditor(user_id: String) -> Element {
+    let start = crate::services::profile_ext::CONTACTS.read().get(&user_id).cloned().unwrap_or_default();
+    let mut nickname = use_signal(|| start.0.clone().unwrap_or_default());
+    let mut note = use_signal(|| start.1.clone().unwrap_or_default());
+    let mut open = use_signal(|| false);
+    let mut status = use_signal(|| Option::<(bool, String)>::None);
+    let mut busy = use_signal(|| false);
+    let uid = user_id.clone();
+    let save = move |_| {
+        if busy() {
+            return;
+        }
+        busy.set(true);
+        let u = uid.clone();
+        spawn(async move {
+            match crate::services::profile_ext::save_note(&u, &nickname(), &note()).await {
+                Ok(()) => status.set(Some((false, "Đã lưu".into()))),
+                Err(e) => status.set(Some((true, format!("Không lưu được ({})", e.code)))),
+            }
+            busy.set(false);
+        });
+    };
+    rsx! {
+        div { class: "details-section",
+            button { r#type: "button", class: "details-section-toggle", aria_expanded: "{open()}", onclick: move |_| open.set(!open()),
+                span { class: "details-section-title", "Biệt danh và ghi chú riêng" }
+                span { class: "member-sub", if open() { "Thu gọn" } else if nickname().is_empty() && note().is_empty() { "Thêm" } else { "Sửa" } }
+            }
+            if !open() && !note().trim().is_empty() {
+                div { class: "details-bio private-note", "{note}" }
+            }
+            if open() {
+                p { class: "member-sub", "Chỉ bạn thấy. Biệt danh thay tên người này trong danh sách của bạn." }
+                input { r#type: "text", maxlength: "40", placeholder: "Biệt danh", aria_label: "Biệt danh", value: "{nickname}", oninput: move |e| nickname.set(e.value()) }
+                textarea { rows: "3", maxlength: "500", placeholder: "Ghi chú riêng (ví dụ: gặp ở đâu, sở thích)", aria_label: "Ghi chú riêng", value: "{note}", oninput: move |e| note.set(e.value()) }
+                div { class: "inline-form",
+                    button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: save, "Lưu" }
+                    if let Some((err, m)) = status() { span { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
                 }
             }
         }

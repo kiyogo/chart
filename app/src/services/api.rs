@@ -366,7 +366,12 @@ pub async fn webrtc_leave_voice(channel_id: &str) -> Result<(), ApiError> {
 
 pub async fn get_user_profile(user_id: &str) -> Result<UserProfileResponse, ApiError> {
     let encoded = urlencoding::encode(user_id);
-    get_json(&format!("/api/users/{encoded}/profile")).await
+    let mut p: UserProfileResponse = get_json(&format!("/api/users/{encoded}/profile")).await?;
+    // Avatar motion, visible details and my private nickname / note (spec 009).
+    if let Ok(ext) = crate::services::profile_ext::fetch(user_id).await {
+        crate::services::profile_ext::merge_into(&mut p, &ext);
+    }
+    Ok(p)
 }
 
 pub async fn update_my_profile(

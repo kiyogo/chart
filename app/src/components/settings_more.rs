@@ -22,7 +22,7 @@ fn ctx() -> PrefsCtx {
 }
 
 #[component]
-fn Toggle(label: String, #[props(default)] desc: String, checked: bool, on_change: EventHandler<bool>, #[props(default)] disabled: bool) -> Element {
+pub fn Toggle(label: String, #[props(default)] desc: String, checked: bool, on_change: EventHandler<bool>, #[props(default)] disabled: bool) -> Element {
     rsx! {
         label { class: "settings-row toggle-row",
             span { class: "grow",
@@ -35,7 +35,7 @@ fn Toggle(label: String, #[props(default)] desc: String, checked: bool, on_chang
 }
 
 #[component]
-fn Segmented(options: Vec<(String, String)>, value: String, on_change: EventHandler<String>, #[props(default)] label: String) -> Element {
+pub fn Segmented(options: Vec<(String, String)>, value: String, on_change: EventHandler<String>, #[props(default)] label: String) -> Element {
     rsx! {
         div { class: "segmented", role: "radiogroup", aria_label: "{label}",
             for (v, l) in options {
@@ -523,6 +523,40 @@ pub fn AdvancedLookSettings() -> Element {
                 p.font_family = d.font_family; p.app_wallpaper = d.app_wallpaper; p.app_wallpaper_dim = d.app_wallpaper_dim;
                 p.app_wallpaper_blur = d.app_wallpaper_blur; p.reduce_motion = d.reduce_motion;
             }), "Khôi phục giao diện mặc định" }
+        }
+    }
+}
+
+/// Spec 009: settings sync between devices and the avatar-motion budget for lists.
+#[component]
+pub fn SyncMotionSettings() -> Element {
+    let ctx = use_context::<PrefsCtx>();
+    let p = ctx.prefs.read().clone();
+    let version = crate::services::settings_sync::known_version();
+    rsx! {
+        div { class: "settings-section",
+            div { class: "settings-group-title", "Đồng bộ và hiệu năng" }
+            Toggle {
+                label: "Đồng bộ cài đặt với các thiết bị khác",
+                desc: "Giao diện, tùy chỉnh, thông báo, gợi ý, sticker / GIF / emoji yêu thích đi theo tài khoản. Mã PIN khóa ứng dụng luôn chỉ ở thiết bị này.",
+                checked: p.sync_settings,
+                on_change: move |v: bool| ctx.update(move |x| x.sync_settings = v),
+            }
+            if p.sync_settings && version > 0 {
+                div { class: "settings-row-desc", style: "padding: 0 var(--space-3);", "Phiên bản đồng bộ: {version}" }
+            }
+            div { class: "settings-row",
+                span { class: "grow",
+                    span { class: "settings-label", "Hiệu ứng avatar trong danh sách" }
+                    span { class: "settings-row-desc", "Danh sách trò chuyện và bạn bè có thể có nhiều avatar động. \"Khi rê chuột\" tiết kiệm pin và CPU nhất mà vẫn xem được." }
+                }
+                Segmented {
+                    label: "Hiệu ứng avatar trong danh sách",
+                    options: vec![("always".into(), "Luôn chạy".into()), ("hover".into(), "Khi rê chuột".into()), ("off".into(), "Tắt".into())],
+                    value: p.avatar_fx_lists.clone(),
+                    on_change: move |v: String| ctx.update(move |x| x.avatar_fx_lists = v.clone()),
+                }
+            }
         }
     }
 }

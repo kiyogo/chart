@@ -3,7 +3,14 @@
 
 use dioxus::prelude::*;
 
-use crate::{components::avatar::Avatar, models::UserProfileResponse, platform};
+use crate::{
+    components::{
+        avatar::Avatar,
+        avatar_motion::{AvatarMotion, MotionLayers, legacy_motion},
+    },
+    models::UserProfileResponse,
+    platform,
+};
 
 pub const DECORATIONS: [(&str, &str); 6] = [
     ("none", "Không"),
@@ -33,13 +40,23 @@ pub const AVATAR_EFFECTS: [(&str, &str); 6] = [
     ("rainbow", "Viền cầu vồng"),
 ];
 
-pub const NAME_EFFECTS: [(&str, &str); 6] = [
+pub const NAME_EFFECTS: [(&str, &str); 16] = [
     ("none", "Không"),
     ("gradient", "Chuyển màu"),
     ("shimmer", "Ánh kim"),
     ("rainbow", "Cầu vồng"),
     ("neon", "Neon"),
     ("wave", "Gợn sóng"),
+    ("glow", "Phát sáng"),
+    ("sparkle", "Lấp lánh"),
+    ("glitch", "Nhiễu sóng"),
+    ("pulse", "Nhịp đập"),
+    ("typing", "Gõ chữ"),
+    ("reveal", "Hiện dần"),
+    ("cycle", "Đổi màu"),
+    ("outline", "Viền chữ"),
+    ("holo", "Hologram"),
+    ("breathe", "Hơi thở"),
 ];
 
 pub const NAMEPLATES: [(&str, &str); 7] = [
@@ -118,7 +135,7 @@ fn presence_text(p: &str) -> Option<&'static str> {
     }
 }
 
-/// Avatar wrapped with its decoration.
+/// Avatar wrapped with its decoration and (spec 009) avatar motion.
 #[component]
 pub fn DecoratedAvatar(
     name: String,
@@ -127,12 +144,23 @@ pub fn DecoratedAvatar(
     #[props(default)] decoration: Option<String>,
     #[props(default)] avatar_effect: Option<String>,
     #[props(default)] custom_decoration_url: Option<String>,
+    #[props(default)] motion: Option<AvatarMotion>,
+    /// Lists follow the "avatar motion in lists" budget (always / hover / off).
+    #[props(default)] in_list: bool,
 ) -> Element {
     let deco = decoration.unwrap_or_else(|| "none".to_string());
-    let fx = avatar_effect.unwrap_or_else(|| "none".to_string());
+    let budget = try_consume_context::<crate::prefs::PrefsCtx>().map(|c| c.prefs.read().avatar_fx_lists.clone()).unwrap_or_else(|| "hover".into());
+    let motion = motion.filter(|m| m.is_valid()).or_else(|| legacy_motion(avatar_effect.as_deref()));
+    let motion = if in_list && budget == "off" { None } else { motion };
+    let (mcls, mstyle) = motion.as_ref().map(|m| m.render_attrs(in_list && budget == "hover")).unwrap_or_default();
+    let kind = mcls.split(' ').find_map(|c| c.strip_prefix("avm-k-")).unwrap_or_default().to_string();
+    let mut on = use_signal(|| false);
+    let click = mcls.contains("avm-t-click");
     rsx! {
-        span { class: "deco-wrap deco-{deco} avfx-{fx}", style: "--deco-size: {size}px;",
+        span { class: if on() { "deco-wrap deco-{deco} {mcls} avm-on" } else { "deco-wrap deco-{deco} {mcls}" }, style: "--deco-size: {size}px; {mstyle}",
+            onclick: move |_| if click { on.set(!on()) },
             span { class: "avatar-motion", Avatar { name, avatar_url, size } }
+            MotionLayers { kind }
             if deco == "custom" {
                 if let Some(u) = custom_decoration_url.as_ref().filter(|u| !u.is_empty()) {
                     img { class: "deco-custom", src: "{platform::resolve_asset_url(u)}", alt: "", aria_hidden: "true" }
@@ -200,6 +228,7 @@ pub fn ProfileCard(
                         decoration: p.avatar_decoration.clone(),
                         avatar_effect: if effects_enabled { p.avatar_effect.clone() } else { None },
                         custom_decoration_url: p.custom_decoration_url.clone(),
+                        motion: if effects_enabled { p.avatar_motion.clone() } else { None },
                     }
                 }
                 {
@@ -208,6 +237,9 @@ pub fn ProfileCard(
                     rsx! {
                         div { class: "profile-card-names {np_cls}", style: "{np_style}",
                             div { class: "profile-card-name {fx}", "{name}" }
+                            if let Some(pr) = p.details.pronouns.as_ref().filter(|x| !x.is_empty()) {
+                                div { class: "profile-card-pronouns", "{pr}" }
+                            }
                             div { class: "profile-card-username", "@{p.username}" }
                         }
                     }
@@ -227,6 +259,31 @@ pub fn ProfileCard(
                         div { class: "profile-card-section",
                             div { class: "profile-card-label", "Giới thiệu" }
                             div { class: "profile-card-bio", "{bio}" }
+                        }
+                    }
+                    if p.details.has_any() {
+                        div { class: "profile-card-section",
+                            div { class: "profile-card-label", "Thông tin" }
+                            div { class: "profile-details",
+                                if let Some(v) = p.details.occupation.as_ref().filter(|x| !x.is_empty()) { div { class: "profile-detail", span { class: "pd-k", "Công việc" } span { "{v}" } } }
+                                if let Some(v) = p.details.location.as_ref().filter(|x| !x.is_empty()) { div { class: "profile-detail", span { class: "pd-k", "Nơi sống" } span { "{v}" } } }
+                                if let Some(v) = p.details.website.as_ref().filter(|x| x.starts_with("https://") || x.starts_with("http://")) {
+                                    div { class: "profile-detail", span { class: "pd-k", "Website" }
+                                        button { r#type: "button", class: "link-btn", onclick: { let v = v.clone(); move |_| platform::open_external_url(&v) }, "{v}" }
+                                    }
+                                }
+                            }
+                            if !p.details.interests.is_empty() {
+                                div { class: "interest-chips",
+                                    for i in p.details.interests.iter() { span { key: "{i}", class: "interest-chip", "{i}" } }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(note) = p.note.as_ref().filter(|n| !n.trim().is_empty()) {
+                        div { class: "profile-card-section private-note",
+                            div { class: "profile-card-label", "Ghi chú riêng của bạn" }
+                            div { class: "profile-card-bio", "{note}" }
                         }
                     }
                     if let Some(s) = since {

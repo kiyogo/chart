@@ -248,6 +248,23 @@ async fn handle_search(
     Ok(Json(results))
 }
 
+/// Real image type from magic bytes (the Content-Type header is not trusted).
+pub fn sniff_image(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" && matches!(&bytes[8..12], b"avif" | b"avis" | b"mif1" | b"msf1") {
+        Some("avif")
+    } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("webp")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("gif")
+    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else {
+        None
+    }
+}
+
 async fn handle_upload_avatar(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -263,6 +280,10 @@ async fn handle_upload_avatar(
 
     if body.len() > 5 * 1024 * 1024 {
         return Err(AppError::BadRequest("avatar_too_large"));
+    }
+    // The client re-encodes avatars; anything that is not a still image is refused.
+    if !matches!(sniff_image(&body), Some("avif" | "webp" | "png" | "jpg")) {
+        return Err(AppError::BadRequest("unsupported_avatar_format"));
     }
 
     let avatar_dir = state.config.uploads_dir.join("avatars");
@@ -319,7 +340,15 @@ async fn handle_upload_banner(
         AppError::Internal
     })?;
 
-    let filename = format!("{}.avif", user.id);
+    // Still covers arrive re-encoded (AVIF / WebP / JPEG); GIF and animated WebP covers are
+    // uploaded as-is so they keep moving. The stored extension follows the real type.
+    let ext = sniff_image(&body).ok_or(AppError::BadRequest("unsupported_banner_format"))?;
+    for old in ["avif", "webp", "gif", "png", "jpg"] {
+        if old != ext {
+            let _ = tokio::fs::remove_file(banner_dir.join(format!("{}.{old}", user.id))).await;
+        }
+    }
+    let filename = format!("{}.{ext}", user.id);
     let filepath = banner_dir.join(&filename);
     tokio::fs::write(&filepath, &body).await.map_err(|e| {
         tracing::error!(error = %e, "failed to write banner file");
@@ -403,7 +432,11 @@ async fn handle_update_profile(
         }
     };
     one_of(&payload.avatar_effect, &["none", "spin", "pulse", "float", "wobble", "rainbow"], "invalid_avatar_effect")?;
-    one_of(&payload.name_effect, &["none", "gradient", "shimmer", "rainbow", "neon", "wave"], "invalid_name_effect")?;
+    one_of(
+        &payload.name_effect,
+        &["none", "gradient", "shimmer", "rainbow", "neon", "wave", "glow", "sparkle", "glitch", "pulse", "typing", "reveal", "cycle", "outline", "holo", "breathe"],
+        "invalid_name_effect",
+    )?;
     one_of(&payload.nameplate, &["none", "aurora", "sunset", "ocean", "galaxy", "sakura", "forest", "custom"], "invalid_nameplate")?;
     one_of(&payload.custom_effect_anim, &["none", "float", "spin", "pulse", "drift", "sway"], "invalid_effect_animation")?;
     // Custom artwork must be our own uploads; empty string clears it.

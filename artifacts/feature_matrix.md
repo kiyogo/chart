@@ -104,3 +104,36 @@ banner + avatar AVIF, gọi 1-1 và nhóm WebRTC P2P, sao lưu/khôi phục khó
 | Static files served gzip-precompressed (catalogue 227 KB → 67 KB) | Done | `web/backend/src/main.rs` |
 | OpenMoji-only drawings (367) and unnamed combinations (78) | Waiting for download approval | |
 | Skin-tone sticker variants (2,035) | Not included | emoji picker has skin tones |
+
+## Spec 009: phase 1 of the master upgrade prompt
+
+Status values: Tested = works end to end and covered by an automated check; Implemented = works, manual check only; Not Started.
+
+| Area (prompt section) | Item | Status |
+|---|---|---|
+| V Avatar Studio | 40 avatar effects with speed, intensity, colour, direction, easing, trigger (always / hover / click), repeat | Tested |
+| V Avatar Studio | Effects visible to others on profile, details panel, conversation and friend lists (realtime) | Tested |
+| XXX Performance | Avatar motion budget for lists (always / hover / off), reduced motion, transform/opacity/filter only | Implemented |
+| IV Profile | Pronouns, occupation, location, website, interests, each with everyone / friends / nobody enforced by the server | Tested |
+| XVI Status | Custom status auto-clears (30 min – 7 days), friends updated in realtime | Tested (API) |
+| IV / VI | Animated GIF / WebP cover | Tested (API) |
+| VII Nameplate | 16 name effects (was 6) | Tested |
+| XXIX Sync | Settings sync across devices, versioned with 409 conflict handling; PIN lock never synced | Tested |
+| IX / X / XI | Favorite + Recently Used stickers, Favorite GIFs, Favorite Emoji (synced) | Tested (stickers), Implemented (GIF, emoji) |
+| IX 9.4 | Sticker in a message: add to favorites, send again, find similar | Tested |
+| XIII | Save a message to "Chính mình" (E2EE) | Tested |
+| XV Friends | Private nickname and note per person | Tested |
+| XX | Settings search | Tested |
+| XXI Demo | Demo Gallery with desktop / mobile / compact / reduced-motion previews and real Apply | Tested |
+| XXII Help | Help Center search + tutorials for the new features | Tested |
+| XXXV Security | Avatar / cover magic-byte checks; motion is declarative data, unknown fields rejected | Tested |
+| III | Multiple accounts and quick switching | Not Started |
+| XXVI | Passkeys / WebAuthn / TOTP / backup codes / login alerts | Not Started |
+| IV 4.3 / 4.4 | Drag-and-drop profile layout editor, profile templates | Not Started |
+| VIII 8.2 | Layer + timeline animation editor, GIF/APNG export | Not Started |
+| XI 11.2 | GIF creator from video | Not Started |
+| XVII | Achievements, inventory, collections | Not Started |
+| XXIV | Per-community profiles, community emoji / stickers, forum / event channels, audit log | Not Started |
+| XXV | Device selection, push-to-talk, network diagnostics for calls | Not Started |
+| XXVIII / XXIX | Media library, backup export / import | Not Started |
+| XXIII | Command palette beyond Ctrl+K switcher, notification center | Not Started |
