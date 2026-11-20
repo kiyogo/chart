@@ -15,7 +15,12 @@ fn main() {
             .with_inner_size(LogicalSize::new(1280.0, 800.0))
             .with_min_inner_size(LogicalSize::new(840.0, 560.0));
         dioxus::LaunchBuilder::desktop()
-            .with_cfg(Config::new().with_window(window).with_custom_head(custom_head))
+            .with_cfg(
+                Config::new()
+                    .with_window(window)
+                    .with_menu(None)
+                    .with_custom_head(custom_head),
+            )
             .launch(chatw_app::App);
     }
 
