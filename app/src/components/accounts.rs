@@ -136,7 +136,6 @@ pub fn AccountSwitcher(on_close: EventHandler<()>) -> Element {
     let others: Vec<Account> = list().into_iter().filter(|a| !a.active && !hidden.contains(&a.user_id)).collect();
     let count = list.read().len();
     rsx! {
-        div { class: "menu-section-title", "Tài khoản" }
         for a in others {
             {
                 let id = a.user_id.clone();
@@ -170,7 +169,7 @@ pub fn AccountSwitcher(on_close: EventHandler<()>) -> Element {
                     });
                     on_close.call(());
                 },
-                span { class: "menu-plus", "+" } span { "Thêm tài khoản" }
+                crate::components::icons::PlusIcon { size: 18 } span { "Thêm tài khoản" }
             }
         }
         if count > 1 {

@@ -505,7 +505,21 @@ input[type="color"] {
   bottom: 0;
   left: calc(100% + var(--shell-gap));
   padding: var(--space-2);
+  gap: var(--space-1);
   border-bottom-left-radius: var(--panel-radius);
+}
+.account-menu.rail-menu .menu-item {
+  width: 100%;
+  min-height: 2.5rem;
+  height: 2.5rem;
+  padding: 0 var(--space-3);
+  gap: var(--space-3);
+  margin: 0;
+}
+.account-menu.rail-menu .menu-item > svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 .rail-download-wrap { position: static; width: 100%; display: flex; align-items: center; justify-content: center; }
 .rail-menu.download-rail-menu {

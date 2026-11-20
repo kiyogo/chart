@@ -221,6 +221,17 @@ try {
     const mr = menu.getBoundingClientRect();
     const leftGapToPanel = Math.round(mr.left - pr.left);
     const bottomGapToPanel = Math.round(pr.bottom - mr.bottom);
+    const hasHeader = !!menu.querySelector('.menu-header');
+    const hasSectionTitle = !!menu.querySelector('.menu-section-title');
+    const items = Array.from(menu.querySelectorAll('.menu-item'));
+    const rects = items.map((el) => el.getBoundingClientRect());
+    const heights = rects.map((r) => Math.round(r.height));
+    const gaps = [];
+    for (let i = 1; i < rects.length; i++) {
+      gaps.push(Math.round(rects[i].top - rects[i - 1].bottom));
+    }
+    const equalHeights = heights.length > 0 && heights.every((h) => h === heights[0]);
+    const equalGaps = gaps.length > 0 && gaps.every((g) => Math.abs(g - gaps[0]) <= 1);
     return {
       btnBg: bcs.backgroundColor,
       btnPad: bcs.paddingTop,
@@ -231,16 +242,26 @@ try {
       gapFromRail: Math.round(mr.left - rr.right),
       leftGapToPanel,
       bottomGapToPanel,
+      hasHeader,
+      hasSectionTitle,
+      heights,
+      gaps,
+      equalHeights,
+      equalGaps,
     };
   });
   record(
-    'Account avatar has NO white ring; menu is pure white with soft blur and flush with left & bottom panel edges (0px/0px)',
+    'Account menu has no username/Tài khoản headers, evenly spaced equal buttons, pure white soft shadow, flush 0px/0px',
     accountAudit.btnBg === 'rgba(0, 0, 0, 0)' &&
       accountAudit.btnPad === '0px' &&
       accountAudit.btnShadow === 'none' &&
       accountAudit.menuBg === 'rgb(255, 255, 255)' &&
       accountAudit.menuBorder === '0px none' &&
       accountAudit.menuShadow !== 'none' &&
+      !accountAudit.hasHeader &&
+      !accountAudit.hasSectionTitle &&
+      accountAudit.equalHeights &&
+      accountAudit.equalGaps &&
       Math.abs(accountAudit.leftGapToPanel) <= 1 &&
       Math.abs(accountAudit.bottomGapToPanel) <= 1,
     JSON.stringify(accountAudit),

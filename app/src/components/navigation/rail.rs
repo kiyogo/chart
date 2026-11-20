@@ -425,7 +425,6 @@ pub fn AppRail(
                 if menu_open() {
                     button { r#type: "button", class: "menu-dismiss", aria_label: "Đóng menu", tabindex: "-1", onclick: move |_| menu_open.set(false) }
                     div { class: "account-menu rail-menu", role: "menu",
-                        div { class: "menu-header", "{current_username}" }
                         button { r#type: "button", class: "menu-item", role: "menuitem",
                             onclick: move |_| { menu_open.set(false); on_open_profile.call(()); },
                             UserIcon {} span { "Hồ sơ của tôi" }
