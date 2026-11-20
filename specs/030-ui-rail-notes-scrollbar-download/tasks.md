@@ -10,3 +10,5 @@
 - [x] T008 Create `NotificationsView` (`app/src/components/notifications_view.rs`), add `NavSection::Notifications`, and wire rail `"Thông báo"` click to open this dedicated full page
 - [x] T009 Fix `DownloadView` white `#FFFFFF` rounded `.main-stage` surface, remove QR border frame, and remove top-left `<-` arrow + logo + title in `download_view.rs` & `main.css`
 - [x] T010 Rebuild (`./app/build-web.sh`), update & run `spec030-ui-check.mjs` + `borderless-shadowless-check.mjs` + `scrollbar-switch-check.mjs`, visually inspect screenshots, and commit + push to `origin main`
+- [x] T011 Enlarge QR SVG (`quiet_zone(false)`), match `8px` uniform menu margins & compact store spacing on `.download-rail-menu`, strip all gray container boxes from `DownloadView`, and remove `scale(...)` zoom inflation across `pop-in`, `dialog-in`, rail icons, and UI controls in `download_view.rs` & `main.css`
+- [x] T012 Rebuild (`./app/build-web.sh`), update & run all E2E checks, verify screenshots visually, and commit + push to `origin main`

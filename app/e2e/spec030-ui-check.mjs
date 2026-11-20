@@ -172,17 +172,19 @@ try {
   await page.locator('.menu-dismiss').click().catch(() => {});
   await page.waitForTimeout(150);
 
-  // 5. Left Rail: Tải ứng dụng hover QR card (no QR border, no store box borders, equal padding, soft blurred edge, offset from rail)
+  // 5. Left Rail: Tải ứng dụng hover QR card (bigger QR, no QR border, no store box borders, equal 8px padding matching NgSon menu, soft blurred edge)
   await page.locator('.rail-download-wrap').hover();
   await page.waitForSelector('.download-rail-menu', { timeout: 5000 });
   const dlHover = await page.evaluate(() => {
     const card = document.querySelector('.download-rail-menu');
+    const accRailGap = 10;
     const qrWrap = document.querySelector('.download-popover-qr');
     const qrSvg = document.querySelector('.download-popover-qr svg');
     const deskBtn = document.querySelector('.download-popover-desktop-btn');
     const storeBtns = Array.from(document.querySelectorAll('.download-store-logo-only'));
     const cs = getComputedStyle(card);
     const qcs = getComputedStyle(qrWrap);
+    const qRect = qrSvg ? qrSvg.getBoundingClientRect() : null;
     return {
       bg: cs.backgroundColor,
       border: `${cs.borderTopWidth} ${cs.borderTopStyle}`,
@@ -191,35 +193,50 @@ try {
       qrBorder: `${qcs.borderTopWidth} ${qcs.borderTopStyle}`,
       qrBg: qcs.backgroundColor,
       hasQr: !!qrSvg,
+      qrWidth: qRect ? Math.round(qRect.width) : 0,
       desktopLabel: deskBtn ? deskBtn.innerText.trim() : '',
       storeCount: storeBtns.length,
       storeTexts: storeBtns.map((b) => b.innerText.trim()),
       storeSvgs: storeBtns.map((b) => b.querySelectorAll('svg').length),
       storeBorders: storeBtns.map((b) => getComputedStyle(b).borderTopStyle),
+      noZoomAnim: !Array.from(document.styleSheets).some((s) => {
+        try {
+          return Array.from(s.cssRules || []).some((r) =>
+            (r.name === 'pop-in' || r.name === 'dialog-in') && r.cssText.includes('scale(')
+          );
+        } catch {
+          return false;
+        }
+      }),
     };
   });
   record(
-    'Download QR hover card is white with soft blur edge, borderless QR & store logos, and equal inner spacing',
+    'Download QR hover card has larger QR, uniform 8px edge margins, borderless QR & store logos, and zero scale() zoom pop',
     dlHover.bg === 'rgb(255, 255, 255)' &&
       dlHover.border === '0px none' &&
       dlHover.shadow !== 'none' &&
+      dlHover.pad === '7.5px 7.5px 7.5px 7.5px' &&
       dlHover.qrBorder === '0px none' &&
       dlHover.hasQr &&
+      dlHover.qrWidth >= 155 &&
       dlHover.desktopLabel.includes('Tải cho máy tính') &&
       dlHover.storeCount === 2 &&
       dlHover.storeTexts.every((t) => t === '') &&
       dlHover.storeSvgs.every((n) => n === 1) &&
-      dlHover.storeBorders.every((b) => b === 'none'),
+      dlHover.storeBorders.every((b) => b === 'none') &&
+      dlHover.noZoomAnim,
     JSON.stringify(dlHover),
   );
   await page.screenshot({ path: path.join(OUT, '05_rail_download_qr_hover.png') });
 
-  // 6. Click Tải ứng dụng -> DownloadView page (white rounded panel, borderless QR, NO top-left back/logo/title)
+  // 6. Click Tải ứng dụng -> DownloadView page (white rounded panel, NO gray section/card boxes, borderless QR, NO top-left back/logo/title)
   await page.locator('.rail-download-wrap button[aria-label="Tải ứng dụng"]').click();
   await page.waitForSelector('.download-page', { timeout: 8000 });
   await page.waitForTimeout(250);
   const dlPage = await page.evaluate(() => {
     const pageEl = document.querySelector('.download-page');
+    const heroEl = document.querySelector('.download-hero');
+    const secEl = document.querySelector('.download-section');
     const pcs = getComputedStyle(pageEl);
     const qrBox = document.querySelector('.download-qr-box');
     const qcs = getComputedStyle(qrBox);
@@ -233,6 +250,8 @@ try {
     return {
       sidebarHidden,
       bg: pcs.backgroundColor,
+      heroBg: heroEl ? getComputedStyle(heroEl).backgroundColor : null,
+      secBg: secEl ? getComputedStyle(secEl).backgroundColor : null,
       radius: pcs.borderTopLeftRadius,
       qrBorder: `${qcs.borderTopWidth} ${qcs.borderTopStyle}`,
       hasTopLeftBrand,
@@ -249,9 +268,11 @@ try {
     };
   });
   record(
-    'DownloadView uses white rounded panel, borderless QR, and no top-left title/arrow',
+    'DownloadView uses pure white rounded panel, zero gray section boxes, borderless QR, and no top-left title/arrow',
     dlPage.sidebarHidden &&
       dlPage.bg === 'rgb(255, 255, 255)' &&
+      dlPage.heroBg === 'rgba(0, 0, 0, 0)' &&
+      dlPage.secBg === 'rgba(0, 0, 0, 0)' &&
       parseFloat(dlPage.radius) >= 15 &&
       dlPage.qrBorder === '0px none' &&
       !dlPage.hasTopLeftBrand &&
