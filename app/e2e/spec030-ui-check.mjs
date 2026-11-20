@@ -44,19 +44,25 @@ try {
   if (await skip.isVisible().catch(() => false)) await skip.click();
   await page.waitForSelector('.notes-strip', { timeout: 10000 });
 
-  // 1. Sidebar thought bubble position, color, subtle border, spacing to search, distinct click targets
+  // 1. Sidebar thought bubble position, pure white borderless (soft blur only), closer under search, tight avatar spacing, and equal top/bottom/left chat row inset
   const noteLayout = await page.evaluate(() => {
     const search = document.querySelector('.sidebar-search input');
     const tile = document.querySelector('.my-note-tile');
     const bubble = document.querySelector('.my-note-tile .note-bubble');
     const avWrap = document.querySelector('.my-note-tile .note-avatar-wrap');
-    if (!search || !tile || !bubble || !avWrap) return null;
+    const plusBadge = document.querySelector('.my-note-tile .note-plus-badge');
+    const chatItem = document.querySelector('.sidebar-scrollable .chat-item');
+    if (!search || !tile || !bubble || !avWrap || !chatItem) return null;
     const sr = search.getBoundingClientRect();
     const br = bubble.getBoundingClientRect();
     const ar = avWrap.getBoundingClientRect();
+    const cr = chatItem.getBoundingClientRect();
     const cs = getComputedStyle(bubble);
+    const pcs = plusBadge ? getComputedStyle(plusBadge) : null;
+    const ccs = getComputedStyle(chatItem);
     return {
       gapSearchToAvatar: Math.round(ar.top - sr.bottom),
+      gapAvatarToChat: Math.round(cr.top - ar.bottom),
       bubbleTop: Math.round(br.top),
       bubbleBottom: Math.round(br.bottom),
       bubbleLeft: Math.round(br.left),
@@ -64,18 +70,24 @@ try {
       avatarCenterX: Math.round(ar.left + ar.width / 2),
       bg: cs.backgroundColor,
       border: `${cs.borderTopWidth} ${cs.borderTopStyle}`,
+      shadow: cs.boxShadow,
+      plusBorder: pcs ? `${pcs.borderTopWidth} ${pcs.borderTopStyle}` : null,
+      chatPad: `${ccs.paddingTop} ${ccs.paddingRight} ${ccs.paddingBottom} ${ccs.paddingLeft}`,
       overlapPx: Math.round(br.bottom - ar.top),
     };
   });
   record(
-    'Sidebar "Chia sẻ suy nghĩ" is pure white + border, top-left & closer under search',
+    'Sidebar "Chia sẻ suy nghĩ" has NO gray border (soft white cloud), closer under search, tight avatars, & equal chat row padding',
     !!(
       noteLayout &&
       noteLayout.bg === 'rgb(255, 255, 255)' &&
-      noteLayout.border === '1px solid' &&
-      noteLayout.gapSearchToAvatar <= 54 &&
+      noteLayout.border === '0px none' &&
+      noteLayout.shadow !== 'none' &&
+      noteLayout.plusBorder === '0px none' &&
+      noteLayout.gapSearchToAvatar <= 44 &&
       noteLayout.bubbleLeft < noteLayout.avatarCenterX &&
-      noteLayout.overlapPx <= 4
+      noteLayout.overlapPx <= 4 &&
+      noteLayout.chatPad === '6.75px 6.75px 6.75px 6.75px'
     ),
     JSON.stringify(noteLayout),
   );

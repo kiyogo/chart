@@ -99,16 +99,16 @@ try {
       composerShadow: comp ? getComputedStyle(comp).boxShadow : null,
       railShadow: railAct ? getComputedStyle(railAct).boxShadow : null,
       secTabShadow: secAct ? getComputedStyle(secAct).boxShadow : null,
-      noteBubbleShadow: noteBubble ? getComputedStyle(noteBubble).boxShadow : null,
+      noteBubbleBorder: noteBubble ? getComputedStyle(noteBubble).borderTopStyle : null,
       noteBubbleBg: noteBubble ? getComputedStyle(noteBubble).backgroundColor : null,
     };
   });
   record(
-    'Chat composer, active tabs/rail, and note bubble shadowless',
+    'Chat composer, active tabs/rail shadowless & note bubble borderless',
     chatAudit.composerShadow === 'none' &&
       chatAudit.railShadow === 'none' &&
       (!chatAudit.secTabShadow || chatAudit.secTabShadow === 'none') &&
-      (!chatAudit.noteBubbleShadow || chatAudit.noteBubbleShadow === 'none'),
+      (!chatAudit.noteBubbleBorder || chatAudit.noteBubbleBorder === 'none'),
     JSON.stringify(chatAudit)
   );
   await page.screenshot({ path: path.join(OUT, '03_chat_view.png') });
