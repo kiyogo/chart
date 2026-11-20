@@ -184,15 +184,25 @@ try {
       JSON.stringify(thinSample),
     );
 
-    // Move cursor directly onto the scrollbar track/thumb (5px from right edge) -> expect expanded ~8px
-    await page.mouse.move(scrollInfo.right - 5, thumbY);
+    // Move cursor to proximity zone (15px from right edge) -> expect thin ~3px
+    await page.mouse.move(scrollInfo.right - 15, thumbY);
+    await page.waitForTimeout(260);
+    const proxSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
+    record(
+      `${label}: scrollbar in proximity (15px away) stays thin (~3px)`,
+      proxSample.found && proxSample.pixelWidth >= 2 && proxSample.pixelWidth <= 4.5,
+      JSON.stringify(proxSample),
+    );
+
+    // Move cursor directly onto the scrollbar track/thumb (4px from right edge) -> expect expanded ~9px
+    await page.mouse.move(scrollInfo.right - 4, thumbY);
     await page.waitForTimeout(380);
     const hoverSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
     await page.screenshot({ path: path.join(OUT, `05_${selector.replace(/[^a-z]/g, '')}_hover.png`) });
     record(
-      `${label}: scrollbar on direct hover expands visibly (~8px)`,
-      hoverSample.found && hoverSample.pixelWidth >= 7 && hoverSample.pixelWidth <= 9.5 && hoverSample.pixelWidth > thinSample.pixelWidth + 3.5,
-      `thin=${thinSample.pixelWidth}px -> hover=${hoverSample.pixelWidth}px (alpha ${thinSample.maxAlpha} -> ${hoverSample.maxAlpha})`,
+      `${label}: scrollbar on direct hover expands visibly (~9px)`,
+      hoverSample.found && hoverSample.pixelWidth >= 8 && hoverSample.pixelWidth <= 11 && hoverSample.pixelWidth > thinSample.pixelWidth + 4,
+      `thin=${thinSample.pixelWidth}px -> prox=${proxSample.pixelWidth}px -> hover=${hoverSample.pixelWidth}px (alpha ${thinSample.maxAlpha} -> ${hoverSample.maxAlpha})`,
     );
 
     // Drag thumb down 80px and verify scrollTop increases

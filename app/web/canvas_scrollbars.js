@@ -34,13 +34,14 @@
   let hasPointer = false;
 
   // Configuration constants
-  const PROXIMITY_PX = 24;
-  const HOVER_ZONE_PX = 14;
-  const EDGE_OUTER_TOLERANCE_PX = 6;
-  const THUMB_Y_TOLERANCE_PX = 10;
+  const PROXIMITY_PX = 48;
+  const HOVER_ENTER_PX = 7;
+  const HOVER_EXIT_PX = 11;
+  const EDGE_OUTER_TOLERANCE_PX = 4;
+  const THUMB_Y_TOLERANCE_PX = 4;
   const FADE_TIMEOUT_MS = 850;
   const THUMB_NORMAL_WIDTH = 3;
-  const THUMB_EXPANDED_WIDTH = 8;
+  const THUMB_EXPANDED_WIDTH = 9;
   const THUMB_MIN_HEIGHT = 28;
   const THUMB_EDGE_MARGIN = 2;
 
@@ -234,8 +235,11 @@
       const distFromRight = m.rect.right - x;
       const withinY = y >= m.rect.top && y <= m.rect.bottom;
       const isNearEdge = withinY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= PROXIMITY_PX;
+      const existing = activeEntries.get(el);
+      const wasHovered = existing ? existing.isThumbHovered : false;
+      const xLimit = wasHovered ? HOVER_EXIT_PX : HOVER_ENTER_PX;
       const withinThumbY = y >= m.thumbY - THUMB_Y_TOLERANCE_PX && y <= m.thumbY + m.thumbH + THUMB_Y_TOLERANCE_PX;
-      const isThumbHovered = withinThumbY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_ZONE_PX;
+      const isThumbHovered = withinThumbY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= xLimit;
 
       if (isNearEdge || isThumbHovered || activeEntries.has(el)) {
         const entry = getEntry(el);
@@ -336,9 +340,9 @@
         hasActiveAnimations = true;
       }
 
-      // Smoothly animate thumb width (3px <-> 8px)
+      // Smoothly animate thumb width (3px <-> 9px)
       const targetWidth = isExpanded ? THUMB_EXPANDED_WIDTH : THUMB_NORMAL_WIDTH;
-      entry.thumbW += (targetWidth - entry.thumbW) * 0.32;
+      entry.thumbW += (targetWidth - entry.thumbW) * 0.24;
       if (Math.abs(targetWidth - entry.thumbW) < 0.05) {
         entry.thumbW = targetWidth;
       } else {
@@ -361,9 +365,9 @@
       const thumbX = m.rect.right - thumbW - THUMB_EDGE_MARGIN;
 
       entry.thumbRect = {
-        x: m.rect.right - HOVER_ZONE_PX,
+        x: m.rect.right - HOVER_EXIT_PX,
         y: m.thumbY - THUMB_Y_TOLERANCE_PX,
-        w: HOVER_ZONE_PX + EDGE_OUTER_TOLERANCE_PX,
+        w: HOVER_EXIT_PX + EDGE_OUTER_TOLERANCE_PX,
         h: m.thumbH + THUMB_Y_TOLERANCE_PX * 2,
         visualY: m.thumbY,
         visualH: m.thumbH,
@@ -483,7 +487,7 @@
 
       // Hit on track
       const distFromRight = tr.elRect.right - x;
-      if (distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_ZONE_PX && y >= tr.elRect.top && y <= tr.elRect.bottom) {
+      if (distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_EXIT_PX && y >= tr.elRect.top && y <= tr.elRect.bottom) {
         e.preventDefault();
         e.stopPropagation();
 
