@@ -53,6 +53,9 @@ a:hover { text-decoration: underline; }
   z-index: 99999;
   user-select: none;
 }
+body.canvas-scrollbar-dragging {
+  user-select: none !important;
+}
 
 /* ---------- Controls ---------- */
 button {
@@ -643,12 +646,24 @@ input[type="color"] {
 /* ---------- Switch toggle ---------- */
 .toggle-row { cursor: pointer; }
 input[type="checkbox"].switch {
+  --sw-w: 44px;
+  --sw-h: 24px;
+  --sw-pad: 3px;
+  --sw-knob: 18px;
   appearance: none;
   -webkit-appearance: none;
-  width: 2.75rem;
-  height: 1.5rem;
-  min-height: 0;
+  box-sizing: border-box;
+  display: inline-block;
+  vertical-align: middle;
+  width: var(--sw-w);
+  min-width: var(--sw-w);
+  max-width: var(--sw-w);
+  height: var(--sw-h);
+  min-height: var(--sw-h);
+  max-height: var(--sw-h);
+  flex: 0 0 var(--sw-w);
   padding: 0;
+  margin: 0;
   border: none;
   outline: none;
   box-shadow: none;
@@ -662,20 +677,25 @@ input[type="checkbox"].switch {
 input[type="checkbox"].switch::after {
   content: "";
   position: absolute;
-  top: 0.1875rem;
-  left: 0.1875rem;
-  width: 1.125rem;
-  height: 1.125rem;
+  top: 50%;
+  left: var(--sw-pad);
+  width: var(--sw-knob);
+  height: var(--sw-knob);
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.14), 0 1px 2px rgba(0, 0, 0, 0.14);
+  transform: translate3d(0, -50%, 0);
+  will-change: transform;
   transition: transform var(--dur-menu) var(--ease);
 }
 input[type="checkbox"].switch:checked { background: var(--accent); }
-input[type="checkbox"].switch:checked::after { transform: translateX(1.25rem); }
+input[type="checkbox"].switch:checked::after {
+  transform: translate3d(calc(var(--sw-w) - var(--sw-knob) - var(--sw-pad) * 2), -50%, 0);
+}
 input[type="checkbox"].switch:focus { background: var(--bg-active); box-shadow: none; outline: none; }
 input[type="checkbox"].switch:checked:focus { background: var(--accent); box-shadow: none; outline: none; }
 input[type="checkbox"].switch:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent); }
+input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ---------- Sticker manager ---------- */
 .inline-form { display: flex; gap: var(--space-2); }
@@ -4363,7 +4383,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-.ent-toolbar > input {
+.ent-toolbar > input:not([type="checkbox"]) {
   width: auto;
   min-width: 220px;
   max-width: 320px;
@@ -4398,7 +4418,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   gap: 6px;
 }
 .ent-btn-group > select,
-.ent-btn-group > input {
+.ent-btn-group > input:not([type="checkbox"]) {
   width: auto;
   min-width: 115px;
 }
