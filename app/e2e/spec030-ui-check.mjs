@@ -134,24 +134,57 @@ try {
   await page.locator('.note-modal button[aria-label="Đóng"]').click();
   await page.waitForTimeout(200);
 
-  // 2. FeedView ("Mới") strip
+  // 2. FeedView ("Mới"): Facebook-style compact composer bar + vertical story cards carousel
   await page.locator('.app-rail button[aria-label="Mới"]').click();
-  await page.waitForSelector('.feed-stories-card .notes-strip', { timeout: 10000 });
+  await page.waitForSelector('.feed-compose-bar', { timeout: 10000 });
+  await page.waitForSelector('.feed-story-carousel .feed-story-card.create-card', { timeout: 10000 });
   await page.waitForTimeout(300);
-  const feedStripCheck = await page.evaluate(() => {
-    const card = document.querySelector('.feed-stories-card');
-    const bubble = document.querySelector('.feed-stories-card .note-bubble');
-    if (!card || !bubble) return null;
-    const cr = card.getBoundingClientRect();
-    const br = bubble.getBoundingClientRect();
-    return { cardTop: Math.round(cr.top), bubbleTop: Math.round(br.top), bg: getComputedStyle(bubble).backgroundColor };
+  const feedLayoutCheck = await page.evaluate(() => {
+    const bar = document.querySelector('.feed-compose-bar');
+    const pill = document.querySelector('.feed-compose-pill');
+    const quickBtns = document.querySelectorAll('.feed-compose-quick-actions .feed-quick-btn');
+    const carousel = document.querySelector('.feed-story-carousel');
+    const createCard = document.querySelector('.feed-story-card.create-card');
+    const plusBadge = document.querySelector('.feed-story-create-plus');
+    const allCards = document.querySelectorAll('.feed-story-rail .feed-story-card');
+    if (!bar || !pill || !carousel || !createCard || !plusBadge) return null;
+    const br = bar.getBoundingClientRect();
+    const cr = carousel.getBoundingClientRect();
+    const cardR = createCard.getBoundingClientRect();
+    return {
+      barBottom: Math.round(br.bottom),
+      carouselTop: Math.round(cr.top),
+      pillText: pill.textContent?.trim(),
+      quickBtnCount: quickBtns.length,
+      cardCount: allCards.length,
+      cardWidth: Math.round(cardR.width),
+      cardHeight: Math.round(cardR.height),
+      plusBg: getComputedStyle(plusBadge).backgroundColor,
+      createLabel: createCard.querySelector('.feed-story-create-label')?.textContent?.trim(),
+    };
   });
   record(
-    'FeedView ("Mới") displays white thought bubble & clean top clearance',
-    !!(feedStripCheck && feedStripCheck.bubbleTop >= feedStripCheck.cardTop && feedStripCheck.bg === 'rgb(255, 255, 255)'),
-    JSON.stringify(feedStripCheck),
+    'FeedView ("Mới") renders compact top composer bar & vertical Facebook-style Story Cards carousel',
+    !!(
+      feedLayoutCheck &&
+      feedLayoutCheck.carouselTop >= feedLayoutCheck.barBottom &&
+      feedLayoutCheck.pillText?.includes('bạn đang nghĩ gì thế?') &&
+      feedLayoutCheck.quickBtnCount === 3 &&
+      feedLayoutCheck.cardHeight > feedLayoutCheck.cardWidth &&
+      feedLayoutCheck.createLabel === 'Tạo tin' &&
+      feedLayoutCheck.plusBg === 'rgb(24, 119, 242)'
+    ),
+    JSON.stringify(feedLayoutCheck),
   );
   await page.screenshot({ path: path.join(OUT, '02_feed_stories_strip.png') });
+
+  // Clicking "Tạo tin" card opens "Tạo tin ảnh" modal cleanly
+  await page.locator('.feed-story-card.create-card').click();
+  await page.waitForSelector('.note-modal', { timeout: 5000 });
+  const feedStoryModalTitle = await page.locator('.note-modal .modal-title').innerText().catch(() => '');
+  record('Clicking "Tạo tin" story card opens "Tạo tin ảnh" modal', feedStoryModalTitle.includes('Tạo tin ảnh'), feedStoryModalTitle);
+  await page.locator('.note-modal button[aria-label="Đóng"]').click();
+  await page.waitForTimeout(200);
 
   // 3. Left Rail: Thông báo opens dedicated full NotificationsView page (white rounded panel)
   await page.locator('.rail-bottom button[aria-label="Thông báo"]').click();
