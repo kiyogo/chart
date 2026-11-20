@@ -15,10 +15,10 @@ use crate::{
         avatar::Avatar,
         chat_extras::wallpaper_attrs,
         icons::{
-            BackIcon, BoltIcon, BotIcon, BuildingIcon, CalcIcon, CalendarIcon, CheckIcon,
+            BackIcon, BoltIcon, BotIcon, BuildingIcon, CalcIcon, CalendarIcon,
             ClipboardCheckIcon, CloseIcon, CoinIcon, CompassIcon, CopyIcon, DiceIcon,
-            DownloadIcon, GlobeIcon, GroupIcon, HelpCircleIcon, ListChecksIcon, LogInIcon,
-            LogOutIcon, MegaphoneIcon, PanelRightIcon, PluginIcon, PlusIcon, RefreshIcon,
+            GlobeIcon, GroupIcon, HelpCircleIcon, ListChecksIcon, LogInIcon,
+            LogOutIcon, MegaphoneIcon, PanelRightIcon, PluginIcon, PlusIcon,
             SendIcon, SlidersIcon, TrashIcon, TypeIcon, VicoAiIcon, VideoIcon,
         },
         messages::{Composer, MessageList, ViewMessage},
@@ -26,26 +26,50 @@ use crate::{
     models::{BotChatMessage, BotItem, GroupItem},
     platform,
     prefs::PrefsCtx,
-    services::{library, social},
+    services::social,
 };
 
 const STORAGE_KEY: &str = "chatw_plugins_v2";
 const STORE_MIGRATED_KEY: &str = "chatw_plugin_store_v1";
-const NOTES_KEY: &str = "chatw_plugin_notes_v1";
-const TODOS_KEY: &str = "chatw_plugin_todos_v1";
-const VOXEL_KEY: &str = "chatw_plugin_voxel_v1";
+const MODULAR_MIGRATED_KEY: &str = "chatw_plugins_modular_v3";
+pub(crate) const NOTES_KEY: &str = "chatw_plugin_notes_v1";
+pub(crate) const TODOS_KEY: &str = "chatw_plugin_todos_v1";
+pub(crate) const VOXEL_KEY: &str = "chatw_plugin_voxel_v1";
 
 fn default_true() -> bool {
     true
 }
 
+fn default_hundred() -> i32 {
+    100
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct PluginSettingDef {
+    pub key: String,
+    pub label: String,
+    #[serde(default)]
+    pub kind: String, // "toggle" | "slider" | "select" | "text" | "color"
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub min: i32,
+    #[serde(default = "default_hundred")]
+    pub max: i32,
+    #[serde(default)]
+    pub default_value: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PluginCommand {
     pub trigger: String,
+    #[serde(default)]
     pub description: String,
     pub response: String,
     #[serde(default)]
     pub icon: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -94,40 +118,135 @@ pub struct PluginMod {
     pub icon: String,
     #[serde(default)]
     pub logo_url: String,
+    #[serde(default)]
+    pub default_logo_url: String,
+    #[serde(default = "default_true")]
+    pub allow_custom_logo: bool,
+    #[serde(default)]
     pub description: String,
     #[serde(default = "default_true")]
     pub installed: bool,
     pub enabled: bool,
     pub builtin: bool,
     pub server_bot_id: Option<String>,
-    // Bot & Automation
+    // Slash commands & quick actions
+    #[serde(default)]
     pub bot_enabled: bool,
+    #[serde(default)]
     pub commands: Vec<PluginCommand>,
     #[serde(default)]
     pub auto_reply: String,
     #[serde(default)]
     pub webhook_url: String,
-    // Full-App UI Overhaul
+    // Visual styling (only active for theme-capable plugins)
+    #[serde(default)]
     pub theme_enabled: bool,
+    #[serde(default)]
     pub theme: PluginTheme,
-    // UI Surfaces: Left Sidebar App & Main Stage Page & Custom Blocks
+    // Plugin workspace surfaces & reorderable custom layout
     #[serde(default)]
     pub left_app_enabled: bool,
+    #[serde(default)]
     pub custom_page_enabled: bool,
+    #[serde(default)]
     pub page_title: String,
+    #[serde(default)]
     pub page_icon: String,
-    pub page_kind: String, // "voxel" | "notes" | "soundboard" | "cyber" | "custom"
+    #[serde(default)]
+    pub page_kind: String, // "notes" | "soundboard" | "voxel" | "theme_sakura" | "cyber" | "tools" | "custom"
+    #[serde(default)]
     pub custom_blocks: Vec<PluginCustomBlock>,
+    #[serde(default)]
+    pub section_order: Vec<String>,
+    #[serde(default)]
+    pub hidden_sections: Vec<String>,
+    #[serde(default)]
+    pub config: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    pub custom_settings: Vec<PluginSettingDef>,
+    // Legacy persisted fields (kept for JSON compatibility, unused in UI)
+    #[serde(default)]
     pub hud_enabled: bool,
-    pub hud_position: String, // "top-right" | "bottom-right" | "top-left"
+    #[serde(default)]
+    pub hud_position: String,
+    #[serde(default)]
     pub hud_coords: bool,
+    #[serde(default)]
     pub hud_clock: bool,
+    #[serde(default)]
     pub hud_note: bool,
     #[serde(default)]
     pub hud_pomodoro: bool,
+    #[serde(default)]
     pub screen_fx: String, // "none" | "sakura" | "snow" | "matrix" | "voxel"
+    #[serde(default)]
     pub sound_fx: String,  // "none" | "minecraft" | "mech" | "scifi"
+    #[serde(default)]
     pub composer_buttons: Vec<PluginComposerBtn>,
+}
+
+impl PluginMod {
+    pub fn cfg_bool(&self, key: &str, default: bool) -> bool {
+        self.config.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+    }
+
+    pub fn cfg_i64(&self, key: &str, default: i64) -> i64 {
+        self.config.get(key).and_then(|v| v.as_i64()).unwrap_or(default)
+    }
+
+    pub fn cfg_f64(&self, key: &str, default: f64) -> f64 {
+        self.config.get(key).and_then(|v| v.as_f64()).unwrap_or(default)
+    }
+
+    pub fn cfg_str(&self, key: &str, default: &str) -> String {
+        self.config
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| default.to_string())
+    }
+
+    pub fn set_cfg(&mut self, key: &str, val: serde_json::Value) {
+        self.config.insert(key.to_string(), val);
+    }
+
+    pub fn ordered_sections(&self, defaults: &[&str]) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .section_order
+            .iter()
+            .filter(|s| defaults.iter().any(|d| d == &s.as_str()))
+            .cloned()
+            .collect();
+        for d in defaults {
+            if !out.iter().any(|x| x == d) {
+                out.push((*d).to_string());
+            }
+        }
+        out
+    }
+
+    pub fn is_section_hidden(&self, key: &str) -> bool {
+        self.hidden_sections.iter().any(|k| k == key)
+    }
+
+    pub fn toggle_section(&mut self, key: &str) {
+        if let Some(pos) = self.hidden_sections.iter().position(|k| k == key) {
+            self.hidden_sections.remove(pos);
+        } else {
+            self.hidden_sections.push(key.to_string());
+        }
+    }
+
+    pub fn move_section(&mut self, key: &str, delta: isize, defaults: &[&str]) {
+        let mut ord = self.ordered_sections(defaults);
+        if let Some(pos) = ord.iter().position(|k| k == key) {
+            let next = pos as isize + delta;
+            if next >= 0 && (next as usize) < ord.len() {
+                ord.swap(pos, next as usize);
+                self.section_order = ord;
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -144,139 +263,226 @@ pub static EDITING_PLUGIN_ID: GlobalSignal<Option<String>> = Signal::global(|| N
 pub static PENDING_COMPOSER_TEXT: GlobalSignal<Option<String>> = Signal::global(|| None);
 
 fn default_builtin_plugins() -> Vec<PluginMod> {
+    let mut notes_cfg = serde_json::Map::new();
+    notes_cfg.insert("focus_minutes".into(), json!(25));
+    notes_cfg.insert("break_minutes".into(), json!(5));
+    notes_cfg.insert("sound_alert".into(), json!(true));
+    notes_cfg.insert("layout_mode".into(), json!("two_col"));
+
+    let mut sound_cfg = serde_json::Map::new();
+    sound_cfg.insert("volume".into(), json!(75));
+    sound_cfg.insert("pitch".into(), json!(100));
+    sound_cfg.insert("columns".into(), json!(4));
+
+    let mut voxel_cfg = serde_json::Map::new();
+    voxel_cfg.insert("default_color".into(), json!("#10B981"));
+    voxel_cfg.insert("show_grid".into(), json!(true));
+    voxel_cfg.insert("bevel_blocks".into(), json!(true));
+    voxel_cfg.insert("brush_sound".into(), json!(true));
+
+    let mut cyber_cfg = serde_json::Map::new();
+    cyber_cfg.insert("cmd_sound".into(), json!(true));
+
     vec![
         PluginMod {
-            id: "mod:minecraft_voxel".into(),
-            username: "voxel_plugin".into(),
-            display_name: "Bảng vẽ Voxel".into(),
+            id: "mod:workspace_notes".into(),
+            username: "workspace_notes".into(),
+            display_name: "Sổ tay & Việc làm".into(),
             author: "ChatW".into(),
-            version: "1.0.0".into(),
-            icon: "🎨".into(),
-            logo_url: "logo:voxel".into(),
-            description: "Giao diện khối vuông, bảng vẽ 2D và HUD tọa độ.".into(),
-            installed: false,
-            enabled: false,
+            version: "2.0.0".into(),
+            icon: "📋".into(),
+            logo_url: "logo:notes".into(),
+            default_logo_url: "logo:notes".into(),
+            allow_custom_logo: true,
+            description: String::new(),
+            installed: true,
+            enabled: true,
             builtin: true,
             server_bot_id: None,
-            bot_enabled: true,
+            bot_enabled: false,
             commands: vec![
-                PluginCommand { trigger: "/craft".into(), description: "Tạo vật phẩm".into(), response: "⛏ [{user}] đã chế tạo thành công!".into(), icon: "svg:voxel".into() },
-                PluginCommand { trigger: "/coords".into(), description: "Xem tọa độ".into(), response: "🧭 Tọa độ của {user}: X: 128, Y: 64, Z: -256".into(), icon: "svg:compass".into() },
-                PluginCommand { trigger: "/seed".into(), description: "Mã ngẫu nhiên".into(), response: "🌱 Seed: 849201749201 · Số: {rand100}".into(), icon: "svg:code".into() },
-                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc".into(), response: "🎲 {user} tung xúc xắc được: {dice}".into(), icon: "svg:dice".into() },
+                PluginCommand { trigger: "/todo".into(), description: "Thêm việc cần làm".into(), response: "✅ Đã thêm việc cho {user}: {args}".into(), icon: "svg:todo".into(), enabled: true },
+                PluginCommand { trigger: "/note".into(), description: "Lưu ghi chú".into(), response: "📝 Đã lưu ghi chú lúc {time}: {args}".into(), icon: "svg:notes".into(), enabled: true },
             ],
             auto_reply: String::new(),
             webhook_url: String::new(),
-            theme_enabled: true,
-            theme: PluginTheme {
-                bg_app: "#141814".into(),
-                bg_sidebar: "#1D241D".into(),
-                bg_chat: "#181E18".into(),
-                bg_surface: "#242D24".into(),
-                accent: "#10B981".into(),
-                msg_sent: "#059669".into(),
-                msg_recv: "#263126".into(),
-                text_primary: "#ECFDF5".into(),
-                panel_radius: "0px".into(),
-                border_style: "pixel".into(),
-                glass_blur: 0,
-                rail_position: "left".into(),
-                font_style: "pixel".into(),
-                custom_css: ".chat-item, .btn-primary, .btn-secondary, .result-card, .settings-row { box-shadow: inset -2px -2px 0 rgba(0,0,0,0.45), inset 2px 2px 0 rgba(255,255,255,0.12); }".into(),
-            },
-            left_app_enabled: false,
+            theme_enabled: false,
+            theme: PluginTheme::default(),
+            left_app_enabled: true,
             custom_page_enabled: true,
-            page_title: "Bảng Voxel".into(),
-            page_icon: "🎨".into(),
-            page_kind: "voxel".into(),
+            page_title: "Sổ tay".into(),
+            page_icon: "📋".into(),
+            page_kind: "notes".into(),
             custom_blocks: Vec::new(),
-            hud_enabled: true,
-            hud_position: "top-right".into(),
-            hud_coords: true,
-            hud_clock: true,
-            hud_note: false,
-            hud_pomodoro: false,
-            screen_fx: "voxel".into(),
-            sound_fx: "minecraft".into(),
-            composer_buttons: vec![
-                PluginComposerBtn { label: "🎨 /craft".into(), content: "/craft".into() },
-                PluginComposerBtn { label: "🧭 /coords".into(), content: "/coords".into() },
-            ],
-        },
-        PluginMod {
-            id: "mod:cyberpunk_hud".into(),
-            username: "cyber_plugin".into(),
-            display_name: "Giao diện Cyber Neon".into(),
-            author: "ChatW".into(),
-            version: "1.0.0".into(),
-            icon: "⚡".into(),
-            logo_url: "logo:cyber".into(),
-            description: "Giao diện tối Neon, hiệu ứng Matrix và trạm lệnh.".into(),
-            installed: false,
-            enabled: false,
-            builtin: true,
-            server_bot_id: None,
-            bot_enabled: true,
-            commands: vec![
-                PluginCommand { trigger: "/neon".into(), description: "Kích hoạt hiệu ứng".into(), response: "⚡ Hệ thống đồng bộ {rand100}%".into(), icon: "svg:cyber".into() },
-                PluginCommand { trigger: "/status".into(), description: "Kiểm tra trạng thái".into(), response: "🛰 Trực tuyến · Mã hóa E2EE P-256 + AES-256-GCM".into(), icon: "svg:globe".into() },
-            ],
-            auto_reply: String::new(),
-            webhook_url: String::new(),
-            theme_enabled: true,
-            theme: PluginTheme {
-                bg_app: "#070812".into(),
-                bg_sidebar: "#0D1021".into(),
-                bg_chat: "#0A0C1A".into(),
-                bg_surface: "#141830".into(),
-                accent: "#00F0FF".into(),
-                msg_sent: "#D900FF".into(),
-                msg_recv: "#161B36".into(),
-                text_primary: "#E0FAFF".into(),
-                panel_radius: "6px".into(),
-                border_style: "neon".into(),
-                glass_blur: 8,
-                rail_position: "left".into(),
-                font_style: "pixel".into(),
-                custom_css: String::new(),
-            },
-            left_app_enabled: false,
-            custom_page_enabled: true,
-            page_title: "Trạm Cyber".into(),
-            page_icon: "⚡".into(),
-            page_kind: "cyber".into(),
-            custom_blocks: Vec::new(),
-            hud_enabled: true,
-            hud_position: "top-right".into(),
+            section_order: vec!["pomodoro".into(), "todos".into(), "notes".into()],
+            hidden_sections: Vec::new(),
+            config: notes_cfg,
+            custom_settings: Vec::new(),
+            hud_enabled: false,
+            hud_position: String::new(),
             hud_coords: false,
-            hud_clock: true,
+            hud_clock: false,
             hud_note: false,
             hud_pomodoro: false,
-            screen_fx: "matrix".into(),
-            sound_fx: "scifi".into(),
-            composer_buttons: vec![
-                PluginComposerBtn { label: "⚡ /neon".into(), content: "/neon".into() },
-                PluginComposerBtn { label: "🛰 /status".into(), content: "/status".into() },
-            ],
+            screen_fx: "none".into(),
+            sound_fx: "none".into(),
+            composer_buttons: Vec::new(),
         },
         PluginMod {
-            id: "mod:sakura_glass".into(),
-            username: "sakura_plugin".into(),
-            display_name: "Giao diện Sakura".into(),
+            id: "mod:soundboard_mech".into(),
+            username: "soundboard_plugin".into(),
+            display_name: "Soundboard 8-Bit".into(),
             author: "ChatW".into(),
-            version: "1.0.0".into(),
-            icon: "🌸".into(),
-            logo_url: "logo:sakura".into(),
-            description: "Giao diện kính mờ kèm hiệu ứng hoa anh đào rơi.".into(),
+            version: "2.0.0".into(),
+            icon: "🎹".into(),
+            logo_url: "logo:sound".into(),
+            default_logo_url: "logo:sound".into(),
+            allow_custom_logo: true,
+            description: String::new(),
             installed: false,
             enabled: false,
             builtin: true,
             server_bot_id: None,
             bot_enabled: false,
             commands: vec![
-                PluginCommand { trigger: "/sakura".into(), description: "Gửi lời chúc".into(), response: "🌸 Chúc {user} một ngày tốt lành lúc {time}".into(), icon: "svg:sakura".into() },
-                PluginCommand { trigger: "/fortune".into(), description: "Rút quẻ may mắn".into(), response: "🎴 Năng lượng của {user}: {rand100}/100".into(), icon: "svg:sakura".into() },
+                PluginCommand { trigger: "/sound".into(), description: "Phát âm thanh".into(), response: "🔊 Đã phát âm thanh cho {user}".into(), icon: "logo:sound".into(), enabled: true },
             ],
+            auto_reply: String::new(),
+            webhook_url: String::new(),
+            theme_enabled: false,
+            theme: PluginTheme::default(),
+            left_app_enabled: true,
+            custom_page_enabled: true,
+            page_title: "Soundboard".into(),
+            page_icon: "🎹".into(),
+            page_kind: "soundboard".into(),
+            custom_blocks: Vec::new(),
+            section_order: vec!["xp".into(), "levelup".into(), "anvil".into(), "mech".into(), "laser".into(), "coin".into(), "chime".into(), "pop".into()],
+            hidden_sections: Vec::new(),
+            config: sound_cfg,
+            custom_settings: Vec::new(),
+            hud_enabled: false,
+            hud_position: String::new(),
+            hud_coords: false,
+            hud_clock: false,
+            hud_note: false,
+            hud_pomodoro: false,
+            screen_fx: "none".into(),
+            sound_fx: "mech".into(),
+            composer_buttons: Vec::new(),
+        },
+        PluginMod {
+            id: "mod:smart_assistant".into(),
+            username: "quick_tools".into(),
+            display_name: "Công cụ Lệnh nhanh".into(),
+            author: "ChatW".into(),
+            version: "2.0.0".into(),
+            icon: "⚡".into(),
+            logo_url: "logo:code".into(),
+            default_logo_url: "logo:code".into(),
+            allow_custom_logo: true,
+            description: String::new(),
+            installed: true,
+            enabled: true,
+            builtin: true,
+            server_bot_id: None,
+            bot_enabled: false,
+            commands: vec![
+                PluginCommand { trigger: "/calc".into(), description: "Tính biểu thức toán".into(), response: "🧮 Kết quả: {calc}".into(), icon: "svg:calc".into(), enabled: true },
+                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc 1–6".into(), response: "🎲 {user} tung xúc xắc được: {dice}".into(), icon: "svg:dice".into(), enabled: true },
+                PluginCommand { trigger: "/flip".into(), description: "Tung đồng xu".into(), response: "🪙 Đồng xu rơi vào mặt: {coin}".into(), icon: "svg:coin".into(), enabled: true },
+                PluginCommand { trigger: "/time".into(), description: "Chèn ngày giờ hiện tại".into(), response: "🕒 {time} · {date}".into(), icon: "svg:clock".into(), enabled: true },
+                PluginCommand { trigger: "/upper".into(), description: "Chuyển sang chữ in hoa".into(), response: "🔠 {upper}".into(), icon: "svg:upper".into(), enabled: true },
+            ],
+            auto_reply: String::new(),
+            webhook_url: String::new(),
+            theme_enabled: false,
+            theme: PluginTheme::default(),
+            left_app_enabled: true,
+            custom_page_enabled: true,
+            page_title: "Công cụ".into(),
+            page_icon: "⚡".into(),
+            page_kind: "tools".into(),
+            custom_blocks: Vec::new(),
+            section_order: vec!["calc".into(), "random".into(), "text".into(), "snippets".into()],
+            hidden_sections: Vec::new(),
+            config: serde_json::Map::new(),
+            custom_settings: Vec::new(),
+            hud_enabled: false,
+            hud_position: String::new(),
+            hud_coords: false,
+            hud_clock: false,
+            hud_note: false,
+            hud_pomodoro: false,
+            screen_fx: "none".into(),
+            sound_fx: "none".into(),
+            composer_buttons: vec![
+                PluginComposerBtn { label: "/roll".into(), content: "/roll".into() },
+                PluginComposerBtn { label: "/flip".into(), content: "/flip".into() },
+                PluginComposerBtn { label: "/time".into(), content: "/time".into() },
+            ],
+        },
+        PluginMod {
+            id: "mod:minecraft_voxel".into(),
+            username: "voxel_plugin".into(),
+            display_name: "Bảng vẽ Voxel".into(),
+            author: "ChatW".into(),
+            version: "2.0.0".into(),
+            icon: "🎨".into(),
+            logo_url: "logo:voxel".into(),
+            default_logo_url: "logo:voxel".into(),
+            allow_custom_logo: false,
+            description: String::new(),
+            installed: false,
+            enabled: false,
+            builtin: true,
+            server_bot_id: None,
+            bot_enabled: false,
+            commands: vec![
+                PluginCommand { trigger: "/craft".into(), description: "Tạo vật phẩm".into(), response: "⛏ [{user}] đã chế tạo thành công!".into(), icon: "svg:voxel".into(), enabled: true },
+                PluginCommand { trigger: "/seed".into(), description: "Mã ngẫu nhiên".into(), response: "🌱 Seed: {rand100}".into(), icon: "svg:code".into(), enabled: true },
+            ],
+            auto_reply: String::new(),
+            webhook_url: String::new(),
+            theme_enabled: false,
+            theme: PluginTheme::default(),
+            left_app_enabled: false,
+            custom_page_enabled: true,
+            page_title: "Bảng Voxel".into(),
+            page_icon: "🎨".into(),
+            page_kind: "voxel".into(),
+            custom_blocks: Vec::new(),
+            section_order: vec!["actions".into(), "palette".into(), "canvas".into()],
+            hidden_sections: Vec::new(),
+            config: voxel_cfg,
+            custom_settings: Vec::new(),
+            hud_enabled: false,
+            hud_position: String::new(),
+            hud_coords: false,
+            hud_clock: false,
+            hud_note: false,
+            hud_pomodoro: false,
+            screen_fx: "none".into(),
+            sound_fx: "minecraft".into(),
+            composer_buttons: Vec::new(),
+        },
+        PluginMod {
+            id: "mod:sakura_glass".into(),
+            username: "sakura_plugin".into(),
+            display_name: "Sakura Kính mờ".into(),
+            author: "ChatW".into(),
+            version: "2.0.0".into(),
+            icon: "🌸".into(),
+            logo_url: "logo:sakura".into(),
+            default_logo_url: "logo:sakura".into(),
+            allow_custom_logo: false,
+            description: String::new(),
+            installed: false,
+            enabled: false,
+            builtin: true,
+            server_bot_id: None,
+            bot_enabled: false,
+            commands: vec![],
             auto_reply: String::new(),
             webhook_url: String::new(),
             theme_enabled: true,
@@ -300,140 +506,80 @@ fn default_builtin_plugins() -> Vec<PluginMod> {
             custom_page_enabled: false,
             page_title: "Sakura".into(),
             page_icon: "🌸".into(),
-            page_kind: "custom".into(),
+            page_kind: "theme_sakura".into(),
             custom_blocks: Vec::new(),
+            section_order: Vec::new(),
+            hidden_sections: Vec::new(),
+            config: serde_json::Map::new(),
+            custom_settings: Vec::new(),
             hud_enabled: false,
-            hud_position: "top-right".into(),
+            hud_position: String::new(),
             hud_coords: false,
-            hud_clock: true,
+            hud_clock: false,
             hud_note: false,
             hud_pomodoro: false,
             screen_fx: "sakura".into(),
             sound_fx: "none".into(),
-            composer_buttons: vec![
-                PluginComposerBtn { label: "🌸 Hoa anh đào".into(), content: "🌸 Chúc một ngày tốt lành".into() },
-                PluginComposerBtn { label: "🎴 /fortune".into(), content: "/fortune".into() },
-            ],
-        },
-        PluginMod {
-            id: "mod:workspace_notes".into(),
-            username: "workspace_notes".into(),
-            display_name: "Sổ tay & Việc làm".into(),
-            author: "ChatW".into(),
-            version: "1.0.0".into(),
-            icon: "📋".into(),
-            logo_url: "logo:notes".into(),
-            description: "App bên trái ghi chú nhanh, việc cần làm và Pomodoro.".into(),
-            installed: true,
-            enabled: true,
-            builtin: true,
-            server_bot_id: None,
-            bot_enabled: false,
-            commands: vec![
-                PluginCommand { trigger: "/todo".into(), description: "Thêm việc cần làm".into(), response: "✅ Đã thêm việc cho {user}: {args}".into(), icon: "svg:todo".into() },
-                PluginCommand { trigger: "/note".into(), description: "Lưu ghi chú".into(), response: "📝 Đã lưu ghi chú lúc {time}: {args}".into(), icon: "svg:notes".into() },
-            ],
-            auto_reply: String::new(),
-            webhook_url: String::new(),
-            theme_enabled: false,
-            theme: PluginTheme::default(),
-            left_app_enabled: true,
-            custom_page_enabled: true,
-            page_title: "Sổ tay".into(),
-            page_icon: "📋".into(),
-            page_kind: "notes".into(),
-            custom_blocks: Vec::new(),
-            hud_enabled: false,
-            hud_position: "bottom-right".into(),
-            hud_coords: false,
-            hud_clock: true,
-            hud_note: true,
-            hud_pomodoro: true,
-            screen_fx: "none".into(),
-            sound_fx: "none".into(),
             composer_buttons: Vec::new(),
         },
         PluginMod {
-            id: "mod:soundboard_mech".into(),
-            username: "soundboard_plugin".into(),
-            display_name: "Soundboard 8-Bit".into(),
+            id: "mod:cyberpunk_hud".into(),
+            username: "cyber_plugin".into(),
+            display_name: "Cyber Neon".into(),
             author: "ChatW".into(),
-            version: "1.0.0".into(),
-            icon: "🎹".into(),
-            logo_url: "logo:sound".into(),
-            description: "Bảng âm thanh tổng hợp và tiếng gõ phím cơ.".into(),
+            version: "2.0.0".into(),
+            icon: "⚡".into(),
+            logo_url: "logo:cyber".into(),
+            default_logo_url: "logo:cyber".into(),
+            allow_custom_logo: true,
+            description: String::new(),
             installed: false,
             enabled: false,
             builtin: true,
             server_bot_id: None,
             bot_enabled: false,
             commands: vec![
-                PluginCommand { trigger: "/sound".into(), description: "Phát âm thanh".into(), response: "🔊 Đã phát âm thanh cho {user}".into(), icon: "logo:sound".into() },
+                PluginCommand { trigger: "/neon".into(), description: "Kích hoạt tín hiệu".into(), response: "⚡ Hệ thống đồng bộ {rand100}%".into(), icon: "svg:cyber".into(), enabled: true },
+                PluginCommand { trigger: "/status".into(), description: "Trạng thái kết nối".into(), response: "🛰 Trực tuyến · Mã hóa E2EE P-256 + AES-256-GCM".into(), icon: "svg:globe".into(), enabled: true },
             ],
             auto_reply: String::new(),
             webhook_url: String::new(),
-            theme_enabled: false,
-            theme: PluginTheme::default(),
-            left_app_enabled: true,
-            custom_page_enabled: true,
-            page_title: "Soundboard".into(),
-            page_icon: "🎹".into(),
-            page_kind: "soundboard".into(),
-            custom_blocks: Vec::new(),
-            hud_enabled: false,
-            hud_position: "bottom-right".into(),
-            hud_coords: false,
-            hud_clock: false,
-            hud_note: false,
-            hud_pomodoro: false,
-            screen_fx: "none".into(),
-            sound_fx: "mech".into(),
-            composer_buttons: Vec::new(),
-        },
-        PluginMod {
-            id: "mod:smart_assistant".into(),
-            username: "smart_plugin".into(),
-            display_name: "Trợ lý lệnh nhanh".into(),
-            author: "ChatW".into(),
-            version: "1.0.0".into(),
-            icon: "🤖".into(),
-            logo_url: "logo:bot".into(),
-            description: "Bot tính toán, tung xúc xắc, đồng xu và xem giờ.".into(),
-            installed: true,
-            enabled: true,
-            builtin: true,
-            server_bot_id: None,
-            bot_enabled: true,
-            commands: vec![
-                PluginCommand { trigger: "/roll".into(), description: "Tung xúc xắc 1-6".into(), response: "🎲 Kết quả xúc xắc của {user}: {dice}".into(), icon: "svg:dice".into() },
-                PluginCommand { trigger: "/flip".into(), description: "Tung đồng xu".into(), response: "🪙 Đồng xu rơi vào mặt: {coin}".into(), icon: "svg:coin".into() },
-                PluginCommand { trigger: "/time".into(), description: "Xem giờ hiện tại".into(), response: "🕒 Giờ hiện tại: {time} · {date}".into(), icon: "svg:clock".into() },
-                PluginCommand { trigger: "/calc".into(), description: "Tính biểu thức".into(), response: "🧮 Kết quả: {calc}".into(), icon: "svg:calc".into() },
-                PluginCommand { trigger: "/upper".into(), description: "Chữ in hoa".into(), response: "🔠 {upper}".into(), icon: "svg:upper".into() },
-            ],
-            auto_reply: "Đã nhận tin nhắn từ {user}. Gõ /help để xem danh sách lệnh nhanh.".into(),
-            webhook_url: String::new(),
-            theme_enabled: false,
-            theme: PluginTheme::default(),
+            theme_enabled: true,
+            theme: PluginTheme {
+                bg_app: "#070812".into(),
+                bg_sidebar: "#0D1021".into(),
+                bg_chat: "#0A0C1A".into(),
+                bg_surface: "#141830".into(),
+                accent: "#00F0FF".into(),
+                msg_sent: "#D900FF".into(),
+                msg_recv: "#161B36".into(),
+                text_primary: "#E0FAFF".into(),
+                panel_radius: "8px".into(),
+                border_style: "neon".into(),
+                glass_blur: 8,
+                rail_position: "left".into(),
+                font_style: "pixel".into(),
+                custom_css: String::new(),
+            },
             left_app_enabled: false,
-            custom_page_enabled: false,
-            page_title: "Trợ lý".into(),
-            page_icon: "🤖".into(),
-            page_kind: "custom".into(),
+            custom_page_enabled: true,
+            page_title: "Trạm Cyber".into(),
+            page_icon: "⚡".into(),
+            page_kind: "cyber".into(),
             custom_blocks: Vec::new(),
+            section_order: vec!["stats".into(), "console".into()],
+            hidden_sections: Vec::new(),
+            config: cyber_cfg,
+            custom_settings: Vec::new(),
             hud_enabled: false,
-            hud_position: "top-right".into(),
+            hud_position: String::new(),
             hud_coords: false,
             hud_clock: false,
             hud_note: false,
             hud_pomodoro: false,
-            screen_fx: "none".into(),
-            sound_fx: "none".into(),
-            composer_buttons: vec![
-                PluginComposerBtn { label: "🎲 /roll".into(), content: "/roll".into() },
-                PluginComposerBtn { label: "🪙 /flip".into(), content: "/flip".into() },
-                PluginComposerBtn { label: "🕒 /time".into(), content: "/time".into() },
-            ],
+            screen_fx: "matrix".into(),
+            sound_fx: "scifi".into(),
+            composer_buttons: Vec::new(),
         },
     ]
 }
@@ -442,28 +588,44 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
     let mut defaults = default_builtin_plugins();
     let logo_migrated = platform::storage_get("chatw_plugin_logos_v2").is_some();
     let store_migrated = platform::storage_get(STORE_MIGRATED_KEY).is_some();
+    let modular_migrated = platform::storage_get(MODULAR_MIGRATED_KEY).is_some();
     if let Some(raw) = platform::storage_get(STORAGE_KEY) {
         if let Ok(saved) = serde_json::from_str::<Vec<PluginMod>>(&raw) {
-            let any_left = saved.iter().any(|x| x.left_app_enabled);
             for mut s in saved {
                 if !store_migrated {
                     s.installed = s.enabled || !s.builtin;
                 }
+                // Always purge legacy HUD and fake bot flags
+                s.hud_enabled = false;
+                s.bot_enabled = false;
+
                 if let Some(existing) = defaults.iter_mut().find(|d| d.id == s.id) {
-                    let lname = s.display_name.to_lowercase();
-                    let ldesc = s.description.to_lowercase();
-                    let luser = s.username.to_lowercase();
-                    let lauth = s.author.to_lowercase();
-                    if lname.contains("minecraft") || ldesc.contains("minecraft") || luser.contains("_mod") || lauth.contains("forge") || lname.contains("overhaul") || ldesc.len() > 75 {
+                    if !modular_migrated {
                         s.display_name = existing.display_name.clone();
-                        s.description = existing.description.clone();
-                        s.username = existing.username.clone();
-                        s.author = existing.author.clone();
                         s.page_title = existing.page_title.clone();
+                        s.page_kind = existing.page_kind.clone();
+                        s.allow_custom_logo = existing.allow_custom_logo;
+                        s.default_logo_url = existing.default_logo_url.clone();
+                        s.description = String::new();
+                        if s.id == "mod:smart_assistant" {
+                            s.logo_url = existing.logo_url.clone();
+                            s.left_app_enabled = existing.left_app_enabled;
+                            s.custom_page_enabled = existing.custom_page_enabled;
+                            s.commands = existing.commands.clone();
+                        }
+                        if s.id == "mod:minecraft_voxel" {
+                            s.theme_enabled = false;
+                            s.screen_fx = "none".into();
+                        }
+                        if s.section_order.is_empty() {
+                            s.section_order = existing.section_order.clone();
+                        }
+                        if s.config.is_empty() {
+                            s.config = existing.config.clone();
+                        }
                     }
-                    if !any_left && s.id == "mod:workspace_notes" {
-                        s.left_app_enabled = true;
-                        s.bot_enabled = false;
+                    if s.default_logo_url.is_empty() {
+                        s.default_logo_url = existing.default_logo_url.clone();
                     }
                     if (s.logo_url.trim().is_empty() || (!logo_migrated && s.logo_url.starts_with("svg:"))) && !existing.logo_url.is_empty() {
                         s.logo_url = existing.logo_url.clone();
@@ -473,6 +635,9 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
                     }
                     *existing = s;
                 } else {
+                    if s.default_logo_url.is_empty() {
+                        s.default_logo_url = s.logo_url.clone();
+                    }
                     if !s.installed {
                         s.enabled = false;
                     }
@@ -481,9 +646,10 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
             }
         }
     }
-    if !logo_migrated || !store_migrated {
+    if !logo_migrated || !store_migrated || !modular_migrated {
         platform::storage_set("chatw_plugin_logos_v2", "1");
         platform::storage_set(STORE_MIGRATED_KEY, "1");
+        platform::storage_set(MODULAR_MIGRATED_KEY, "1");
         if let Ok(s) = serde_json::to_string(&defaults) {
             platform::storage_set(STORAGE_KEY, &s);
         }
@@ -575,7 +741,7 @@ pub fn plugin_logo_data_url(logo_url: &str) -> Option<String> {
     Some(logo.to_string())
 }
 
-fn glyph_slot_size(logo_url: &str, icon_sz: u32, logo_sz: u32) -> u32 {
+pub(crate) fn glyph_slot_size(logo_url: &str, icon_sz: u32, logo_sz: u32) -> u32 {
     let l = logo_url.trim();
     if !l.is_empty() && !l.starts_with("svg:") {
         logo_sz
@@ -822,8 +988,11 @@ pub fn resolve_command_icon(trigger: &str, cmd_icon: &str, plugin_icon: &str, pl
 pub fn enabled_slash_commands() -> Vec<(String, String, String, String)> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled && p.bot_enabled) {
+    for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled) {
         for c in &p.commands {
+            if !c.enabled {
+                continue;
+            }
             let tr = c.trigger.trim();
             if tr.starts_with('/') && seen.insert(tr.to_lowercase()) {
                 let (ic, lg) = resolve_command_icon(tr, &c.icon, &p.icon, &p.logo_url);
@@ -849,25 +1018,9 @@ pub fn enabled_composer_buttons() -> Vec<(String, String, String)> {
     out
 }
 
+/// Fake local bots are removed per Spec 032 — plugins run through their own real surfaces & slash commands.
 pub fn enabled_bot_plugins_as_items() -> Vec<BotItem> {
-    PLUGINS
-        .read()
-        .iter()
-        .filter(|p| p.installed && p.enabled && p.bot_enabled && p.server_bot_id.is_none())
-        .map(|p| BotItem {
-            id: p.id.clone(),
-            owner_id: "local".into(),
-            username: p.username.clone(),
-            display_name: p.display_name.clone(),
-            description: Some(p.description.clone()),
-            avatar_url: plugin_logo_data_url(&p.logo_url),
-            is_public: true,
-            verification_status: "verified".into(),
-            token_hint: Some(format!("Plugin v{}", p.version)),
-            token: None,
-            last_text: Some(p.description.clone()),
-        })
-        .collect()
+    Vec::new()
 }
 
 fn eval_simple_math(expr: &str) -> Option<f64> {
@@ -946,19 +1099,23 @@ pub fn try_run_plugin_command(input: &str, user_name: &str) -> Option<String> {
         None => (trimmed, ""),
     };
     if cmd.eq_ignore_ascii_case("/help") || cmd.eq_ignore_ascii_case("/start") {
-        let mut lines = vec!["🧩 Danh sách lệnh đang bật:".to_string()];
-        for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled && p.bot_enabled) {
+        let mut lines = vec!["Danh sách lệnh đang bật:".to_string()];
+        for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled) {
             for c in &p.commands {
-                lines.push(format!("• {} — {} [{}]", c.trigger, c.description, p.display_name));
+                if c.enabled {
+                    lines.push(format!("• {} — {} [{}]", c.trigger, c.description, p.display_name));
+                }
             }
         }
         return Some(lines.join("\n"));
     }
-    for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled && p.bot_enabled) {
+    for p in PLUGINS.read().iter().filter(|p| p.installed && p.enabled) {
         for c in &p.commands {
-            if c.trigger.eq_ignore_ascii_case(cmd) {
-                if p.sound_fx != "none" {
-                    play_mod_sound(&p.sound_fx);
+            if c.enabled && c.trigger.eq_ignore_ascii_case(cmd) {
+                if p.sound_fx != "none" && p.cfg_bool("cmd_sound", true) {
+                    let vol = (p.cfg_i64("volume", 75) as f64 / 100.0).clamp(0.0, 1.0);
+                    let pitch = (p.cfg_i64("pitch", 100) as f64 / 100.0).clamp(0.5, 2.0);
+                    play_mod_sound_opts(&p.sound_fx, vol, pitch);
                 }
                 return Some(expand_template(&c.response, user_name, args));
             }
@@ -968,6 +1125,15 @@ pub fn try_run_plugin_command(input: &str, user_name: &str) -> Option<String> {
 }
 
 pub fn play_mod_sound(kind: &str) {
+    play_mod_sound_opts(kind, 0.75, 1.0);
+}
+
+pub fn play_mod_sound_opts(kind: &str, volume: f64, pitch: f64) {
+    if volume <= 0.01 {
+        return;
+    }
+    let vol_scale = volume.clamp(0.05, 1.0);
+    let pitch_scale = pitch.clamp(0.5, 2.0);
     let k = serde_json::to_string(kind).unwrap_or_else(|_| "\"minecraft\"".into());
     let _ = dioxus::document::eval(&format!(
         r#"
@@ -976,15 +1142,17 @@ pub fn play_mod_sound(kind: &str) {
             if (AC) {{
                 const ctx = window.__chatwAudioCtx || new AC();
                 if (!window.__chatwAudioCtx) window.__chatwAudioCtx = ctx;
+                const vScale = {vol_scale:.3};
+                const pScale = {pitch_scale:.3};
                 const tone = (f0, f1, start, dur, type, vol) => {{
                     const osc = ctx.createOscillator();
                     const g = ctx.createGain();
                     osc.type = type;
                     const t = ctx.currentTime + start;
-                    osc.frequency.setValueAtTime(f0, t);
-                    osc.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+                    osc.frequency.setValueAtTime(Math.max(40, f0 * pScale), t);
+                    osc.frequency.exponentialRampToValueAtTime(Math.max(20, f1 * pScale), t + dur);
                     g.gain.setValueAtTime(0.001, t);
-                    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+                    g.gain.exponentialRampToValueAtTime(Math.max(0.002, vol * vScale), t + 0.01);
                     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
                     osc.connect(g); g.connect(ctx.destination);
                     osc.start(t); osc.stop(t + dur + 0.02);
@@ -992,24 +1160,26 @@ pub fn play_mod_sound(kind: &str) {
                 const run = () => {{
                     const kind = {k};
                     if (kind === 'minecraft' || kind === 'xp') {{
-                        tone(587, 880, 0, 0.09, 'square', 0.12);
-                        tone(880, 1318, 0.08, 0.12, 'square', 0.12);
+                        tone(587, 880, 0, 0.09, 'square', 0.14);
+                        tone(880, 1318, 0.08, 0.12, 'square', 0.14);
                     }} else if (kind === 'levelup') {{
-                        tone(523, 659, 0, 0.1, 'square', 0.14);
-                        tone(659, 784, 0.1, 0.1, 'square', 0.14);
-                        tone(784, 1046, 0.2, 0.22, 'square', 0.16);
+                        tone(523, 659, 0, 0.1, 'square', 0.16);
+                        tone(659, 784, 0.1, 0.1, 'square', 0.16);
+                        tone(784, 1046, 0.2, 0.22, 'square', 0.18);
                     }} else if (kind === 'anvil') {{
-                        tone(220, 110, 0, 0.18, 'sawtooth', 0.2);
-                        tone(880, 440, 0.01, 0.08, 'triangle', 0.15);
+                        tone(220, 110, 0, 0.18, 'sawtooth', 0.22);
+                        tone(880, 440, 0.01, 0.08, 'triangle', 0.17);
                     }} else if (kind === 'mech') {{
-                        tone(1800, 420, 0, 0.028, 'triangle', 0.16);
+                        tone(1800, 420, 0, 0.028, 'triangle', 0.18);
                     }} else if (kind === 'scifi' || kind === 'laser') {{
-                        tone(1400, 240, 0, 0.16, 'sawtooth', 0.14);
+                        tone(1400, 240, 0, 0.16, 'sawtooth', 0.16);
                     }} else if (kind === 'coin') {{
-                        tone(987, 987, 0, 0.07, 'square', 0.14);
-                        tone(1318, 1318, 0.07, 0.22, 'square', 0.14);
+                        tone(987, 987, 0, 0.07, 'square', 0.16);
+                        tone(1318, 1318, 0.07, 0.22, 'square', 0.16);
+                    }} else if (kind === 'pop') {{
+                        tone(420, 920, 0, 0.065, 'sine', 0.18);
                     }} else {{
-                        tone(660, 990, 0, 0.12, 'sine', 0.14);
+                        tone(660, 990, 0, 0.12, 'sine', 0.16);
                     }}
                 }};
                 if (ctx.state === 'suspended') ctx.resume().then(run); else run();
@@ -1040,10 +1210,14 @@ fn hex_luma(hex: &str) -> Option<f32> {
 
 pub fn sync_plugins_to_dom(list: &[PluginMod]) {
     let mut css = String::new();
-    let mut mech_key = false;
+    let mut typing_sound = "none".to_string();
+    let mut sound_vol = 0.75_f64;
+    let mut sound_pitch = 1.0_f64;
     for p in list.iter().filter(|p| p.installed && p.enabled) {
-        if p.sound_fx == "mech" {
-            mech_key = true;
+        if p.page_kind == "soundboard" && p.sound_fx != "none" && !p.sound_fx.is_empty() {
+            typing_sound = p.sound_fx.clone();
+            sound_vol = (p.cfg_i64("volume", 75) as f64 / 100.0).clamp(0.0, 1.0);
+            sound_pitch = (p.cfg_i64("pitch", 100) as f64 / 100.0).clamp(0.5, 2.0);
         }
         if !p.theme_enabled {
             continue;
@@ -1184,6 +1358,7 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
         }
     }
     let css_json = serde_json::to_string(&css).unwrap_or_else(|_| "\"\"".into());
+    let typing_json = serde_json::to_string(&typing_sound).unwrap_or_else(|_| "\"none\"".into());
     let _ = dioxus::document::eval(&format!(
         r#"
         (function() {{
@@ -1194,11 +1369,16 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
                 document.head.appendChild(el);
             }}
             el.textContent = {css_json};
-            window.__chatwMechKey = {mech_key};
+            window.__chatwTypingSound = {typing_json};
+            window.__chatwSoundVol = {sound_vol:.3};
+            window.__chatwSoundPitch = {sound_pitch:.3};
             if (!window.__chatwMechListener) {{
                 window.__chatwMechListener = true;
                 window.addEventListener('keydown', (e) => {{
-                    if (!window.__chatwMechKey) return;
+                    const kind = window.__chatwTypingSound || 'none';
+                    const vol = window.__chatwSoundVol ?? 0.75;
+                    const pitch = window.__chatwSoundPitch ?? 1.0;
+                    if (kind === 'none' || vol <= 0.01) return;
                     if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
                     try {{
                         const AC = window.AudioContext || window.webkitAudioContext;
@@ -1207,14 +1387,24 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
                         if (!window.__chatwAudioCtx) window.__chatwAudioCtx = ctx;
                         const osc = ctx.createOscillator();
                         const g = ctx.createGain();
-                        osc.type = 'triangle';
                         const t = ctx.currentTime;
-                        osc.frequency.setValueAtTime(e.key === 'Enter' ? 1100 : 1750, t);
-                        osc.frequency.exponentialRampToValueAtTime(360, t + 0.025);
-                        g.gain.setValueAtTime(0.08, t);
-                        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.025);
+                        if (kind === 'minecraft') {{
+                            osc.type = 'square';
+                            osc.frequency.setValueAtTime((e.key === 'Enter' ? 760 : 540) * pitch, t);
+                            osc.frequency.exponentialRampToValueAtTime(Math.max(40, 320 * pitch), t + 0.03);
+                        }} else if (kind === 'scifi') {{
+                            osc.type = 'sawtooth';
+                            osc.frequency.setValueAtTime((e.key === 'Enter' ? 1200 : 960) * pitch, t);
+                            osc.frequency.exponentialRampToValueAtTime(Math.max(40, 260 * pitch), t + 0.035);
+                        }} else {{
+                            osc.type = 'triangle';
+                            osc.frequency.setValueAtTime((e.key === 'Enter' ? 1100 : 1750) * pitch, t);
+                            osc.frequency.exponentialRampToValueAtTime(Math.max(40, 360 * pitch), t + 0.025);
+                        }}
+                        g.gain.setValueAtTime(Math.max(0.002, 0.09 * vol), t);
+                        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
                         osc.connect(g); g.connect(ctx.destination);
-                        osc.start(t); osc.stop(t + 0.03);
+                        osc.start(t); osc.stop(t + 0.04);
                     }} catch (_) {{}}
                 }}, true);
             }}
@@ -1237,8 +1427,8 @@ fn plugin_error(code: &str) -> &'static str {
     }
 }
 
-/// Global overlay rendered inside `Chat` workspace shell: renders full-app Screen FX
-/// particles and the Floating HUD from active Plugins.
+/// Global overlay rendered inside `Chat` workspace shell: initializes plugins and renders
+/// optional ambient visual effects from active visual plugins (no floating HUD).
 #[component]
 pub fn PluginGlobalOverlay() -> Element {
     use_effect(move || {
@@ -1251,11 +1441,6 @@ pub fn PluginGlobalOverlay() -> Element {
         .find(|p| p.installed && p.enabled && p.screen_fx != "none" && !p.screen_fx.is_empty())
         .map(|p| p.screen_fx.clone())
         .unwrap_or_else(|| "none".into());
-    let hud_mod = plugins.iter().rev().find(|p| p.installed && p.enabled && p.hud_enabled).cloned();
-    let enabled_count = plugins.iter().filter(|p| p.installed && p.enabled).count();
-    let mut hud_collapsed = use_signal(|| false);
-    let mut quick_note = use_signal(|| platform::storage_get(NOTES_KEY).unwrap_or_default());
-    let clock_now = chrono::Local::now().format("%H:%M · %d/%m/%Y").to_string();
 
     rsx! {
         if active_fx != "none" {
@@ -1273,51 +1458,6 @@ pub fn PluginGlobalOverlay() -> Element {
                 }
             }
         }
-        if let Some(hm) = hud_mod {
-            div { class: "plugin-floating-hud pos-{hm.hud_position}",
-                div { class: "plugin-hud-bar",
-                    span { class: "plugin-hud-title", "{hm.icon} {hm.display_name}" }
-                    span { class: "plugin-hud-badge", "{enabled_count} bật" }
-                    button { r#type: "button", class: "plugin-hud-btn", title: "Mở Plugin",
-                        onclick: move |_| {
-                            *EDITING_PLUGIN_ID.write() = None;
-                            *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
-                        },
-                        "Plugin"
-                    }
-                    button { r#type: "button", class: "plugin-hud-btn",
-                        onclick: move |_| hud_collapsed.set(!hud_collapsed()),
-                        if hud_collapsed() { "+" } else { "−" }
-                    }
-                }
-                if !hud_collapsed() {
-                    div { class: "plugin-hud-body",
-                        if hm.hud_coords {
-                            div { class: "plugin-hud-row mono", "XYZ: 128, 64, -256 · FPS: 60" }
-                        }
-                        if hm.hud_clock {
-                            div { class: "plugin-hud-row", "🕒 {clock_now}" }
-                        }
-                        if hm.hud_pomodoro {
-                            PomodoroTimer { compact: true }
-                        }
-                        if hm.hud_note {
-                            textarea {
-                                class: "plugin-hud-note",
-                                rows: "2",
-                                placeholder: "Ghi chú nhanh trên HUD",
-                                value: "{quick_note}",
-                                oninput: move |e| {
-                                    let v = e.value();
-                                    quick_note.set(v.clone());
-                                    platform::storage_set(NOTES_KEY, &v);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1328,10 +1468,35 @@ fn active_wallpaper_attrs() -> (String, String) {
     wallpaper_attrs(None, &default_wp)
 }
 
+pub(crate) const SOUNDBOARD_PADS: [(&str, &str, &str); 8] = [
+    ("xp", "Ngọc XP", "#10B981"),
+    ("levelup", "Lên Cấp", "#22C55E"),
+    ("anvil", "Tiếng Đe", "#64748B"),
+    ("mech", "Switch Cơ", "#3B82F6"),
+    ("laser", "Tia Laser", "#06B6D4"),
+    ("coin", "Đồng Xu", "#F59E0B"),
+    ("chime", "Chuông Báo", "#8B5CF6"),
+    ("pop", "Hiệu Ứng Pop", "#EC4899"),
+];
+
 #[component]
-fn PomodoroTimer(#[props(default = false)] compact: bool) -> Element {
+fn PomodoroTimer(
+    #[props(default = false)] compact: bool,
+    #[props(default = 25)] focus_minutes: u32,
+    #[props(default = 5)] break_minutes: u32,
+    #[props(default = true)] sound_alert: bool,
+) -> Element {
     let mut running = use_signal(|| false);
-    let mut secs = use_signal(|| 25 * 60_u32);
+    let mut mode = use_signal(|| "focus");
+    let mut secs = use_signal(move || focus_minutes.max(1) * 60);
+    let mut last_focus = use_signal(move || focus_minutes);
+    if *last_focus.read() != focus_minutes {
+        last_focus.set(focus_minutes);
+        if !running() && mode() == "focus" {
+            secs.set(focus_minutes.max(1) * 60);
+        }
+    }
+    let alert_flag = use_signal(move || sound_alert);
     use_effect(move || {
         spawn(async move {
             loop {
@@ -1348,7 +1513,9 @@ fn PomodoroTimer(#[props(default = false)] compact: bool) -> Element {
                     });
                     if finished {
                         running.set(false);
-                        play_mod_sound("chime");
+                        if *alert_flag.peek() {
+                            play_mod_sound("chime");
+                        }
                     }
                 }
             }
@@ -1357,10 +1524,12 @@ fn PomodoroTimer(#[props(default = false)] compact: bool) -> Element {
     let s = secs();
     let clock_str = format!("{:02}:{:02}", s / 60, s % 60);
     let is_run = running();
+    let mode_label = if mode() == "break" { "Nghỉ ngắn" } else { "Tập trung" };
     rsx! {
         div { class: if compact { "left-app-card" } else { "ui-block-card" },
+            "data-plugin-section": "pomodoro",
             div { class: "ui-counter-row",
-                span { class: "settings-label", "⏱ Pomodoro" }
+                span { class: "settings-label", "Pomodoro · {mode_label}" }
                 span { class: if compact { "ui-counter-val" } else { "ui-timer-display" }, "{clock_str}" }
             }
             div { class: "inline-form",
@@ -1368,15 +1537,29 @@ fn PomodoroTimer(#[props(default = false)] compact: bool) -> Element {
                     onclick: move |_| running.set(!is_run),
                     if is_run { "Tạm dừng" } else { "Bắt đầu" }
                 }
+                button { r#type: "button", class: "btn-secondary",
+                    onclick: move |_| {
+                        running.set(false);
+                        if mode() == "focus" {
+                            mode.set("break");
+                            secs.set(break_minutes.max(1) * 60);
+                        } else {
+                            mode.set("focus");
+                            secs.set(focus_minutes.max(1) * 60);
+                        }
+                    },
+                    if mode() == "focus" { "Nghỉ {break_minutes}p" } else { "Tập trung {focus_minutes}p" }
+                }
                 button { r#type: "button", class: "btn-ghost",
                     onclick: move |_| {
                         running.set(false);
-                        secs.set(25 * 60);
+                        let m = if mode() == "break" { break_minutes } else { focus_minutes };
+                        secs.set(m.max(1) * 60);
                     },
                     "Đặt lại"
                 }
                 button { r#type: "button", class: "btn-secondary",
-                    onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(format!("⏱ Pomodoro: {clock_str}")),
+                    onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(format!("Pomodoro ({mode_label}): {clock_str}")),
                     SendIcon { size: 14 } "Gửi"
                 }
             }
@@ -1384,7 +1567,7 @@ fn PomodoroTimer(#[props(default = false)] compact: bool) -> Element {
     }
 }
 
-/// Renders a custom page added to the Navigation Rail by a Plugin, or the Plugin management panel.
+/// Renders a workspace page opened by a Plugin, or the Plugin Manager (`studio`).
 #[component]
 pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: EventHandler<()>, on_open_bot_chat: EventHandler<BotItem>) -> Element {
     let (wp_cls, wp_style) = active_wallpaper_attrs();
@@ -1416,7 +1599,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                 div { class: "chat-column plugin-panel {wp_cls}", style: "{wp_style}",
                     div { class: "empty-chat-view",
                         div { class: "empty-chat-inner",
-                            div { class: "empty-chat-title", "Không tìm thấy trang Plugin" }
+                            div { class: "empty-chat-title", "Không tìm thấy Plugin" }
                             button { r#type: "button", class: "btn-primary", onclick: move |_| on_close.call(()), "Quay lại" }
                         }
                     }
@@ -1435,8 +1618,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                     div { class: "chat-header-identity",
                         span { class: "bot-header-icon", PluginGlyph { icon: p.page_icon.clone(), logo_url: p.logo_url.clone(), size: glyph_slot_size(&p.logo_url, 20, 38) } }
                         div { class: "chat-header-info",
-                            h2 { class: "chat-header-title", "{p.page_title}" }
-                            span { class: "chat-header-meta", "{p.display_name}" }
+                            h2 { class: "chat-header-title", "{p.display_name}" }
                         }
                     }
                     div { class: "chat-header-actions",
@@ -1444,37 +1626,12 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                             button {
                                 r#type: "button",
                                 class: "btn-secondary",
-                                title: "Mở ở cột bên trái",
+                                title: "Thu gọn sang cột bên trái",
                                 onclick: move |_| {
                                     *ACTIVE_PLUGIN_PAGE.write() = None;
                                     *ACTIVE_LEFT_PLUGIN.write() = Some(left_pid.clone());
                                 },
-                                PanelRightIcon { size: 15 } "Bên trái"
-                            }
-                        }
-                        if p.bot_enabled {
-                            button {
-                                r#type: "button",
-                                class: "btn-secondary",
-                                onclick: {
-                                    let p_bot = p.clone();
-                                    move |_| {
-                                        on_open_bot_chat.call(BotItem {
-                                            id: p_bot.server_bot_id.clone().unwrap_or_else(|| p_bot.id.clone()),
-                                            owner_id: "local".into(),
-                                            username: p_bot.username.clone(),
-                                            display_name: p_bot.display_name.clone(),
-                                            description: Some(p_bot.description.clone()),
-                                            avatar_url: plugin_logo_data_url(&p_bot.logo_url),
-                                            is_public: true,
-                                            verification_status: "verified".into(),
-                                            token_hint: None,
-                                            token: None,
-                                            last_text: None,
-                                        });
-                                    }
-                                },
-                                "Trò chuyện"
+                                PanelRightIcon { size: 15 } "Thu gọn"
                             }
                         }
                         button {
@@ -1484,7 +1641,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                                 *EDITING_PLUGIN_ID.write() = Some(edit_pid.clone());
                                 *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
                             },
-                            SlidersIcon {} "Sửa"
+                            SlidersIcon {} "Tùy chỉnh"
                         }
                     }
                 }
@@ -1494,6 +1651,7 @@ pub fn PluginCustomPageView(plugin_id: String, my_username: String, on_close: Ev
                         "notes" => rsx! { NotesAndTodoPage { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
                         "soundboard" => rsx! { SoundboardPage { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
                         "cyber" => rsx! { CyberDashboardPage { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
+                        "tools" => rsx! { QuickToolsPage { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
                         _ => rsx! { CustomBlocksView { plugin: p.clone(), my_username: my_username.clone(), compact: false } },
                     }
                 }
@@ -1532,8 +1690,8 @@ pub fn PluginLeftAppView(plugin_id: String, my_username: String, on_close: Event
                     button {
                         r#type: "button",
                         class: "icon-btn",
-                        title: "Mở trang chính",
-                        aria_label: "Mở trang chính",
+                        title: "Mở rộng",
+                        aria_label: "Mở rộng",
                         onclick: move |_| {
                             *ACTIVE_LEFT_PLUGIN.write() = None;
                             *ACTIVE_PLUGIN_PAGE.write() = Some(expand_pid.clone());
@@ -1544,8 +1702,8 @@ pub fn PluginLeftAppView(plugin_id: String, my_username: String, on_close: Event
                 button {
                     r#type: "button",
                     class: "icon-btn",
-                    title: "Sửa Plugin",
-                    aria_label: "Sửa Plugin",
+                    title: "Tùy chỉnh Plugin",
+                    aria_label: "Tùy chỉnh Plugin",
                     onclick: move |_| {
                         *ACTIVE_LEFT_PLUGIN.write() = None;
                         *EDITING_PLUGIN_ID.write() = Some(edit_pid.clone());
@@ -1570,6 +1728,7 @@ pub fn PluginLeftAppView(plugin_id: String, my_username: String, on_close: Event
                     "notes" => rsx! { NotesAndTodoPage { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
                     "soundboard" => rsx! { SoundboardPage { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
                     "cyber" => rsx! { CyberDashboardPage { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
+                    "tools" => rsx! { QuickToolsPage { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
                     _ => rsx! { CustomBlocksView { plugin: p.clone(), my_username: my_username.clone(), compact: true } },
                 }
             }
@@ -1577,7 +1736,7 @@ pub fn PluginLeftAppView(plugin_id: String, my_username: String, on_close: Event
     }
 }
 
-const VOXEL_PALETTE: [(&str, &str); 12] = [
+pub(crate) const VOXEL_PALETTE: [(&str, &str); 12] = [
     ("Cỏ", "#22C55E"),
     ("Đất", "#92400E"),
     ("Đá", "#64748B"),
@@ -1594,7 +1753,11 @@ const VOXEL_PALETTE: [(&str, &str); 12] = [
 
 #[component]
 fn VoxelSandboxPage(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
-    let mut selected_color = use_signal(|| "#10B981".to_string());
+    let default_col = plugin.cfg_str("default_color", "#10B981");
+    let show_grid = plugin.cfg_bool("show_grid", true);
+    let bevel_blocks = plugin.cfg_bool("bevel_blocks", true);
+    let brush_sound = plugin.cfg_bool("brush_sound", true);
+    let mut selected_color = use_signal(move || default_col);
     let mut grid = use_signal(|| -> Vec<String> {
         if let Some(raw) = platform::storage_get(VOXEL_KEY) {
             if let Ok(v) = serde_json::from_str::<Vec<String>>(&raw) {
@@ -1616,78 +1779,92 @@ fn VoxelSandboxPage(plugin: PluginMod, my_username: String, #[props(default = fa
             platform::storage_set(VOXEL_KEY, &s);
         }
     };
+    let sections = plugin.ordered_sections(&["actions", "palette", "canvas"]);
+    let grid_cls = match (show_grid, bevel_blocks) {
+        (true, true) => "voxel-world-grid",
+        (false, true) => "voxel-world-grid no-grid",
+        (true, false) => "voxel-world-grid flat-blocks",
+        (false, false) => "voxel-world-grid no-grid flat-blocks",
+    };
 
     rsx! {
         div { class: if compact { "left-app-body" } else { "mod-page-container" },
-            if !compact {
-                div { class: "mod-hero-card",
-                    div {
-                        h3 { class: "mod-hero-title", "⛏ Lưới Khối Voxel 2D — {plugin.display_name}" }
-                        p { class: "mod-hero-sub", "Chọn màu khối bên dưới và bấm lên lưới để vẽ hoặc xóa khối." }
-                    }
-                    div { class: "inline-form",
-                        button { r#type: "button", class: "btn-secondary",
-                            onclick: move |_| {
-                                play_mod_sound("xp");
-                                let mut g = vec![String::new(); 192];
-                                for x in 0..16 {
-                                    g[9 * 16 + x] = "#22C55E".into();
-                                    g[10 * 16 + x] = "#92400E".into();
-                                    g[11 * 16 + x] = "#64748B".into();
+            for sec in sections {
+                if !plugin.is_section_hidden(&sec) {
+                    if sec == "actions" {
+                        div { key: "{sec}", class: "mod-hero-card", "data-plugin-section": "actions",
+                            div {
+                                h3 { class: "mod-hero-title", "{plugin.display_name}" }
+                            }
+                            div { class: "inline-form",
+                                button { r#type: "button", class: "btn-secondary",
+                                    onclick: move |_| {
+                                        if brush_sound { play_mod_sound("xp"); }
+                                        let mut g = vec![String::new(); 192];
+                                        for x in 0..16 {
+                                            g[9 * 16 + x] = "#22C55E".into();
+                                            g[10 * 16 + x] = "#92400E".into();
+                                            g[11 * 16 + x] = "#64748B".into();
+                                        }
+                                        save_grid(&g);
+                                        grid.set(g);
+                                    },
+                                    "Địa hình mẫu"
                                 }
-                                save_grid(&g);
-                                grid.set(g);
-                            },
-                            "Tạo lại địa hình"
-                        }
-                        button { r#type: "button", class: "btn-ghost",
-                            onclick: move |_| {
-                                let g = vec![String::new(); 192];
-                                save_grid(&g);
-                                grid.set(g);
-                            },
-                            "Xóa trắng"
-                        }
-                    }
-                }
-            }
-            div { class: "voxel-toolbar",
-                for (name, hex) in VOXEL_PALETTE {
-                    button {
-                        key: "{name}",
-                        r#type: "button",
-                        class: if selected_color() == hex { "voxel-block-btn active" } else { "voxel-block-btn" },
-                        onclick: move |_| {
-                            selected_color.set(hex.to_string());
-                            play_mod_sound("mech");
-                        },
-                        span { class: "voxel-swatch", style: "background: {hex};" }
-                        if !compact { span { "{name}" } }
-                    }
-                }
-                button {
-                    r#type: "button",
-                    class: if selected_color().is_empty() { "voxel-block-btn active" } else { "voxel-block-btn" },
-                    onclick: move |_| selected_color.set(String::new()),
-                    "🔨 Xóa"
-                }
-            }
-            div { class: "voxel-world-grid",
-                for (idx, cell) in grid().into_iter().enumerate() {
-                    button {
-                        key: "{idx}",
-                        r#type: "button",
-                        class: if cell.is_empty() { "voxel-cell" } else { "voxel-cell filled" },
-                        style: if cell.is_empty() { String::new() } else { format!("background: {cell};") },
-                        onclick: move |_| {
-                            let col = selected_color();
-                            play_mod_sound(if col.is_empty() { "anvil" } else { "minecraft" });
-                            grid.with_mut(|g| {
-                                if let Some(slot) = g.get_mut(idx) {
-                                    *slot = if *slot == col { String::new() } else { col.clone() };
+                                button { r#type: "button", class: "btn-ghost",
+                                    onclick: move |_| {
+                                        let g = vec![String::new(); 192];
+                                        save_grid(&g);
+                                        grid.set(g);
+                                    },
+                                    "Xóa trắng"
                                 }
-                                save_grid(g);
-                            });
+                            }
+                        }
+                    } else if sec == "palette" {
+                        div { key: "{sec}", class: "voxel-toolbar", "data-plugin-section": "palette",
+                            for (name, hex) in VOXEL_PALETTE {
+                                button {
+                                    key: "{name}",
+                                    r#type: "button",
+                                    class: if selected_color() == hex { "voxel-block-btn active" } else { "voxel-block-btn" },
+                                    onclick: move |_| {
+                                        selected_color.set(hex.to_string());
+                                        if brush_sound { play_mod_sound("mech"); }
+                                    },
+                                    span { class: "voxel-swatch", style: "background: {hex};" }
+                                    if !compact { span { "{name}" } }
+                                }
+                            }
+                            button {
+                                r#type: "button",
+                                class: if selected_color().is_empty() { "voxel-block-btn active" } else { "voxel-block-btn" },
+                                onclick: move |_| selected_color.set(String::new()),
+                                "Tẩy"
+                            }
+                        }
+                    } else if sec == "canvas" {
+                        div { key: "{sec}", class: "{grid_cls}", "data-plugin-section": "canvas",
+                            for (idx, cell) in grid().into_iter().enumerate() {
+                                button {
+                                    key: "{idx}",
+                                    r#type: "button",
+                                    class: if cell.is_empty() { "voxel-cell" } else { "voxel-cell filled" },
+                                    style: if cell.is_empty() { String::new() } else { format!("background: {cell};") },
+                                    onclick: move |_| {
+                                        let col = selected_color();
+                                        if brush_sound {
+                                            play_mod_sound(if col.is_empty() { "anvil" } else { "minecraft" });
+                                        }
+                                        grid.with_mut(|g| {
+                                            if let Some(slot) = g.get_mut(idx) {
+                                                *slot = if *slot == col { String::new() } else { col.clone() };
+                                            }
+                                            save_grid(g);
+                                        });
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1706,8 +1883,7 @@ fn NotesAndTodoPage(plugin: PluginMod, my_username: String, #[props(default = fa
         platform::storage_get(TODOS_KEY)
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_else(|| vec![
-                TodoItem { id: "1".into(), text: "Bật một Plugin giao diện".into(), done: false },
-                TodoItem { id: "2".into(), text: "Tạo một Plugin mới".into(), done: false },
+                TodoItem { id: "1".into(), text: "Ghi chú việc ưu tiên hôm nay".into(), done: false },
             ])
     });
     let mut new_todo = use_signal(String::new);
@@ -1716,93 +1892,122 @@ fn NotesAndTodoPage(plugin: PluginMod, my_username: String, #[props(default = fa
             platform::storage_set(TODOS_KEY, &s);
         }
     };
+    let focus_mins = plugin.cfg_i64("focus_minutes", 25).clamp(1, 120) as u32;
+    let break_mins = plugin.cfg_i64("break_minutes", 5).clamp(1, 60) as u32;
+    let sound_alert = plugin.cfg_bool("sound_alert", true);
+    let layout_mode = plugin.cfg_str("layout_mode", "two_col");
+    let sections = plugin.ordered_sections(&["pomodoro", "todos", "notes"]);
+    let visible_sections: Vec<String> = sections.into_iter().filter(|s| !plugin.is_section_hidden(s)).collect();
+    let container_cls = if compact {
+        "left-app-body"
+    } else if layout_mode == "two_col" {
+        "mod-page-container notes-layout-grid"
+    } else {
+        "mod-page-container"
+    };
 
     rsx! {
-        div { class: if compact { "left-app-body" } else { "mod-page-container" },
-            PomodoroTimer { compact: compact }
-            div { class: if compact { "left-app-body" } else { "mod-two-col" },
-                div { class: if compact { "left-app-card" } else { "settings-group" },
-                    div { class: "settings-group-title", "📋 Việc cần làm" }
-                    form {
-                        class: "inline-form",
-                        onsubmit: move |e| {
-                            e.prevent_default();
-                            let t = new_todo().trim().to_string();
-                            if t.is_empty() { return; }
-                            let id = format!("{}", chrono::Utc::now().timestamp_millis());
-                            todos.with_mut(|l| {
-                                l.insert(0, TodoItem { id, text: t, done: false });
-                                save_todos(l);
-                            });
-                            new_todo.set(String::new());
-                        },
-                        input { r#type: "text", placeholder: "Thêm công việc mới", value: "{new_todo}", oninput: move |e| new_todo.set(e.value()) }
-                        button { r#type: "submit", class: "btn-primary", PlusIcon { size: 16 } if !compact { "Thêm" } }
+        div { class: "{container_cls}",
+            for sec in visible_sections {
+                if sec == "pomodoro" {
+                    PomodoroTimer {
+                        key: "{sec}",
+                        compact: compact,
+                        focus_minutes: focus_mins,
+                        break_minutes: break_mins,
+                        sound_alert: sound_alert,
                     }
-                    div { class: "mod-todo-list",
-                        if todos.read().is_empty() {
-                            div { class: "sidebar-empty", "Chưa có công việc nào" }
+                } else if sec == "todos" {
+                    div {
+                        key: "{sec}",
+                        class: if compact { "left-app-card" } else { "settings-group" },
+                        "data-plugin-section": "todos",
+                        div { class: "settings-group-title", "Việc cần làm" }
+                        form {
+                            class: "inline-form",
+                            onsubmit: move |e| {
+                                e.prevent_default();
+                                let t = new_todo().trim().to_string();
+                                if t.is_empty() { return; }
+                                let id = format!("{}", chrono::Utc::now().timestamp_millis());
+                                todos.with_mut(|l| {
+                                    l.insert(0, TodoItem { id, text: t, done: false });
+                                    save_todos(l);
+                                });
+                                new_todo.set(String::new());
+                            },
+                            input { r#type: "text", placeholder: "Thêm công việc mới", value: "{new_todo}", oninput: move |e| new_todo.set(e.value()) }
+                            button { r#type: "submit", class: "btn-primary", PlusIcon { size: 16 } if !compact { "Thêm" } }
                         }
-                        for item in todos() {
-                            {
-                                let id1 = item.id.clone();
-                                let id2 = item.id.clone();
-                                rsx! {
-                                    div { key: "{item.id}", class: if item.done { "mod-todo-row done" } else { "mod-todo-row" },
-                                        input {
-                                            r#type: "checkbox",
-                                            checked: item.done,
-                                            onchange: move |e| {
-                                                let d = e.checked();
-                                                todos.with_mut(|l| {
-                                                    if let Some(x) = l.iter_mut().find(|x| x.id == id1) { x.done = d; }
-                                                    save_todos(l);
-                                                });
+                        div { class: "mod-todo-list",
+                            if todos.read().is_empty() {
+                                div { class: "sidebar-empty", "Chưa có công việc nào" }
+                            }
+                            for item in todos() {
+                                {
+                                    let id1 = item.id.clone();
+                                    let id2 = item.id.clone();
+                                    rsx! {
+                                        div { key: "{item.id}", class: if item.done { "mod-todo-row done" } else { "mod-todo-row" },
+                                            input {
+                                                r#type: "checkbox",
+                                                checked: item.done,
+                                                onchange: move |e| {
+                                                    let d = e.checked();
+                                                    todos.with_mut(|l| {
+                                                        if let Some(x) = l.iter_mut().find(|x| x.id == id1) { x.done = d; }
+                                                        save_todos(l);
+                                                    });
+                                                }
                                             }
-                                        }
-                                        span { class: "grow", "{item.text}" }
-                                        button {
-                                            r#type: "button",
-                                            class: "icon-btn danger",
-                                            onclick: move |_| {
-                                                todos.with_mut(|l| {
-                                                    l.retain(|x| x.id != id2);
-                                                    save_todos(l);
-                                                });
-                                            },
-                                            TrashIcon { size: 15 }
+                                            span { class: "grow", "{item.text}" }
+                                            button {
+                                                r#type: "button",
+                                                class: "icon-btn danger",
+                                                onclick: move |_| {
+                                                    todos.with_mut(|l| {
+                                                        l.retain(|x| x.id != id2);
+                                                        save_todos(l);
+                                                    });
+                                                },
+                                                TrashIcon { size: 15 }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                div { class: if compact { "left-app-card" } else { "settings-group" },
-                    div { class: "settings-group-title", "📝 Ghi chú nhanh" }
-                    textarea {
-                        class: "mod-notes-area",
-                        rows: if compact { "5" } else { "12" },
-                        placeholder: "Viết ghi chú hoặc nội dung cần lưu tại đây",
-                        value: "{notes}",
-                        oninput: move |e| {
-                            let v = e.value();
-                            notes.set(v.clone());
-                            platform::storage_set(NOTES_KEY, &v);
+                } else if sec == "notes" {
+                    div {
+                        key: "{sec}",
+                        class: if compact { "left-app-card" } else { "settings-group" },
+                        "data-plugin-section": "notes",
+                        div { class: "settings-group-title", "Ghi chú nhanh" }
+                        textarea {
+                            class: "mod-notes-area",
+                            rows: if compact { "5" } else { "10" },
+                            placeholder: "Viết ghi chú hoặc nội dung cần lưu tại đây",
+                            value: "{notes}",
+                            oninput: move |e| {
+                                let v = e.value();
+                                notes.set(v.clone());
+                                platform::storage_set(NOTES_KEY, &v);
+                            }
                         }
-                    }
-                    div { class: "inline-form",
-                        button { r#type: "button", class: "btn-small-primary",
-                            onclick: move |_| {
-                                let v = notes();
-                                if !v.trim().is_empty() {
-                                    *PENDING_COMPOSER_TEXT.write() = Some(v);
-                                }
-                            },
-                            SendIcon { size: 14 } "Gửi vào chat"
+                        div { class: "inline-form",
+                            button { r#type: "button", class: "btn-small-primary",
+                                onclick: move |_| {
+                                    let v = notes();
+                                    if !v.trim().is_empty() {
+                                        *PENDING_COMPOSER_TEXT.write() = Some(v);
+                                    }
+                                },
+                                SendIcon { size: 14 } "Gửi vào chat"
+                            }
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&notes()), CopyIcon {} "Chép" }
+                            button { r#type: "button", class: "btn-ghost", onclick: move |_| { notes.set(String::new()); platform::storage_set(NOTES_KEY, ""); }, "Xóa" }
                         }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&notes()), CopyIcon {} "Chép" }
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| { notes.set(String::new()); platform::storage_set(NOTES_KEY, ""); }, "Xóa" }
                     }
                 }
             }
@@ -1815,40 +2020,36 @@ fn NotesAndTodoPage(plugin: PluginMod, my_username: String, #[props(default = fa
 
 #[component]
 fn SoundboardPage(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
-    let pads = [
-        ("💎 Ngọc XP", "xp", "#10B981"),
-        ("🆙 Lên Cấp", "levelup", "#22C55E"),
-        ("🔨 Tiếng Đe", "anvil", "#64748B"),
-        ("⌨ Switch Cơ", "mech", "#3B82F6"),
-        ("⚡ Tia Laser", "laser", "#06B6D4"),
-        ("🪙 Đồng Xu", "coin", "#F59E0B"),
-        ("🔔 Chuông Báo", "chime", "#8B5CF6"),
-        ("✨ Hiệu Ứng Pop", "pop", "#EC4899"),
-    ];
+    let default_keys: Vec<&str> = SOUNDBOARD_PADS.iter().map(|(k, _, _)| *k).collect();
+    let ordered = plugin.ordered_sections(&default_keys);
+    let volume = (plugin.cfg_i64("volume", 75) as f64 / 100.0).clamp(0.0, 1.0);
+    let pitch = (plugin.cfg_i64("pitch", 100) as f64 / 100.0).clamp(0.5, 2.0);
+    let cols = if compact { 2 } else { plugin.cfg_i64("columns", 4).clamp(2, 4) };
+    let grid_style = format!("grid-template-columns: repeat({cols}, minmax(0, 1fr));");
+
     rsx! {
         div { class: if compact { "left-app-body" } else { "mod-page-container" },
-            if !compact {
-                div { class: "mod-hero-card",
-                    div {
-                        h3 { class: "mod-hero-title", "🎹 Bàn Phím Cơ & Soundboard — {plugin.display_name}" }
-                        p { class: "mod-hero-sub", "Bấm vào các ô bên dưới để phát âm thanh tổng hợp thời gian thực." }
-                    }
-                }
-            }
-            div { class: if compact { "soundboard-grid compact" } else { "soundboard-grid" },
-                for (label, kind, color) in pads {
-                    button {
-                        key: "{label}",
-                        r#type: "button",
-                        class: "soundboard-pad",
-                        style: "--pad-color: {color};",
-                        onclick: move |_| play_mod_sound(kind),
-                        div { class: "soundboard-pad-head",
-                            span { class: "soundboard-dot" }
-                            span { class: "soundboard-pad-title", "{label}" }
-                        }
-                        if !compact {
-                            span { class: "soundboard-pad-sub", "Bấm để phát" }
+            div {
+                class: if compact { "soundboard-grid compact" } else { "soundboard-grid" },
+                style: "{grid_style}",
+                for pad_key in ordered {
+                    if !plugin.is_section_hidden(&pad_key) {
+                        if let Some((kind, label, color)) = SOUNDBOARD_PADS.iter().find(|(k, _, _)| *k == pad_key.as_str()).copied() {
+                            button {
+                                key: "{kind}",
+                                r#type: "button",
+                                class: "soundboard-pad",
+                                "data-plugin-section": "{kind}",
+                                style: "--pad-color: {color};",
+                                onclick: move |_| play_mod_sound_opts(kind, volume, pitch),
+                                div { class: "soundboard-pad-head",
+                                    span { class: "soundboard-dot" }
+                                    span { class: "soundboard-pad-title", "{label}" }
+                                }
+                                if !compact {
+                                    span { class: "soundboard-pad-sub", "Phát âm thanh" }
+                                }
+                            }
                         }
                     }
                 }
@@ -1862,50 +2063,205 @@ fn SoundboardPage(plugin: PluginMod, my_username: String, #[props(default = fals
 
 #[component]
 fn CyberDashboardPage(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
-    let mut terminal_out = use_signal(|| format!("🛰 Trạm Điều Khiển {} sẵn sàng.\nNgười vận hành: @{}\nNhập lệnh bên dưới để kiểm tra.", plugin.display_name, my_username));
+    let mut terminal_out = use_signal(|| format!("Trạm lệnh {} sẵn sàng (@{}).", plugin.display_name, my_username));
     let mut last_reply = use_signal(String::new);
     let mut cmd_in = use_signal(String::new);
+    let sections = plugin.ordered_sections(&["stats", "console"]);
 
     rsx! {
         div { class: if compact { "left-app-body" } else { "mod-page-container" },
-            if !compact {
-                div { class: "inv-grid",
-                    div { class: "inv-card",
-                        div { class: "settings-label", "Mã hóa đầu cuối" }
-                        div { class: "member-sub", "ECDH P-256 · AES-256-GCM · ECDSA" }
-                    }
-                    div { class: "inv-card",
-                        div { class: "settings-label", "Trạng thái Plugin" }
-                        div { class: "member-sub", "{PLUGINS.read().iter().filter(|p| p.installed && p.enabled).count()} Plugin đang bật" }
-                    }
-                    div { class: "inv-card",
-                        div { class: "settings-label", "Hiệu ứng màn hình" }
-                        div { class: "member-sub", "Matrix Cyber Rain · 60 FPS" }
+            for sec in sections {
+                if !plugin.is_section_hidden(&sec) {
+                    if sec == "stats" && !compact {
+                        div { key: "{sec}", class: "inv-grid", "data-plugin-section": "stats",
+                            div { class: "inv-card",
+                                div { class: "settings-label", "Mã hóa đầu cuối" }
+                                div { class: "member-sub", "ECDH P-256 · AES-256-GCM" }
+                            }
+                            div { class: "inv-card",
+                                div { class: "settings-label", "Plugin đang hoạt động" }
+                                div { class: "member-sub", "{PLUGINS.read().iter().filter(|p| p.installed && p.enabled).count()} Plugin" }
+                            }
+                            div { class: "inv-card",
+                                div { class: "settings-label", "Hiệu ứng nền" }
+                                div { class: "member-sub", if plugin.screen_fx == "matrix" { "Matrix đang bật" } else { "Đang tắt" } }
+                            }
+                        }
+                    } else if sec == "console" {
+                        div { key: "{sec}", class: if compact { "left-app-card" } else { "settings-group" }, "data-plugin-section": "console",
+                            div { class: "settings-group-title", "Bảng lệnh nhanh" }
+                            pre { class: "code-block", style: if compact { "min-height: 6rem; max-height: 11rem; overflow-y: auto;" } else { "min-height: 10rem;" }, "{terminal_out}" }
+                            form {
+                                class: "inline-form",
+                                onsubmit: {
+                                    let uname = my_username.clone();
+                                    move |e| {
+                                        e.prevent_default();
+                                        let c = cmd_in().trim().to_string();
+                                        if c.is_empty() { return; }
+                                        let reply = try_run_plugin_command(&c, &uname).unwrap_or_else(|| format!("Đã thực thi: {c}"));
+                                        last_reply.set(reply.clone());
+                                        terminal_out.with_mut(|t| {
+                                            t.push_str(&format!("\n\n> {c}\n{reply}"));
+                                        });
+                                        cmd_in.set(String::new());
+                                    }
+                                },
+                                input { r#type: "text", placeholder: "Nhập lệnh /neon, /status, /calc 24*7", value: "{cmd_in}", oninput: move |e| cmd_in.set(e.value()) }
+                                button { r#type: "submit", class: "btn-primary", "Chạy" }
+                                if !last_reply().is_empty() {
+                                    button { r#type: "button", class: "btn-secondary",
+                                        onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(last_reply()),
+                                        SendIcon { size: 14 } "Chèn"
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-            div { class: if compact { "left-app-card" } else { "settings-group" },
-                div { class: "settings-group-title", "💻 Bảng lệnh nhanh" }
-                pre { class: "code-block", style: if compact { "min-height: 6rem; max-height: 11rem; overflow-y: auto;" } else { "min-height: 10rem;" }, "{terminal_out}" }
-                form {
-                    class: "inline-form",
-                    onsubmit: move |e| {
-                        e.prevent_default();
-                        let c = cmd_in().trim().to_string();
-                        if c.is_empty() { return; }
-                        let reply = try_run_plugin_command(&c, &my_username).unwrap_or_else(|| format!("Đã thực thi: {c}"));
-                        last_reply.set(reply.clone());
-                        terminal_out.with_mut(|t| {
-                            t.push_str(&format!("\n\n> {c}\n{reply}"));
-                        });
-                        cmd_in.set(String::new());
-                    },
-                    input { r#type: "text", placeholder: "Nhập lệnh /neon, /hack, /roll, /calc 24*7", value: "{cmd_in}", oninput: move |e| cmd_in.set(e.value()) }
-                    button { r#type: "submit", class: "btn-primary", "Chạy" }
-                    if !last_reply().is_empty() {
-                        button { r#type: "button", class: "btn-secondary",
-                            onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(last_reply()),
-                            SendIcon { size: 14 } "Chèn"
+            if !plugin.custom_blocks.is_empty() {
+                CustomBlocksView { plugin: plugin.clone(), my_username: my_username.clone(), compact: compact }
+            }
+        }
+    }
+}
+
+/// Real interactive Quick Tools workspace for `mod:smart_assistant` ("Công cụ Lệnh nhanh").
+#[component]
+fn QuickToolsPage(plugin: PluginMod, my_username: String, #[props(default = false)] compact: bool) -> Element {
+    let mut calc_expr = use_signal(String::new);
+    let mut rand_result = use_signal(String::new);
+    let mut text_input = use_signal(String::new);
+    let mut cmd_output = use_signal(String::new);
+    let sections = plugin.ordered_sections(&["calc", "random", "text", "snippets"]);
+
+    let calc_preview = eval_simple_math(&calc_expr())
+        .map(|v| if (v - v.round()).abs() < 1e-9 { format!("{}", v as i64) } else { format!("{v:.2}") })
+        .unwrap_or_default();
+
+    rsx! {
+        div { class: if compact { "left-app-body" } else { "mod-page-container" },
+            for sec in sections {
+                if !plugin.is_section_hidden(&sec) {
+                    if sec == "calc" {
+                        div { key: "{sec}", class: if compact { "left-app-card" } else { "settings-group" }, "data-plugin-section": "calc",
+                            div { class: "settings-group-title", "Máy tính nhanh" }
+                            div { class: "inline-form",
+                                input {
+                                    r#type: "text",
+                                    placeholder: "vd: 1250*4 + 500",
+                                    value: "{calc_expr}",
+                                    oninput: move |e| calc_expr.set(e.value()),
+                                }
+                                if !calc_preview.is_empty() {
+                                    button {
+                                        r#type: "button",
+                                        class: "btn-small-primary",
+                                        onclick: {
+                                            let res = format!("{} = {}", calc_expr().trim(), calc_preview);
+                                            move |_| *PENDING_COMPOSER_TEXT.write() = Some(res.clone())
+                                        },
+                                        SendIcon { size: 14 } "Chèn"
+                                    }
+                                }
+                            }
+                            if !calc_preview.is_empty() {
+                                div { class: "plugin-calc-result", "= {calc_preview}" }
+                            }
+                        }
+                    } else if sec == "random" {
+                        div { key: "{sec}", class: if compact { "left-app-card" } else { "settings-group" }, "data-plugin-section": "random",
+                            div { class: "settings-group-title", "Xúc xắc & Ngẫu nhiên" }
+                            div { class: "inline-form",
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    onclick: move |_| {
+                                        let n = (chrono::Local::now().timestamp_subsec_nanos() % 6) + 1;
+                                        rand_result.set(format!("Xúc xắc: {n}"));
+                                    },
+                                    DiceIcon { size: 15 } "Xúc xắc"
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    onclick: move |_| {
+                                        let f = if chrono::Local::now().timestamp_subsec_nanos().is_multiple_of(2) { "Ngửa" } else { "Sấp" };
+                                        rand_result.set(format!("Đồng xu: {f}"));
+                                    },
+                                    CoinIcon { size: 15 } "Đồng xu"
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    onclick: move |_| {
+                                        let n = (chrono::Local::now().timestamp_subsec_nanos() % 100) + 1;
+                                        rand_result.set(format!("Số ngẫu nhiên: {n}/100"));
+                                    },
+                                    "1–100"
+                                }
+                            }
+                            if !rand_result().is_empty() {
+                                div { class: "inline-form",
+                                    span { class: "settings-label grow", "{rand_result}" }
+                                    button {
+                                        r#type: "button",
+                                        class: "btn-small-primary",
+                                        onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(rand_result()),
+                                        SendIcon { size: 14 } "Chèn"
+                                    }
+                                }
+                            }
+                        }
+                    } else if sec == "text" {
+                        div { key: "{sec}", class: if compact { "left-app-card" } else { "settings-group" }, "data-plugin-section": "text",
+                            div { class: "settings-group-title", "Xử lý văn bản" }
+                            textarea {
+                                rows: "3",
+                                placeholder: "Nhập văn bản cần chuyển đổi",
+                                value: "{text_input}",
+                                oninput: move |e| text_input.set(e.value()),
+                            }
+                            div { class: "inline-form",
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| text_input.set(text_input().to_uppercase()), "IN HOA" }
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| text_input.set(text_input().to_lowercase()), "chữ thường" }
+                                button { r#type: "button", class: "btn-small-primary",
+                                    disabled: text_input().trim().is_empty(),
+                                    onclick: move |_| *PENDING_COMPOSER_TEXT.write() = Some(text_input()),
+                                    SendIcon { size: 14 } "Chèn"
+                                }
+                                span { class: "member-sub", "{text_input().chars().count()} ký tự" }
+                            }
+                        }
+                    } else if sec == "snippets" {
+                        div { key: "{sec}", class: if compact { "left-app-card" } else { "settings-group" }, "data-plugin-section": "snippets",
+                            div { class: "settings-group-title", "Lệnh gõ tắt đang bật" }
+                            div { class: "mod-preset-chips",
+                                for c in plugin.commands.iter().filter(|c| c.enabled) {
+                                    {
+                                        let trig = c.trigger.clone();
+                                        let resp = c.response.clone();
+                                        let uname = my_username.clone();
+                                        rsx! {
+                                            button {
+                                                key: "{trig}",
+                                                r#type: "button",
+                                                class: "btn-small-secondary",
+                                                onclick: move |_| {
+                                                    let out = expand_template(&resp, &uname, "");
+                                                    cmd_output.set(out.clone());
+                                                    *PENDING_COMPOSER_TEXT.write() = Some(out);
+                                                },
+                                                code { "{trig}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if !cmd_output().is_empty() {
+                                div { class: "member-sub", "Đã chèn: {cmd_output}" }
+                            }
                         }
                     }
                 }
@@ -2744,1262 +3100,8 @@ pub fn PluginChatView(
     }
 }
 
-const THEME_PRESETS: [(&str, &str, &str, &str, &str, &str, &str, &str, &str); 6] = [
-    ("Voxel 3D", "#141814", "#1D241D", "#181E18", "#242D24", "#10B981", "#059669", "#ECFDF5", "pixel"),
-    ("Cyber Neon", "#070812", "#0D1021", "#0A0C1A", "#141830", "#00F0FF", "#D900FF", "#E0FAFF", "neon"),
-    ("Sakura", "#FDF2F8", "#FCE7F3", "#FFF5F9", "#FFFFFF", "#EC4899", "#DB2777", "#4A152B", "glass"),
-    ("AMOLED Đen", "#000000", "#08080A", "#040406", "#101014", "#3B82F6", "#2563EB", "#F8FAFC", "default"),
-    ("Dracula", "#1E1F29", "#282A36", "#21222C", "#343746", "#BD93F9", "#FF79C6", "#F8F8F2", "neon"),
-    ("Terminal", "#051005", "#0A1C0A", "#071407", "#0F290F", "#22C55E", "#16A34A", "#4ADE80", "pixel"),
-];
-
 pub use PluginChatView as BotChatView;
-
-/// Settings › Plugin: quản lý, bật/tắt và chỉnh sửa Plugin.
-#[component]
-pub fn PluginsSettings(
-    my_username: String,
-    #[props(default)] on_open_bot_chat: Option<EventHandler<BotItem>>,
-) -> Element {
-    let mut server_bots = use_signal(Vec::<BotItem>::new);
-    let mut editor_tab = use_signal(|| "basic"); // "basic" | "theme" | "ui" | "bot"
-    let mut creating_new = use_signal(|| false);
-    let mut import_open = use_signal(|| false);
-    let mut import_json = use_signal(String::new);
-    let mut status = use_signal(|| Option::<(bool, String)>::None);
-    let mut fresh_token = use_signal(|| Option::<(String, String)>::None);
-    let mut busy = use_signal(|| false);
-    let mut origin = use_signal(String::new);
-
-    // New Plugin form signals
-    let mut new_username = use_signal(String::new);
-    let mut new_display = use_signal(String::new);
-    let mut new_icon = use_signal(|| "🧩".to_string());
-    let mut new_logo = use_signal(|| "logo:bot".to_string());
-    let mut new_desc = use_signal(String::new);
-    let mut new_with_server = use_signal(|| false);
-
-    // Command editor signals
-    let mut cmd_trigger = use_signal(String::new);
-    let mut cmd_desc = use_signal(String::new);
-    let mut cmd_resp = use_signal(String::new);
-
-    // Custom block builder signals
-    let mut blk_kind = use_signal(|| "card".to_string());
-    let mut blk_title = use_signal(String::new);
-    let mut blk_body = use_signal(String::new);
-    let mut blk_action_label = use_signal(String::new);
-    let mut blk_action_type = use_signal(|| "command".to_string());
-    let mut blk_action_cmd = use_signal(String::new);
-
-    // Composer button editor signals
-    let mut btn_label = use_signal(String::new);
-    let mut btn_content = use_signal(String::new);
-
-    use_effect(move || {
-        init_plugins();
-        spawn(async move {
-            origin.set(platform::app_origin().await);
-            if let Ok(list) = social::bots_mine().await {
-                let mut current = PLUGINS.peek().clone();
-                let mut changed = false;
-                for sb in &list {
-                    if !current.iter().any(|p| p.server_bot_id.as_deref() == Some(sb.id.as_str()) || p.username == sb.username) {
-                        current.push(PluginMod {
-                            id: format!("srv:{}", sb.id),
-                            username: sb.username.clone(),
-                            display_name: sb.display_name.clone(),
-                            author: "Bạn".into(),
-                            version: "1.0.0".into(),
-                            icon: "🤖".into(),
-                            logo_url: "logo:bot".into(),
-                            description: sb.description.clone().unwrap_or_else(|| "Plugin kết nối API máy chủ".into()),
-                            installed: true,
-                            enabled: true,
-                            builtin: false,
-                            server_bot_id: Some(sb.id.clone()),
-                            bot_enabled: true,
-                            commands: vec![
-                                PluginCommand { trigger: "/start".into(), description: "Khởi động plugin".into(), response: format!("Xin chào {{user}}! Đây là plugin @{}.", sb.username), icon: String::new() },
-                            ],
-                            auto_reply: String::new(),
-                            webhook_url: String::new(),
-                            theme_enabled: false,
-                            theme: PluginTheme::default(),
-                            left_app_enabled: false,
-                            custom_page_enabled: false,
-                            page_title: sb.display_name.clone(),
-                            page_icon: "🤖".into(),
-                            page_kind: "custom".into(),
-                            custom_blocks: Vec::new(),
-                            hud_enabled: false,
-                            hud_position: "top-right".into(),
-                            hud_coords: false,
-                            hud_clock: false,
-                            hud_note: false,
-                            hud_pomodoro: false,
-                            screen_fx: "none".into(),
-                            sound_fx: "none".into(),
-                            composer_buttons: Vec::new(),
-                        });
-                        changed = true;
-                    }
-                }
-                if changed {
-                    save_plugins(&current);
-                    *PLUGINS.write() = current;
-                }
-                server_bots.set(list);
-            }
-        });
-    });
-
-    let update_plugin = move |id: &str, f: &dyn Fn(&mut PluginMod)| {
-        let mut list = PLUGINS.peek().clone();
-        if let Some(p) = list.iter_mut().find(|p| p.id == id) {
-            f(p);
-        }
-        save_plugins(&list);
-        *PLUGINS.write() = list;
-    };
-
-    let create_plugin = move |_| {
-        let u = new_username().trim().to_lowercase().replace(' ', "_");
-        let d = new_display().trim().to_string();
-        if u.is_empty() || d.is_empty() || busy() {
-            return;
-        }
-        let ic = if new_icon().trim().is_empty() { "🧩".to_string() } else { new_icon().trim().to_string() };
-        let lg = new_logo().trim().to_string();
-        let ds = if new_desc().trim().is_empty() { "Plugin tùy chỉnh cho ChatW.".to_string() } else { new_desc().trim().to_string() };
-        let want_srv = new_with_server();
-        let author_name = my_username.clone();
-        busy.set(true);
-        status.set(None);
-        spawn(async move {
-            let mut srv_id: Option<String> = None;
-            if want_srv {
-                match social::bot_create(&u, &d, &ds).await {
-                    Ok(b) => {
-                        if let Some(tok) = b.token.clone() {
-                            fresh_token.set(Some((b.username.clone(), tok)));
-                        }
-                        srv_id = Some(b.id.clone());
-                        server_bots.with_mut(|l| l.insert(0, b));
-                    }
-                    Err(e) => {
-                        status.set(Some((true, plugin_error(&e.code).to_string())));
-                        busy.set(false);
-                        return;
-                    }
-                }
-            }
-            let pid = srv_id.as_ref().map(|s| format!("srv:{s}")).unwrap_or_else(|| format!("mod:custom_{}", chrono::Utc::now().timestamp_millis()));
-            let new_mod = PluginMod {
-                id: pid.clone(),
-                username: u,
-                display_name: d.clone(),
-                author: author_name,
-                version: "1.0.0".into(),
-                icon: ic.clone(),
-                logo_url: lg,
-                description: ds,
-                installed: true,
-                enabled: true,
-                builtin: false,
-                server_bot_id: srv_id,
-                bot_enabled: true,
-                commands: vec![
-                    PluginCommand { trigger: "/hello".into(), description: "Chào người dùng".into(), response: format!("{ic} Xin chào {{user}} từ Plugin {d}!"), icon: String::new() },
-                ],
-                auto_reply: String::new(),
-                webhook_url: String::new(),
-                theme_enabled: false,
-                theme: PluginTheme::default(),
-                left_app_enabled: false,
-                custom_page_enabled: false,
-                page_title: d,
-                page_icon: ic,
-                page_kind: "custom".into(),
-                custom_blocks: Vec::new(),
-                hud_enabled: false,
-                hud_position: "top-right".into(),
-                hud_coords: false,
-                hud_clock: true,
-                hud_note: false,
-                hud_pomodoro: false,
-                screen_fx: "none".into(),
-                sound_fx: "none".into(),
-                composer_buttons: Vec::new(),
-            };
-            let mut list = PLUGINS.peek().clone();
-            list.insert(0, new_mod);
-            save_plugins(&list);
-            *PLUGINS.write() = list;
-            new_username.set(String::new());
-            new_display.set(String::new());
-            new_desc.set(String::new());
-            creating_new.set(false);
-            *EDITING_PLUGIN_ID.write() = Some(pid);
-            status.set(Some((false, "Đã tạo Plugin mới.".into())));
-            busy.set(false);
-        });
-    };
-
-    let base = if origin().is_empty() { "http://127.0.0.1:8085".to_string() } else { origin() };
-    let plugins_list = PLUGINS.read().clone();
-    let editing_mod = EDITING_PLUGIN_ID().and_then(|id| plugins_list.iter().find(|p| p.id == id).cloned());
-
-    // Dedicated Create Plugin Page
-    if creating_new() {
-        return rsx! {
-            div { class: "settings-section",
-                div { class: "mod-editor-top",
-                    div { class: "mod-editor-title",
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| creating_new.set(false), BackIcon {} "Quay lại" }
-                        div { class: "settings-group-title", "Tạo Plugin mới" }
-                    }
-                }
-                if let Some((is_err, msg)) = status() {
-                    div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
-                }
-                div { class: "settings-group mod-builder-box",
-                    div { class: "form-grid",
-                        label { class: "form-field",
-                            span { "Mã @username" }
-                            input { r#type: "text", maxlength: "32", placeholder: "vd: my_plugin", value: "{new_username}", oninput: move |e| new_username.set(e.value()) }
-                        }
-                        label { class: "form-field",
-                            span { "Tên hiển thị" }
-                            input { r#type: "text", maxlength: "64", placeholder: "vd: Plugin của tôi", value: "{new_display}", oninput: move |e| new_display.set(e.value()) }
-                        }
-                        label { class: "form-field",
-                            span { "Biểu tượng" }
-                            input { r#type: "text", maxlength: "8", placeholder: "🧩", value: "{new_icon}", oninput: move |e| new_icon.set(e.value()) }
-                        }
-                        label { class: "form-field wide",
-                            span { "Logo hoặc Icon" }
-                            div { class: "inline-form",
-                                PluginGlyph { icon: new_icon(), logo_url: new_logo(), size: 32 }
-                                input { r#type: "text", placeholder: "logo:bot, đường dẫn ảnh hoặc mã <svg>", value: "{new_logo}", oninput: move |e| new_logo.set(e.value()) }
-                                label { class: "btn-avatar-upload",
-                                    input {
-                                        id: "new-plugin-logo-input",
-                                        r#type: "file",
-                                        accept: "image/png,image/jpeg,image/webp,image/svg+xml,image/avif,image/gif",
-                                        style: "display: none;",
-                                        onchange: move |_| {
-                                            spawn(async move {
-                                                if let Ok((bytes, mime)) = platform::read_selected_file_raw("new-plugin-logo-input").await {
-                                                    if let Ok(u) = library::upload_media(bytes, &mime).await {
-                                                        new_logo.set(u);
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    }
-                                    "Tải Logo"
-                                }
-                            }
-                        }
-                        div { class: "form-field wide",
-                            span { "Chọn Logo màu" }
-                            div { class: "mod-preset-chips",
-                                for (lkey, llbl) in PLUGIN_LOGO_PRESETS {
-                                    button {
-                                        key: "{lkey}",
-                                        r#type: "button",
-                                        class: if new_logo() == lkey { "btn-small-primary" } else { "btn-small-secondary" },
-                                        onclick: move |_| new_logo.set(lkey.to_string()),
-                                        PluginGlyph { icon: new_icon(), logo_url: lkey.to_string(), size: 18 }
-                                        "{llbl}"
-                                    }
-                                }
-                            }
-                        }
-                        label { class: "form-field wide",
-                            span { "Mô tả" }
-                            textarea { rows: "2", maxlength: "512", placeholder: "Mô tả ngắn", value: "{new_desc}", oninput: move |e| new_desc.set(e.value()) }
-                        }
-                    }
-                    label { class: "demo-check",
-                        input { r#type: "checkbox", checked: new_with_server(), onchange: move |e| new_with_server.set(e.checked()) }
-                        "Đăng ký kèm Token API"
-                    }
-                    div { class: "inline-form",
-                        button { r#type: "button", class: "btn-primary", disabled: busy() || new_username().trim().is_empty() || new_display().trim().is_empty(), onclick: create_plugin,
-                            PlusIcon { size: 16 } "Tạo & Sửa"
-                        }
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| creating_new.set(false), "Hủy" }
-                    }
-                }
-            }
-        };
-    }
-
-    // Dedicated Import JSON Page
-    if import_open() {
-        return rsx! {
-            div { class: "settings-section",
-                div { class: "mod-editor-top",
-                    div { class: "mod-editor-title",
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| import_open.set(false), BackIcon {} "Quay lại" }
-                        div { class: "settings-group-title", "Nhập Plugin JSON" }
-                    }
-                }
-                if let Some((is_err, msg)) = status() {
-                    div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
-                }
-                div { class: "settings-group mod-builder-box",
-                    textarea {
-                        rows: "6",
-                        placeholder: "Dán JSON tại đây",
-                        value: "{import_json}",
-                        oninput: move |e| import_json.set(e.value()),
-                    }
-                    div { class: "inline-form",
-                        button {
-                            r#type: "button",
-                            class: "btn-primary",
-                            onclick: move |_| {
-                                match serde_json::from_str::<PluginMod>(&import_json()) {
-                                    Ok(mut pm) => {
-                                        if pm.id.is_empty() {
-                                            pm.id = format!("mod:import_{}", chrono::Utc::now().timestamp_millis());
-                                        }
-                                        pm.installed = true;
-                                        pm.enabled = true;
-                                        let mut list = PLUGINS.peek().clone();
-                                        if let Some(ex) = list.iter_mut().find(|x| x.id == pm.id) {
-                                            *ex = pm;
-                                        } else {
-                                            list.insert(0, pm);
-                                        }
-                                        save_plugins(&list);
-                                        *PLUGINS.write() = list;
-                                        import_json.set(String::new());
-                                        import_open.set(false);
-                                        status.set(Some((false, "Đã cài đặt Plugin.".into())));
-                                    }
-                                    Err(_) => status.set(Some((true, "JSON không hợp lệ".into()))),
-                                }
-                            },
-                            "Cài đặt"
-                        }
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| import_open.set(false), "Hủy" }
-                    }
-                }
-            }
-        };
-    }
-
-    if editing_mod.is_none() {
-        let installed_plugins: Vec<PluginMod> = plugins_list.iter().filter(|p| p.installed).cloned().collect();
-        let store_plugins: Vec<PluginMod> = plugins_list.iter().filter(|p| !p.installed).cloned().collect();
-        let render_card = move |pm: PluginMod| {
-            let pid = pm.id.clone();
-            let pid_install = pm.id.clone();
-            let pid_uninstall = pm.id.clone();
-            let pid_edit = pm.id.clone();
-            let pid_left = pm.id.clone();
-            let pid_page = pm.id.clone();
-            let pid_del = pm.id.clone();
-            let srv_id_del = pm.server_bot_id.clone();
-            let pm_chat = pm.clone();
-            let is_installed = pm.installed;
-            let is_on = pm.installed && pm.enabled;
-            rsx! {
-                div { key: "{pm.id}", class: if is_on { "mod-card active" } else { "mod-card" },
-                    div { class: "mod-card-head",
-                        span { class: "mod-card-icon", PluginGlyph { icon: pm.icon.clone(), logo_url: pm.logo_url.clone(), size: glyph_slot_size(&pm.logo_url, 20, 36) } }
-                        div { class: "mod-card-title-wrap",
-                            div { class: "mod-card-title", "{pm.display_name}" }
-                        }
-                        if is_installed {
-                            input {
-                                r#type: "checkbox",
-                                class: "switch",
-                                checked: is_on,
-                                aria_label: "Bật {pm.display_name}",
-                                onchange: move |e| {
-                                    let v = e.checked();
-                                    if v { play_mod_sound("xp"); }
-                                    update_plugin(&pid, &|p| p.enabled = v);
-                                }
-                            }
-                        }
-                    }
-                    p { class: "mod-card-desc", "{pm.description}" }
-                    div { class: "mod-capability-pills",
-                        if pm.bot_enabled { span { class: "mod-cap-pill", "🤖 Bot" } }
-                        if pm.left_app_enabled { span { class: "mod-cap-pill", "◧ Bên trái" } }
-                        if pm.custom_page_enabled { span { class: "mod-cap-pill", "📄 Trang" } }
-                        if pm.theme_enabled { span { class: "mod-cap-pill", "🎨 Giao diện" } }
-                        if pm.hud_enabled { span { class: "mod-cap-pill", "⏱ HUD" } }
-                    }
-                    div { class: "mod-card-actions",
-                        if is_installed {
-                            if pm.left_app_enabled {
-                                button {
-                                    r#type: "button",
-                                    class: "btn-small-primary",
-                                    onclick: move |_| {
-                                        update_plugin(&pid_left, &|p| { p.installed = true; p.enabled = true; });
-                                        *ACTIVE_PLUGIN_PAGE.write() = None;
-                                        *ACTIVE_LEFT_PLUGIN.write() = Some(pid_left.clone());
-                                    },
-                                    PanelRightIcon { size: 14 } "Bên trái"
-                                }
-                            }
-                            if pm.custom_page_enabled {
-                                button {
-                                    r#type: "button",
-                                    class: "btn-small-secondary",
-                                    onclick: move |_| {
-                                        update_plugin(&pid_page, &|p| { p.installed = true; p.enabled = true; });
-                                        *ACTIVE_PLUGIN_PAGE.write() = Some(pid_page.clone());
-                                    },
-                                    "Mở"
-                                }
-                            }
-                            if pm.bot_enabled {
-                                if let Some(h) = on_open_bot_chat {
-                                    button {
-                                        r#type: "button",
-                                        class: "btn-small-secondary",
-                                        onclick: move |_| {
-                                            h.call(BotItem {
-                                                id: pm_chat.server_bot_id.clone().unwrap_or_else(|| pm_chat.id.clone()),
-                                                owner_id: "local".into(),
-                                                username: pm_chat.username.clone(),
-                                                display_name: pm_chat.display_name.clone(),
-                                                description: Some(pm_chat.description.clone()),
-                                                avatar_url: plugin_logo_data_url(&pm_chat.logo_url),
-                                                is_public: true,
-                                                verification_status: "verified".into(),
-                                                token_hint: None,
-                                                token: None,
-                                                last_text: None,
-                                            });
-                                        },
-                                        "Chat"
-                                    }
-                                }
-                            }
-                            button {
-                                r#type: "button",
-                                class: "btn-small-secondary",
-                                onclick: move |_| {
-                                    status.set(None);
-                                    *EDITING_PLUGIN_ID.write() = Some(pid_edit.clone());
-                                },
-                                SlidersIcon {} "Sửa"
-                            }
-                            button {
-                                r#type: "button",
-                                class: "btn-small-secondary",
-                                onclick: move |_| {
-                                    status.set(None);
-                                    if ACTIVE_LEFT_PLUGIN.peek().as_deref() == Some(pid_uninstall.as_str()) {
-                                        *ACTIVE_LEFT_PLUGIN.write() = None;
-                                    }
-                                    if ACTIVE_PLUGIN_PAGE.peek().as_deref() == Some(pid_uninstall.as_str()) {
-                                        *ACTIVE_PLUGIN_PAGE.write() = None;
-                                    }
-                                    if EDITING_PLUGIN_ID.peek().as_deref() == Some(pid_uninstall.as_str()) {
-                                        *EDITING_PLUGIN_ID.write() = None;
-                                    }
-                                    update_plugin(&pid_uninstall, &|p| { p.installed = false; p.enabled = false; });
-                                },
-                                TrashIcon { size: 14 } "Gỡ"
-                            }
-                        } else {
-                            button {
-                                r#type: "button",
-                                class: "btn-small-primary",
-                                onclick: move |_| {
-                                    status.set(None);
-                                    play_mod_sound("xp");
-                                    update_plugin(&pid_install, &|p| { p.installed = true; p.enabled = true; });
-                                },
-                                DownloadIcon { size: 14 } "Tải"
-                            }
-                            if !pm.builtin {
-                                button {
-                                    r#type: "button",
-                                    class: "icon-btn danger",
-                                    title: "Xóa",
-                                    onclick: move |_| {
-                                        let id = pid_del.clone();
-                                        let sid = srv_id_del.clone();
-                                        let mut list = PLUGINS.peek().clone();
-                                        list.retain(|x| x.id != id);
-                                        save_plugins(&list);
-                                        *PLUGINS.write() = list;
-                                        if let Some(s) = sid {
-                                            spawn(async move {
-                                                let _ = social::bot_delete(&s).await;
-                                            });
-                                        }
-                                    },
-                                    TrashIcon { size: 15 }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        };
-        return rsx! {
-            div { class: "settings-section",
-                div { class: "mod-studio-header",
-                    div { class: "settings-group-title", "Quản lý Plugin" }
-                    div { class: "inline-form",
-                        button { r#type: "button", class: "btn-primary", onclick: move |_| { creating_new.set(true); import_open.set(false); },
-                            PlusIcon { size: 16 } "Tạo mới"
-                        }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| { import_open.set(true); creating_new.set(false); },
-                            "Nhập JSON"
-                        }
-                    }
-                }
-
-                if let Some((is_err, msg)) = status() {
-                    div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
-                }
-
-                div { class: "mod-section-heading", "Đã tải ({installed_plugins.len()})" }
-                if installed_plugins.is_empty() {
-                    div { class: "mod-store-empty", "Chưa tải Plugin nào. Bấm Tải ở Kho Plugin bên dưới." }
-                } else {
-                    div { class: "mod-cards-grid",
-                        for pm in installed_plugins {
-                            {render_card(pm)}
-                        }
-                    }
-                }
-
-                if !store_plugins.is_empty() {
-                    div { class: "mod-section-heading", "Kho Plugin ({store_plugins.len()})" }
-                    div { class: "mod-cards-grid",
-                        for pm in store_plugins {
-                            {render_card(pm)}
-                        }
-                    }
-                }
-            }
-        };
-    }
-
-    let em = editing_mod.unwrap();
-    let eid = em.id.clone();
-    let eid_basic = em.id.clone();
-    let eid_theme = em.id.clone();
-    let eid_ui = em.id.clone();
-    let eid_bot = em.id.clone();
-    let srv_bot = em.server_bot_id.as_ref().and_then(|sid| server_bots.read().iter().find(|b| &b.id == sid).cloned());
-    let var_guide = "Biến hỗ trợ: {user}, {time}, {date}, {dice}, {rand100}, {coin}, {args}, {upper}, {calc}";
-    let resp_placeholder = "vd: Xin chào {user}";
-    let curl_snippet = format!(
-        "curl {}/api/bot/TOKEN/getMe\ncurl \"{}/api/bot/TOKEN/getUpdates?offset=0&timeout=25\"\ncurl -X POST {}/api/bot/TOKEN/sendMessage -H 'Content-Type: application/json' -d '{{\"chat_id\": \"CHAT_ID\", \"text\": \"Xin chào\"}}'",
-        base, base, base
-    );
-
-    rsx! {
-        div { class: "settings-section",
-            div { class: "mod-editor-top",
-                div { class: "mod-editor-title",
-                    button {
-                        r#type: "button",
-                        class: "btn-ghost",
-                        onclick: move |_| *EDITING_PLUGIN_ID.write() = None,
-                        BackIcon {} "Quay lại"
-                    }
-                    span { class: "mod-card-icon", PluginGlyph { icon: em.icon.clone(), logo_url: em.logo_url.clone(), size: glyph_slot_size(&em.logo_url, 20, 36) } }
-                    div { class: "settings-group-title", "{em.display_name}" }
-                }
-                div { class: "inline-form",
-                    button {
-                        r#type: "button",
-                        class: "btn-secondary",
-                        onclick: {
-                            let em_json = serde_json::to_string_pretty(&em).unwrap_or_default();
-                            move |_| {
-                                platform::copy_to_clipboard(&em_json);
-                                status.set(Some((false, "Đã sao chép JSON.".into())));
-                            }
-                        },
-                        CopyIcon {} "Xuất JSON"
-                    }
-                    button {
-                        r#type: "button",
-                        class: "btn-primary",
-                        onclick: move |_| *EDITING_PLUGIN_ID.write() = None,
-                        CheckIcon { size: 16 } "Xong"
-                    }
-                }
-            }
-
-            if let Some((is_err, msg)) = status() {
-                div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
-            }
-
-            if let Some((name, tok)) = fresh_token() {
-                div { class: "token-reveal", role: "alert",
-                    div { class: "settings-group-title", "Token @{name}" }
-                    code { class: "token-code", "{tok}" }
-                    div { class: "inline-form",
-                        button { r#type: "button", class: "btn-secondary", onclick: { let t = tok.clone(); move |_| platform::copy_to_clipboard(&t) }, CopyIcon {} "Sao chép" }
-                        button { r#type: "button", class: "btn-ghost", onclick: move |_| fresh_token.set(None), "Đóng" }
-                    }
-                }
-            }
-
-            div { class: "segmented",
-                button { r#type: "button", class: if editor_tab() == "basic" { "active" } else { "" }, onclick: move |_| editor_tab.set("basic"), "Cơ bản" }
-                button { r#type: "button", class: if editor_tab() == "theme" { "active" } else { "" }, onclick: move |_| editor_tab.set("theme"), "Giao diện" }
-                button { r#type: "button", class: if editor_tab() == "ui" { "active" } else { "" }, onclick: move |_| editor_tab.set("ui"), "Trang & HUD" }
-                button { r#type: "button", class: if editor_tab() == "bot" { "active" } else { "" }, onclick: move |_| editor_tab.set("bot"), "Bot & Lệnh" }
-            }
-
-            if editor_tab() == "basic" {
-                div { class: "form-grid",
-                    label { class: "form-field",
-                        span { "Tên Plugin" }
-                        input { r#type: "text", value: "{em.display_name}",
-                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.display_name = v.clone()); } } }
-                    }
-                    label { class: "form-field",
-                        span { "Biểu tượng" }
-                        input { r#type: "text", maxlength: "8", value: "{em.icon}",
-                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.icon = v.clone(); p.logo_url.clear(); }); } } }
-                    }
-                    label { class: "form-field wide",
-                        span { "Logo riêng, đường dẫn ảnh hoặc mã SVG" }
-                        div { class: "inline-form",
-                            PluginGlyph { icon: em.icon.clone(), logo_url: em.logo_url.clone(), size: 32 }
-                            input { r#type: "text", placeholder: "logo:notes, svg:bot, URL ảnh hoặc mã <svg>", value: "{em.logo_url}",
-                                oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.logo_url = v.clone()); } } }
-                            label { class: "btn-avatar-upload",
-                                input {
-                                    id: "plugin-logo-input",
-                                    r#type: "file",
-                                    accept: "image/png,image/jpeg,image/webp,image/svg+xml,image/avif,image/gif",
-                                    style: "display: none;",
-                                    onchange: {
-                                        let id = eid_basic.clone();
-                                        move |_| {
-                                            let id = id.clone();
-                                            spawn(async move {
-                                                if let Ok((bytes, mime)) = platform::read_selected_file_raw("plugin-logo-input").await {
-                                                    if let Ok(u) = library::upload_media(bytes, &mime).await {
-                                                        update_plugin(&id, &|p| p.logo_url = u.clone());
-                                                        status.set(Some((false, "Đã cập nhật logo riêng.".into())));
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-                                "Tải Logo"
-                            }
-                        }
-                    }
-                    div { class: "form-field wide",
-                        span { "Chọn Logo màu" }
-                        div { class: "mod-preset-chips",
-                            for (lkey, llbl) in PLUGIN_LOGO_PRESETS {
-                                button {
-                                    key: "{lkey}",
-                                    r#type: "button",
-                                    class: if em.logo_url == lkey { "btn-small-primary" } else { "btn-small-secondary" },
-                                    onclick: {
-                                        let id = eid_basic.clone();
-                                        move |_| update_plugin(&id, &|p| p.logo_url = lkey.into())
-                                    },
-                                    PluginGlyph { icon: em.icon.clone(), logo_url: lkey.to_string(), size: 18 }
-                                    "{llbl}"
-                                }
-                            }
-                        }
-                    }
-                    div { class: "form-field wide",
-                        span { "Hoặc chọn Icon Vector" }
-                        div { class: "mod-preset-chips",
-                            for (svg_key, svg_lbl) in PLUGIN_SVG_PRESETS {
-                                button {
-                                    key: "{svg_key}",
-                                    r#type: "button",
-                                    class: if em.logo_url == svg_key { "btn-small-primary" } else { "btn-small-secondary" },
-                                    onclick: {
-                                        let id = eid_basic.clone();
-                                        move |_| update_plugin(&id, &|p| p.logo_url = svg_key.into())
-                                    },
-                                    PluginGlyph { icon: em.icon.clone(), logo_url: svg_key.to_string(), size: 16 }
-                                    "{svg_lbl}"
-                                }
-                            }
-                        }
-                    }
-                    label { class: "form-field wide",
-                        span { "Mô tả" }
-                        textarea { rows: "2", value: "{em.description}",
-                            oninput: { let id = eid_basic.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.description = v.clone()); } } }
-                    }
-                }
-                div { class: "settings-list",
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Chế độ Bot trò chuyện" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.bot_enabled,
-                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.bot_enabled = v); } } }
-                    }
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Ứng dụng ở cột bên trái" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.left_app_enabled,
-                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.left_app_enabled = v); } } }
-                    }
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Thêm trang lên thanh điều hướng" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.custom_page_enabled,
-                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.custom_page_enabled = v); } } }
-                    }
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Tùy chỉnh giao diện App" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.theme_enabled,
-                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.theme_enabled = v); } } }
-                    }
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Hiển thị HUD nổi" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.hud_enabled,
-                            onchange: { let id = eid_basic.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_enabled = v); } } }
-                    }
-                }
-            } else if editor_tab() == "theme" {
-                div { class: "settings-group",
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Bật giao diện tùy chỉnh" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.theme_enabled,
-                            onchange: { let id = eid_theme.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.theme_enabled = v); } } }
-                    }
-                    div { class: "settings-group-title", "Mẫu nhanh" }
-                    div { class: "mod-preset-chips",
-                        for (pname, bg_a, bg_s, bg_c, bg_sf, acc, sent, txt, bstyle) in THEME_PRESETS {
-                            button {
-                                key: "{pname}",
-                                r#type: "button",
-                                class: "btn-small-secondary",
-                                onclick: {
-                                    let id = eid_theme.clone();
-                                    move |_| {
-                                        update_plugin(&id, &|p| {
-                                            p.theme_enabled = true;
-                                            p.theme.bg_app = bg_a.into();
-                                            p.theme.bg_sidebar = bg_s.into();
-                                            p.theme.bg_chat = bg_c.into();
-                                            p.theme.bg_surface = bg_sf.into();
-                                            p.theme.accent = acc.into();
-                                            p.theme.msg_sent = sent.into();
-                                            p.theme.text_primary = txt.into();
-                                            p.theme.border_style = bstyle.into();
-                                        });
-                                    }
-                                },
-                                span { class: "voxel-swatch", style: "background: {acc};" }
-                                "{pname}"
-                            }
-                        }
-                    }
-                    div { class: "mod-color-grid",
-                        div { class: "settings-row",
-                            span { class: "grow", span { class: "settings-label", "Nền ứng dụng" } }
-                            input { r#type: "color", value: if em.theme.bg_app.is_empty() { "#0C0E12" } else { em.theme.bg_app.as_str() },
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_app = v.clone(); }); } } }
-                        }
-                        div { class: "settings-row",
-                            span { class: "grow", span { class: "settings-label", "Cột danh sách" } }
-                            input { r#type: "color", value: if em.theme.bg_sidebar.is_empty() { "#171A20" } else { em.theme.bg_sidebar.as_str() },
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_sidebar = v.clone(); }); } } }
-                        }
-                        div { class: "settings-row",
-                            span { class: "grow", span { class: "settings-label", "Khung Chat" } }
-                            input { r#type: "color", value: if em.theme.bg_chat.is_empty() { "#191C22" } else { em.theme.bg_chat.as_str() },
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_chat = v.clone(); }); } } }
-                        }
-                        div { class: "settings-row",
-                            span { class: "grow", span { class: "settings-label", "Bề mặt thẻ" } }
-                            input { r#type: "color", value: if em.theme.bg_surface.is_empty() { "#22262E" } else { em.theme.bg_surface.as_str() },
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.bg_surface = v.clone(); }); } } }
-                        }
-                        div { class: "settings-row",
-                            span { class: "grow", span { class: "settings-label", "Màu nhấn" } }
-                            input { r#type: "color", value: if em.theme.accent.is_empty() { "#2764E7" } else { em.theme.accent.as_str() },
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.accent = v.clone(); }); } } }
-                        }
-                        div { class: "settings-row",
-                            span { class: "grow", span { class: "settings-label", "Tin nhắn gửi" } }
-                            input { r#type: "color", value: if em.theme.msg_sent.is_empty() { "#2764E7" } else { em.theme.msg_sent.as_str() },
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.msg_sent = v.clone(); }); } } }
-                        }
-                        div { class: "settings-row",
-                            span { class: "grow", span { class: "settings-label", "Tin nhắn nhận" } }
-                            input { r#type: "color", value: if em.theme.msg_recv.is_empty() { "#262C35" } else { em.theme.msg_recv.as_str() },
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.msg_recv = v.clone(); }); } } }
-                        }
-                        div { class: "settings-row",
-                            span { class: "grow", span { class: "settings-label", "Chữ chính" } }
-                            input { r#type: "color", value: if em.theme.text_primary.is_empty() { "#E8EAED" } else { em.theme.text_primary.as_str() },
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.text_primary = v.clone(); }); } } }
-                        }
-                    }
-                    div { class: "form-grid",
-                        label { class: "form-field",
-                            span { "Khung viền" }
-                            select {
-                                value: "{em.theme.border_style}",
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.border_style = v.clone(); }); } },
-                                option { value: "default", "Mặc định" }
-                                option { value: "pixel", "Pixel 2px" }
-                                option { value: "neon", "Neon" }
-                                option { value: "glass", "Kính mờ" }
-                            }
-                        }
-                        label { class: "form-field",
-                            span { "Bo góc" }
-                            select {
-                                value: "{em.theme.panel_radius}",
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.panel_radius = v.clone(); }); } },
-                                option { value: "", "Mặc định" }
-                                option { value: "0px", "0px Vuông" }
-                                option { value: "6px", "6px Gọn" }
-                                option { value: "14px", "14px Mềm" }
-                                option { value: "22px", "22px Tròn" }
-                            }
-                        }
-                        label { class: "form-field",
-                            span { "Thanh điều hướng" }
-                            select {
-                                value: "{em.theme.rail_position}",
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.rail_position = v.clone(); }); } },
-                                option { value: "left", "Bên trái" }
-                                option { value: "right", "Bên phải" }
-                                option { value: "top", "Phía trên" }
-                            }
-                        }
-                        label { class: "form-field",
-                            span { "Phông chữ" }
-                            select {
-                                value: "{em.theme.font_style}",
-                                onchange: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.font_style = v.clone(); }); } },
-                                option { value: "default", "Hệ thống" }
-                                option { value: "pixel", "Monospace" }
-                                option { value: "rounded", "Bo tròn" }
-                                option { value: "serif", "Có chân" }
-                            }
-                        }
-                    }
-                    label { class: "form-field",
-                        span { "CSS tùy chỉnh" }
-                        textarea {
-                            rows: "4",
-                            style: "font-family: var(--font-mono); font-size: 12px;",
-                            placeholder: "Nhập CSS tùy chỉnh",
-                            value: "{em.theme.custom_css}",
-                            oninput: { let id = eid_theme.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| { p.theme_enabled = true; p.theme.custom_css = v.clone(); }); } }
-                        }
-                    }
-                }
-            } else if editor_tab() == "ui" {
-                div { class: "settings-group",
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Hiển thị ở cột bên trái" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.left_app_enabled,
-                            onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.left_app_enabled = v); } } }
-                    }
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Thêm trang lên thanh điều hướng" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.custom_page_enabled,
-                            onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.custom_page_enabled = v); } } }
-                    }
-                    if em.custom_page_enabled || em.left_app_enabled {
-                        div { class: "form-grid",
-                            label { class: "form-field",
-                                span { "Tiêu đề" }
-                                input { r#type: "text", value: "{em.page_title}",
-                                    oninput: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_title = v.clone()); } } }
-                            }
-                            label { class: "form-field",
-                                span { "Biểu tượng" }
-                                input { r#type: "text", maxlength: "8", value: "{em.page_icon}",
-                                    oninput: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_icon = v.clone()); } } }
-                            }
-                            label { class: "form-field",
-                                span { "Loại giao diện" }
-                                select {
-                                    value: "{em.page_kind}",
-                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.page_kind = v.clone()); } },
-                                    option { value: "custom", "Khối tùy chỉnh" }
-                                    option { value: "notes", "Sổ tay & Pomodoro" }
-                                    option { value: "soundboard", "Soundboard" }
-                                    option { value: "cyber", "Trạm lệnh" }
-                                    option { value: "voxel", "Lưới Voxel 2D" }
-                                }
-                            }
-                        }
-
-                        div { class: "settings-group-title", "Thành phần giao diện tùy chỉnh" }
-                        div { class: "form-grid",
-                            label { class: "form-field",
-                                span { "Loại khối" }
-                                select {
-                                    value: "{blk_kind}",
-                                    onchange: move |e| blk_kind.set(e.value()),
-                                    option { value: "card", "Thẻ thông tin" }
-                                    option { value: "button", "Nút bấm hành động" }
-                                    option { value: "counter", "Bộ đếm số" }
-                                    option { value: "checklist", "Danh sách đánh dấu" }
-                                    option { value: "input_action", "Ô nhập và chạy" }
-                                    option { value: "timer", "Đồng hồ đếm ngược" }
-                                    option { value: "link", "Liên kết ngoài" }
-                                }
-                            }
-                            label { class: "form-field",
-                                span { "Tiêu đề khối" }
-                                input { r#type: "text", placeholder: "vd: Đếm bước", value: "{blk_title}", oninput: move |e| blk_title.set(e.value()) }
-                            }
-                            label { class: "form-field",
-                                span { "Kiểu hành động" }
-                                select {
-                                    value: "{blk_action_type}",
-                                    onchange: move |e| blk_action_type.set(e.value()),
-                                    option { value: "command", "Chạy lệnh Plugin" }
-                                    option { value: "insert_chat", "Chèn vào ô chat" }
-                                    option { value: "copy", "Sao chép" }
-                                    option { value: "sound", "Phát âm thanh" }
-                                    option { value: "url", "Mở liên kết" }
-                                    option { value: "webhook", "Gọi Webhook POST" }
-                                }
-                            }
-                            label { class: "form-field",
-                                span { "Nhãn nút" }
-                                input { r#type: "text", placeholder: "vd: Chạy", value: "{blk_action_label}", oninput: move |e| blk_action_label.set(e.value()) }
-                            }
-                            label { class: "form-field wide",
-                                span { "Nội dung hoặc các mục cách nhau dấu phẩy" }
-                                textarea { rows: "2", placeholder: "Mô tả ngắn hoặc danh sách mục", value: "{blk_body}", oninput: move |e| blk_body.set(e.value()) }
-                            }
-                            label { class: "form-field wide",
-                                span { "Lệnh, mẫu nội dung, thời gian hoặc URL" }
-                                input { r#type: "text", placeholder: "vd: /roll hoặc 5m hoặc https://example.com", value: "{blk_action_cmd}", oninput: move |e| blk_action_cmd.set(e.value()) }
-                            }
-                        }
-                        button {
-                            r#type: "button",
-                            class: "btn-secondary",
-                            onclick: {
-                                let id = eid_ui.clone();
-                                move |_| {
-                                    let t = blk_title().trim().to_string();
-                                    if t.is_empty() { return; }
-                                    let blk = PluginCustomBlock {
-                                        kind: blk_kind(),
-                                        title: t,
-                                        body: blk_body().trim().to_string(),
-                                        action_label: blk_action_label().trim().to_string(),
-                                        action_command: blk_action_cmd().trim().to_string(),
-                                        action_type: blk_action_type(),
-                                    };
-                                    update_plugin(&id, &|p| p.custom_blocks.push(blk.clone()));
-                                    blk_title.set(String::new());
-                                    blk_body.set(String::new());
-                                    blk_action_label.set(String::new());
-                                    blk_action_cmd.set(String::new());
-                                }
-                            },
-                            PlusIcon { size: 15 } "Thêm khối giao diện"
-                        }
-                        div { class: "mod-todo-list",
-                            for (bi, b) in em.custom_blocks.iter().enumerate() {
-                                div { key: "{bi}", class: "mod-todo-row",
-                                    code { class: "kbd", "{b.kind}" }
-                                    span { class: "settings-label", "{b.title}" }
-                                    span { class: "grow member-sub", "{b.action_command}" }
-                                    button {
-                                        r#type: "button",
-                                        class: "icon-btn danger",
-                                        onclick: {
-                                            let id = eid_ui.clone();
-                                            move |_| update_plugin(&id, &|p| { if bi < p.custom_blocks.len() { p.custom_blocks.remove(bi); } })
-                                        },
-                                        TrashIcon { size: 15 }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    div { class: "form-grid",
-                        label { class: "form-field",
-                            span { "Hiệu ứng màn hình" }
-                            select {
-                                value: "{em.screen_fx}",
-                                onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.screen_fx = v.clone()); } },
-                                option { value: "none", "Không" }
-                                option { value: "voxel", "Hạt sáng" }
-                                option { value: "sakura", "Hoa anh đào" }
-                                option { value: "snow", "Tuyết rơi" }
-                                option { value: "matrix", "Matrix" }
-                            }
-                        }
-                        label { class: "form-field",
-                            span { "Âm thanh" }
-                            select {
-                                value: "{em.sound_fx}",
-                                onchange: { let id = eid_ui.clone(); move |e| { let v = e.value(); play_mod_sound(&v); update_plugin(&id, &|p| p.sound_fx = v.clone()); } },
-                                option { value: "none", "Mặc định" }
-                                option { value: "minecraft", "Âm thanh Retro" }
-                                option { value: "mech", "Phím cơ" }
-                                option { value: "scifi", "Laser Sci-Fi" }
-                            }
-                        }
-                    }
-
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Hiển thị HUD nổi" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.hud_enabled,
-                            onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_enabled = v); } } }
-                    }
-                    if em.hud_enabled {
-                        div { class: "studio-toggles",
-                            label { class: "demo-check",
-                                input { r#type: "checkbox", checked: em.hud_pomodoro,
-                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_pomodoro = v); } } }
-                                "Pomodoro"
-                            }
-                            label { class: "demo-check",
-                                input { r#type: "checkbox", checked: em.hud_coords,
-                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_coords = v); } } }
-                                "Tọa độ & FPS"
-                            }
-                            label { class: "demo-check",
-                                input { r#type: "checkbox", checked: em.hud_clock,
-                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_clock = v); } } }
-                                "Đồng hồ"
-                            }
-                            label { class: "demo-check",
-                                input { r#type: "checkbox", checked: em.hud_note,
-                                    onchange: { let id = eid_ui.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.hud_note = v); } } }
-                                "Ghi chú nhanh"
-                            }
-                        }
-                    }
-
-                    div { class: "settings-group-title", "Nút nhanh khung chat" }
-                    div { class: "inline-form",
-                        input { r#type: "text", placeholder: "Nhãn nút", value: "{btn_label}", oninput: move |e| btn_label.set(e.value()) }
-                        input { r#type: "text", placeholder: "Nội dung gửi", value: "{btn_content}", oninput: move |e| btn_content.set(e.value()) }
-                        button {
-                            r#type: "button",
-                            class: "btn-secondary",
-                            onclick: {
-                                let id = eid_ui.clone();
-                                move |_| {
-                                    let l = btn_label().trim().to_string();
-                                    let c = btn_content().trim().to_string();
-                                    if l.is_empty() || c.is_empty() { return; }
-                                    update_plugin(&id, &|p| p.composer_buttons.push(PluginComposerBtn { label: l.clone(), content: c.clone() }));
-                                    btn_label.set(String::new());
-                                    btn_content.set(String::new());
-                                }
-                            },
-                            PlusIcon { size: 14 } "Thêm"
-                        }
-                    }
-                    div { class: "mod-preset-chips",
-                        for (bi, b) in em.composer_buttons.iter().enumerate() {
-                            span { key: "{bi}", class: "plugin-cmd-chip",
-                                "{b.label} → {b.content}"
-                                button {
-                                    r#type: "button",
-                                    class: "chip-del",
-                                    onclick: {
-                                        let id = eid_ui.clone();
-                                        move |_| update_plugin(&id, &|p| { if bi < p.composer_buttons.len() { p.composer_buttons.remove(bi); } })
-                                    },
-                                    "×"
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                div { class: "settings-group",
-                    label { class: "settings-row toggle-row",
-                        span { class: "grow", span { class: "settings-label", "Bật Bot trò chuyện" } }
-                        input { r#type: "checkbox", class: "switch", checked: em.bot_enabled,
-                            onchange: { let id = eid_bot.clone(); move |e| { let v = e.checked(); update_plugin(&id, &|p| p.bot_enabled = v); } } }
-                    }
-                    div { class: "form-grid",
-                        label { class: "form-field wide",
-                            span { "Phản hồi tự động khi nhắn tin thường" }
-                            input { r#type: "text", placeholder: "{resp_placeholder}", value: "{em.auto_reply}",
-                                oninput: { let id = eid_bot.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.auto_reply = v.clone()); } } }
-                        }
-                        label { class: "form-field wide",
-                            span { "Webhook HTTP POST" }
-                            input { r#type: "url", placeholder: "https://api.example.com/plugin-hook", value: "{em.webhook_url}",
-                                oninput: { let id = eid_bot.clone(); move |e| { let v = e.value(); update_plugin(&id, &|p| p.webhook_url = v.clone()); } } }
-                        }
-                    }
-                    div { class: "settings-group-title", "Lệnh Bot" }
-                    div { class: "member-sub", "{var_guide}" }
-                    div { class: "form-grid",
-                        label { class: "form-field",
-                            span { "Lệnh" }
-                            input { r#type: "text", placeholder: "vd: /hello", value: "{cmd_trigger}", oninput: move |e| cmd_trigger.set(e.value()) }
-                        }
-                        label { class: "form-field",
-                            span { "Mô tả" }
-                            input { r#type: "text", placeholder: "Mô tả ngắn", value: "{cmd_desc}", oninput: move |e| cmd_desc.set(e.value()) }
-                        }
-                        label { class: "form-field wide",
-                            span { "Phản hồi" }
-                            input { r#type: "text", placeholder: "{resp_placeholder}", value: "{cmd_resp}", oninput: move |e| cmd_resp.set(e.value()) }
-                        }
-                    }
-                    button {
-                        r#type: "button",
-                        class: "btn-secondary",
-                        onclick: {
-                            let id = eid_bot.clone();
-                            move |_| {
-                                let mut trig = cmd_trigger().trim().to_string();
-                                let resp = cmd_resp().trim().to_string();
-                                if trig.is_empty() || resp.is_empty() { return; }
-                                if !trig.starts_with('/') { trig = format!("/{trig}"); }
-                                let d = if cmd_desc().trim().is_empty() { "Lệnh tùy chỉnh".to_string() } else { cmd_desc().trim().to_string() };
-                                update_plugin(&id, &|p| {
-                                    p.bot_enabled = true;
-                                    p.commands.push(PluginCommand { trigger: trig.clone(), description: d.clone(), response: resp.clone(), icon: String::new() });
-                                });
-                                cmd_trigger.set(String::new());
-                                cmd_desc.set(String::new());
-                                cmd_resp.set(String::new());
-                            }
-                        },
-                        PlusIcon { size: 15 } "Thêm lệnh"
-                    }
-                    div { class: "mod-todo-list",
-                        for (ci, c) in em.commands.iter().enumerate() {
-                            {
-                                let (c_ic, c_lg) = resolve_command_icon(&c.trigger, &c.icon, &em.icon, &em.logo_url);
-                                rsx! {
-                                    div { key: "{ci}", class: "mod-todo-row",
-                                        PluginGlyph { icon: c_ic, logo_url: c_lg, size: 18 }
-                                        code { class: "kbd", "{c.trigger}" }
-                                        span { class: "settings-label", "{c.description}" }
-                                        span { class: "grow member-sub", "→ {c.response}" }
-                                        button {
-                                            r#type: "button",
-                                            class: "icon-btn danger",
-                                            onclick: {
-                                                let id = eid_bot.clone();
-                                                move |_| update_plugin(&id, &|p| { if ci < p.commands.len() { p.commands.remove(ci); } })
-                                            },
-                                            TrashIcon { size: 15 }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    div { class: "settings-group-title", "API Token" }
-                    if let Some(sb) = srv_bot {
-                        div { class: "bot-card",
-                            div { class: "bot-card-info",
-                                div { class: "bot-card-name", "@{sb.username}" span { class: "bot-tag", "API" } }
-                                if let Some(h) = sb.token_hint.as_ref() { div { class: "bot-card-sub mono", "Token: {h}" } }
-                            }
-                            div { class: "bot-card-actions",
-                                button {
-                                    r#type: "button",
-                                    class: "btn-secondary",
-                                    onclick: {
-                                        let sid = sb.id.clone();
-                                        move |_| {
-                                            let sid = sid.clone();
-                                            spawn(async move {
-                                                if let Ok(nb) = social::bot_rotate(&sid).await {
-                                                    if let Some(t) = nb.token.clone() {
-                                                        fresh_token.set(Some((nb.username.clone(), t)));
-                                                    }
-                                                    server_bots.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nb.id) { *x = nb; });
-                                                }
-                                            });
-                                        }
-                                    },
-                                    RefreshIcon { size: 15 } "Cấp lại Token"
-                                }
-                                button {
-                                    r#type: "button",
-                                    class: "btn-ghost",
-                                    onclick: {
-                                        let sid = sb.id.clone();
-                                        let next = !sb.is_public;
-                                        move |_| {
-                                            let sid = sid.clone();
-                                            spawn(async move {
-                                                if let Ok(nb) = social::bot_update(&sid, json!({ "is_public": next })).await {
-                                                    server_bots.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nb.id) { *x = nb; });
-                                                }
-                                            });
-                                        }
-                                    },
-                                    if sb.is_public { "Đặt riêng tư" } else { "Công khai" }
-                                }
-                            }
-                        }
-                    } else {
-                        button {
-                            r#type: "button",
-                            class: "btn-secondary",
-                            onclick: {
-                                let id = eid.clone();
-                                let u = em.username.clone();
-                                let d = em.display_name.clone();
-                                let ds = em.description.clone();
-                                move |_| {
-                                    let (id, u, d, ds) = (id.clone(), u.clone(), d.clone(), ds.clone());
-                                    spawn(async move {
-                                        match social::bot_create(&u, &d, &ds).await {
-                                            Ok(b) => {
-                                                if let Some(tok) = b.token.clone() {
-                                                    fresh_token.set(Some((b.username.clone(), tok)));
-                                                }
-                                                let sid = b.id.clone();
-                                                server_bots.with_mut(|l| l.insert(0, b));
-                                                let mut list = PLUGINS.peek().clone();
-                                                if let Some(pm) = list.iter_mut().find(|p| p.id == id) {
-                                                    pm.server_bot_id = Some(sid);
-                                                }
-                                                save_plugins(&list);
-                                                *PLUGINS.write() = list;
-                                            }
-                                            Err(e) => status.set(Some((true, plugin_error(&e.code).to_string()))),
-                                        }
-                                    });
-                                }
-                            },
-                            PluginIcon { size: 16 } "Tạo Token API"
-                        }
-                    }
-                    pre { class: "code-block", "{curl_snippet}" }
-                }
-            }
-        }
-    }
-}
-
+pub use crate::components::plugin_settings::PluginsSettings;
 pub use PluginsSettings as BotsSettings;
 
 #[cfg(test)]

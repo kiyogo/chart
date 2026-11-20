@@ -96,7 +96,7 @@ fn tab_keywords(t: SettingsTab) -> &'static str {
         SettingsTab::Language => "ngon ngu language tieng anh",
         SettingsTab::Stickers => "thu vien sticker emoji gif tai len upload library",
         SettingsTab::Business => "kinh doanh ban hang san pham business",
-        SettingsTab::Bots => "plugin mod bot token api giao dien",
+        SettingsTab::Bots => "plugin tien ich mo rong am thanh so tay",
         SettingsTab::Guide => "huong dan phim tat cau hoi tro giup help faq",
         SettingsTab::Inventory => "kho vat pham inventory thanh tich achievement huy hieu badge sticker pack emoji gif ban ve trang bi equipped template bo cuc",
         SettingsTab::Studio => "studio ve hoat anh animation drawing layer lop khung hinh gif sticker emoji avatar anh bia ve tay",
