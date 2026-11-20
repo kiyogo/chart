@@ -29,14 +29,14 @@
   let fadeTimerId = null;
 
   // Configuration constants
-  const PROXIMITY_PX = 28;
-  const HOVER_ZONE_PX = 14;
+  const PROXIMITY_PX = 24;
+  const HOVER_ZONE_PX = 12;
   const EDGE_OUTER_TOLERANCE_PX = 2;
   const FADE_TIMEOUT_MS = 850;
-  const THUMB_NORMAL_WIDTH = 3;
-  const THUMB_EXPANDED_WIDTH = 8;
+  const THUMB_NORMAL_WIDTH = 4;
+  const THUMB_EXPANDED_WIDTH = 7;
   const THUMB_MIN_HEIGHT = 28;
-  const THUMB_EDGE_MARGIN = 3;
+  const THUMB_EDGE_MARGIN = 2;
 
   function initCanvas() {
     if (overlayCanvas) return;
@@ -236,9 +236,9 @@
       if (entry.isDragging) {
         entry.targetOpacity = 1.0;
       } else if (entry.isThumbHovered) {
-        entry.targetOpacity = 0.96;
+        entry.targetOpacity = 0.92;
       } else if (entry.isNearEdge || isScrollingRecently) {
-        entry.targetOpacity = 0.85;
+        entry.targetOpacity = 0.75;
       } else {
         entry.targetOpacity = 0.0;
       }
@@ -256,7 +256,7 @@
         hasActiveAnimations = true;
       }
 
-      // Smoothly animate thumb width (3px <-> 8px)
+      // Smoothly animate thumb width (4px <-> 7px)
       const targetWidth = isExpanded ? THUMB_EXPANDED_WIDTH : THUMB_NORMAL_WIDTH;
       entry.thumbW += (targetWidth - entry.thumbW) * 0.28;
       if (Math.abs(targetWidth - entry.thumbW) < 0.05) {
@@ -307,13 +307,13 @@
       // Crisp Flat Minimalist fill without thick blurry shadows
       const hoverProgress = Math.max(0, Math.min(1, (thumbW - THUMB_NORMAL_WIDTH) / (THUMB_EXPANDED_WIDTH - THUMB_NORMAL_WIDTH)));
       if (dark) {
-        const a = 0.28 + hoverProgress * 0.36;
+        const a = 0.22 + hoverProgress * 0.42;
         ctx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
       } else {
-        const r = Math.round(100 - hoverProgress * 49);
-        const g = Math.round(116 - hoverProgress * 51);
-        const b = Math.round(139 - hoverProgress * 54);
-        const a = 0.36 + hoverProgress * 0.36;
+        const r = Math.round(90 - hoverProgress * 45);
+        const g = Math.round(105 - hoverProgress * 50);
+        const b = Math.round(125 - hoverProgress * 55);
+        const a = 0.28 + hoverProgress * 0.44;
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
       }
 
@@ -385,10 +385,16 @@
       const distFromRight = rect.right - x;
       const withinY = y >= rect.top && y <= rect.bottom;
       const isNearEdge = withinY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= PROXIMITY_PX;
-      const isThumbHovered = withinY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_ZONE_PX;
+
+      const entry = getEntry(el);
+      let isThumbHovered = false;
+      if (entry.thumbRect) {
+        const tr = entry.thumbRect;
+        const withinThumbY = y >= tr.y - 4 && y <= tr.y + tr.h + 4;
+        isThumbHovered = withinThumbY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_ZONE_PX;
+      }
 
       if (isNearEdge || isThumbHovered || activeEntries.has(el)) {
-        const entry = getEntry(el);
         if (entry.isNearEdge !== isNearEdge || entry.isThumbHovered !== isThumbHovered) {
           entry.isNearEdge = isNearEdge;
           entry.isThumbHovered = isThumbHovered;

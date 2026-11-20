@@ -11,13 +11,16 @@ use serde_json::json;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BellOffIcon, CheckIcon, ChevronDownIcon, CloseIcon, DevicesIcon, HashIcon, MoreIcon, PinIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon, TagIcon, TrashIcon},
+        icons::{
+            BellOffIcon, CheckIcon, ChevronDownIcon, CloseIcon, DevicesIcon, HashIcon, ImageIcon,
+            MoreIcon, PinIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon, TagIcon, TrashIcon,
+        },
         messages::preview_text,
         profile_card::{name_effect_class, nameplate_style},
     },
     i18n::t,
     models::{BotItem, ChannelItem, ChatLabel, ConvPref, FriendItem, GroupItem},
-    services::{api, profile_ext, social},
+    services::{api, feed, library, profile_ext, social},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -426,6 +429,20 @@ pub fn StoriesNotesBar(
     let mut viewing_friend = use_signal(|| Option::<FriendItem>::None);
     let mut reply_draft = use_signal(String::new);
 
+    let mut local_status_text = use_signal(|| my_status_text.clone());
+    let mut local_status_emoji = use_signal(|| my_status_emoji.clone());
+    let mut active_tab = use_signal(|| "thought");
+    let mut story_draft = use_signal(String::new);
+    let mut story_media_url = use_signal(|| Option::<String>::None);
+    let mut story_uploading = use_signal(|| false);
+    let mut story_posting = use_signal(|| false);
+    let mut story_success = use_signal(|| false);
+
+    use_effect(use_reactive!(|my_status_text, my_status_emoji| {
+        local_status_text.set(my_status_text);
+        local_status_emoji.set(my_status_emoji);
+    }));
+
     let drag_js_id = strip_id.clone();
     use_effect(move || {
         let js = format!(
@@ -439,13 +456,17 @@ pub fn StoriesNotesBar(
                     if (e.button !== 0) return;
                     down = true; moved = false;
                     startX = e.clientX; startScroll = el.scrollLeft;
-                    el.classList.add('dragging');
                 }});
                 window.addEventListener('pointermove', (e) => {{
                     if (!down) return;
                     const dx = e.clientX - startX;
-                    if (Math.abs(dx) > 5) moved = true;
-                    if (moved) el.scrollLeft = startScroll - dx;
+                    if (Math.abs(dx) > 5) {{
+                        if (!moved) {{
+                            moved = true;
+                            el.classList.add('dragging');
+                        }}
+                        el.scrollLeft = startScroll - dx;
+                    }}
                 }});
                 window.addEventListener('pointerup', () => {{
                     if (!down) return;
@@ -483,17 +504,17 @@ pub fn StoriesNotesBar(
         (!has_note, !is_online, f.username.to_lowercase())
     });
 
-    let my_em = my_status_emoji.as_deref().map(str::trim).unwrap_or("");
-    let my_tx = my_status_text.as_deref().map(str::trim).unwrap_or("");
-    let my_has_note = !my_em.is_empty() || !my_tx.is_empty();
+    let cur_em = local_status_emoji().as_deref().map(str::trim).unwrap_or("").to_string();
+    let cur_tx = local_status_text().as_deref().map(str::trim).unwrap_or("").to_string();
+    let my_has_note = !cur_em.is_empty() || !cur_tx.is_empty();
     let my_bubble_label = if my_has_note {
-        format!("{my_em} {my_tx}").trim().to_string()
+        format!("{cur_em} {cur_tx}").trim().to_string()
     } else {
         "Chia sẻ suy nghĩ".to_string()
     };
 
-    let init_em = my_em.to_string();
-    let init_tx = my_tx.to_string();
+    let init_em = cur_em.clone();
+    let init_tx = cur_tx.clone();
 
     rsx! {
         div { class: "notes-strip-wrap",
@@ -508,13 +529,15 @@ pub fn StoriesNotesBar(
                         note_emoji.set(init_em.clone());
                         note_text.set(init_tx.clone());
                         note_err.set(None);
+                        active_tab.set("thought");
+                        story_success.set(false);
                         edit_my_note.set(true);
                     },
+                    span {
+                        class: if my_has_note { "note-bubble mine" } else { "note-bubble placeholder" },
+                        "{my_bubble_label}"
+                    }
                     span { class: "note-avatar-wrap",
-                        span {
-                            class: if my_has_note { "note-bubble mine" } else { "note-bubble placeholder" },
-                            "{my_bubble_label}"
-                        }
                         Avatar {
                             name: if my_username.is_empty() { "Tôi".to_string() } else { my_username.clone() },
                             avatar_url: my_avatar_url.clone(),
@@ -551,10 +574,10 @@ pub fn StoriesNotesBar(
                                         on_open_friend.call(fr_click.clone());
                                     }
                                 },
+                                if has_note {
+                                    span { class: "note-bubble", "{bubble_str}" }
+                                }
                                 span { class: "note-avatar-wrap",
-                                    if has_note {
-                                        span { class: "note-bubble", "{bubble_str}" }
-                                    }
                                     crate::components::profile_card::DecoratedAvatar {
                                         name: fr.username.clone(),
                                         avatar_url: fr.avatar_url.clone(),
@@ -577,110 +600,219 @@ pub fn StoriesNotesBar(
 
         if edit_my_note() {
             div { class: "modal-overlay", onclick: move |_| edit_my_note.set(false),
-                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú của bạn", onclick: move |e| e.stop_propagation(),
+                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú và tin của bạn", onclick: move |e| e.stop_propagation(),
                     div { class: "modal-header",
-                        h2 { class: "modal-title", "Ghi chú mới" }
+                        div { style: "display: flex; gap: 8px; align-items: center;",
+                            button {
+                                r#type: "button",
+                                class: if active_tab() == "thought" { "btn-primary" } else { "btn-ghost" },
+                                style: "padding: 4px 10px; font-size: 0.8125rem;",
+                                onclick: move |_| active_tab.set("thought"),
+                                "Chia sẻ suy nghĩ"
+                            }
+                            button {
+                                r#type: "button",
+                                class: if active_tab() == "story" { "btn-primary" } else { "btn-ghost" },
+                                style: "padding: 4px 10px; font-size: 0.8125rem;",
+                                onclick: move |_| active_tab.set("story"),
+                                "Tạo tin ảnh"
+                            }
+                        }
                         button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| edit_my_note.set(false), CloseIcon { size: 18 } }
                     }
-                    div { class: "note-emoji-row",
-                        for em in QUICK_NOTE_EMOJIS {
-                            {
-                                let active = note_emoji().trim() == em;
-                                rsx! {
-                                    button {
-                                        key: "{em}",
-                                        r#type: "button",
-                                        class: if active { "note-emoji-chip active" } else { "note-emoji-chip" },
-                                        onclick: move |_| note_emoji.set(em.to_string()),
-                                        "{em}"
+                    if active_tab() == "thought" {
+                        div { class: "note-emoji-row",
+                            for em in QUICK_NOTE_EMOJIS {
+                                {
+                                    let active = note_emoji().trim() == em;
+                                    rsx! {
+                                        button {
+                                            key: "{em}",
+                                            r#type: "button",
+                                            class: if active { "note-emoji-chip active" } else { "note-emoji-chip" },
+                                            onclick: move |_| note_emoji.set(em.to_string()),
+                                            "{em}"
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    div { class: "note-input-row",
-                        input {
-                            class: "note-emoji-input",
-                            r#type: "text",
-                            maxlength: "8",
-                            placeholder: "😊",
-                            aria_label: "Emoji",
-                            value: "{note_emoji}",
-                            oninput: move |e| note_emoji.set(e.value()),
+                        div { class: "note-input-row",
+                            input {
+                                class: "note-emoji-input",
+                                r#type: "text",
+                                maxlength: "8",
+                                placeholder: "😊",
+                                aria_label: "Emoji",
+                                value: "{note_emoji}",
+                                oninput: move |e| note_emoji.set(e.value()),
+                            }
+                            input {
+                                r#type: "text",
+                                maxlength: "120",
+                                placeholder: "Chia sẻ suy nghĩ với bạn bè",
+                                aria_label: "Nội dung ghi chú",
+                                value: "{note_text}",
+                                oninput: move |e| note_text.set(e.value()),
+                            }
                         }
-                        input {
-                            r#type: "text",
-                            maxlength: "120",
-                            placeholder: "Chia sẻ suy nghĩ với bạn bè",
-                            aria_label: "Nội dung ghi chú",
-                            value: "{note_text}",
-                            oninput: move |e| note_text.set(e.value()),
+                        div { class: "inline-form",
+                            span { class: "member-sub", "Hiển thị trong" }
+                            select {
+                                value: "{note_expiry}",
+                                onchange: move |e| note_expiry.set(e.value().parse().unwrap_or(1440)),
+                                option { value: "1440", "24 giờ" }
+                                option { value: "240", "4 giờ" }
+                                option { value: "60", "1 giờ" }
+                                option { value: "0", "Không tự xóa" }
+                            }
                         }
-                    }
-                    div { class: "inline-form",
-                        span { class: "member-sub", "Hiển thị trong" }
-                        select {
-                            value: "{note_expiry}",
-                            onchange: move |e| note_expiry.set(e.value().parse().unwrap_or(1440)),
-                            option { value: "1440", "24 giờ" }
-                            option { value: "240", "4 giờ" }
-                            option { value: "60", "1 giờ" }
-                            option { value: "0", "Không tự xóa" }
+                        if let Some(e) = note_err() {
+                            div { class: "status-badge error", "{e}" }
                         }
-                    }
-                    if let Some(e) = note_err() {
-                        div { class: "status-badge error", "{e}" }
-                    }
-                    div { class: "modal-actions",
-                        if my_has_note {
+                        div { class: "modal-actions",
+                            if my_has_note {
+                                button {
+                                    r#type: "button",
+                                    class: "btn-ghost",
+                                    disabled: note_saving(),
+                                    onclick: move |_| {
+                                        note_saving.set(true);
+                                        note_err.set(None);
+                                        spawn(async move {
+                                            let r1 = api::update_my_profile(None, None, Some(""), Some(""), None, None).await;
+                                            let r2 = profile_ext::update_me(json!({ "status_expires_in_minutes": 0 })).await;
+                                            note_saving.set(false);
+                                            if r1.is_ok() && r2.is_ok() {
+                                                local_status_text.set(None);
+                                                local_status_emoji.set(None);
+                                                if let Some(h) = on_my_status_updated { h.call((None, None)); }
+                                                edit_my_note.set(false);
+                                            } else {
+                                                note_err.set(Some("Không xóa được ghi chú".into()));
+                                            }
+                                        });
+                                    },
+                                    "Xóa tin"
+                                }
+                            }
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Hủy" }
                             button {
                                 r#type: "button",
-                                class: "btn-ghost",
-                                disabled: note_saving(),
+                                class: "btn-primary",
+                                disabled: note_saving() || (note_text().trim().is_empty() && note_emoji().trim().is_empty()),
                                 onclick: move |_| {
+                                    let t = note_text().trim().to_string();
+                                    let em = note_emoji().trim().to_string();
+                                    let exp = note_expiry();
                                     note_saving.set(true);
                                     note_err.set(None);
                                     spawn(async move {
-                                        let r1 = api::update_my_profile(None, None, Some(""), Some(""), None, None).await;
-                                        let r2 = profile_ext::update_me(json!({ "status_expires_in_minutes": 0 })).await;
+                                        let r1 = api::update_my_profile(None, None, Some(&t), Some(&em), None, None).await;
+                                        let r2 = profile_ext::update_me(json!({ "status_expires_in_minutes": exp })).await;
                                         note_saving.set(false);
                                         if r1.is_ok() && r2.is_ok() {
-                                            if let Some(h) = on_my_status_updated { h.call((None, None)); }
+                                            let nt = (!t.is_empty()).then_some(t);
+                                            let ne = (!em.is_empty()).then_some(em);
+                                            local_status_text.set(nt.clone());
+                                            local_status_emoji.set(ne.clone());
+                                            if let Some(h) = on_my_status_updated {
+                                                h.call((nt, ne));
+                                            }
                                             edit_my_note.set(false);
                                         } else {
-                                            note_err.set(Some("Không xóa được ghi chú".into()));
+                                            note_err.set(Some("Không lưu được ghi chú".into()));
                                         }
                                     });
                                 },
-                                "Xóa tin"
+                                "Chia sẻ"
                             }
                         }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Hủy" }
-                        button {
-                            r#type: "button",
-                            class: "btn-primary",
-                            disabled: note_saving() || (note_text().trim().is_empty() && note_emoji().trim().is_empty()),
-                            onclick: move |_| {
-                                let t = note_text().trim().to_string();
-                                let em = note_emoji().trim().to_string();
-                                let exp = note_expiry();
-                                note_saving.set(true);
-                                note_err.set(None);
-                                spawn(async move {
-                                    let r1 = api::update_my_profile(None, None, Some(&t), Some(&em), None, None).await;
-                                    let r2 = profile_ext::update_me(json!({ "status_expires_in_minutes": exp })).await;
-                                    note_saving.set(false);
-                                    if r1.is_ok() && r2.is_ok() {
-                                        if let Some(h) = on_my_status_updated {
-                                            h.call(((!t.is_empty()).then_some(t), (!em.is_empty()).then_some(em)));
-                                        }
-                                        edit_my_note.set(false);
-                                    } else {
-                                        note_err.set(Some("Không lưu được ghi chú".into()));
+                    } else {
+                        // Tab "story"
+                        div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
+                            if let Some(murl) = story_media_url() {
+                                div { style: "position: relative; max-height: 180px; overflow: hidden; border-radius: var(--radius-lg);",
+                                    img { src: "{crate::platform::resolve_asset_url(&murl)}", alt: "Ảnh tin", style: "width: 100%; object-fit: cover;" }
+                                    button {
+                                        r#type: "button",
+                                        class: "icon-btn",
+                                        style: "position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff;",
+                                        aria_label: "Xóa ảnh",
+                                        onclick: move |_| story_media_url.set(None),
+                                        CloseIcon { size: 14 }
                                     }
-                                });
-                            },
-                            "Chia sẻ"
+                                }
+                            } else {
+                                div { class: "inline-form",
+                                    input {
+                                        id: "story-media-upload",
+                                        r#type: "file",
+                                        accept: "image/png,image/jpeg,image/webp,image/gif,image/avif",
+                                        style: "display: none;",
+                                        onchange: move |_| {
+                                            story_uploading.set(true);
+                                            spawn(async move {
+                                                if let Ok((bytes, mime)) = crate::platform::read_selected_file_raw("story-media-upload").await {
+                                                    match library::upload_media(bytes, &mime).await {
+                                                        Ok(url) => { story_media_url.set(Some(url)); note_err.set(None); }
+                                                        Err(_) => note_err.set(Some("Không tải ảnh lên được".into())),
+                                                    }
+                                                }
+                                                story_uploading.set(false);
+                                            });
+                                        },
+                                    }
+                                    label {
+                                        r#for: "story-media-upload",
+                                        class: "btn-secondary",
+                                        style: "display: inline-flex; align-items: center; gap: 6px; cursor: pointer; width: 100%; justify-content: center;",
+                                        ImageIcon { size: 18 }
+                                        if story_uploading() { "Đang tải ảnh lên..." } else { "Chọn ảnh cho tin mới" }
+                                    }
+                                }
+                            }
+                            input {
+                                r#type: "text",
+                                maxlength: "200",
+                                placeholder: "Thêm chú thích cho tin...",
+                                aria_label: "Chú thích tin",
+                                value: "{story_draft}",
+                                oninput: move |e| story_draft.set(e.value()),
+                            }
+                            if story_success() {
+                                div { class: "status-badge success", "Tin của bạn đã được đăng thành công" }
+                            }
+                            if let Some(e) = note_err() {
+                                div { class: "status-badge error", "{e}" }
+                            }
+                            div { class: "modal-actions",
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Hủy" }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-primary",
+                                    disabled: story_posting() || story_uploading() || (story_draft().trim().is_empty() && story_media_url().is_none()),
+                                    onclick: move |_| {
+                                        let txt = story_draft().trim().to_string();
+                                        let mu = story_media_url();
+                                        story_posting.set(true);
+                                        note_err.set(None);
+                                        spawn(async move {
+                                            match feed::create_post(&txt, mu.as_deref(), "friends", None, None).await {
+                                                Ok(_) => {
+                                                    story_draft.set(String::new());
+                                                    story_media_url.set(None);
+                                                    story_success.set(true);
+                                                    edit_my_note.set(false);
+                                                }
+                                                Err(e) => note_err.set(Some(format!("Đăng tin thất bại: {}", e.code))),
+                                            }
+                                            story_posting.set(false);
+                                        });
+                                    },
+                                    if story_posting() { "Đang đăng..." } else { "Đăng tin" }
+                                }
+                            }
                         }
                     }
                 }

@@ -646,10 +646,10 @@ input[type="color"] {
 /* ---------- Switch toggle ---------- */
 .toggle-row { cursor: pointer; }
 input[type="checkbox"].switch {
-  --sw-w: 44px;
+  --sw-w: 42px;
   --sw-h: 24px;
-  --sw-pad: 3px;
-  --sw-knob: 18px;
+  --sw-pad: 2px;
+  --sw-knob: 20px;
   appearance: none;
   -webkit-appearance: none;
   box-sizing: border-box;
@@ -667,7 +667,7 @@ input[type="checkbox"].switch {
   border: none;
   outline: none;
   box-shadow: none;
-  border-radius: var(--radius-full);
+  border-radius: 9999px;
   background: var(--bg-active);
   position: relative;
   cursor: pointer;
@@ -677,20 +677,20 @@ input[type="checkbox"].switch {
 input[type="checkbox"].switch::after {
   content: "";
   position: absolute;
-  top: 50%;
-  left: var(--sw-pad);
-  width: var(--sw-knob);
-  height: var(--sw-knob);
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 1px rgba(0, 0, 0, 0.14), 0 1px 2px rgba(0, 0, 0, 0.14);
-  transform: translate3d(0, -50%, 0);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), 0 0 1px rgba(0, 0, 0, 0.14);
+  transform: translateX(0);
   will-change: transform;
   transition: transform var(--dur-menu) var(--ease);
 }
 input[type="checkbox"].switch:checked { background: var(--accent); }
 input[type="checkbox"].switch:checked::after {
-  transform: translate3d(calc(var(--sw-w) - var(--sw-knob) - var(--sw-pad) * 2), -50%, 0);
+  transform: translateX(18px);
 }
 input[type="checkbox"].switch:focus { background: var(--bg-active); box-shadow: none; outline: none; }
 input[type="checkbox"].switch:checked:focus { background: var(--accent); box-shadow: none; outline: none; }
@@ -4886,7 +4886,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   gap: 0.75rem;
   overflow-x: auto;
   overflow-y: visible;
-  padding: 1.75rem var(--space-2) var(--space-2);
+  padding: 0.5rem var(--space-2) var(--space-2);
   scrollbar-width: none;
   scroll-snap-type: x proximity;
   cursor: grab;
@@ -4903,9 +4903,9 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   gap: 5px;
   flex-shrink: 0;
   width: 4.35rem;
+  padding: 1.85rem 0 0 0;
   scroll-snap-align: start;
   background: transparent;
-  padding: 0;
   color: var(--text-primary);
 }
 .note-item:focus,
@@ -4928,7 +4928,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 }
 .note-bubble {
   position: absolute;
-  bottom: calc(100% - 8px);
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
@@ -4950,7 +4950,8 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   -webkit-box-orient: vertical;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.13);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
 }
 .note-bubble::before {
   content: "";
