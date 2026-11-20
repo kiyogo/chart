@@ -16,7 +16,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use chatw::{
     attachments, audit,
     auth::{self, AppState, google::GoogleJwksCache},
-    calls, community,
+    backup, calls, cloud, community,
     config::Config,
     admin, bots, business, convo, crypto, db, devices_sync, directory, drawings, enterprise, feed, friends, groups, library, messages, privacy, public_pages, servers,
     profile_ext, profile_plus, security, stickers, storage, typing, users, vico, webrtc,
@@ -127,6 +127,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/sync", devices_sync::sync_routes())
         .nest("/recovery", devices_sync::recovery_routes())
         .nest("/storage", storage::router::routes())
+        .nest("/backup", backup::routes())
+        .nest("/cloud", cloud::router::routes())
         .nest("/friends", friends::routes())
         .nest("/feed", feed::routes())
         .nest("/vico", vico::routes())
@@ -208,6 +210,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             header::ACCEPT,
             header::ORIGIN,
             header::COOKIE,
+            header::HeaderName::from_static("x-export-token"),
+            header::HeaderName::from_static("x-backup-password"),
         ]))
         .allow_credentials(true)
         .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {

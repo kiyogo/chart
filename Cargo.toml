@@ -1,5 +1,5 @@
 [workspace]
-members = ["web/backend", "app"]
+members = ["web/backend", "app", "crates/kiyo-kdata"]
 resolver = "2"
 
 [profile.dev.package.ravif]

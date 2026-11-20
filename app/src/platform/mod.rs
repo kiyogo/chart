@@ -8,6 +8,27 @@ mod native;
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::*;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExportDownloadResult {
+    pub filename: String,
+    pub byte_size: u64,
+    pub job_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SelectedFileMeta {
+    pub name: String,
+    pub byte_size: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UploadBackupResult {
+    pub status: u16,
+    pub body: String,
+    pub filename: String,
+    pub byte_size: u64,
+}
+
 /// Resolve relative backend URLs (e.g. `/uploads/avatars/...`) for the current platform.
 pub fn resolve_asset_url(url: &str) -> String {
     let base = api_base();

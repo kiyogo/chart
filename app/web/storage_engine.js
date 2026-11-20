@@ -437,5 +437,98 @@
       await idbTx('sync_queue', 'readwrite', (s) => s.delete(refId));
       return true;
     },
+
+    async streamDownloadPost(url, jsonBody, defaultFilename, extraHeaders = {}) {
+      const headers = { 'Content-Type': 'application/json', ...extraHeaders };
+      const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: jsonBody,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let code = 'request_failed';
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && typeof parsed.error === 'string') code = parsed.error;
+        } catch (_) {}
+        return { ok: false, status: res.status, error: code };
+      }
+      const jobId = res.headers.get('x-backup-job-id') || null;
+      const disp = res.headers.get('content-disposition') || '';
+      let filename = defaultFilename || 'KIYO_Backup.kdata';
+      const m = disp.match(/filename="?([^";\n]+)"?/i);
+      if (m && m[1]) filename = m[1].trim();
+
+      const chunks = [];
+      let totalBytes = 0;
+      if (res.body && typeof res.body.getReader === 'function') {
+        const reader = res.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value && value.byteLength > 0) {
+            chunks.push(value);
+            totalBytes += value.byteLength;
+          }
+        }
+      } else {
+        const buf = new Uint8Array(await res.arrayBuffer());
+        chunks.push(buf);
+        totalBytes = buf.byteLength;
+      }
+
+      const blob = new Blob(chunks, { type: res.headers.get('content-type') || 'application/octet-stream' });
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try { document.body.removeChild(a); } catch (_) {}
+        try { URL.revokeObjectURL(objUrl); } catch (_) {}
+      }, 30000);
+
+      return { ok: true, status: res.status, filename, byte_size: totalBytes, job_id: jobId };
+    },
+
+    getSelectedFileInfo(inputId) {
+      const input = document.getElementById(inputId);
+      if (!input || !input.files || input.files.length === 0) return null;
+      const f = input.files[0];
+      return { name: f.name, byte_size: f.size };
+    },
+
+    async uploadBackupInput(inputId, url, backupPassword) {
+      const input = document.getElementById(inputId);
+      if (!input || !input.files || input.files.length === 0) {
+        return { ok: false, status: 400, error: 'no_file', body: '' };
+      }
+      const file = input.files[0];
+      if (file.size > 512 * 1024 * 1024) {
+        return { ok: false, status: 413, error: 'backup_too_large', body: '' };
+      }
+      const headers = { 'Content-Type': 'application/octet-stream' };
+      if (backupPassword && backupPassword.length > 0) {
+        headers['x-backup-password'] = backupPassword;
+      }
+      const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: file,
+      });
+      const text = await res.text();
+      return {
+        ok: res.ok,
+        status: res.status,
+        body: text,
+        filename: file.name,
+        byte_size: file.size,
+      };
+    },
   };
 })();

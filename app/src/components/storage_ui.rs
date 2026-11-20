@@ -255,6 +255,12 @@ pub fn StorageSettingsPanel() -> Element {
                         }
                     }
                 }
+                div { class: "settings-row",
+                    div { class: "settings-row-text",
+                        span { class: "settings-label", "Định dạng sao lưu chính thức .kdata và phân mảnh đám mây" }
+                        span { class: "settings-sublabel", "Dữ liệu được đóng gói Argon2id + XChaCha20-Poly1305 STREAM, hỗ trợ xuất tệp cục bộ hoặc đồng bộ tăng dần lên Cloud cá nhân ở mục Sao lưu và Đám mây." }
+                    }
+                }
             }
         }
     }

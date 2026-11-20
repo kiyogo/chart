@@ -337,7 +337,7 @@ struct VerifyBody {
 }
 
 /// TOTP code or one backup code for `user_id`; returns the method used.
-async fn check_second_factor(state: &AppState, user_id: Uuid, code: &str) -> AppResult<Option<&'static str>> {
+pub async fn check_second_factor(state: &AppState, user_id: Uuid, code: &str) -> AppResult<Option<&'static str>> {
     let row = sqlx::query!("SELECT totp_secret_enc, totp_last_step FROM users WHERE id = $1", user_id).fetch_one(&state.db).await?;
     if let Some(enc) = row.totp_secret_enc {
         let secret = open(state, &enc)?;

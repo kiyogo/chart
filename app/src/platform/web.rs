@@ -246,3 +246,140 @@ pub async fn fetch_bytes(path: &str) -> Result<Vec<u8>, String> {
     let b64 = v.get("b64").and_then(|b| b.as_str()).ok_or("no_data")?;
     base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "decode_failed".to_string())
 }
+
+pub async fn stream_export_download(
+    path: &str,
+    json_body: &str,
+    default_filename: &str,
+) -> Result<super::ExportDownloadResult, ApiError> {
+    let url_json = serde_json::to_string(path).unwrap_or_default();
+    let body_json = serde_json::to_string(json_body).unwrap_or_default();
+    let fname_json = serde_json::to_string(default_filename).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            try {{
+                if (!window.__chatwStorage || !window.__chatwStorage.streamDownloadPost) {{
+                    dioxus.send({{ ok: false, status: 0, error: 'storage_engine_unavailable' }});
+                    return;
+                }}
+                const out = await window.__chatwStorage.streamDownloadPost({url_json}, {body_json}, {fname_json}, {{}});
+                dioxus.send(out);
+            }} catch (e) {{
+                dioxus.send({{ ok: false, status: 0, error: 'network_error' }});
+            }}
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.map_err(|_| ApiError {
+        code: "eval_failed".into(),
+        status: 0,
+    })?;
+    if !val.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let status = val.get("status").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+        let code = val
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("export_failed")
+            .to_string();
+        return Err(ApiError { code, status });
+    }
+    Ok(super::ExportDownloadResult {
+        filename: val
+            .get("filename")
+            .and_then(|v| v.as_str())
+            .unwrap_or(default_filename)
+            .to_string(),
+        byte_size: val.get("byte_size").and_then(|v| v.as_u64()).unwrap_or(0),
+        job_id: val
+            .get("job_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    })
+}
+
+pub async fn selected_file_meta(input_id: &str) -> Option<super::SelectedFileMeta> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (() => {{
+            const info = window.__chatwStorage && window.__chatwStorage.getSelectedFileInfo
+                ? window.__chatwStorage.getSelectedFileInfo({id_json})
+                : null;
+            dioxus.send(info);
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.ok()?;
+    if val.is_null() {
+        return None;
+    }
+    Some(super::SelectedFileMeta {
+        name: val.get("name")?.as_str()?.to_string(),
+        byte_size: val.get("byte_size")?.as_u64()?,
+    })
+}
+
+pub async fn upload_backup_from_input(
+    input_id: &str,
+    endpoint_path: &str,
+    backup_password: Option<&str>,
+) -> Result<super::UploadBackupResult, ApiError> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let url_json = serde_json::to_string(endpoint_path).unwrap_or_default();
+    let pw_json = serde_json::to_string(backup_password.unwrap_or("")).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            try {{
+                if (!window.__chatwStorage || !window.__chatwStorage.uploadBackupInput) {{
+                    dioxus.send({{ ok: false, status: 0, error: 'storage_engine_unavailable', body: '' }});
+                    return;
+                }}
+                const out = await window.__chatwStorage.uploadBackupInput({id_json}, {url_json}, {pw_json});
+                dioxus.send(out);
+            }} catch (e) {{
+                dioxus.send({{ ok: false, status: 0, error: 'network_error', body: '' }});
+            }}
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.map_err(|_| ApiError {
+        code: "eval_failed".into(),
+        status: 0,
+    })?;
+    let status = val.get("status").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+    let body = val
+        .get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+        return Err(ApiError {
+            code: err.to_string(),
+            status,
+        });
+    }
+    if !(200..300).contains(&status) {
+        let mut code = "request_failed".to_string();
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body)
+            && let Some(e) = parsed.get("error").and_then(|s| s.as_str())
+        {
+            code = e.to_string();
+        }
+        return Err(ApiError { code, status });
+    }
+    Ok(super::UploadBackupResult {
+        status,
+        body,
+        filename: val
+            .get("filename")
+            .and_then(|v| v.as_str())
+            .unwrap_or("backup")
+            .to_string(),
+        byte_size: val.get("byte_size").and_then(|v| v.as_u64()).unwrap_or(0),
+    })
+}

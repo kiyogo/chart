@@ -1,4 +1,5 @@
 pub mod api;
+pub mod backup_cloud;
 pub mod calls;
 pub mod community;
 pub mod dm;

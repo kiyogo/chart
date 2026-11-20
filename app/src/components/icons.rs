@@ -868,3 +868,19 @@ pub fn BoltIcon(#[props(default = 18)] size: u32) -> Element {
         polygon { points: "13 2.5 5 13.5 11.5 13.5 10.5 21.5 19 10.5 12.5 10.5", fill: "currentColor", fill_opacity: "0.18" }
     } }
 }
+
+#[component]
+pub fn ArchiveIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "3", y: "4", width: "18", height: "4", rx: "1.2", fill: duo_fill!(), fill_opacity: "0.14" }
+        path { d: "M4 8v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" }
+        path { d: "M10 13h4" }
+    } }
+}
+
+#[component]
+pub fn CloudIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { d: "M17.5 19H7a4.5 4.5 0 0 1-.4-8.98A5.5 5.5 0 0 1 17.3 9a4 4 0 0 1 .2 10Z", fill: duo_fill!(), fill_opacity: "0.14" }
+    } }
+}

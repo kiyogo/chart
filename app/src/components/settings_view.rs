@@ -31,6 +31,8 @@ enum SettingsTab {
     Session,
     Storage,
     SyncRecovery,
+    Backup,
+    Cloud,
     Chat,
     Notifications,
     Privacy,
@@ -45,7 +47,7 @@ enum SettingsTab {
 }
 
 /// (group title, tab, short label). Labels stay on one line; no descriptions.
-const NAV: [(&str, SettingsTab, &str); 20] = [
+const NAV: [(&str, SettingsTab, &str); 22] = [
     ("Tài khoản", SettingsTab::Account, "Tài khoản"),
     ("Tài khoản", SettingsTab::Privacy, "Quyền riêng tư"),
     ("Tài khoản", SettingsTab::Security, "Bảo mật"),
@@ -53,6 +55,8 @@ const NAV: [(&str, SettingsTab, &str); 20] = [
     ("Tài khoản", SettingsTab::Session, "Thiết bị"),
     ("Tài khoản", SettingsTab::Storage, "Lưu trữ"),
     ("Tài khoản", SettingsTab::SyncRecovery, "Đồng bộ"),
+    ("Tài khoản", SettingsTab::Backup, "Sao lưu"),
+    ("Tài khoản", SettingsTab::Cloud, "Đám mây"),
     ("Ứng dụng", SettingsTab::Chat, "Trò chuyện"),
     ("Ứng dụng", SettingsTab::Notifications, "Thông báo"),
     ("Ứng dụng", SettingsTab::AutoReply, "Trả lời tự động"),
@@ -82,6 +86,8 @@ fn tab_keywords(t: SettingsTab) -> &'static str {
         SettingsTab::Session => "thiet bi phien dang xuat device session",
         SettingsTab::Storage => "luu tru bo nho dem quota opfs indexeddb s3 minio",
         SettingsTab::SyncRecovery => "dong bo khoi phuc da thiet bi backup webrtc",
+        SettingsTab::Backup => "sao luu xuat du lieu khoi phuc kdata zip export import restore",
+        SettingsTab::Cloud => "dam may cloud google drive onedrive dropbox nextcloud webdav s3 minio nas snapshot",
         SettingsTab::Chat => "tro chuyen goi y sticker dan excel bang enter tra loi bam dup chat",
         SettingsTab::Notifications => "thong bao am thanh am bao notification sound",
         SettingsTab::AutoReply => "tra loi tu dong vang mat auto reply",
@@ -194,6 +200,8 @@ pub fn SettingsView(
                                 SettingsTab::Session => rsx! { crate::components::icons::DevicesIcon { size: 18 } },
                                 SettingsTab::Storage => rsx! { SlidersIcon {} },
                                 SettingsTab::SyncRecovery => rsx! { crate::components::icons::RefreshIcon { size: 18 } },
+                                SettingsTab::Backup => rsx! { crate::components::icons::ArchiveIcon { size: 18 } },
+                                SettingsTab::Cloud => rsx! { crate::components::icons::CloudIcon { size: 18 } },
                                 SettingsTab::Customize => rsx! { SlidersIcon {} },
                                 SettingsTab::Stickers => rsx! { LibraryIcon {} },
                                 SettingsTab::Guide => rsx! { BookIcon {} },
@@ -598,6 +606,7 @@ pub fn SettingsView(
                                         }
                                     }
                                 }
+                                crate::components::backup_cloud_ui::AdvancedSecurityExportSection {}
                             },
 
                             SettingsTab::Customize => rsx! { crate::components::settings_more::SyncMotionSettings {} CustomizationSettings {} AdvancedLookSettings {} },
@@ -621,6 +630,12 @@ pub fn SettingsView(
                                     user_keys: user_keys.clone(),
                                     on_keys_imported: on_keys_imported,
                                 }
+                            },
+                            SettingsTab::Backup => rsx! {
+                                crate::components::backup_cloud_ui::BackupExportRestorePanel {}
+                            },
+                            SettingsTab::Cloud => rsx! {
+                                crate::components::backup_cloud_ui::CloudAccountsPanel {}
                             },
                             SettingsTab::Session => rsx! {
                                 crate::components::storage_ui::DeviceTrustPanel {}

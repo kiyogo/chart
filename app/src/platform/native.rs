@@ -301,3 +301,184 @@ pub async fn fetch_bytes(path: &str) -> Result<Vec<u8>, String> {
     }
     resp.bytes().await.map(|b| b.to_vec()).map_err(|_| "read_failed".to_string())
 }
+
+pub async fn stream_export_download(
+    path: &str,
+    json_body: &str,
+    default_filename: &str,
+) -> Result<super::ExportDownloadResult, ApiError> {
+    let url = format!("{}{}", api_base(), path);
+    let resp = http_client()
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .body(json_body.to_string())
+        .send()
+        .await
+        .map_err(|_| ApiError {
+            code: "network_error".into(),
+            status: 0,
+        })?;
+    capture_session_cookie_from_headers(resp.headers());
+    let status = resp.status().as_u16();
+    if !(200..300).contains(&status) {
+        let text = resp.text().await.unwrap_or_default();
+        let mut code = "request_failed".to_string();
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text)
+            && let Some(e) = v.get("error").and_then(|s| s.as_str())
+        {
+            code = e.to_string();
+        }
+        return Err(ApiError { code, status });
+    }
+    let job_id = resp
+        .headers()
+        .get("x-backup-job-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let filename = resp
+        .headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|disp| {
+            let idx = disp.find("filename=")?;
+            let rest = disp[idx + 9..].trim().trim_matches('"');
+            let clean = rest.split(';').next()?.trim().trim_matches('"');
+            if clean.is_empty() { None } else { Some(clean.to_string()) }
+        })
+        .unwrap_or_else(|| default_filename.to_string());
+
+    let bytes = resp.bytes().await.map_err(|_| ApiError {
+        code: "read_failed".into(),
+        status,
+    })?;
+
+    let dl_dir = std::env::var("XDG_DOWNLOAD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::env::var("HOME")
+                .map(|h| PathBuf::from(h).join("Downloads"))
+                .unwrap_or_else(|_| std::env::temp_dir())
+        });
+    let _ = std::fs::create_dir_all(&dl_dir);
+    let safe_name = std::path::Path::new(&filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(default_filename);
+    let target = dl_dir.join(safe_name);
+    let _ = std::fs::write(&target, &bytes);
+
+    Ok(super::ExportDownloadResult {
+        filename: target.display().to_string(),
+        byte_size: bytes.len() as u64,
+        job_id,
+    })
+}
+
+pub async fn selected_file_meta(input_id: &str) -> Option<super::SelectedFileMeta> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (() => {{
+            const input = document.getElementById({id_json});
+            if (!input || !input.files || input.files.length === 0) {{ dioxus.send(null); return; }}
+            const f = input.files[0];
+            dioxus.send({{ name: f.name, byte_size: f.size }});
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.ok()?;
+    if val.is_null() {
+        return None;
+    }
+    Some(super::SelectedFileMeta {
+        name: val.get("name")?.as_str()?.to_string(),
+        byte_size: val.get("byte_size")?.as_u64()?,
+    })
+}
+
+pub async fn upload_backup_from_input(
+    input_id: &str,
+    endpoint_path: &str,
+    backup_password: Option<&str>,
+) -> Result<super::UploadBackupResult, ApiError> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            const input = document.getElementById({id_json});
+            if (!input || !input.files || input.files.length === 0) {{ dioxus.send({{ error: 'no_file' }}); return; }}
+            const file = input.files[0];
+            if (file.size > 128 * 1024 * 1024) {{ dioxus.send({{ error: 'backup_too_large' }}); return; }}
+            const buf = new Uint8Array(await file.arrayBuffer());
+            let s = '';
+            for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+            dioxus.send({{ b64: btoa(s), name: file.name, byte_size: file.size }});
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.map_err(|_| ApiError {
+        code: "eval_failed".into(),
+        status: 0,
+    })?;
+    if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+        return Err(ApiError {
+            code: err.to_string(),
+            status: 400,
+        });
+    }
+    use base64::Engine;
+    let b64 = val.get("b64").and_then(|v| v.as_str()).ok_or(ApiError {
+        code: "no_data".into(),
+        status: 400,
+    })?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|_| ApiError {
+            code: "decode_failed".into(),
+            status: 400,
+        })?;
+    let filename = val
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("backup")
+        .to_string();
+    let byte_size = val
+        .get("byte_size")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(bytes.len() as u64);
+
+    let url = format!("{}{}", api_base(), endpoint_path);
+    let mut req = http_client()
+        .post(&url)
+        .header("Content-Type", "application/octet-stream")
+        .body(bytes);
+    if let Some(pw) = backup_password
+        && !pw.is_empty()
+    {
+        req = req.header("x-backup-password", pw);
+    }
+    let resp = req.send().await.map_err(|_| ApiError {
+        code: "network_error".into(),
+        status: 0,
+    })?;
+    capture_session_cookie_from_headers(resp.headers());
+    let status = resp.status().as_u16();
+    let body = resp.text().await.unwrap_or_default();
+    if !(200..300).contains(&status) {
+        let mut code = "request_failed".to_string();
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+            && let Some(e) = v.get("error").and_then(|s| s.as_str())
+        {
+            code = e.to_string();
+        }
+        return Err(ApiError { code, status });
+    }
+    Ok(super::UploadBackupResult {
+        status,
+        body,
+        filename,
+        byte_size,
+    })
+}
