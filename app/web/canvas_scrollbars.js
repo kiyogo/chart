@@ -4,15 +4,15 @@
  *
  * Behaviors:
  * 1. Invisible by default when idle.
- * 2. Reveals as a thin 3px indicator when scrolling or when cursor approaches the scroll edge.
- * 3. Smoothly expands from 3px to 8px with higher contrast when cursor hovers directly over the scrollbar or drags it.
- * 4. Interactive: draggable thumb with 1:1 scroll synchronization.
+ * 2. Reveals as a slender 3px indicator when scrolling or when cursor approaches the scroll edge.
+ * 3. Smoothly expands from 3px to 8px with higher contrast when cursor hovers over the scrollbar thumb or drags it.
+ * 4. Supports both standard containers and flex-direction: column-reverse (chat messages).
+ * 5. Interactive: draggable thumb with 1:1 scroll synchronization.
  */
 
 (function () {
   'use strict';
 
-  // State
   let overlayCanvas = null;
   let ctx = null;
   let dpr = window.devicePixelRatio || 1;
@@ -21,6 +21,7 @@
   const activeEntries = new Map();
 
   let dragTarget = null;
+  let dragIsColReverse = false;
   let dragStartY = 0;
   let dragStartScrollTop = 0;
   let dragTrackHeight = 0;
@@ -28,15 +29,23 @@
   let animFrameId = null;
   let fadeTimerId = null;
 
+  let lastPointerX = 0;
+  let lastPointerY = 0;
+  let hasPointer = false;
+
   // Configuration constants
-  const PROXIMITY_PX = 20;
-  const HOVER_ZONE_PX = 10;
-  const EDGE_OUTER_TOLERANCE_PX = 2;
+  const PROXIMITY_PX = 24;
+  const HOVER_ZONE_PX = 14;
+  const EDGE_OUTER_TOLERANCE_PX = 6;
+  const THUMB_Y_TOLERANCE_PX = 10;
   const FADE_TIMEOUT_MS = 850;
   const THUMB_NORMAL_WIDTH = 3;
-  const THUMB_EXPANDED_WIDTH = 6;
+  const THUMB_EXPANDED_WIDTH = 8;
   const THUMB_MIN_HEIGHT = 28;
   const THUMB_EDGE_MARGIN = 2;
+
+  const SCROLLABLE_FALLBACK_SELECTOR =
+    '.chat-messages, .settings-body, .settings-nav, .sidebar-scrollable, .feed-scroll, .ent-main, .partner-info-sidebar, .server-members-panel, .quick-results, .modal-dialog, .forum-view';
 
   function initCanvas() {
     if (overlayCanvas) return;
@@ -103,14 +112,34 @@
     return el.getBoundingClientRect();
   }
 
+  function getScrollMetrics(el) {
+    const isDoc = (el === document.documentElement || el === document.body);
+    const rect = getContainerRect(el);
+    const clientH = isDoc ? window.innerHeight : el.clientHeight;
+    const scrollH = isDoc ? document.documentElement.scrollHeight : el.scrollHeight;
+    const scrollT = isDoc ? (window.scrollY || document.documentElement.scrollTop) : el.scrollTop;
+    const isColReverse = !isDoc && window.getComputedStyle(el).flexDirection === 'column-reverse';
+
+    const maxScroll = Math.max(1, scrollH - clientH);
+    const trackH = Math.min(rect.height, clientH);
+    const thumbH = Math.max(THUMB_MIN_HEIGHT, Math.round((clientH / scrollH) * trackH));
+    const thumbMaxY = Math.max(0, trackH - thumbH);
+
+    // For column-reverse, scrollTop is 0 at bottom and negative down to -maxScroll at top.
+    const ratio = isColReverse
+      ? Math.max(0, Math.min(1, 1 + (scrollT / maxScroll)))
+      : Math.max(0, Math.min(1, scrollT / maxScroll));
+
+    const thumbY = rect.top + Math.round(ratio * thumbMaxY);
+    return { isDoc, isColReverse, rect, clientH, scrollH, scrollT, maxScroll, trackH, thumbH, thumbMaxY, thumbY };
+  }
+
   function findScrollableContainerAt(target, clientX, clientY) {
-    // Check all elements stacked under (clientX, clientY) so overlays/resizers don't hide the scrollable container
     const stack = (typeof document.elementsFromPoint === 'function')
       ? document.elementsFromPoint(clientX, clientY)
       : (target ? [target] : []);
 
     const seen = new Set();
-    let bestEl = null;
 
     for (let i = 0; i < stack.length; i++) {
       let curr = stack[i];
@@ -133,7 +162,7 @@
       }
     }
 
-    // Also check active visible containers in case the cursor is within EDGE_OUTER_TOLERANCE_PX of their right edge
+    // Check active entries + known scrollable containers when pointer sits in the outer margin/resizer gutter
     for (const [el] of activeEntries.entries()) {
       if (!el.isConnected || !isScrollableY(el)) continue;
       const rect = getContainerRect(el);
@@ -143,10 +172,26 @@
         clientX >= rect.right - PROXIMITY_PX &&
         clientX <= rect.right + EDGE_OUTER_TOLERANCE_PX
       ) {
-        if (!bestEl) bestEl = el;
+        return el;
       }
     }
-    if (bestEl) return bestEl;
+
+    const candidates = document.querySelectorAll(SCROLLABLE_FALLBACK_SELECTOR);
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i];
+      if (!isScrollableY(el)) continue;
+      const rect = el.getBoundingClientRect();
+      if (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom &&
+        clientX >= rect.right - PROXIMITY_PX &&
+        clientX <= rect.right + EDGE_OUTER_TOLERANCE_PX
+      ) {
+        return el;
+      }
+    }
 
     if (isScrollableY(document.documentElement)) {
       return document.documentElement;
@@ -170,6 +215,41 @@
       activeEntries.set(el, entry);
     }
     return entry;
+  }
+
+  function updateHoverStates(x, y) {
+    const el = findScrollableContainerAt(null, x, y);
+    let changed = false;
+
+    for (const [targetEl, entry] of activeEntries.entries()) {
+      if (targetEl !== el && (entry.isNearEdge || entry.isThumbHovered)) {
+        entry.isNearEdge = false;
+        entry.isThumbHovered = false;
+        changed = true;
+      }
+    }
+
+    if (el && isScrollableY(el)) {
+      const m = getScrollMetrics(el);
+      const distFromRight = m.rect.right - x;
+      const withinY = y >= m.rect.top && y <= m.rect.bottom;
+      const isNearEdge = withinY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= PROXIMITY_PX;
+      const withinThumbY = y >= m.thumbY - THUMB_Y_TOLERANCE_PX && y <= m.thumbY + m.thumbH + THUMB_Y_TOLERANCE_PX;
+      const isThumbHovered = withinThumbY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_ZONE_PX;
+
+      if (isNearEdge || isThumbHovered || activeEntries.has(el)) {
+        const entry = getEntry(el);
+        if (entry.isNearEdge !== isNearEdge || entry.isThumbHovered !== isThumbHovered) {
+          entry.isNearEdge = isNearEdge;
+          entry.isThumbHovered = isThumbHovered;
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      scheduleRender();
+    }
   }
 
   function isDarkTheme() {
@@ -236,9 +316,9 @@
       if (entry.isDragging) {
         entry.targetOpacity = 1.0;
       } else if (entry.isThumbHovered) {
-        entry.targetOpacity = 0.92;
+        entry.targetOpacity = 0.94;
       } else if (entry.isNearEdge || isScrollingRecently) {
-        entry.targetOpacity = 0.75;
+        entry.targetOpacity = 0.72;
       } else {
         entry.targetOpacity = 0.0;
       }
@@ -248,7 +328,7 @@
       }
 
       // Smoothly animate opacity
-      const opSpeed = entry.targetOpacity > entry.opacity ? 0.28 : 0.12;
+      const opSpeed = entry.targetOpacity > entry.opacity ? 0.3 : 0.14;
       entry.opacity += (entry.targetOpacity - entry.opacity) * opSpeed;
       if (Math.abs(entry.targetOpacity - entry.opacity) < 0.01) {
         entry.opacity = entry.targetOpacity;
@@ -256,9 +336,9 @@
         hasActiveAnimations = true;
       }
 
-      // Smoothly animate thumb width (4px <-> 7px)
+      // Smoothly animate thumb width (3px <-> 8px)
       const targetWidth = isExpanded ? THUMB_EXPANDED_WIDTH : THUMB_NORMAL_WIDTH;
-      entry.thumbW += (targetWidth - entry.thumbW) * 0.28;
+      entry.thumbW += (targetWidth - entry.thumbW) * 0.32;
       if (Math.abs(targetWidth - entry.thumbW) < 0.05) {
         entry.thumbW = targetWidth;
       } else {
@@ -274,50 +354,38 @@
         continue;
       }
 
-      const isDoc = (el === document.documentElement || el === document.body);
-      const rect = getContainerRect(el);
-      if (rect.bottom <= 0 || rect.top >= window.innerHeight || rect.height <= 10) continue;
-
-      const clientH = isDoc ? window.innerHeight : el.clientHeight;
-      const scrollH = isDoc ? document.documentElement.scrollHeight : el.scrollHeight;
-      const scrollT = isDoc ? (window.scrollY || document.documentElement.scrollTop) : el.scrollTop;
-
-      const maxScroll = Math.max(1, scrollH - clientH);
-      const trackH = Math.min(rect.height, clientH);
-      const thumbH = Math.max(THUMB_MIN_HEIGHT, Math.round((clientH / scrollH) * trackH));
-      const thumbMaxY = Math.max(0, trackH - thumbH);
-      const thumbY = rect.top + Math.round((scrollT / maxScroll) * thumbMaxY);
+      const m = getScrollMetrics(el);
+      if (m.rect.bottom <= 0 || m.rect.top >= window.innerHeight || m.rect.height <= 10) continue;
 
       const thumbW = entry.thumbW;
-      const thumbX = rect.right - thumbW - THUMB_EDGE_MARGIN;
+      const thumbX = m.rect.right - thumbW - THUMB_EDGE_MARGIN;
 
       entry.thumbRect = {
-        x: rect.right - HOVER_ZONE_PX,
-        y: thumbY - 2,
+        x: m.rect.right - HOVER_ZONE_PX,
+        y: m.thumbY - THUMB_Y_TOLERANCE_PX,
         w: HOVER_ZONE_PX + EDGE_OUTER_TOLERANCE_PX,
-        h: thumbH + 4,
-        visualY: thumbY,
-        visualH: thumbH,
-        elRect: rect
+        h: m.thumbH + THUMB_Y_TOLERANCE_PX * 2,
+        visualY: m.thumbY,
+        visualH: m.thumbH,
+        elRect: m.rect
       };
 
       ctx.save();
       ctx.globalAlpha = entry.opacity;
 
-      // Crisp Flat Minimalist fill without thick blurry shadows
       const hoverProgress = Math.max(0, Math.min(1, (thumbW - THUMB_NORMAL_WIDTH) / (THUMB_EXPANDED_WIDTH - THUMB_NORMAL_WIDTH)));
       if (dark) {
-        const a = 0.22 + hoverProgress * 0.42;
+        const a = 0.22 + hoverProgress * 0.44;
         ctx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
       } else {
         const r = Math.round(90 - hoverProgress * 45);
         const g = Math.round(105 - hoverProgress * 50);
         const b = Math.round(125 - hoverProgress * 55);
-        const a = 0.28 + hoverProgress * 0.44;
+        const a = 0.28 + hoverProgress * 0.46;
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
       }
 
-      drawRoundedPill(ctx, thumbX, thumbY, thumbW, thumbH, thumbW / 2);
+      drawRoundedPill(ctx, thumbX, m.thumbY, thumbW, m.thumbH, thumbW / 2);
       ctx.restore();
     }
 
@@ -335,6 +403,7 @@
   }
 
   function clearAllHoverStates() {
+    hasPointer = false;
     let changed = false;
     for (const [, entry] of activeEntries.entries()) {
       if (entry.isNearEdge || entry.isThumbHovered) {
@@ -354,62 +423,26 @@
     if (el && isScrollableY(el)) {
       const entry = getEntry(el);
       entry.lastScrollTime = performance.now();
+      if (hasPointer) {
+        updateHoverStates(lastPointerX, lastPointerY);
+      }
       scheduleRender();
     }
   }, { capture: true, passive: true });
 
   // Handle pointer proximity & direct scrollbar hover
   window.addEventListener('pointermove', function (e) {
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
+    hasPointer = true;
+
     if (dragTarget) {
       handleDragMove(e);
       return;
     }
 
     initCanvas();
-    const x = e.clientX;
-    const y = e.clientY;
-
-    const el = findScrollableContainerAt(e.target, x, y);
-    let changed = false;
-
-    for (const [targetEl, entry] of activeEntries.entries()) {
-      if (targetEl !== el && (entry.isNearEdge || entry.isThumbHovered)) {
-        entry.isNearEdge = false;
-        entry.isThumbHovered = false;
-        changed = true;
-      }
-    }
-
-    if (el && isScrollableY(el)) {
-      const rect = getContainerRect(el);
-      const isDoc = (el === document.documentElement || el === document.body);
-      const clientH = isDoc ? window.innerHeight : el.clientHeight;
-      const scrollH = isDoc ? document.documentElement.scrollHeight : el.scrollHeight;
-      const scrollT = isDoc ? (window.scrollY || document.documentElement.scrollTop) : el.scrollTop;
-      const maxScroll = Math.max(1, scrollH - clientH);
-      const trackH = Math.min(rect.height, clientH);
-      const thumbH = Math.max(THUMB_MIN_HEIGHT, Math.round((clientH / scrollH) * trackH));
-      const thumbMaxY = Math.max(0, trackH - thumbH);
-      const thumbY = rect.top + Math.round((scrollT / maxScroll) * thumbMaxY);
-
-      const withinThumbY = y >= thumbY - 3 && y <= thumbY + thumbH + 3;
-      const distFromRight = rect.right - x;
-      const isNearEdge = y >= rect.top && y <= rect.bottom && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= PROXIMITY_PX;
-      const isThumbHovered = withinThumbY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_ZONE_PX;
-
-      const entry = getEntry(el);
-      if (isNearEdge || isThumbHovered || activeEntries.has(el)) {
-        if (entry.isNearEdge !== isNearEdge || entry.isThumbHovered !== isThumbHovered) {
-          entry.isNearEdge = isNearEdge;
-          entry.isThumbHovered = isThumbHovered;
-          changed = true;
-        }
-      }
-    }
-
-    if (changed) {
-      scheduleRender();
-    }
+    updateHoverStates(e.clientX, e.clientY);
   }, { passive: true });
 
   window.addEventListener('pointerleave', clearAllHoverStates, { passive: true });
@@ -432,16 +465,14 @@
         e.preventDefault();
         e.stopPropagation();
 
+        const m = getScrollMetrics(el);
         dragTarget = el;
+        dragIsColReverse = m.isColReverse;
         dragStartY = y;
-        dragStartScrollTop = (el === document.documentElement || el === document.body) ?
-          (window.scrollY || document.documentElement.scrollTop) : el.scrollTop;
+        dragStartScrollTop = m.scrollT;
+        dragTrackHeight = m.trackH;
+        dragThumbHeight = m.thumbH;
 
-        const isDoc = (el === document.documentElement || el === document.body);
-        const clientH = isDoc ? window.innerHeight : el.clientHeight;
-
-        dragTrackHeight = Math.min(tr.elRect.height, clientH);
-        dragThumbHeight = tr.visualH;
         entry.isDragging = true;
         entry.isThumbHovered = true;
         entry.lastScrollTime = performance.now();
@@ -456,16 +487,11 @@
         e.preventDefault();
         e.stopPropagation();
 
-        const isDoc = (el === document.documentElement || el === document.body);
-        const clientH = isDoc ? window.innerHeight : el.clientHeight;
-        const scrollH = isDoc ? document.documentElement.scrollHeight : el.scrollHeight;
-        const trackH = Math.min(tr.elRect.height, clientH);
-        const maxScroll = Math.max(1, scrollH - clientH);
+        const m = getScrollMetrics(el);
+        const ratio = Math.max(0, Math.min(1, (y - m.rect.top - m.thumbH / 2) / Math.max(1, m.trackH - m.thumbH)));
+        const targetScroll = m.isColReverse ? (ratio - 1) * m.maxScroll : ratio * m.maxScroll;
 
-        const clickOffsetRatio = (y - tr.elRect.top - tr.visualH / 2) / Math.max(1, trackH - tr.visualH);
-        const targetScroll = Math.max(0, Math.min(maxScroll, clickOffsetRatio * maxScroll));
-
-        if (isDoc) {
+        if (m.isDoc) {
           window.scrollTo({ top: targetScroll, behavior: 'smooth' });
         } else {
           el.scrollTo({ top: targetScroll, behavior: 'smooth' });
@@ -488,12 +514,16 @@
     const usableTrackH = Math.max(1, dragTrackHeight - dragThumbHeight);
 
     const scrollDelta = (dy / usableTrackH) * maxScroll;
-    const newScrollTop = Math.max(0, Math.min(maxScroll, dragStartScrollTop + scrollDelta));
-
-    if (isDoc) {
-      window.scrollTo(0, newScrollTop);
-    } else {
+    if (dragIsColReverse) {
+      const newScrollTop = Math.max(-maxScroll, Math.min(0, dragStartScrollTop + scrollDelta));
       dragTarget.scrollTop = newScrollTop;
+    } else {
+      const newScrollTop = Math.max(0, Math.min(maxScroll, dragStartScrollTop + scrollDelta));
+      if (isDoc) {
+        window.scrollTo(0, newScrollTop);
+      } else {
+        dragTarget.scrollTop = newScrollTop;
+      }
     }
 
     const entry = getEntry(dragTarget);
@@ -507,6 +537,7 @@
     entry.isDragging = false;
     entry.lastScrollTime = performance.now();
     dragTarget = null;
+    dragIsColReverse = false;
     document.body.classList.remove('canvas-scrollbar-dragging');
     scheduleRender();
   }
@@ -514,7 +545,6 @@
   window.addEventListener('pointerup', endDrag, { passive: true });
   window.addEventListener('pointercancel', endDrag, { passive: true });
 
-  // Initialize once DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initCanvas);
   } else {

@@ -184,14 +184,14 @@ try {
       JSON.stringify(thinSample),
     );
 
-    // Move cursor directly onto the scrollbar track/thumb (5px from right edge) -> expect expanded ~6px
+    // Move cursor directly onto the scrollbar track/thumb (5px from right edge) -> expect expanded ~8px
     await page.mouse.move(scrollInfo.right - 5, thumbY);
     await page.waitForTimeout(380);
     const hoverSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
     await page.screenshot({ path: path.join(OUT, `05_${selector.replace(/[^a-z]/g, '')}_hover.png`) });
     record(
-      `${label}: scrollbar on direct hover expands visibly (~6px)`,
-      hoverSample.found && hoverSample.pixelWidth >= 5.2 && hoverSample.pixelWidth <= 7.5 && hoverSample.pixelWidth > thinSample.pixelWidth + 2.0,
+      `${label}: scrollbar on direct hover expands visibly (~8px)`,
+      hoverSample.found && hoverSample.pixelWidth >= 7 && hoverSample.pixelWidth <= 9.5 && hoverSample.pixelWidth > thinSample.pixelWidth + 3.5,
       `thin=${thinSample.pixelWidth}px -> hover=${hoverSample.pixelWidth}px (alpha ${thinSample.maxAlpha} -> ${hoverSample.maxAlpha})`,
     );
 
