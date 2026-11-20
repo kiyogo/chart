@@ -500,15 +500,22 @@ input[type="color"] {
   transform: none;
   box-shadow: none !important;
 }
-.account-menu.rail-menu { top: auto; bottom: 10px; left: calc(100% + var(--shell-gap) + 10px); padding: var(--space-2); }
+.account-menu.rail-menu {
+  top: auto;
+  bottom: 0;
+  left: calc(100% + var(--shell-gap));
+  padding: var(--space-2);
+  border-bottom-left-radius: var(--panel-radius);
+}
 .rail-download-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
 .rail-menu.download-rail-menu {
   top: auto;
-  bottom: 10px;
-  left: calc(100% + var(--shell-gap) + 10px);
+  bottom: 0;
+  left: calc(100% + var(--shell-gap));
   width: 12.75rem;
   min-width: 12.75rem;
   padding: var(--space-2);
+  border-bottom-left-radius: var(--panel-radius);
   align-items: center;
   text-align: center;
   gap: var(--space-2);
@@ -516,10 +523,10 @@ input[type="color"] {
 .download-rail-menu::before {
   content: "";
   position: absolute;
-  left: calc(-1 * (var(--shell-gap) + 16px));
+  left: calc(-1 * (var(--shell-gap) + 8px));
   top: 0;
   bottom: 0;
-  width: calc(var(--shell-gap) + 18px);
+  width: calc(var(--shell-gap) + 10px);
 }
 .download-popover-qr {
   padding: 0;

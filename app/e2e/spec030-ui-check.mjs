@@ -164,15 +164,15 @@ try {
     };
   });
   record(
-    'Account avatar has NO white ring; menu is pure white with soft blur and equidistant from left & bottom panel edges',
+    'Account avatar has NO white ring; menu is pure white with soft blur and flush with left & bottom panel edges (0px/0px)',
     accountAudit.btnBg === 'rgba(0, 0, 0, 0)' &&
       accountAudit.btnPad === '0px' &&
       accountAudit.btnShadow === 'none' &&
       accountAudit.menuBg === 'rgb(255, 255, 255)' &&
       accountAudit.menuBorder === '0px none' &&
       accountAudit.menuShadow !== 'none' &&
-      accountAudit.leftGapToPanel >= 8 &&
-      Math.abs(accountAudit.leftGapToPanel - accountAudit.bottomGapToPanel) <= 2,
+      Math.abs(accountAudit.leftGapToPanel) <= 1 &&
+      Math.abs(accountAudit.bottomGapToPanel) <= 1,
     JSON.stringify(accountAudit),
   );
   await page.screenshot({ path: path.join(OUT, '04_rail_account_menu.png') });
