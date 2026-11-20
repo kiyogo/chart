@@ -182,6 +182,7 @@ pub fn NavigationSidebar(
                         NavSection::DirectMessages => "Tin nhắn",
                         NavSection::Friends => "Bạn bè",
                         NavSection::Communities | NavSection::Server(_) => "Cộng đồng",
+                        NavSection::Meet => "Họp nhóm",
                         NavSection::Feed => "Mới",
                         NavSection::VicoAi => "Vico AI",
                         NavSection::Search => "Tìm kiếm",
@@ -730,7 +731,7 @@ pub fn NavigationSidebar(
                     }
                 },
 
-                NavSection::Settings => rsx! {
+                NavSection::Settings | NavSection::Meet => rsx! {
                     div { class: "sidebar-top-header",
                         span { class: "sidebar-title", "Cài đặt" }
                     }

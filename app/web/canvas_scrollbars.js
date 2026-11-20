@@ -29,12 +29,12 @@
   let fadeTimerId = null;
 
   // Configuration constants
-  const PROXIMITY_PX = 24;
-  const HOVER_ZONE_PX = 12;
+  const PROXIMITY_PX = 20;
+  const HOVER_ZONE_PX = 10;
   const EDGE_OUTER_TOLERANCE_PX = 2;
   const FADE_TIMEOUT_MS = 850;
-  const THUMB_NORMAL_WIDTH = 4;
-  const THUMB_EXPANDED_WIDTH = 7;
+  const THUMB_NORMAL_WIDTH = 3;
+  const THUMB_EXPANDED_WIDTH = 6;
   const THUMB_MIN_HEIGHT = 28;
   const THUMB_EDGE_MARGIN = 2;
 
@@ -382,18 +382,22 @@
 
     if (el && isScrollableY(el)) {
       const rect = getContainerRect(el);
+      const isDoc = (el === document.documentElement || el === document.body);
+      const clientH = isDoc ? window.innerHeight : el.clientHeight;
+      const scrollH = isDoc ? document.documentElement.scrollHeight : el.scrollHeight;
+      const scrollT = isDoc ? (window.scrollY || document.documentElement.scrollTop) : el.scrollTop;
+      const maxScroll = Math.max(1, scrollH - clientH);
+      const trackH = Math.min(rect.height, clientH);
+      const thumbH = Math.max(THUMB_MIN_HEIGHT, Math.round((clientH / scrollH) * trackH));
+      const thumbMaxY = Math.max(0, trackH - thumbH);
+      const thumbY = rect.top + Math.round((scrollT / maxScroll) * thumbMaxY);
+
+      const withinThumbY = y >= thumbY - 3 && y <= thumbY + thumbH + 3;
       const distFromRight = rect.right - x;
-      const withinY = y >= rect.top && y <= rect.bottom;
-      const isNearEdge = withinY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= PROXIMITY_PX;
+      const isNearEdge = y >= rect.top && y <= rect.bottom && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= PROXIMITY_PX;
+      const isThumbHovered = withinThumbY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_ZONE_PX;
 
       const entry = getEntry(el);
-      let isThumbHovered = false;
-      if (entry.thumbRect) {
-        const tr = entry.thumbRect;
-        const withinThumbY = y >= tr.y - 4 && y <= tr.y + tr.h + 4;
-        isThumbHovered = withinThumbY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_ZONE_PX;
-      }
-
       if (isNearEdge || isThumbHovered || activeEntries.has(el)) {
         if (entry.isNearEdge !== isNearEdge || entry.isThumbHovered !== isThumbHovered) {
           entry.isNearEdge = isNearEdge;

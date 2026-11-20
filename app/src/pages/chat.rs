@@ -10,6 +10,7 @@ use crate::{
         details_panel::DmDetailsPanel,
         enterprise::{EnterpriseWorkspace, tasks_projects::CreateTaskFromMsgDialog},
         feed_view::FeedView,
+        meet_view::MeetView,
         groups::{AddMemberModal, CreateGroupModal, GroupInfoPanel},
         icons::{
             BackIcon, BlockIcon, DevicesIcon, GroupIcon, HashIcon, MessageIcon, MicIcon, MicOffIcon, MoreIcon,
@@ -926,23 +927,40 @@ pub fn Chat(
                     }
                     WsEvent::CallParticipantJoined(val) => {
                         if let (Some(sess_id), Some(p_val)) = (
-                            val.get("session_id").and_then(|v| v.as_str()),
+                            val.get("call_id").or_else(|| val.get("session_id")).and_then(|v| v.as_str()),
                             val.get("participant"),
                         ) {
                             if let Ok(p) = serde_json::from_value::<crate::models::CallParticipantItem>(p_val.clone()) {
+                                let peer_uid = p.user_id.clone();
+                                let cid_str = sess_id.to_string();
+                                let mut matched_active = false;
                                 active_call_session.with_mut(|opt| {
                                     if let Some(s) = opt {
-                                        if s.id == sess_id && !s.participants.iter().any(|x| x.user_id == p.user_id) {
-                                            s.participants.push(p);
+                                        if s.id == sess_id {
+                                            matched_active = true;
+                                            if let Some(existing) = s.participants.iter_mut().find(|x| x.user_id == p.user_id) {
+                                                existing.left_at = None;
+                                                existing.muted = p.muted;
+                                                existing.camera_off = p.camera_off;
+                                            } else {
+                                                s.participants.push(p);
+                                            }
                                         }
                                     }
                                 });
+                                if matched_active && peer_uid != uid {
+                                    spawn(async move {
+                                        if let Ok(sdp) = media::create_offer_signal(&cid_str, &peer_uid).await {
+                                            let _ = calls::calls_send_signal(&cid_str, Some(peer_uid), "offer", sdp).await;
+                                        }
+                                    });
+                                }
                             }
                         }
                     }
                     WsEvent::CallParticipantLeft(val) => {
                         if let (Some(sess_id), Some(user_id)) = (
-                            val.get("session_id").and_then(|v| v.as_str()),
+                            val.get("call_id").or_else(|| val.get("session_id")).and_then(|v| v.as_str()),
                             val.get("user_id").and_then(|v| v.as_str()),
                         ) {
                             active_call_session.with_mut(|opt| {
@@ -955,19 +973,19 @@ pub fn Chat(
                         }
                     }
                     WsEvent::CallStateUpdate(val) => {
-                        if let (Some(sess_id), Some(user_id), Some(muted), Some(cam_off)) = (
-                            val.get("session_id").and_then(|v| v.as_str()),
+                        if let (Some(sess_id), Some(user_id)) = (
+                            val.get("call_id").or_else(|| val.get("session_id")).and_then(|v| v.as_str()),
                             val.get("user_id").and_then(|v| v.as_str()),
-                            val.get("is_muted").and_then(|v| v.as_bool()),
-                            val.get("is_camera_off").and_then(|v| v.as_bool()),
                         ) {
+                            let muted_opt = val.get("muted").or_else(|| val.get("is_muted")).and_then(|v| v.as_bool());
+                            let cam_opt = val.get("camera_off").or_else(|| val.get("is_camera_off")).and_then(|v| v.as_bool());
                             active_call_session.with_mut(|opt| {
                                 if let Some(s) = opt {
                                     if s.id == sess_id {
                                         for p in s.participants.iter_mut() {
                                             if p.user_id == user_id {
-                                                p.muted = muted;
-                                                p.camera_off = cam_off;
+                                                if let Some(m) = muted_opt { p.muted = m; }
+                                                if let Some(c) = cam_opt { p.camera_off = c; }
                                             }
                                         }
                                     }
@@ -1582,11 +1600,34 @@ pub fn Chat(
                 if !code.is_empty() {
                     invite_open.set(Some((kind.to_string(), code)));
                 }
+            } else if let Some(rest) = link.strip_prefix("/meet/") {
+                let code = calls::extract_meet_code(rest);
+                if !code.is_empty() {
+                    nav_section.set(NavSection::Meet);
+                    if let Ok(sess) = calls::calls_join_meet(&code).await {
+                        let me_uid = my_id_sig.peek().clone();
+                        media::init_webrtc_manager(&sess.id, sess.call_type == "video", &me_uid);
+                        let _ = media::start_local_media(sess.call_type == "video").await;
+                        active_call_session.set(Some(sess));
+                    }
+                }
             } else if let Some(q) = link.split_once('?').map(|(_, q)| q.to_string()) {
                 for pair in q.split('&') {
                     let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
                     let v = urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default();
                     match k {
+                        "meet" => {
+                            let code = calls::extract_meet_code(&v);
+                            if !code.is_empty() {
+                                nav_section.set(NavSection::Meet);
+                                if let Ok(sess) = calls::calls_join_meet(&code).await {
+                                    let me_uid = my_id_sig.peek().clone();
+                                    media::init_webrtc_manager(&sess.id, sess.call_type == "video", &me_uid);
+                                    let _ = media::start_local_media(sess.call_type == "video").await;
+                                    active_call_session.set(Some(sess));
+                                }
+                            }
+                        }
                         "dm" => {
                             for _ in 0..20 {
                                 if let Some(f) = friends.peek().iter().find(|f| f.username.eq_ignore_ascii_case(&v)).cloned() {
@@ -2206,7 +2247,7 @@ pub fn Chat(
         || active_mod_page.is_some()
         || is_settings_open()
         || server_settings_active
-        || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi);
+        || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet);
     let section = if is_settings_open() { NavSection::Settings } else { nav_section() };
 
     let start_call = move |kind: &'static str, user: Option<String>, group: Option<String>| {
@@ -2574,6 +2615,11 @@ pub fn Chat(
                     server_settings_open.set(false);
                     nav_section.set(NavSection::VicoAi);
                 },
+                on_select_meet: move |_| {
+                    is_settings_open.set(false);
+                    server_settings_open.set(false);
+                    nav_section.set(NavSection::Meet);
+                },
                 on_select_server: move |srv: ServerItem| select_server(srv),
                 on_select_group: move |g: GroupItem| select_group.call(g),
                 on_open_profile: {
@@ -2587,7 +2633,7 @@ pub fn Chat(
                 on_logout: move |_| on_logout.call(()),
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet) && active_mod_page.is_none() {
                 if let Some(lpid) = active_left_plugin.clone() {
                     aside { class: "nav-sidebar",
                         crate::components::plugins_view::PluginLeftAppView {
@@ -2903,6 +2949,26 @@ pub fn Chat(
                         my_username: current_username.clone(),
                         my_avatar_url: my_avatar_url(),
                         on_back: move |_| nav_section.set(NavSection::DirectMessages),
+                    }
+                } else if section == NavSection::Meet {
+                    MeetView {
+                        my_id: current_user_id.clone(),
+                        my_username: current_username.clone(),
+                        my_avatar_url: my_avatar_url(),
+                        on_back: move |_| nav_section.set(NavSection::DirectMessages),
+                        on_join_session: {
+                            let me_uid = current_user_id.clone();
+                            move |sess: crate::models::CallSessionItem| {
+                                let me_uid = me_uid.clone();
+                                let is_vid = sess.call_type == "video";
+                                let cid = sess.id.clone();
+                                media::init_webrtc_manager(&cid, is_vid, &me_uid);
+                                active_call_session.set(Some(sess));
+                                spawn(async move {
+                                    let _ = media::start_local_media(is_vid).await;
+                                });
+                            }
+                        },
                     }
                 } else if let Some(b) = active_bot() {
                     BotChatView {
@@ -4127,7 +4193,11 @@ pub fn Chat(
                 on_end_call: move |_| {
                     let s = session.clone();
                     spawn(async move {
-                        let _ = calls::calls_end(&s.id).await;
+                        if s.meet_code.is_some() || s.group_id.is_some() {
+                            let _ = calls::calls_leave(&s.id).await;
+                        } else {
+                            let _ = calls::calls_end(&s.id).await;
+                        }
                         active_call_session.set(None);
                         media::stop_all_media();
                     });

@@ -10,7 +10,7 @@ use crate::{
     components::{
         avatar::Avatar,
         plugins_view::{ACTIVE_LEFT_PLUGIN, ACTIVE_PLUGIN_PAGE, EDITING_PLUGIN_ID, PluginGlyph, enabled_left_apps, enabled_rail_pages},
-        icons::{CompassIcon, FeedThreadsIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, PluginIcon, SearchIcon, SettingsIcon, UserIcon, VicoAiIcon},
+        icons::{CompassIcon, FeedThreadsIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, PluginIcon, SearchIcon, SettingsIcon, UserIcon, VicoAiIcon, VideoIcon},
         navigation::NavSection,
     },
     models::{GroupItem, ServerItem},
@@ -52,6 +52,7 @@ pub fn AppRail(
     #[props(default)] on_select_search: Option<EventHandler<()>>,
     #[props(default)] on_select_feed: Option<EventHandler<()>>,
     #[props(default)] on_select_vico_ai: Option<EventHandler<()>>,
+    #[props(default)] on_select_meet: Option<EventHandler<()>>,
 ) -> Element {
     let mut menu_open = use_signal(|| false);
     let active_mod_page = ACTIVE_PLUGIN_PAGE.read().clone();
@@ -61,13 +62,14 @@ pub fn AppRail(
     let in_search = !in_mod && active_section == NavSection::Search;
     let in_feed = !in_mod && !in_left && active_section == NavSection::Feed;
     let in_vico = !in_mod && !in_left && active_section == NavSection::VicoAi;
+    let in_meet = !in_mod && !in_left && active_section == NavSection::Meet;
     let in_dm = !in_mod && !in_left && active_section == NavSection::DirectMessages;
     let in_friends = !in_mod && !in_left && active_section == NavSection::Friends;
     let in_comm = !in_mod && !in_left && matches!(active_section, NavSection::Communities | NavSection::Server(_));
     let in_settings = !in_mod && active_section == NavSection::Settings;
     let left_apps = enabled_left_apps();
     let custom_pages = enabled_rail_pages();
-    let switch_to_dm = in_settings || matches!(active_section, NavSection::Search | NavSection::Feed | NavSection::VicoAi);
+    let switch_to_dm = in_settings || matches!(active_section, NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet);
     let mut cls = String::from("app-rail");
     if hidden_mobile { cls.push_str(" hidden-mobile"); }
 
@@ -107,6 +109,19 @@ pub fn AppRail(
                     aria_current: if in_comm { "page" } else { "false" },
                     onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_select_communities.call(()); },
                     span { class: "rail-icon", CompassIcon { size: 20 } }
+                }
+                button {
+                    r#type: "button",
+                    class: if in_meet { "rail-item active" } else { "rail-item" },
+                    "data-tip": "Họp nhóm",
+                    aria_label: "Họp nhóm",
+                    aria_current: if in_meet { "page" } else { "false" },
+                    onclick: move |_| {
+                        *ACTIVE_PLUGIN_PAGE.write() = None;
+                        *ACTIVE_LEFT_PLUGIN.write() = None;
+                        if let Some(h) = on_select_meet { h.call(()); }
+                    },
+                    span { class: "rail-icon", VideoIcon { size: 20 } }
                 }
                 button {
                     r#type: "button",

@@ -711,7 +711,7 @@ pub async fn take_deep_link() -> Option<String> {
     let mut ev = dioxus::document::eval(
         r#"
         const p = window.location.pathname + window.location.search;
-        if (p && p !== '/' && (p.startsWith('/invite/') || window.location.search.length > 1)) {
+        if (p && p !== '/' && (p.startsWith('/invite/') || p.startsWith('/meet/') || window.location.search.length > 1)) {
             try { history.replaceState(null, '', '/'); } catch (e) {}
             dioxus.send(p);
         } else { dioxus.send(''); }

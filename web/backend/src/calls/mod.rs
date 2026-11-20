@@ -14,8 +14,8 @@ use crate::{
     },
     error::{AppError, AppResult},
     models::{
-        CallParticipantItem, CallSessionItem, CallSignalPayload, StartCallRequest,
-        UpdateCallStateRequest,
+        CallParticipantItem, CallSessionItem, CallSignalPayload, CreateMeetRequest,
+        StartCallRequest, UpdateCallStateRequest,
     },
     websocket::WsEvent,
 };
@@ -25,12 +25,241 @@ pub fn routes() -> Router<AppState> {
         .route("/start", post(start_call))
         .route("/active", get(get_active_call))
         .route("/history", get(get_call_history))
+        .route("/meet", post(create_meet))
+        .route("/meet/list", get(list_meets))
+        .route("/meet/{code}/join", post(join_meet))
         .route("/{id}/accept", post(accept_call))
         .route("/{id}/reject", post(reject_call))
         .route("/{id}/end", post(end_call))
         .route("/{id}/leave", post(leave_call))
         .route("/{id}/signal", post(relay_signal))
         .route("/{id}/state", post(update_state))
+}
+
+async fn ensure_meet_columns(db: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        ALTER TABLE call_sessions
+        ADD COLUMN IF NOT EXISTS meet_code VARCHAR(32) UNIQUE,
+        ADD COLUMN IF NOT EXISTS meet_title VARCHAR(120)
+        "#,
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+fn generate_meet_code() -> String {
+    let bytes = *Uuid::new_v4().as_bytes();
+    let ch = |b: u8| ((b % 26) + b'a') as char;
+    format!(
+        "{}{}{}-{}{}{}{}-{}{}{}",
+        ch(bytes[0]),
+        ch(bytes[1]),
+        ch(bytes[2]),
+        ch(bytes[3]),
+        ch(bytes[4]),
+        ch(bytes[5]),
+        ch(bytes[6]),
+        ch(bytes[7]),
+        ch(bytes[8]),
+        ch(bytes[9]),
+    )
+}
+
+fn normalize_meet_code(raw: &str) -> String {
+    let mut s = raw.trim().to_lowercase();
+    if let Some(idx) = s.find("meet=") {
+        s = s[idx + 5..].to_string();
+    } else if let Some(idx) = s.find("/meet/") {
+        s = s[idx + 6..].to_string();
+    } else if let Some(idx) = s.rfind('/') {
+        s = s[idx + 1..].to_string();
+    }
+    if let Some(idx) = s.find(['?', '#', '&', ' ']) {
+        s = s[..idx].to_string();
+    }
+    s.trim().to_string()
+}
+
+async fn create_meet(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateMeetRequest>,
+) -> AppResult<Json<CallSessionItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let _ = ensure_meet_columns(&state.db).await;
+
+    let call_type = match payload.call_type.as_deref().unwrap_or("video") {
+        "audio" => "audio".to_string(),
+        _ => "video".to_string(),
+    };
+    let uname = user.username.clone().unwrap_or_else(|| "Bạn".to_string());
+    let title = payload
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.chars().take(110).collect::<String>())
+        .unwrap_or_else(|| format!("Cuộc họp của {uname}"));
+
+    let cid = Uuid::new_v4();
+    let code = generate_meet_code();
+
+    sqlx::query(
+        r#"
+        INSERT INTO call_sessions (id, call_type, caller_id, status, started_at, meet_code, meet_title)
+        VALUES ($1, $2, $3, 'active', now(), $4, $5)
+        "#,
+    )
+    .bind(cid)
+    .bind(&call_type)
+    .bind(user.id)
+    .bind(&code)
+    .bind(&title)
+    .execute(&state.db)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO call_participants (call_id, user_id, joined_at, muted, camera_off)
+        VALUES ($1, $2, now(), false, false)
+        ON CONFLICT (call_id, user_id)
+        DO UPDATE SET left_at = NULL, joined_at = now()
+        "#,
+    )
+    .bind(cid)
+    .bind(user.id)
+    .execute(&state.db)
+    .await?;
+
+    let item = fetch_call_session(&state.db, cid).await?;
+    Ok(Json(item))
+}
+
+async fn join_meet(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(raw_code): Path<String>,
+) -> AppResult<Json<CallSessionItem>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let _ = ensure_meet_columns(&state.db).await;
+
+    let code = normalize_meet_code(&raw_code);
+    if code.is_empty() {
+        return Err(AppError::BadRequest("invalid_meet_code"));
+    }
+
+    let found_id: Option<Uuid> = if let Ok(uuid_val) = Uuid::parse_str(&code) {
+        sqlx::query_scalar("SELECT id FROM call_sessions WHERE id = $1")
+            .bind(uuid_val)
+            .fetch_optional(&state.db)
+            .await?
+    } else {
+        sqlx::query_scalar("SELECT id FROM call_sessions WHERE LOWER(meet_code) = $1")
+            .bind(&code)
+            .fetch_optional(&state.db)
+            .await?
+    };
+
+    let call_id = found_id.ok_or(AppError::NotFound("meet_not_found"))?;
+
+    sqlx::query(
+        r#"
+        UPDATE call_sessions
+        SET status = 'active',
+            started_at = COALESCE(started_at, now()),
+            ended_at = NULL
+        WHERE id = $1
+        "#,
+    )
+    .bind(call_id)
+    .execute(&state.db)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO call_participants (call_id, user_id, joined_at, muted, camera_off)
+        VALUES ($1, $2, now(), false, false)
+        ON CONFLICT (call_id, user_id)
+        DO UPDATE SET left_at = NULL, joined_at = now()
+        "#,
+    )
+    .bind(call_id)
+    .bind(user.id)
+    .execute(&state.db)
+    .await?;
+
+    let session_item = fetch_call_session(&state.db, call_id).await?;
+
+    let participant_item = CallParticipantItem {
+        call_id,
+        user_id: user.id,
+        username: user.username.unwrap_or_default(),
+        avatar_url: user.avatar_url,
+        joined_at: Utc::now(),
+        left_at: None,
+        muted: false,
+        camera_off: false,
+    };
+
+    let target_users = get_other_participants(&state.db, call_id, user.id).await?;
+    if !target_users.is_empty() {
+        state
+            .ws_hub
+            .send_to_users(
+                &target_users,
+                WsEvent::CallParticipantJoined {
+                    call_id,
+                    participant: participant_item,
+                },
+            )
+            .await;
+    }
+
+    Ok(Json(session_item))
+}
+
+async fn list_meets(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Vec<CallSessionItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let _ = ensure_meet_columns(&state.db).await;
+
+    let ids: Vec<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT c.id
+        FROM call_sessions c
+        WHERE c.meet_code IS NOT NULL
+          AND (
+              c.caller_id = $1
+              OR EXISTS (SELECT 1 FROM call_participants p WHERE p.call_id = c.id AND p.user_id = $1)
+          )
+        ORDER BY c.created_at DESC
+        LIMIT 20
+        "#,
+    )
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut list = Vec::new();
+    for id in ids {
+        if let Ok(item) = fetch_call_session(&state.db, id).await {
+            list.push(item);
+        }
+    }
+    Ok(Json(list))
 }
 
 // 1. Start a call (1:1 or Group)
@@ -624,6 +853,16 @@ async fn fetch_call_session(db: &sqlx::PgPool, call_id: Uuid) -> AppResult<CallS
         })
         .collect();
 
+    let (meet_code, meet_title) = sqlx::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT meet_code, meet_title FROM call_sessions WHERE id = $1",
+    )
+    .bind(call_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or((None, None));
+
     Ok(CallSessionItem {
         id: s.id,
         call_type: s.call_type,
@@ -634,6 +873,8 @@ async fn fetch_call_session(db: &sqlx::PgPool, call_id: Uuid) -> AppResult<CallS
         receiver_name: s.receiver_name,
         group_id: s.group_id,
         group_name: s.group_name,
+        meet_code,
+        meet_title,
         status: s.status,
         started_at: s.started_at,
         ended_at: s.ended_at,

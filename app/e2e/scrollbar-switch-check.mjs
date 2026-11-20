@@ -68,10 +68,10 @@ try {
   const allSettingsSwitchesUniform =
     settingsSwitchStats.length > 0 &&
     settingsSwitchStats.every(
-      (s) => s.w === 44 && s.h === 24 && s.kw === '18px' && s.kh === '18px' && s.kleft === '3px',
+      (s) => s.w === 42 && s.h === 24 && s.kw === '20px' && s.kh === '20px' && s.kleft === '2px' && s.ktop === '2px',
     );
   record(
-    'Settings switches have exact 44x24 track & 18x18 knob at 3px inset',
+    'Settings switches have exact 42x24 track & 20x20 knob at equidistant 2px inset',
     allSettingsSwitchesUniform,
     JSON.stringify(settingsSwitchStats.slice(0, 3)),
   );
@@ -109,9 +109,9 @@ try {
       };
     });
   });
-  const entSwitchesExact = entSwitchStats.length >= 5 && entSwitchStats.every((s) => s.w === 44 && s.h === 24);
+  const entSwitchesExact = entSwitchStats.length >= 5 && entSwitchStats.every((s) => s.w === 42 && s.h === 24);
   record(
-    'Enterprise Settings ("Thanh bên") switches are all 44x24 (no 115px stretching)',
+    'Enterprise Settings ("Thanh bên") switches are all 42x24 (no stretching)',
     entSwitchesExact,
     `count=${entSwitchStats.length}, sample=${JSON.stringify(entSwitchStats.slice(0, 4))}`,
   );
@@ -184,14 +184,14 @@ try {
       JSON.stringify(thinSample),
     );
 
-    // Move cursor directly onto the scrollbar track/thumb (5px from right edge) -> expect expanded ~8px
+    // Move cursor directly onto the scrollbar track/thumb (5px from right edge) -> expect expanded ~6px
     await page.mouse.move(scrollInfo.right - 5, thumbY);
     await page.waitForTimeout(380);
     const hoverSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
     await page.screenshot({ path: path.join(OUT, `05_${selector.replace(/[^a-z]/g, '')}_hover.png`) });
     record(
-      `${label}: scrollbar on direct hover expands visibly (~8px)`,
-      hoverSample.found && hoverSample.pixelWidth >= 7 && hoverSample.pixelWidth <= 9.5 && hoverSample.pixelWidth > thinSample.pixelWidth + 3.5,
+      `${label}: scrollbar on direct hover expands visibly (~6px)`,
+      hoverSample.found && hoverSample.pixelWidth >= 5.2 && hoverSample.pixelWidth <= 7.5 && hoverSample.pixelWidth > thinSample.pixelWidth + 2.0,
       `thin=${thinSample.pixelWidth}px -> hover=${hoverSample.pixelWidth}px (alpha ${thinSample.maxAlpha} -> ${hoverSample.maxAlpha})`,
     );
 

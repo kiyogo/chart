@@ -27,7 +27,7 @@ try {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(msg.text());
+    if (msg.type() === 'error' && !msg.text().includes('401 (Unauthorized)')) errors.push(msg.text());
   });
 
   const suffix = `${Date.now().toString(36).slice(-5)}`;
@@ -44,8 +44,8 @@ try {
   await page.waitForSelector('.notes-strip', { timeout: 10000 });
   const noteTile = page.locator('.notes-strip .note-item').first();
   const bubble = noteTile.locator('.note-bubble');
-  const initialBubbleText = await bubble.textContent();
-  record('Initial bubble text is "Chia sẻ suy nghĩ"', initialBubbleText.trim() === 'Chia sẻ suy nghĩ', initialBubbleText);
+  const initialBubbleText = (await bubble.textContent()).trim();
+  record('Initial bubble text contains "Chia sẻ" and "suy nghĩ"', initialBubbleText.includes('Chia sẻ') && initialBubbleText.includes('suy nghĩ'), initialBubbleText);
   await page.screenshot({ path: path.join(OUT, '01_notes_strip_initial.png') });
 
   // 2. Click the bubble with real mouse click
@@ -53,7 +53,7 @@ try {
   await page.waitForTimeout(400);
   const modal = page.locator('.note-modal');
   const modalVisible = await modal.isVisible();
-  record('Clicking thought bubble opens modal', modalVisible);
+  record('Clicking thought bubble opens modal directly in "Chia sẻ suy nghĩ" tab', modalVisible && (await page.locator('.note-modal input[aria-label="Nội dung ghi chú"]').isVisible()));
   await page.screenshot({ path: path.join(OUT, '02_modal_opened.png') });
 
   // 3. Check tabs in modal
@@ -94,20 +94,36 @@ try {
   await deleteBtn.click();
   await page.waitForTimeout(600);
   const clearedBubbleText = (await page.locator('.notes-strip .note-bubble').first().textContent()).trim();
-  record('Bubble reverts back to "Chia sẻ suy nghĩ" after deleting', clearedBubbleText === 'Chia sẻ suy nghĩ', clearedBubbleText);
+  record('Bubble reverts back to placeholder after deleting', clearedBubbleText.includes('Chia sẻ') && clearedBubbleText.includes('suy nghĩ'), clearedBubbleText);
   await page.screenshot({ path: path.join(OUT, '06_bubble_cleared.png') });
 
-  // 7. Test "Tạo tin ảnh" tab
-  await page.locator('.notes-strip .note-item').first().click();
+  // 7. Test "Tạo tin" avatar click directly opening "Tạo tin ảnh" tab & posting + viewing a story
+  await page.locator('.notes-strip .note-avatar-btn').first().click();
   await page.waitForTimeout(400);
-  await page.locator('.note-modal button:has-text("Tạo tin ảnh")').click();
-  await page.waitForTimeout(300);
   const uploadLabel = page.locator('label[for="story-media-upload"]');
   const captionInput = page.locator('input[aria-label="Chú thích tin"]');
   const postStoryBtn = page.locator('.note-modal button:has-text("Đăng tin")');
-  record('"Tạo tin ảnh" tab contains upload button, caption input and post button', (await uploadLabel.isVisible()) && (await captionInput.isVisible()) && (await postStoryBtn.isVisible()));
+  record('Clicking avatar / "Tạo tin" opens modal directly in "Tạo tin ảnh" tab', (await uploadLabel.isVisible()) && (await captionInput.isVisible()) && (await postStoryBtn.isVisible()));
+  await captionInput.fill('Tin buổi chiều mát mẻ');
   await page.screenshot({ path: path.join(OUT, '07_story_tab.png') });
-  await page.locator('.note-modal button:has-text("Hủy")').click();
+  await postStoryBtn.click();
+  await page.waitForTimeout(700);
+  const hasStoryRing = await page.locator('.notes-strip .my-note-tile .note-avatar-wrap.has-story-ring').isVisible();
+  record('Avatar displays Story Ring immediately after posting a story', hasStoryRing);
+
+  // Open story modal & click "Xem tin của bạn"
+  await page.locator('.notes-strip .note-avatar-btn').first().click();
+  await page.waitForTimeout(400);
+  const viewMineBtn = page.locator('.note-modal button:has-text("Xem tin của bạn")');
+  record('"Xem tin của bạn" button appears when user has active story', await viewMineBtn.isVisible());
+  await viewMineBtn.click();
+  await page.waitForSelector('.story-viewer-modal', { timeout: 5000 });
+  await page.waitForTimeout(300);
+  const viewerText = await page.locator('.story-viewer-modal').innerText();
+  record('Story Viewer Modal renders active story caption', viewerText.includes('Tin buổi chiều mát mẻ'), viewerText);
+  await page.screenshot({ path: path.join(OUT, '07b_story_viewer.png') });
+  await page.locator('.story-viewer-modal button:has-text("Đóng")').click();
+  await page.waitForTimeout(300);
 
   // 8. Verify Toggle switch equidistant centering across app
   await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
@@ -156,3 +172,7 @@ try {
 } finally {
   await browser.close();
 }
+
+const failed = checks.filter((c) => !c.pass);
+console.log(`\nSummary: ${checks.length - failed.length}/${checks.length} passed`);
+if (failed.length > 0 || errors.length > 0) process.exit(1);

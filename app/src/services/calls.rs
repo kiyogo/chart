@@ -118,3 +118,46 @@ pub async fn calls_get_history() -> Result<Vec<CallSessionItem>, ApiError> {
     get_json("/api/calls/history").await
 }
 
+// 10. Extract meet code from either raw code or full URL
+pub fn extract_meet_code(raw: &str) -> String {
+    let mut s = raw.trim().to_lowercase();
+    if let Some(idx) = s.find("meet=") {
+        s = s[idx + 5..].to_string();
+    } else if let Some(idx) = s.find("/meet/") {
+        s = s[idx + 6..].to_string();
+    } else if let Some(idx) = s.rfind('/') {
+        s = s[idx + 1..].to_string();
+    }
+    if let Some(idx) = s.find(['?', '#', '&', ' ']) {
+        s = s[..idx].to_string();
+    }
+    s.trim().to_string()
+}
+
+// 11. Create a shareable Meet room (Google Meet / Zoom style)
+pub async fn calls_create_meet(
+    title: Option<String>,
+    call_type: &str,
+) -> Result<CallSessionItem, ApiError> {
+    post_json(
+        "/api/calls/meet",
+        json!({
+            "title": title,
+            "call_type": call_type,
+        }),
+    )
+    .await
+}
+
+// 12. Join a Meet room by code or full link
+pub async fn calls_join_meet(code_or_link: &str) -> Result<CallSessionItem, ApiError> {
+    let code = extract_meet_code(code_or_link);
+    let encoded = urlencoding::encode(&code);
+    post_json(&format!("/api/calls/meet/{encoded}/join"), json!({})).await
+}
+
+// 13. List user's Meet rooms
+pub async fn calls_list_meets() -> Result<Vec<CallSessionItem>, ApiError> {
+    get_json("/api/calls/meet/list").await
+}
+

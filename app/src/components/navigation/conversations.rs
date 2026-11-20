@@ -437,6 +437,20 @@ pub fn StoriesNotesBar(
     let mut story_uploading = use_signal(|| false);
     let mut story_posting = use_signal(|| false);
     let mut story_success = use_signal(|| false);
+    let mut active_stories = use_signal(Vec::<feed::FeedPostItem>::new);
+    let mut viewing_story = use_signal(|| Option::<feed::FeedPostItem>::None);
+
+    let reload_stories = use_callback(move |_: ()| {
+        spawn(async move {
+            if let Ok(list) = feed::list_feed("all").await {
+                active_stories.set(list);
+            }
+        });
+    });
+
+    use_effect(move || {
+        reload_stories.call(());
+    });
 
     use_effect(use_reactive!(|my_status_text, my_status_emoji| {
         local_status_text.set(my_status_text);
@@ -513,39 +527,74 @@ pub fn StoriesNotesBar(
         "Chia sẻ suy nghĩ".to_string()
     };
 
+    let stories_snapshot = active_stories();
+    let my_latest_story = stories_snapshot
+        .iter()
+        .find(|p| p.author_username == my_username)
+        .cloned();
+    let my_has_story = my_latest_story.is_some();
+
     let init_em = cur_em.clone();
     let init_tx = cur_tx.clone();
+    let init_em2 = cur_em.clone();
+    let init_tx2 = cur_tx.clone();
 
     rsx! {
         div { class: "notes-strip-wrap",
             div { id: "{strip_id}", class: "notes-strip", role: "list", aria_label: "Tin và ghi chú",
                 // Current user tile ("Tạo tin")
-                button {
-                    r#type: "button",
-                    class: "note-item",
+                div {
+                    class: "note-item my-note-tile",
                     role: "listitem",
-                    title: "Cập nhật ghi chú suy nghĩ",
-                    onclick: move |_| {
-                        note_emoji.set(init_em.clone());
-                        note_text.set(init_tx.clone());
-                        note_err.set(None);
-                        active_tab.set("thought");
-                        story_success.set(false);
-                        edit_my_note.set(true);
-                    },
-                    span {
-                        class: if my_has_note { "note-bubble mine" } else { "note-bubble placeholder" },
-                        "{my_bubble_label}"
-                    }
-                    span { class: "note-avatar-wrap",
-                        Avatar {
-                            name: if my_username.is_empty() { "Tôi".to_string() } else { my_username.clone() },
-                            avatar_url: my_avatar_url.clone(),
-                            size: 52,
+                    button {
+                        r#type: "button",
+                        class: "note-bubble-btn",
+                        aria_label: "Chia sẻ suy nghĩ",
+                        title: "Chia sẻ suy nghĩ",
+                        onclick: move |e| {
+                            e.stop_propagation();
+                            note_emoji.set(init_em.clone());
+                            note_text.set(init_tx.clone());
+                            note_err.set(None);
+                            active_tab.set("thought");
+                            story_success.set(false);
+                            edit_my_note.set(true);
+                        },
+                        span {
+                            class: if my_has_note { "note-bubble mine" } else { "note-bubble placeholder" },
+                            if my_has_note {
+                                "{my_bubble_label}"
+                            } else {
+                                "Chia sẻ"
+                                br {}
+                                "suy nghĩ"
+                            }
                         }
-                        span { class: "note-plus-badge", aria_hidden: "true", PlusIcon { size: 12 } }
                     }
-                    span { class: "note-name", "Tạo tin" }
+                    button {
+                        r#type: "button",
+                        class: "note-avatar-btn",
+                        aria_label: "Tạo tin mới",
+                        title: "Tạo tin",
+                        onclick: move |e| {
+                            e.stop_propagation();
+                            note_emoji.set(init_em2.clone());
+                            note_text.set(init_tx2.clone());
+                            note_err.set(None);
+                            active_tab.set("story");
+                            story_success.set(false);
+                            edit_my_note.set(true);
+                        },
+                        span { class: if my_has_story { "note-avatar-wrap has-story-ring" } else { "note-avatar-wrap" },
+                            Avatar {
+                                name: if my_username.is_empty() { "Tôi".to_string() } else { my_username.clone() },
+                                avatar_url: my_avatar_url.clone(),
+                                size: 52,
+                            }
+                            span { class: "note-plus-badge", aria_hidden: "true", PlusIcon { size: 12 } }
+                        }
+                        span { class: "note-name", "Tạo tin" }
+                    }
                 }
 
                 // Friends tiles
@@ -557,9 +606,15 @@ pub fn StoriesNotesBar(
                         let fem = fr.status_emoji.as_deref().map(str::trim).unwrap_or("");
                         let ftx = fr.status_text.as_deref().map(str::trim).unwrap_or("");
                         let has_note = !fem.is_empty() || !ftx.is_empty();
+                        let friend_story = stories_snapshot
+                            .iter()
+                            .find(|p| p.author_id == fr.id || p.author_username == fr.username)
+                            .cloned();
+                        let has_story = friend_story.is_some();
                         let bubble_str = format!("{fem} {ftx}").trim().to_string();
                         let online = fr.presence.as_deref() == Some("online");
                         let fr_click = fr.clone();
+                        let st_click = friend_story.clone();
                         rsx! {
                             button {
                                 key: "note-{fr.id}",
@@ -570,6 +625,9 @@ pub fn StoriesNotesBar(
                                     if has_note {
                                         reply_draft.set(String::new());
                                         viewing_friend.set(Some(fr_click.clone()));
+                                    } else if let Some(st) = st_click.clone() {
+                                        reply_draft.set(String::new());
+                                        viewing_story.set(Some(st));
                                     } else {
                                         on_open_friend.call(fr_click.clone());
                                     }
@@ -577,7 +635,7 @@ pub fn StoriesNotesBar(
                                 if has_note {
                                     span { class: "note-bubble", "{bubble_str}" }
                                 }
-                                span { class: "note-avatar-wrap",
+                                span { class: if has_story { "note-avatar-wrap has-story-ring" } else { "note-avatar-wrap" },
                                     crate::components::profile_card::DecoratedAvatar {
                                         name: fr.username.clone(),
                                         avatar_url: fr.avatar_url.clone(),
@@ -768,14 +826,14 @@ pub fn StoriesNotesBar(
                                         class: "btn-secondary",
                                         style: "display: inline-flex; align-items: center; gap: 6px; cursor: pointer; width: 100%; justify-content: center;",
                                         ImageIcon { size: 18 }
-                                        if story_uploading() { "Đang tải ảnh lên..." } else { "Chọn ảnh cho tin mới" }
+                                        if story_uploading() { "Đang tải ảnh lên" } else { "Chọn ảnh cho tin mới" }
                                     }
                                 }
                             }
                             input {
                                 r#type: "text",
                                 maxlength: "200",
-                                placeholder: "Thêm chú thích cho tin...",
+                                placeholder: "Thêm chú thích cho tin",
                                 aria_label: "Chú thích tin",
                                 value: "{story_draft}",
                                 oninput: move |e| story_draft.set(e.value()),
@@ -787,6 +845,18 @@ pub fn StoriesNotesBar(
                                 div { class: "status-badge error", "{e}" }
                             }
                             div { class: "modal-actions",
+                                if let Some(my_st) = my_latest_story.clone() {
+                                    button {
+                                        r#type: "button",
+                                        class: "btn-ghost",
+                                        onclick: move |_| {
+                                            edit_my_note.set(false);
+                                            reply_draft.set(String::new());
+                                            viewing_story.set(Some(my_st.clone()));
+                                        },
+                                        "Xem tin của bạn"
+                                    }
+                                }
                                 button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Hủy" }
                                 button {
                                     r#type: "button",
@@ -803,6 +873,7 @@ pub fn StoriesNotesBar(
                                                     story_draft.set(String::new());
                                                     story_media_url.set(None);
                                                     story_success.set(true);
+                                                    reload_stories.call(());
                                                     edit_my_note.set(false);
                                                 }
                                                 Err(e) => note_err.set(Some(format!("Đăng tin thất bại: {}", e.code))),
@@ -810,7 +881,7 @@ pub fn StoriesNotesBar(
                                             story_posting.set(false);
                                         });
                                     },
-                                    if story_posting() { "Đang đăng..." } else { "Đăng tin" }
+                                    if story_posting() { "Đang đăng" } else { "Đăng tin" }
                                 }
                             }
                         }
@@ -833,6 +904,9 @@ pub fn StoriesNotesBar(
                 .to_string();
                 let vf_open = vf.clone();
                 let vf_reply = vf.clone();
+                let friend_story_opt = active_stories()
+                    .into_iter()
+                    .find(|p| p.author_id == vf.id || p.author_username == vf.username);
                 rsx! {
                     div { class: "modal-overlay", onclick: move |_| viewing_friend.set(None),
                         div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú của {shown}", onclick: move |e| e.stop_propagation(),
@@ -871,6 +945,18 @@ pub fn StoriesNotesBar(
                                 }
                             }
                             div { class: "modal-actions",
+                                if let Some(fst) = friend_story_opt {
+                                    button {
+                                        r#type: "button",
+                                        class: "btn-ghost",
+                                        onclick: move |_| {
+                                            viewing_friend.set(None);
+                                            reply_draft.set(String::new());
+                                            viewing_story.set(Some(fst.clone()));
+                                        },
+                                        "Xem tin ảnh"
+                                    }
+                                }
                                 button {
                                     r#type: "button",
                                     class: "btn-secondary",
@@ -880,6 +966,85 @@ pub fn StoriesNotesBar(
                                     },
                                     "Mở cuộc trò chuyện"
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(st) = viewing_story() {
+            {
+                let st_author_name = st.author_display_name.clone().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| st.author_username.clone());
+                let is_my_story = st.author_username == my_username;
+                let st_id_del = st.id.clone();
+                let st_friend = friends.iter().find(|f| f.id == st.author_id || f.username == st.author_username).cloned();
+                rsx! {
+                    div { class: "modal-overlay", onclick: move |_| viewing_story.set(None),
+                        div { class: "modal-dialog story-viewer-modal", role: "dialog", aria_modal: "true", aria_label: "Tin của {st_author_name}", onclick: move |e| e.stop_propagation(),
+                            div { class: "modal-header",
+                                div { style: "display: flex; align-items: center; gap: 10px;",
+                                    Avatar { name: st.author_username.clone(), avatar_url: st.author_avatar_url.clone(), size: 36 }
+                                    div {
+                                        div { class: "modal-title", style: "font-size: 1rem;", "{st_author_name}" }
+                                        div { class: "member-sub", "@{st.author_username}" }
+                                    }
+                                }
+                                button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| viewing_story.set(None), CloseIcon { size: 18 } }
+                            }
+                            if let Some(murl) = st.media_url.as_ref().filter(|s| !s.trim().is_empty()) {
+                                div { class: "story-viewer-media",
+                                    img { src: "{crate::platform::resolve_asset_url(murl)}", alt: "Ảnh tin" }
+                                }
+                            }
+                            if !st.content.trim().is_empty() {
+                                div { class: "story-viewer-caption", "{st.content}" }
+                            }
+                            if !is_my_story {
+                                if let Some(fr_target) = st_friend {
+                                    div { class: "note-input-row",
+                                        input {
+                                            r#type: "text",
+                                            placeholder: "Trả lời tin của {st_author_name}",
+                                            value: "{reply_draft}",
+                                            oninput: move |e| reply_draft.set(e.value()),
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            class: "btn-primary",
+                                            disabled: reply_draft().trim().is_empty(),
+                                            onclick: move |_| {
+                                                let txt = format!("Trả lời tin: {}", reply_draft().trim());
+                                                viewing_story.set(None);
+                                                if let Some(h) = on_note_reply {
+                                                    h.call((fr_target.clone(), txt));
+                                                } else {
+                                                    on_open_friend.call(fr_target.clone());
+                                                }
+                                            },
+                                            SendIcon { size: 16 }
+                                        }
+                                    }
+                                }
+                            }
+                            div { class: "modal-actions",
+                                if is_my_story {
+                                    button {
+                                        r#type: "button",
+                                        class: "btn-ghost danger",
+                                        onclick: move |_| {
+                                            let id_del = st_id_del.clone();
+                                            spawn(async move {
+                                                if feed::delete_post(&id_del).await.is_ok() {
+                                                    active_stories.with_mut(|list| list.retain(|x| x.id != id_del));
+                                                    viewing_story.set(None);
+                                                }
+                                            });
+                                        },
+                                        "Xóa tin này"
+                                    }
+                                }
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| viewing_story.set(None), "Đóng" }
                             }
                         }
                     }

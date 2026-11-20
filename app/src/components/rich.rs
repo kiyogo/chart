@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BarChartIcon, BellIcon, CheckIcon, CloseIcon, DownloadIcon, MicIcon, PlusIcon, RefreshIcon},
+        icons::{BarChartIcon, BellIcon, CheckIcon, CloseIcon, DownloadIcon, FileTextIcon, MicIcon, PlusIcon, RefreshIcon},
     },
     platform,
     services::storage_sync,
@@ -477,7 +477,7 @@ pub fn RichContent(
         }
         Rich::Note(n) => rsx! {
             div { class: "rich-card note-card",
-                div { class: "rich-kind", "Ghi chú" }
+                div { class: "rich-kind", FileTextIcon { size: 14 } "Ghi chú" }
                 div { class: "rich-title", "{n.t}" }
                 if !n.b.is_empty() { div { class: "rich-body", "{n.b}" } }
             }

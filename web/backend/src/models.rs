@@ -470,12 +470,22 @@ pub struct CallSessionItem {
     pub receiver_name: Option<String>,
     pub group_id: Option<Uuid>,
     pub group_name: Option<String>,
+    #[serde(default)]
+    pub meet_code: Option<String>,
+    #[serde(default)]
+    pub meet_title: Option<String>,
     pub status: String, // "ringing" | "active" | "ended" | "rejected" | "missed" | "busy"
     pub started_at: Option<DateTime<Utc>>,
     pub ended_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     #[serde(default)]
     pub participants: Vec<CallParticipantItem>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateMeetRequest {
+    pub title: Option<String>,
+    pub call_type: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

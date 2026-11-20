@@ -3,13 +3,14 @@ use dioxus::prelude::*;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{MicIcon, MicOffIcon, PhoneOffIcon, VideoIcon, VideoOffIcon},
+        icons::{CheckIcon, CopyIcon, MicIcon, MicOffIcon, MonitorIcon, PhoneOffIcon, VideoIcon, VideoOffIcon},
     },
     media::{
         attach_local_stream_to_element, attach_remote_stream_to_element, check_active_speaker,
-        toggle_camera, toggle_mic,
+        toggle_camera, toggle_mic, toggle_screen_share,
     },
     models::{CallParticipantItem, CallSessionItem},
+    platform,
     services::calls::calls_update_state,
 };
 
@@ -21,12 +22,24 @@ pub fn ActiveCallOverlay(
 ) -> Element {
     let mut is_muted = use_signal(|| false);
     let mut is_camera_off = use_signal(|| session.call_type == "audio");
+    let mut is_screen_sharing = use_signal(|| false);
+    let mut copied_link = use_signal(|| false);
+    let mut origin = use_signal(|| "http://127.0.0.1:8085".to_string());
     let mut active_speaker_id = use_signal(|| Option::<String>::None);
     let call_seconds = use_signal(|| 0u64);
 
-    let is_video = session.call_type == "video";
+    let is_video = session.call_type == "video" || is_screen_sharing();
     let is_group = session.group_id.is_some();
     let call_id = session.id.clone();
+
+    use_effect(move || {
+        spawn(async move {
+            let org = platform::app_origin().await;
+            if !org.is_empty() {
+                origin.set(org);
+            }
+        });
+    });
 
     // Call duration timer
     use_effect({
@@ -67,9 +80,10 @@ pub fn ActiveCallOverlay(
     let peers: Vec<CallParticipantItem> = session
         .participants
         .iter()
-        .filter(|p| p.user_id != current_user_id)
+        .filter(|p| p.user_id != current_user_id && p.left_at.is_none())
         .cloned()
         .collect();
+    let total_participants = peers.len() + 1;
 
     use_effect({
         let peers = peers.clone();
@@ -119,7 +133,17 @@ pub fn ActiveCallOverlay(
         }
     };
 
-    let call_title = if is_group {
+    let handle_toggle_screen = move |_| {
+        let want = !is_screen_sharing();
+        spawn(async move {
+            let active = toggle_screen_share(want).await;
+            is_screen_sharing.set(active);
+        });
+    };
+
+    let call_title = if let Some(t) = session.meet_title.as_ref().filter(|s| !s.trim().is_empty()) {
+        t.clone()
+    } else if is_group {
         session.group_name.clone().unwrap_or_else(|| "Cuộc gọi nhóm".to_string())
     } else if session.caller_id == current_user_id {
         session.receiver_name.clone().unwrap_or_else(|| "Cuộc gọi".to_string())
@@ -127,18 +151,58 @@ pub fn ActiveCallOverlay(
         session.caller_name.clone()
     };
 
+    let meet_code_opt = session.meet_code.clone();
+
     rsx! {
         div {
-            class: "settings-modal-backdrop",
+            class: "settings-modal-backdrop active-call-overlay",
             style: "background: #0B0F17; z-index: 9999; display: flex; flex-direction: column; padding: 16px; box-sizing: border-box;",
             // Top Header
-            div { style: "display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 1200px; margin: 0 auto 16px auto;",
+            div { style: "display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 1200px; margin: 0 auto 16px auto; flex-wrap: wrap; gap: 12px;",
                 div { style: "display: flex; align-items: center; gap: 12px;",
                     div { style: "background: rgba(255, 255, 255, 0.1); padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; color: #10B981; display: flex; align-items: center; gap: 6px;",
                         span { style: "width: 8px; height: 8px; border-radius: 50%; background: #10B981; display: inline-block;" }
                         "{format_duration(call_seconds())}"
                     }
                     span { style: "font-weight: 600; font-size: 16px; color: #F8FAFC;", "{call_title}" }
+                    span { style: "background: rgba(255, 255, 255, 0.08); padding: 4px 10px; border-radius: 12px; font-size: 12px; color: #94A3B8;",
+                        "{total_participants} người tham gia"
+                    }
+                }
+                if let Some(code) = meet_code_opt {
+                    {
+                        let c_copy = code.clone();
+                        rsx! {
+                            div { style: "display: flex; align-items: center; gap: 8px;",
+                                span {
+                                    class: "call-meet-code",
+                                    style: "background: rgba(255, 255, 255, 0.08); color: #E2E8F0; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-family: monospace;",
+                                    "Mã: {code}"
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "call-copy-link-btn",
+                                    style: "background: #2563EB; color: #FFFFFF; border: none; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;",
+                                    onclick: move |_| {
+                                        let link = format!("{}/?meet={}", origin().trim_end_matches('/'), c_copy);
+                                        platform::copy_to_clipboard(&link);
+                                        copied_link.set(true);
+                                        spawn(async move {
+                                            platform::sleep_ms(2000).await;
+                                            copied_link.set(false);
+                                        });
+                                    },
+                                    if copied_link() {
+                                        CheckIcon { size: 15 }
+                                        "Đã sao chép link"
+                                    } else {
+                                        CopyIcon { size: 15 }
+                                        "Sao chép link mời"
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -273,7 +337,10 @@ pub fn ActiveCallOverlay(
             div { style: "display: flex; align-items: center; justify-content: center; gap: 20px; padding: 20px 0; margin-top: auto;",
                 // Mic Button
                 button {
+                    r#type: "button",
                     class: "partner-action-btn",
+                    title: if is_muted() { "Bật micro" } else { "Tắt micro" },
+                    aria_label: if is_muted() { "Bật micro" } else { "Tắt micro" },
                     style: if is_muted() { "background: #EF4444; color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" } else { "background: rgba(255,255,255,0.15); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" },
                     onclick: handle_toggle_mic,
                     if is_muted() {
@@ -285,7 +352,10 @@ pub fn ActiveCallOverlay(
 
                 // Camera Button
                 button {
+                    r#type: "button",
                     class: "partner-action-btn",
+                    title: if is_camera_off() { "Bật camera" } else { "Tắt camera" },
+                    aria_label: if is_camera_off() { "Bật camera" } else { "Tắt camera" },
                     style: if is_camera_off() { "background: #EF4444; color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" } else { "background: rgba(255,255,255,0.15); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" },
                     onclick: handle_toggle_camera,
                     if is_camera_off() {
@@ -295,10 +365,24 @@ pub fn ActiveCallOverlay(
                     }
                 }
 
+                // Screen Share Button
+                button {
+                    r#type: "button",
+                    class: "partner-action-btn",
+                    title: if is_screen_sharing() { "Dừng chia sẻ màn hình" } else { "Chia sẻ màn hình" },
+                    aria_label: if is_screen_sharing() { "Dừng chia sẻ màn hình" } else { "Chia sẻ màn hình" },
+                    style: if is_screen_sharing() { "background: #2563EB; color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" } else { "background: rgba(255,255,255,0.15); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" },
+                    onclick: handle_toggle_screen,
+                    MonitorIcon { size: 22 }
+                }
+
                 // End Call Button
                 button {
-                    class: "partner-action-btn",
+                    r#type: "button",
                     class: "call-btn call-btn-danger",
+                    title: "Rời cuộc gọi",
+                    aria_label: "Rời cuộc gọi",
+                    style: "background: #EF4444; color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;",
                     onclick: move |_| on_end_call.call(()),
                     PhoneOffIcon { size: 24 }
                 }

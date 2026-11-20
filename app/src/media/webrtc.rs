@@ -417,3 +417,68 @@ pub async fn check_active_speaker() -> Option<String> {
     eval.recv::<Option<String>>().await.unwrap_or(None)
 }
 
+/// Start or stop screen sharing (Google Meet / Zoom style)
+pub async fn toggle_screen_share(enable: bool) -> bool {
+    let en = if enable { "true" } else { "false" };
+    let js = format!(
+        r#"
+        (async () => {{
+            const mgr = window.__chatwWebRTC || {{}};
+            try {{
+                if ({en}) {{
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {{
+                        dioxus.send(false);
+                        return;
+                    }}
+                    const displayStream = await navigator.mediaDevices.getDisplayMedia({{ video: true }});
+                    const screenTrack = displayStream.getVideoTracks()[0];
+                    if (!screenTrack) {{
+                        dioxus.send(false);
+                        return;
+                    }}
+                    mgr.screenStream = displayStream;
+                    if (mgr.peerConnections) {{
+                        mgr.peerConnections.forEach(pc => {{
+                            const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                            if (sender) {{
+                                sender.replaceTrack(screenTrack).catch(() => {{}});
+                            }} else {{
+                                pc.addTrack(screenTrack, displayStream);
+                            }}
+                        }});
+                    }}
+                    const localVideo = document.getElementById('webrtc-local-video');
+                    if (localVideo) {{
+                        localVideo.srcObject = displayStream;
+                        localVideo.play().catch(() => {{}});
+                    }}
+                    dioxus.send(true);
+                }} else {{
+                    if (mgr.screenStream) {{
+                        mgr.screenStream.getTracks().forEach(t => {{ try {{ t.stop(); }} catch {{}} }});
+                        mgr.screenStream = null;
+                    }}
+                    const camTrack = mgr.localStream ? mgr.localStream.getVideoTracks()[0] : null;
+                    if (camTrack && mgr.peerConnections) {{
+                        mgr.peerConnections.forEach(pc => {{
+                            const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                            if (sender) sender.replaceTrack(camTrack).catch(() => {{}});
+                        }});
+                    }}
+                    const localVideo = document.getElementById('webrtc-local-video');
+                    if (localVideo && mgr.localStream) {{
+                        localVideo.srcObject = mgr.localStream;
+                        localVideo.play().catch(() => {{}});
+                    }}
+                    dioxus.send(false);
+                }}
+            }} catch (e) {{
+                dioxus.send(false);
+            }}
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    eval.recv::<bool>().await.unwrap_or(false)
+}
+

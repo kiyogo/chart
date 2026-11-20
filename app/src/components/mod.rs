@@ -24,6 +24,7 @@ pub mod inventory;
 pub mod invite;
 pub mod icons;
 pub mod media_picker;
+pub mod meet_view;
 pub mod messages;
 pub mod navigation;
 pub mod pin_lock;

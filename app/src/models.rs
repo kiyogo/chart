@@ -648,6 +648,10 @@ pub struct CallSessionItem {
     pub group_id: Option<String>,
     #[serde(default)]
     pub group_name: Option<String>,
+    #[serde(default)]
+    pub meet_code: Option<String>,
+    #[serde(default)]
+    pub meet_title: Option<String>,
     pub status: String, // "ringing" | "active" | "ended" | "rejected" | "missed" | "busy"
     #[serde(default)]
     pub started_at: Option<String>,
