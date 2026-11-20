@@ -31,6 +31,7 @@ use crate::{
             sidebar::NavigationSidebar,
             NavSection,
         },
+        notifications_view::NotificationsView,
         profile_modal::{ProfileModal, ProfilePopover},
         guide::WelcomeTour,
         quick_switcher::QuickSwitcher,
@@ -2254,7 +2255,7 @@ pub fn Chat(
         || active_mod_page.is_some()
         || is_settings_open()
         || server_settings_active
-        || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Download);
+        || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Notifications | NavSection::Download);
     let section = if is_settings_open() { NavSection::Settings } else { nav_section() };
 
     let start_call = move |kind: &'static str, user: Option<String>, group: Option<String>| {
@@ -2627,6 +2628,11 @@ pub fn Chat(
                     server_settings_open.set(false);
                     nav_section.set(NavSection::Meet);
                 },
+                on_select_notifications: move |_| {
+                    is_settings_open.set(false);
+                    server_settings_open.set(false);
+                    nav_section.set(NavSection::Notifications);
+                },
                 on_select_download: move |target: String| {
                     is_settings_open.set(false);
                     server_settings_open.set(false);
@@ -2646,7 +2652,7 @@ pub fn Chat(
                 on_logout: move |_| on_logout.call(()),
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Download) && active_mod_page.is_none() {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Notifications | NavSection::Download) && active_mod_page.is_none() {
                 if let Some(lpid) = active_left_plugin.clone() {
                     aside { class: "nav-sidebar",
                         crate::components::plugins_view::PluginLeftAppView {
@@ -2812,7 +2818,7 @@ pub fn Chat(
                 }
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Download) && active_mod_page.is_none() {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Notifications | NavSection::Download) && active_mod_page.is_none() {
                 div {
                     class: "panel-resizer resizer-left",
                     "data-resizer": "sidebar",
@@ -2982,6 +2988,15 @@ pub fn Chat(
                                 });
                             }
                         },
+                    }
+                } else if section == NavSection::Notifications {
+                    NotificationsView {
+                        friends: friends(),
+                        unread_counts: unread_counts(),
+                        pending_requests: pending_requests(),
+                        on_open_friend: move |f: FriendItem| select_friend.call(f),
+                        on_open_friends_tab: move |_| nav_section.set(NavSection::Friends),
+                        on_open_messages: move |_| nav_section.set(NavSection::DirectMessages),
                     }
                 } else if section == NavSection::Download {
                     DownloadView {

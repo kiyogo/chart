@@ -13,6 +13,7 @@ pub enum NavSection {
     Feed,
     VicoAi,
     Search,
+    Notifications,
     Download,
     Settings,
 }

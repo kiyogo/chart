@@ -28,6 +28,7 @@ pub mod media_picker;
 pub mod meet_view;
 pub mod messages;
 pub mod navigation;
+pub mod notifications_view;
 pub mod pin_lock;
 pub mod profile_card;
 pub mod profile_modal;

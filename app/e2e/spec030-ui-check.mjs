@@ -116,93 +116,126 @@ try {
   );
   await page.screenshot({ path: path.join(OUT, '02_feed_stories_strip.png') });
 
-  // 3. Left Rail: Thông báo white menu
+  // 3. Left Rail: Thông báo opens dedicated full NotificationsView page (white rounded panel)
   await page.locator('.rail-bottom button[aria-label="Thông báo"]').click();
-  await page.waitForSelector('.notif-rail-menu', { timeout: 5000 });
-  const notifStyle = await page.evaluate(() => {
-    const el = document.querySelector('.notif-rail-menu');
+  await page.waitForSelector('.notifications-page', { timeout: 5000 });
+  const notifPageAudit = await page.evaluate(() => {
+    const el = document.querySelector('.notifications-page');
     const cs = getComputedStyle(el);
-    return { bg: cs.backgroundColor, border: `${cs.borderTopWidth} ${cs.borderTopStyle}` };
+    return {
+      sidebarHidden: !document.querySelector('.nav-sidebar'),
+      bg: cs.backgroundColor,
+      radius: cs.borderTopLeftRadius,
+      title: document.querySelector('.notifications-title')?.innerText?.trim() || '',
+    };
   });
-  record('Rail Thông báo popover is pure white with subtle dark border', notifStyle.bg === 'rgb(255, 255, 255)' && notifStyle.border === '1px solid', JSON.stringify(notifStyle));
-  await page.screenshot({ path: path.join(OUT, '03_rail_notifications_menu.png') });
-  await page.locator('.menu-dismiss').click();
-  await page.waitForTimeout(150);
+  record(
+    'Clicking Thông báo opens dedicated NotificationsView white rounded page',
+    notifPageAudit.sidebarHidden && notifPageAudit.bg === 'rgb(255, 255, 255)' && parseFloat(notifPageAudit.radius) >= 15 && notifPageAudit.title === 'Thông báo',
+    JSON.stringify(notifPageAudit),
+  );
+  await page.screenshot({ path: path.join(OUT, '03_notifications_page.png') });
 
-  // 4. Left Rail: Tài khoản white menu & NO white ring on avatar
+  // 4. Left Rail: Tài khoản pure white menu + soft blurred border (NO gray wireframe) + NO white ring on avatar + offset away from rail
   await page.locator('.rail-account').click();
-  await page.waitForSelector('.account-menu.rail-menu:not(.notif-rail-menu):not(.download-rail-menu)', { timeout: 5000 });
+  await page.waitForSelector('.account-menu.rail-menu:not(.download-rail-menu)', { timeout: 5000 });
   const accountAudit = await page.evaluate(() => {
     const btn = document.querySelector('.rail-account');
-    const menu = document.querySelector('.account-menu.rail-menu:not(.notif-rail-menu):not(.download-rail-menu)');
+    const rail = document.querySelector('.app-rail');
+    const menu = document.querySelector('.account-menu.rail-menu:not(.download-rail-menu)');
     const bcs = getComputedStyle(btn);
     const mcs = getComputedStyle(menu);
+    const rr = rail.getBoundingClientRect();
+    const mr = menu.getBoundingClientRect();
     return {
       btnBg: bcs.backgroundColor,
       btnPad: bcs.paddingTop,
       btnShadow: bcs.boxShadow,
       menuBg: mcs.backgroundColor,
       menuBorder: `${mcs.borderTopWidth} ${mcs.borderTopStyle}`,
+      menuShadow: mcs.boxShadow,
+      gapFromRail: Math.round(mr.left - rr.right),
     };
   });
   record(
-    'Account avatar has NO white ring when clicked + menu is pure white with border',
+    'Account avatar has NO white ring; menu is pure white with soft blurred edge (no gray frame) and offset from rail',
     accountAudit.btnBg === 'rgba(0, 0, 0, 0)' &&
       accountAudit.btnPad === '0px' &&
       accountAudit.btnShadow === 'none' &&
       accountAudit.menuBg === 'rgb(255, 255, 255)' &&
-      accountAudit.menuBorder === '1px solid',
+      accountAudit.menuBorder === '0px none' &&
+      accountAudit.menuShadow !== 'none' &&
+      accountAudit.gapFromRail >= 10,
     JSON.stringify(accountAudit),
   );
   await page.screenshot({ path: path.join(OUT, '04_rail_account_menu.png') });
   await page.locator('.menu-dismiss').click().catch(() => {});
   await page.waitForTimeout(150);
 
-  // 5. Left Rail: Tải ứng dụng hover QR card + single CH Play / App Store logos
+  // 5. Left Rail: Tải ứng dụng hover QR card (no QR border, no store box borders, equal padding, soft blurred edge, offset from rail)
   await page.locator('.rail-download-wrap').hover();
   await page.waitForSelector('.download-rail-menu', { timeout: 5000 });
   const dlHover = await page.evaluate(() => {
     const card = document.querySelector('.download-rail-menu');
+    const qrWrap = document.querySelector('.download-popover-qr');
     const qrSvg = document.querySelector('.download-popover-qr svg');
     const deskBtn = document.querySelector('.download-popover-desktop-btn');
     const storeBtns = Array.from(document.querySelectorAll('.download-store-logo-only'));
     const cs = getComputedStyle(card);
+    const qcs = getComputedStyle(qrWrap);
     return {
       bg: cs.backgroundColor,
       border: `${cs.borderTopWidth} ${cs.borderTopStyle}`,
+      shadow: cs.boxShadow,
+      pad: `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`,
+      qrBorder: `${qcs.borderTopWidth} ${qcs.borderTopStyle}`,
+      qrBg: qcs.backgroundColor,
       hasQr: !!qrSvg,
       desktopLabel: deskBtn ? deskBtn.innerText.trim() : '',
       storeCount: storeBtns.length,
       storeTexts: storeBtns.map((b) => b.innerText.trim()),
       storeSvgs: storeBtns.map((b) => b.querySelectorAll('svg').length),
+      storeBorders: storeBtns.map((b) => getComputedStyle(b).borderTopStyle),
     };
   });
   record(
-    'Download QR hover card is white with QR, "Tải cho máy tính", and 2 single-logo store buttons',
+    'Download QR hover card is white with soft blur edge, borderless QR & store logos, and equal inner spacing',
     dlHover.bg === 'rgb(255, 255, 255)' &&
-      dlHover.border === '1px solid' &&
+      dlHover.border === '0px none' &&
+      dlHover.shadow !== 'none' &&
+      dlHover.qrBorder === '0px none' &&
       dlHover.hasQr &&
       dlHover.desktopLabel.includes('Tải cho máy tính') &&
       dlHover.storeCount === 2 &&
       dlHover.storeTexts.every((t) => t === '') &&
-      dlHover.storeSvgs.every((n) => n === 1),
+      dlHover.storeSvgs.every((n) => n === 1) &&
+      dlHover.storeBorders.every((b) => b === 'none'),
     JSON.stringify(dlHover),
   );
   await page.screenshot({ path: path.join(OUT, '05_rail_download_qr_hover.png') });
 
-  // 6. Click Tải ứng dụng -> DownloadView page
+  // 6. Click Tải ứng dụng -> DownloadView page (white rounded panel, borderless QR, NO top-left back/logo/title)
   await page.locator('.rail-download-wrap button[aria-label="Tải ứng dụng"]').click();
   await page.waitForSelector('.download-page', { timeout: 8000 });
   await page.waitForTimeout(250);
   const dlPage = await page.evaluate(() => {
+    const pageEl = document.querySelector('.download-page');
+    const pcs = getComputedStyle(pageEl);
+    const qrBox = document.querySelector('.download-qr-box');
+    const qcs = getComputedStyle(qrBox);
     const h1 = document.querySelector('.download-hero-title');
     const topBtns = document.querySelectorAll('.download-topbar-actions button, .download-topbar-actions a').length;
     const heroBtns = document.querySelectorAll('.download-hero-actions button').length;
     const qr = !!document.querySelector('.download-qr-box svg');
-    const txt = document.querySelector('.download-page')?.innerText || '';
+    const hasTopLeftBrand = !!document.querySelector('.download-brand-group');
+    const txt = pageEl?.innerText || '';
     const sidebarHidden = !document.querySelector('.nav-sidebar');
     return {
       sidebarHidden,
+      bg: pcs.backgroundColor,
+      radius: pcs.borderTopLeftRadius,
+      qrBorder: `${qcs.borderTopWidth} ${qcs.borderTopStyle}`,
+      hasTopLeftBrand,
       h1FontSize: h1 ? parseFloat(getComputedStyle(h1).fontSize) : 0,
       topBtns,
       heroBtns,
@@ -216,8 +249,12 @@ try {
     };
   });
   record(
-    'DownloadView opens cleanly with big hero, top & bottom buttons, QR, Win/Mac/Linux + APK/iOS',
+    'DownloadView uses white rounded panel, borderless QR, and no top-left title/arrow',
     dlPage.sidebarHidden &&
+      dlPage.bg === 'rgb(255, 255, 255)' &&
+      parseFloat(dlPage.radius) >= 15 &&
+      dlPage.qrBorder === '0px none' &&
+      !dlPage.hasTopLeftBrand &&
       dlPage.h1FontSize >= 28 &&
       dlPage.topBtns >= 3 &&
       dlPage.heroBtns >= 2 &&

@@ -7,7 +7,7 @@ use qrcode::{QrCode, render::svg};
 
 use crate::{
     components::icons::{
-        AndroidIcon, AppStoreLogoIcon, BackIcon, DownloadIcon, LinuxLogoIcon, LogoIcon,
+        AndroidIcon, AppStoreLogoIcon, DownloadIcon, LinuxLogoIcon,
         MacLogoIcon, PlayStoreLogoIcon, WindowsLogoIcon,
     },
     platform,
@@ -60,21 +60,8 @@ pub fn DownloadView(
 
     rsx! {
         div { class: "download-page",
-            // Top bar with Back + quick platform buttons ("nút ở trên")
+            // Top bar with right-aligned quick platform buttons (no top-left title/back arrow)
             header { class: "download-topbar",
-                div { class: "download-brand-group",
-                    button {
-                        r#type: "button",
-                        class: "icon-btn",
-                        aria_label: "Quay lại tin nhắn",
-                        onclick: move |_| on_back.call(()),
-                        BackIcon {}
-                    }
-                    span { class: "download-brand-badge",
-                        LogoIcon { size: 22 }
-                        span { "chatw" }
-                    }
-                }
                 div { class: "download-topbar-actions",
                     button {
                         r#type: "button",

@@ -186,6 +186,7 @@ pub fn NavigationSidebar(
                         NavSection::Feed => "Mới",
                         NavSection::VicoAi => "Vico AI",
                         NavSection::Search => "Tìm kiếm",
+                        NavSection::Notifications => "Thông báo",
                         NavSection::Download => "Tải ứng dụng",
                         NavSection::Settings => "Cài đặt",
                     }
@@ -213,7 +214,7 @@ pub fn NavigationSidebar(
 
             match active_section {
                 NavSection::DirectMessages if dm_content.is_some() => rsx! { {dm_content} },
-                NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Download => rsx! {},
+                NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Notifications | NavSection::Download => rsx! {},
                 NavSection::DirectMessages => rsx! {
                     div { class: "sidebar-search",
                         div { class: "search-field",

@@ -54,10 +54,10 @@ pub fn AppRail(
     #[props(default)] on_select_feed: Option<EventHandler<()>>,
     #[props(default)] on_select_vico_ai: Option<EventHandler<()>>,
     #[props(default)] on_select_meet: Option<EventHandler<()>>,
+    #[props(default)] on_select_notifications: Option<EventHandler<()>>,
     #[props(default)] on_select_download: Option<EventHandler<String>>,
 ) -> Element {
     let mut menu_open = use_signal(|| false);
-    let mut notif_open = use_signal(|| false);
     let mut download_hover_open = use_signal(|| false);
     let mut download_qr_url = use_signal(|| String::from("https://github.com/kiyogo/chart/releases"));
     use_effect(move || {
@@ -76,6 +76,7 @@ pub fn AppRail(
     let in_feed = !in_mod && !in_left && active_section == NavSection::Feed;
     let in_vico = !in_mod && !in_left && active_section == NavSection::VicoAi;
     let in_meet = !in_mod && !in_left && active_section == NavSection::Meet;
+    let in_notifications = !in_mod && !in_left && active_section == NavSection::Notifications;
     let in_download = !in_mod && !in_left && active_section == NavSection::Download;
     let in_dm = !in_mod && !in_left && active_section == NavSection::DirectMessages;
     let in_friends = !in_mod && !in_left && active_section == NavSection::Friends;
@@ -83,7 +84,7 @@ pub fn AppRail(
     let in_settings = !in_mod && active_section == NavSection::Settings;
     let left_apps = enabled_left_apps();
     let custom_pages = enabled_rail_pages();
-    let switch_to_dm = in_settings || matches!(active_section, NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Download);
+    let switch_to_dm = in_settings || matches!(active_section, NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Notifications | NavSection::Download);
     let notif_count = unread_dm_count + pending_friend_count;
     let qr_svg = render_qr_svg(&download_qr_url(), "#0F172A", "#FFFFFF");
     let mut cls = String::from("app-rail");
@@ -305,59 +306,21 @@ pub fn AppRail(
             div { class: "rail-bottom",
                 button {
                     r#type: "button",
-                    class: if notif_open() { "rail-item compact active" } else { "rail-item compact" },
+                    class: if in_notifications { "rail-item compact active" } else { "rail-item compact" },
                     "data-tip": "Thông báo",
                     aria_label: "Thông báo",
-                    aria_haspopup: "menu",
-                    aria_expanded: "{notif_open()}",
                     onclick: move |_| {
-                        let next = !notif_open();
                         menu_open.set(false);
                         download_hover_open.set(false);
-                        notif_open.set(next);
+                        *ACTIVE_PLUGIN_PAGE.write() = None;
+                        *ACTIVE_LEFT_PLUGIN.write() = None;
+                        if let Some(cb) = &on_select_notifications {
+                            cb.call(());
+                        }
                     },
                     span { class: "rail-icon", BellIcon { size: 18 } }
                     if notif_count > 0 {
                         span { class: "rail-badge", "{badge(notif_count)}" }
-                    }
-                }
-                if notif_open() {
-                    button { r#type: "button", class: "menu-dismiss", aria_label: "Đóng thông báo", tabindex: "-1", onclick: move |_| notif_open.set(false) }
-                    div { class: "account-menu rail-menu notif-rail-menu", role: "menu",
-                        div { class: "menu-header", "Thông báo" }
-                        if unread_dm_count > 0 {
-                            button {
-                                r#type: "button",
-                                class: "menu-item",
-                                role: "menuitem",
-                                onclick: move |_| {
-                                    notif_open.set(false);
-                                    *ACTIVE_PLUGIN_PAGE.write() = None;
-                                    *ACTIVE_LEFT_PLUGIN.write() = None;
-                                    on_select_dm.call(());
-                                },
-                                MessageIcon { size: 16 }
-                                span { "{unread_dm_count} tin nhắn chưa đọc" }
-                            }
-                        }
-                        if pending_friend_count > 0 {
-                            button {
-                                r#type: "button",
-                                class: "menu-item",
-                                role: "menuitem",
-                                onclick: move |_| {
-                                    notif_open.set(false);
-                                    *ACTIVE_PLUGIN_PAGE.write() = None;
-                                    *ACTIVE_LEFT_PLUGIN.write() = None;
-                                    on_select_friends.call(());
-                                },
-                                FriendsIcon { size: 16 }
-                                span { "{pending_friend_count} lời mời kết bạn" }
-                            }
-                        }
-                        if unread_dm_count == 0 && pending_friend_count == 0 {
-                            div { class: "rail-notif-empty", "Không có thông báo mới" }
-                        }
                     }
                 }
 
@@ -372,7 +335,6 @@ pub fn AppRail(
                         title: "Tải ứng dụng",
                         onclick: move |_| {
                             menu_open.set(false);
-                            notif_open.set(false);
                             download_hover_open.set(false);
                             *ACTIVE_PLUGIN_PAGE.write() = None;
                             *ACTIVE_LEFT_PLUGIN.write() = None;
@@ -441,7 +403,6 @@ pub fn AppRail(
                     aria_label: "{t(\"nav.settings\")}",
                     onclick: move |_| {
                         menu_open.set(false);
-                        notif_open.set(false);
                         *ACTIVE_PLUGIN_PAGE.write() = None;
                         *ACTIVE_LEFT_PLUGIN.write() = None;
                         on_open_settings.call(());
@@ -456,7 +417,6 @@ pub fn AppRail(
                     aria_haspopup: "menu",
                     aria_expanded: "{menu_open()}",
                     onclick: move |_| {
-                        notif_open.set(false);
                         download_hover_open.set(false);
                         menu_open.set(!menu_open());
                     },
