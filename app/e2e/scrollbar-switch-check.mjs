@@ -137,9 +137,9 @@ try {
 
     const thumbY = Math.round(scrollInfo.top + (scrollInfo.bottom - scrollInfo.top) * 0.45);
 
-    async function measureScrollbarPixels(rectRight, sampleY) {
+    async function measureScrollbarPixels(rectRight, sampleY, padRight) {
       return await page.evaluate(
-        ({ right, y }) => {
+        ({ right, y, padR }) => {
           const c = document.getElementById('canvas-scrollbar-overlay');
           if (!c) return { found: false };
           const ctx2 = c.getContext('2d');
@@ -159,15 +159,26 @@ try {
               if (a > maxAlpha) maxAlpha = a;
             }
           }
+          const thumbLeftPx = minCol !== -1 ? (startX + minCol) / dpr : 0;
+          const thumbRightPx = maxCol !== -1 ? (startX + maxCol + 1) / dpr : 0;
+          const contentRightPx = right - padR;
           return {
             found: minCol !== -1,
             pixelWidth: minCol !== -1 ? (maxCol - minCol + 1) / dpr : 0,
             maxAlpha,
+            leftGapPx: minCol !== -1 ? Number((thumbLeftPx - contentRightPx).toFixed(2)) : null,
+            rightGapPx: minCol !== -1 ? Number((right - thumbRightPx).toFixed(2)) : null,
+            padRight: padR,
           };
         },
-        { right: rectRight, y: sampleY },
+        { right: rectRight, y: sampleY, padR: padRight },
       );
     }
+
+    const padRight = await page.evaluate((sel) => parseFloat(getComputedStyle(document.querySelector(sel)).paddingRight) || 0, selector);
+    const hoverX = padRight >= 5 && padRight <= 16
+      ? Math.round(scrollInfo.right - padRight / 2)
+      : Math.round(scrollInfo.right - 5);
 
     // Trigger scroll (cursor away from right edge) -> expect thin ~3px scrollbar
     await page.mouse.move(scrollInfo.left + 80, thumbY);
@@ -176,32 +187,48 @@ try {
       el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) * 0.45);
     }, selector);
     await page.waitForTimeout(180);
-    const thinSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
+    const thinSample = await measureScrollbarPixels(scrollInfo.right, thumbY, padRight);
     await page.screenshot({ path: path.join(OUT, `04_${selector.replace(/[^a-z]/g, '')}_thin.png`) });
     record(
       `${label}: scrollbar on scroll is thin (~3px)`,
-      thinSample.found && thinSample.pixelWidth >= 2 && thinSample.pixelWidth <= 4.2,
+      thinSample.found && thinSample.pixelWidth >= 2 && thinSample.pixelWidth <= 4.0,
       JSON.stringify(thinSample),
     );
+
+    // For narrow-gutter containers (sidebars/nav lists), verify thumb is horizontally centered and never touches content on left
+    if (padRight >= 5 && padRight <= 16) {
+      record(
+        `${label}: scrollbar is centered in right gutter (no left overlap)`,
+        thinSample.found &&
+          thinSample.leftGapPx >= 1.0 &&
+          thinSample.rightGapPx >= 1.0 &&
+          Math.abs(thinSample.leftGapPx - thinSample.rightGapPx) <= 1.5,
+        `padRight=${padRight}px, leftGap=${thinSample.leftGapPx}px, rightGap=${thinSample.rightGapPx}px, w=${thinSample.pixelWidth}px`,
+      );
+    }
 
     // Move cursor to proximity zone (15px from right edge) -> expect thin ~3px
     await page.mouse.move(scrollInfo.right - 15, thumbY);
     await page.waitForTimeout(260);
-    const proxSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
+    const proxSample = await measureScrollbarPixels(scrollInfo.right, thumbY, padRight);
     record(
       `${label}: scrollbar in proximity (15px away) stays thin (~3px)`,
-      proxSample.found && proxSample.pixelWidth >= 2 && proxSample.pixelWidth <= 4.5,
+      proxSample.found && proxSample.pixelWidth >= 2 && proxSample.pixelWidth <= 4.0,
       JSON.stringify(proxSample),
     );
 
-    // Move cursor directly onto the scrollbar track/thumb (5px from right edge) -> expect subtle expansion (~5px)
-    await page.mouse.move(scrollInfo.right - 5, thumbY);
+    // Move cursor directly onto the scrollbar track/thumb -> must NOT enlarge or jump darker!
+    await page.mouse.move(hoverX, thumbY);
     await page.waitForTimeout(380);
-    const hoverSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
+    const hoverSample = await measureScrollbarPixels(scrollInfo.right, thumbY, padRight);
     await page.screenshot({ path: path.join(OUT, `05_${selector.replace(/[^a-z]/g, '')}_hover.png`) });
     record(
-      `${label}: scrollbar on direct hover expands subtly (~5px, not oversized)`,
-      hoverSample.found && hoverSample.pixelWidth >= 4.2 && hoverSample.pixelWidth <= 6.8 && hoverSample.pixelWidth > thinSample.pixelWidth + 0.8,
+      `${label}: scrollbar on direct hover does NOT enlarge (stays constant ~3px)`,
+      hoverSample.found &&
+        hoverSample.pixelWidth >= 2 &&
+        hoverSample.pixelWidth <= 4.0 &&
+        Math.abs(hoverSample.pixelWidth - thinSample.pixelWidth) <= 0.5 &&
+        Math.abs(hoverSample.maxAlpha - thinSample.maxAlpha) <= 10,
       `thin=${thinSample.pixelWidth}px -> prox=${proxSample.pixelWidth}px -> hover=${hoverSample.pixelWidth}px (alpha ${thinSample.maxAlpha} -> ${hoverSample.maxAlpha})`,
     );
 
@@ -228,8 +255,11 @@ try {
 
     // Drag thumb down 80px and verify scrollTop increases
     const beforeDrag = await page.evaluate((sel) => document.querySelector(sel).scrollTop, selector);
+    const dragStartY = Math.round(scrollInfo.top + 32);
+    await page.mouse.move(hoverX, dragStartY);
+    await page.waitForTimeout(80);
     await page.mouse.down();
-    await page.mouse.move(scrollInfo.right - 5, thumbY + 80, { steps: 6 });
+    await page.mouse.move(hoverX, dragStartY + 80, { steps: 6 });
     await page.mouse.up();
     await page.waitForTimeout(100);
     const afterDrag = await page.evaluate((sel) => document.querySelector(sel).scrollTop, selector);
@@ -242,7 +272,7 @@ try {
     // Move cursor away and wait for fade out
     await page.mouse.move(scrollInfo.left + 80, thumbY);
     await page.waitForTimeout(1300);
-    const idleSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
+    const idleSample = await measureScrollbarPixels(scrollInfo.right, thumbY, padRight);
     record(
       `${label}: scrollbar fades out cleanly when idle`,
       !idleSample.found || idleSample.maxAlpha === 0,
@@ -251,6 +281,11 @@ try {
   }
 
   await testScrollbarContainer('.settings-body', 'Settings body');
+  await page.setViewportSize({ width: 1440, height: 600 });
+  await page.waitForTimeout(150);
+  await testScrollbarContainer('.settings-nav', 'Settings nav');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(150);
   await testScrollbarContainer('.sidebar-scrollable', 'Sidebar channels');
 
   record('No uncaught page errors', errors.length === 0, errors.join('; '));

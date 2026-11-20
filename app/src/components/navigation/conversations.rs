@@ -685,21 +685,8 @@ pub fn StoriesNotesBar(
             div { class: "modal-overlay", onclick: move |_| edit_my_note.set(false),
                 div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú và tin của bạn", onclick: move |e| e.stop_propagation(),
                     div { class: "modal-header",
-                        div { style: "display: flex; gap: 8px; align-items: center;",
-                            button {
-                                r#type: "button",
-                                class: if active_tab() == "thought" { "btn-primary" } else { "btn-ghost" },
-                                style: "padding: 4px 10px; font-size: 0.8125rem;",
-                                onclick: move |_| active_tab.set("thought"),
-                                "Chia sẻ suy nghĩ"
-                            }
-                            button {
-                                r#type: "button",
-                                class: if active_tab() == "story" { "btn-primary" } else { "btn-ghost" },
-                                style: "padding: 4px 10px; font-size: 0.8125rem;",
-                                onclick: move |_| active_tab.set("story"),
-                                "Tạo tin ảnh"
-                            }
+                        h3 { class: "modal-title",
+                            if active_tab() == "thought" { "Chia sẻ suy nghĩ" } else { "Tạo tin ảnh" }
                         }
                         button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| edit_my_note.set(false), CloseIcon { size: 18 } }
                     }

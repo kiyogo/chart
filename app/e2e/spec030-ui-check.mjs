@@ -108,19 +108,29 @@ try {
   );
   await page.screenshot({ path: path.join(OUT, '01_sidebar_notes_bubble.png') });
 
-  // Click thought bubble -> must open "thought" tab
+  // Click thought bubble -> must open "thought" modal (title: "Chia sẻ suy nghĩ", no switcher buttons)
   await page.locator('.my-note-tile .note-bubble-btn').click();
   await page.waitForSelector('.note-modal', { timeout: 5000 });
-  const thoughtActiveText = await page.locator('.note-modal .modal-header button.btn-primary').innerText().catch(() => '');
-  record('Clicking "Chia sẻ suy nghĩ" opens Thought tab', thoughtActiveText.includes('Chia sẻ suy nghĩ'), thoughtActiveText);
+  const thoughtHeaderBtns = await page.locator('.note-modal .modal-header button:not(.icon-btn)').count();
+  const thoughtTitle = await page.locator('.note-modal .modal-header .modal-title').innerText().catch(() => '');
+  record('Clicking "Chia sẻ suy nghĩ" opens Thought modal with title and no header toggle buttons',
+    thoughtTitle.includes('Chia sẻ suy nghĩ') && thoughtHeaderBtns === 0,
+    `title="${thoughtTitle}", extraBtns=${thoughtHeaderBtns}`
+  );
+  await page.screenshot({ path: path.join(OUT, '01b_note_modal_thought.png') });
   await page.locator('.note-modal button[aria-label="Đóng"]').click();
   await page.waitForTimeout(200);
 
-  // Click + badge -> must open "story" ("Tạo tin ảnh") tab
+  // Click + badge -> must open "story" modal (title: "Tạo tin ảnh", no switcher buttons)
   await page.locator('.my-note-tile .note-plus-badge').click();
   await page.waitForSelector('.note-modal', { timeout: 5000 });
-  const storyActiveText = await page.locator('.note-modal .modal-header button.btn-primary').innerText().catch(() => '');
-  record('Clicking "+" badge opens Tạo tin tab', storyActiveText.includes('Tạo tin'), storyActiveText);
+  const storyHeaderBtns = await page.locator('.note-modal .modal-header button:not(.icon-btn)').count();
+  const storyTitle = await page.locator('.note-modal .modal-header .modal-title').innerText().catch(() => '');
+  record('Clicking "+" badge opens Tạo tin modal with title and no header toggle buttons',
+    storyTitle.includes('Tạo tin') && storyHeaderBtns === 0,
+    `title="${storyTitle}", extraBtns=${storyHeaderBtns}`
+  );
+  await page.screenshot({ path: path.join(OUT, '01c_note_modal_story.png') });
   await page.locator('.note-modal button[aria-label="Đóng"]').click();
   await page.waitForTimeout(200);
 

@@ -4,10 +4,11 @@
  *
  * Behaviors:
  * 1. Invisible by default when idle.
- * 2. Reveals as a slender 3px indicator when scrolling or when cursor approaches the scroll edge.
- * 3. Smoothly expands from 3px to 8px with higher contrast when cursor hovers over the scrollbar thumb or drags it.
- * 4. Supports both standard containers and flex-direction: column-reverse (chat messages).
- * 5. Interactive: draggable thumb with 1:1 scroll synchronization.
+ * 2. Reveals as a constant slender 3px indicator when scrolling or when cursor approaches the scroll edge.
+ * 3. Keeps constant 3px width and gentle appearance on hover (no enlargement or jarring color jump).
+ * 4. Automatically centers horizontally inside narrow right-padding gutters (sidebars, nav lists) so it never touches inner items.
+ * 5. Supports both standard containers and flex-direction: column-reverse (chat messages).
+ * 6. Interactive: draggable thumb with 1:1 scroll synchronization.
  */
 
 (function () {
@@ -17,7 +18,7 @@
   let ctx = null;
   let dpr = window.devicePixelRatio || 1;
 
-  // Map<HTMLElement, { opacity, targetOpacity, thumbW, isNearEdge, isThumbHovered, isDragging, lastScrollTime, thumbRect }>
+  // Map<HTMLElement, { opacity, targetOpacity, isNearEdge, isThumbHovered, isDragging, lastScrollTime, thumbRect }>
   const activeEntries = new Map();
 
   let dragTarget = null;
@@ -35,15 +36,13 @@
 
   // Configuration constants
   const PROXIMITY_PX = 48;
-  const HOVER_ENTER_PX = 7;
-  const HOVER_EXIT_PX = 10;
   const EDGE_OUTER_TOLERANCE_PX = 2;
   const THUMB_Y_TOLERANCE_PX = 4;
   const FADE_TIMEOUT_MS = 850;
-  const THUMB_NORMAL_WIDTH = 3;
-  const THUMB_EXPANDED_WIDTH = 5;
+  const THUMB_WIDTH = 3;
   const THUMB_MIN_HEIGHT = 28;
   const THUMB_EDGE_MARGIN = 4;
+  const GUTTER_MAX_PAD_RIGHT = 16;
   const TRACK_INSET_Y = 12;
 
   const SCROLLABLE_FALLBACK_SELECTOR =
@@ -120,18 +119,29 @@
     const clientH = isDoc ? window.innerHeight : el.clientHeight;
     const scrollH = isDoc ? document.documentElement.scrollHeight : el.scrollHeight;
     const scrollT = isDoc ? (window.scrollY || document.documentElement.scrollTop) : el.scrollTop;
-    const isColReverse = !isDoc && window.getComputedStyle(el).flexDirection === 'column-reverse';
+    const cs = (!isDoc && el) ? window.getComputedStyle(el) : null;
+    const isColReverse = !!(cs && cs.flexDirection === 'column-reverse');
 
     let insetY = 0;
-    if (!isDoc && el) {
-      const cs = window.getComputedStyle(el);
+    let padRight = 0;
+    if (cs) {
       const rTop = parseFloat(cs.borderTopRightRadius) || 0;
       const rBot = parseFloat(cs.borderBottomRightRadius) || 0;
       const maxR = Math.max(rTop, rBot);
       insetY = maxR > 0 ? Math.max(TRACK_INSET_Y, Math.round(maxR * 0.75)) : TRACK_INSET_Y;
+      padRight = parseFloat(cs.paddingRight) || 0;
     }
     const maxInset = Math.max(0, Math.floor((Math.min(rect.height, clientH) - THUMB_MIN_HEIGHT - 8) / 2));
     insetY = Math.min(insetY, maxInset);
+
+    // Center the 3px scrollbar horizontally inside narrow sidebar/nav right-padding gutters
+    // so it has equal breathing room from both the inner content on the left and the panel border on the right.
+    let edgeMargin = THUMB_EDGE_MARGIN;
+    if (!isDoc && padRight >= THUMB_WIDTH + 2 && padRight <= GUTTER_MAX_PAD_RIGHT) {
+      edgeMargin = (padRight - THUMB_WIDTH) / 2;
+    }
+    const rawThumbX = rect.right - THUMB_WIDTH - edgeMargin;
+    const thumbX = Math.round(rawThumbX * dpr) / dpr;
 
     const maxScroll = Math.max(1, scrollH - clientH);
     const trackTop = rect.top + insetY;
@@ -145,7 +155,7 @@
       : Math.max(0, Math.min(1, scrollT / maxScroll));
 
     const thumbY = trackTop + Math.round(ratio * thumbMaxY);
-    return { isDoc, isColReverse, rect, trackTop, insetY, clientH, scrollH, scrollT, maxScroll, trackH, thumbH, thumbMaxY, thumbY };
+    return { isDoc, isColReverse, rect, trackTop, insetY, padRight, edgeMargin, thumbX, clientH, scrollH, scrollT, maxScroll, trackH, thumbH, thumbMaxY, thumbY };
   }
 
   function findScrollableContainerAt(target, clientX, clientY) {
@@ -219,7 +229,6 @@
       entry = {
         opacity: 0,
         targetOpacity: 0,
-        thumbW: THUMB_NORMAL_WIDTH,
         isNearEdge: false,
         isThumbHovered: false,
         isDragging: false,
@@ -248,11 +257,8 @@
       const distFromRight = m.rect.right - x;
       const withinY = y >= m.rect.top && y <= m.rect.bottom;
       const isNearEdge = withinY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= PROXIMITY_PX;
-      const existing = activeEntries.get(el);
-      const wasHovered = existing ? existing.isThumbHovered : false;
-      const xLimit = wasHovered ? HOVER_EXIT_PX : HOVER_ENTER_PX;
       const withinThumbY = y >= m.thumbY - THUMB_Y_TOLERANCE_PX && y <= m.thumbY + m.thumbH + THUMB_Y_TOLERANCE_PX;
-      const isThumbHovered = withinThumbY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= xLimit;
+      const isThumbHovered = withinThumbY && x >= m.thumbX - 3 && x <= m.thumbX + THUMB_WIDTH + 3 + EDGE_OUTER_TOLERANCE_PX;
 
       if (isNearEdge || isThumbHovered || activeEntries.has(el)) {
         const entry = getEntry(el);
@@ -328,13 +334,10 @@
 
       const scrollAge = now - entry.lastScrollTime;
       const isScrollingRecently = entry.lastScrollTime > 0 && scrollAge < FADE_TIMEOUT_MS;
-      const isExpanded = entry.isThumbHovered || entry.isDragging;
 
       if (entry.isDragging) {
-        entry.targetOpacity = 1.0;
-      } else if (entry.isThumbHovered) {
-        entry.targetOpacity = 0.94;
-      } else if (entry.isNearEdge || isScrollingRecently) {
+        entry.targetOpacity = 0.9;
+      } else if (entry.isThumbHovered || entry.isNearEdge || isScrollingRecently) {
         entry.targetOpacity = 0.72;
       } else {
         entry.targetOpacity = 0.0;
@@ -353,15 +356,6 @@
         hasActiveAnimations = true;
       }
 
-      // Smoothly animate thumb width (3px <-> 9px)
-      const targetWidth = isExpanded ? THUMB_EXPANDED_WIDTH : THUMB_NORMAL_WIDTH;
-      entry.thumbW += (targetWidth - entry.thumbW) * 0.24;
-      if (Math.abs(targetWidth - entry.thumbW) < 0.05) {
-        entry.thumbW = targetWidth;
-      } else {
-        hasActiveAnimations = true;
-      }
-
       if (entry.opacity <= 0.005) {
         entry.opacity = 0;
         entry.thumbRect = null;
@@ -374,14 +368,16 @@
       const m = getScrollMetrics(el);
       if (m.rect.bottom <= 0 || m.rect.top >= window.innerHeight || m.rect.height <= 10) continue;
 
-      const thumbW = entry.thumbW;
-      const thumbX = m.rect.right - thumbW - THUMB_EDGE_MARGIN;
+      const thumbW = THUMB_WIDTH;
+      const thumbX = m.thumbX;
 
       entry.thumbRect = {
-        x: m.rect.right - HOVER_EXIT_PX,
+        x: thumbX - 3,
         y: m.thumbY - THUMB_Y_TOLERANCE_PX,
-        w: HOVER_EXIT_PX + EDGE_OUTER_TOLERANCE_PX,
+        w: thumbW + 6 + EDGE_OUTER_TOLERANCE_PX,
         h: m.thumbH + THUMB_Y_TOLERANCE_PX * 2,
+        visualX: thumbX,
+        visualW: thumbW,
         visualY: m.thumbY,
         visualH: m.thumbH,
         elRect: m.rect
@@ -390,16 +386,10 @@
       ctx.save();
       ctx.globalAlpha = entry.opacity;
 
-      const hoverProgress = Math.max(0, Math.min(1, (thumbW - THUMB_NORMAL_WIDTH) / (THUMB_EXPANDED_WIDTH - THUMB_NORMAL_WIDTH)));
       if (dark) {
-        const a = 0.20 + hoverProgress * 0.18;
-        ctx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
       } else {
-        const r = Math.round(108 - hoverProgress * 24);
-        const g = Math.round(120 - hoverProgress * 26);
-        const b = Math.round(138 - hoverProgress * 28);
-        const a = 0.24 + hoverProgress * 0.18;
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
+        ctx.fillStyle = 'rgba(108, 120, 138, 0.25)';
       }
 
       drawRoundedPill(ctx, thumbX, m.thumbY, thumbW, m.thumbH, thumbW / 2);
@@ -499,8 +489,7 @@
       }
 
       // Hit on track
-      const distFromRight = tr.elRect.right - x;
-      if (distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= HOVER_EXIT_PX && y >= tr.elRect.top && y <= tr.elRect.bottom) {
+      if (x >= tr.visualX - 2 && x <= tr.elRect.right + EDGE_OUTER_TOLERANCE_PX && y >= tr.elRect.top && y <= tr.elRect.bottom) {
         e.preventDefault();
         e.stopPropagation();
 

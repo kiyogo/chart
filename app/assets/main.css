@@ -2040,7 +2040,7 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   flex-shrink: 0;
   background: var(--bg-sidebar);
   border-radius: var(--panel-radius);
-  padding: var(--space-4) var(--space-2);
+  padding: var(--space-4) 0.6rem;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -5229,6 +5229,18 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+.note-modal .modal-header {
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.note-modal .modal-title {
+  font-size: 1.0625rem;
+  font-weight: var(--weight-bold);
+  margin: 0;
+  line-height: var(--leading-tight);
 }
 .note-emoji-row {
   display: flex;
