@@ -107,6 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .timeout(Duration::from_secs(10))
         .build()?;
     let storage_registry = Arc::new(storage::StorageRegistry::from_uploads_dir(&config.uploads_dir));
+    let sfu = Arc::new(calls::sfu::SfuHandle::new());
 
     let state = AppState {
         config: Arc::new(config.clone()),
@@ -116,6 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ws_hub,
         oauth_tickets,
         storage: storage_registry,
+        sfu,
     };
 
     // 6. Build API router

@@ -3,11 +3,15 @@ use dioxus::prelude::*;
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{CheckIcon, CopyIcon, MicIcon, MicOffIcon, MonitorIcon, PhoneOffIcon, VideoIcon, VideoOffIcon},
+        icons::{
+            CheckIcon, CopyIcon, MicIcon, MicOffIcon, MonitorIcon, PhoneOffIcon, VideoIcon,
+            VideoOffIcon,
+        },
     },
     media::{
-        attach_local_stream_to_element, attach_remote_stream_to_element, check_active_speaker,
-        toggle_camera, toggle_mic, toggle_screen_share,
+        SfuUiMediaState, attach_local_stream_to_element, attach_remote_stream_to_element,
+        init_webrtc_manager, poll_sfu_ui_state, start_local_media, toggle_camera_async, toggle_mic,
+        toggle_screen_share,
     },
     models::{CallParticipantItem, CallSessionItem},
     platform,
@@ -23,14 +27,44 @@ pub fn ActiveCallOverlay(
     let mut is_muted = use_signal(|| false);
     let mut is_camera_off = use_signal(|| session.call_type == "audio");
     let mut is_screen_sharing = use_signal(|| false);
+    let mut has_local_cam = use_signal(|| false);
+    let mut remote_screen_user_id = use_signal(|| Option::<String>::None);
+    let mut remote_cam_user_ids = use_signal(Vec::<String>::new);
+    let mut ice_state = use_signal(|| "connecting".to_string());
     let mut copied_link = use_signal(|| false);
     let mut origin = use_signal(|| "http://127.0.0.1:8085".to_string());
     let mut active_speaker_id = use_signal(|| Option::<String>::None);
     let call_seconds = use_signal(|| 0u64);
+    let mut sfu_booted_for_id = use_signal(String::new);
 
-    let is_video = session.call_type == "video" || is_screen_sharing();
     let is_group = session.group_id.is_some();
     let call_id = session.id.clone();
+
+    // Ensure SFU WebRTC session is initialized cleanly for ANY entry point (DM, Group, Meet, Accept)
+    {
+        let cid_init = call_id.clone();
+        let me_init = current_user_id.clone();
+        let want_video = session.call_type == "video";
+        use_effect(move || {
+            if sfu_booted_for_id() != cid_init {
+                sfu_booted_for_id.set(cid_init.clone());
+                let cid_run = cid_init.clone();
+                let me_run = me_init.clone();
+                spawn(async move {
+                    // Only initialize if not already initialized for this callId
+                    let mut eval = dioxus::document::eval(&format!(
+                        "dioxus.send(Boolean(window.__chatwWebRTC && window.__chatwWebRTC.callId === {} && !window.__chatwWebRTC.disposed));",
+                        serde_json::to_string(&cid_run).unwrap_or_default()
+                    ));
+                    let already = eval.recv::<bool>().await.unwrap_or(false);
+                    if !already {
+                        init_webrtc_manager(&cid_run, want_video, &me_run);
+                        let _ = start_local_media(want_video).await;
+                    }
+                });
+            }
+        });
+    }
 
     use_effect(move || {
         spawn(async move {
@@ -42,41 +76,54 @@ pub fn ActiveCallOverlay(
     });
 
     // Call duration timer
-    use_effect({
-        move || {
-            let mut sec = call_seconds;
-            spawn(async move {
-                loop {
-                    crate::platform::sleep_ms(1000).await;
-                    sec.with_mut(|s| *s += 1);
-                }
-            });
-        }
+    use_effect(move || {
+        let mut sec = call_seconds;
+        spawn(async move {
+            loop {
+                crate::platform::sleep_ms(1000).await;
+                sec.with_mut(|s| *s += 1);
+            }
+        });
     });
 
-    // Active speaker detection polling
+    // Continuous SFU UI sync + stream element re-attachment + active speaker polling
     use_effect(move || {
         spawn(async move {
             loop {
-                crate::platform::sleep_ms(300).await;
-                if let Some(speaker) = check_active_speaker().await {
-                    active_speaker_id.set(Some(speaker));
-                } else {
-                    active_speaker_id.set(None);
+                crate::platform::sleep_ms(220).await;
+                let st: SfuUiMediaState = poll_sfu_ui_state().await;
+                if is_screen_sharing() != st.local_screen {
+                    is_screen_sharing.set(st.local_screen);
+                }
+                if has_local_cam() != st.local_cam {
+                    has_local_cam.set(st.local_cam);
+                }
+                if remote_screen_user_id() != st.remote_screen_user_id {
+                    remote_screen_user_id.set(st.remote_screen_user_id);
+                }
+                if remote_cam_user_ids() != st.remote_cam_user_ids {
+                    remote_cam_user_ids.set(st.remote_cam_user_ids);
+                }
+                if ice_state() != st.ice_state && !st.ice_state.is_empty() {
+                    ice_state.set(st.ice_state);
+                }
+                if active_speaker_id() != st.active_speaker {
+                    active_speaker_id.set(st.active_speaker);
                 }
             }
         });
     });
 
-    // Ensure local stream is attached to local video
+    // Ensure local stream is attached on updates
     use_effect(move || {
+        let _ = (is_screen_sharing(), has_local_cam(), is_camera_off());
         spawn(async move {
-            crate::platform::sleep_ms(150).await;
+            crate::platform::sleep_ms(50).await;
             attach_local_stream_to_element("webrtc-local-video");
+            attach_local_stream_to_element("webrtc-local-screen-video");
         });
     });
 
-    // Ensure remote streams are attached to remote videos
     let peers: Vec<CallParticipantItem> = session
         .participants
         .iter()
@@ -89,8 +136,13 @@ pub fn ActiveCallOverlay(
         let peers = peers.clone();
         move || {
             let peers = peers.clone();
+            let r_scr = remote_screen_user_id();
+            let _ = remote_cam_user_ids();
             spawn(async move {
-                crate::platform::sleep_ms(200).await;
+                crate::platform::sleep_ms(60).await;
+                if let Some(ref presenter_uid) = r_scr {
+                    attach_remote_stream_to_element("webrtc-remote-screen-video", presenter_uid);
+                }
                 for p in peers {
                     let vid_id = format!("webrtc-remote-video-{}", p.user_id);
                     let aud_id = format!("webrtc-remote-audio-{}", p.user_id);
@@ -123,12 +175,13 @@ pub fn ActiveCallOverlay(
     let handle_toggle_camera = {
         let cid = call_id.clone();
         move |_| {
-            let new_off = !is_camera_off();
-            is_camera_off.set(new_off);
-            toggle_camera(new_off);
+            let want_off = !is_camera_off();
+            is_camera_off.set(want_off);
             let cid = cid.clone();
             spawn(async move {
-                let _ = calls_update_state(&cid, None, Some(new_off)).await;
+                let actual_off = toggle_camera_async(want_off).await;
+                is_camera_off.set(actual_off);
+                let _ = calls_update_state(&cid, None, Some(actual_off)).await;
             });
         }
     };
@@ -138,6 +191,10 @@ pub fn ActiveCallOverlay(
         spawn(async move {
             let active = toggle_screen_share(want).await;
             is_screen_sharing.set(active);
+            if active {
+                crate::platform::sleep_ms(60).await;
+                attach_local_stream_to_element("webrtc-local-screen-video");
+            }
         });
     };
 
@@ -152,14 +209,24 @@ pub fn ActiveCallOverlay(
     };
 
     let meet_code_opt = session.meet_code.clone();
+    let remote_presenter_name = remote_screen_user_id().and_then(|uid| {
+        peers
+            .iter()
+            .find(|p| p.user_id == uid)
+            .map(|p| p.username.clone())
+    });
+    let show_stage = is_screen_sharing() || remote_screen_user_id().is_some();
+    let sfu_connected = matches!(ice_state().as_str(), "connected" | "completed");
+    let show_local_cam = has_local_cam() && !is_camera_off();
+    let active_remote_cams = remote_cam_user_ids();
 
     rsx! {
         div {
             class: "settings-modal-backdrop active-call-overlay",
             style: "background: #0B0F17; z-index: 9999; display: flex; flex-direction: column; padding: 16px; box-sizing: border-box;",
             // Top Header
-            div { style: "display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 1200px; margin: 0 auto 16px auto; flex-wrap: wrap; gap: 12px;",
-                div { style: "display: flex; align-items: center; gap: 12px;",
+            div { style: "display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 1280px; margin: 0 auto 12px auto; flex-wrap: wrap; gap: 12px;",
+                div { style: "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;",
                     div { style: "background: rgba(255, 255, 255, 0.1); padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; color: #10B981; display: flex; align-items: center; gap: 6px;",
                         span { style: "width: 8px; height: 8px; border-radius: 50%; background: #10B981; display: inline-block;" }
                         "{format_duration(call_seconds())}"
@@ -167,6 +234,15 @@ pub fn ActiveCallOverlay(
                     span { style: "font-weight: 600; font-size: 16px; color: #F8FAFC;", "{call_title}" }
                     span { style: "background: rgba(255, 255, 255, 0.08); padding: 4px 10px; border-radius: 12px; font-size: 12px; color: #94A3B8;",
                         "{total_participants} người tham gia"
+                    }
+                    span {
+                        class: "sfu-status-pill",
+                        style: if sfu_connected {
+                            "background: rgba(16, 185, 129, 0.15); color: #34D399; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;"
+                        } else {
+                            "background: rgba(59, 130, 246, 0.15); color: #93C5FD; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;"
+                        },
+                        if sfu_connected { "Máy chủ SFU · Đã kết nối" } else { "Máy chủ SFU · Đang kết nối" }
                     }
                 }
                 if let Some(code) = meet_code_opt {
@@ -206,125 +282,126 @@ pub fn ActiveCallOverlay(
                 }
             }
 
-            // Media Grid View
+            // Main Stage Area: Google Meet / Zoom Presentation Stage + Participant Strip
             div {
-                style: "flex: 1; width: 100%; max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; border-radius: 16px; background: #131B2E;",
-                if is_video {
-                    // Video View
+                style: "flex: 1; min-height: 0; width: 100%; max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; overflow: hidden; border-radius: 16px; background: #131B2E; padding: 12px; box-sizing: border-box;",
+
+                // Screen Share Stage (shown whenever anyone presents)
+                if show_stage {
                     div {
-                        style: "width: 100%; height: 100%; display: grid; gap: 12px; padding: 12px; box-sizing: border-box; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-content: center;",
-                        // Local video tile
-                        div {
-                            style: "position: relative; background: #1E293B; border-radius: 12px; overflow: hidden; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;",
-                            video {
-                                id: "webrtc-local-video",
-                                autoplay: true,
-                                playsinline: true,
-                                muted: true,
-                                style: if is_camera_off() { "display: none;" } else { "width: 100%; height: 100%; object-fit: cover;" }
-                            }
-                            if is_camera_off() {
-                                div { style: "display: flex; flex-direction: column; align-items: center; gap: 8px;",
-                                    Avatar {
-                                        user_id: current_user_id.clone(),
-                                        username: "Bạn".to_string(),
-                                        avatar_url: None,
-                                        size: 64,
+                        class: "call-presentation-stage",
+                        style: "flex: 1; min-height: 240px; width: 100%; display: flex; gap: 12px; overflow: hidden;",
+                        if remote_screen_user_id().is_some() {
+                            div {
+                                style: "flex: 1; min-width: 0; position: relative; background: #0B0F17; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;",
+                                video {
+                                    id: "webrtc-remote-screen-video",
+                                    autoplay: true,
+                                    playsinline: true,
+                                    style: "width: 100%; height: 100%; object-fit: contain; display: block;"
+                                }
+                                div { style: "position: absolute; top: 10px; left: 10px; background: rgba(15, 23, 42, 0.78); color: #F8FAFC; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;",
+                                    MonitorIcon { size: 14 }
+                                    if let Some(ref pname) = remote_presenter_name {
+                                        "{pname} đang chia sẻ màn hình"
+                                    } else {
+                                        "Màn hình đang được chia sẻ"
                                     }
-                                    span { style: "color: #94A3B8; font-size: 13px;", "Camera đang tắt" }
                                 }
                             }
-                            div { style: "position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white;",
-                                "Bạn"
-                                if is_muted() { " · Đã tắt tiếng" }
-                            }
                         }
-
-                        // Remote video tiles
-                        for p in peers.iter() {
-                            {
-                                let uid = p.user_id.clone();
-                                let is_speaking = active_speaker_id().as_deref() == Some(&uid);
-                                let border_style = if is_speaking { "transparent; background: #173A2C" } else { "transparent" };
-                                rsx! {
-                                    div {
-                                        key: "{p.user_id}",
-                                        style: "position: relative; background: #1E293B; border-radius: 12px; overflow: hidden; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; border: {border_style};",
-                                        video {
-                                            id: "webrtc-remote-video-{p.user_id}",
-                                            autoplay: true,
-                                            playsinline: true,
-                                            style: if p.camera_off { "display: none;" } else { "width: 100%; height: 100%; object-fit: cover;" }
-                                        }
-                                        audio {
-                                            id: "webrtc-remote-audio-{p.user_id}",
-                                            autoplay: true,
-                                        }
-                                        if p.camera_off {
-                                            div { style: "display: flex; flex-direction: column; align-items: center; gap: 8px;",
-                                                Avatar {
-                                                    user_id: p.user_id.clone(),
-                                                    username: p.username.clone(),
-                                                    avatar_url: p.avatar_url.clone(),
-                                                    size: 64,
-                                                }
-                                                span { style: "color: #94A3B8; font-size: 13px;", "{p.username}" }
-                                            }
-                                        }
-                                        div { style: "position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white;",
-                                            "{p.username}"
-                                            if p.muted { " · Đã tắt tiếng" }
-                                        }
-                                    }
+                        if is_screen_sharing() {
+                            div {
+                                style: "flex: 1; min-width: 0; position: relative; background: #0B0F17; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;",
+                                video {
+                                    id: "webrtc-local-screen-video",
+                                    autoplay: true,
+                                    playsinline: true,
+                                    muted: true,
+                                    style: "width: 100%; height: 100%; object-fit: contain; display: block;"
+                                }
+                                div { style: "position: absolute; top: 10px; left: 10px; background: rgba(37, 99, 235, 0.88); color: #FFFFFF; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;",
+                                    MonitorIcon { size: 14 }
+                                    "Bạn đang chia sẻ màn hình"
                                 }
                             }
                         }
                     }
-                } else {
-                    // Audio View: Clean tiles with active speaker aura
+                }
+
+                // Participant Tiles Grid (full area when no screen share, compact strip at bottom when presenting)
+                div {
+                    style: if show_stage {
+                        "width: 100%; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 240px)); justify-content: center; flex-shrink: 0;"
+                    } else {
+                        "flex: 1; min-height: 0; width: 100%; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-content: center;"
+                    },
+                    // Local tile
                     div {
-                        style: "display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: center; padding: 24px;",
-                        // Local tile
-                        div {
-                            style: "background: #1E293B; border-radius: 16px; padding: 24px 32px; display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 140px;",
-                            Avatar {
-                                user_id: current_user_id.clone(),
-                                username: "Bạn".to_string(),
-                                avatar_url: None,
-                                size: 80,
-                            }
-                            span { style: "font-weight: 500; font-size: 14px; color: #F8FAFC;", "Bạn" }
-                            if is_muted() {
-                                span { style: "font-size: 11px; color: #EF4444; background: rgba(239, 68, 68, 0.15); padding: 2px 8px; border-radius: 10px;", "Tắt mic" }
+                        style: "position: relative; background: #1E293B; border-radius: 12px; overflow: hidden; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;",
+                        video {
+                            id: "webrtc-local-video",
+                            autoplay: true,
+                            playsinline: true,
+                            muted: true,
+                            style: if show_local_cam { "width: 100%; height: 100%; object-fit: cover; display: block;" } else { "display: none;" }
+                        }
+                        if !show_local_cam {
+                            div { style: "display: flex; flex-direction: column; align-items: center; gap: 8px;",
+                                Avatar {
+                                    user_id: current_user_id.clone(),
+                                    username: "Bạn".to_string(),
+                                    avatar_url: None,
+                                    size: if show_stage { 44 } else { 64 },
+                                }
+                                if !show_stage {
+                                    span { style: "color: #94A3B8; font-size: 13px;", "Camera đang tắt" }
+                                }
                             }
                         }
+                        div { style: "position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white;",
+                            "Bạn"
+                            if is_muted() { " · Đã tắt tiếng" }
+                        }
+                    }
 
-                        // Remote peers
-                        for p in peers.iter() {
-                            {
-                                let uid = p.user_id.clone();
-                                let is_speaking = active_speaker_id().as_deref() == Some(&uid);
-                                let glow = if is_speaking { "background: #173A2C;" } else { "" };
-                                rsx! {
-                                    div {
-                                        key: "{p.user_id}",
-                                        style: "background: #1E293B; border-radius: 16px; padding: 24px 32px; display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 140px; {glow}",
-                                        audio {
-                                            id: "webrtc-remote-audio-{p.user_id}",
-                                            autoplay: true,
+                    // Remote participant tiles
+                    for p in peers.iter() {
+                        {
+                            let uid = p.user_id.clone();
+                            let is_speaking = active_speaker_id().as_deref() == Some(&uid);
+                            let peer_has_cam = active_remote_cams.contains(&uid);
+                            let tile_bg = if is_speaking { "#173A2C" } else { "#1E293B" };
+                            rsx! {
+                                div {
+                                    key: "{p.user_id}",
+                                    style: "position: relative; background: {tile_bg}; border-radius: 12px; overflow: hidden; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;",
+                                    video {
+                                        id: "webrtc-remote-video-{p.user_id}",
+                                        autoplay: true,
+                                        playsinline: true,
+                                        style: if peer_has_cam { "width: 100%; height: 100%; object-fit: cover; display: block;" } else { "display: none;" }
+                                    }
+                                    audio {
+                                        id: "webrtc-remote-audio-{p.user_id}",
+                                        autoplay: true,
+                                    }
+                                    if !peer_has_cam {
+                                        div { style: "display: flex; flex-direction: column; align-items: center; gap: 8px;",
+                                            Avatar {
+                                                user_id: p.user_id.clone(),
+                                                username: p.username.clone(),
+                                                avatar_url: p.avatar_url.clone(),
+                                                size: if show_stage { 44 } else { 64 },
+                                            }
+                                            if !show_stage {
+                                                span { style: "color: #94A3B8; font-size: 13px;", "{p.username}" }
+                                            }
                                         }
-                                        Avatar {
-                                            user_id: p.user_id.clone(),
-                                            username: p.username.clone(),
-                                            avatar_url: p.avatar_url.clone(),
-                                            size: 80,
-                                        }
-                                        span { style: "font-weight: 500; font-size: 14px; color: #F8FAFC;", "{p.username}" }
-                                        if p.muted {
-                                            span { style: "font-size: 11px; color: #EF4444; background: rgba(239, 68, 68, 0.15); padding: 2px 8px; border-radius: 10px;", "Tắt mic" }
-                                        } else if is_speaking {
-                                            span { style: "font-size: 11px; color: #10B981; background: rgba(16, 185, 129, 0.15); padding: 2px 8px; border-radius: 10px;", "Đang nói..." }
-                                        }
+                                    }
+                                    div { style: "position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white;",
+                                        "{p.username}"
+                                        if p.muted { " · Đã tắt tiếng" }
                                     }
                                 }
                             }
@@ -334,7 +411,7 @@ pub fn ActiveCallOverlay(
             }
 
             // Bottom Floating Controls
-            div { style: "display: flex; align-items: center; justify-content: center; gap: 20px; padding: 20px 0; margin-top: auto;",
+            div { style: "display: flex; align-items: center; justify-content: center; gap: 20px; padding: 16px 0 4px 0; margin-top: auto;",
                 // Mic Button
                 button {
                     r#type: "button",

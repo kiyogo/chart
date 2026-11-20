@@ -60,6 +60,7 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         ws_hub,
         oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         storage: Arc::new(chatw::storage::StorageRegistry::from_uploads_dir(&config.uploads_dir)),
+        sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
     };
 
     axum::Router::new()

@@ -1,3 +1,5 @@
+pub mod sfu;
+
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -34,6 +36,8 @@ pub fn routes() -> Router<AppState> {
         .route("/{id}/leave", post(leave_call))
         .route("/{id}/signal", post(relay_signal))
         .route("/{id}/state", post(update_state))
+        .route("/{id}/sfu/join", post(sfu_join))
+        .route("/{id}/sfu/leave", post(sfu_leave))
 }
 
 async fn ensure_meet_columns(db: &sqlx::PgPool) -> Result<(), sqlx::Error> {
@@ -601,6 +605,8 @@ async fn end_call(
     .execute(&state.db)
     .await?;
 
+    state.sfu.end_call(call_id);
+
     state
         .ws_hub
         .send_to_users(
@@ -632,6 +638,8 @@ async fn leave_call(
     )
     .execute(&state.db)
     .await?;
+
+    state.sfu.leave_peer(call_id, user.id);
 
     let targets = get_other_participants(&state.db, call_id, user.id).await?;
 
@@ -900,4 +908,84 @@ async fn get_other_participants(
     .await?;
 
     Ok(ids)
+}
+
+#[derive(serde::Deserialize)]
+struct SfuJoinRequest {
+    sdp: String,
+    #[serde(default)]
+    meta: std::collections::HashMap<String, String>,
+}
+
+async fn sfu_join(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(call_id): Path<Uuid>,
+    Json(payload): Json<SfuJoinRequest>,
+) -> AppResult<Json<sfu::SfuJoinReply>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let is_participant = sqlx::query_scalar!(
+        "SELECT 1 FROM call_participants WHERE call_id = $1 AND user_id = $2",
+        call_id,
+        user.id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .is_some();
+
+    if !is_participant {
+        let allowed_session = sqlx::query!(
+            "SELECT caller_id, receiver_id, group_id, meet_code FROM call_sessions WHERE id = $1",
+            call_id
+        )
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(AppError::NotFound("call_not_found"))?;
+
+        let mut allowed = allowed_session.caller_id == user.id
+            || allowed_session.receiver_id == Some(user.id)
+            || allowed_session.meet_code.is_some();
+
+        if !allowed {
+            if let Some(gid) = allowed_session.group_id {
+                allowed = sqlx::query_scalar!(
+                    "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
+                    gid,
+                    user.id
+                )
+                .fetch_optional(&state.db)
+                .await?
+                .is_some();
+            }
+        }
+        if !allowed {
+            return Err(AppError::Forbidden("not_authorized_for_call"));
+        }
+    }
+
+    let reply = state
+        .sfu
+        .join_peer(call_id, user.id, payload.sdp, payload.meta)
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "SFU join failed");
+            AppError::BadRequest("sfu_negotiation_failed")
+        })?;
+
+    Ok(Json(reply))
+}
+
+async fn sfu_leave(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(call_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    state.sfu.leave_peer(call_id, user.id);
+    Ok(Json(serde_json::json!({ "left_sfu": true })))
 }

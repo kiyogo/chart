@@ -58,6 +58,7 @@ async fn build_app(pool: sqlx::PgPool, config: Config) -> (axum::Router, Arc<sto
         ws_hub: Arc::new(WsHub::new(100)),
         oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         storage: storage_reg.clone(),
+        sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
     };
     let router = axum::Router::new()
         .nest("/api/auth", auth::routes())

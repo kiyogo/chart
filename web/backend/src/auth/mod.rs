@@ -36,6 +36,7 @@ pub struct AppState {
     pub ws_hub: Arc<crate::websocket::WsHub>,
     pub oauth_tickets: Arc<tokio::sync::RwLock<std::collections::HashMap<Uuid, Option<String>>>>,
     pub storage: Arc<crate::storage::StorageRegistry>,
+    pub sfu: Arc<crate::calls::sfu::SfuHandle>,
 }
 
 #[derive(Serialize)]
