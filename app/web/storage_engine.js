@@ -3,7 +3,7 @@
 // and safe cache-vs-source eviction protecting unique unbacked `local_only` DM media.
 (() => {
   const DB_NAME = 'chatw_storage_v1';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const OPFS_DIR = 'chatw_cas';
   const CACHE_NAME = 'chatw_media_cache_v1';
 
@@ -30,6 +30,9 @@
         }
         if (!db.objectStoreNames.contains('sync_cursors')) {
           db.createObjectStore('sync_cursors', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('passkeys')) {
+          db.createObjectStore('passkeys', { keyPath: 'id' });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -529,6 +532,51 @@
         filename: file.name,
         byte_size: file.size,
       };
+    },
+
+    async registerDevicePasskey() {
+      const kp = await crypto.subtle.generateKey(
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        false,
+        ['sign', 'verify'],
+      );
+      const rawPub = new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey));
+      const rand = crypto.getRandomValues(new Uint8Array(16));
+      const credId = bytesToB64(rand).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const pubB64 = bytesToB64(rawPub).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      await idbTx('passkeys', 'readwrite', (s) =>
+        s.put({
+          id: 'default',
+          credential_id: credId,
+          privateKey: kp.privateKey,
+          publicKeyB64: pubB64,
+          created_at: Date.now(),
+        }),
+      );
+      return { credential_id: credId, public_key_spki_b64: pubB64 };
+    },
+
+    async signPasskeyChallenge(challengeB64) {
+      const rec = await idbTx('passkeys', 'readonly', (s) => s.get('default'));
+      if (!rec || !rec.privateKey || !rec.credential_id) {
+        return { error: 'no_local_passkey' };
+      }
+      const msgBytes = new TextEncoder().encode(challengeB64);
+      const sigBuf = await crypto.subtle.sign(
+        { name: 'ECDSA', hash: 'SHA-256' },
+        rec.privateKey,
+        msgBytes,
+      );
+      const sigB64 = bytesToB64(new Uint8Array(sigBuf))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+      return { credential_id: rec.credential_id, signature_b64: sigB64 };
+    },
+
+    async hasLocalPasskey() {
+      const rec = await idbTx('passkeys', 'readonly', (s) => s.get('default')).catch(() => null);
+      return Boolean(rec && rec.credential_id && rec.privateKey);
     },
   };
 })();

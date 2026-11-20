@@ -482,3 +482,76 @@ pub async fn upload_backup_from_input(
         byte_size,
     })
 }
+
+pub async fn register_device_passkey_local() -> Result<super::DevicePasskeyCreated, ApiError> {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use p256::ecdsa::SigningKey;
+    use p256::elliptic_curve::rand_core::{OsRng, RngCore};
+
+    let mut sk_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut sk_bytes);
+    let sk = SigningKey::from_slice(&sk_bytes).map_err(|_| ApiError {
+        code: "passkey_keygen_failed".into(),
+        status: 400,
+    })?;
+    let mut cred_raw = [0u8; 16];
+    OsRng.fill_bytes(&mut cred_raw);
+    let credential_id = URL_SAFE_NO_PAD.encode(cred_raw);
+    let vk_bytes = sk.verifying_key().to_encoded_point(false).as_bytes().to_vec();
+    let public_key_spki_b64 = URL_SAFE_NO_PAD.encode(&vk_bytes);
+
+    let rec = serde_json::json!({
+        "credential_id": credential_id,
+        "sk_b64": URL_SAFE_NO_PAD.encode(sk.to_bytes()),
+    });
+    storage_set("chatw_device_passkey_v1", &rec.to_string());
+
+    Ok(super::DevicePasskeyCreated {
+        credential_id,
+        public_key_spki_b64,
+    })
+}
+
+pub async fn sign_passkey_challenge_local(
+    challenge_b64: &str,
+) -> Result<super::DevicePasskeySignature, ApiError> {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use p256::ecdsa::{Signature, SigningKey, signature::Signer};
+
+    let raw = storage_get("chatw_device_passkey_v1").ok_or(ApiError {
+        code: "no_local_passkey".into(),
+        status: 400,
+    })?;
+    let val: serde_json::Value = serde_json::from_str(&raw).map_err(|_| ApiError {
+        code: "no_local_passkey".into(),
+        status: 400,
+    })?;
+    let cred_id = val
+        .get("credential_id")
+        .and_then(|v| v.as_str())
+        .ok_or(ApiError {
+            code: "no_local_passkey".into(),
+            status: 400,
+        })?
+        .to_string();
+    let sk_b64 = val
+        .get("sk_b64")
+        .and_then(|v| v.as_str())
+        .ok_or(ApiError {
+            code: "no_local_passkey".into(),
+            status: 400,
+        })?;
+    let sk_bytes = URL_SAFE_NO_PAD.decode(sk_b64).map_err(|_| ApiError {
+        code: "no_local_passkey".into(),
+        status: 400,
+    })?;
+    let sk = SigningKey::from_slice(&sk_bytes).map_err(|_| ApiError {
+        code: "passkey_sign_failed".into(),
+        status: 400,
+    })?;
+    let sig: Signature = sk.sign(challenge_b64.as_bytes());
+    Ok(super::DevicePasskeySignature {
+        credential_id: cred_id,
+        signature_b64: URL_SAFE_NO_PAD.encode(sig.to_bytes()),
+    })
+}

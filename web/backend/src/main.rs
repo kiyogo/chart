@@ -160,6 +160,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state.clone());
     profile_ext::spawn_status_expiry(state.clone());
     {
+        let cloud_bg = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                if let Err(e) = cloud::incremental::run_due_cloud_backup_policies(
+                    &cloud_bg.db,
+                    &cloud_bg.storage,
+                    &cloud_bg.http_client,
+                    &cloud_bg.config.session_secret,
+                )
+                .await
+                {
+                    tracing::debug!(error = ?e, "cloud scheduler tick");
+                }
+            }
+        });
+    }
+    {
         let bg_state = state.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(3600));

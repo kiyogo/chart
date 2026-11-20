@@ -23,7 +23,10 @@ use crate::{
 };
 
 use super::{
-    incremental::{delete_snapshot_safely, restore_from_cloud_snapshot, run_incremental_cloud_backup},
+    incremental::{
+        delete_snapshot_safely, enforce_snapshot_retention, next_run_interval_secs,
+        restore_from_cloud_snapshot, run_incremental_cloud_backup,
+    },
     open_cloud_config,
     providers::{all_provider_catalog, instantiate_provider},
     seal_cloud_config,
@@ -488,6 +491,24 @@ async fn handle_trigger_backup(
         &b.encryption_password,
     )
     .await?;
+    if let Ok(Some(retain)) = sqlx::query_scalar::<_, i32>(
+        "SELECT retain_snapshots FROM cloud_backup_policies WHERE user_id = $1 AND connection_id = $2",
+    )
+    .bind(uid)
+    .bind(conn_id)
+    .fetch_optional(&state.db)
+    .await
+    {
+        let _ = enforce_snapshot_retention(
+            &state.db,
+            &state.http_client,
+            &state.config.session_secret,
+            uid,
+            conn_id,
+            retain,
+        )
+        .await;
+    }
     log_event(&state, uid, "cloud_backup_verified", &headers).await;
     Ok(Json(res))
 }
@@ -627,7 +648,7 @@ async fn handle_get_policy(
 ) -> AppResult<Json<Value>> {
     let uid = require_user(&state, &headers).await?;
     let row = sqlx::query(
-        "SELECT enabled, connection_id, schedule_mode, wifi_only, charging_only, bandwidth_limit_kbps, storage_limit_mb, retain_snapshots, paused, last_run_at, next_run_at
+        "SELECT enabled, connection_id, schedule_mode, wifi_only, charging_only, bandwidth_limit_kbps, storage_limit_mb, retain_snapshots, paused, last_run_at, next_run_at, (auto_key_enc IS NOT NULL) AS has_auto_key
          FROM cloud_backup_policies WHERE user_id = $1",
     )
     .bind(uid)
@@ -647,6 +668,7 @@ async fn handle_get_policy(
             "storage_limit_mb": r.try_get::<i32, _>("storage_limit_mb")?,
             "retain_snapshots": r.try_get::<i32, _>("retain_snapshots")?,
             "paused": r.try_get::<bool, _>("paused")?,
+            "has_auto_key": r.try_get::<bool, _>("has_auto_key")?,
             "last_run_at": last_run.map(|t| t.to_rfc3339()),
             "next_run_at": next_run.map(|t| t.to_rfc3339()),
         })))
@@ -661,6 +683,7 @@ async fn handle_get_policy(
             "storage_limit_mb": 0,
             "retain_snapshots": 5,
             "paused": false,
+            "has_auto_key": false,
             "last_run_at": null,
             "next_run_at": null,
         })))
@@ -678,6 +701,10 @@ struct UpdatePolicyBody {
     storage_limit_mb: i32,
     retain_snapshots: i32,
     paused: bool,
+    #[serde(default)]
+    auto_encryption_password: Option<String>,
+    #[serde(default)]
+    clear_auto_key: bool,
 }
 
 async fn handle_update_policy(
@@ -689,9 +716,30 @@ async fn handle_update_policy(
     if !matches!(b.schedule_mode.as_str(), "manual" | "daily" | "weekly" | "on_change") {
         return Err(AppError::BadRequest("invalid_schedule_mode"));
     }
+
+    let sealed_auto_key: Option<Vec<u8>> = if let Some(ref pw) = b.auto_encryption_password {
+        let trimmed = pw.trim();
+        if !trimmed.is_empty() {
+            if trimmed.chars().count() < 6 {
+                return Err(AppError::BadRequest("encryption_password_too_short"));
+            }
+            Some(seal_cloud_config(&state.config.session_secret, &json!({ "passphrase": trimmed }))?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let next_secs = if b.enabled && b.schedule_mode != "manual" && !b.paused {
+        Some(next_run_interval_secs(&b.schedule_mode))
+    } else {
+        None
+    };
+
     sqlx::query(
-        "INSERT INTO cloud_backup_policies (user_id, enabled, connection_id, schedule_mode, wifi_only, charging_only, bandwidth_limit_kbps, storage_limit_mb, retain_snapshots, paused, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+        "INSERT INTO cloud_backup_policies (user_id, enabled, connection_id, schedule_mode, wifi_only, charging_only, bandwidth_limit_kbps, storage_limit_mb, retain_snapshots, paused, auto_key_enc, next_run_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CASE WHEN $12::bigint IS NULL THEN NULL ELSE now() + ($12::text || ' seconds')::interval END, now())
          ON CONFLICT (user_id) DO UPDATE SET
            enabled = EXCLUDED.enabled,
            connection_id = EXCLUDED.connection_id,
@@ -702,6 +750,15 @@ async fn handle_update_policy(
            storage_limit_mb = EXCLUDED.storage_limit_mb,
            retain_snapshots = EXCLUDED.retain_snapshots,
            paused = EXCLUDED.paused,
+           auto_key_enc = CASE
+             WHEN $13 THEN NULL
+             WHEN EXCLUDED.auto_key_enc IS NOT NULL THEN EXCLUDED.auto_key_enc
+             ELSE cloud_backup_policies.auto_key_enc
+           END,
+           next_run_at = CASE
+             WHEN $12::bigint IS NULL THEN NULL
+             ELSE COALESCE(cloud_backup_policies.next_run_at, now() + ($12::text || ' seconds')::interval)
+           END,
            updated_at = now()",
     )
     .bind(uid)
@@ -714,6 +771,9 @@ async fn handle_update_policy(
     .bind(b.storage_limit_mb.max(0))
     .bind(b.retain_snapshots.clamp(1, 50))
     .bind(b.paused)
+    .bind(sealed_auto_key)
+    .bind(next_secs)
+    .bind(b.clear_auto_key)
     .execute(&state.db)
     .await?;
 

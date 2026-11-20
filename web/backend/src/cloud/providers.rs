@@ -215,18 +215,36 @@ pub fn validate_remote_endpoint(raw_url: &str, allow_lan_nas: bool) -> Result<re
         .is_some_and(|v| v == "1" || v == "true");
 
     let scheme = url.scheme();
+    let host = url
+        .host_str()
+        .ok_or_else(|| CloudError::InvalidConfig("Thiếu host trong URL".into()))?;
+    let host_lower = host.to_ascii_lowercase();
+
+    let is_lan_http_allowed = if allow_lan_nas && scheme == "http" {
+        if host_lower.ends_with(".local") {
+            true
+        } else if let Ok(ip) = host.parse::<IpAddr>() {
+            match ip {
+                IpAddr::V4(v4) => v4.is_private(),
+                IpAddr::V6(v6) => (v6.segments()[0] & 0xfe00) == 0xfc00,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
     if scheme != "https" {
-        if scheme == "http" && allow_loopback_test && url.host_str().is_some_and(|h| h == "127.0.0.1" || h == "localhost") {
+        if scheme == "http" && allow_loopback_test && (host_lower == "127.0.0.1" || host_lower == "localhost") {
             // Permitted strictly in controlled integration tests against local loopback test server.
+        } else if is_lan_http_allowed {
+            // Permitted explicitly for local LAN NAS endpoints configured by user (`allow_lan = true`).
         } else {
             return Err(CloudError::TlsRequired);
         }
     }
 
-    let host = url
-        .host_str()
-        .ok_or_else(|| CloudError::InvalidConfig("Thiếu host trong URL".into()))?;
-    let host_lower = host.to_ascii_lowercase();
     if host_lower == "metadata.google.internal" || host_lower.ends_with(".internal") || host_lower.ends_with(".local") {
         if !(allow_lan_nas && host_lower.ends_with(".local")) {
             return Err(CloudError::SsrfBlocked(host.to_string()));

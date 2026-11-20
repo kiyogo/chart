@@ -552,3 +552,101 @@ pub async fn restore_from_cloud_snapshot(
     };
     crate::backup::engine::restore_backup_archive(pool, storage, user_id, &kdata_buf, &opts).await
 }
+
+pub async fn enforce_snapshot_retention(
+    pool: &PgPool,
+    http: &reqwest::Client,
+    session_secret: &[u8],
+    user_id: Uuid,
+    connection_id: Uuid,
+    retain_snapshots: i32,
+) -> AppResult<usize> {
+    let keep = retain_snapshots.clamp(1, 50) as i64;
+    let stale_rows = sqlx::query(
+        "SELECT id, remote_manifest_key
+         FROM cloud_snapshots
+         WHERE user_id = $1 AND connection_id = $2 AND status = 'verified'
+         ORDER BY snapshot_seq DESC
+         OFFSET $3",
+    )
+    .bind(user_id)
+    .bind(connection_id)
+    .bind(keep)
+    .fetch_all(pool)
+    .await?;
+
+    if stale_rows.is_empty() {
+        return Ok(0);
+    }
+
+    let (provider, _conn_id, _cfg) = load_provider_with_refresh(pool, http, session_secret, user_id, connection_id).await?;
+    let mut deleted = 0usize;
+    for r in stale_rows {
+        let sid: Uuid = r.try_get("id")?;
+        let mf_key: String = r.try_get("remote_manifest_key")?;
+        if delete_snapshot_safely(pool, provider.as_ref(), http, user_id, connection_id, sid, &mf_key).await.is_ok() {
+            deleted += 1;
+        }
+    }
+    Ok(deleted)
+}
+
+pub fn next_run_interval_secs(schedule_mode: &str) -> i64 {
+    match schedule_mode {
+        "on_change" => 900,
+        "daily" => 86_400,
+        "weekly" => 604_800,
+        _ => 86_400,
+    }
+}
+
+pub async fn run_due_cloud_backup_policies(
+    pool: &PgPool,
+    storage: &StorageRegistry,
+    http: &reqwest::Client,
+    session_secret: &[u8],
+) -> AppResult<usize> {
+    let rows = sqlx::query(
+        "SELECT user_id, connection_id, schedule_mode, retain_snapshots, auto_key_enc
+         FROM cloud_backup_policies
+         WHERE enabled = TRUE AND paused = FALSE AND schedule_mode <> 'manual'
+           AND connection_id IS NOT NULL AND auto_key_enc IS NOT NULL
+           AND (next_run_at IS NULL OR next_run_at <= now())
+         LIMIT 25",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut executed = 0usize;
+    for r in rows {
+        let uid: Uuid = r.try_get("user_id")?;
+        let Some(conn_id): Option<Uuid> = r.try_get("connection_id")? else {
+            continue;
+        };
+        let mode: String = r.try_get("schedule_mode")?;
+        let retain: i32 = r.try_get("retain_snapshots")?;
+        let enc_key: Vec<u8> = r.try_get("auto_key_enc")?;
+        let Ok(cfg_val) = super::open_cloud_config(session_secret, &enc_key) else {
+            continue;
+        };
+        let Some(passphrase) = cfg_val.get("passphrase").and_then(|v| v.as_str()) else {
+            continue;
+        };
+
+        let next_secs = next_run_interval_secs(&mode);
+        if run_incremental_cloud_backup(pool, storage, http, session_secret, uid, conn_id, passphrase).await.is_ok() {
+            let _ = enforce_snapshot_retention(pool, http, session_secret, uid, conn_id, retain).await;
+            let _ = sqlx::query(
+                "UPDATE cloud_backup_policies
+                 SET last_run_at = now(), next_run_at = now() + ($1 || ' seconds')::interval, updated_at = now()
+                 WHERE user_id = $2",
+            )
+            .bind(next_secs)
+            .bind(uid)
+            .execute(pool)
+            .await;
+            executed += 1;
+        }
+    }
+    Ok(executed)
+}

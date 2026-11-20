@@ -29,6 +29,18 @@ pub struct UploadBackupResult {
     pub byte_size: u64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DevicePasskeyCreated {
+    pub credential_id: String,
+    pub public_key_spki_b64: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DevicePasskeySignature {
+    pub credential_id: String,
+    pub signature_b64: String,
+}
+
 /// Resolve relative backend URLs (e.g. `/uploads/avatars/...`) for the current platform.
 pub fn resolve_asset_url(url: &str) -> String {
     let base = api_base();

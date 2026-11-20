@@ -953,3 +953,297 @@ async fn test_cloud_webdav_incremental_verify_tamper_restore_and_safe_gc() {
     assert_eq!(st, StatusCode::OK);
     assert_eq!(rr_after_gc["integrity_verified"], true);
 }
+
+#[derive(Clone)]
+struct MockS3State {
+    objects: Arc<RwLock<HashMap<String, Vec<u8>>>>,
+}
+
+async fn mock_s3_handler(
+    State(st): State<MockS3State>,
+    req: Request<Body>,
+) -> Response {
+    let auth = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !auth.starts_with("AWS4-HMAC-SHA256") {
+        return Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Body::empty())
+            .unwrap();
+    }
+
+    let method = req.method().clone();
+    let path = req.uri().path().trim_matches('/').to_string();
+    let query = req.uri().query().unwrap_or("").to_string();
+    let body = axum::body::to_bytes(req.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap_or_default()
+        .to_vec();
+
+    // Expect path style `{bucket}/...`
+    let mut split = path.splitn(2, '/');
+    let _bucket = split.next().unwrap_or("");
+    let key = split.next().unwrap_or("").to_string();
+
+    if method == Method::GET && query.contains("list-type=2") {
+        let map = st.objects.read().unwrap();
+        let mut contents_xml = String::new();
+        for (k, v) in map.iter() {
+            contents_xml.push_str(&format!(
+                "<Contents><Key>{k}</Key><Size>{}</Size></Contents>",
+                v.len()
+            ));
+        }
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><IsTruncated>false</IsTruncated>{contents_xml}</ListBucketResult>"#
+        );
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/xml")
+            .body(Body::from(xml))
+            .unwrap();
+    }
+
+    match method {
+        Method::HEAD => {
+            if key.is_empty() {
+                return Response::builder().status(StatusCode::OK).body(Body::empty()).unwrap();
+            }
+            if let Some(d) = st.objects.read().unwrap().get(&key) {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_LENGTH, d.len().to_string())
+                    .body(Body::empty())
+                    .unwrap()
+            } else {
+                Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+            }
+        }
+        Method::PUT => {
+            st.objects.write().unwrap().insert(key, body);
+            Response::builder().status(StatusCode::OK).body(Body::empty()).unwrap()
+        }
+        Method::GET => {
+            if let Some(d) = st.objects.read().unwrap().get(&key).cloned() {
+                Response::builder().status(StatusCode::OK).body(Body::from(d)).unwrap()
+            } else {
+                Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+            }
+        }
+        Method::DELETE => {
+            st.objects.write().unwrap().remove(&key);
+            Response::builder().status(StatusCode::NO_CONTENT).body(Body::empty()).unwrap()
+        }
+        _ => Response::builder().status(StatusCode::METHOD_NOT_ALLOWED).body(Body::empty()).unwrap(),
+    }
+}
+
+#[tokio::test]
+async fn test_s3_minio_auto_scheduler_retention_and_passkey_reauth() {
+    unsafe {
+        std::env::set_var("ALLOW_LOOPBACK_CLOUD_TEST", "1");
+    }
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use p256::ecdsa::{Signature, SigningKey, signature::Signer};
+    use p256::elliptic_curve::rand_core::OsRng;
+
+    let s3_state = MockS3State {
+        objects: Arc::new(RwLock::new(HashMap::new())),
+    };
+    let s3_router = Router::new()
+        .fallback(any(mock_s3_handler))
+        .with_state(s3_state.clone());
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let s3_addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, s3_router).await;
+    });
+
+    let pool = setup_db().await;
+    let cfg = test_config("s3auto");
+    let (app, storage_reg) = build_app(pool.clone(), cfg.clone()).await;
+    let (alice, _, alice_cookie) = create_test_user(&pool, &cfg, "alice_s3").await;
+    let (bob, _, _) = create_test_user(&pool, &cfg, "bob_s3").await;
+    make_friends(&pool, alice, bob).await;
+
+    let dm1 = Uuid::new_v4();
+    let env_a = vec![0xEEu8; 300];
+    let env_b = vec![0xFFu8; 300];
+    sqlx::query("INSERT INTO messages (id, sender_id, receiver_id, recipient_envelope, sender_envelope) VALUES ($1, $2, $3, $4, $5)")
+        .bind(dm1)
+        .bind(alice)
+        .bind(bob)
+        .bind(&env_a)
+        .bind(&env_b)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 1. Register P-256 Passkey -> Challenge -> Sign -> Reauth -> Export .kdata
+    let sk = SigningKey::random(&mut OsRng);
+    let pk_sec1 = sk.verifying_key().to_encoded_point(false).as_bytes().to_vec();
+    let cred_id = "cred-test-p256-001";
+    let (st, reg_v) = json_req(
+        &app,
+        "POST",
+        "/api/backup/reauth/passkeys/register",
+        &alice_cookie,
+        Some(json!({
+            "credential_id": cred_id,
+            "public_key_spki_b64": URL_SAFE_NO_PAD.encode(&pk_sec1),
+            "label": "Test P256 Key"
+        })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(reg_v["id"].as_str().is_some());
+
+    let (st, ch_v) = json_req(
+        &app,
+        "POST",
+        "/api/backup/reauth/challenge",
+        &alice_cookie,
+        Some(json!({ "purpose": "reauth" })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let ch_id = ch_v["challenge_id"].as_str().unwrap();
+    let ch_b64 = ch_v["challenge_b64"].as_str().unwrap();
+    let sig: Signature = sk.sign(ch_b64.as_bytes());
+    let (st, reauth_v) = json_req(
+        &app,
+        "POST",
+        "/api/backup/reauth",
+        &alice_cookie,
+        Some(json!({
+            "scope": "kdata",
+            "method": "passkey",
+            "challenge_id": ch_id,
+            "credential_id": cred_id,
+            "signature_b64": URL_SAFE_NO_PAD.encode(sig.to_bytes()),
+        })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let passkey_tok = reauth_v["export_token"].as_str().unwrap();
+
+    let (st, kdata_pk) = raw_req(
+        &app,
+        "POST",
+        "/api/backup/export/kdata",
+        &alice_cookie,
+        &[("content-type", "application/json")],
+        serde_json::to_vec(&json!({
+            "export_token": passkey_tok,
+            "encryption_password": "PasskeyContainer#2026"
+        }))
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(kdata_pk.starts_with(b"KIYODATA"));
+
+    // 2. Connect MinIO/S3 (path-style SigV4)
+    let (st, s3_conn) = json_req(
+        &app,
+        "POST",
+        "/api/cloud/connections",
+        &alice_cookie,
+        Some(json!({
+            "provider": "minio",
+            "account_label": "Mock MinIO S3",
+            "config": {
+                "kind": "minio",
+                "endpoint": format!("http://127.0.0.1:{}", s3_addr.port()),
+                "region": "us-east-1",
+                "bucket": "kiyo-test",
+                "access_key": "minioadmin",
+                "secret_key": "minioadminsecret",
+                "prefix": "kiyo_backups",
+                "force_path_style": true
+            }
+        })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let s3_conn_id = Uuid::parse_str(s3_conn["id"].as_str().unwrap()).unwrap();
+
+    // Manual snapshots #1 and #2
+    for seq in 1..=2 {
+        let (st, r) = json_req(
+            &app,
+            "POST",
+            &format!("/api/cloud/connections/{s3_conn_id}/backup"),
+            &alice_cookie,
+            Some(json!({ "encryption_password": "S3CloudSecret#2026" })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(r["snapshot_seq"], seq);
+        assert_eq!(r["verified"], true);
+    }
+
+    // 3. Enable scheduled auto-backup with retain_snapshots = 2 and execute scheduler
+    let (st, pol_v) = json_req(
+        &app,
+        "PUT",
+        "/api/cloud/policy",
+        &alice_cookie,
+        Some(json!({
+            "enabled": true,
+            "connection_id": s3_conn_id,
+            "schedule_mode": "daily",
+            "wifi_only": false,
+            "charging_only": false,
+            "bandwidth_limit_kbps": 0,
+            "storage_limit_mb": 0,
+            "retain_snapshots": 2,
+            "paused": false,
+            "auto_encryption_password": "S3CloudSecret#2026"
+        })),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(pol_v["has_auto_key"], true);
+
+    sqlx::query("UPDATE cloud_backup_policies SET next_run_at = now() - interval '5 minutes' WHERE user_id = $1")
+        .bind(alice)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let ran = cloud::incremental::run_due_cloud_backup_policies(
+        &pool,
+        &storage_reg,
+        &reqwest::Client::new(),
+        &cfg.session_secret,
+    )
+    .await
+    .unwrap();
+    assert!(ran >= 1);
+
+    // Retention = 2 -> snapshot #1 pruned safely, #2 and #3 remain verified!
+    let live_snaps: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cloud_snapshots WHERE user_id = $1 AND connection_id = $2 AND status = 'verified'",
+    )
+    .bind(alice)
+    .bind(s3_conn_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(live_snaps, 2);
+
+    let (st, ver_v) = json_req(
+        &app,
+        "POST",
+        &format!("/api/cloud/connections/{s3_conn_id}/verify"),
+        &alice_cookie,
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(ver_v["latest_snapshot_verified"], true);
+}

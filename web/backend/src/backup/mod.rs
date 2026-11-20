@@ -305,11 +305,20 @@ async fn handle_export_kdata(
                     .await;
                 });
             }
-            Err(_) => {
+            Err(e) => {
+                let dbg_err = format!("{e:?}");
+                let aborted = dbg_err.contains("BrokenPipe") || dbg_err.contains("disconnected");
+                let (next_st, err_msg) = if aborted {
+                    ("cancelled", None)
+                } else {
+                    ("failed", Some("stream_export_error"))
+                };
                 rt.spawn(async move {
                     let _ = sqlx::query(
-                        "UPDATE backup_jobs SET status = 'failed', error_message = 'stream_export_error', updated_at = now() WHERE id = $1",
+                        "UPDATE backup_jobs SET status = $1, error_message = $2, updated_at = now() WHERE id = $3",
                     )
+                    .bind(next_st)
+                    .bind(err_msg)
                     .bind(job_id)
                     .execute(&db)
                     .await;

@@ -383,3 +383,88 @@ pub async fn upload_backup_from_input(
         byte_size: val.get("byte_size").and_then(|v| v.as_u64()).unwrap_or(0),
     })
 }
+
+pub async fn register_device_passkey_local() -> Result<super::DevicePasskeyCreated, ApiError> {
+    let js = r#"
+        (async () => {
+            try {
+                if (!window.__chatwStorage || !window.__chatwStorage.registerDevicePasskey) {
+                    dioxus.send({ error: 'storage_engine_unavailable' });
+                    return;
+                }
+                const out = await window.__chatwStorage.registerDevicePasskey();
+                dioxus.send(out);
+            } catch (e) {
+                dioxus.send({ error: 'passkey_keygen_failed' });
+            }
+        })();
+    "#;
+    let mut eval = dioxus::document::eval(js);
+    let val = eval.recv::<serde_json::Value>().await.map_err(|_| ApiError {
+        code: "eval_failed".into(),
+        status: 0,
+    })?;
+    if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+        return Err(ApiError {
+            code: err.to_string(),
+            status: 400,
+        });
+    }
+    Ok(super::DevicePasskeyCreated {
+        credential_id: val
+            .get("credential_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        public_key_spki_b64: val
+            .get("public_key_spki_b64")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+pub async fn sign_passkey_challenge_local(
+    challenge_b64: &str,
+) -> Result<super::DevicePasskeySignature, ApiError> {
+    let ch_json = serde_json::to_string(challenge_b64).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            try {{
+                if (!window.__chatwStorage || !window.__chatwStorage.signPasskeyChallenge) {{
+                    dioxus.send({{ error: 'storage_engine_unavailable' }});
+                    return;
+                }}
+                const out = await window.__chatwStorage.signPasskeyChallenge({ch_json});
+                dioxus.send(out);
+            }} catch (e) {{
+                dioxus.send({{ error: 'passkey_sign_failed' }});
+            }}
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.map_err(|_| ApiError {
+        code: "eval_failed".into(),
+        status: 0,
+    })?;
+    if let Some(err) = val.get("error").and_then(|v| v.as_str()) {
+        return Err(ApiError {
+            code: err.to_string(),
+            status: 400,
+        });
+    }
+    Ok(super::DevicePasskeySignature {
+        credential_id: val
+            .get("credential_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        signature_b64: val
+            .get("signature_b64")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}

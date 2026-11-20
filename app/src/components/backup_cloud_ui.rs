@@ -92,10 +92,14 @@ pub fn BackupExportRestorePanel() -> Element {
     let reload = move || {
         spawn(async move {
             if let Ok(m) = backup_cloud::get_reauth_methods().await {
-                if !m.has_export_password && m.totp_enabled {
-                    reauth_method.set("totp".into());
-                } else if !m.has_export_password && m.backup_codes_remaining > 0 {
-                    reauth_method.set("backup_code".into());
+                if !m.has_export_password {
+                    if m.passkeys_count > 0 {
+                        reauth_method.set("passkey".into());
+                    } else if m.totp_enabled {
+                        reauth_method.set("totp".into());
+                    } else if m.backup_codes_remaining > 0 {
+                        reauth_method.set("backup_code".into());
+                    }
                 }
                 methods.set(m);
             }
@@ -170,7 +174,7 @@ pub fn BackupExportRestorePanel() -> Element {
                         span { class: "settings-label", "Định dạng chính thức KIYO (.kdata)" }
                         span { class: "settings-sublabel", "Mã hóa toàn phần Argon2id và XChaCha20-Poly1305 STREAM, chống giả mạo và hỗ trợ khôi phục chọn lọc." }
                     }
-                    if !m.has_export_password && !m.totp_enabled && m.backup_codes_remaining == 0 {
+                    if !m.has_export_password && !m.totp_enabled && m.backup_codes_remaining == 0 && m.passkeys_count == 0 {
                         div { class: "settings-row-text",
                             span { class: "settings-sublabel", "Bạn cần tạo mật khẩu xuất dữ liệu (tối thiểu 8 ký tự) để xác thực lại trước khi xuất." }
                         }
@@ -220,6 +224,9 @@ pub fn BackupExportRestorePanel() -> Element {
                                 if m.has_export_password {
                                     option { value: "password", "Mật khẩu xuất dữ liệu" }
                                 }
+                                if m.passkeys_count > 0 {
+                                    option { value: "passkey", "Khóa bảo mật thiết bị ({m.passkeys_count})" }
+                                }
                                 if m.totp_enabled {
                                     option { value: "totp", "Mã 2FA TOTP" }
                                 }
@@ -227,13 +234,17 @@ pub fn BackupExportRestorePanel() -> Element {
                                     option { value: "backup_code", "Mã dự phòng ({m.backup_codes_remaining})" }
                                 }
                             }
-                            input {
-                                class: "settings-input",
-                                id: "kdata-reauth-secret",
-                                r#type: "password",
-                                placeholder: "Nhập mật khẩu xuất hoặc mã xác thực",
-                                value: "{reauth_secret}",
-                                oninput: move |e| reauth_secret.set(e.value()),
+                            if reauth_method() != "passkey" {
+                                input {
+                                    class: "settings-input",
+                                    id: "kdata-reauth-secret",
+                                    r#type: "password",
+                                    placeholder: "Nhập mật khẩu xuất hoặc mã xác thực",
+                                    value: "{reauth_secret}",
+                                    oninput: move |e| reauth_secret.set(e.value()),
+                                }
+                            } else {
+                                span { class: "settings-sublabel", "Sẽ ký xác nhận bằng khóa bảo mật P-256 trên thiết bị này." }
                             }
                         }
                     }
@@ -266,7 +277,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                 let secret = reauth_secret();
                                 let epw = enc_password();
                                 let econf = enc_confirm();
-                                if secret.trim().is_empty() {
+                                if method != "passkey" && secret.trim().is_empty() {
                                     notice.set(Some((true, "Vui lòng nhập thông tin xác thực lại tài khoản.".into())));
                                     return;
                                 }
@@ -565,6 +576,8 @@ pub fn CloudAccountsPanel() -> Element {
 
     // Cloud passphrase for chunk encryption & snapshot restore
     let mut cloud_passphrase = use_signal(String::new);
+    let mut auto_backup_passphrase = use_signal(String::new);
+    let mut clear_auto_key = use_signal(|| false);
     let mut restore_mode = use_signal(|| "full".to_string());
 
     let reload = move || {
@@ -1175,6 +1188,40 @@ pub fn CloudAccountsPanel() -> Element {
                         option { value: "20", "20 bản" }
                     }
                 }
+                div { class: "settings-row column-layout",
+                    div { class: "settings-row-text",
+                        span { class: "settings-label", "Khóa chạy sao lưu tự động trên máy chủ" }
+                        span { class: "settings-sublabel",
+                            if pol.has_auto_key {
+                                "Đã lưu khóa mã hóa được niêm phong AES-256-GCM để chạy lịch trình nền."
+                            } else {
+                                "Nhập mật khẩu sao lưu (>= 6 ký tự) nếu muốn hệ thống chạy tự động theo lịch."
+                            }
+                            if let Some(ref nr) = pol.next_run_at {
+                                " · Lần chạy tiếp theo: {nr}"
+                            }
+                            if let Some(ref lr) = pol.last_run_at {
+                                " · Lần chạy gần nhất: {lr}"
+                            }
+                        }
+                    }
+                    div { class: "inline-form",
+                        input {
+                            class: "settings-input",
+                            id: "cloud-auto-passphrase",
+                            r#type: "password",
+                            placeholder: if pol.has_auto_key { "Nhập mới để đổi khóa tự động (tùy chọn)" } else { "Mật khẩu chạy tự động (>= 6 ký tự)" },
+                            value: "{auto_backup_passphrase}",
+                            oninput: move |e| auto_backup_passphrase.set(e.value()),
+                        }
+                        if pol.has_auto_key {
+                            label { class: "inline-form",
+                                input { r#type: "checkbox", checked: clear_auto_key(), onchange: move |e| clear_auto_key.set(e.checked()) }
+                                span { class: "settings-sublabel", "Xóa khóa tự động" }
+                            }
+                        }
+                    }
+                }
                 div { class: "settings-row",
                     span { class: "settings-label", "Áp dụng chính sách sao lưu đám mây" }
                     button {
@@ -1184,11 +1231,19 @@ pub fn CloudAccountsPanel() -> Element {
                         disabled: busy(),
                         onclick: move |_| {
                             let next = policy();
+                            let auto_pw = auto_backup_passphrase();
+                            let clear_key = clear_auto_key();
                             busy.set(true);
                             spawn(async move {
-                                match backup_cloud::update_cloud_policy(&next).await {
+                                match backup_cloud::update_cloud_policy(
+                                    &next,
+                                    if auto_pw.trim().is_empty() { None } else { Some(auto_pw.trim()) },
+                                    clear_key,
+                                ).await {
                                     Ok(saved) => {
                                         policy.set(saved);
+                                        auto_backup_passphrase.set(String::new());
+                                        clear_auto_key.set(false);
                                         notice.set(Some((false, "Đã lưu chính sách sao lưu đám mây.".into())));
                                     }
                                     Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
@@ -1231,12 +1286,17 @@ pub fn AdvancedSecurityExportSection() -> Element {
     let reload = move || {
         spawn(async move {
             if let Ok(m) = backup_cloud::get_reauth_methods().await {
-                if !m.has_export_password && m.totp_enabled {
-                    enc_zip_reauth_method.set("totp".into());
-                    zip_reauth_method.set("totp".into());
-                } else if !m.has_export_password && m.backup_codes_remaining > 0 {
-                    enc_zip_reauth_method.set("backup_code".into());
-                    zip_reauth_method.set("backup_code".into());
+                if !m.has_export_password {
+                    if m.passkeys_count > 0 {
+                        enc_zip_reauth_method.set("passkey".into());
+                        zip_reauth_method.set("passkey".into());
+                    } else if m.totp_enabled {
+                        enc_zip_reauth_method.set("totp".into());
+                        zip_reauth_method.set("totp".into());
+                    } else if m.backup_codes_remaining > 0 {
+                        enc_zip_reauth_method.set("backup_code".into());
+                        zip_reauth_method.set("backup_code".into());
+                    }
                 }
                 methods.set(m);
             }
@@ -1343,6 +1403,33 @@ pub fn AdvancedSecurityExportSection() -> Element {
                         }
                     }
                 }
+                div { class: "settings-row",
+                    div { class: "settings-row-text",
+                        span { class: "settings-label", "Khóa bảo mật thiết bị (Passkey P-256)" }
+                        span { class: "settings-sublabel", "Đã đăng ký {m.passkeys_count} khóa trên thiết bị để xác thực xuất dữ liệu không cần nhập mật khẩu." }
+                    }
+                    button {
+                        r#type: "button",
+                        id: "btn-register-passkey",
+                        class: "btn-secondary",
+                        disabled: busy(),
+                        onclick: move |_| {
+                            busy.set(true);
+                            notice.set(None);
+                            spawn(async move {
+                                match backup_cloud::register_device_passkey("Khóa thiết bị KIYO").await {
+                                    Ok(_) => {
+                                        notice.set(Some((false, "Đã tạo và đăng ký khóa bảo mật P-256 trên thiết bị.".into())));
+                                        reload();
+                                    }
+                                    Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
+                                }
+                                busy.set(false);
+                            });
+                        },
+                        "Đăng ký khóa thiết bị"
+                    }
+                }
             }
         }
 
@@ -1365,15 +1452,18 @@ pub fn AdvancedSecurityExportSection() -> Element {
                             value: "{enc_zip_reauth_method}",
                             onchange: move |e| enc_zip_reauth_method.set(e.value()),
                             if m.has_export_password { option { value: "password", "Mật khẩu xuất" } }
+                            if m.passkeys_count > 0 { option { value: "passkey", "Khóa thiết bị ({m.passkeys_count})" } }
                             if m.totp_enabled { option { value: "totp", "Mã 2FA TOTP" } }
                             if m.backup_codes_remaining > 0 { option { value: "backup_code", "Mã dự phòng" } }
                         }
-                        input {
-                            class: "settings-input",
-                            r#type: "password",
-                            placeholder: "Xác thực tài khoản",
-                            value: "{enc_zip_reauth_secret}",
-                            oninput: move |e| enc_zip_reauth_secret.set(e.value()),
+                        if enc_zip_reauth_method() != "passkey" {
+                            input {
+                                class: "settings-input",
+                                r#type: "password",
+                                placeholder: "Xác thực tài khoản",
+                                value: "{enc_zip_reauth_secret}",
+                                oninput: move |e| enc_zip_reauth_secret.set(e.value()),
+                            }
                         }
                         input {
                             class: "settings-input",
@@ -1479,16 +1569,19 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                     value: "{zip_reauth_method}",
                                     onchange: move |e| zip_reauth_method.set(e.value()),
                                     if m.has_export_password { option { value: "password", "Mật khẩu xuất" } }
+                                    if m.passkeys_count > 0 { option { value: "passkey", "Khóa thiết bị ({m.passkeys_count})" } }
                                     if m.totp_enabled { option { value: "totp", "Mã 2FA TOTP" } }
                                     if m.backup_codes_remaining > 0 { option { value: "backup_code", "Mã dự phòng" } }
                                 }
-                                input {
-                                    class: "settings-input",
-                                    id: "unencrypted-zip-reauth-secret",
-                                    r#type: "password",
-                                    placeholder: "Nhập mật khẩu xuất hoặc mã 2FA",
-                                    value: "{zip_reauth_secret}",
-                                    oninput: move |e| zip_reauth_secret.set(e.value()),
+                                if zip_reauth_method() != "passkey" {
+                                    input {
+                                        class: "settings-input",
+                                        id: "unencrypted-zip-reauth-secret",
+                                        r#type: "password",
+                                        placeholder: "Nhập mật khẩu xuất hoặc mã 2FA",
+                                        value: "{zip_reauth_secret}",
+                                        oninput: move |e| zip_reauth_secret.set(e.value()),
+                                    }
                                 }
                                 button {
                                     r#type: "button",

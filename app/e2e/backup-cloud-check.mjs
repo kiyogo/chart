@@ -181,6 +181,10 @@ try {
   await p1.waitForSelector('.status-badge.success', { timeout: 10000 });
   record('Export password configured via Security UI', true);
 
+  await p1.locator('#btn-register-passkey').click();
+  await p1.waitForSelector('text=/khóa bảo mật P-256/', { timeout: 10000 });
+  record('Device P-256 Passkey generated in IndexedDB and registered on server', true);
+
   // 2. Settings -> Backup (.kdata)
   await p1.locator('.settings-nav-item', { hasText: 'Sao lưu' }).click();
   await p1.waitForSelector('#btn-export-kdata', { timeout: 10000 });
@@ -205,6 +209,17 @@ try {
   const isKdataMagic = kdataBuf.subarray(0, 8).toString('ascii') === 'KIYODATA';
   record('.kdata exported via reauth and starts with KIYODATA magic', isKdataMagic, `${download.suggestedFilename()} (${kdataBuf.length} bytes)`);
   await shot(p1, '01_backup_kdata_export');
+
+  // Also test exporting .kdata via Device P-256 Passkey without typing password!
+  await p1.locator('select[aria-label="Phương thức xác thực xuất"]').selectOption('passkey');
+  const pkDownloadPromise = p1.waitForEvent('download', { timeout: 30000 });
+  await p1.locator('#btn-export-kdata').click();
+  const pkDownload = await pkDownloadPromise;
+  const pkPath = path.join(OUT, 'passkey_' + pkDownload.suggestedFilename());
+  await pkDownload.saveAs(pkPath);
+  const pkBuf = fs.readFileSync(pkPath);
+  record('.kdata exported via P-256 Passkey reauth (no password needed)', pkBuf.subarray(0, 8).toString('ascii') === 'KIYODATA');
+  await p1.locator('select[aria-label="Phương thức xác thực xuất"]').selectOption('password');
 
   // Inspect with wrong password -> error badge
   await p1.locator('#kdata-restore-file').setInputFiles(kdataPath);
@@ -251,6 +266,12 @@ try {
   await p1.locator('button:has-text("Sao lưu tăng dần")').first().click();
   await p1.waitForSelector('text=/Ảnh chụp #2/', { timeout: 20000 });
   record('Cloud incremental backup #2 skips unchanged chunks', true);
+
+  await p1.locator('#cloud-auto-passphrase').fill('CloudPass#2026');
+  await p1.locator('select[aria-label="Chu kỳ sao lưu Cloud"]').selectOption('daily');
+  await p1.locator('#btn-save-cloud-policy').click();
+  await p1.waitForSelector('text=/Đã lưu khóa mã hóa/', { timeout: 10000 });
+  record('Automatic Cloud Backup policy + sealed key saved in UI', true);
   await shot(p1, '03_cloud_connected_snapshots');
 
   // 4. Settings -> Security -> Multi-step Unencrypted ZIP unlock & auto-relock

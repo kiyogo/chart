@@ -182,11 +182,62 @@ pub async fn set_export_password(
     Ok(())
 }
 
+pub async fn register_device_passkey(label: &str) -> Result<String, ApiError> {
+    let created = platform::register_device_passkey_local().await?;
+    let resp: serde_json::Value = req_json(
+        "POST",
+        "/api/backup/reauth/passkeys/register",
+        Some(json!({
+            "credential_id": created.credential_id,
+            "public_key_spki_b64": created.public_key_spki_b64,
+            "label": label,
+        })),
+    )
+    .await?;
+    Ok(resp
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string())
+}
+
 pub async fn verify_reauth(
     scope: &str,
     method: &str,
     secret: &str,
 ) -> Result<ReauthResponse, ApiError> {
+    if method == "passkey" {
+        let ch: serde_json::Value = req_json(
+            "POST",
+            "/api/backup/reauth/challenge",
+            Some(json!({ "purpose": "reauth" })),
+        )
+        .await?;
+        let challenge_id = ch
+            .get("challenge_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let challenge_b64 = ch
+            .get("challenge_b64")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let sig = platform::sign_passkey_challenge_local(&challenge_b64).await?;
+        return req_json(
+            "POST",
+            "/api/backup/reauth",
+            Some(json!({
+                "scope": scope,
+                "method": "passkey",
+                "secret": "",
+                "challenge_id": challenge_id,
+                "credential_id": sig.credential_id,
+                "signature_b64": sig.signature_b64,
+            })),
+        )
+        .await;
+    }
     req_json(
         "POST",
         "/api/backup/reauth",
@@ -443,6 +494,8 @@ pub struct CloudBackupPolicy {
     pub retain_snapshots: i32,
     pub paused: bool,
     #[serde(default)]
+    pub has_auto_key: bool,
+    #[serde(default)]
     pub last_run_at: Option<String>,
     #[serde(default)]
     pub next_run_at: Option<String>,
@@ -544,11 +597,19 @@ pub async fn get_cloud_policy() -> Result<CloudBackupPolicy, ApiError> {
     req_json("GET", "/api/cloud/policy", None).await
 }
 
-pub async fn update_cloud_policy(policy: &CloudBackupPolicy) -> Result<CloudBackupPolicy, ApiError> {
-    req_json(
-        "PUT",
-        "/api/cloud/policy",
-        Some(serde_json::to_value(policy).unwrap_or_else(|_| json!({}))),
-    )
-    .await
+pub async fn update_cloud_policy(
+    policy: &CloudBackupPolicy,
+    auto_encryption_password: Option<&str>,
+    clear_auto_key: bool,
+) -> Result<CloudBackupPolicy, ApiError> {
+    let mut payload = serde_json::to_value(policy).unwrap_or_else(|_| json!({}));
+    if let Some(obj) = payload.as_object_mut() {
+        if let Some(pw) = auto_encryption_password.filter(|s| !s.trim().is_empty()) {
+            obj.insert("auto_encryption_password".into(), json!(pw.trim()));
+        }
+        if clear_auto_key {
+            obj.insert("clear_auto_key".into(), json!(true));
+        }
+    }
+    req_json("PUT", "/api/cloud/policy", Some(payload)).await
 }
