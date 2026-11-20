@@ -11,6 +11,7 @@ pub mod community_ui;
 pub mod composer;
 pub mod demo_gallery;
 pub mod details_panel;
+pub mod download_view;
 pub mod draw_studio;
 pub mod emoji_data;
 pub mod emoji_picker;

@@ -36,14 +36,15 @@
   // Configuration constants
   const PROXIMITY_PX = 48;
   const HOVER_ENTER_PX = 7;
-  const HOVER_EXIT_PX = 11;
-  const EDGE_OUTER_TOLERANCE_PX = 4;
+  const HOVER_EXIT_PX = 10;
+  const EDGE_OUTER_TOLERANCE_PX = 2;
   const THUMB_Y_TOLERANCE_PX = 4;
   const FADE_TIMEOUT_MS = 850;
   const THUMB_NORMAL_WIDTH = 3;
-  const THUMB_EXPANDED_WIDTH = 9;
+  const THUMB_EXPANDED_WIDTH = 5;
   const THUMB_MIN_HEIGHT = 28;
-  const THUMB_EDGE_MARGIN = 2;
+  const THUMB_EDGE_MARGIN = 4;
+  const TRACK_INSET_Y = 12;
 
   const SCROLLABLE_FALLBACK_SELECTOR =
     '.chat-messages, .settings-body, .settings-nav, .sidebar-scrollable, .feed-scroll, .ent-main, .partner-info-sidebar, .server-members-panel, .quick-results, .modal-dialog, .forum-view';
@@ -121,8 +122,20 @@
     const scrollT = isDoc ? (window.scrollY || document.documentElement.scrollTop) : el.scrollTop;
     const isColReverse = !isDoc && window.getComputedStyle(el).flexDirection === 'column-reverse';
 
+    let insetY = 0;
+    if (!isDoc && el) {
+      const cs = window.getComputedStyle(el);
+      const rTop = parseFloat(cs.borderTopRightRadius) || 0;
+      const rBot = parseFloat(cs.borderBottomRightRadius) || 0;
+      const maxR = Math.max(rTop, rBot);
+      insetY = maxR > 0 ? Math.max(TRACK_INSET_Y, Math.round(maxR * 0.75)) : TRACK_INSET_Y;
+    }
+    const maxInset = Math.max(0, Math.floor((Math.min(rect.height, clientH) - THUMB_MIN_HEIGHT - 8) / 2));
+    insetY = Math.min(insetY, maxInset);
+
     const maxScroll = Math.max(1, scrollH - clientH);
-    const trackH = Math.min(rect.height, clientH);
+    const trackTop = rect.top + insetY;
+    const trackH = Math.max(THUMB_MIN_HEIGHT, Math.min(rect.height, clientH) - insetY * 2);
     const thumbH = Math.max(THUMB_MIN_HEIGHT, Math.round((clientH / scrollH) * trackH));
     const thumbMaxY = Math.max(0, trackH - thumbH);
 
@@ -131,8 +144,8 @@
       ? Math.max(0, Math.min(1, 1 + (scrollT / maxScroll)))
       : Math.max(0, Math.min(1, scrollT / maxScroll));
 
-    const thumbY = rect.top + Math.round(ratio * thumbMaxY);
-    return { isDoc, isColReverse, rect, clientH, scrollH, scrollT, maxScroll, trackH, thumbH, thumbMaxY, thumbY };
+    const thumbY = trackTop + Math.round(ratio * thumbMaxY);
+    return { isDoc, isColReverse, rect, trackTop, insetY, clientH, scrollH, scrollT, maxScroll, trackH, thumbH, thumbMaxY, thumbY };
   }
 
   function findScrollableContainerAt(target, clientX, clientY) {
@@ -379,13 +392,13 @@
 
       const hoverProgress = Math.max(0, Math.min(1, (thumbW - THUMB_NORMAL_WIDTH) / (THUMB_EXPANDED_WIDTH - THUMB_NORMAL_WIDTH)));
       if (dark) {
-        const a = 0.22 + hoverProgress * 0.44;
+        const a = 0.20 + hoverProgress * 0.18;
         ctx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
       } else {
-        const r = Math.round(90 - hoverProgress * 45);
-        const g = Math.round(105 - hoverProgress * 50);
-        const b = Math.round(125 - hoverProgress * 55);
-        const a = 0.28 + hoverProgress * 0.46;
+        const r = Math.round(108 - hoverProgress * 24);
+        const g = Math.round(120 - hoverProgress * 26);
+        const b = Math.round(138 - hoverProgress * 28);
+        const a = 0.24 + hoverProgress * 0.18;
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
       }
 
@@ -492,7 +505,7 @@
         e.stopPropagation();
 
         const m = getScrollMetrics(el);
-        const ratio = Math.max(0, Math.min(1, (y - m.rect.top - m.thumbH / 2) / Math.max(1, m.trackH - m.thumbH)));
+        const ratio = Math.max(0, Math.min(1, (y - m.trackTop - m.thumbH / 2) / Math.max(1, m.trackH - m.thumbH)));
         const targetScroll = m.isColReverse ? (ratio - 1) * m.maxScroll : ratio * m.maxScroll;
 
         if (m.isDoc) {

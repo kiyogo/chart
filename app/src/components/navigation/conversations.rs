@@ -538,6 +538,9 @@ pub fn StoriesNotesBar(
     let init_tx = cur_tx.clone();
     let init_em2 = cur_em.clone();
     let init_tx2 = cur_tx.clone();
+    let init_em3 = cur_em.clone();
+    let init_tx3 = cur_tx.clone();
+    let my_story_open = my_latest_story.clone();
 
     rsx! {
         div { class: "notes-strip-wrap",
@@ -571,27 +574,48 @@ pub fn StoriesNotesBar(
                             }
                         }
                     }
-                    button {
-                        r#type: "button",
-                        class: "note-avatar-btn",
-                        aria_label: "Tạo tin mới",
-                        title: "Tạo tin",
-                        onclick: move |e| {
-                            e.stop_propagation();
-                            note_emoji.set(init_em2.clone());
-                            note_text.set(init_tx2.clone());
-                            note_err.set(None);
-                            active_tab.set("story");
-                            story_success.set(false);
-                            edit_my_note.set(true);
-                        },
-                        span { class: if my_has_story { "note-avatar-wrap has-story-ring" } else { "note-avatar-wrap" },
-                            Avatar {
-                                name: if my_username.is_empty() { "Tôi".to_string() } else { my_username.clone() },
-                                avatar_url: my_avatar_url.clone(),
-                                size: 52,
+                    div { class: "note-avatar-tile",
+                        div { class: if my_has_story { "note-avatar-wrap has-story-ring" } else { "note-avatar-wrap" },
+                            button {
+                                r#type: "button",
+                                class: "note-avatar-circle-btn",
+                                aria_label: if my_has_story { "Xem tin của bạn" } else { "Tạo tin mới" },
+                                title: if my_has_story { "Xem tin của bạn" } else { "Tạo tin" },
+                                onclick: move |e| {
+                                    e.stop_propagation();
+                                    if let Some(st) = my_story_open.clone() {
+                                        viewing_story.set(Some(st));
+                                    } else {
+                                        note_emoji.set(init_em3.clone());
+                                        note_text.set(init_tx3.clone());
+                                        note_err.set(None);
+                                        active_tab.set("story");
+                                        story_success.set(false);
+                                        edit_my_note.set(true);
+                                    }
+                                },
+                                Avatar {
+                                    name: if my_username.is_empty() { "Tôi".to_string() } else { my_username.clone() },
+                                    avatar_url: my_avatar_url.clone(),
+                                    size: 52,
+                                }
                             }
-                            span { class: "note-plus-badge", aria_hidden: "true", PlusIcon { size: 12 } }
+                            button {
+                                r#type: "button",
+                                class: "note-plus-badge",
+                                aria_label: "Tạo tin mới",
+                                title: "Tạo tin",
+                                onclick: move |e| {
+                                    e.stop_propagation();
+                                    note_emoji.set(init_em2.clone());
+                                    note_text.set(init_tx2.clone());
+                                    note_err.set(None);
+                                    active_tab.set("story");
+                                    story_success.set(false);
+                                    edit_my_note.set(true);
+                                },
+                                PlusIcon { size: 12 }
+                            }
                         }
                         span { class: "note-name", "Tạo tin" }
                     }

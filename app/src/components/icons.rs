@@ -884,3 +884,90 @@ pub fn CloudIcon(#[props(default = 18)] size: u32) -> Element {
         path { d: "M17.5 19H7a4.5 4.5 0 0 1-.4-8.98A5.5 5.5 0 0 1 17.3 9a4 4 0 0 1 .2 10Z", fill: duo_fill!(), fill_opacity: "0.14" }
     } }
 }
+
+/// Clean single-glyph Google Play Store logo mark.
+#[component]
+pub fn PlayStoreLogoIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            xmlns: "http://www.w3.org/2000/svg",
+            path { fill: "#4285F4", d: "M3.6 2.4a1.4 1.4 0 0 0-.6 1.15v16.9c0 .48.22.9.6 1.15l.1.06 9.48-9.48v-.36L3.7 2.34l-.1.06z" }
+            path { fill: "#34A853", d: "M16.34 15.34l-3.16-3.16v-.36l3.16-3.16.14.08 3.74 2.12c1.07.6 1.07 1.6 0 2.2l-3.74 2.13-.14.15z" }
+            path { fill: "#FBBC05", d: "M16.48 15.19L13.18 11.9 3.6 21.48c.35.37.94.42 1.62.03l11.26-6.32z" }
+            path { fill: "#EA4335", d: "M16.48 8.81L5.22 2.49C4.54 2.1 3.95 2.15 3.6 2.52L13.18 12.1l3.3-3.29z" }
+        }
+    }
+}
+
+/// Clean single-glyph Apple App Store icon mark.
+#[component]
+pub fn AppStoreLogoIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            xmlns: "http://www.w3.org/2000/svg",
+            rect { x: "2", y: "2", width: "20", height: "20", rx: "5.2", fill: "#0A84FF" }
+            path { d: "M11.6 6.2l-4.5 7.8M12.4 6.2l4.5 7.8M6.2 15.2h11.6M8.2 16.4l-.8 1.4M15.8 16.4l.8 1.4", stroke: "#FFFFFF", stroke_width: "1.8", stroke_linecap: "round" }
+        }
+    }
+}
+
+#[component]
+pub fn WindowsLogoIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "#0078D4",
+            xmlns: "http://www.w3.org/2000/svg",
+            path { d: "M3 5.2l8-1.1v7.4H3V5.2zm9-1.24L21 2.7v8.8h-9V3.96zM3 12.5h8v7.4l-8-1.1v-6.3zm9 0h9v8.8l-9-1.26V12.5z" }
+        }
+    }
+}
+
+#[component]
+pub fn MacLogoIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "currentColor",
+            xmlns: "http://www.w3.org/2000/svg",
+            path { d: "M16.2 12.7c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.1.8s-1.6-.8-2.7-.7c-1.4 0-2.7.8-3.4 2.1-1.5 2.5-.4 6.3 1 8.4.7 1 1.5 2.1 2.6 2.1 1-.1 1.4-.7 2.7-.7s1.6.7 2.7.6c1.1 0 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.1-2.4-.1 0-2.2-.8-2.2-3.4zM14.1 6.4c.6-.7 1-1.7.9-2.7-.8 0-1.9.6-2.5 1.3-.5.6-1 1.6-.9 2.6.9.1 1.9-.5 2.5-1.2z" }
+        }
+    }
+}
+
+#[component]
+pub fn LinuxLogoIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! { Duo { size,
+        rect { x: "3", y: "4", width: "18", height: "16", rx: "3", fill: duo_fill!(), fill_opacity: "0.14" }
+        path { d: "M7.5 9.5l3 2.5-3 2.5M12.5 14.5h4" }
+    } }
+}
+
+#[component]
+pub fn AndroidIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            xmlns: "http://www.w3.org/2000/svg",
+            path { d: "M6.5 11a5.5 5.5 0 0 1 11 0v6.5a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V11z", fill: "#34A853" }
+            path { d: "M9 6.2L7.4 3.8M15 6.2l1.6-2.4", stroke: "#34A853", stroke_width: "1.8", stroke_linecap: "round" }
+            circle { cx: "10", cy: "9.2", r: "0.9", fill: "#FFFFFF" }
+            circle { cx: "14", cy: "9.2", r: "0.9", fill: "#FFFFFF" }
+        }
+    }
+}

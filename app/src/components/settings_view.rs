@@ -143,27 +143,19 @@ pub fn SettingsView(
 
     rsx! {
         div { class: "main-stage",
-            header { class: "chat-header",
-                button {
-                    r#type: "button",
-                    class: "icon-btn",
-                    aria_label: "Đóng cài đặt",
-                    onclick: move |_| {
-                        // On phones the detail page is a separate screen: go back to the list first.
-                        spawn(async move {
-                            if has_detail() && platform::get_viewport_width().await < 768 {
-                                has_detail.set(false);
-                            } else {
-                                on_close.call(());
-                            }
-                        });
-                    },
-                    BackIcon {}
-                }
-                h2 { class: "chat-header-title", "Cài đặt" }
-            }
-
             div { class: if has_detail() { "settings-page has-detail" } else { "settings-page" },
+                if has_detail() {
+                    div { class: "settings-mobile-bar",
+                        button {
+                            r#type: "button",
+                            class: "icon-btn",
+                            aria_label: "Quay lại danh sách cài đặt",
+                            onclick: move |_| has_detail.set(false),
+                            BackIcon {}
+                        }
+                        span { class: "settings-mobile-title", "Cài đặt" }
+                    }
+                }
                 // Left Settings Nav (on mobile this is the first screen)
                 nav { class: "settings-nav", aria_label: "Danh mục cài đặt",
                     div { class: "settings-search search-field",

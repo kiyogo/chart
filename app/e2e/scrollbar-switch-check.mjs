@@ -194,16 +194,37 @@ try {
       JSON.stringify(proxSample),
     );
 
-    // Move cursor directly onto the scrollbar track/thumb (4px from right edge) -> expect expanded ~9px
-    await page.mouse.move(scrollInfo.right - 4, thumbY);
+    // Move cursor directly onto the scrollbar track/thumb (5px from right edge) -> expect subtle expansion (~5px)
+    await page.mouse.move(scrollInfo.right - 5, thumbY);
     await page.waitForTimeout(380);
     const hoverSample = await measureScrollbarPixels(scrollInfo.right, thumbY);
     await page.screenshot({ path: path.join(OUT, `05_${selector.replace(/[^a-z]/g, '')}_hover.png`) });
     record(
-      `${label}: scrollbar on direct hover expands visibly (~9px)`,
-      hoverSample.found && hoverSample.pixelWidth >= 8 && hoverSample.pixelWidth <= 11 && hoverSample.pixelWidth > thinSample.pixelWidth + 4,
+      `${label}: scrollbar on direct hover expands subtly (~5px, not oversized)`,
+      hoverSample.found && hoverSample.pixelWidth >= 4.2 && hoverSample.pixelWidth <= 6.8 && hoverSample.pixelWidth > thinSample.pixelWidth + 0.8,
       `thin=${thinSample.pixelWidth}px -> prox=${proxSample.pixelWidth}px -> hover=${hoverSample.pixelWidth}px (alpha ${thinSample.maxAlpha} -> ${hoverSample.maxAlpha})`,
     );
+
+    // Check top & bottom edge bounds so thumb stays inset inside rounded panel
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      el.scrollTop = 0;
+    }, selector);
+    await page.waitForTimeout(160);
+    const topEdgeFree = await page.evaluate(({ right, top }) => {
+      const c = document.getElementById('canvas-scrollbar-overlay');
+      const ctx2 = c.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const sx = Math.max(0, Math.floor((right - 14) * dpr));
+      const ex = Math.min(c.width - 1, Math.ceil((right + 2) * dpr));
+      const py = Math.floor((top + 3) * dpr);
+      const data = ctx2.getImageData(sx, py, ex - sx + 1, 1).data;
+      for (let i = 0; i <= ex - sx; i++) {
+        if (data[i * 4 + 3] > 5) return false;
+      }
+      return true;
+    }, { right: scrollInfo.right, top: scrollInfo.top });
+    record(`${label}: scrollbar top edge stays inside rounded corner inset`, topEdgeFree);
 
     // Drag thumb down 80px and verify scrollTop increases
     const beforeDrag = await page.evaluate((sel) => document.querySelector(sel).scrollTop, selector);

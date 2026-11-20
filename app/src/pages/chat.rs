@@ -8,6 +8,7 @@ use crate::{
         avatar::Avatar,
         calls::{ActiveCallOverlay, IncomingCallModal},
         details_panel::DmDetailsPanel,
+        download_view::DownloadView,
         enterprise::{EnterpriseWorkspace, tasks_projects::CreateTaskFromMsgDialog},
         feed_view::FeedView,
         meet_view::MeetView,
@@ -161,6 +162,7 @@ pub fn Chat(
 
     // Sidebar Tabs
     let mut nav_section = use_signal(|| NavSection::DirectMessages);
+    let mut download_target = use_signal(|| "all".to_string());
     let mut server_categories = use_signal(Vec::<ServerCategoryItem>::new);
     let mut voice_participants = use_signal(Vec::<VoiceStateItem>::new);
     let mut is_community_modal_open = use_signal(|| false);
@@ -1616,6 +1618,11 @@ pub fn Chat(
                     let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
                     let v = urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default();
                     match k {
+                        "page" => {
+                            if v == "download" {
+                                nav_section.set(NavSection::Download);
+                            }
+                        }
                         "meet" => {
                             let code = calls::extract_meet_code(&v);
                             if !code.is_empty() {
@@ -2247,7 +2254,7 @@ pub fn Chat(
         || active_mod_page.is_some()
         || is_settings_open()
         || server_settings_active
-        || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet);
+        || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Download);
     let section = if is_settings_open() { NavSection::Settings } else { nav_section() };
 
     let start_call = move |kind: &'static str, user: Option<String>, group: Option<String>| {
@@ -2620,6 +2627,12 @@ pub fn Chat(
                     server_settings_open.set(false);
                     nav_section.set(NavSection::Meet);
                 },
+                on_select_download: move |target: String| {
+                    is_settings_open.set(false);
+                    server_settings_open.set(false);
+                    download_target.set(target);
+                    nav_section.set(NavSection::Download);
+                },
                 on_select_server: move |srv: ServerItem| select_server(srv),
                 on_select_group: move |g: GroupItem| select_group.call(g),
                 on_open_profile: {
@@ -2633,7 +2646,7 @@ pub fn Chat(
                 on_logout: move |_| on_logout.call(()),
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet) && active_mod_page.is_none() {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Download) && active_mod_page.is_none() {
                 if let Some(lpid) = active_left_plugin.clone() {
                     aside { class: "nav-sidebar",
                         crate::components::plugins_view::PluginLeftAppView {
@@ -2799,7 +2812,7 @@ pub fn Chat(
                 }
             }
 
-            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi) && active_mod_page.is_none() {
+            if !matches!(section, NavSection::Settings | NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Download) && active_mod_page.is_none() {
                 div {
                     class: "panel-resizer resizer-left",
                     "data-resizer": "sidebar",
@@ -2969,6 +2982,12 @@ pub fn Chat(
                                 });
                             }
                         },
+                    }
+                } else if section == NavSection::Download {
+                    DownloadView {
+                        key: "{download_target()}",
+                        initial_target: download_target(),
+                        on_back: move |_| nav_section.set(NavSection::DirectMessages),
                     }
                 } else if let Some(b) = active_bot() {
                     BotChatView {

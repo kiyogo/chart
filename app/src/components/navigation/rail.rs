@@ -9,8 +9,9 @@ use crate::i18n::t;
 use crate::{
     components::{
         avatar::Avatar,
+        download_view::render_qr_svg,
         plugins_view::{ACTIVE_LEFT_PLUGIN, ACTIVE_PLUGIN_PAGE, EDITING_PLUGIN_ID, PluginGlyph, enabled_left_apps, enabled_rail_pages},
-        icons::{CompassIcon, FeedThreadsIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, PluginIcon, SearchIcon, SettingsIcon, UserIcon, VicoAiIcon, VideoIcon},
+        icons::{AppStoreLogoIcon, BellIcon, CompassIcon, DownloadIcon, FeedThreadsIcon, FriendsIcon, LogoIcon, LogoutIcon, MessageIcon, PlayStoreLogoIcon, PluginIcon, SearchIcon, SettingsIcon, UserIcon, VicoAiIcon, VideoIcon},
         navigation::NavSection,
     },
     models::{GroupItem, ServerItem},
@@ -53,8 +54,20 @@ pub fn AppRail(
     #[props(default)] on_select_feed: Option<EventHandler<()>>,
     #[props(default)] on_select_vico_ai: Option<EventHandler<()>>,
     #[props(default)] on_select_meet: Option<EventHandler<()>>,
+    #[props(default)] on_select_download: Option<EventHandler<String>>,
 ) -> Element {
     let mut menu_open = use_signal(|| false);
+    let mut notif_open = use_signal(|| false);
+    let mut download_hover_open = use_signal(|| false);
+    let mut download_qr_url = use_signal(|| String::from("https://github.com/kiyogo/chart/releases"));
+    use_effect(move || {
+        spawn(async move {
+            let origin = platform::app_origin().await;
+            if !origin.trim().is_empty() {
+                download_qr_url.set(format!("{origin}/?page=download"));
+            }
+        });
+    });
     let active_mod_page = ACTIVE_PLUGIN_PAGE.read().clone();
     let active_left_plugin = ACTIVE_LEFT_PLUGIN.read().clone();
     let in_mod = active_mod_page.is_some();
@@ -63,13 +76,16 @@ pub fn AppRail(
     let in_feed = !in_mod && !in_left && active_section == NavSection::Feed;
     let in_vico = !in_mod && !in_left && active_section == NavSection::VicoAi;
     let in_meet = !in_mod && !in_left && active_section == NavSection::Meet;
+    let in_download = !in_mod && !in_left && active_section == NavSection::Download;
     let in_dm = !in_mod && !in_left && active_section == NavSection::DirectMessages;
     let in_friends = !in_mod && !in_left && active_section == NavSection::Friends;
     let in_comm = !in_mod && !in_left && matches!(active_section, NavSection::Communities | NavSection::Server(_));
     let in_settings = !in_mod && active_section == NavSection::Settings;
     let left_apps = enabled_left_apps();
     let custom_pages = enabled_rail_pages();
-    let switch_to_dm = in_settings || matches!(active_section, NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet);
+    let switch_to_dm = in_settings || matches!(active_section, NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Download);
+    let notif_count = unread_dm_count + pending_friend_count;
+    let qr_svg = render_qr_svg(&download_qr_url(), "#0F172A", "#FFFFFF");
     let mut cls = String::from("app-rail");
     if hidden_mobile { cls.push_str(" hidden-mobile"); }
 
@@ -289,10 +305,147 @@ pub fn AppRail(
             div { class: "rail-bottom",
                 button {
                     r#type: "button",
+                    class: if notif_open() { "rail-item compact active" } else { "rail-item compact" },
+                    "data-tip": "Thông báo",
+                    aria_label: "Thông báo",
+                    aria_haspopup: "menu",
+                    aria_expanded: "{notif_open()}",
+                    onclick: move |_| {
+                        let next = !notif_open();
+                        menu_open.set(false);
+                        download_hover_open.set(false);
+                        notif_open.set(next);
+                    },
+                    span { class: "rail-icon", BellIcon { size: 18 } }
+                    if notif_count > 0 {
+                        span { class: "rail-badge", "{badge(notif_count)}" }
+                    }
+                }
+                if notif_open() {
+                    button { r#type: "button", class: "menu-dismiss", aria_label: "Đóng thông báo", tabindex: "-1", onclick: move |_| notif_open.set(false) }
+                    div { class: "account-menu rail-menu notif-rail-menu", role: "menu",
+                        div { class: "menu-header", "Thông báo" }
+                        if unread_dm_count > 0 {
+                            button {
+                                r#type: "button",
+                                class: "menu-item",
+                                role: "menuitem",
+                                onclick: move |_| {
+                                    notif_open.set(false);
+                                    *ACTIVE_PLUGIN_PAGE.write() = None;
+                                    *ACTIVE_LEFT_PLUGIN.write() = None;
+                                    on_select_dm.call(());
+                                },
+                                MessageIcon { size: 16 }
+                                span { "{unread_dm_count} tin nhắn chưa đọc" }
+                            }
+                        }
+                        if pending_friend_count > 0 {
+                            button {
+                                r#type: "button",
+                                class: "menu-item",
+                                role: "menuitem",
+                                onclick: move |_| {
+                                    notif_open.set(false);
+                                    *ACTIVE_PLUGIN_PAGE.write() = None;
+                                    *ACTIVE_LEFT_PLUGIN.write() = None;
+                                    on_select_friends.call(());
+                                },
+                                FriendsIcon { size: 16 }
+                                span { "{pending_friend_count} lời mời kết bạn" }
+                            }
+                        }
+                        if unread_dm_count == 0 && pending_friend_count == 0 {
+                            div { class: "rail-notif-empty", "Không có thông báo mới" }
+                        }
+                    }
+                }
+
+                div {
+                    class: "rail-download-wrap",
+                    onmouseenter: move |_| download_hover_open.set(true),
+                    onmouseleave: move |_| download_hover_open.set(false),
+                    button {
+                        r#type: "button",
+                        class: if in_download { "rail-item compact active" } else { "rail-item compact" },
+                        aria_label: "Tải ứng dụng",
+                        title: "Tải ứng dụng",
+                        onclick: move |_| {
+                            menu_open.set(false);
+                            notif_open.set(false);
+                            download_hover_open.set(false);
+                            *ACTIVE_PLUGIN_PAGE.write() = None;
+                            *ACTIVE_LEFT_PLUGIN.write() = None;
+                            if let Some(cb) = &on_select_download {
+                                cb.call("all".to_string());
+                            }
+                        },
+                        span { class: "rail-icon", DownloadIcon { size: 18 } }
+                    }
+                    if download_hover_open() {
+                        div { class: "account-menu rail-menu download-rail-menu", role: "region", aria_label: "Tải ứng dụng",
+                            div { class: "download-popover-qr", dangerous_inner_html: "{qr_svg}" }
+                            button {
+                                r#type: "button",
+                                class: "download-popover-desktop-btn",
+                                onclick: move |_| {
+                                    download_hover_open.set(false);
+                                    *ACTIVE_PLUGIN_PAGE.write() = None;
+                                    *ACTIVE_LEFT_PLUGIN.write() = None;
+                                    if let Some(cb) = &on_select_download {
+                                        cb.call("desktop".to_string());
+                                    }
+                                },
+                                "Tải cho máy tính"
+                            }
+                            div { class: "download-popover-stores",
+                                button {
+                                    r#type: "button",
+                                    class: "download-store-logo-only",
+                                    aria_label: "CH Play",
+                                    title: "CH Play",
+                                    onclick: move |_| {
+                                        download_hover_open.set(false);
+                                        *ACTIVE_PLUGIN_PAGE.write() = None;
+                                        *ACTIVE_LEFT_PLUGIN.write() = None;
+                                        if let Some(cb) = &on_select_download {
+                                            cb.call("mobile".to_string());
+                                        }
+                                    },
+                                    PlayStoreLogoIcon { size: 22 }
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "download-store-logo-only",
+                                    aria_label: "App Store",
+                                    title: "App Store",
+                                    onclick: move |_| {
+                                        download_hover_open.set(false);
+                                        *ACTIVE_PLUGIN_PAGE.write() = None;
+                                        *ACTIVE_LEFT_PLUGIN.write() = None;
+                                        if let Some(cb) = &on_select_download {
+                                            cb.call("mobile".to_string());
+                                        }
+                                    },
+                                    AppStoreLogoIcon { size: 22 }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                button {
+                    r#type: "button",
                     class: if in_settings { "rail-item compact active" } else { "rail-item compact" },
                     "data-tip": "{t(\"nav.settings\")}",
                     aria_label: "{t(\"nav.settings\")}",
-                    onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_open_settings.call(()); },
+                    onclick: move |_| {
+                        menu_open.set(false);
+                        notif_open.set(false);
+                        *ACTIVE_PLUGIN_PAGE.write() = None;
+                        *ACTIVE_LEFT_PLUGIN.write() = None;
+                        on_open_settings.call(());
+                    },
                     span { class: "rail-icon", SettingsIcon {} }
                 }
                 button {
@@ -302,7 +455,11 @@ pub fn AppRail(
                     aria_label: "Tài khoản của tôi",
                     aria_haspopup: "menu",
                     aria_expanded: "{menu_open()}",
-                    onclick: move |_| menu_open.set(!menu_open()),
+                    onclick: move |_| {
+                        notif_open.set(false);
+                        download_hover_open.set(false);
+                        menu_open.set(!menu_open());
+                    },
                     Avatar { name: current_username.clone(), avatar_url: current_avatar_url.clone(), size: 38 }
                 }
                 if menu_open() {
