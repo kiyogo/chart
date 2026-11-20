@@ -1164,7 +1164,7 @@ pub fn sync_plugins_to_dom(list: &[PluginMod]) {
             "glass" => {
                 let b = t.glass_blur.max(8);
                 css.push_str(&format!(
-                    ".nav-sidebar, .chat-column, .settings-nav, .settings-body, .search-page {{ background: color-mix(in srgb, var(--bg-surface) 76%, transparent) !important; backdrop-filter: blur({b}px) !important; }}\n"
+                    ".nav-sidebar:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)), .chat-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)), .settings-nav:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)), .settings-body:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)), .search-page:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)) {{ background: color-mix(in srgb, var(--bg-surface) 76%, transparent) !important; backdrop-filter: blur({b}px) !important; }}\n"
                 ));
             }
             _ => {}

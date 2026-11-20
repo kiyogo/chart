@@ -1566,31 +1566,72 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   padding: var(--space-1) clamp(var(--space-3), 2.5vw, var(--space-8)) max(var(--space-3), env(safe-area-inset-bottom));
   background: transparent !important;
 }
+.composer:has(.menu-dismiss, .picker-popover, .account-menu, .tools-menu) {
+  z-index: var(--z-popover);
+}
+.composer:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.chat-header:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.chat-column:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.nav-sidebar:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.details-panel:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.partner-info-sidebar:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.server-members-panel:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.settings-nav:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.settings-body:has(.modal-overlay, .settings-modal-backdrop, .lightbox) {
+  z-index: var(--z-modal);
+}
+.chat-header:has(.menu-dismiss, .account-menu, .header-search-popover, .picker-popover) {
+  z-index: var(--z-popover);
+}
 .composer-inner { max-width: 68rem; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-2); position: relative; pointer-events: auto; }
 .composer-context {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--accent-soft) 92%, var(--bg-primary));
-  backdrop-filter: blur(14px);
+  background: transparent;
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+.composer-context::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent-soft) 92%, var(--bg-primary));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: -1;
+  pointer-events: none;
+}
 .composer-context-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-box {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: var(--space-1);
   padding: var(--space-1);
   border-radius: var(--radius-xl);
+  background: transparent;
+  box-shadow: var(--shadow-md);
+  transition: border-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
+}
+.composer-box::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   background: color-mix(in srgb, var(--bg-input) 92%, var(--bg-primary));
   backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-md);
-  transition: border-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease), background-color var(--dur-hover) var(--ease);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: -1;
+  pointer-events: none;
+  transition: background-color var(--dur-hover) var(--ease);
 }
-.composer-box:focus-within { background: var(--bg-input-focus); box-shadow: var(--focus-ring); }
+.composer-box:focus-within { box-shadow: var(--focus-ring); }
+.composer-box:focus-within::before { background: var(--bg-input-focus); }
 .composer-box .icon-btn { width: 2.5rem; height: 2.5rem; border-radius: var(--radius-lg); }
 .composer-input {
   flex: 1;
@@ -2925,7 +2966,19 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
 .chat-column.wp-night .message-row.received .message-bubble { background: color-mix(in srgb, #1E2638 85%, transparent); color: #F1F4FA; }
 .chat-column.wp-custom { background-color: var(--chat-wp-color, var(--bg-chat)); }
 .chat-column.wp-image { background-image: var(--chat-wp-image); background-size: cover; background-position: center; }
-.chat-column.wp-image .composer-box, .chat-column.wp-image .chat-header { backdrop-filter: blur(14px); }
+.chat-column.wp-image .composer-box::before,
+.chat-column.wp-image .chat-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: -1;
+  pointer-events: none;
+}
+.chat-column.wp-image .chat-header { background: transparent; z-index: 2; }
+.chat-column.wp-image .chat-header::before { background: color-mix(in srgb, var(--bg-chat) 72%, transparent); }
 .wallpaper-tile { align-items: stretch; }
 html[data-app-wp="image"] .workspace-shell::before,
 html[data-app-wp="color"] .workspace-shell::before,
