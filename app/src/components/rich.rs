@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BellIcon, CheckIcon, CloseIcon, DownloadIcon, MicIcon, PlusIcon, RefreshIcon},
+        icons::{BarChartIcon, BellIcon, CheckIcon, CloseIcon, DownloadIcon, MicIcon, PlusIcon, RefreshIcon},
     },
     platform,
     services::storage_sync,
@@ -428,34 +428,50 @@ pub fn RichContent(
     match rich {
         Rich::Poll(p) => {
             let votes = tally.get(&p.id).cloned().unwrap_or_default();
-            let total = votes.len().max(1);
+            let total_votes = votes.len();
+            let total_denom = total_votes.max(1);
             let mine = votes.get(&my_id).copied();
+            let foot = if total_votes == 0 {
+                "Chưa có lượt bình chọn".to_string()
+            } else {
+                format!("{total_votes} lượt bình chọn")
+            };
             rsx! {
                 div { class: "rich-card poll-card",
-                    div { class: "rich-kind", "Bình chọn" }
+                    div { class: "rich-kind", BarChartIcon { size: 14 } "Bình chọn" }
                     div { class: "rich-title", "{p.q}" }
                     div { class: "poll-options",
                         for (i, opt) in p.o.iter().enumerate() {
                             {
                                 let count = votes.values().filter(|v| **v == i).count();
-                                let pct = count * 100 / total;
+                                let pct = if total_votes > 0 { count * 100 / total_denom } else { 0 };
+                                let chosen = mine == Some(i);
                                 let pid = p.id.clone();
                                 rsx! {
                                     button {
                                         key: "{i}",
                                         r#type: "button",
-                                        class: if mine == Some(i) { "poll-option chosen" } else { "poll-option" },
+                                        class: if chosen { "poll-option chosen" } else { "poll-option" },
+                                        aria_pressed: "{chosen}",
                                         disabled: on_vote.is_none(),
                                         onclick: move |_| if let Some(h) = on_vote { h.call((pid.clone(), i)) },
                                         span { class: "poll-bar", style: "width: {pct}%;" }
-                                        span { class: "poll-label", if mine == Some(i) { CheckIcon { size: 14 } } "{opt}" }
-                                        span { class: "poll-count", "{count}" }
+                                        span { class: "poll-check", aria_hidden: "true",
+                                            if chosen { CheckIcon { size: 11 } }
+                                        }
+                                        span { class: "poll-label", "{opt}" }
+                                        span { class: "poll-stats",
+                                            if total_votes > 0 {
+                                                span { class: "poll-pct", "{pct}%" }
+                                            }
+                                            span { class: "poll-count", "{count}" }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    div { class: "rich-foot", "{votes.len()} lượt bình chọn" }
+                    div { class: "rich-foot", "{foot}" }
                 }
             }
         }
