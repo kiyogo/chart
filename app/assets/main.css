@@ -507,7 +507,7 @@ input[type="color"] {
   padding: var(--space-2);
   border-bottom-left-radius: var(--panel-radius);
 }
-.rail-download-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
+.rail-download-wrap { position: static; width: 100%; display: flex; align-items: center; justify-content: center; }
 .rail-menu.download-rail-menu {
   top: auto;
   bottom: 0;
@@ -523,10 +523,10 @@ input[type="color"] {
 .download-rail-menu::before {
   content: "";
   position: absolute;
-  left: calc(-1 * (var(--shell-gap) + 8px));
+  left: calc(-1 * (var(--shell-gap) + 18px));
   top: 0;
   bottom: 0;
-  width: calc(var(--shell-gap) + 10px);
+  width: calc(var(--shell-gap) + 20px);
 }
 .download-popover-qr {
   padding: 0;

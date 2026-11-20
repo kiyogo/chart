@@ -184,7 +184,7 @@ try {
   await page.waitForSelector('.download-rail-menu', { timeout: 5000 });
   const dlHover = await page.evaluate(() => {
     const card = document.querySelector('.download-rail-menu');
-    const accRailGap = 10;
+    const panel = document.querySelector('.nav-sidebar') || document.querySelector('.main-stage > div');
     const qrWrap = document.querySelector('.download-popover-qr');
     const qrSvg = document.querySelector('.download-popover-qr svg');
     const deskBtn = document.querySelector('.download-popover-desktop-btn');
@@ -192,11 +192,15 @@ try {
     const cs = getComputedStyle(card);
     const qcs = getComputedStyle(qrWrap);
     const qRect = qrSvg ? qrSvg.getBoundingClientRect() : null;
+    const pr = panel.getBoundingClientRect();
+    const cr = card.getBoundingClientRect();
     return {
       bg: cs.backgroundColor,
       border: `${cs.borderTopWidth} ${cs.borderTopStyle}`,
       shadow: cs.boxShadow,
       pad: `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`,
+      leftGapToPanel: Math.round(cr.left - pr.left),
+      bottomGapToPanel: Math.round(pr.bottom - cr.bottom),
       qrBorder: `${qcs.borderTopWidth} ${qcs.borderTopStyle}`,
       qrBg: qcs.backgroundColor,
       hasQr: !!qrSvg,
@@ -218,10 +222,12 @@ try {
     };
   });
   record(
-    'Download QR hover card has larger QR, uniform 8px edge margins, borderless QR & store logos, and zero scale() zoom pop',
+    'Download QR hover card is flush with bottom-left panel corner (0px/0px), large QR, 8px edge margins, borderless QR & store logos',
     dlHover.bg === 'rgb(255, 255, 255)' &&
       dlHover.border === '0px none' &&
       dlHover.shadow !== 'none' &&
+      Math.abs(dlHover.leftGapToPanel) <= 1 &&
+      Math.abs(dlHover.bottomGapToPanel) <= 1 &&
       dlHover.pad === '7.5px 7.5px 7.5px 7.5px' &&
       dlHover.qrBorder === '0px none' &&
       dlHover.hasQr &&
