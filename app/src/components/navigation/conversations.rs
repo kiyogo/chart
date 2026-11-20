@@ -466,6 +466,7 @@ pub fn StoriesNotesBar(
                 if (!el || el.__notesDragReady) return;
                 el.__notesDragReady = true;
                 let down = false, startX = 0, startScroll = 0, moved = false;
+                el.addEventListener('dragstart', (e) => e.preventDefault());
                 el.addEventListener('pointerdown', (e) => {{
                     if (e.button !== 0) return;
                     down = true; moved = false;
