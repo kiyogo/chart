@@ -725,7 +725,7 @@ pub fn NavigationSidebar(
                                 {
                                     let is_sel = selected_server.as_ref().map(|s| s.id == srv.id).unwrap_or(false);
                                     let s_click = srv.clone();
-                                    let initials = server_initials(&srv.name);
+                                    let _ = server_initials(&srv.name);
                                     rsx! {
                                         button {
                                             key: "{srv.id}",
@@ -733,13 +733,7 @@ pub fn NavigationSidebar(
                                             class: if is_sel { "chat-item community-item selected" } else { "chat-item community-item" },
                                             aria_label: "Cộng đồng {srv.name}",
                                             onclick: move |_| on_select_server.call(s_click.clone()),
-                                            span { class: "community-icon",
-                                                if let Some(icon) = srv.icon_url.as_ref().filter(|u| !u.is_empty()) {
-                                                    img { src: "{platform::resolve_asset_url(icon)}", alt: "" }
-                                                } else {
-                                                    "{initials}"
-                                                }
-                                            }
+                                            Avatar { name: srv.name.clone(), avatar_url: srv.icon_url.clone(), size: 52 }
                                             div { class: "chat-item-info",
                                                 span { class: "chat-item-name", "{srv.name}" }
                                                 span { class: "chat-item-preview",
@@ -747,7 +741,6 @@ pub fn NavigationSidebar(
                                                     if srv.is_owner { " · Bạn là chủ sở hữu" }
                                                 }
                                             }
-                                            ChevronRightIcon { size: 16 }
                                         }
                                     }
                                 }
@@ -765,12 +758,11 @@ pub fn NavigationSidebar(
                                             r#type: "button",
                                             class: if is_sel { "chat-item community-item selected" } else { "chat-item community-item" },
                                             onclick: move |_| on_select_group.call(g_click.clone()),
-                                            Avatar { name: grp.name.clone(), avatar_url: grp.avatar_url.clone(), size: 40 }
+                                            Avatar { name: grp.name.clone(), avatar_url: grp.avatar_url.clone(), size: 52 }
                                             div { class: "chat-item-info",
                                                 span { class: "chat-item-name", "{grp.name}" }
                                                 span { class: "chat-item-preview", "{grp.member_count} thành viên · Nhóm" }
                                             }
-                                            ChevronRightIcon { size: 16 }
                                         }
                                     }
                                 }

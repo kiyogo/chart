@@ -9560,9 +9560,16 @@ html[data-reduce-motion="true"] .cw-spotlight::before {
 /* 1. Chat Item: exact 8px left/right inset, larger avatar closer to top/bottom/left/right,
       and crisp 1px border on hover (grey) or click/selected (accent) when decorated (.has-nameplate) */
 .conv-row .chat-item,
-.chat-item {
-  padding: 3px 6px 3px 3px;
-  gap: 0.55rem;
+.chat-item,
+.create-community-btn {
+  padding: 3px 6px 3px 3px !important;
+  gap: 0.55rem !important;
+}
+.community-icon,
+.community-icon.add {
+  width: var(--avatar-list) !important;
+  height: var(--avatar-list) !important;
+  border-radius: 50% !important;
 }
 .chat-item.has-nameplate,
 .chat-item.has-nameplate:hover,
