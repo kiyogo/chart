@@ -87,10 +87,12 @@ try {
       chatLeftInsetPx: Math.round(cr.left - scr.left),
       stripOverflowY: stcs.overflowY,
       overlapPx: Math.round(br.bottom - ar.top),
+      stripLeftGapToFrame: Math.round((strip.getBoundingClientRect().left - document.querySelector('.nav-sidebar').getBoundingClientRect().left) * 100) / 100,
+      stripRightGapToFrame: Math.round((document.querySelector('.nav-sidebar').getBoundingClientRect().right - strip.getBoundingClientRect().right) * 100) / 100,
     };
   });
   record(
-    'Sidebar "Chia sẻ suy nghĩ" borderless, balanced avatar spacing, no drag scrollbar, & chat row gap is exact 2/3 (4.5px)',
+    'Sidebar "Chia sẻ suy nghĩ" borderless, balanced avatar spacing, edge-to-edge full-bleed scroll (0px white gap), & chat row gap is exact 2/3 (4.5px)',
     !!(
       noteLayout &&
       noteLayout.bg === 'rgb(255, 255, 255)' &&
@@ -101,6 +103,8 @@ try {
       noteLayout.bubbleLeft < noteLayout.avatarCenterX &&
       noteLayout.overlapPx <= 4 &&
       noteLayout.stripOverflowY === 'hidden' &&
+      Math.abs(noteLayout.stripLeftGapToFrame) <= 0.5 &&
+      Math.abs(noteLayout.stripRightGapToFrame) <= 0.5 &&
       noteLayout.chatPad === '6.75px 6.75px 6.75px 6.75px' &&
       noteLayout.scrollLeftPad === '6.75px' &&
       noteLayout.scrollRowGap === '4.5px'
