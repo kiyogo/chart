@@ -112,9 +112,10 @@ pub fn ChatPrefsSettings() -> Element {
                         on_change: move |v: bool| save_privacy(privacy, err, json!({ "read_receipts": v })) }
                 }
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Dán bảng tính" }
-                    p { class: "settings-group-desc", "Cách dán khi sao chép từ bảng tính vào ô chat" }
-                    Segmented { label: "Cách dán bảng tính", value: pr.paste_mode.clone(), options: opts(&[("ask", "Hỏi trước"), ("image", "Dạng ảnh"), ("table", "Dạng bảng"), ("text", "Dạng chữ")]), on_change: move |v: String| c.update(|p| p.paste_mode = v) }
+                    div { class: "settings-row column-layout",
+                        span { class: "settings-label", "Dán bảng tính" }
+                        Segmented { label: "Cách dán bảng tính", value: pr.paste_mode.clone(), options: opts(&[("ask", "Hỏi trước"), ("image", "Dạng ảnh"), ("table", "Dạng bảng"), ("text", "Dạng chữ")]), on_change: move |v: String| c.update(|p| p.paste_mode = v) }
+                    }
                 }
             }
         }
@@ -522,33 +523,36 @@ pub fn AppearanceWallpapersGlass(#[props(default)] on_reset_appearance: Option<E
     let wp_blur_pct = ((pr.app_wallpaper_blur as f32 / 24.0) * 100.0).round() as u8;
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Hình nền trò chuyện mặc định" }
-            div { class: "wallpaper-grid", role: "radiogroup", aria_label: "Hình nền trò chuyện",
-                for (id, name) in WALLPAPER_NAMES.iter().copied() {
-                    button {
-                        key: "chat-wp-{id}",
-                        r#type: "button",
-                        role: "radio",
-                        aria_checked: "{pr.wallpaper == id}",
-                        class: if pr.wallpaper == id { "wallpaper-tile active" } else { "wallpaper-tile" },
-                        onclick: move |_| c.update(|p| p.wallpaper = id.to_string()),
-                        span { class: "wallpaper-sample wp-{id}" }
-                        span { "{name}" }
+            div { class: "settings-row column-layout",
+                span { class: "settings-label", "Hình nền trò chuyện" }
+                div { class: "wallpaper-grid", role: "radiogroup", aria_label: "Hình nền trò chuyện",
+                    for (id, name) in WALLPAPER_NAMES.iter().copied() {
+                        button {
+                            key: "chat-wp-{id}",
+                            r#type: "button",
+                            role: "radio",
+                            aria_checked: "{pr.wallpaper == id}",
+                            class: if pr.wallpaper == id { "wallpaper-tile active" } else { "wallpaper-tile" },
+                            onclick: move |_| c.update(|p| p.wallpaper = id.to_string()),
+                            span { class: "wallpaper-sample wp-{id}" }
+                            span { "{name}" }
+                        }
                     }
                 }
             }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", ImageIcon { size: 18 } " Hình nền toàn ứng dụng" }
-            p { class: "settings-group-desc", "Chọn hình nền phía sau toàn bộ ứng dụng và chỉnh độ trong suốt của khung." }
-            div { class: "wallpaper-grid",
-                button { r#type: "button", class: if pr.app_wallpaper.is_empty() { "wallpaper-tile active" } else { "wallpaper-tile" }, onclick: move |_| c.update(|p| p.app_wallpaper.clear()),
-                    span { class: "wallpaper-sample wp-none" } span { "Không" }
-                }
-                for (id, name) in WALLPAPER_NAMES.iter().copied().filter(|(id, _)| *id != "none") {
-                    button { key: "{id}", r#type: "button", class: if pr.app_wallpaper == id { "wallpaper-tile active" } else { "wallpaper-tile" },
-                        onclick: move |_| c.update(|p| p.app_wallpaper = id.to_string()),
-                        span { class: "wallpaper-sample wp-{id}" } span { "{name}" }
+            div { class: "settings-row column-layout",
+                span { class: "settings-label", "Hình nền toàn ứng dụng" }
+                div { class: "wallpaper-grid",
+                    button { r#type: "button", class: if pr.app_wallpaper.is_empty() { "wallpaper-tile active" } else { "wallpaper-tile" }, onclick: move |_| c.update(|p| p.app_wallpaper.clear()),
+                        span { class: "wallpaper-sample wp-none" } span { "Không" }
+                    }
+                    for (id, name) in WALLPAPER_NAMES.iter().copied().filter(|(id, _)| *id != "none") {
+                        button { key: "{id}", r#type: "button", class: if pr.app_wallpaper == id { "wallpaper-tile active" } else { "wallpaper-tile" },
+                            onclick: move |_| c.update(|p| p.app_wallpaper = id.to_string()),
+                            span { class: "wallpaper-sample wp-{id}" } span { "{name}" }
+                        }
                     }
                 }
             }

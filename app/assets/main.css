@@ -3723,117 +3723,46 @@ html[data-panel-glass="true"] .search-page:not(:has(.modal-overlay, .settings-mo
   backdrop-filter: blur(var(--panel-blur, 12px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }
-/* Crisp luminous card surfaces over translucent panels (never muddy flat grey, never unreadable low opacity) */
-html[data-panel-translucent="true"] .settings-list,
-html[data-panel-translucent="true"] .settings-row,
-html[data-panel-translucent="true"] .settings-profile-card,
-html[data-panel-translucent="true"] .settings-preview-chat:not([class*="wp-"]),
-html[data-panel-translucent="true"] .wallpaper-tile,
-html[data-panel-translucent="true"] .theme-card,
-html[data-panel-translucent="true"] .meet-card,
-html[data-panel-translucent="true"] .feed-card,
-html[data-panel-translucent="true"] .feed-compose-bar,
-html[data-panel-translucent="true"] .mod-card,
-html[data-panel-glass="true"] .settings-list,
-html[data-panel-glass="true"] .settings-row,
-html[data-panel-glass="true"] .settings-profile-card,
-html[data-panel-glass="true"] .settings-preview-chat:not([class*="wp-"]),
-html[data-panel-glass="true"] .wallpaper-tile,
-html[data-panel-glass="true"] .theme-card,
-html[data-panel-glass="true"] .meet-card,
-html[data-panel-glass="true"] .feed-card,
-html[data-panel-glass="true"] .feed-compose-bar,
-html[data-panel-glass="true"] .mod-card {
-  background: color-mix(in srgb, var(--scrim-card-solid, var(--bg-surface-hover)) max(80%, var(--panel-opacity, 100%)), transparent);
+/* Spec 047: Zero nested white card boxes inside translucent / wallpaper / scrim panels.
+   Keep clean flat flow directly on the outer panel + subtle adaptive text legibility halo over busy backgrounds. */
+html[data-panel-scrim="true"][data-surface-tone="light"] .settings-body,
+html[data-panel-scrim="true"][data-surface-tone="light"] .settings-nav,
+html[data-panel-scrim="true"][data-surface-tone="light"] .nav-sidebar,
+html[data-panel-scrim="true"][data-surface-tone="light"] .chat-header {
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.72);
 }
-html[data-panel-scrim="true"] .settings-list,
-html[data-panel-scrim="true"] .settings-row,
-html[data-panel-scrim="true"] .settings-profile-card,
-html[data-panel-scrim="true"] .settings-preview-chat:not([class*="wp-"]),
-html[data-panel-scrim="true"] .wallpaper-tile,
-html[data-panel-scrim="true"] .theme-card,
-html[data-panel-scrim="true"] .meet-card,
-html[data-panel-scrim="true"] .feed-card,
-html[data-panel-scrim="true"] .feed-compose-bar,
-html[data-panel-scrim="true"] .mod-card,
+html[data-panel-scrim="true"][data-surface-tone="dark"] .settings-body,
+html[data-panel-scrim="true"][data-surface-tone="dark"] .settings-nav,
+html[data-panel-scrim="true"][data-surface-tone="dark"] .nav-sidebar,
+html[data-panel-scrim="true"][data-surface-tone="dark"] .chat-header {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+}
 html[data-panel-scrim="true"] .btn-secondary,
-html[data-panel-scrim="true"] .btn-avatar-upload,
-html[data-panel-scrim="true"] .segmented {
-  background: var(--scrim-card-bg);
+html[data-panel-scrim="true"] .btn-avatar-upload {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
   color: var(--text-primary);
 }
 html[data-panel-scrim="true"] .btn-secondary:hover:not(:disabled),
 html[data-panel-scrim="true"] .btn-avatar-upload:hover {
-  background: var(--scrim-pill-hover);
+  background: color-mix(in srgb, var(--text-primary) 16%, transparent);
 }
 html[data-panel-translucent="true"] .wallpaper-tile.active,
 html[data-panel-scrim="true"] .wallpaper-tile.active,
 html[data-panel-translucent="true"] .theme-card.active,
 html[data-panel-scrim="true"] .theme-card.active {
-  background: color-mix(in srgb, var(--accent) 18%, var(--scrim-card-solid, var(--bg-surface)));
+  background: var(--accent-soft);
   color: var(--accent-text);
 }
-html[data-panel-translucent="true"] .settings-row,
-html[data-panel-glass="true"] .settings-row,
-html[data-panel-scrim="true"] .settings-row {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
+html[data-panel-scrim="true"] .settings-nav-item:hover,
+html[data-panel-scrim="true"] .chat-item:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
-html[data-panel-translucent="true"] .settings-list,
-html[data-panel-glass="true"] .settings-list,
-html[data-panel-scrim="true"] .settings-list {
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-html[data-panel-translucent="true"] .settings-list .settings-row,
-html[data-panel-glass="true"] .settings-list .settings-row,
-html[data-panel-scrim="true"] .settings-list .settings-row {
-  background: transparent;
-}
-/* Floating navigation, headings, chat header islands & list items over transparent/busy wallpapers */
-html[data-panel-scrim="true"] .settings-nav-item {
-  background: var(--scrim-pill-bg);
-  color: var(--text-primary);
-  margin-bottom: 3px;
-}
-html[data-panel-scrim="true"] .settings-nav-item:hover {
-  background: var(--scrim-pill-hover);
-  color: var(--text-primary);
-}
-html[data-panel-scrim="true"] .settings-nav-item.active {
-  background: color-mix(in srgb, var(--accent) 22%, var(--scrim-card-solid, var(--bg-surface)));
+html[data-panel-scrim="true"] .settings-nav-item.active,
+html[data-panel-scrim="true"] .chat-item.active,
+html[data-panel-scrim="true"] .chat-item.selected {
+  background: var(--accent-soft);
   color: var(--accent-text);
   font-weight: var(--weight-semibold);
-}
-html[data-panel-scrim="true"] .settings-nav-title,
-html[data-panel-scrim="true"] .settings-group-title,
-html[data-panel-scrim="true"] .settings-page-title {
-  width: fit-content;
-  padding: 4px 12px;
-  border-radius: var(--radius-full);
-  background: var(--scrim-pill-bg);
-  color: var(--text-primary);
-}
-html[data-panel-scrim="true"] .chat-item,
-html[data-panel-scrim="true"] .sidebar-search,
-html[data-panel-scrim="true"] .section-tabs {
-  background: var(--scrim-pill-bg);
-}
-html[data-panel-scrim="true"] .chat-item:hover {
-  background: var(--scrim-pill-hover);
-}
-html[data-panel-scrim="true"] .chat-item.active {
-  background: color-mix(in srgb, var(--accent) 20%, var(--scrim-card-solid, var(--bg-surface)));
-}
-html[data-panel-scrim="true"] .chat-header-identity {
-  padding: 4px 14px 4px 6px;
-  border-radius: var(--radius-full);
-  background: var(--scrim-pill-bg);
-}
-html[data-panel-scrim="true"] .chat-header-actions {
-  padding: 3px 6px;
-  border-radius: var(--radius-full);
-  background: var(--scrim-pill-bg);
 }
 html[data-panel-translucent="true"] .composer-box::before,
 html[data-panel-glass="true"] .composer-box::before {
@@ -8544,4 +8473,141 @@ html[data-surface-tone="dark"] .cw-picker-popover {
   background: var(--accent);
   color: var(--on-accent);
   font-weight: var(--weight-semibold);
+}
+
+/* ==========================================================================
+   Spec 047: Headerless Ultra-Minimal Settings & Zero Inner White Boxes App-Wide
+   ========================================================================== */
+/* 1. Remove all redundant page titles, nav section headers & group subheadings inside Settings */
+.settings-page .settings-page-title,
+.settings-page .settings-nav-title,
+.settings-page .settings-group-title,
+.settings-page .settings-content > div:has(> .settings-page-title),
+.server-settings-stage .settings-page-title,
+.server-settings-stage .settings-nav-title,
+.server-settings-stage .settings-group-title,
+.server-settings-stage .settings-content > div:has(> .settings-page-title) {
+  display: none !important;
+}
+
+/* 2. Remove every nested white / solid card box inside panels across the entire app
+   (both default opaque mode AND translucent / glass / wallpaper modes) */
+.settings-list,
+.settings-row,
+.settings-profile-card,
+.settings-avatar-wrapper,
+.settings-preview-chat:not([class*="wp-"]),
+.theme-card:not(.active),
+.wallpaper-tile:not(.active),
+.account-row:not(:hover),
+.security-event,
+.backup-codes,
+.sticker-pack-card,
+.partner-info-card,
+.meet-card,
+.feed-card,
+.feed-compose-bar,
+.mod-card:not(:hover),
+.result-card:not(:hover),
+.bot-card,
+.product-card,
+.plugin-card,
+.plugin-dev-publish-box,
+.plugin-audit-row,
+.event-form,
+.event-card,
+.forum-new,
+.forum-row:not(:hover),
+.forum-post,
+.welcome-channel:not(:hover),
+.welcome-rules,
+.inv-card,
+.achievement,
+.template-tile:not(:hover),
+.section-row:not(:hover),
+.preset-row:not(:hover),
+.studio-project,
+.studio-target:not(:hover),
+.studio-preview,
+.demo-stage,
+.private-note,
+.fingerprint,
+.section-tabs,
+.chat-header-identity,
+.chat-header-actions {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.fingerprint {
+  padding: 0 !important;
+}
+
+.settings-col .inline-form {
+  flex-wrap: wrap;
+}
+.settings-col .inline-form > input,
+.settings-col .inline-form > select {
+  min-width: 11rem;
+  flex: 1 1 11rem;
+}
+
+.settings-row,
+.account-row,
+.security-event {
+  padding: var(--space-2) 0 !important;
+  border-radius: 0 !important;
+}
+
+.settings-nav-item:not(.active):not(:hover),
+.chat-item:not(.active):not(.selected):not(:hover) {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Segmented controls: flat minimal (no grey box wrapping a stark white box) */
+.segmented {
+  background: transparent !important;
+  padding: 0 !important;
+  gap: 4px;
+}
+.segmented button {
+  background: transparent;
+  box-shadow: none !important;
+}
+.segmented button:hover {
+  background: var(--bg-hover);
+}
+.segmented button.active {
+  background: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+  box-shadow: none !important;
+  font-weight: var(--weight-semibold);
+}
+
+/* Rail active icon: soft accent tint instead of opaque white square box */
+.rail-item.active:not(.has-logo),
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo) {
+  background: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+  box-shadow: none !important;
+}
+html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo),
+html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo):hover {
+  background: transparent !important;
+}
+
+/* Theme & wallpaper tiles: no white background card; soft accent highlight only when selected */
+.theme-card.active,
+.wallpaper-tile.active {
+  background: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+  box-shadow: none !important;
+}
+
+/* Section tabs (Friends / Search / etc.): flat accent tint on active tab, no white pill box */
+.section-tab.active {
+  background: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+  box-shadow: none !important;
 }

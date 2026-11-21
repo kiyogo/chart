@@ -354,9 +354,10 @@ pub fn SecuritySettings() -> Element {
             if enabled {
                 div { class: "settings-row",
                     span { class: "grow",
-                        span { class: "settings-label", "Đang bật" }
-                        span { class: "settings-row-desc", "Mỗi lần đăng nhập cần thêm mã 6 số. Còn {s.as_ref().map(|x| x.backup_codes_left).unwrap_or(0)} mã dự phòng chưa dùng. Đăng xuất mọi thiết bị khác cũng cần mã." }
+                        span { class: "settings-label", "Xác minh hai bước" }
+                        span { class: "settings-sublabel", "Đang bật · Còn {s.as_ref().map(|x| x.backup_codes_left).unwrap_or(0)} mã dự phòng" }
                     }
+                    span { class: "chip-privacy", "Đang bật" }
                 }
                 div { class: "inline-form",
                     input { r#type: "text", maxlength: "12", aria_label: "Mã hiện tại hoặc mã dự phòng", placeholder: "Mã 6 số hoặc mã dự phòng", value: "{code}", oninput: move |e| code.set(e.value()) }
@@ -382,8 +383,8 @@ pub fn SecuritySettings() -> Element {
             } else {
                 div { class: "settings-row",
                     span { class: "grow",
-                        span { class: "settings-label", "Chưa bật" }
-                        span { class: "settings-row-desc", "Thêm một lớp bảo vệ: kể cả khi ai đó vào được tài khoản Google của bạn, họ vẫn cần mã từ điện thoại của bạn." }
+                        span { class: "settings-label", "Xác minh hai bước" }
+                        span { class: "settings-sublabel", "Chưa bật" }
                     }
                     button { r#type: "button", class: "btn-primary", onclick: start_setup, "Thiết lập" }
                 }
