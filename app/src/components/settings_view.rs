@@ -91,8 +91,8 @@ fn tab_keywords(t: SettingsTab) -> &'static str {
         SettingsTab::Chat => "tro chuyen goi y sticker dan excel bang enter tra loi bam dup chat",
         SettingsTab::Notifications => "thong bao am thanh am bao notification sound",
         SettingsTab::AutoReply => "tra loi tu dong vang mat auto reply",
-        SettingsTab::Appearance => "giao dien chu de toi sang mau nhan co chu theme dark light",
-        SettingsTab::Customize => "tuy chinh mau bong bong hinh nen phong chu dong bo thiet bi hieu ung avatar danh sach sync wallpaper",
+        SettingsTab::Appearance => "giao dien chu de toi sang mau nhan co chu mau bong bong hinh nen phong chu trong suot do mo khung kinh theme dark light wallpaper",
+        SettingsTab::Customize => "tuy chinh ghim cong dong nhom dong bo thiet bi hieu ung avatar danh sach am bao sync",
         SettingsTab::Language => "ngon ngu language tieng anh",
         SettingsTab::Stickers => "thu vien sticker emoji gif tai len upload library",
         SettingsTab::Business => "kinh doanh ban hang san pham business",
@@ -124,6 +124,7 @@ pub fn SettingsView(
     let mut nav_query = use_signal(String::new);
     let mut has_detail = use_signal(|| false);
     let mut appearance = use_signal(platform::load_appearance);
+    let prefs_ctx = use_context::<crate::prefs::PrefsCtx>();
     let mut update_appearance = move |f: &dyn Fn(&mut platform::Appearance)| {
         let mut a = appearance();
         f(&mut a);
@@ -387,8 +388,13 @@ pub fn SettingsView(
                                                 aria_checked: "{appearance().accent == val}",
                                                 class: if appearance().accent == val { "accent-swatch active" } else { "accent-swatch" },
                                                 style: "background: {color};",
-                                                onclick: move |_| update_appearance(&|a| a.accent = val.to_string()),
-                                                if appearance().accent == val { CheckIcon { size: 16 } }
+                                                onclick: move |_| {
+                                                    if !prefs_ctx.prefs.read().custom_accent.is_empty() {
+                                                        prefs_ctx.update(|p| p.custom_accent.clear());
+                                                    }
+                                                    update_appearance(&|a| a.accent = val.to_string());
+                                                },
+                                                if appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty() { CheckIcon { size: 16 } }
                                             }
                                         }
                                     }
@@ -414,18 +420,25 @@ pub fn SettingsView(
                                                     }
                                                     "Tự động"
                                                 }
-                                                input {
-                                                    r#type: "range",
-                                                    min: "13",
-                                                    max: "20",
-                                                    step: "1",
-                                                    aria_label: "Cỡ chữ",
-                                                    disabled: appearance().font_size == "auto",
-                                                    value: if appearance().font_size == "auto" { "15".to_string() } else { appearance().font_size },
-                                                    oninput: move |e| {
-                                                        let v = e.value();
-                                                        update_appearance(&|a| a.font_size = v.clone());
-                                                    },
+                                                {
+                                                    let cur_font: f32 = if appearance().font_size == "auto" { 15.0 } else { appearance().font_size.parse().unwrap_or(15.0) };
+                                                    let font_pct = (((cur_font - 13.0) / 7.0) * 100.0).clamp(0.0, 100.0).round() as u8;
+                                                    rsx! {
+                                                        input {
+                                                            r#type: "range",
+                                                            min: "13",
+                                                            max: "20",
+                                                            step: "1",
+                                                            style: "--range-pct: {font_pct}%;",
+                                                            aria_label: "Cỡ chữ",
+                                                            disabled: appearance().font_size == "auto",
+                                                            value: if appearance().font_size == "auto" { "15".to_string() } else { appearance().font_size },
+                                                            oninput: move |e| {
+                                                                let v = e.value();
+                                                                update_appearance(&|a| a.font_size = v.clone());
+                                                            },
+                                                        }
+                                                    }
                                                 }
                                                 span { class: "range-value",
                                                     if appearance().font_size == "auto" { "Tự động" } else { "{appearance().font_size}px" }
@@ -468,17 +481,14 @@ pub fn SettingsView(
                                             }
                                         }
                                     }
-                                    button {
-                                        r#type: "button",
-                                        class: "btn-secondary",
-                                        style: "align-self: flex-start;",
-                                        onclick: move |_| {
-                                            let d = platform::Appearance::default();
-                                            platform::apply_appearance(&d);
-                                            appearance.set(d);
-                                        },
-                                        "Khôi phục mặc định"
-                                    }
+                                }
+
+                                AdvancedLookSettings {
+                                    on_reset_appearance: move |_| {
+                                        let d = platform::Appearance::default();
+                                        platform::apply_appearance(&d);
+                                        appearance.set(d);
+                                    },
                                 }
                             },
 
@@ -601,7 +611,7 @@ pub fn SettingsView(
                                 crate::components::backup_cloud_ui::AdvancedSecurityExportSection {}
                             },
 
-                            SettingsTab::Customize => rsx! { crate::components::settings_more::SyncMotionSettings {} CustomizationSettings {} AdvancedLookSettings {} },
+                            SettingsTab::Customize => rsx! { crate::components::settings_more::SyncMotionSettings {} CustomizationSettings {} },
                             SettingsTab::Inventory => rsx! { crate::components::inventory::Inventory { my_id: current_user_id.clone() } },
                             SettingsTab::Studio => rsx! { crate::components::studio::StudioHome { my_id: current_user_id.clone() } },
                             SettingsTab::Demo => rsx! { crate::components::demo_gallery::DemoGallery { my_id: current_user_id.clone(), my_name: current_username.clone(), my_avatar: my_avatar_url.clone() } },

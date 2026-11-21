@@ -66,23 +66,6 @@ pub fn CustomizationSettings() -> Element {
             }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", "Hình nền trò chuyện" }
-            div { class: "wallpaper-grid", role: "radiogroup", aria_label: "Hình nền trò chuyện",
-                for (val, label) in WALLPAPERS {
-                    button {
-                        key: "{val}",
-                        r#type: "button",
-                        role: "radio",
-                        aria_checked: "{p.wallpaper == val}",
-                        class: if p.wallpaper == val { "wallpaper-tile active" } else { "wallpaper-tile" },
-                        onclick: move |_| ctx.update(|p| p.wallpaper = val.to_string()),
-                        span { class: "wallpaper-sample wp-{val}" }
-                        span { "{label}" }
-                    }
-                }
-            }
-        }
-        div { class: "settings-group",
             div { class: "settings-group-title", "Thông báo và hiệu ứng" }
             div { class: "settings-list",
                 Toggle {

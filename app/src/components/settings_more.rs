@@ -419,7 +419,7 @@ pub fn LanguageSettings() -> Element {
 }
 
 #[component]
-pub fn AdvancedLookSettings() -> Element {
+pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventHandler<()>>) -> Element {
     let c = ctx();
     let pr: Prefs = c.prefs.read().clone();
     let mut uploading = use_signal(|| false);
@@ -428,9 +428,13 @@ pub fn AdvancedLookSettings() -> Element {
     let self_val = if pr.bubble_self.is_empty() { accent_val.clone() } else { pr.bubble_self.clone() };
     let other_val = if pr.bubble_other.is_empty() { "#EEF1F5".to_string() } else { pr.bubble_other.clone() };
     let wp_color = pr.app_wallpaper.strip_prefix("color:").unwrap_or("#1F2A44").to_string();
+    let panel_opacity_pct = pr.panel_opacity;
+    let panel_blur_pct = ((pr.panel_blur as f32 / 32.0) * 100.0).round() as u8;
+    let wp_dim_pct = ((pr.app_wallpaper_dim as f32 / 80.0) * 100.0).round() as u8;
+    let wp_blur_pct = ((pr.app_wallpaper_blur as f32 / 24.0) * 100.0).round() as u8;
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Màu sắc" }
+            div { class: "settings-group-title", "Màu sắc nâng cao" }
             div { class: "settings-row",
                 span { class: "grow", span { class: "settings-label", "Màu nhấn tùy chọn" } span { class: "settings-row-desc", "Thay cho bảng màu nhấn có sẵn" } }
                 input { r#type: "color", aria_label: "Màu nhấn", value: "{accent_val}", onchange: move |e| { let v = e.value().to_uppercase(); c.update(move |p| p.custom_accent = v) } }
@@ -468,8 +472,25 @@ pub fn AdvancedLookSettings() -> Element {
             Toggle { label: "Giảm chuyển động", desc: "Tắt hiệu ứng động và chuyển cảnh", checked: pr.reduce_motion, on_change: move |v| c.update(|p| p.reduce_motion = v) }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", ImageIcon { size: 18 } " Hình nền toàn ứng dụng" }
-            p { class: "settings-group-desc", "Hình nền phía sau toàn bộ ChatW trên thiết bị này. Hình nền riêng cho từng đoạn chat đặt trong menu của đoạn chat đó." }
+            div { class: "settings-group-title", "Hình nền trò chuyện mặc định" }
+            div { class: "wallpaper-grid", role: "radiogroup", aria_label: "Hình nền trò chuyện",
+                for (id, name) in WALLPAPER_NAMES.iter().copied() {
+                    button {
+                        key: "chat-wp-{id}",
+                        r#type: "button",
+                        role: "radio",
+                        aria_checked: "{pr.wallpaper == id}",
+                        class: if pr.wallpaper == id { "wallpaper-tile active" } else { "wallpaper-tile" },
+                        onclick: move |_| c.update(|p| p.wallpaper = id.to_string()),
+                        span { class: "wallpaper-sample wp-{id}" }
+                        span { "{name}" }
+                    }
+                }
+            }
+        }
+        div { class: "settings-group",
+            div { class: "settings-group-title", ImageIcon { size: 18 } " Hình nền toàn ứng dụng & Khung giao diện" }
+            p { class: "settings-group-desc", "Chọn hình nền phía sau toàn bộ ChatW và chỉnh độ mờ của khung trắng để nhìn xuyên qua hình nền." }
             div { class: "wallpaper-grid",
                 button { r#type: "button", class: if pr.app_wallpaper.is_empty() { "wallpaper-tile active" } else { "wallpaper-tile" }, onclick: move |_| c.update(|p| p.app_wallpaper.clear()),
                     span { class: "wallpaper-sample wp-none" } span { "Không" }
@@ -502,25 +523,92 @@ pub fn AdvancedLookSettings() -> Element {
                 label { r#for: "app-wp-file", class: "btn-secondary", role: "button", tabindex: "0", ImageIcon { size: 16 } if uploading() { "Đang tải lên" } else { "Tải ảnh của bạn" } }
             }
             if let Some(m) = msg() { div { class: "status-badge error", "{m}" } }
+            div { class: "settings-row",
+                span { class: "grow",
+                    span { class: "settings-label", "Độ mờ đục khung trắng: {pr.panel_opacity}%" }
+                    span { class: "settings-row-desc", "Giảm xuống để khung danh sách, chat và cài đặt trong suốt, hiện hình nền phía sau" }
+                }
+                input {
+                    r#type: "range",
+                    min: "0",
+                    max: "100",
+                    value: "{pr.panel_opacity}",
+                    style: "--range-pct: {panel_opacity_pct}%;",
+                    aria_label: "Độ mờ đục khung trắng",
+                    oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(100); c.update(move |p| p.panel_opacity = v) },
+                }
+            }
+            div { class: "settings-row",
+                span { class: "grow",
+                    span { class: "settings-label", "Làm mờ kính khung: {pr.panel_blur}px" }
+                    span { class: "settings-row-desc", "Hiệu ứng kính mờ khi khung trắng đang ở chế độ trong suốt" }
+                }
+                input {
+                    r#type: "range",
+                    min: "0",
+                    max: "32",
+                    value: "{pr.panel_blur}",
+                    style: "--range-pct: {panel_blur_pct}%;",
+                    aria_label: "Làm mờ kính khung",
+                    oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(12); c.update(move |p| p.panel_blur = v) },
+                }
+            }
             if !pr.app_wallpaper.is_empty() {
                 div { class: "settings-row",
                     span { class: "settings-label", "Độ tối phủ lên ảnh: {pr.app_wallpaper_dim}%" }
-                    input { r#type: "range", min: "0", max: "80", value: "{pr.app_wallpaper_dim}", aria_label: "Độ tối", oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(20); c.update(move |p| p.app_wallpaper_dim = v) } }
+                    input {
+                        r#type: "range",
+                        min: "0",
+                        max: "80",
+                        value: "{pr.app_wallpaper_dim}",
+                        style: "--range-pct: {wp_dim_pct}%;",
+                        aria_label: "Độ tối phủ lên ảnh",
+                        oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(0); c.update(move |p| p.app_wallpaper_dim = v) },
+                    }
                 }
                 div { class: "settings-row",
-                    span { class: "settings-label", "Làm mờ: {pr.app_wallpaper_blur}px" }
-                    input { r#type: "range", min: "0", max: "24", value: "{pr.app_wallpaper_blur}", aria_label: "Độ mờ", oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(0); c.update(move |p| p.app_wallpaper_blur = v) } }
+                    span { class: "settings-label", "Làm mờ hình nền: {pr.app_wallpaper_blur}px" }
+                    input {
+                        r#type: "range",
+                        min: "0",
+                        max: "24",
+                        value: "{pr.app_wallpaper_blur}",
+                        style: "--range-pct: {wp_blur_pct}%;",
+                        aria_label: "Làm mờ hình nền",
+                        oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(0); c.update(move |p| p.app_wallpaper_blur = v) },
+                    }
                 }
             }
         }
         div { class: "settings-group",
-            button { r#type: "button", class: "btn-ghost", onclick: move |_| c.update(|p| {
-                let d = Prefs::default();
-                p.custom_accent = d.custom_accent; p.bubble_self = d.bubble_self; p.bubble_other = d.bubble_other;
-                p.bubble_shape = d.bubble_shape; p.avatar_shape = d.avatar_shape; p.chat_width = d.chat_width;
-                p.font_family = d.font_family; p.app_wallpaper = d.app_wallpaper; p.app_wallpaper_dim = d.app_wallpaper_dim;
-                p.app_wallpaper_blur = d.app_wallpaper_blur; p.reduce_motion = d.reduce_motion;
-            }), "Khôi phục giao diện mặc định" }
+            button {
+                r#type: "button",
+                class: "btn-secondary",
+                style: "align-self: flex-start;",
+                onclick: move |_| {
+                    c.update(|p| {
+                        let d = Prefs::default();
+                        p.custom_accent = d.custom_accent;
+                        p.bubble_self = d.bubble_self;
+                        p.bubble_other = d.bubble_other;
+                        p.bubble_shape = d.bubble_shape;
+                        p.avatar_shape = d.avatar_shape;
+                        p.chat_width = d.chat_width;
+                        p.font_family = d.font_family;
+                        p.wallpaper = d.wallpaper;
+                        p.app_wallpaper = d.app_wallpaper;
+                        p.app_wallpaper_dim = d.app_wallpaper_dim;
+                        p.app_wallpaper_blur = d.app_wallpaper_blur;
+                        p.panel_opacity = d.panel_opacity;
+                        p.panel_blur = d.panel_blur;
+                        p.reduce_motion = d.reduce_motion;
+                    });
+                    if let Some(h) = on_reset_appearance {
+                        h.call(());
+                    }
+                },
+                "Khôi phục giao diện mặc định"
+            }
         }
     }
 }

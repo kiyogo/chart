@@ -75,6 +75,10 @@ pub struct Prefs {
     pub app_wallpaper_dim: u8,
     /// Blur in px for the app wallpaper (0-24)
     pub app_wallpaper_blur: u8,
+    /// Opacity percentage for white/surface panels (0-100; 100 = solid opaque)
+    pub panel_opacity: u8,
+    /// Backdrop glass blur in px for translucent panels (0-32)
+    pub panel_blur: u8,
     pub show_avatars: bool,
     pub time_24h: bool,
     pub reduce_motion: bool,
@@ -130,8 +134,10 @@ impl Default for Prefs {
             chat_width: "normal".to_string(),
             font_family: "system".to_string(),
             app_wallpaper: String::new(),
-            app_wallpaper_dim: 20,
+            app_wallpaper_dim: 0,
             app_wallpaper_blur: 0,
+            panel_opacity: 100,
+            panel_blur: 12,
             show_avatars: true,
             time_24h: true,
             reduce_motion: false,
@@ -216,6 +222,8 @@ impl Prefs {
         }
         self.app_wallpaper_dim = self.app_wallpaper_dim.min(80);
         self.app_wallpaper_blur = self.app_wallpaper_blur.min(24);
+        self.panel_opacity = self.panel_opacity.min(100);
+        self.panel_blur = self.panel_blur.min(32);
         self.lock_minutes = self.lock_minutes.clamp(1, 240);
         if self.auto_reply_text.chars().count() > 500 {
             self.auto_reply_text = self.auto_reply_text.chars().take(500).collect();
