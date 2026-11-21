@@ -722,7 +722,7 @@ pub fn NavigationSidebar(
                         }
                         button {
                             r#type: "button",
-                            class: "create-community-btn",
+                            class: "chat-item create-community-btn",
                             onclick: move |_| on_open_create_server.call(()),
                             span { class: "community-icon add", PlusIcon { size: 18 } }
                             span { class: "chat-item-info",

@@ -90,7 +90,7 @@ try {
     };
   });
   record(
-    'Sidebar "Chia sẻ suy nghĩ" borderless, balanced avatar spacing, no drag scrollbar, & chat gap matches side margin',
+    'Sidebar "Chia sẻ suy nghĩ" borderless, balanced avatar spacing, no drag scrollbar, & chat row gap is exact 2/3 (4.5px)',
     !!(
       noteLayout &&
       noteLayout.bg === 'rgb(255, 255, 255)' &&
@@ -102,7 +102,8 @@ try {
       noteLayout.overlapPx <= 4 &&
       noteLayout.stripOverflowY === 'hidden' &&
       noteLayout.chatPad === '6.75px 6.75px 6.75px 6.75px' &&
-      noteLayout.scrollLeftPad === noteLayout.scrollRowGap
+      noteLayout.scrollLeftPad === '6.75px' &&
+      noteLayout.scrollRowGap === '4.5px'
     ),
     JSON.stringify(noteLayout),
   );
@@ -401,6 +402,63 @@ try {
   const settingsHeaderCount = await page.locator('.main-stage > header.chat-header').count();
   record('Settings desktop has no "<- Cài đặt" header', settingsHeaderCount === 0, `headerCount=${settingsHeaderCount}`);
   await page.screenshot({ path: path.join(OUT, '07_settings_no_header.png') });
+
+  // 8. Community list cards match Chat item spacing/padding/inset/gap (4.5px) 100% identically
+  await page.locator('.app-rail button[aria-label="Cộng đồng"]').click();
+  await page.waitForSelector('.create-community-btn', { timeout: 8000 });
+  await page.waitForTimeout(250);
+  await page.locator('.create-community-btn').click();
+  await page.waitForSelector('.modal-dialog input[type="text"]', { timeout: 5000 });
+  await page.locator('.modal-dialog input[type="text"]').first().fill('123');
+  await page.locator('.modal-dialog button[type="submit"]').click();
+  await page.waitForSelector('.sidebar-server-header', { timeout: 8000 });
+  await page.waitForTimeout(250);
+  // Go back to the Community List view to inspect .community-item & .create-community-btn side by side
+  await page.locator('.sidebar-server-header button').first().click();
+  await page.waitForSelector('.community-item', { timeout: 8000 });
+  await page.waitForTimeout(300);
+
+  const commParity = await page.evaluate(() => {
+    const scroll = document.querySelector('.sidebar-scrollable');
+    const item = document.querySelector('.community-item');
+    const createBtn = document.querySelector('.create-community-btn');
+    if (!scroll || !item || !createBtn) return null;
+    const scs = getComputedStyle(scroll);
+    const ics = getComputedStyle(item);
+    const ccs = getComputedStyle(createBtn);
+    const sr = scroll.getBoundingClientRect();
+    const ir = item.getBoundingClientRect();
+    const cr = createBtn.getBoundingClientRect();
+    return {
+      scrollLeftPad: scs.paddingLeft,
+      scrollRowGap: scs.rowGap,
+      itemPad: `${ics.paddingTop} ${ics.paddingRight} ${ics.paddingBottom} ${ics.paddingLeft}`,
+      createPad: `${ccs.paddingTop} ${ccs.paddingRight} ${ccs.paddingBottom} ${ccs.paddingLeft}`,
+      createMarginTop: ccs.marginTop,
+      itemGap: ics.columnGap,
+      createGap: ccs.columnGap,
+      itemHeight: Math.round(ir.height),
+      createHeight: Math.round(cr.height),
+      itemLeftInset: Math.round((ir.left - sr.left) * 100) / 100,
+      createLeftInset: Math.round((cr.left - sr.left) * 100) / 100,
+      gapBetweenCardsPx: Math.round((cr.top - ir.bottom) * 100) / 100,
+    };
+  });
+  record(
+    'Community cards (.community-item & .create-community-btn) match Chat items 100% (6.75px pad/inset, 4.5px gap, 0px margin)',
+    !!(
+      commParity &&
+      commParity.scrollRowGap === '4.5px' &&
+      commParity.itemPad === '6.75px 6.75px 6.75px 6.75px' &&
+      commParity.createPad === '6.75px 6.75px 6.75px 6.75px' &&
+      commParity.createMarginTop === '0px' &&
+      commParity.itemGap === commParity.createGap &&
+      Math.abs(commParity.itemHeight - commParity.createHeight) <= 1 &&
+      Math.abs(commParity.gapBetweenCardsPx - 4.5) <= 1
+    ),
+    JSON.stringify(commParity),
+  );
+  await page.screenshot({ path: path.join(OUT, '08_community_sidebar_parity.png') });
 
   record('Zero pageerror events', errors.length === 0, errors.join('; '));
 } finally {

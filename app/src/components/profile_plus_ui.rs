@@ -219,37 +219,10 @@ pub fn LayoutEditor(
     });
     let (t0, s0, g0) = (template.clone(), sections.clone(), guestbook_mode.clone());
     let emit = move |t: String, s: Vec<pp::Section>, g: String| on_change.call((t, s, g));
-    // Drag and drop runs in the page (native HTML5 events) and reports (from, to) here.
-    let mut latest = use_signal(|| (t0.clone(), s0.clone(), g0.clone()));
-    if *latest.peek() != (t0.clone(), s0.clone(), g0.clone()) {
-        latest.set((t0.clone(), s0.clone(), g0.clone()));
-    }
-    use_hook(move || {
-        spawn(async move {
-            let mut ev = dioxus::document::eval(
-                r#"
-                if (!window.__cwSectionDnd) {
-                    window.__cwSectionDnd = true;
-                    let from = null;
-                    const row = (e) => e.target.closest && e.target.closest('.section-row');
-                    document.addEventListener('dragstart', (e) => { const r = row(e); if (!r) return; from = Number(r.dataset.idx); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(from)); } catch (_) {} });
-                    document.addEventListener('dragover', (e) => { if (row(e) && from !== null) e.preventDefault(); });
-                    document.addEventListener('drop', (e) => { const r = row(e); if (!r || from === null) return; e.preventDefault(); const to = Number(r.dataset.idx); if (window.__cwSectionSend && to !== from) window.__cwSectionSend([from, to]); from = null; });
-                    document.addEventListener('dragend', () => { from = null; });
-                }
-                window.__cwSectionSend = (v) => dioxus.send(v);
-                "#,
-            );
-            while let Ok((from, to)) = ev.recv::<(usize, usize)>().await {
-                let (t, mut v, g) = latest.peek().clone();
-                if from < v.len() && to < v.len() && from != to {
-                    let it = v.remove(from);
-                    v.insert(to, it);
-                    on_change.call((t, v, g));
-                }
-            }
-        });
-    });
+    let mut sec_drag_from = use_signal(|| Option::<usize>::None);
+    let mut sec_drag_over = use_signal(|| Option::<usize>::None);
+    let mut show_drag_from = use_signal(|| Option::<usize>::None);
+    let mut show_drag_over = use_signal(|| Option::<usize>::None);
     let move_item = {
         let (t, s, g) = (t0.clone(), s0.clone(), g0.clone());
         move |from: usize, to: usize| {
@@ -283,21 +256,58 @@ pub fn LayoutEditor(
                 }
             }
             div { class: "settings-group-title", "Các mục" }
-            div { class: "section-list", role: "list",
+            div { class: "section-list", role: "list", "data-drag-group": "profile-sections",
                 for (i, s) in sections.iter().cloned().enumerate() {
                     {
                         let (t, all, g) = (t0.clone(), s0.clone(), g0.clone());
                         let (t2, all2, g2) = (t0.clone(), s0.clone(), g0.clone());
-                        let mv_up = move_item.clone();
-                        let mv_down = move_item.clone();
-                        let n = sections.len();
+                        let mv_drop = move_item.clone();
+                        let dragging_now = sec_drag_from() == Some(i);
+                        let over_cls = match (sec_drag_from(), sec_drag_over()) {
+                            (Some(from), Some(ov)) if ov == i && from != i => {
+                                if i < from { " drag-over-before" } else { " drag-over-after" }
+                            }
+                            _ => "",
+                        };
+                        let row_cls = format!(
+                            "section-row draggable-item{}{}",
+                            if dragging_now { " is-dragging" } else { "" },
+                            over_cls
+                        );
                         rsx! {
-                            div { key: "{s.id}", role: "listitem", draggable: "true", "data-idx": "{i}",
-                                class: "section-row",
-                                span { class: "drag-handle", aria_hidden: "true", "⋮⋮" }
+                            div {
+                                key: "{s.id}",
+                                role: "listitem",
+                                draggable: "true",
+                                "data-drag-item": "true",
+                                "data-drag-key": "{s.id}",
+                                "data-idx": "{i}",
+                                class: "{row_cls}",
+                                ondragstart: move |_| {
+                                    sec_drag_from.set(Some(i));
+                                    sec_drag_over.set(None);
+                                },
+                                ondragover: move |e| {
+                                    e.prevent_default();
+                                    if sec_drag_from().is_some() && sec_drag_over() != Some(i) {
+                                        sec_drag_over.set(Some(i));
+                                    }
+                                },
+                                ondrop: move |e| {
+                                    e.prevent_default();
+                                    if let Some(from) = sec_drag_from() {
+                                        if from != i {
+                                            mv_drop(from, i);
+                                        }
+                                    }
+                                    sec_drag_from.set(None);
+                                    sec_drag_over.set(None);
+                                },
+                                ondragend: move |_| {
+                                    sec_drag_from.set(None);
+                                    sec_drag_over.set(None);
+                                },
                                 span { class: "grow", "{pp::section_label(&s.id)}" }
-                                button { r#type: "button", class: "btn-small-secondary", aria_label: "Đưa {pp::section_label(&s.id)} lên", disabled: i == 0, onclick: move |_| mv_up(i, i.saturating_sub(1)), "↑" }
-                                button { r#type: "button", class: "btn-small-secondary", aria_label: "Đưa {pp::section_label(&s.id)} xuống", disabled: i + 1 == n, onclick: move |_| mv_down(i, i + 1), "↓" }
                                 select { aria_label: "Kích thước {pp::section_label(&s.id)}", value: "{s.size}",
                                     onchange: move |e| { let mut v = all.clone(); v[i].size = e.value(); emit(t.clone(), v, g.clone()); },
                                     option { value: "normal", selected: s.size == "normal", "Thường" }
@@ -382,15 +392,60 @@ pub fn LayoutEditor(
             }
 
             div { class: "settings-group-title", "Trưng bày" }
-            div { class: "showcase-manage",
+            div { class: "showcase-manage", "data-drag-group": "profile-showcase",
                 for (i, it) in showcase.iter().cloned().enumerate() {
                     {
                         let all: Vec<String> = showcase.iter().map(|x| x.id.clone()).collect();
                         let pins: Vec<String> = showcase.iter().filter(|x| x.pinned).map(|x| x.id.clone()).collect();
                         let (a1, p1, a2, p2) = (all.clone(), pins.clone(), all.clone(), pins.clone());
                         let (id_pin, id_del) = (it.id.clone(), it.id.clone());
+                        let dragging_now = show_drag_from() == Some(i);
+                        let over_cls = match (show_drag_from(), show_drag_over()) {
+                            (Some(from), Some(ov)) if ov == i && from != i => {
+                                if i < from { " drag-over-before" } else { " drag-over-after" }
+                            }
+                            _ => "",
+                        };
+                        let row_cls = format!(
+                            "preset-row draggable-item{}{}",
+                            if dragging_now { " is-dragging" } else { "" },
+                            over_cls
+                        );
                         rsx! {
-                            div { key: "{it.id}", class: "preset-row",
+                            div {
+                                key: "{it.id}",
+                                class: "{row_cls}",
+                                draggable: "true",
+                                "data-drag-item": "true",
+                                "data-drag-key": "{it.id}",
+                                ondragstart: move |_| {
+                                    show_drag_from.set(Some(i));
+                                    show_drag_over.set(None);
+                                },
+                                ondragover: move |e| {
+                                    e.prevent_default();
+                                    if show_drag_from().is_some() && show_drag_over() != Some(i) {
+                                        show_drag_over.set(Some(i));
+                                    }
+                                },
+                                ondrop: move |e| {
+                                    e.prevent_default();
+                                    if let Some(from) = show_drag_from() {
+                                        if from != i && from < a2.len() && i < a2.len() {
+                                            let mut a = a2.clone();
+                                            let moved = a.remove(from);
+                                            a.insert(i, moved);
+                                            let p = p2.clone();
+                                            spawn(async move { if pp::order_showcase(&a, &p).await.is_ok() { if let Some(h) = on_showcase_changed { h.call(()) } } });
+                                        }
+                                    }
+                                    show_drag_from.set(None);
+                                    show_drag_over.set(None);
+                                },
+                                ondragend: move |_| {
+                                    show_drag_from.set(None);
+                                    show_drag_over.set(None);
+                                },
                                 if it.kind == "link" { span { class: "showcase-kind", "🔗" } } else { img { class: "showcase-thumb", src: "{platform::resolve_asset_url(&it.url)}", alt: "" } }
                                 span { class: "grow", "{it.title.clone().unwrap_or_else(|| it.kind.clone())}" }
                                 button { r#type: "button", class: if it.pinned { "btn-small-secondary active" } else { "btn-small-secondary" }, aria_pressed: "{it.pinned}",
@@ -402,12 +457,6 @@ pub fn LayoutEditor(
                                     },
                                     if it.pinned { "★ Đã ghim" } else { "☆ Ghim" }
                                 }
-                                button { r#type: "button", class: "btn-small-secondary", disabled: i == 0, aria_label: "Đưa lên",
-                                    onclick: move |_| {
-                                        let mut a = a2.clone(); a.swap(i, i - 1);
-                                        let p = p2.clone();
-                                        spawn(async move { if pp::order_showcase(&a, &p).await.is_ok() { if let Some(h) = on_showcase_changed { h.call(()) } } });
-                                    }, "↑" }
                                 button { r#type: "button", class: "btn-small-secondary danger", aria_label: "Bỏ khỏi khu trưng bày",
                                     onclick: move |_| { let id = id_del.clone(); spawn(async move { if pp::delete_showcase(&id).await.is_ok() { if let Some(h) = on_showcase_changed { h.call(()) } } }); },
                                     "Bỏ" }

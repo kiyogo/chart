@@ -557,3 +557,71 @@
     initCanvas();
   }
 })();
+
+// Spec 033: Cross-platform HTML5 drag-and-drop stabilizer for [data-drag-item] lists/grids.
+// Ensures synchronous dataTransfer.setData (Firefox/WebKitGTK) and dragover preventDefault.
+(function () {
+  if (window.__chatwDragReorderInit) return;
+  window.__chatwDragReorderInit = true;
+  let activeGroup = null;
+  let pointerDownInteractive = false;
+
+  document.addEventListener('pointerdown', (e) => {
+    const t = e.target;
+    pointerDownInteractive = !!(
+      t &&
+      t.closest &&
+      t.closest('input, textarea, select, option, button, a')
+    );
+  }, true);
+
+  document.addEventListener('pointerup', () => {
+    pointerDownInteractive = false;
+  }, true);
+
+  document.addEventListener('dragstart', (e) => {
+    const item = e.target && e.target.closest ? e.target.closest('[data-drag-item]') : null;
+    if (!item) return;
+    if (pointerDownInteractive) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    const groupEl = item.closest('[data-drag-group]');
+    activeGroup = groupEl ? groupEl.getAttribute('data-drag-group') : '__default__';
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('text/plain', item.getAttribute('data-drag-key') || '1');
+      } catch (_) {}
+    }
+  }, true);
+
+  document.addEventListener('dragover', (e) => {
+    if (!activeGroup) return;
+    const item = e.target && e.target.closest ? e.target.closest('[data-drag-item]') : null;
+    if (!item) return;
+    const groupEl = item.closest('[data-drag-group]');
+    const g = groupEl ? groupEl.getAttribute('data-drag-group') : '__default__';
+    if (g !== activeGroup) return;
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+  }, true);
+
+  document.addEventListener('drop', (e) => {
+    if (!activeGroup) return;
+    const item = e.target && e.target.closest ? e.target.closest('[data-drag-item]') : null;
+    if (item) {
+      e.preventDefault();
+    }
+    activeGroup = null;
+    pointerDownInteractive = false;
+  }, true);
+
+  document.addEventListener('dragend', () => {
+    activeGroup = null;
+    pointerDownInteractive = false;
+  }, true);
+})();

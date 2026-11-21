@@ -184,6 +184,8 @@ pub fn Studio(
     let mut tween_easing = use_signal(|| "ease-in-out".to_string());
     let mut tween_custom = use_signal(|| false);
     let mut tw = use_signal(|| [0.0f64, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0]);
+    let mut layer_drag_from = use_signal(|| Option::<usize>::None);
+    let mut layer_drag_over = use_signal(|| Option::<usize>::None);
     let draft_key = format!("chatw_studio_draft_{my_id}");
     let me_sig = use_signal(|| my_id.clone());
 
@@ -576,17 +578,63 @@ pub fn Studio(
                             span { class: "studio-panel-title", "Lớp" }
                             button { r#type: "button", class: "btn-small-secondary", onclick: move |_| run("ChatwStudio.addLayer()"), "+ Lớp" }
                         }
-                        div { class: "studio-layers",
+                        div { class: "studio-layers", "data-drag-group": "studio-layers",
                             for (i, l) in s.layers.iter().enumerate().rev() {
-                                div { key: "{i}-{l.name}", class: if i == s.layer { "studio-layer active" } else { "studio-layer" },
-                                    onclick: move |_| js(&format!("ChatwStudio.selectLayer({i})")),
-                                    button { r#type: "button", class: "studio-eye", aria_label: if l.visible { "Ẩn lớp" } else { "Hiện lớp" }, aria_pressed: "{l.visible}",
-                                        onclick: { let v = l.visible; move |e: Event<MouseData>| { e.stop_propagation(); js(&format!("ChatwStudio.layerProp({i}, 'visible', {})", !v)) } },
-                                        if l.visible { "◉" } else { "○" }
+                                {
+                                    let dragging_now = layer_drag_from() == Some(i);
+                                    let over_cls = match (layer_drag_from(), layer_drag_over()) {
+                                        (Some(from), Some(ov)) if ov == i && from != i => {
+                                            if i > from { " drag-over-before" } else { " drag-over-after" }
+                                        }
+                                        _ => "",
+                                    };
+                                    let row_cls = format!(
+                                        "studio-layer draggable-item{}{}{}",
+                                        if i == s.layer { " active" } else { "" },
+                                        if dragging_now { " is-dragging" } else { "" },
+                                        over_cls
+                                    );
+                                    rsx! {
+                                        div {
+                                            key: "{i}-{l.name}",
+                                            class: "{row_cls}",
+                                            draggable: "true",
+                                            "data-drag-item": "true",
+                                            "data-drag-key": "{i}",
+                                            onclick: move |_| js(&format!("ChatwStudio.selectLayer({i})")),
+                                            ondragstart: move |_| {
+                                                layer_drag_from.set(Some(i));
+                                                layer_drag_over.set(None);
+                                            },
+                                            ondragover: move |e| {
+                                                e.prevent_default();
+                                                if layer_drag_from().is_some() && layer_drag_over() != Some(i) {
+                                                    layer_drag_over.set(Some(i));
+                                                }
+                                            },
+                                            ondrop: move |e| {
+                                                e.prevent_default();
+                                                if let Some(from) = layer_drag_from() {
+                                                    if from != i {
+                                                        js(&format!("ChatwStudio.reorderLayer({from}, {i})"));
+                                                    }
+                                                }
+                                                layer_drag_from.set(None);
+                                                layer_drag_over.set(None);
+                                            },
+                                            ondragend: move |_| {
+                                                layer_drag_from.set(None);
+                                                layer_drag_over.set(None);
+                                            },
+                                            button { r#type: "button", class: "studio-eye", aria_label: if l.visible { "Ẩn lớp" } else { "Hiện lớp" }, aria_pressed: "{l.visible}",
+                                                onclick: { let v = l.visible; move |e: Event<MouseData>| { e.stop_propagation(); js(&format!("ChatwStudio.layerProp({i}, 'visible', {})", !v)) } },
+                                                if l.visible { "◉" } else { "○" }
+                                            }
+                                            canvas { class: "studio-layer-thumb", width: "40", height: "40", "data-studio-layer": "{i}" }
+                                            input { class: "studio-layer-name", value: "{l.name}", maxlength: "40", aria_label: "Tên lớp",
+                                                onchange: move |e| js(&format!("ChatwStudio.layerProp({i}, 'name', {})", q(&e.value()))) }
+                                        }
                                     }
-                                    canvas { class: "studio-layer-thumb", width: "40", height: "40", "data-studio-layer": "{i}" }
-                                    input { class: "studio-layer-name", value: "{l.name}", maxlength: "40", aria_label: "Tên lớp",
-                                        onchange: move |e| js(&format!("ChatwStudio.layerProp({i}, 'name', {})", q(&e.value()))) }
                                 }
                             }
                         }
@@ -609,8 +657,6 @@ pub fn Studio(
                         }
                         div { class: "studio-btn-row",
                             button { r#type: "button", class: "btn-small-secondary", onclick: move |_| run("ChatwStudio.duplicateLayer()"), "Nhân bản" }
-                            button { r#type: "button", class: "btn-small-secondary", aria_label: "Đưa lớp lên", onclick: move |_| js("ChatwStudio.moveLayer(1)"), "↑" }
-                            button { r#type: "button", class: "btn-small-secondary", aria_label: "Đưa lớp xuống", onclick: move |_| js("ChatwStudio.moveLayer(-1)"), "↓" }
                             button { r#type: "button", class: "btn-small-secondary", onclick: move |_| js("ChatwStudio.mergeDown()"), "Gộp xuống" }
                             button { r#type: "button", class: "btn-small-secondary danger", onclick: move |_| run("ChatwStudio.deleteLayer()"), "Xóa lớp" }
                         }

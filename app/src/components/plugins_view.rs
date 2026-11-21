@@ -247,6 +247,21 @@ impl PluginMod {
             }
         }
     }
+
+    pub fn reorder_section(&mut self, from_key: &str, to_key: &str, defaults: &[&str]) {
+        if from_key == to_key {
+            return;
+        }
+        let mut ord = self.ordered_sections(defaults);
+        if let (Some(from_idx), Some(to_idx)) = (
+            ord.iter().position(|k| k == from_key),
+            ord.iter().position(|k| k == to_key),
+        ) {
+            let item = ord.remove(from_idx);
+            ord.insert(to_idx, item);
+            self.section_order = ord;
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -3145,6 +3160,19 @@ mod tests {
         assert_eq!(resolve_command_icon("/sound", "", "🎹", "logo:sound"), (String::new(), "logo:sound".into()));
         assert_eq!(resolve_command_icon("/workspace", "", "", ""), (String::new(), "svg:workspace".into()));
         assert_eq!(resolve_command_icon("/task", "", "", ""), (String::new(), "svg:task".into()));
+    }
+
+    #[test]
+    fn reorder_section_moves_items_forward_and_backward() {
+        let mut p = default_builtin_plugins().into_iter().next().unwrap();
+        let defs = ["pomodoro", "todos", "notes"];
+        p.section_order.clear();
+        p.reorder_section("pomodoro", "notes", &defs);
+        assert_eq!(p.ordered_sections(&defs), vec!["todos", "notes", "pomodoro"]);
+        p.reorder_section("pomodoro", "todos", &defs);
+        assert_eq!(p.ordered_sections(&defs), vec!["pomodoro", "todos", "notes"]);
+        p.reorder_section("todos", "todos", &defs);
+        assert_eq!(p.ordered_sections(&defs), vec!["pomodoro", "todos", "notes"]);
     }
 }
 

@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use serde_json::{Value, json};
 
 use crate::{
-    components::icons::{ChevronDownIcon, ChevronRightIcon, DownloadIcon, VicoAiIcon},
+    components::icons::{DownloadIcon, VicoAiIcon},
     services::enterprise::{
         self, EnterpriseConfig, MODULE_DEFS, ent_perm, export_all_json_url, export_audit_csv_url,
         export_reports_csv_url,
@@ -50,6 +50,8 @@ pub fn EnterpriseSettingsPanel(
     let mut annual_days = use_signal(|| "12".to_string());
     let mut sick_days = use_signal(|| "5".to_string());
     let mut quota_mb = use_signal(|| "2048".to_string());
+    let mut mod_drag_from = use_signal(|| Option::<usize>::None);
+    let mut mod_drag_over = use_signal(|| Option::<usize>::None);
 
     let mut sync_inputs = move |c: &EnterpriseConfig| {
         company_name.set(str_val(&c.general_settings, "company_name", ""));
@@ -221,33 +223,69 @@ pub fn EnterpriseSettingsPanel(
 
                             div { class: "settings-group",
                                 h2 { class: "settings-group-title", "Thanh bên" }
-                                div { class: "settings-list",
+                                div { class: "settings-list", "data-drag-group": "ent-sidebar-mods",
                                     for (idx, key) in ordered_mods.iter().enumerate() {
                                         {
                                             let label = enterprise::module_label(key);
                                             let enabled = c.enabled_modules.iter().any(|m| m == key);
                                             let cur_enabled = c.enabled_modules.clone();
                                             let cur_order = ordered_mods.clone();
-                                            let cur_order2 = ordered_mods.clone();
                                             let k_str = key.clone();
+                                            let dragging_now = mod_drag_from() == Some(idx);
+                                            let over_cls = match (mod_drag_from(), mod_drag_over()) {
+                                                (Some(from), Some(ov)) if ov == idx && from != idx => {
+                                                    if idx < from { " drag-over-before" } else { " drag-over-after" }
+                                                }
+                                                _ => "",
+                                            };
+                                            let row_cls = format!(
+                                                "settings-row toggle-row{}{}{}",
+                                                if can_ent { " draggable-item" } else { "" },
+                                                if dragging_now { " is-dragging" } else { "" },
+                                                over_cls
+                                            );
                                             rsx! {
-                                                div { key: "mod-{key}", class: "settings-row toggle-row",
+                                                div {
+                                                    key: "mod-{key}",
+                                                    class: "{row_cls}",
+                                                    draggable: if can_ent { "true" } else { "false" },
+                                                    "data-drag-item": if can_ent { "true" } else { "false" },
+                                                    "data-drag-key": "{key}",
+                                                    ondragstart: move |_| {
+                                                        if can_ent {
+                                                            mod_drag_from.set(Some(idx));
+                                                            mod_drag_over.set(None);
+                                                        }
+                                                    },
+                                                    ondragover: move |e| {
+                                                        if can_ent && mod_drag_from().is_some() {
+                                                            e.prevent_default();
+                                                            if mod_drag_over() != Some(idx) {
+                                                                mod_drag_over.set(Some(idx));
+                                                            }
+                                                        }
+                                                    },
+                                                    ondrop: move |e| {
+                                                        e.prevent_default();
+                                                        if can_ent {
+                                                            if let Some(from) = mod_drag_from() {
+                                                                if from != idx && from < cur_order.len() && idx < cur_order.len() {
+                                                                    let mut next = cur_order.clone();
+                                                                    let item = next.remove(from);
+                                                                    next.insert(idx, item);
+                                                                    save_patch.call((json!({ "module_order": next }), "Đã đổi thứ tự"));
+                                                                }
+                                                            }
+                                                        }
+                                                        mod_drag_from.set(None);
+                                                        mod_drag_over.set(None);
+                                                    },
+                                                    ondragend: move |_| {
+                                                        mod_drag_from.set(None);
+                                                        mod_drag_over.set(None);
+                                                    },
                                                     span { class: "grow", span { class: "settings-label", "{label}" } }
                                                     div { class: "ent-btn-group",
-                                                        if can_ent && idx > 0 {
-                                                            button { r#type: "button", class: "btn-ghost", title: "Đưa lên", onclick: move |_| {
-                                                                let mut next = cur_order.clone();
-                                                                next.swap(idx, idx - 1);
-                                                                save_patch.call((json!({ "module_order": next }), "Đã đổi thứ tự"));
-                                                            }, ChevronRightIcon { size: 13 } }
-                                                        }
-                                                        if can_ent && idx + 1 < ordered_mods.len() {
-                                                            button { r#type: "button", class: "btn-ghost", title: "Đưa xuống", onclick: move |_| {
-                                                                let mut next = cur_order2.clone();
-                                                                next.swap(idx, idx + 1);
-                                                                save_patch.call((json!({ "module_order": next }), "Đã đổi thứ tự"));
-                                                            }, ChevronDownIcon { size: 13 } }
-                                                        }
                                                         input {
                                                             r#type: "checkbox",
                                                             class: "switch",

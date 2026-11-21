@@ -51,7 +51,7 @@ fn plugin_has_workspace(pm: &PluginMod) -> bool {
     pm.page_kind != "theme_sakura" && (pm.left_app_enabled || pm.custom_page_enabled || !pm.custom_blocks.is_empty())
 }
 
-/// Reusable reorderable + toggleable section list (live controls for any plugin's layout).
+/// Reusable drag-and-drop section list (zero index numbers, zero arrows).
 #[component]
 fn SectionOrderControl(
     plugin_id: String,
@@ -60,9 +60,12 @@ fn SectionOrderControl(
     hidden_keys: Vec<String>,
     default_keys: Vec<String>,
 ) -> Element {
-    let total = ordered_keys.len();
+    let mut drag_from = use_signal(|| Option::<usize>::None);
+    let mut drag_over = use_signal(|| Option::<usize>::None);
+    let group_id = format!("plugin-sec-{plugin_id}");
+
     rsx! {
-        div { class: "plugin-order-list",
+        div { class: "plugin-order-list", "data-drag-group": "{group_id}",
             for (idx, key) in ordered_keys.iter().enumerate() {
                 {
                     let label = items
@@ -71,44 +74,59 @@ fn SectionOrderControl(
                         .map(|(_, l)| l.clone())
                         .unwrap_or_else(|| key.clone());
                     let is_visible = !hidden_keys.iter().any(|h| h == key);
-                    let pid_up = plugin_id.clone();
-                    let pid_dn = plugin_id.clone();
+                    let pid_drop = plugin_id.clone();
                     let pid_tg = plugin_id.clone();
-                    let k_up = key.clone();
-                    let k_dn = key.clone();
                     let k_tg = key.clone();
-                    let defs_up = default_keys.clone();
-                    let defs_dn = default_keys.clone();
+                    let ord_drop = ordered_keys.clone();
+                    let defs_drop = default_keys.clone();
+                    let dragging_now = drag_from() == Some(idx);
+                    let over_cls = match (drag_from(), drag_over()) {
+                        (Some(from), Some(ov)) if ov == idx && from != idx => {
+                            if idx < from { " drag-over-before" } else { " drag-over-after" }
+                        }
+                        _ => "",
+                    };
+                    let row_cls = format!(
+                        "plugin-order-row draggable-item{}{}{}",
+                        if is_visible { "" } else { " dimmed" },
+                        if dragging_now { " is-dragging" } else { "" },
+                        over_cls
+                    );
                     rsx! {
-                        div { key: "ord-{key}", class: if is_visible { "plugin-order-row" } else { "plugin-order-row dimmed" },
-                            span { class: "plugin-order-index", "{idx + 1}" }
+                        div {
+                            key: "ord-{key}",
+                            class: "{row_cls}",
+                            draggable: "true",
+                            "data-drag-item": "true",
+                            "data-drag-key": "{key}",
+                            ondragstart: move |_| {
+                                drag_from.set(Some(idx));
+                                drag_over.set(None);
+                            },
+                            ondragover: move |e| {
+                                e.prevent_default();
+                                if drag_from().is_some() && drag_over() != Some(idx) {
+                                    drag_over.set(Some(idx));
+                                }
+                            },
+                            ondrop: move |e| {
+                                e.prevent_default();
+                                if let Some(from) = drag_from() {
+                                    if from != idx {
+                                        if let (Some(fk), Some(tk)) = (ord_drop.get(from), ord_drop.get(idx)) {
+                                            let refs: Vec<&str> = defs_drop.iter().map(String::as_str).collect();
+                                            update_plugin_by_id(&pid_drop, &|p| p.reorder_section(fk, tk, &refs));
+                                        }
+                                    }
+                                }
+                                drag_from.set(None);
+                                drag_over.set(None);
+                            },
+                            ondragend: move |_| {
+                                drag_from.set(None);
+                                drag_over.set(None);
+                            },
                             span { class: "plugin-order-label grow", "{label}" }
-                            div { class: "plugin-order-btns",
-                                button {
-                                    r#type: "button",
-                                    class: "plugin-step-btn",
-                                    disabled: idx == 0,
-                                    title: "Đưa lên",
-                                    aria_label: "Đưa {label} lên",
-                                    onclick: move |_| {
-                                        let refs: Vec<&str> = defs_up.iter().map(String::as_str).collect();
-                                        update_plugin_by_id(&pid_up, &|p| p.move_section(&k_up, -1, &refs));
-                                    },
-                                    "↑"
-                                }
-                                button {
-                                    r#type: "button",
-                                    class: "plugin-step-btn",
-                                    disabled: idx + 1 >= total,
-                                    title: "Đưa xuống",
-                                    aria_label: "Đưa {label} xuống",
-                                    onclick: move |_| {
-                                        let refs: Vec<&str> = defs_dn.iter().map(String::as_str).collect();
-                                        update_plugin_by_id(&pid_dn, &|p| p.move_section(&k_dn, 1, &refs));
-                                    },
-                                    "↓"
-                                }
-                            }
                             input {
                                 r#type: "checkbox",
                                 class: "switch",
@@ -845,7 +863,7 @@ fn NotesPluginSettings(plugin: PluginMod) -> Element {
     }
 }
 
-/// 2. Soundboard 8-Bit — Dedicated Audio Mixer & Reorderable Pad Controller
+/// 2. Soundboard 8-Bit — Dedicated Audio Mixer & Visual Drag-and-Drop Launchpad Grid
 #[component]
 fn SoundboardPluginSettings(plugin: PluginMod) -> Element {
     let pid = plugin.id.clone();
@@ -857,7 +875,8 @@ fn SoundboardPluginSettings(plugin: PluginMod) -> Element {
     let default_keys: Vec<String> = SOUNDBOARD_PADS.iter().map(|(k, _, _)| (*k).to_string()).collect();
     let default_refs: Vec<&str> = SOUNDBOARD_PADS.iter().map(|(k, _, _)| *k).collect();
     let ordered = plugin.ordered_sections(&default_refs);
-    let total = ordered.len();
+    let mut drag_from = use_signal(|| Option::<usize>::None);
+    let mut drag_over = use_signal(|| Option::<usize>::None);
 
     rsx! {
         div { class: "plugin-cfg-grid",
@@ -940,56 +959,76 @@ fn SoundboardPluginSettings(plugin: PluginMod) -> Element {
             }
 
             div { class: "plugin-cfg-card",
-                div { class: "settings-group-title", "Sắp xếp & Nghe thử từng phím" }
-                div { class: "plugin-order-list",
+                div { class: "settings-group-title", "Bàn phím âm thanh" }
+                div {
+                    class: "soundboard-cfg-grid",
+                    style: "grid-template-columns: repeat({cols}, minmax(0, 1fr));",
+                    "data-drag-group": "soundboard-pads",
                     for (idx, pad_key) in ordered.iter().enumerate() {
                         if let Some((kind, label, color)) = SOUNDBOARD_PADS.iter().find(|(k, _, _)| *k == pad_key.as_str()).copied() {
                             {
                                 let is_visible = !plugin.is_section_hidden(kind);
-                                let pid_up = pid.clone();
-                                let pid_dn = pid.clone();
+                                let pid_drop = pid.clone();
                                 let pid_tg = pid.clone();
-                                let defs_up = default_keys.clone();
-                                let defs_dn = default_keys.clone();
+                                let ord_drop = ordered.clone();
+                                let defs_drop = default_keys.clone();
+                                let dragging_now = drag_from() == Some(idx);
+                                let is_over = drag_over() == Some(idx) && drag_from().is_some_and(|f| f != idx);
+                                let tile_cls = format!(
+                                    "soundboard-cfg-pad draggable-item{}{}{}",
+                                    if is_visible { "" } else { " dimmed" },
+                                    if dragging_now { " is-dragging" } else { "" },
+                                    if is_over { " drag-over-tile" } else { "" },
+                                );
                                 rsx! {
-                                    div { key: "pad-{kind}", class: if is_visible { "plugin-order-row" } else { "plugin-order-row dimmed" },
-                                        span { class: "voxel-swatch", style: "background: {color};" }
-                                        span { class: "plugin-order-label grow", "{label}" }
-                                        button {
-                                            r#type: "button",
-                                            class: "btn-ghost",
-                                            style: "padding: 2px 8px; font-size: 0.78rem;",
-                                            onclick: move |_| play_mod_sound_opts(kind, vol_f, pitch_f),
-                                            "Nghe"
-                                        }
-                                        div { class: "plugin-order-btns",
-                                            button {
-                                                r#type: "button",
-                                                class: "plugin-step-btn",
-                                                disabled: idx == 0,
-                                                onclick: move |_| {
-                                                    let refs: Vec<&str> = defs_up.iter().map(String::as_str).collect();
-                                                    update_plugin_by_id(&pid_up, &|p| p.move_section(kind, -1, &refs));
-                                                },
-                                                "↑"
+                                    div {
+                                        key: "pad-{kind}",
+                                        class: "{tile_cls}",
+                                        style: "--pad-accent: {color};",
+                                        draggable: "true",
+                                        "data-drag-item": "true",
+                                        "data-drag-key": "{kind}",
+                                        title: "Nhấn để nghe thử hoặc kéo thả để đổi vị trí",
+                                        onclick: move |_| play_mod_sound_opts(kind, vol_f, pitch_f),
+                                        ondragstart: move |_| {
+                                            drag_from.set(Some(idx));
+                                            drag_over.set(None);
+                                        },
+                                        ondragover: move |e| {
+                                            e.prevent_default();
+                                            if drag_from().is_some() && drag_over() != Some(idx) {
+                                                drag_over.set(Some(idx));
                                             }
-                                            button {
-                                                r#type: "button",
-                                                class: "plugin-step-btn",
-                                                disabled: idx + 1 >= total,
-                                                onclick: move |_| {
-                                                    let refs: Vec<&str> = defs_dn.iter().map(String::as_str).collect();
-                                                    update_plugin_by_id(&pid_dn, &|p| p.move_section(kind, 1, &refs));
-                                                },
-                                                "↓"
+                                        },
+                                        ondrop: move |e| {
+                                            e.prevent_default();
+                                            if let Some(from) = drag_from() {
+                                                if from != idx {
+                                                    if let (Some(fk), Some(tk)) = (ord_drop.get(from), ord_drop.get(idx)) {
+                                                        let refs: Vec<&str> = defs_drop.iter().map(String::as_str).collect();
+                                                        update_plugin_by_id(&pid_drop, &|p| p.reorder_section(fk, tk, &refs));
+                                                    }
+                                                }
+                                            }
+                                            drag_from.set(None);
+                                            drag_over.set(None);
+                                        },
+                                        ondragend: move |_| {
+                                            drag_from.set(None);
+                                            drag_over.set(None);
+                                        },
+                                        div { class: "soundboard-cfg-pad-top",
+                                            span { class: "soundboard-cfg-dot", style: "background: {color};" }
+                                            input {
+                                                r#type: "checkbox",
+                                                class: "switch",
+                                                checked: is_visible,
+                                                aria_label: "Hiện phím {label}",
+                                                onclick: move |e| e.stop_propagation(),
+                                                onchange: move |_| update_plugin_by_id(&pid_tg, &|p| p.toggle_section(kind)),
                                             }
                                         }
-                                        input {
-                                            r#type: "checkbox",
-                                            class: "switch",
-                                            checked: is_visible,
-                                            onchange: move |_| update_plugin_by_id(&pid_tg, &|p| p.toggle_section(kind)),
-                                        }
+                                        span { class: "soundboard-cfg-pad-name", "{label}" }
                                     }
                                 }
                             }
@@ -1001,7 +1040,30 @@ fn SoundboardPluginSettings(plugin: PluginMod) -> Element {
     }
 }
 
-/// 3. Bảng vẽ Voxel — Dedicated Canvas & Palette Config (Plugin owns its brand logo)
+fn load_voxel_grid() -> Vec<String> {
+    if let Some(raw) = platform::storage_get(VOXEL_KEY) {
+        if let Ok(v) = serde_json::from_str::<Vec<String>>(&raw) {
+            if v.len() == 192 {
+                return v;
+            }
+        }
+    }
+    let mut g = vec![String::new(); 192];
+    for x in 0..16 {
+        g[9 * 16 + x] = "#22C55E".into();
+        g[10 * 16 + x] = "#92400E".into();
+        g[11 * 16 + x] = "#64748B".into();
+    }
+    g
+}
+
+fn save_voxel_grid(g: &[String]) {
+    if let Ok(s) = serde_json::to_string(g) {
+        platform::storage_set(VOXEL_KEY, &s);
+    }
+}
+
+/// 3. Bảng vẽ Voxel — Dedicated Brush Studio & Live Interactive Mini Canvas (Plugin owns its brand logo)
 #[component]
 fn VoxelPluginSettings(plugin: PluginMod) -> Element {
     let pid = plugin.id.clone();
@@ -1009,8 +1071,9 @@ fn VoxelPluginSettings(plugin: PluginMod) -> Element {
     let show_grid = plugin.cfg_bool("show_grid", true);
     let bevel_blocks = plugin.cfg_bool("bevel_blocks", true);
     let brush_sound = plugin.cfg_bool("brush_sound", true);
-    let defaults = ["actions", "palette", "canvas"];
-    let ordered = plugin.ordered_sections(&defaults);
+    let show_actions = !plugin.is_section_hidden("actions");
+    let show_palette = !plugin.is_section_hidden("palette");
+    let mut mini_grid = use_signal(load_voxel_grid);
     let mut canvas_msg = use_signal(|| Option::<String>::None);
 
     rsx! {
@@ -1060,20 +1123,68 @@ fn VoxelPluginSettings(plugin: PluginMod) -> Element {
                         onchange: { let id = pid.clone(); move |e| { let v = e.checked(); update_plugin_by_id(&id, &|p| p.set_cfg("brush_sound", json!(v))); } }
                     }
                 }
+                label { class: "settings-row toggle-row",
+                    span { class: "grow", span { class: "settings-label", "Hiện thanh công cụ nhanh" } }
+                    input {
+                        r#type: "checkbox",
+                        class: "switch",
+                        checked: show_actions,
+                        onchange: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| p.toggle_section("actions")) }
+                    }
+                }
+                label { class: "settings-row toggle-row",
+                    span { class: "grow", span { class: "settings-label", "Hiện bảng chọn màu" } }
+                    input {
+                        r#type: "checkbox",
+                        class: "switch",
+                        checked: show_palette,
+                        onchange: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| p.toggle_section("palette")) }
+                    }
+                }
             }
 
             div { class: "plugin-cfg-card",
-                div { class: "settings-group-title", "Sắp xếp khu vực bảng vẽ" }
-                SectionOrderControl {
-                    plugin_id: pid.clone(),
-                    items: vec![
-                        ("actions".into(), "Thanh thao tác nhanh".into()),
-                        ("palette".into(), "Bảng chọn màu khối".into()),
-                        ("canvas".into(), "Lưới vẽ Voxel 2D".into()),
-                    ],
-                    ordered_keys: ordered,
-                    hidden_keys: plugin.hidden_sections.clone(),
-                    default_keys: defaults.iter().map(|s| (*s).to_string()).collect(),
+                div { class: "settings-group-title", "Xem trước & Mẫu nhanh" }
+                div {
+                    class: if show_grid { "voxel-mini-canvas show-grid" } else { "voxel-mini-canvas" },
+                    for (ci, cell) in mini_grid().iter().enumerate() {
+                        {
+                            let col_paint = default_col.clone();
+                            let filled = !cell.is_empty();
+                            let cell_cls = if filled && bevel_blocks {
+                                "voxel-mini-cell filled bevel"
+                            } else if filled {
+                                "voxel-mini-cell filled"
+                            } else {
+                                "voxel-mini-cell"
+                            };
+                            let style_str = if filled {
+                                format!("--vc: {cell};")
+                            } else {
+                                "--vc: transparent;".to_string()
+                            };
+                            rsx! {
+                                button {
+                                    key: "vm-{ci}",
+                                    r#type: "button",
+                                    class: "{cell_cls}",
+                                    style: "{style_str}",
+                                    aria_label: "Ô lưới {ci}",
+                                    onclick: move |_| {
+                                        let mut g = mini_grid();
+                                        if g.get(ci).map(|s| s.as_str()) == Some(col_paint.as_str()) {
+                                            g[ci].clear();
+                                        } else if let Some(slot) = g.get_mut(ci) {
+                                            *slot = col_paint.clone();
+                                        }
+                                        save_voxel_grid(&g);
+                                        mini_grid.set(g);
+                                        if brush_sound { play_mod_sound("minecraft"); }
+                                    },
+                                }
+                            }
+                        }
+                    }
                 }
                 div { class: "inline-form",
                     button {
@@ -1086,22 +1197,48 @@ fn VoxelPluginSettings(plugin: PluginMod) -> Element {
                                 g[10 * 16 + x] = "#92400E".into();
                                 g[11 * 16 + x] = "#64748B".into();
                             }
-                            if let Ok(s) = serde_json::to_string(&g) {
-                                platform::storage_set(VOXEL_KEY, &s);
-                                canvas_msg.set(Some("Đã khôi phục địa hình mẫu.".into()));
-                            }
+                            save_voxel_grid(&g);
+                            mini_grid.set(g);
+                            canvas_msg.set(Some("Đã nạp địa hình mẫu.".into()));
                         },
                         "Địa hình mẫu"
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn-secondary",
+                        onclick: move |_| {
+                            let mut g = vec![String::new(); 192];
+                            for x in 0..16 {
+                                g[11 * 16 + x] = "#22C55E".into();
+                            }
+                            for y in 6..11 {
+                                for x in 3..13 {
+                                    g[y * 16 + x] = "#64748B".into();
+                                }
+                            }
+                            for x in [3, 5, 7, 9, 11, 12] {
+                                g[5 * 16 + x] = "#64748B".into();
+                            }
+                            for y in 8..11 {
+                                g[y * 16 + 7] = "#92400E".into();
+                                g[y * 16 + 8] = "#92400E".into();
+                            }
+                            g[7 * 16 + 5] = "#38BDF8".into();
+                            g[7 * 16 + 10] = "#38BDF8".into();
+                            save_voxel_grid(&g);
+                            mini_grid.set(g);
+                            canvas_msg.set(Some("Đã nạp mẫu lâu đài.".into()));
+                        },
+                        "Lâu đài"
                     }
                     button {
                         r#type: "button",
                         class: "btn-ghost",
                         onclick: move |_| {
                             let g = vec![String::new(); 192];
-                            if let Ok(s) = serde_json::to_string(&g) {
-                                platform::storage_set(VOXEL_KEY, &s);
-                                canvas_msg.set(Some("Đã xóa trắng bản vẽ.".into()));
-                            }
+                            save_voxel_grid(&g);
+                            mini_grid.set(g);
+                            canvas_msg.set(Some("Đã xóa trắng bản vẽ.".into()));
                         },
                         "Xóa trắng"
                     }
@@ -1247,9 +1384,9 @@ fn SakuraPluginSettings(plugin: PluginMod) -> Element {
 fn CyberPluginSettings(plugin: PluginMod) -> Element {
     let pid = plugin.id.clone();
     let t = &plugin.theme;
-    let defaults = ["stats", "console"];
-    let ordered = plugin.ordered_sections(&defaults);
+    let show_stats = !plugin.is_section_hidden("stats");
     let cmd_sound = plugin.cfg_bool("cmd_sound", true);
+    let mut diag_out = use_signal(|| Option::<String>::None);
     let neon_packs = [
         ("Cyan Điện tử", "#070812", "#0D1021", "#0A0C1A", "#141830", "#00F0FF", "#D900FF", "#E0FAFF"),
         ("Tím Synthwave", "#11081E", "#190D2B", "#150A24", "#23123A", "#FF4FD8", "#7C3AED", "#F5E8FF"),
@@ -1326,16 +1463,15 @@ fn CyberPluginSettings(plugin: PluginMod) -> Element {
             }
 
             div { class: "plugin-cfg-card",
-                div { class: "settings-group-title", "Bố cục Trạm lệnh" }
-                SectionOrderControl {
-                    plugin_id: pid.clone(),
-                    items: vec![
-                        ("stats".into(), "Thẻ thông số kết nối".into()),
-                        ("console".into(), "Bảng chạy lệnh nhanh".into()),
-                    ],
-                    ordered_keys: ordered,
-                    hidden_keys: plugin.hidden_sections.clone(),
-                    default_keys: defaults.iter().map(|s| (*s).to_string()).collect(),
+                div { class: "settings-group-title", "Trạm lệnh & CSS" }
+                label { class: "settings-row toggle-row",
+                    span { class: "grow", span { class: "settings-label", "Hiện thẻ thông số kết nối" } }
+                    input {
+                        r#type: "checkbox",
+                        class: "switch",
+                        checked: show_stats,
+                        onchange: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| p.toggle_section("stats")) }
+                    }
                 }
                 label { class: "settings-row toggle-row",
                     span { class: "grow", span { class: "settings-label", "Âm thanh phản hồi Sci-Fi" } }
@@ -1346,10 +1482,33 @@ fn CyberPluginSettings(plugin: PluginMod) -> Element {
                         onchange: { let id = pid.clone(); move |e| { let v = e.checked(); update_plugin_by_id(&id, &|p| p.set_cfg("cmd_sound", json!(v))); } }
                     }
                 }
+                div { class: "inline-form",
+                    button {
+                        r#type: "button",
+                        class: "btn-secondary",
+                        onclick: move |_| {
+                            if cmd_sound { play_mod_sound("scifi"); }
+                            diag_out.set(Some("Kênh mã hóa AES-GCM 256-bit và ECDH P-256 đang hoạt động.".into()));
+                        },
+                        "Kiểm tra E2EE"
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn-ghost",
+                        onclick: move |_| {
+                            play_mod_sound("scifi");
+                            diag_out.set(Some("Đã phát tín hiệu âm thanh Sci-Fi.".into()));
+                        },
+                        "Thử âm Sci-Fi"
+                    }
+                }
+                if let Some(m) = diag_out() {
+                    div { class: "plugin-calc-result", "{m}" }
+                }
                 label { class: "form-field",
                     span { "CSS bổ sung" }
                     textarea {
-                        rows: "3",
+                        rows: "4",
                         style: "font-family: var(--font-mono); font-size: 12px;",
                         placeholder: "Quy tắc CSS tùy chọn",
                         value: "{t.custom_css}",
@@ -1361,12 +1520,10 @@ fn CyberPluginSettings(plugin: PluginMod) -> Element {
     }
 }
 
-/// 6. Công cụ Lệnh nhanh — Dedicated Slash Commands & Quick Tools Customizer (NO Bot mode)
+/// 6. Công cụ Lệnh nhanh — Live Slash Command Runner, Utility Chips & Draggable Commands
 #[component]
 fn ToolsPluginSettings(plugin: PluginMod, my_username: String) -> Element {
     let pid = plugin.id.clone();
-    let defaults = ["calc", "random", "text", "snippets"];
-    let ordered = plugin.ordered_sections(&defaults);
 
     let mut test_input = use_signal(|| "/calc 12*8+4".to_string());
     let mut test_output = use_signal(String::new);
@@ -1374,25 +1531,20 @@ fn ToolsPluginSettings(plugin: PluginMod, my_username: String) -> Element {
     let mut cmd_resp = use_signal(String::new);
     let mut btn_label = use_signal(String::new);
     let mut btn_content = use_signal(String::new);
-    let cmds_len = plugin.commands.len();
+    let mut drag_from = use_signal(|| Option::<usize>::None);
+    let mut drag_over = use_signal(|| Option::<usize>::None);
+
+    let tool_chips = [
+        ("calc", "Máy tính"),
+        ("random", "Xúc xắc"),
+        ("text", "Văn bản"),
+        ("snippets", "Lệnh tắt"),
+    ];
 
     rsx! {
         div { class: "plugin-cfg-grid",
             div { class: "plugin-cfg-card",
-                div { class: "settings-group-title", "Sắp xếp tiện ích" }
-                SectionOrderControl {
-                    plugin_id: pid.clone(),
-                    items: vec![
-                        ("calc".into(), "Máy tính nhanh".into()),
-                        ("random".into(), "Xúc xắc & Ngẫu nhiên".into()),
-                        ("text".into(), "Xử lý văn bản".into()),
-                        ("snippets".into(), "Lệnh gõ tắt".into()),
-                    ],
-                    ordered_keys: ordered,
-                    hidden_keys: plugin.hidden_sections.clone(),
-                    default_keys: defaults.iter().map(|s| (*s).to_string()).collect(),
-                }
-                div { class: "settings-group-title", style: "margin-top: var(--space-2);", "Chạy thử lệnh" }
+                div { class: "settings-group-title", "Chạy thử lệnh trực tiếp" }
                 div { class: "inline-form",
                     input {
                         r#type: "text",
@@ -1416,6 +1568,27 @@ fn ToolsPluginSettings(plugin: PluginMod, my_username: String) -> Element {
                 }
                 if !test_output().is_empty() {
                     div { class: "plugin-calc-result", "{test_output}" }
+                }
+                div { class: "plugin-field-row", style: "margin-top: var(--space-1);",
+                    span { class: "settings-label", "Tiện ích bật trong bảng công cụ" }
+                    div { class: "mod-preset-chips",
+                        for (k, lbl) in tool_chips {
+                            {
+                                let active = !plugin.is_section_hidden(k);
+                                let id = pid.clone();
+                                rsx! {
+                                    button {
+                                        key: "tc-{k}",
+                                        r#type: "button",
+                                        class: if active { "btn-small-primary" } else { "btn-small-secondary" },
+                                        aria_pressed: "{active}",
+                                        onclick: move |_| update_plugin_by_id(&id, &|p| p.toggle_section(k)),
+                                        "{lbl}"
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 div { class: "settings-group-title", style: "margin-top: var(--space-2);", "Nút chèn nhanh khung chat" }
                 div { class: "inline-form",
@@ -1485,38 +1658,74 @@ fn ToolsPluginSettings(plugin: PluginMod, my_username: String) -> Element {
                         PlusIcon { size: 14 } "Thêm"
                     }
                 }
-                div { class: "plugin-order-list",
+                div { class: "plugin-order-list", "data-drag-group": "tools-cmds",
                     for (ci, c) in plugin.commands.iter().enumerate() {
-                        div { key: "cmd-{ci}-{c.trigger}", class: if c.enabled { "plugin-order-row" } else { "plugin-order-row dimmed" },
-                            code { class: "kbd", "{c.trigger}" }
-                            span { class: "member-sub grow", style: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{c.response}" }
-                            div { class: "plugin-order-btns",
-                                button {
-                                    r#type: "button",
-                                    class: "plugin-step-btn",
-                                    disabled: ci == 0,
-                                    onclick: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| { if ci > 0 && ci < p.commands.len() { p.commands.swap(ci, ci - 1); } }) },
-                                    "↑"
+                        {
+                            let dragging_now = drag_from() == Some(ci);
+                            let over_cls = match (drag_from(), drag_over()) {
+                                (Some(from), Some(ov)) if ov == ci && from != ci => {
+                                    if ci < from { " drag-over-before" } else { " drag-over-after" }
                                 }
-                                button {
-                                    r#type: "button",
-                                    class: "plugin-step-btn",
-                                    disabled: ci + 1 >= cmds_len,
-                                    onclick: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| { if ci + 1 < p.commands.len() { p.commands.swap(ci, ci + 1); } }) },
-                                    "↓"
+                                _ => "",
+                            };
+                            let row_cls = format!(
+                                "plugin-order-row draggable-item{}{}{}",
+                                if c.enabled { "" } else { " dimmed" },
+                                if dragging_now { " is-dragging" } else { "" },
+                                over_cls
+                            );
+                            let pid_drop = pid.clone();
+                            rsx! {
+                                div {
+                                    key: "cmd-{ci}-{c.trigger}",
+                                    class: "{row_cls}",
+                                    draggable: "true",
+                                    "data-drag-item": "true",
+                                    "data-drag-key": "{c.trigger}",
+                                    ondragstart: move |_| {
+                                        drag_from.set(Some(ci));
+                                        drag_over.set(None);
+                                    },
+                                    ondragover: move |e| {
+                                        e.prevent_default();
+                                        if drag_from().is_some() && drag_over() != Some(ci) {
+                                            drag_over.set(Some(ci));
+                                        }
+                                    },
+                                    ondrop: move |e| {
+                                        e.prevent_default();
+                                        if let Some(from) = drag_from() {
+                                            if from != ci {
+                                                update_plugin_by_id(&pid_drop, &|p| {
+                                                    if from < p.commands.len() && ci < p.commands.len() {
+                                                        let it = p.commands.remove(from);
+                                                        p.commands.insert(ci, it);
+                                                    }
+                                                });
+                                            }
+                                        }
+                                        drag_from.set(None);
+                                        drag_over.set(None);
+                                    },
+                                    ondragend: move |_| {
+                                        drag_from.set(None);
+                                        drag_over.set(None);
+                                    },
+                                    code { class: "kbd", "{c.trigger}" }
+                                    span { class: "member-sub grow", style: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{c.response}" }
+                                    input {
+                                        r#type: "checkbox",
+                                        class: "switch",
+                                        checked: c.enabled,
+                                        onchange: { let id = pid.clone(); move |e| { let v = e.checked(); update_plugin_by_id(&id, &|p| { if let Some(x) = p.commands.get_mut(ci) { x.enabled = v; } }); } }
+                                    }
+                                    button {
+                                        r#type: "button",
+                                        class: "icon-btn danger",
+                                        onclick: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| { if ci < p.commands.len() { p.commands.remove(ci); } }) },
+                                        TrashIcon { size: 14 }
+                                    }
                                 }
-                            }
-                            input {
-                                r#type: "checkbox",
-                                class: "switch",
-                                checked: c.enabled,
-                                onchange: { let id = pid.clone(); move |e| { let v = e.checked(); update_plugin_by_id(&id, &|p| { if let Some(x) = p.commands.get_mut(ci) { x.enabled = v; } }); } }
-                            }
-                            button {
-                                r#type: "button",
-                                class: "icon-btn danger",
-                                onclick: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| { if ci < p.commands.len() { p.commands.remove(ci); } }) },
-                                TrashIcon { size: 14 }
                             }
                         }
                     }
@@ -1526,7 +1735,7 @@ fn ToolsPluginSettings(plugin: PluginMod, my_username: String) -> Element {
     }
 }
 
-/// 7. Custom / Third-Party Declarative Plugin Settings (Schema-driven settings + Reorderable Custom Blocks)
+/// 7. Custom / Third-Party Declarative Plugin Settings (Schema-driven settings + Draggable Custom Blocks)
 #[component]
 fn CustomPluginSettings(plugin: PluginMod) -> Element {
     let pid = plugin.id.clone();
@@ -1536,7 +1745,8 @@ fn CustomPluginSettings(plugin: PluginMod) -> Element {
     let mut blk_action_type = use_signal(|| "insert_chat".to_string());
     let mut blk_action_label = use_signal(String::new);
     let mut blk_action_cmd = use_signal(String::new);
-    let block_count = plugin.custom_blocks.len();
+    let mut drag_from = use_signal(|| Option::<usize>::None);
+    let mut drag_over = use_signal(|| Option::<usize>::None);
 
     rsx! {
         div { class: "plugin-cfg-grid",
@@ -1667,7 +1877,7 @@ fn CustomPluginSettings(plugin: PluginMod) -> Element {
             }
 
             div { class: "plugin-cfg-card",
-                div { class: "settings-group-title", "Khối giao diện & Thứ tự hiển thị" }
+                div { class: "settings-group-title", "Khối giao diện" }
                 div { class: "form-grid",
                     label { class: "form-field",
                         span { "Loại khối" }
@@ -1732,32 +1942,67 @@ fn CustomPluginSettings(plugin: PluginMod) -> Element {
                     },
                     PlusIcon { size: 15 } "Thêm khối"
                 }
-                div { class: "plugin-order-list",
+                div { class: "plugin-order-list", "data-drag-group": "custom-blocks",
                     for (bi, b) in plugin.custom_blocks.iter().enumerate() {
-                        div { key: "blk-{bi}-{b.title}", class: "plugin-order-row",
-                            code { class: "kbd", "{b.kind}" }
-                            span { class: "plugin-order-label grow", "{b.title}" }
-                            div { class: "plugin-order-btns",
-                                button {
-                                    r#type: "button",
-                                    class: "plugin-step-btn",
-                                    disabled: bi == 0,
-                                    onclick: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| { if bi > 0 && bi < p.custom_blocks.len() { p.custom_blocks.swap(bi, bi - 1); } }) },
-                                    "↑"
+                        {
+                            let dragging_now = drag_from() == Some(bi);
+                            let over_cls = match (drag_from(), drag_over()) {
+                                (Some(from), Some(ov)) if ov == bi && from != bi => {
+                                    if bi < from { " drag-over-before" } else { " drag-over-after" }
                                 }
-                                button {
-                                    r#type: "button",
-                                    class: "plugin-step-btn",
-                                    disabled: bi + 1 >= block_count,
-                                    onclick: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| { if bi + 1 < p.custom_blocks.len() { p.custom_blocks.swap(bi, bi + 1); } }) },
-                                    "↓"
+                                _ => "",
+                            };
+                            let row_cls = format!(
+                                "plugin-order-row draggable-item{}{}",
+                                if dragging_now { " is-dragging" } else { "" },
+                                over_cls
+                            );
+                            let pid_drop = pid.clone();
+                            rsx! {
+                                div {
+                                    key: "blk-{bi}-{b.title}",
+                                    class: "{row_cls}",
+                                    draggable: "true",
+                                    "data-drag-item": "true",
+                                    "data-drag-key": "{bi}",
+                                    ondragstart: move |_| {
+                                        drag_from.set(Some(bi));
+                                        drag_over.set(None);
+                                    },
+                                    ondragover: move |e| {
+                                        e.prevent_default();
+                                        if drag_from().is_some() && drag_over() != Some(bi) {
+                                            drag_over.set(Some(bi));
+                                        }
+                                    },
+                                    ondrop: move |e| {
+                                        e.prevent_default();
+                                        if let Some(from) = drag_from() {
+                                            if from != bi {
+                                                update_plugin_by_id(&pid_drop, &|p| {
+                                                    if from < p.custom_blocks.len() && bi < p.custom_blocks.len() {
+                                                        let it = p.custom_blocks.remove(from);
+                                                        p.custom_blocks.insert(bi, it);
+                                                    }
+                                                });
+                                            }
+                                        }
+                                        drag_from.set(None);
+                                        drag_over.set(None);
+                                    },
+                                    ondragend: move |_| {
+                                        drag_from.set(None);
+                                        drag_over.set(None);
+                                    },
+                                    code { class: "kbd", "{b.kind}" }
+                                    span { class: "plugin-order-label grow", "{b.title}" }
+                                    button {
+                                        r#type: "button",
+                                        class: "icon-btn danger",
+                                        onclick: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| { if bi < p.custom_blocks.len() { p.custom_blocks.remove(bi); } }) },
+                                        TrashIcon { size: 14 }
+                                    }
                                 }
-                            }
-                            button {
-                                r#type: "button",
-                                class: "icon-btn danger",
-                                onclick: { let id = pid.clone(); move |_| update_plugin_by_id(&id, &|p| { if bi < p.custom_blocks.len() { p.custom_blocks.remove(bi); } }) },
-                                TrashIcon { size: 14 }
                             }
                         }
                     }

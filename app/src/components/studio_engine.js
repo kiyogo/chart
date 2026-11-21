@@ -452,6 +452,13 @@
       sw(S.doc.layers); S.doc.frames.forEach((f) => sw(f.cells));
       S.layer = to; changed();
     },
+    reorderLayer(from, to) {
+      if (from === to || from < 0 || to < 0 || from >= S.doc.layers.length || to >= S.doc.layers.length) return;
+      snapDoc();
+      const move = (a) => { const [it] = a.splice(from, 1); a.splice(to, 0, it); };
+      move(S.doc.layers); S.doc.frames.forEach((f) => move(f.cells));
+      S.layer = to; changed();
+    },
     selectLayer(i) { if (i >= 0 && i < S.doc.layers.length) { S.layer = i; changed(); } },
     layerProp(i, key, value) {
       const L = S.doc.layers[i]; if (!L) return;

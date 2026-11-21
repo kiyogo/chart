@@ -199,6 +199,8 @@ pub fn SecuritySettings() -> Element {
     let mut busy = use_signal(|| false);
     let mut msg = use_signal(|| Option::<(bool, String)>::None);
     let mut hidden = use_signal(|| load_list(HIDDEN_KEY));
+    let mut acc_drag_from = use_signal(|| Option::<usize>::None);
+    let mut acc_drag_over = use_signal(|| Option::<usize>::None);
     let reload = move || {
         spawn(async move {
             if let Ok(s) = security::status().await {
@@ -264,26 +266,62 @@ pub fn SecuritySettings() -> Element {
         div { class: "settings-section security-settings",
             div { class: "settings-group-title", "Tài khoản" }
             p { class: "settings-row-desc", "Tối đa 5 tài khoản. Mỗi tài khoản có khóa mã hóa, cài đặt, chủ đề, thông báo và mã PIN riêng; chuyển nhanh trong menu ảnh đại diện ở góc dưới." }
-            div { class: "account-list",
+            div { class: "account-list", "data-drag-group": "account-order",
                 for (i, a) in accounts().into_iter().enumerate() {
                     {
                         let id = a.user_id.clone();
-                        let (id_up, id_hide, id_out) = (id.clone(), id.clone(), id.clone());
+                        let (id_hide, id_out) = (id.clone(), id.clone());
                         let is_hidden = hidden.read().contains(&id);
+                        let dragging_now = acc_drag_from() == Some(i);
+                        let over_cls = match (acc_drag_from(), acc_drag_over()) {
+                            (Some(from), Some(ov)) if ov == i && from != i => {
+                                if i < from { " drag-over-before" } else { " drag-over-after" }
+                            }
+                            _ => "",
+                        };
+                        let row_cls = format!(
+                            "account-row static draggable-item{}{}",
+                            if dragging_now { " is-dragging" } else { "" },
+                            over_cls
+                        );
                         rsx! {
-                            div { key: "{id}", class: "account-row static",
+                            div {
+                                key: "{id}",
+                                class: "{row_cls}",
+                                draggable: "true",
+                                "data-drag-item": "true",
+                                "data-drag-key": "{id}",
+                                ondragstart: move |_| {
+                                    acc_drag_from.set(Some(i));
+                                    acc_drag_over.set(None);
+                                },
+                                ondragover: move |e| {
+                                    e.prevent_default();
+                                    if acc_drag_from().is_some() && acc_drag_over() != Some(i) {
+                                        acc_drag_over.set(Some(i));
+                                    }
+                                },
+                                ondrop: move |e| {
+                                    e.prevent_default();
+                                    if let Some(from) = acc_drag_from() {
+                                        let mut ids: Vec<String> = accounts.read().iter().map(|x| x.user_id.clone()).collect();
+                                        if from != i && from < ids.len() && i < ids.len() {
+                                            let moved = ids.remove(from);
+                                            ids.insert(i, moved);
+                                            save_list(ORDER_KEY, &ids);
+                                            accounts.set(ordered(accounts()));
+                                        }
+                                    }
+                                    acc_drag_from.set(None);
+                                    acc_drag_over.set(None);
+                                },
+                                ondragend: move |_| {
+                                    acc_drag_from.set(None);
+                                    acc_drag_over.set(None);
+                                },
                                 Avatar { name: a.name(), avatar_url: a.avatar_url.clone(), size: 32 }
                                 span { class: "grow", "{a.name()}" if a.active { span { class: "member-sub", " · đang dùng" } } }
                                 if a.unread > 0 { span { class: "unread-badge", "{a.unread}" } }
-                                if i > 0 {
-                                    button { r#type: "button", class: "btn-small-secondary", aria_label: "Đưa {a.name()} lên trên",
-                                        onclick: move |_| {
-                                            let mut ids: Vec<String> = accounts.read().iter().map(|x| x.user_id.clone()).collect();
-                                            if let Some(p) = ids.iter().position(|x| x == &id_up) { if p > 0 { ids.swap(p, p - 1); } }
-                                            save_list(ORDER_KEY, &ids);
-                                            accounts.set(ordered(accounts()));
-                                        }, "↑" }
-                                }
                                 if !a.active {
                                     button { r#type: "button", class: "btn-small-secondary",
                                         onclick: move |_| {
