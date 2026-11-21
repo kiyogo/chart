@@ -127,7 +127,7 @@
   --border-subtle: #EEF1F5;
   --border-strong: #D3D9E2;
   --border-color: var(--border);
-  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, transparent);
+  --focus-ring: none;
 
   --msg-sent: var(--accent);
   --msg-sent-text: var(--on-accent);
