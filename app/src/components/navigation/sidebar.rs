@@ -755,7 +755,7 @@ pub fn NavigationSidebar(
                     div { style: "display: flex; align-items: center; gap: 4px;",
                         button {
                             r#type: "button",
-                            class: if is_voice_muted { "icon-btn btn-danger" } else { "icon-btn" },
+                            class: if is_voice_muted { "icon-btn danger" } else { "icon-btn" },
                             title: if is_voice_muted { "Bật micro" } else { "Tắt micro" },
                             aria_label: "Chuyển trạng thái micro",
                             onclick: move |_| on_toggle_voice_mute.call(()),
@@ -763,7 +763,7 @@ pub fn NavigationSidebar(
                         }
                         button {
                             r#type: "button",
-                            class: "icon-btn btn-danger",
+                            class: "icon-btn danger",
                             title: "Ngắt kết nối thoại",
                             aria_label: "Ngắt kết nối thoại",
                             onclick: move |_| on_leave_voice.call(()),

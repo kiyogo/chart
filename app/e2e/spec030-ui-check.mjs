@@ -464,6 +464,59 @@ try {
   );
   await page.screenshot({ path: path.join(OUT, '08_community_sidebar_parity.png') });
 
+  // 9. Voice status panel disconnect & mute icon-buttons keep exact icon-btn sizing and 16x16 SVGs (never crushed)
+  await page.locator('.community-item').first().click();
+  await page.waitForSelector('.sidebar-server-header', { timeout: 8000 });
+  const voiceCh = page.locator('.nav-sidebar button.channel-row', { hasText: 'Tổng quát' }).first();
+  await voiceCh.waitFor({ state: 'visible', timeout: 8000 });
+  await voiceCh.click();
+  await page.waitForSelector('.voice-status-panel', { timeout: 8000 });
+  await page.waitForTimeout(300);
+  await page.locator('.voice-status-panel button[aria-label="Ngắt kết nối thoại"]').hover();
+  await page.waitForTimeout(150);
+  const voiceCheck = await page.evaluate(() => {
+    const micBtn = document.querySelector('.voice-status-panel button[aria-label="Chuyển trạng thái micro"]');
+    const hangBtn = document.querySelector('.voice-status-panel button[aria-label="Ngắt kết nối thoại"]');
+    const micSvg = micBtn?.querySelector('svg');
+    const hangSvg = hangBtn?.querySelector('svg');
+    if (!micBtn || !hangBtn || !micSvg || !hangSvg) return null;
+    const mb = micBtn.getBoundingClientRect();
+    const hb = hangBtn.getBoundingClientRect();
+    const ms = micSvg.getBoundingClientRect();
+    const hs = hangSvg.getBoundingClientRect();
+    const hcs = getComputedStyle(hangBtn);
+    return {
+      micW: Math.round(mb.width),
+      micH: Math.round(mb.height),
+      hangW: Math.round(hb.width),
+      hangH: Math.round(hb.height),
+      hangPad: `${hcs.paddingLeft}/${hcs.paddingRight}`,
+      micSvgW: Math.round(ms.width),
+      micSvgH: Math.round(ms.height),
+      hangSvgW: Math.round(hs.width),
+      hangSvgH: Math.round(hs.height),
+    };
+  });
+  record(
+    'Voice status bar mic & hangup buttons match size with 0px padding and uncrushed 16x16 SVGs',
+    !!(
+      voiceCheck &&
+      voiceCheck.micW === voiceCheck.hangW &&
+      voiceCheck.micH === voiceCheck.hangH &&
+      voiceCheck.hangPad === '0px/0px' &&
+      voiceCheck.micSvgW === 16 &&
+      voiceCheck.micSvgH === 16 &&
+      voiceCheck.hangSvgW === 16 &&
+      voiceCheck.hangSvgH === 16
+    ),
+    JSON.stringify(voiceCheck),
+  );
+  const vBox = await page.locator('.voice-status-panel').boundingBox();
+  await page.screenshot({
+    path: path.join(OUT, '09_voice_status_panel.png'),
+    clip: { x: Math.max(0, vBox.x - 12), y: Math.max(0, vBox.y - 12), width: vBox.width + 24, height: vBox.height + 24 },
+  });
+
   record('Zero pageerror events', errors.length === 0, errors.join('; '));
 } finally {
   await browser.close();

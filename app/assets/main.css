@@ -244,6 +244,8 @@ input[type="color"] {
   position: relative;
   width: var(--icon-btn);
   height: var(--icon-btn);
+  min-height: 0;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -258,8 +260,20 @@ input[type="color"] {
 .settings-close-btn:focus, .settings-close-btn:focus-visible,
 .partner-info-close-btn:focus, .partner-info-close-btn:focus-visible { outline: none; }
 .icon-btn.active { background: var(--bg-selected); color: var(--text-selected); }
-.icon-btn.btn-danger { background: transparent; color: var(--danger); }
-.icon-btn.btn-danger:hover { background: var(--bg-error); }
+.icon-btn.danger,
+.icon-btn.btn-danger {
+  width: var(--icon-btn);
+  height: var(--icon-btn);
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--danger);
+}
+.icon-btn.danger:hover:not(:disabled),
+.icon-btn.btn-danger:hover:not(:disabled) {
+  background: var(--bg-error);
+  color: var(--danger);
+}
 .icon-btn:disabled { opacity: 0.45; }
 
 .spinner {
