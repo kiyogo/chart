@@ -14,8 +14,8 @@ use crate::{
         meet_view::MeetView,
         groups::{AddMemberModal, CreateGroupModal, GroupInfoPanel},
         icons::{
-            BackIcon, BlockIcon, DevicesIcon, GroupIcon, HashIcon, MessageIcon, MicIcon, MicOffIcon, MoreIcon,
-            PanelRightIcon, PhoneIcon, PhoneOffIcon, ShieldIcon, UserPlusIcon, VideoIcon, VolumeIcon,
+            BackIcon, BlockIcon, CompassIcon, DevicesIcon, GroupIcon, HashIcon, LockIcon, MessageIcon, MicIcon, MicOffIcon, MoreIcon,
+            PaletteIcon, PanelRightIcon, PhoneIcon, PhoneOffIcon, ShieldIcon, SparkleIcon, UserPlusIcon, VideoIcon, VolumeIcon,
         },
         messages::{Composer, MentionCandidate, MessageList, ViewMessage, preview_text},
         search_page::SearchPage,
@@ -4309,8 +4309,21 @@ pub fn Chat(
                         }
                     }
                 } else {
-                    div { class: "empty-state",
-                        div { class: "empty-state-icon", MessageIcon { size: 28 } }
+                    div { class: "empty-state cw-living-empty",
+                        div { class: "cw-living-orb", "aria-hidden": "true",
+                            span { class: "cw-orb-ring r1" }
+                            span { class: "cw-orb-ring r2" }
+                            span { class: "cw-orb-core",
+                                if matches!(section, NavSection::Communities) {
+                                    CompassIcon { size: 30 }
+                                } else {
+                                    MessageIcon { size: 30 }
+                                }
+                            }
+                            span { class: "cw-orb-sat s1", LockIcon { size: 13 } }
+                            span { class: "cw-orb-sat s2", SparkleIcon { size: 13 } }
+                            span { class: "cw-orb-sat s3", ShieldIcon { size: 13 } }
+                        }
                         if matches!(section, NavSection::Communities) {
                             div { class: "empty-state-title", "Chọn một cộng đồng" }
                             div { class: "empty-state-sub", "Mỗi cộng đồng có nhiều kênh văn bản và kênh thoại theo danh mục. Tạo mới hoặc tham gia bằng mã mời." }
@@ -4324,22 +4337,48 @@ pub fn Chat(
                             div { class: "empty-state-title", "Chọn một kênh" }
                             div { class: "empty-state-sub", "Chọn kênh văn bản để đọc tin nhắn, hoặc kênh thoại để tham gia trò chuyện." }
                         } else {
-                            div { class: "empty-state-title", "Chọn một cuộc trò chuyện" }
-                            div { class: "empty-state-sub", "Tin nhắn trực tiếp được mã hóa đầu cuối. Thêm bạn bè hoặc tạo nhóm để bắt đầu." }
-                            div { style: "display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center;",
+                            div { class: "empty-state-title", "Sẵn sàng trò chuyện riêng tư" }
+                            div { class: "empty-state-sub", "Mọi tin nhắn trực tiếp đều được mã hóa đầu cuối trên thiết bị của bạn." }
+                            div { class: "cw-quickstart-grid",
                                 button {
                                     r#type: "button",
-                                    class: "btn-primary",
+                                    class: "cw-quickstart-card cw-spotlight",
                                     onclick: move |_| nav_section.set(NavSection::Friends),
-                                    UserPlusIcon { size: 18 }
-                                    span { "Thêm bạn" }
+                                    span { class: "cw-qs-icon qs-blue", UserPlusIcon { size: 20 } }
+                                    span { class: "cw-qs-body",
+                                        span { class: "cw-qs-title", "Thêm bạn bè" }
+                                        span { class: "cw-qs-desc", "Tìm theo tên tài khoản để nhắn tin ngay" }
+                                    }
                                 }
                                 button {
                                     r#type: "button",
-                                    class: "btn-secondary",
+                                    class: "cw-quickstart-card cw-spotlight",
                                     onclick: move |_| is_create_group_open.set(true),
-                                    GroupIcon {}
-                                    span { "Tạo nhóm" }
+                                    span { class: "cw-qs-icon qs-violet", GroupIcon { size: 20 } }
+                                    span { class: "cw-qs-body",
+                                        span { class: "cw-qs-title", "Tạo nhóm trò chuyện" }
+                                        span { class: "cw-qs-desc", "Trò chuyện và gọi nhóm nhiều người" }
+                                    }
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "cw-quickstart-card cw-spotlight",
+                                    onclick: move |_| { server_settings_open.set(false); is_settings_open.set(true); },
+                                    span { class: "cw-qs-icon qs-emerald", PaletteIcon { size: 20 } }
+                                    span { class: "cw-qs-body",
+                                        span { class: "cw-qs-title", "Tùy biến giao diện" }
+                                        span { class: "cw-qs-desc", "Đổi màu chủ đề, ảnh nền và hiệu ứng" }
+                                    }
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "cw-quickstart-card cw-spotlight",
+                                    onclick: move |_| tour_open.set(true),
+                                    span { class: "cw-qs-icon qs-amber", SparkleIcon { size: 20 } }
+                                    span { class: "cw-qs-body",
+                                        span { class: "cw-qs-title", "Hướng dẫn người mới" }
+                                        span { class: "cw-qs-desc", "Xem giới thiệu nhanh các tính năng nổi bật" }
+                                    }
                                 }
                             }
                         }

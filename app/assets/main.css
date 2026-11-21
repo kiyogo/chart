@@ -8815,3 +8815,684 @@ html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .r
 .cw-tp-item.selected {
   font-weight: var(--weight-regular) !important;
 }
+
+/* ==========================================================================
+   Spec 049: Brand Logos Suite, ChatW Living Motion System (D3Motion / Spring
+   Physics) & Interactive Beginner Experience
+   ========================================================================== */
+
+/* 1. Brand Logo Rows, Paired Browser+OS Badges & Language Flags */
+.cw-brand-row {
+  display: flex;
+  flex-direction: row !important;
+  align-items: center;
+  gap: var(--space-3);
+}
+.brand-badge,
+.os-brand-logo,
+.browser-brand-logo,
+.lang-flag-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.cw-brand-float {
+  transition: transform 220ms var(--spring-bounce);
+  will-change: transform;
+}
+.cw-brand-row:hover .cw-brand-float,
+.download-os-card:hover .cw-brand-float {
+  transform: translateY(-1.5px) scale(1.07);
+}
+.device-brand-pair {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+}
+.device-os-corner {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 999px;
+  background: var(--bg-primary);
+  padding: 2px;
+  box-sizing: border-box;
+}
+.security-event.cw-brand-row {
+  padding: var(--space-2) var(--space-2) !important;
+  border-radius: var(--radius-lg) !important;
+  transition: background-color var(--dur-hover) var(--ease), transform 180ms var(--spring-smooth);
+}
+.security-event.cw-brand-row:hover {
+  background: var(--bg-hover) !important;
+}
+.security-event .settings-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.cw-event-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.cw-event-dot.ok { background: #22C55E; }
+.cw-event-dot.warn { background: #F59E0B; }
+
+/* Language tiles with crisp SVG flags (flat translucent, zero white box, zero bolding) */
+.lang-tile {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  min-height: 2.75rem;
+  padding: 0 var(--space-3) !important;
+  border-radius: var(--radius-lg);
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-primary) !important;
+  transition: background-color var(--dur-hover) var(--ease), transform 180ms var(--spring-snappy);
+}
+.lang-tile:hover { background: var(--bg-hover) !important; }
+.lang-tile.active { background: var(--accent-soft) !important; box-shadow: none !important; }
+.lang-tile .lang-native {
+  font-weight: var(--weight-medium) !important;
+  color: var(--text-primary) !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lang-flag-badge svg {
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+.lang-code-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.1rem;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+/* 2. Living Pulse Indicators (online presence, current device, E2EE live status, OS recommendation) */
+@keyframes cw-sonar-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+@keyframes cw-shield-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+.cw-live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #22C55E;
+  margin-right: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  animation: cw-sonar-pulse 2.2s var(--spring-smooth) infinite;
+}
+.presence-dot {
+  animation: cw-sonar-pulse 2.6s var(--spring-smooth) infinite;
+}
+.cw-shield-pulse svg {
+  animation: cw-shield-breathe 3.4s ease-in-out infinite;
+  will-change: transform;
+}
+.settings-value.tag-active {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.chip-current {
+  display: inline-flex;
+  align-items: center;
+}
+.cw-os-rec-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  background: color-mix(in srgb, #22C55E 14%, transparent);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+/* 3. Cloud 3-Step Friendly Visual Beginner Guide (flat translucent, zero white box) */
+.cw-cloud-guide {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  margin-bottom: var(--space-4);
+}
+.cw-cloud-guide-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.cw-cloud-guide-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+.cw-cloud-guide-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cw-step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 5px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+.cw-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.7rem;
+  font-weight: var(--weight-semibold);
+}
+
+/* 4. D3Motion-Inspired Living Luminous Orb & Quick-Start Cards in Empty State */
+@keyframes cw-orb-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.42; }
+  50%      { transform: scale(1.16); opacity: 0.16; }
+}
+@keyframes cw-orb-levitate {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-5px); }
+}
+@keyframes cw-sat-orbit {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(0, -6px) scale(1.06); }
+}
+@keyframes cw-sheen {
+  0%   { transform: translateX(-140%) skewX(-22deg); }
+  35%, 100% { transform: translateX(220%) skewX(-22deg); }
+}
+.cw-living-empty {
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-4);
+}
+.cw-living-orb {
+  position: relative;
+  width: 6.5rem;
+  height: 6.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-1);
+}
+.cw-orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 28%, transparent) 0%, transparent 72%);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.cw-orb-ring.r1 {
+  animation: cw-orb-breathe 3.6s ease-in-out infinite;
+}
+.cw-orb-ring.r2 {
+  inset: -12px;
+  background: radial-gradient(circle, color-mix(in srgb, #A78BFA 20%, transparent) 0%, transparent 72%);
+  animation: cw-orb-breathe 3.6s ease-in-out 1.8s infinite;
+}
+.cw-orb-core {
+  position: relative;
+  z-index: 2;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 1.35rem;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 68%, #8B5CF6));
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  animation: cw-orb-levitate 4s ease-in-out infinite;
+  will-change: transform;
+}
+.cw-orb-core::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+  animation: cw-sheen 4.4s ease-in-out infinite;
+}
+.cw-orb-sat {
+  position: absolute;
+  z-index: 3;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 86%, var(--accent-soft));
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+  will-change: transform;
+}
+.cw-orb-sat.s1 { top: 0; right: 2px; animation: cw-sat-orbit 3.2s ease-in-out infinite; }
+.cw-orb-sat.s2 { bottom: 4px; left: 0; animation: cw-sat-orbit 3.6s ease-in-out 0.9s infinite; }
+.cw-orb-sat.s3 { bottom: 2px; right: 4px; animation: cw-sat-orbit 4.1s ease-in-out 1.6s infinite; }
+
+/* 4-card interactive beginner quick-start grid in Empty State */
+.cw-quickstart-grid {
+  width: 100%;
+  max-width: 34rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+@media (max-width: 680px) {
+  .cw-quickstart-grid { grid-template-columns: 1fr; }
+}
+.cw-quickstart-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  color: var(--text-primary) !important;
+  text-align: left;
+  transition: background-color var(--dur-hover) var(--ease), transform 200ms var(--spring-snappy);
+}
+.cw-quickstart-card:hover {
+  background: var(--bg-hover) !important;
+  transform: translateY(-2px);
+}
+.cw-quickstart-card:active {
+  transform: scale(0.98);
+}
+.cw-qs-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 220ms var(--spring-bounce);
+}
+.cw-quickstart-card:hover .cw-qs-icon {
+  transform: scale(1.08) rotate(-3deg);
+}
+.cw-qs-icon.qs-blue    { background: rgba(39, 100, 231, 0.14); color: #2764E7; }
+.cw-qs-icon.qs-violet  { background: rgba(124, 58, 237, 0.14); color: #7C3AED; }
+.cw-qs-icon.qs-emerald { background: rgba(16, 185, 129, 0.14); color: #059669; }
+.cw-qs-icon.qs-amber   { background: rgba(245, 158, 11, 0.16); color: #D97706; }
+[data-theme="dark"] .cw-qs-icon.qs-blue    { color: #60A5FA; }
+[data-theme="dark"] .cw-qs-icon.qs-violet  { color: #A78BFA; }
+[data-theme="dark"] .cw-qs-icon.qs-emerald { color: #34D399; }
+[data-theme="dark"] .cw-qs-icon.qs-amber   { color: #FBBF24; }
+.cw-qs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cw-qs-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium) !important;
+  color: var(--text-primary);
+}
+.cw-qs-desc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+/* 5. Cursor Spotlight Shimmer (powered by app/web/living_motion.js) */
+.cw-spotlight {
+  position: relative;
+  overflow: hidden;
+}
+.cw-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--accent) 13%, transparent), transparent 68%);
+  transition: opacity 220ms ease-out;
+  z-index: 0;
+}
+.cw-spotlight.cw-spot-on::before {
+  opacity: 1;
+}
+.cw-spotlight > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 6. Interactive Beginner Checklist & Animated WelcomeTour Progress */
+.cw-checklist-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.cw-checklist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.cw-checklist-counter {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+.cw-checklist-bar {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+.cw-checklist-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #10B981));
+  transition: width 420ms var(--spring-smooth);
+}
+.cw-checklist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cw-checklist-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  transition: background-color var(--dur-hover) var(--ease), transform 180ms var(--spring-snappy);
+}
+.cw-checklist-item:hover {
+  background: var(--bg-hover) !important;
+}
+.cw-checklist-item.done {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.cw-checklist-item.done .settings-label {
+  text-decoration: line-through;
+  opacity: 0.72;
+}
+.cw-check-circle {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  border: 1.75px solid var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--on-accent);
+  transition: background-color 200ms var(--ease), border-color 200ms var(--ease), transform 260ms var(--spring-bounce);
+}
+.cw-check-circle.checked {
+  background: #22C55E;
+  border-color: #22C55E;
+  transform: scale(1.06);
+}
+.cw-checklist-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cw-guide-hero-title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+.cw-guide-hero-sub {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+.guide-card {
+  transition: transform 200ms var(--spring-snappy), background-color var(--dur-hover) var(--ease);
+}
+.guide-card:hover {
+  transform: translateY(-2px);
+}
+.guide-card .settings-label {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  line-height: 1.35;
+}
+
+/* Animated SVG Illustrations & WelcomeTour Step Progress */
+@keyframes cw-ill-float-anim {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-4px); }
+}
+@keyframes cw-ill-spark-anim {
+  0%, 100% { opacity: 0.45; transform: scale(0.86); }
+  50%      { opacity: 1; transform: scale(1.12); }
+}
+@keyframes cw-step-enter-anim {
+  from { opacity: 0; transform: translateY(7px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.cw-living-ill .cw-ill-float {
+  animation: cw-ill-float-anim 4.2s ease-in-out infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+.cw-living-ill .cw-ill-halo {
+  animation: cw-orb-breathe 4.4s ease-in-out infinite;
+  transform-origin: 120px 62px;
+}
+.cw-living-ill .cw-ill-spark {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cw-ill-spark-anim 2.6s ease-in-out infinite;
+}
+.cw-living-ill .cw-ill-spark.s2 { animation-delay: 0.8s; }
+.cw-living-ill .cw-ill-spark.s3 { animation-delay: 1.5s; }
+.cw-step-enter {
+  animation: cw-step-enter-anim 240ms var(--spring-smooth);
+}
+.story-step-badge {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-4);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+.story-progress-track {
+  width: 100%;
+  height: 3px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+.story-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 320ms var(--spring-smooth);
+}
+
+/* 7. Download QR Living Scan Beam & Card Tactile Lift */
+@keyframes cw-qr-sweep {
+  0%, 100% { transform: translateY(6px); opacity: 0.2; }
+  12%, 88% { opacity: 0.9; }
+  50%      { transform: translateY(152px); opacity: 0.95; }
+}
+.download-qr-box {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+}
+.cw-qr-scan {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 0;
+  height: 2.5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 10px var(--accent);
+  pointer-events: none;
+  animation: cw-qr-sweep 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.download-os-card {
+  transition: background-color var(--dur-hover) var(--ease), transform 200ms var(--spring-snappy);
+}
+.download-os-card:hover {
+  transform: translateY(-2px);
+}
+
+/* 8. Global Tactile Spring Micro-Interactions (Linear / Emil Kowalski 150-240ms Standard) */
+@keyframes cw-rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cw-msg-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cw-modal-pop {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.cw-stagger,
+.settings-body > .settings-content > .settings-cols {
+  animation: cw-rise-in 210ms var(--spring-smooth);
+}
+.message-row {
+  animation: cw-msg-pop 190ms var(--spring-smooth);
+}
+.modal-dialog {
+  animation: cw-modal-pop 200ms var(--spring-smooth);
+}
+.reaction-pill {
+  transition: transform 180ms var(--spring-bounce), background-color var(--dur-hover) var(--ease);
+}
+.reaction-pill:hover { transform: scale(1.07); }
+.reaction-pill:active { transform: scale(0.94); }
+
+/* Elastic spring switch knob */
+input[type="checkbox"].switch::after {
+  transition: transform 220ms var(--spring-snappy), width 150ms var(--spring-smooth);
+}
+input[type="checkbox"].switch:active::after {
+  width: 24px;
+}
+input[type="checkbox"].switch:checked:active::after {
+  transform: translateX(14px);
+}
+
+/* Tactile press feedback on action controls (zero text color / weight shift) */
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled),
+.btn-danger:active:not(:disabled),
+.btn-danger-outline:active:not(:disabled),
+.send-btn:active:not(:disabled),
+.accent-swatch:active {
+  transform: scale(0.965);
+}
+.accent-swatch {
+  transition: transform 200ms var(--spring-bounce), box-shadow 180ms var(--ease);
+}
+.accent-swatch:hover {
+  transform: scale(1.1);
+}
+
+/* Subtle specular sheen on the ChatW left rail brand logo */
+.rail-brand {
+  position: relative;
+  overflow: hidden;
+  transition: transform 200ms var(--spring-bounce);
+}
+.rail-brand:hover {
+  transform: scale(1.05);
+}
+.rail-brand::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 48%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
+  animation: cw-sheen 6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Full Respect for Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .cw-live-dot, .presence-dot, .cw-shield-pulse svg, .cw-orb-ring, .cw-orb-core,
+  .cw-orb-core::after, .cw-orb-sat, .cw-living-ill .cw-ill-float, .cw-living-ill .cw-ill-halo,
+  .cw-living-ill .cw-ill-spark, .cw-qr-scan, .rail-brand::after, .cw-stagger,
+  .message-row, .modal-dialog, .cw-step-enter {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+html[data-reduce-motion="true"] .cw-spotlight::before {
+  display: none !important;
+}

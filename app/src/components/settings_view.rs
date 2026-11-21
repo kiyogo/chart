@@ -502,13 +502,14 @@ pub fn SettingsView(
                                     div { class: "settings-col",
                                         crate::components::accounts::SecuritySettings {}
                                         div { class: "settings-group",
-                                            div { class: "settings-row",
-                                                span { class: "settings-label", "Tiêu chuẩn bảo vệ" }
-                                                span { class: "settings-value", "Mã hóa hai đầu chuẩn cao nhất" }
-                                            }
-                                            div { class: "settings-row",
-                                                span { class: "settings-label", "Trạng thái bảo vệ" }
+                                            div { class: "settings-row cw-brand-row",
+                                                crate::components::brand_logos::E2eeLiveShield { size: 30 }
+                                                div { class: "settings-row-text",
+                                                    span { class: "settings-label", "Tiêu chuẩn bảo vệ" }
+                                                    span { class: "settings-sublabel", "Mã hóa hai đầu chuẩn cao nhất" }
+                                                }
                                                 span { class: "settings-value tag-active",
+                                                    span { class: "cw-live-dot" }
                                                     if user_keys.is_some() { "Đang hoạt động an toàn" } else { "Chưa có khóa" }
                                                 }
                                             }

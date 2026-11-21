@@ -350,12 +350,13 @@ pub fn SecuritySettings() -> Element {
 
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, role: "status", "{m}" } }
             if enabled {
-                div { class: "settings-row",
+                div { class: "settings-row cw-brand-row",
+                    crate::components::brand_logos::TwoFactorLogo { size: 30 }
                     span { class: "grow",
                         span { class: "settings-label", "Xác minh hai bước" }
                         span { class: "settings-sublabel", "Đang bật · Còn {s.as_ref().map(|x| x.backup_codes_left).unwrap_or(0)} mã dự phòng" }
                     }
-                    span { class: "chip-privacy", "Đang bật" }
+                    span { class: "chip-privacy", span { class: "cw-live-dot" } "Đang bật" }
                 }
                 div { class: "inline-form",
                     input { r#type: "text", maxlength: "12", aria_label: "Mã hiện tại hoặc mã dự phòng", placeholder: "Mã 6 số hoặc mã dự phòng", value: "{code}", oninput: move |e| code.set(e.value()) }
@@ -379,7 +380,8 @@ pub fn SecuritySettings() -> Element {
                     }
                 }
             } else {
-                div { class: "settings-row",
+                div { class: "settings-row cw-brand-row",
+                    crate::components::brand_logos::TwoFactorLogo { size: 30 }
                     span { class: "grow",
                         span { class: "settings-label", "Xác minh hai bước" }
                         span { class: "settings-sublabel", "Chưa bật" }
@@ -405,9 +407,22 @@ pub fn SecuritySettings() -> Element {
             } else {
                 div { class: "security-log",
                     for (i, ev) in events().into_iter().enumerate() {
-                        div { key: "{i}", class: if ev.kind == "new_device" || ev.kind == "failed_2fa" { "security-event warn" } else { "security-event" },
-                            span { class: "settings-label", "{security::event_label(&ev.kind)}" }
-                            span { class: "member-sub", "{ev.device.clone().unwrap_or_default()} · {ev.ip.clone().unwrap_or_default()} · {platform::format_local_time(&ev.at)}" }
+                        {
+                            let dev_txt = ev.device.clone().unwrap_or_default();
+                            let ip_txt = ev.ip.clone().unwrap_or_default();
+                            let is_warn = ev.kind == "new_device" || ev.kind == "failed_2fa";
+                            rsx! {
+                                div { key: "{i}", class: if is_warn { "security-event warn cw-brand-row" } else { "security-event cw-brand-row" },
+                                    crate::components::brand_logos::DeviceBrandPair { text: dev_txt.clone(), size: 30 }
+                                    div { class: "settings-row-text",
+                                        span { class: "settings-label",
+                                            span { class: if is_warn { "cw-event-dot warn" } else { "cw-event-dot ok" } }
+                                            "{security::event_label(&ev.kind)}"
+                                        }
+                                        span { class: "member-sub", "{dev_txt} · {ip_txt} · {platform::format_local_time(&ev.at)}" }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

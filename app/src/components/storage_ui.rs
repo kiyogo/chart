@@ -667,37 +667,53 @@ pub fn DeviceTrustPanel() -> Element {
             div { class: "settings-group-title", "Danh sách thiết bị đã đăng ký khóa" }
             div { class: "settings-list",
                 for dev in list().devices {
-                    div { key: "{dev.id}", class: "settings-row",
-                        div { class: "settings-row-text",
-                            span { class: "settings-label",
-                                "{dev.device_label.clone().unwrap_or_else(|| dev.device_name.clone().unwrap_or_else(|| dev.platform.clone()))}"
-                                if dev.is_current { span { class: "chip-current", "Thiết bị này" } }
-                            }
-                            span { class: "settings-sublabel",
-                                "{dev.platform} · "
-                                match dev.trust_state.as_str() {
-                                    "trusted" => "Tin cậy",
-                                    "pending" => "Chờ xác nhận",
-                                    _ => "Đã thu hồi",
-                                }
-                            }
-                        }
-                        if !dev.is_current {
-                            button {
-                                r#type: "button",
-                                class: "btn-danger-outline",
-                                onclick: {
-                                    let id = dev.id.clone();
-                                    move |_| {
-                                        let id = id.clone();
-                                        spawn(async move {
-                                            let _ = storage_sync::revoke_device(&id).await;
-                                            notice.set(Some((false, "Đã thu hồi thiết bị và chấm dứt quyền đồng bộ".into())));
-                                            reload();
-                                        });
+                    {
+                        let dev_hint = format!(
+                            "{} {} {}",
+                            dev.platform,
+                            dev.device_name.clone().unwrap_or_default(),
+                            dev.device_label.clone().unwrap_or_default()
+                        );
+                        rsx! {
+                            div { key: "{dev.id}", class: "settings-row cw-brand-row",
+                                crate::components::brand_logos::DeviceBrandPair { text: dev_hint, size: 30 }
+                                div { class: "settings-row-text",
+                                    span { class: "settings-label",
+                                        "{dev.device_label.clone().unwrap_or_else(|| dev.device_name.clone().unwrap_or_else(|| dev.platform.clone()))}"
+                                        if dev.is_current {
+                                            span { class: "chip-current",
+                                                span { class: "cw-live-dot" }
+                                                "Thiết bị này"
+                                            }
+                                        }
                                     }
-                                },
-                                "Thu hồi"
+                                    span { class: "settings-sublabel",
+                                        "{dev.platform} · "
+                                        match dev.trust_state.as_str() {
+                                            "trusted" => "Tin cậy",
+                                            "pending" => "Chờ xác nhận",
+                                            _ => "Đã thu hồi",
+                                        }
+                                    }
+                                }
+                                if !dev.is_current {
+                                    button {
+                                        r#type: "button",
+                                        class: "btn-danger-outline",
+                                        onclick: {
+                                            let id = dev.id.clone();
+                                            move |_| {
+                                                let id = id.clone();
+                                                spawn(async move {
+                                                    let _ = storage_sync::revoke_device(&id).await;
+                                                    notice.set(Some((false, "Đã thu hồi thiết bị và chấm dứt quyền đồng bộ".into())));
+                                                    reload();
+                                                });
+                                            }
+                                        },
+                                        "Thu hồi"
+                                    }
+                                }
                             }
                         }
                     }

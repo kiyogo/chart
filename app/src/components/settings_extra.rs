@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use crate::{
     components::{
         guide::Illustration,
-        icons::{ChevronRightIcon, CloseIcon, DevicesIcon, LockIcon, PlusIcon},
+        icons::{ChevronRightIcon, CloseIcon, LockIcon, PlusIcon},
         media_picker::BUILTIN_GIFS,
     },
     models::{LibraryItem, SessionItem, StickerPackItem},
@@ -409,8 +409,11 @@ fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> E
                 div { class: "device-list",
                     if loading() { div { class: "empty-chat-inner", "Đang tải" } }
                     for s in sessions() {
-                        div { key: "{s.id}", class: "device-row",
-                            span { class: "device-icon", DevicesIcon { size: 20 } }
+                        div { key: "{s.id}", class: "device-row cw-brand-row",
+                            crate::components::brand_logos::DeviceBrandPair {
+                                text: format!("{} {}", s.device_name.clone().unwrap_or_default(), s.device_label.clone().unwrap_or_default()),
+                                size: 30,
+                            }
                             div { class: "settings-row-text",
                                 if renaming().as_ref().is_some_and(|(id, _)| id == &s.id) {
                                     form { class: "inline-form",
@@ -559,7 +562,8 @@ pub fn AccountSecurity(
             div { class: "settings-col",
                 div { class: "settings-group",
                     div { class: "settings-list",
-                        div { class: "settings-row",
+                        div { class: "settings-row cw-brand-row",
+                            crate::components::brand_logos::GoogleAuthLogo { size: 28 }
                             div { class: "settings-row-text",
                                 span { class: "settings-label", "Phương thức đăng nhập" }
                                 span { class: "settings-sublabel", "Đăng nhập an toàn bằng tài khoản Google." }

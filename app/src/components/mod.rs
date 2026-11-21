@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod avatar;
 pub mod avatar_motion;
 pub mod backup_cloud_ui;
+pub mod brand_logos;
 pub mod business_view;
 pub mod plugin_hub;
 pub mod plugin_settings;

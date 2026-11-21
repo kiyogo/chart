@@ -44,6 +44,7 @@ pub fn DownloadView(
     });
     let mut selected_desktop = use_signal(|| "windows".to_string());
     let mut selected_mobile = use_signal(|| "android".to_string());
+    let mut detected_os = use_signal(|| "linux".to_string());
     let mut download_url = use_signal(|| format!("{RELEASES_URL}"));
 
     use_effect(move || {
@@ -51,6 +52,25 @@ pub fn DownloadView(
             let origin = platform::app_origin().await;
             if !origin.trim().is_empty() {
                 download_url.set(format!("{origin}/?page=download"));
+            }
+            let mut ev = dioxus::document::eval(
+                r#"
+                const ua = (navigator.userAgent || '').toLowerCase();
+                let os = 'windows';
+                if (ua.includes('android')) os = 'android';
+                else if (ua.includes('iphone') || ua.includes('ipad')) os = 'ios';
+                else if (ua.includes('mac os') || ua.includes('macintosh')) os = 'macos';
+                else if (ua.includes('linux')) os = 'linux';
+                dioxus.send(os);
+                "#,
+            );
+            if let Ok(os) = ev.recv::<String>().await {
+                detected_os.set(os.clone());
+                if os == "windows" || os == "macos" || os == "linux" {
+                    selected_desktop.set(os);
+                } else if os == "android" || os == "ios" {
+                    selected_mobile.set(os);
+                }
             }
         });
     });
@@ -94,7 +114,7 @@ pub fn DownloadView(
                         div { class: "download-hero-copy",
                             span { class: "download-eyebrow", "ĐA NỀN TẢNG · MÃ HÓA ĐẦU CUỐI" }
                             h1 { class: "download-hero-title",
-                                "Tải ứng dụng chatw"
+                                "Tải ứng dụng ChatW"
                                 br {}
                                 "cho mọi thiết bị của bạn"
                             }
@@ -125,8 +145,11 @@ pub fn DownloadView(
                             }
                         }
 
-                        div { class: "download-qr-panel",
-                            div { class: "download-qr-box", dangerous_inner_html: "{qr_svg}" }
+                        div { class: "download-qr-panel cw-spotlight",
+                            div { class: "download-qr-box",
+                                div { class: "cw-qr-svg", dangerous_inner_html: "{qr_svg}" }
+                                div { class: "cw-qr-scan", "aria-hidden": "true" }
+                            }
                             div { class: "download-qr-caption",
                                 strong { "Quét mã để mở trên điện thoại" }
                                 span { "Hỗ trợ tải nhanh APK cho Android và lối tắt iOS" }
@@ -148,19 +171,19 @@ pub fn DownloadView(
                             role: "tab",
                             class: if tab() == "desktop" { "download-tab active" } else { "download-tab" },
                             onclick: move |_| tab.set("desktop".to_string()),
-                            "Máy tính (Windows, macOS, Linux)"
+                            "Máy tính · Windows, macOS, Linux"
                         }
                         button {
                             r#type: "button",
                             role: "tab",
                             class: if tab() == "mobile" { "download-tab active" } else { "download-tab" },
                             onclick: move |_| tab.set("mobile".to_string()),
-                            "Điện thoại (Android APK, iOS)"
+                            "Điện thoại · Android APK, iOS"
                         }
                     }
 
                     if show_desktop {
-                        section { class: "download-section",
+                        section { class: "download-section cw-stagger",
                             div { class: "download-section-head",
                                 h2 { "Phiên bản Máy tính" }
                                 span { "Chọn hệ điều hành của bạn để xem gói cài đặt phù hợp" }
@@ -168,12 +191,17 @@ pub fn DownloadView(
                             div { class: "download-os-grid",
                                 button {
                                     r#type: "button",
-                                    class: if selected_desktop() == "windows" { "download-os-card selected" } else { "download-os-card" },
+                                    class: if selected_desktop() == "windows" { "download-os-card cw-spotlight selected" } else { "download-os-card cw-spotlight" },
                                     onclick: move |_| selected_desktop.set("windows".to_string()),
-                                    div { class: "download-os-icon", WindowsLogoIcon { size: 28 } }
+                                    div { class: "download-os-icon cw-brand-float", WindowsLogoIcon { size: 30 } }
                                     div { class: "download-os-meta",
-                                        strong { "Windows" }
-                                        span { "Windows 10 / 11 (64-bit) · Trình cài đặt .exe" }
+                                        strong {
+                                            "Windows"
+                                            if detected_os() == "windows" {
+                                                span { class: "cw-os-rec-pill", span { class: "cw-live-dot" } "Máy của bạn" }
+                                            }
+                                        }
+                                        span { "Windows 10 / 11 64-bit · Trình cài đặt .exe" }
                                     }
                                     a {
                                         class: "btn-primary download-card-cta",
@@ -187,12 +215,17 @@ pub fn DownloadView(
 
                                 button {
                                     r#type: "button",
-                                    class: if selected_desktop() == "macos" { "download-os-card selected" } else { "download-os-card" },
+                                    class: if selected_desktop() == "macos" { "download-os-card cw-spotlight selected" } else { "download-os-card cw-spotlight" },
                                     onclick: move |_| selected_desktop.set("macos".to_string()),
-                                    div { class: "download-os-icon", MacLogoIcon { size: 28 } }
+                                    div { class: "download-os-icon cw-brand-float", MacLogoIcon { size: 30 } }
                                     div { class: "download-os-meta",
-                                        strong { "macOS" }
-                                        span { "Apple Silicon (M1–M4) & Intel · Gói .dmg" }
+                                        strong {
+                                            "macOS"
+                                            if detected_os() == "macos" {
+                                                span { class: "cw-os-rec-pill", span { class: "cw-live-dot" } "Máy của bạn" }
+                                            }
+                                        }
+                                        span { "Apple Silicon M1–M4 & Intel · Gói .dmg" }
                                     }
                                     a {
                                         class: "btn-primary download-card-cta",
@@ -206,12 +239,17 @@ pub fn DownloadView(
 
                                 button {
                                     r#type: "button",
-                                    class: if selected_desktop() == "linux" { "download-os-card selected" } else { "download-os-card" },
+                                    class: if selected_desktop() == "linux" { "download-os-card cw-spotlight selected" } else { "download-os-card cw-spotlight" },
                                     onclick: move |_| selected_desktop.set("linux".to_string()),
-                                    div { class: "download-os-icon", LinuxLogoIcon { size: 28 } }
+                                    div { class: "download-os-icon cw-brand-float", LinuxLogoIcon { size: 30 } }
                                     div { class: "download-os-meta",
-                                        strong { "Linux" }
-                                        span { "Ubuntu / Debian (.deb) & AppImage (amd64)" }
+                                        strong {
+                                            "Linux"
+                                            if detected_os() == "linux" {
+                                                span { class: "cw-os-rec-pill", span { class: "cw-live-dot" } "Máy của bạn" }
+                                            }
+                                        }
+                                        span { "Ubuntu / Debian .deb & AppImage amd64" }
                                     }
                                     a {
                                         class: "btn-primary download-card-cta",
@@ -227,18 +265,23 @@ pub fn DownloadView(
                     }
 
                     if show_mobile {
-                        section { class: "download-section",
+                        section { class: "download-section cw-stagger",
                             div { class: "download-section-head",
                                 h2 { "Phiên bản Điện thoại" }
                                 span { "Hỗ trợ tải trực tiếp tệp .apk cho Android hoặc cài đặt qua cửa hàng ứng dụng" }
                             }
                             div { class: "download-os-grid two-cols",
                                 div {
-                                    class: if selected_mobile() == "android" { "download-os-card selected" } else { "download-os-card" },
+                                    class: if selected_mobile() == "android" { "download-os-card cw-spotlight selected" } else { "download-os-card cw-spotlight" },
                                     onclick: move |_| selected_mobile.set("android".to_string()),
-                                    div { class: "download-os-icon", AndroidIcon { size: 28 } }
+                                    div { class: "download-os-icon cw-brand-float", AndroidIcon { size: 30 } }
                                     div { class: "download-os-meta",
-                                        strong { "Android (.apk & CH Play)" }
+                                        strong {
+                                            "Android · APK & CH Play"
+                                            if detected_os() == "android" {
+                                                span { class: "cw-os-rec-pill", span { class: "cw-live-dot" } "Máy của bạn" }
+                                            }
+                                        }
                                         span { "Android 8.0 trở lên · Cài trực tiếp tệp APK không qua trung gian" }
                                     }
                                     div { class: "download-mobile-actions",
@@ -262,11 +305,16 @@ pub fn DownloadView(
                                 }
 
                                 div {
-                                    class: if selected_mobile() == "ios" { "download-os-card selected" } else { "download-os-card" },
+                                    class: if selected_mobile() == "ios" { "download-os-card cw-spotlight selected" } else { "download-os-card cw-spotlight" },
                                     onclick: move |_| selected_mobile.set("ios".to_string()),
-                                    div { class: "download-os-icon", AppStoreLogoIcon { size: 28 } }
+                                    div { class: "download-os-icon cw-brand-float", AppStoreLogoIcon { size: 30 } }
                                     div { class: "download-os-meta",
-                                        strong { "iOS (iPhone & iPad)" }
+                                        strong {
+                                            "iOS · iPhone & iPad"
+                                            if detected_os() == "ios" {
+                                                span { class: "cw-os-rec-pill", span { class: "cw-live-dot" } "Máy của bạn" }
+                                            }
+                                        }
                                         span { "iOS 15.0 trở lên · Tải qua App Store hoặc thêm trực tiếp từ Safari" }
                                     }
                                     div { class: "download-mobile-actions",

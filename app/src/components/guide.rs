@@ -2,55 +2,64 @@
 
 use dioxus::prelude::*;
 
-use crate::components::icons::{CloseIcon, LogoIcon};
+use crate::{
+    components::icons::{CheckIcon, CloseIcon, LogoIcon},
+    platform,
+};
 
-/// Original duotone illustrations used at the top of dialogs.
+fn trigger_spark_celebration() {
+    let _ = dioxus::document::eval("if (window.cwSparkBurst) window.cwSparkBurst();");
+}
+
+/// Original animated duotone illustrations used at the top of dialogs & onboarding guides.
 #[component]
 pub fn Illustration(kind: String) -> Element {
     rsx! {
-        svg { class: "illustration", view_box: "0 0 240 120", "aria-hidden": "true",
+        svg { class: "illustration cw-living-ill", view_box: "0 0 240 120", "aria-hidden": "true",
             defs {
                 linearGradient { id: "ill-g", x1: "0", y1: "0", x2: "1", y2: "1",
                     stop { offset: "0", stop_color: "var(--accent)" }
                     stop { offset: "1", stop_color: "#A78BFA" }
                 }
             }
-            circle { cx: "120", cy: "62", r: "50", fill: "url(#ill-g)", opacity: ".14" }
-            path { d: "M40 30l3 7 7 3-7 3-3 7-3-7-7-3 7-3z", fill: "#FBBF24" }
-            path { d: "M200 76l2.5 5.5 5.5 2.5-5.5 2.5-2.5 5.5-2.5-5.5-5.5-2.5 5.5-2.5z", fill: "#60A5FA" }
-            circle { cx: "190", cy: "28", r: "4", fill: "#F472B6" }
-            match kind.as_str() {
-                "user" => rsx! {
-                    rect { x: "78", y: "26", width: "84", height: "70", rx: "16", fill: "url(#ill-g)" }
-                    circle { cx: "120", cy: "52", r: "13", fill: "#fff" }
-                    path { d: "M96 86c4-12 13-18 24-18s20 6 24 18", fill: "#fff" }
-                    rect { x: "150", y: "70", width: "34", height: "22", rx: "8", fill: "#FBBF24" }
-                    path { d: "M158 81h18M167 76v10", stroke: "#fff", stroke_width: "4", stroke_linecap: "round" }
-                },
-                "devices" => rsx! {
-                    rect { x: "62", y: "30", width: "86", height: "58", rx: "10", fill: "url(#ill-g)" }
-                    rect { x: "70", y: "38", width: "70", height: "42", rx: "5", fill: "#fff", opacity: ".9" }
-                    rect { x: "92", y: "90", width: "26", height: "6", rx: "3", fill: "url(#ill-g)" }
-                    rect { x: "154", y: "44", width: "30", height: "52", rx: "8", fill: "#334155" }
-                    rect { x: "159", y: "51", width: "20", height: "34", rx: "3", fill: "#fff" }
-                    circle { cx: "105", cy: "59", r: "9", fill: "#22C55E" }
-                    path { d: "M100 59l4 4 7-7", stroke: "#fff", stroke_width: "3", fill: "none", stroke_linecap: "round" }
-                },
-                "shield" => rsx! {
-                    path { d: "M120 20l38 14v26c0 22-16 38-38 46-22-8-38-24-38-46V34z", fill: "url(#ill-g)" }
-                    path { d: "M104 60l11 11 22-23", stroke: "#fff", stroke_width: "7", fill: "none", stroke_linecap: "round", stroke_linejoin: "round" }
-                },
-                "library" => rsx! {
-                    rect { x: "70", y: "34", width: "50", height: "50", rx: "14", fill: "url(#ill-g)", transform: "rotate(-10 95 59)" }
-                    rect { x: "120", y: "30", width: "50", height: "50", rx: "14", fill: "#F472B6", transform: "rotate(8 145 55)" }
-                    circle { cx: "95", cy: "56", r: "13", fill: "#FFD27A" }
-                    path { d: "M89 58q6 6 12 0", stroke: "#1B2440", stroke_width: "3", fill: "none", stroke_linecap: "round" }
-                    text { x: "131", y: "62", font_family: "Arial, sans-serif", font_weight: "800", font_size: "16", fill: "#fff", "GIF" }
-                },
-                _ => rsx! {
-                    path { d: "M92 28h56a14 14 0 0 1 14 14v28a14 14 0 0 1-14 14h-28l-18 13v-13h-10a14 14 0 0 1-14-14V42a14 14 0 0 1 14-14z", fill: "url(#ill-g)" }
-                    path { d: "M100 50l7 16 13-13 13 13 7-16", stroke: "#fff", stroke_width: "6", fill: "none", stroke_linecap: "round", stroke_linejoin: "round" }
-                },
+            circle { class: "cw-ill-halo", cx: "120", cy: "62", r: "50", fill: "url(#ill-g)", opacity: ".14" }
+            path { class: "cw-ill-spark s1", d: "M40 30l3 7 7 3-7 3-3 7-3-7-7-3 7-3z", fill: "#FBBF24" }
+            path { class: "cw-ill-spark s2", d: "M200 76l2.5 5.5 5.5 2.5-5.5 2.5-2.5 5.5-2.5-5.5-5.5-2.5 5.5-2.5z", fill: "#60A5FA" }
+            circle { class: "cw-ill-spark s3", cx: "190", cy: "28", r: "4", fill: "#F472B6" }
+            g { class: "cw-ill-float",
+                match kind.as_str() {
+                    "user" => rsx! {
+                        rect { x: "78", y: "26", width: "84", height: "70", rx: "16", fill: "url(#ill-g)" }
+                        circle { cx: "120", cy: "52", r: "13", fill: "#fff" }
+                        path { d: "M96 86c4-12 13-18 24-18s20 6 24 18", fill: "#fff" }
+                        rect { x: "150", y: "70", width: "34", height: "22", rx: "8", fill: "#FBBF24" }
+                        path { d: "M158 81h18M167 76v10", stroke: "#fff", stroke_width: "4", stroke_linecap: "round" }
+                    },
+                    "devices" => rsx! {
+                        rect { x: "62", y: "30", width: "86", height: "58", rx: "10", fill: "url(#ill-g)" }
+                        rect { x: "70", y: "38", width: "70", height: "42", rx: "5", fill: "#fff", opacity: ".9" }
+                        rect { x: "92", y: "90", width: "26", height: "6", rx: "3", fill: "url(#ill-g)" }
+                        rect { x: "154", y: "44", width: "30", height: "52", rx: "8", fill: "#334155" }
+                        rect { x: "159", y: "51", width: "20", height: "34", rx: "3", fill: "#fff" }
+                        circle { cx: "105", cy: "59", r: "9", fill: "#22C55E" }
+                        path { d: "M100 59l4 4 7-7", stroke: "#fff", stroke_width: "3", fill: "none", stroke_linecap: "round" }
+                    },
+                    "shield" => rsx! {
+                        path { d: "M120 20l38 14v26c0 22-16 38-38 46-22-8-38-24-38-46V34z", fill: "url(#ill-g)" }
+                        path { d: "M104 60l11 11 22-23", stroke: "#fff", stroke_width: "7", fill: "none", stroke_linecap: "round", stroke_linejoin: "round" }
+                    },
+                    "library" => rsx! {
+                        rect { x: "70", y: "34", width: "50", height: "50", rx: "14", fill: "url(#ill-g)", transform: "rotate(-10 95 59)" }
+                        rect { x: "120", y: "30", width: "50", height: "50", rx: "14", fill: "#F472B6", transform: "rotate(8 145 55)" }
+                        circle { cx: "95", cy: "56", r: "13", fill: "#FFD27A" }
+                        path { d: "M89 58q6 6 12 0", stroke: "#1B2440", stroke_width: "3", fill: "none", stroke_linecap: "round" }
+                        text { x: "131", y: "62", font_family: "Arial, sans-serif", font_weight: "800", font_size: "16", fill: "#fff", "GIF" }
+                    },
+                    _ => rsx! {
+                        path { d: "M92 28h56a14 14 0 0 1 14 14v28a14 14 0 0 1-14 14h-28l-18 13v-13h-10a14 14 0 0 1-14-14V42a14 14 0 0 1 14-14z", fill: "url(#ill-g)" }
+                        path { d: "M100 50l7 16 13-13 13 13 7-16", stroke: "#fff", stroke_width: "6", fill: "none", stroke_linecap: "round", stroke_linejoin: "round" }
+                    },
+                }
             }
         }
     }
@@ -82,9 +91,18 @@ pub fn WelcomeTour(on_close: EventHandler<()>) -> Element {
                 },
                 div { class: "story-art",
                     button { r#type: "button", class: "icon-btn story-close", aria_label: "Bỏ qua giới thiệu", onclick: move |_| on_close.call(()), CloseIcon {} }
-                    Illustration { kind: art.to_string() }
+                    div { class: "story-step-badge", "Bước {step() + 1} / {TOUR.len()}" }
+                    div { key: "{step()}", class: "cw-step-enter",
+                        Illustration { kind: art.to_string() }
+                    }
                 }
-                div { class: "story-body",
+                div { class: "story-progress-track",
+                    div {
+                        class: "story-progress-fill",
+                        style: "width: {((step() + 1) * 100) / TOUR.len()}%;",
+                    }
+                }
+                div { key: "body-{step()}", class: "story-body cw-step-enter",
                     h2 { class: "story-title", "{title}" }
                     p { class: "story-text", "{body}" }
                     div { class: "story-dots", role: "tablist",
@@ -99,8 +117,18 @@ pub fn WelcomeTour(on_close: EventHandler<()>) -> Element {
                     } else {
                         button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Bỏ qua" }
                     }
-                    button { r#type: "button", class: "btn-primary", onclick: move |_| if last { on_close.call(()) } else { step.set(step() + 1) },
-                        if last { "Bắt đầu" } else { "Tiếp tục" }
+                    button {
+                        r#type: "button",
+                        class: "btn-primary",
+                        onclick: move |_| {
+                            if last {
+                                trigger_spark_celebration();
+                                on_close.call(());
+                            } else {
+                                step.set(step() + 1);
+                            }
+                        },
+                        if last { "Bắt đầu khám phá" } else { "Tiếp tục" }
                     }
                 }
             }
@@ -224,9 +252,32 @@ const FAQ: [(&str, &str); 9] = [
     ("Tệp tải lên được giới hạn thế nào?", "Sticker tối đa 512 KB; emoji, GIF và ảnh trang trí hồ sơ tối đa 2 MB; máy chủ kiểm tra định dạng thật của tệp."),
 ];
 
+const BEGINNER_CHECKLIST: [(&str, &str, &str); 5] = [
+    ("theme", "Tùy biến giao diện theo phong cách riêng", "Đổi màu chủ đề, ảnh nền và độ trong suốt khung kính trong Cài đặt › Giao diện"),
+    ("self", "Gửi ghi chú đầu tiên cho \"Chính mình\"", "Lưu nhanh ảnh, liên kết và ghi chú riêng giữa điện thoại và máy tính"),
+    ("friend", "Kết bạn hoặc tạo cộng đồng đầu tiên", "Bấm biểu tượng Bạn bè hoặc Cộng đồng ở thanh bên trái để kết nối ngay"),
+    ("backup", "Sao lưu chìa khóa bảo mật an toàn", "Vào Cài đặt › Bảo mật hoặc Đám mây để lưu dự phòng chìa khóa riêng"),
+    ("shortcut", "Thử mở tìm nhanh bằng phím Ctrl + K", "Nhảy tức thì tới mọi cuộc trò chuyện, kênh hoặc mục cài đặt"),
+];
+
+const CHECKLIST_STORAGE_KEY: &str = "chatw_beginner_checklist_v1";
+
 #[component]
 pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
     let mut query = use_signal(String::new);
+    let mut done_ids = use_signal(|| {
+        platform::storage_get(CHECKLIST_STORAGE_KEY)
+            .unwrap_or_default()
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+    });
+    let done_count = BEGINNER_CHECKLIST
+        .iter()
+        .filter(|(id, _, _)| done_ids.read().iter().any(|x| x == id))
+        .count();
+    let pct = (done_count * 100) / BEGINNER_CHECKLIST.len();
     let q = crate::components::composer::fold(query().trim());
     let matches = |parts: &[&str]| q.is_empty() || parts.iter().any(|p| crate::components::composer::fold(p).contains(&q));
     let guides: Vec<_> = GUIDES.iter().filter(|(_, t, st)| matches(&[t]) || matches(st)).collect();
@@ -240,19 +291,63 @@ pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
         if !q.is_empty() && guides.is_empty() && faq.is_empty() && shortcuts.is_empty() {
             div { class: "sidebar-empty", "Không có hướng dẫn phù hợp" }
         }
-        div { class: "guide-hero",
+        div { class: "guide-hero cw-spotlight cw-stagger",
             Illustration { kind: "chat".to_string() }
             div {
-                div { class: "settings-group-title", "Bắt đầu với ChatW" }
-                div { class: "settings-group-desc", "Xem lại phần giới thiệu từng bước bất cứ lúc nào." }
+                div { class: "cw-guide-hero-title", "Bắt đầu với ChatW" }
+                div { class: "cw-guide-hero-sub", "Xem lại phần giới thiệu từng bước bất cứ lúc nào để làm quen nhanh trong 1 phút." }
                 button { r#type: "button", class: "btn-primary", onclick: move |_| on_replay_tour.call(()), LogoIcon { size: 16 } span { "Xem lại giới thiệu" } }
+            }
+        }
+        if q.is_empty() {
+            div { class: "settings-group cw-checklist-wrap cw-stagger",
+                div { class: "cw-checklist-head",
+                    div { class: "settings-group-title", "Lộ trình cho người mới" }
+                    span { class: "cw-checklist-counter", "{done_count}/{BEGINNER_CHECKLIST.len()} hoàn thành" }
+                }
+                div { class: "cw-checklist-bar",
+                    div { class: "cw-checklist-bar-fill", style: "width: {pct}%;" }
+                }
+                div { class: "cw-checklist-list",
+                    for (id, title, desc) in BEGINNER_CHECKLIST.iter().copied() {
+                        {
+                            let checked = done_ids.read().iter().any(|x| x == id);
+                            rsx! {
+                                button {
+                                    key: "{id}",
+                                    r#type: "button",
+                                    class: if checked { "cw-checklist-item done cw-spotlight" } else { "cw-checklist-item cw-spotlight" },
+                                    aria_pressed: "{checked}",
+                                    onclick: move |_| {
+                                        let mut cur = done_ids();
+                                        if let Some(pos) = cur.iter().position(|x| x == id) {
+                                            cur.remove(pos);
+                                        } else {
+                                            cur.push(id.to_string());
+                                            trigger_spark_celebration();
+                                        }
+                                        platform::storage_set(CHECKLIST_STORAGE_KEY, &cur.join(","));
+                                        done_ids.set(cur);
+                                    },
+                                    span { class: if checked { "cw-check-circle checked" } else { "cw-check-circle" },
+                                        if checked { CheckIcon { size: 14 } }
+                                    }
+                                    span { class: "cw-checklist-copy",
+                                        span { class: "settings-label", "{title}" }
+                                        span { class: "settings-sublabel", "{desc}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         div { class: "settings-group",
             div { class: "settings-group-title", "Hướng dẫn" }
             div { class: "guide-grid",
                 for (art, title, steps) in guides.iter().copied().copied() {
-                    div { key: "{title}", class: "guide-card",
+                    div { key: "{title}", class: "guide-card cw-spotlight",
                         Illustration { kind: art.to_string() }
                         div { class: "settings-label", "{title}" }
                         ol { class: "guide-steps",

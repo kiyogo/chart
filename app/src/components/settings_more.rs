@@ -444,6 +444,7 @@ pub fn LanguageSettings() -> Element {
                     button { key: "{code}", r#type: "button", role: "radio", aria_checked: "{cur == code}", lang: "{code}",
                         class: if cur == code { "lang-tile active" } else { "lang-tile" },
                         onclick: move |_| c.update(|p| p.language = code.to_string()),
+                        crate::components::brand_logos::LanguageFlagLogo { code: code.to_string(), size: 24 }
                         span { class: "lang-native", "{native}" }
                     }
                 }

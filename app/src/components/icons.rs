@@ -964,10 +964,7 @@ pub fn MacLogoIcon(#[props(default = 20)] size: u32) -> Element {
 
 #[component]
 pub fn LinuxLogoIcon(#[props(default = 20)] size: u32) -> Element {
-    rsx! { Duo { size,
-        rect { x: "3", y: "4", width: "18", height: "16", rx: "3", fill: duo_fill!(), fill_opacity: "0.14" }
-        path { d: "M7.5 9.5l3 2.5-3 2.5M12.5 14.5h4" }
-    } }
+    rsx! { crate::components::brand_logos::LinuxTuxLogo { size } }
 }
 
 #[component]

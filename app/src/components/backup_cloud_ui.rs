@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use serde_json::json;
 
 use crate::{
+    components::brand_logos::{CloudProviderLogo, E2eeLiveShield, PasskeyLogo, ZipBackupLogo},
     platform,
     storage::format_bytes_human,
     services::backup_cloud::{
@@ -10,6 +11,32 @@ use crate::{
         ProviderCapability, ReauthMethods, RestoreResult,
     },
 };
+
+fn cloud_provider_hint(pid: &str, oauth_configured: bool, auth_kind: &str) -> &'static str {
+    if auth_kind == "icloud_platform" {
+        return "Đồng bộ tự động trên iPhone, iPad và máy Mac";
+    }
+    if auth_kind == "oauth2_pkce" && !oauth_configured {
+        return match pid {
+            "google_drive" => "Lưu bản sao mã hóa trên Google Drive · Chưa mở kết nối nhanh",
+            "onedrive" => "Lưu bản sao trên Microsoft OneDrive · Chưa mở kết nối nhanh",
+            "dropbox" => "Đồng bộ bản sao qua Dropbox · Chưa mở kết nối nhanh",
+            _ => "Chưa mở kết nối nhanh trên máy chủ này",
+        };
+    }
+    match pid {
+        "google_drive" => "Lưu bản sao mã hóa an toàn trên Google Drive",
+        "onedrive" => "Lưu giữ tin nhắn an toàn trên Microsoft OneDrive",
+        "dropbox" => "Đồng bộ bản sao nhanh chóng qua Dropbox",
+        "nextcloud" => "Kết nối máy chủ Nextcloud riêng của bạn",
+        "webdav" => "Lưu trữ qua mọi máy chủ hỗ trợ WebDAV",
+        "s3" | "amazon_s3" => "Kho lưu trữ đám mây Amazon S3 tốc độ cao",
+        "r2" | "cloudflare_r2" => "Kho lưu trữ Cloudflare R2 linh hoạt",
+        "minio" => "Máy chủ lưu trữ MinIO tự vận hành",
+        "nas" => "Ổ lưu trữ NAS ngay tại nhà của bạn",
+        _ => "Kết nối trực tiếp bằng tài khoản của bạn",
+    }
+}
 
 fn format_api_error(code: &str) -> &'static str {
     match code {
@@ -628,6 +655,17 @@ pub fn CloudAccountsPanel() -> Element {
                 "Ảnh chụp #{run.snapshot_seq}: tổng {format_bytes_human(run.total_plain_bytes)}, tải mới {format_bytes_human(run.uploaded_delta_bytes)}, tiết kiệm {format_bytes_human(run.deduplicated_bytes)}"
             }
         }
+        div { class: "cw-cloud-guide cw-stagger",
+            E2eeLiveShield { size: 32 }
+            div { class: "cw-cloud-guide-body",
+                div { class: "cw-cloud-guide-title", "Sao lưu đám mây riêng tư trong 3 bước" }
+                div { class: "cw-cloud-guide-steps",
+                    span { class: "cw-step-pill", span { class: "cw-step-num", "1" } "Đặt mật khẩu khóa" }
+                    span { class: "cw-step-pill", span { class: "cw-step-num", "2" } "Chọn dịch vụ quen dùng" }
+                    span { class: "cw-step-pill", span { class: "cw-step-num", "3" } "Tự động lưu an toàn" }
+                }
+            }
+        }
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
@@ -654,21 +692,12 @@ pub fn CloudAccountsPanel() -> Element {
                     div { class: "settings-group-title", "Dịch vụ lưu trữ đám mây" }
                     div { class: "settings-list",
                         for prov in providers() {
-                            div { key: "{prov.provider_id}", class: "settings-row",
+                            div { key: "{prov.provider_id}", class: "settings-row cw-brand-row",
+                                CloudProviderLogo { provider_id: prov.provider_id.clone(), size: 32 }
                                 div { class: "settings-row-text",
                                     span { class: "settings-label", "{prov.display_name}" }
                                     span { class: "settings-sublabel",
-                                        if prov.auth_kind == "oauth2_pkce" {
-                                            if prov.oauth_configured {
-                                                "Sẵn sàng đăng nhập kết nối"
-                                            } else {
-                                                "Chưa cấu hình OAuth: {prov.setup_requirements.join(\", \")}"
-                                            }
-                                        } else if prov.auth_kind == "icloud_platform" {
-                                            "Chỉ hỗ trợ trên máy Apple"
-                                        } else {
-                                            "Kết nối trực tiếp bằng tài khoản của bạn"
-                                        }
+                                        "{cloud_provider_hint(&prov.provider_id, prov.oauth_configured, &prov.auth_kind)}"
                                     }
                                 }
                                 if prov.auth_kind == "oauth2_pkce" {
@@ -694,7 +723,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                 });
                                             }
                                         },
-                                        if prov.oauth_configured { "Kết nối" } else { "Chưa cấu hình" }
+                                        if prov.oauth_configured { "Kết nối" } else { "Sắp hỗ trợ" }
                                     }
                                 } else if prov.auth_kind == "credentials" {
                                     button {
@@ -722,7 +751,10 @@ pub fn CloudAccountsPanel() -> Element {
             div { class: "settings-col",
                 if let Some(ref pid) = connect_provider() {
                     div { class: "settings-group",
-                        div { class: "settings-group-title", "Kết nối {format_provider_label(pid)}" }
+                        div { class: "settings-group-title",
+                            CloudProviderLogo { provider_id: pid.clone(), size: 22 }
+                            span { "Kết nối {format_provider_label(pid)}" }
+                        }
                         div { class: "settings-list",
                             div { class: "settings-row column-layout",
                                 input {
@@ -883,21 +915,24 @@ pub fn CloudAccountsPanel() -> Element {
                         div { class: "settings-list",
                             for conn in connections() {
                                 div { key: "{conn.id}", class: "settings-row column-layout",
-                                    div { class: "settings-row-text",
-                                        span { class: "settings-label",
-                                            "{format_provider_label(&conn.provider)} · {conn.account_label}"
-                                        }
-                                        span { class: "settings-sublabel",
-                                            "Trạng thái: {conn.status}"
-                                            if let Some(tot) = conn.quota_total_bytes {
-                                                " · Đã dùng {format_bytes_human(conn.quota_used_bytes.unwrap_or(0) as u64)} / {format_bytes_human(tot as u64)}"
+                                    div { class: "cw-brand-row",
+                                        CloudProviderLogo { provider_id: conn.provider.clone(), size: 28 }
+                                        div { class: "settings-row-text",
+                                            span { class: "settings-label",
+                                                "{format_provider_label(&conn.provider)} · {conn.account_label}"
                                             }
-                                            if let Some(ref ts) = conn.last_backup_at {
-                                                " · Sao lưu cuối: {ts}"
+                                            span { class: "settings-sublabel",
+                                                "Trạng thái: {conn.status}"
+                                                if let Some(tot) = conn.quota_total_bytes {
+                                                    " · Đã dùng {format_bytes_human(conn.quota_used_bytes.unwrap_or(0) as u64)} / {format_bytes_human(tot as u64)}"
+                                                }
+                                                if let Some(ref ts) = conn.last_backup_at {
+                                                    " · Sao lưu cuối: {ts}"
+                                                }
                                             }
-                                        }
-                                        if let Some(ref err) = conn.last_error {
-                                            span { class: "settings-sublabel", "Lỗi gần nhất: {err}" }
+                                            if let Some(ref err) = conn.last_error {
+                                                span { class: "settings-sublabel", "Lỗi gần nhất: {err}" }
+                                            }
                                         }
                                     }
                                     div { class: "inline-form",
@@ -1417,7 +1452,8 @@ pub fn AdvancedSecurityExportSection() -> Element {
                         }
                     }
                 }
-                div { class: "settings-row",
+                div { class: "settings-row cw-brand-row",
+                    PasskeyLogo { size: 30 }
                     div { class: "settings-row-text",
                         span { class: "settings-label", "Khóa bảo mật trên thiết bị" }
                         span { class: "settings-sublabel", "Đã đăng ký {m.passkeys_count} khóa trên máy này để xác nhận nhanh không cần mật khẩu." }
@@ -1455,9 +1491,12 @@ pub fn AdvancedSecurityExportSection() -> Element {
             div { class: "settings-group-title", "Xuất dữ liệu nâng cao" }
             div { class: "settings-list",
                 div { class: "settings-row column-layout",
-                    div { class: "settings-row-text",
-                        span { class: "settings-label", "Xuất tệp ZIP có mật khẩu" }
-                        span { class: "settings-sublabel", "Bảo vệ nội dung bằng mật khẩu nhưng không ẩn tên tệp bên trong như bản sao lưu chính." }
+                    div { class: "cw-brand-row",
+                        ZipBackupLogo { size: 28 }
+                        div { class: "settings-row-text",
+                            span { class: "settings-label", "Xuất tệp ZIP có mật khẩu" }
+                            span { class: "settings-sublabel", "Bảo vệ nội dung bằng mật khẩu nhưng không ẩn tên tệp bên trong như bản sao lưu chính." }
+                        }
                     }
                     div { class: "inline-form",
                         select {
