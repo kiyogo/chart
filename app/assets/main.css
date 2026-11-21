@@ -1735,26 +1735,21 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
 .composer::before {
   content: "";
   position: absolute;
-  top: -2.5rem;
+  top: -1.25rem;
   left: 0;
   right: 0;
   bottom: 0;
   pointer-events: none;
   z-index: -1;
   background: linear-gradient(to top,
-    rgba(255, 255, 255, 0.68) 0%,
-    rgba(255, 255, 255, 0.45) 45%,
-    rgba(255, 255, 255, 0.15) 80%,
+    color-mix(in srgb, var(--bg-surface) 75%, transparent) 0%,
+    color-mix(in srgb, var(--bg-surface) 48%, transparent) 45%,
     transparent 100%
   );
-}
-html[data-theme="dark"] .composer::before {
-  background: linear-gradient(to top,
-    rgba(255, 255, 255, 0.22) 0%,
-    rgba(255, 255, 255, 0.12) 45%,
-    rgba(255, 255, 255, 0.04) 80%,
-    transparent 100%
-  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 60%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 60%, rgba(0, 0, 0, 0) 100%);
 }
 .composer:has(.modal-overlay, .settings-modal-backdrop, .lightbox)::before {
   display: none !important;
