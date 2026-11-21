@@ -391,7 +391,6 @@ pub fn SettingsView(
                                         }
 
                                         div { class: "settings-group",
-                                            div { class: "settings-group-title", "Chữ và mật độ" }
                                             div { class: "settings-list",
                                                 div { class: "settings-row column-layout",
                                                     div { class: "settings-row-text",
@@ -503,7 +502,6 @@ pub fn SettingsView(
                                     div { class: "settings-col",
                                         crate::components::accounts::SecuritySettings {}
                                         div { class: "settings-group",
-                                            div { class: "settings-group-title", "Bảo vệ tin nhắn" }
                                             div { class: "settings-row",
                                                 span { class: "settings-label", "Tiêu chuẩn bảo vệ" }
                                                 span { class: "settings-value", "Mã hóa hai đầu chuẩn cao nhất" }
@@ -658,7 +656,6 @@ pub fn SettingsView(
                                     }
                                     div { class: "settings-col",
                                         div { class: "settings-group",
-                                            div { class: "settings-group-title", "Đăng xuất" }
                                             div { class: "settings-row",
                                                 div { class: "settings-row-text",
                                                     span { class: "settings-label", "Đăng xuất tài khoản" }

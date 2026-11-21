@@ -645,11 +645,11 @@ if (!window.__chatwRecomputeContrast) {
             root.style.setProperty('--on-accent', accentInk.text);
             root.style.setProperty('--accent-text', safeText);
             root.style.setProperty('--accent-soft', surfaceTone === 'dark'
-                ? `color-mix(in srgb, ${safeAccent} 24%, #1A1F29)`
-                : `color-mix(in srgb, ${safeAccent} 14%, #FFFFFF)`);
+                ? `color-mix(in srgb, ${safeAccent} 24%, transparent)`
+                : `color-mix(in srgb, ${safeAccent} 16%, transparent)`);
             root.style.setProperty('--accent-soft-strong', surfaceTone === 'dark'
-                ? `color-mix(in srgb, ${safeAccent} 34%, #1A1F29)`
-                : `color-mix(in srgb, ${safeAccent} 24%, #FFFFFF)`);
+                ? `color-mix(in srgb, ${safeAccent} 34%, transparent)`
+                : `color-mix(in srgb, ${safeAccent} 25%, transparent)`);
         } else {
             ['--accent', '--accent-hover', '--on-accent', '--accent-text', '--accent-soft', '--accent-soft-strong']
                 .forEach((k) => root.style.removeProperty(k));

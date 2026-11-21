@@ -36,9 +36,16 @@
 
   function createPopover(anchor, extraClass) {
     closePopover();
+    const r = anchor.getBoundingClientRect();
     const pop = document.createElement('div');
     pop.className = 'cw-picker-popover ' + extraClass;
     pop.setAttribute('role', 'dialog');
+    // Pre-position directly at anchor while invisible BEFORE attaching to DOM — zero (0,0) top-left flash!
+    pop.style.visibility = 'hidden';
+    pop.style.opacity = '0';
+    pop.style.pointerEvents = 'none';
+    pop.style.top = Math.round(r.bottom + 6) + 'px';
+    pop.style.left = Math.round(r.left) + 'px';
     pop.addEventListener('mousedown', (e) => e.stopPropagation());
     document.body.appendChild(pop);
     activePop = pop;
@@ -53,9 +60,6 @@
       pop.style.minWidth = Math.max(180, Math.round(r.width)) + 'px';
       pop.style.maxWidth = Math.max(280, Math.round(r.width) + 60) + 'px';
     }
-    pop.style.visibility = 'hidden';
-    pop.style.top = '0px';
-    pop.style.left = '0px';
     const pr = pop.getBoundingClientRect();
     const gap = 6;
     const vw = window.innerWidth;
@@ -74,6 +78,9 @@
     pop.style.top = Math.round(top) + 'px';
     pop.style.left = Math.round(left) + 'px';
     pop.style.visibility = 'visible';
+    pop.style.opacity = '1';
+    pop.style.pointerEvents = 'auto';
+    pop.classList.add('cw-picker-ready');
   }
 
   // ==================== 1. CUSTOM SELECT DROPDOWN ====================
@@ -123,7 +130,7 @@
     pop.appendChild(list);
     positionPopover(pop, sel, true);
     if (activeBtn) {
-      requestAnimationFrame(() => activeBtn.scrollIntoView({ block: 'nearest' }));
+      list.scrollTop = Math.max(0, activeBtn.offsetTop - list.clientHeight / 2 + activeBtn.offsetHeight / 2);
     }
   }
 
@@ -443,10 +450,8 @@
 
     pop.append(cols, foot);
     positionPopover(pop, input, false);
-    requestAnimationFrame(() => {
-      if (selHBtn) selHBtn.scrollIntoView({ block: 'center' });
-      if (selMBtn) selMBtn.scrollIntoView({ block: 'center' });
-    });
+    if (selHBtn) hList.scrollTop = Math.max(0, selHBtn.offsetTop - hList.clientHeight / 2 + selHBtn.offsetHeight / 2);
+    if (selMBtn) mList.scrollTop = Math.max(0, selMBtn.offsetTop - mList.clientHeight / 2 + selMBtn.offsetHeight / 2);
   }
 
   // ==================== GLOBAL INTERCEPTORS ====================

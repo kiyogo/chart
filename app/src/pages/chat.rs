@@ -186,6 +186,8 @@ pub fn Chat(
     let mut channel_messages = use_signal(Vec::<ChannelMessageItem>::new);
     let mut channel_has_more = use_signal(|| false);
     let mut channel_loading_more = use_signal(|| false);
+    let mut channel_loading_initial = use_signal(|| false);
+    let mut channel_cache = use_signal(HashMap::<String, (Vec<ChannelMessageItem>, bool)>::new);
     let mut channel_input = use_signal(String::new);
     let mut active_voice_channel = use_signal(|| Option::<ChannelItem>::None);
     let mut is_voice_muted = use_signal(|| false);
@@ -199,8 +201,12 @@ pub fn Chat(
     let mut group_messages = use_signal(Vec::<GroupMessageItem>::new);
     let mut group_has_more = use_signal(|| false);
     let mut group_loading_more = use_signal(|| false);
+    let mut group_loading_initial = use_signal(|| false);
+    let mut group_cache = use_signal(HashMap::<String, (Vec<GroupMessageItem>, bool)>::new);
     let mut dm_has_more = use_signal(|| false);
     let mut dm_loading_more = use_signal(|| false);
+    let mut dm_loading_initial = use_signal(|| false);
+    let mut dm_cache = use_signal(HashMap::<String, (Vec<DisplayMessage>, bool)>::new);
     let mut group_input = use_signal(String::new);
     let mut is_create_group_open = use_signal(|| false);
     let mut is_group_info_open = use_signal(|| false);
@@ -1316,10 +1322,26 @@ pub fn Chat(
         });
     });
 
-    // Helper: select a channel (always loads newest first, sorted ascending, scrolls to bottom)
+    // Helper: select a channel (instant cache restore + loading spinner + silent background sync)
     let mut select_channel = move |ch: ChannelItem| {
         let same = selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(ch.id.as_str())
-            && !channel_messages.peek().is_empty();
+            && (!channel_messages.peek().is_empty() || channel_cache.peek().contains_key(&ch.id));
+        // Save outgoing active chat into in-memory cache before switching
+        if let Some(prev_f) = active_friend.peek().clone() {
+            if !*dm_loading_initial.peek() {
+                dm_cache.write().insert(prev_f.id, (messages.peek().clone(), *dm_has_more.peek()));
+            }
+        }
+        if let Some(prev_g) = active_group.peek().clone() {
+            if !*group_loading_initial.peek() {
+                group_cache.write().insert(prev_g.id, (group_messages.peek().clone(), *group_has_more.peek()));
+            }
+        }
+        if let Some(prev_c) = selected_channel.peek().clone() {
+            if prev_c.id != ch.id && !*channel_loading_initial.peek() {
+                channel_cache.write().insert(prev_c.id, (channel_messages.peek().clone(), *channel_has_more.peek()));
+            }
+        }
         server_settings_open.set(false);
         active_ent_module.set(None);
         selected_channel.set(Some(ch.clone()));
@@ -1332,20 +1354,55 @@ pub fn Chat(
         if same {
             return;
         }
-        channel_has_more.set(false);
         channel_loading_more.set(false);
         if ch.channel_type == "text" || ch.channel_type == "announcement" {
-            channel_messages.set(Vec::new());
+            let cached = channel_cache.peek().get(&ch.id).cloned();
+            let had_cache = cached.is_some();
+            if let Some((cached_msgs, cached_more)) = cached {
+                channel_has_more.set(cached_more);
+                channel_messages.set(cached_msgs);
+                channel_loading_initial.set(false);
+                platform::scroll_chat_to_bottom(true);
+            } else {
+                channel_has_more.set(false);
+                channel_messages.set(Vec::new());
+                channel_loading_initial.set(true);
+            }
             let cid = ch.id.clone();
             spawn(async move {
                 if let Ok(mut msgs) = api::channels_get_messages(&cid, 30, None).await {
                     let has_more = msgs.len() >= 30;
                     msgs.sort_by_key(|m| m.seq);
                     if selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(cid.as_str()) {
-                        channel_has_more.set(has_more);
-                        channel_messages.set(msgs);
-                        platform::scroll_chat_to_bottom(true);
+                        if had_cache {
+                            // Silently merge any newly arrived messages without clearing older loaded history
+                            let mut changed = false;
+                            channel_messages.with_mut(|list| {
+                                let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
+                                for m in msgs {
+                                    if !existing.contains(&m.id) {
+                                        list.push(m);
+                                        changed = true;
+                                    }
+                                }
+                                if changed {
+                                    list.sort_by_key(|m| m.seq);
+                                }
+                            });
+                            channel_cache.write().insert(cid.clone(), (channel_messages.peek().clone(), *channel_has_more.peek()));
+                            if changed {
+                                platform::scroll_chat_to_bottom(true);
+                            }
+                        } else {
+                            channel_has_more.set(has_more);
+                            channel_messages.set(msgs.clone());
+                            channel_cache.write().insert(cid.clone(), (msgs, has_more));
+                            platform::scroll_chat_to_bottom(true);
+                        }
+                        channel_loading_initial.set(false);
                     }
+                } else if selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(cid.as_str()) {
+                    channel_loading_initial.set(false);
                 }
             });
         } else if ch.channel_type == "voice" {
@@ -1381,6 +1438,7 @@ pub fn Chat(
                             fresh.append(list);
                             *list = fresh;
                         });
+                        channel_cache.write().insert(cid.clone(), (channel_messages.peek().clone(), more));
                         platform::restore_chat_scroll_after_prepend();
                     }
                 }
@@ -1389,10 +1447,25 @@ pub fn Chat(
         });
     });
 
-    // Helper: select a group (always loads newest first, sorted ascending, scrolls to bottom)
+    // Helper: select a group (instant cache restore + loading spinner + silent background sync)
     let select_group = use_callback(move |grp: GroupItem| {
         let same = active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(grp.id.as_str())
-            && !group_messages.peek().is_empty();
+            && (!group_messages.peek().is_empty() || group_cache.peek().contains_key(&grp.id));
+        if let Some(prev_f) = active_friend.peek().clone() {
+            if !*dm_loading_initial.peek() {
+                dm_cache.write().insert(prev_f.id, (messages.peek().clone(), *dm_has_more.peek()));
+            }
+        }
+        if let Some(prev_c) = selected_channel.peek().clone() {
+            if !*channel_loading_initial.peek() {
+                channel_cache.write().insert(prev_c.id, (channel_messages.peek().clone(), *channel_has_more.peek()));
+            }
+        }
+        if let Some(prev_g) = active_group.peek().clone() {
+            if prev_g.id != grp.id && !*group_loading_initial.peek() {
+                group_cache.write().insert(prev_g.id, (group_messages.peek().clone(), *group_has_more.peek()));
+            }
+        }
         is_settings_open.set(false);
         server_settings_open.set(false);
         nav_section.set(NavSection::DirectMessages);
@@ -1407,13 +1480,24 @@ pub fn Chat(
         active_friend.set(None);
         active_bot.set(None);
         active_group.set(Some(grp.clone()));
-        group_messages.set(Vec::new());
-        group_has_more.set(false);
         group_loading_more.set(false);
         group_settings.set(None);
         group_members.set(Vec::new());
         chat_wallpaper.set(None);
         chat_menu_open.set(false);
+
+        let cached = group_cache.peek().get(&grp.id).cloned();
+        let had_cache = cached.is_some();
+        if let Some((cached_msgs, cached_more)) = cached {
+            group_has_more.set(cached_more);
+            group_messages.set(cached_msgs);
+            group_loading_initial.set(false);
+            platform::scroll_chat_to_bottom(true);
+        } else {
+            group_has_more.set(false);
+            group_messages.set(Vec::new());
+            group_loading_initial.set(true);
+        }
 
         let gid = grp.id.clone();
         let gid2 = grp.id.clone();
@@ -1443,13 +1527,37 @@ pub fn Chat(
                 let has_more = msgs.len() >= 30;
                 msgs.sort_by_key(|m| m.seq);
                 if active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str()) {
-                    group_has_more.set(has_more);
-                    group_messages.set(msgs);
+                    if had_cache {
+                        let mut changed = false;
+                        group_messages.with_mut(|list| {
+                            let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
+                            for m in msgs {
+                                if !existing.contains(&m.id) {
+                                    list.push(m);
+                                    changed = true;
+                                }
+                            }
+                            if changed {
+                                list.sort_by_key(|m| m.seq);
+                            }
+                        });
+                        group_cache.write().insert(gid.clone(), (group_messages.peek().clone(), *group_has_more.peek()));
+                        if changed {
+                            platform::scroll_chat_to_bottom(true);
+                        }
+                    } else {
+                        group_has_more.set(has_more);
+                        group_messages.set(msgs.clone());
+                        group_cache.write().insert(gid.clone(), (msgs, has_more));
+                        platform::scroll_chat_to_bottom(true);
+                    }
                     let gname = groups.peek().iter().find(|g| g.id == gid).map(|g| g.name.clone()).unwrap_or_default();
                     let texts: Vec<(String, String)> = group_messages.peek().iter().map(|m| (m.content.clone(), gname.clone())).collect();
                     register_reminders(&my_id_sig.peek(), &texts);
-                    platform::scroll_chat_to_bottom(true);
+                    group_loading_initial.set(false);
                 }
+            } else if active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str()) {
+                group_loading_initial.set(false);
             }
         });
     });
@@ -1477,6 +1585,7 @@ pub fn Chat(
                             fresh.append(list);
                             *list = fresh;
                         });
+                        group_cache.write().insert(gid.clone(), (group_messages.peek().clone(), more));
                         platform::restore_chat_scroll_after_prepend();
                     }
                 }
@@ -1541,12 +1650,27 @@ pub fn Chat(
         });
     };
 
-    // Helper: select a friend DM (always loads newest first, retries key boot, no jitter on same-chat click)
+    // Helper: select a friend DM (instant cache restore + loading spinner + silent background sync)
     let uid_for_select = current_user_id.clone();
     let pkey_for_select = preview_storage_key.clone();
     let select_friend = use_callback(move |friend: FriendItem| {
         let same = active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str())
-            && !messages.peek().is_empty();
+            && (!messages.peek().is_empty() || dm_cache.peek().contains_key(&friend.id));
+        if let Some(prev_f) = active_friend.peek().clone() {
+            if prev_f.id != friend.id && !*dm_loading_initial.peek() {
+                dm_cache.write().insert(prev_f.id, (messages.peek().clone(), *dm_has_more.peek()));
+            }
+        }
+        if let Some(prev_g) = active_group.peek().clone() {
+            if !*group_loading_initial.peek() {
+                group_cache.write().insert(prev_g.id, (group_messages.peek().clone(), *group_has_more.peek()));
+            }
+        }
+        if let Some(prev_c) = selected_channel.peek().clone() {
+            if !*channel_loading_initial.peek() {
+                channel_cache.write().insert(prev_c.id, (channel_messages.peek().clone(), *channel_has_more.peek()));
+            }
+        }
         is_settings_open.set(false);
         server_settings_open.set(false);
         nav_section.set(NavSection::DirectMessages);
@@ -1561,14 +1685,25 @@ pub fn Chat(
         active_bot.set(None);
         active_friend.set(Some(friend.clone()));
         is_friend_typing.set(false);
-        messages.set(Vec::new());
-        dm_has_more.set(false);
         dm_loading_more.set(false);
         partner_fingerprint.set(None);
         dm_reply_to.set(None);
         partner_read_seq.set(None);
         chat_wallpaper.set(None);
         chat_menu_open.set(false);
+
+        let cached = dm_cache.peek().get(&friend.id).cloned();
+        let had_cache = cached.is_some();
+        if let Some((cached_msgs, cached_more)) = cached {
+            dm_has_more.set(cached_more);
+            messages.set(cached_msgs);
+            dm_loading_initial.set(false);
+            platform::scroll_chat_to_bottom(true);
+        } else {
+            dm_has_more.set(false);
+            messages.set(Vec::new());
+            dm_loading_initial.set(true);
+        }
 
         let uid = uid_for_select.clone();
         let pkey = pkey_for_select.clone();
@@ -1585,6 +1720,9 @@ pub fn Chat(
                 }
             }
             let Some(keys) = keys_opt else {
+                if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str()) {
+                    dm_loading_initial.set(false);
+                }
                 return;
             };
 
@@ -1596,6 +1734,9 @@ pub fn Chat(
                 }
                 None => {
                     let Ok(pk_resp) = api::keys_get(&friend.id).await else {
+                        if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str()) {
+                            dm_loading_initial.set(false);
+                        }
                         return;
                     };
                     partner_fingerprint.set(Some(pk_resp.fingerprint.clone()));
@@ -1605,6 +1746,9 @@ pub fn Chat(
                         &pk_resp.ecdsa_public,
                         &pk_resp.fingerprint,
                     ) else {
+                        if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str()) {
+                            dm_loading_initial.set(false);
+                        }
                         return;
                     };
                     peer_keys_cache.write().insert(friend.id.clone(), pk.clone());
@@ -1666,9 +1810,31 @@ pub fn Chat(
                 let texts: Vec<(String, String)> = decrypted_list.iter().map(|m| (split_device_prefix(&m.text).1, place.clone())).collect();
                 register_reminders(&uid, &texts);
                 let last_partner_seq = decrypted_list.iter().filter(|m| !m.is_self).map(|m| m.seq).max();
-                dm_has_more.set(has_more);
-                messages.set(decrypted_list);
-                platform::scroll_chat_to_bottom(true);
+                if had_cache {
+                    let mut changed = false;
+                    messages.with_mut(|list| {
+                        let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
+                        for m in decrypted_list {
+                            if !existing.contains(&m.id) {
+                                list.push(m);
+                                changed = true;
+                            }
+                        }
+                        if changed {
+                            list.sort_by_key(|m| m.seq);
+                        }
+                    });
+                    dm_cache.write().insert(friend.id.clone(), (messages.peek().clone(), *dm_has_more.peek()));
+                    if changed {
+                        platform::scroll_chat_to_bottom(true);
+                    }
+                } else {
+                    dm_has_more.set(has_more);
+                    messages.set(decrypted_list.clone());
+                    dm_cache.write().insert(friend.id.clone(), (decrypted_list, has_more));
+                    platform::scroll_chat_to_bottom(true);
+                }
+                dm_loading_initial.set(false);
                 if friend.id == uid {
                     chat_wallpaper.set(platform::storage_get(&format!("chatw_selfwp_{uid}")));
                 }
@@ -1683,6 +1849,8 @@ pub fn Chat(
                         chat_wallpaper.set(w);
                     }
                 }
+            } else if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str()) {
+                dm_loading_initial.set(false);
             }
         });
     });
@@ -1765,6 +1933,7 @@ pub fn Chat(
                             fresh.append(list);
                             *list = fresh;
                         });
+                        dm_cache.write().insert(friend.id.clone(), (messages.peek().clone(), more));
                         platform::restore_chat_scroll_after_prepend();
                     }
                 }
@@ -3510,6 +3679,7 @@ pub fn Chat(
                                 on_open_invite: move |(kind, code): (String, String)| invite_open.set(Some((kind, code))),
                                 has_more: dm_has_more(),
                                 loading_more: dm_loading_more(),
+                                loading_initial: dm_loading_initial(),
                                 on_load_more: move |_| load_more_dm.call(()),
                             }
 
@@ -3797,6 +3967,7 @@ pub fn Chat(
                                 on_open_invite: move |(kind, code): (String, String)| invite_open.set(Some((kind, code))),
                                 has_more: group_has_more(),
                                 loading_more: group_loading_more(),
+                                loading_initial: group_loading_initial(),
                                 on_load_more: move |_| load_more_group.call(()),
                             }
 
@@ -4008,6 +4179,7 @@ pub fn Chat(
                                             on_create_task: on_task_handler,
                                             has_more: channel_has_more(),
                                             loading_more: channel_loading_more(),
+                                            loading_initial: channel_loading_initial(),
                                             on_load_more: move |_| load_more_channel.call(()),
                                         }
                                     }

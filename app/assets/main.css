@@ -243,7 +243,7 @@ input[type="color"] {
 .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled) { transform: none; }
 .btn-secondary, .partner-action-btn { background: var(--bg-surface-hover); color: var(--text-primary); }
 .btn-secondary:hover:not(:disabled), .partner-action-btn:hover:not(:disabled) { background: var(--bg-hover); }
-.btn-ghost { background: transparent; color: var(--text-secondary); }
+.btn-ghost { background: transparent; color: var(--text-primary); }
 .btn-ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
@@ -379,7 +379,7 @@ input[type="color"] {
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
-  padding: 0;
+  padding: var(--space-2) 0;
   min-height: 0;
 }
 .rail-brand {
@@ -391,7 +391,7 @@ input[type="color"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: calc((var(--header-height) - 2.625rem) / 2) 0 0;
+  margin: 0;
   flex-shrink: 0;
 }
 .plugin-custom-logo, .plugin-brand-logo {
@@ -403,16 +403,13 @@ input[type="color"] {
 .rail-nav, .rail-bottom { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); width: 100%; position: relative; }
 .rail-item.active .cw-icon, .rail-item:hover .cw-icon { transform: none; }
 .cw-icon { transition: color var(--dur-hover) var(--ease); }
-/* Pure crisp transparent interiors on neutral/inactive icons — zero muddy gray fill */
+/* Pure crisp transparent interiors on icons — zero muddy gray or accent fill shift */
 .cw-icon [fill-opacity] {
   fill-opacity: 0;
   transition: fill-opacity var(--dur-hover) var(--ease);
 }
-/* Luminous duotone tint ONLY on vivid accent / active surfaces */
+/* Luminous duotone tint ONLY on brand mark / primary solid surfaces (never on nav/list/rail/icon active states) */
 .rail-brand .cw-icon [fill-opacity],
-.rail-item.active .cw-icon [fill-opacity],
-.settings-nav-item.active .cw-icon [fill-opacity],
-.icon-btn.active .cw-icon [fill-opacity],
 .send-btn:not(:disabled) .cw-icon [fill-opacity],
 .btn-primary .cw-icon [fill-opacity],
 .empty-state-icon .cw-icon [fill-opacity],
@@ -651,7 +648,7 @@ input[type="color"] {
 }
 .download-store-logo-only:hover { background: #F1F5F9; }
 .menu-header { padding: var(--space-2) var(--space-3) var(--space-1); font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
-.sidebar-server-header { display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2) var(--space-2); flex-shrink: 0; }
+.sidebar-server-header { height: 3.125rem; display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--panel-inset, 0.5rem); flex-shrink: 0; }
 .sidebar-server-name { flex: 1; min-width: 0; font-size: var(--text-lg); font-weight: var(--weight-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Avatar decorations ---------- */
@@ -1040,7 +1037,7 @@ input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 .sidebar-top-header {
   height: 3.125rem;
-  padding: 0 var(--space-2) 0 var(--space-3);
+  padding: 0 var(--panel-inset, 0.5rem) 0 calc(var(--panel-inset, 0.5rem) + 0.25rem);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1058,11 +1055,11 @@ input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
   min-width: 0;
 }
 .sidebar-header-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.sidebar-search { padding: 0 0.45rem 2px; flex-shrink: 0; }
+.sidebar-search { padding: 0 var(--panel-inset, 0.5rem) 2px; flex-shrink: 0; }
 .search-field { position: relative; display: flex; align-items: center; }
 .search-field svg { position: absolute; left: var(--space-3); color: var(--text-muted); pointer-events: none; }
 .search-field input { padding-left: 2.25rem; border-radius: var(--radius-lg); }
-.sidebar-filters { display: flex; gap: 4px; padding: 0 var(--space-4) var(--space-2); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
+.sidebar-filters { display: flex; gap: 4px; padding: 0 var(--panel-inset, 0.5rem) var(--space-2); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
 .sidebar-filters::-webkit-scrollbar { display: none; }
 .filter-chip {
   min-height: 1.875rem;
@@ -1070,27 +1067,29 @@ input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
   border-radius: var(--radius-full);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   background: transparent;
   white-space: nowrap;
 }
 .filter-chip:hover { background: var(--bg-hover); color: var(--text-primary); }
-.filter-chip.active { background: var(--bg-selected); color: var(--text-selected); }
+.filter-chip.active { background: var(--accent-soft); color: var(--text-primary); }
 .sidebar-scrollable {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 0.45rem var(--space-2);
+  scrollbar-width: none;
+  padding: 0 var(--panel-inset, 0.5rem) var(--panel-inset, 0.5rem);
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
 }
+.sidebar-scrollable::-webkit-scrollbar { display: none; }
 .sidebar-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-2) 0.45rem 0.125rem;
+  padding: var(--space-2) var(--space-1) 0.125rem;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   color: var(--text-secondary);
@@ -1204,11 +1203,11 @@ input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
 .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 /* Friends management */
-.add-friend-container { padding: 0 0.45rem 0.3rem; display: flex; flex-direction: column; gap: 0.3rem; flex-shrink: 0; }
+.add-friend-container { padding: 0 var(--panel-inset, 0.5rem) 0.3rem; display: flex; flex-direction: column; gap: 0.3rem; flex-shrink: 0; }
 .add-friend-form { display: flex; align-items: center; gap: var(--space-2); }
 .add-friend-form input { flex: 1; min-height: 2.375rem; height: 2.375rem; }
 .add-friend-form .btn-small-primary { min-height: 2.375rem; height: 2.375rem; }
-.friends-scroll { padding: 0 0.45rem var(--space-2); gap: 0.3rem; }
+.friends-scroll { padding: 0 var(--panel-inset, 0.5rem) var(--panel-inset, 0.5rem); gap: 0.3rem; }
 .friends-scroll .chat-item.friend-row,
 .friends-scroll .request-card {
   padding: 0.45rem;
@@ -1244,7 +1243,7 @@ input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Community channels */
 .server-banner {
-  margin: 0 0.45rem 0.3rem;
+  margin: 0 var(--panel-inset, 0.5rem) 0.3rem;
   padding: var(--space-3);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
@@ -1253,16 +1252,17 @@ input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
   gap: 2px;
 }
 .server-banner-sub { font-size: var(--text-sm); color: var(--text-secondary); }
-.category-block { margin-top: var(--space-3); }
+.category-block { margin-top: var(--space-2); display: flex; flex-direction: column; gap: 2px; }
+.sidebar-scrollable > .category-block:first-child { margin-top: 0; }
 .category-row {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-1);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
-.category-row:hover { color: var(--text-primary); }
+.category-row:hover { color: var(--text-secondary); }
 .category-row-left {
   display: flex;
   align-items: center;
@@ -1281,18 +1281,18 @@ input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 2.125rem;
+  min-height: 2.25rem;
   padding: 0 var(--space-2);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
   font-size: var(--text-md);
   font-weight: var(--weight-medium);
   text-align: left;
 }
-.channel-row svg { color: var(--text-muted); }
+.channel-row svg { color: var(--text-secondary); flex-shrink: 0; }
 .channel-row:hover { background: var(--bg-hover); color: var(--text-primary); }
-.channel-row.selected { background: var(--bg-selected); color: var(--text-selected); }
-.channel-row.selected svg { color: var(--text-selected); }
+.channel-row.selected { background: var(--accent-soft); color: var(--text-primary); font-weight: var(--weight-medium); }
+.channel-row.selected svg { color: var(--text-secondary); }
 .channel-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .voice-participants-list { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 var(--space-2) var(--space-6); }
 .voice-participant-row {
@@ -1306,7 +1306,7 @@ input[type="checkbox"].switch:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 .voice-status-panel {
-  margin: 0.45rem;
+  margin: var(--panel-inset, 0.5rem);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-lg);
   background: var(--bg-success);
@@ -2100,7 +2100,8 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
   flex-shrink: 0;
 }
 .details-title, .partner-info-title { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
-.details-scroll, .partner-info-content { position: relative; z-index: 2; flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; display: flex; flex-direction: column; }
+.details-scroll, .partner-info-content { position: relative; z-index: 2; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; }
+.details-scroll::-webkit-scrollbar, .partner-info-content::-webkit-scrollbar { display: none; }
 .details-hero { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; padding-bottom: var(--space-4); }
 .details-banner { position: relative; overflow: hidden; width: 100%; height: 7.75rem; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #0F172A)); background-size: cover; background-position: center; flex-shrink: 0; }
 .details-avatar { margin-top: -2.75rem; border-radius: 50%; padding: 4px; background: color-mix(in srgb, var(--pc-1, var(--bg-primary)) 16%, var(--bg-primary)); position: relative; z-index: 1; }
@@ -2259,14 +2260,17 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
   flex-shrink: 0;
   background: var(--bg-sidebar);
   border-radius: var(--panel-radius);
-  padding: var(--space-4) var(--space-3);
+  padding: var(--panel-inset, 0.5rem);
   display: flex;
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
+  scrollbar-width: none;
 }
+.settings-nav::-webkit-scrollbar { display: none; }
 .server-settings-stage .settings-nav {
   width: var(--settings-nav-width, 12.75rem);
+  padding: var(--panel-inset, 0.5rem);
 }
 .settings-nav-footer {
   margin-top: auto;
@@ -2288,21 +2292,21 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
   gap: var(--space-3);
   min-height: 2.5rem;
   padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
   font-size: var(--text-md);
   font-weight: var(--weight-medium);
   text-align: left;
 }
+.settings-nav-item svg { color: var(--text-secondary); flex-shrink: 0; }
 .settings-nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-.settings-nav-item.active { background: var(--bg-selected); color: var(--text-selected); }
+.settings-nav-item.active { background: var(--accent-soft); color: var(--text-primary); font-weight: var(--weight-medium); }
 .settings-nav-item .chevron { margin-left: auto; display: none; color: var(--text-muted); }
 .settings-nav-item.danger { color: var(--danger); }
 .settings-body {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
   padding: var(--space-4);
   background: var(--bg-primary);
   border-radius: var(--panel-radius);
@@ -2319,7 +2323,8 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
   width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-5);
+  row-gap: var(--space-5);
+  column-gap: clamp(2.25rem, 3.5vw, 3.5rem);
   align-items: start;
 }
 .settings-col {
@@ -3113,9 +3118,10 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
   position: absolute; top: 50%; right: var(--space-2); transform: translateY(-50%);
   width: 1.875rem; height: 1.875rem; border-radius: var(--radius-full);
   display: flex; align-items: center; justify-content: center;
-  color: var(--text-secondary); background: var(--bg-elevated);
-  opacity: 0; transition: opacity var(--dur-hover) var(--ease);
+  color: var(--text-secondary); background: transparent;
+  opacity: 0; transition: opacity var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
 }
+.conv-more:hover { background: var(--bg-hover); color: var(--text-secondary); }
 .conv-row:hover .conv-more, .conv-more:focus-visible, .conv-more.active { opacity: 1; }
 @media (hover: none) { .conv-more { opacity: 0.7; } }
 .conv-menu { top: calc(100% - 6px); left: auto; right: var(--space-2); min-width: 15rem; }
@@ -3567,12 +3573,12 @@ html[data-theme="light"][data-surface-tone="dark"] {
   --bg-sidebar: #141821;
   --bg-surface-hover: #1E2432;
   --bg-elevated: #242B3B;
-  --bg-hover: rgba(255, 255, 255, 0.14);
-  --bg-active: rgba(255, 255, 255, 0.24);
+  --bg-hover: rgba(255, 255, 255, 0.09);
+  --bg-active: rgba(255, 255, 255, 0.15);
   --bg-input: rgba(24, 30, 42, 0.84);
   --bg-input-focus: rgba(30, 38, 54, 0.94);
-  --accent-soft: color-mix(in srgb, var(--accent) 26%, #1A202E);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 36%, #1A202E);
+  --accent-soft: color-mix(in srgb, var(--accent) 24%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 34%, transparent);
   --accent-text: color-mix(in srgb, var(--accent) 52%, #FFFFFF);
   --bg-selected: var(--accent-soft);
   --text: #F4F6FA;
@@ -3603,12 +3609,12 @@ html[data-theme="dark"][data-surface-tone="light"] {
   --bg-sidebar: #FFFFFF;
   --bg-surface-hover: #F5F7FA;
   --bg-elevated: #FFFFFF;
-  --bg-hover: rgba(15, 23, 42, 0.08);
-  --bg-active: rgba(15, 23, 42, 0.16);
+  --bg-hover: rgba(15, 23, 42, 0.065);
+  --bg-active: rgba(15, 23, 42, 0.11);
   --bg-input: rgba(255, 255, 255, 0.88);
   --bg-input-focus: #FFFFFF;
-  --accent-soft: color-mix(in srgb, var(--accent) 16%, #FFFFFF);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 26%, #FFFFFF);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 25%, transparent);
   --accent-text: color-mix(in srgb, var(--accent) 78%, #000000);
   --bg-selected: var(--accent-soft);
   --text: #111827;
@@ -3630,27 +3636,27 @@ html[data-theme="dark"][data-surface-tone="light"] {
 }
 
 /* Adaptive Left Rail Contrast (independently tracks the wallpaper directly behind .app-rail) */
-html[data-rail-tone="dark"] .app-rail .rail-item:not(.active):not(.has-logo) {
-  color: rgba(241, 245, 249, 0.86);
+html[data-rail-tone="dark"] .app-rail .rail-item:not(.has-logo),
+html[data-rail-tone="dark"] .app-rail .rail-item:not(.has-logo):hover,
+html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo) {
+  color: rgba(241, 245, 249, 0.90);
 }
 html[data-rail-tone="dark"] .app-rail .rail-item:not(.has-logo):hover {
-  background: rgba(255, 255, 255, 0.16);
-  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.10);
 }
 html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo) {
-  background: rgba(24, 30, 44, 0.86);
-  color: color-mix(in srgb, var(--accent) 55%, #FFFFFF);
+  background: var(--accent-soft);
 }
-html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.active):not(.has-logo) {
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.has-logo),
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.has-logo):hover,
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo) {
   color: #1F2937;
 }
 html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.has-logo):hover {
-  background: rgba(255, 255, 255, 0.84);
-  color: #111827;
+  background: rgba(15, 23, 42, 0.065);
 }
 html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo) {
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--accent-text);
+  background: var(--accent-soft);
 }
 html[data-rail-scrim="true"][data-rail-tone="light"] .app-rail {
   background: rgba(255, 255, 255, 0.78);
@@ -3660,17 +3666,12 @@ html[data-rail-scrim="true"][data-rail-tone="dark"] .app-rail {
   background: rgba(15, 19, 28, 0.74);
   border-radius: var(--panel-radius);
 }
-/* Item 4 (Spec 046): When the rail already renders an outer pill container, never draw a nested box on the active icon */
-html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo),
-html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo):hover {
-  background: transparent !important;
+/* Spec 048: Active rail icon uses translucent theme accent tint (never opaque white frame, never recolors icon) */
+html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo) {
+  background: var(--accent-soft) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   box-shadow: none !important;
-  color: var(--accent-text);
-}
-html[data-rail-scrim="true"][data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo) {
-  color: color-mix(in srgb, var(--accent) 55%, #FFFFFF);
 }
 
 /* ---------- Adjustable translucent white/surface panels (Spec 040, 042 & 045) ---------- */
@@ -3751,18 +3752,17 @@ html[data-panel-scrim="true"] .wallpaper-tile.active,
 html[data-panel-translucent="true"] .theme-card.active,
 html[data-panel-scrim="true"] .theme-card.active {
   background: var(--accent-soft);
-  color: var(--accent-text);
+  color: var(--text-primary);
 }
 html[data-panel-scrim="true"] .settings-nav-item:hover,
 html[data-panel-scrim="true"] .chat-item:hover {
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  background: var(--bg-hover);
 }
 html[data-panel-scrim="true"] .settings-nav-item.active,
 html[data-panel-scrim="true"] .chat-item.active,
 html[data-panel-scrim="true"] .chat-item.selected {
   background: var(--accent-soft);
-  color: var(--accent-text);
-  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
 }
 html[data-panel-translucent="true"] .composer-box::before,
 html[data-panel-glass="true"] .composer-box::before {
@@ -8212,7 +8212,9 @@ html[data-theme="dark"] .cw-dropdown-menu {
   box-sizing: border-box;
   font-family: var(--font-family);
   font-size: var(--text-md);
-  animation: cw-pop-crisp 90ms var(--ease);
+}
+.cw-picker-popover.cw-picker-ready {
+  animation: cw-pop-crisp 80ms var(--ease);
 }
 html[data-theme="dark"] .cw-picker-popover,
 html[data-surface-tone="dark"] .cw-picker-popover {
@@ -8250,8 +8252,8 @@ html[data-surface-tone="dark"] .cw-picker-popover {
 }
 .cw-select-option.selected {
   background: var(--accent-soft);
-  color: var(--accent-text);
-  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  font-weight: var(--weight-regular);
 }
 .cw-select-option-label {
   overflow: hidden;
@@ -8260,7 +8262,7 @@ html[data-surface-tone="dark"] .cw-picker-popover {
 }
 .cw-select-check {
   display: inline-flex;
-  color: var(--accent-text);
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
@@ -8404,14 +8406,14 @@ html[data-surface-tone="dark"] .cw-picker-popover {
   background: var(--bg-hover);
 }
 .cw-dp-day.today {
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font-weight: var(--weight-semibold);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-weight: var(--weight-regular);
 }
 .cw-dp-day.selected {
-  background: var(--accent) !important;
-  color: var(--on-accent) !important;
-  font-weight: var(--weight-semibold);
+  background: var(--accent-soft) !important;
+  color: var(--text-primary) !important;
+  font-weight: var(--weight-regular);
 }
 .cw-dp-foot {
   display: flex;
@@ -8470,35 +8472,61 @@ html[data-surface-tone="dark"] .cw-picker-popover {
   background: var(--bg-hover);
 }
 .cw-tp-item.selected {
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: var(--weight-semibold);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-weight: var(--weight-regular);
 }
 
 /* ==========================================================================
-   Spec 047: Headerless Ultra-Minimal Settings & Zero Inner White Boxes App-Wide
+   Spec 047 & Spec 048: Selective Settings Titles, Zero Inner White Boxes,
+   Initial Chat Loading Spinner & Unified Translucent Hover / Active System
    ========================================================================== */
-/* 1. Remove all redundant page titles, nav section headers & group subheadings inside Settings */
+/* 1. Hide page-level & sidebar section headers inside Settings while showing curated essential .settings-group-title */
 .settings-page .settings-page-title,
 .settings-page .settings-nav-title,
-.settings-page .settings-group-title,
 .settings-page .settings-content > div:has(> .settings-page-title),
 .server-settings-stage .settings-page-title,
 .server-settings-stage .settings-nav-title,
-.server-settings-stage .settings-group-title,
 .server-settings-stage .settings-content > div:has(> .settings-page-title) {
   display: none !important;
 }
+.settings-page .settings-group-title,
+.server-settings-stage .settings-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  margin: 0 0 2px;
+}
 
-/* 2. Remove every nested white / solid card box inside panels across the entire app
+/* 2. Centered initial loading spinner inside chat pane (replaces intro flash while fetching) */
+.chat-loading-initial {
+  flex: 1;
+  min-height: 14rem;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) 0;
+}
+.chat-loading-initial .spinner {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-width: 2.5px;
+  color: var(--text-muted);
+}
+
+/* 3. Remove every nested white / solid card box inside panels across the entire app
    (both default opaque mode AND translucent / glass / wallpaper modes) */
 .settings-list,
 .settings-row,
 .settings-profile-card,
 .settings-avatar-wrapper,
 .settings-preview-chat:not([class*="wp-"]),
-.theme-card:not(.active),
-.wallpaper-tile:not(.active),
+.theme-card:not(.active):not(:hover),
+.wallpaper-tile:not(.active):not(:hover),
 .account-row:not(:hover),
 .security-event,
 .backup-codes,
@@ -8560,54 +8588,230 @@ html[data-surface-tone="dark"] .cw-picker-popover {
 }
 
 .settings-nav-item:not(.active):not(:hover),
-.chat-item:not(.active):not(.selected):not(:hover) {
+.chat-item:not(.active):not(.selected):not(:hover),
+.channel-row:not(.selected):not(:hover) {
   background: transparent !important;
   box-shadow: none !important;
 }
 
-/* Segmented controls: flat minimal (no grey box wrapping a stark white box) */
+/* 4. Unified Spec 048 Interactive State System across the entire app:
+   - Hover: soft translucent grey (var(--bg-hover)), synced with any light/dark/blurred/wallpaper surface
+   - Active / Selected: identical shape tinted with translucent app accent (var(--accent-soft))
+   - 100% ZERO text color change, ZERO icon color/fill change, ZERO bolding on hover/click/active! */
 .segmented {
   background: transparent !important;
   padding: 0 !important;
   gap: 4px;
 }
-.segmented button {
+.segmented button,
+.section-tab,
+.filter-chip,
+.media-tab,
+.picker-tab,
+.theme-card,
+.wallpaper-tile {
   background: transparent;
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
   box-shadow: none !important;
 }
-.segmented button:hover {
-  background: var(--bg-hover);
-}
-.segmented button.active {
-  background: var(--accent-soft) !important;
-  color: var(--accent-text) !important;
+.theme-card:hover,
+.wallpaper-tile:hover,
+.segmented button:hover,
+.section-tab:hover,
+.filter-chip:hover,
+.media-tab:hover,
+.picker-tab:hover,
+.channel-row:hover,
+.chat-item:hover,
+.settings-nav-item:hover,
+.icon-btn:not(.danger):not(.btn-danger):not(.profile-close):hover,
+.sidebar-section-btn:hover,
+.sticker-cell:hover,
+.menu-item:not(.danger):hover,
+.cw-dropdown-item:hover,
+.cw-select-option:hover:not(:disabled),
+.rail-item:not(.has-logo):hover {
+  background: var(--bg-hover) !important;
   box-shadow: none !important;
-  font-weight: var(--weight-semibold);
 }
 
-/* Rail active icon: soft accent tint instead of opaque white square box */
-.rail-item.active:not(.has-logo),
-html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo) {
-  background: var(--accent-soft) !important;
-  color: var(--accent-text) !important;
-  box-shadow: none !important;
-}
-html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo),
-html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo):hover {
-  background: transparent !important;
-}
-
-/* Theme & wallpaper tiles: no white background card; soft accent highlight only when selected */
+/* Active / Selected state: translucent theme accent tint, ZERO text/icon color shift, ZERO bolding */
+.chat-item.selected,
+.chat-item.active,
+.channel-row.selected,
+.settings-nav-item.active,
+.segmented button.active,
+.section-tab.active,
+.filter-chip.active,
+.media-tab.active,
+.picker-tab.active,
 .theme-card.active,
-.wallpaper-tile.active {
+.wallpaper-tile.active,
+.icon-btn.active:not(.danger):not(.btn-danger),
+.rail-item.active:not(.has-logo),
+.cw-select-option.selected {
   background: var(--accent-soft) !important;
-  color: var(--accent-text) !important;
   box-shadow: none !important;
 }
 
-/* Section tabs (Friends / Search / etc.): flat accent tint on active tab, no white pill box */
-.section-tab.active {
-  background: var(--accent-soft) !important;
-  color: var(--accent-text) !important;
-  box-shadow: none !important;
+/* Lock text color so hover / active / selected NEVER shifts text to accent blue or darker grey */
+.chat-item,
+.chat-item:hover,
+.chat-item.selected,
+.chat-item.active,
+.chat-item .chat-item-name,
+.chat-item:hover .chat-item-name,
+.chat-item.selected .chat-item-name,
+.chat-item.active .chat-item-name,
+.channel-row,
+.channel-row:hover,
+.channel-row.selected,
+.settings-nav-item:not(.danger),
+.settings-nav-item:not(.danger):hover,
+.settings-nav-item:not(.danger).active,
+.segmented button,
+.segmented button:hover,
+.segmented button.active,
+.segmented button:active,
+.section-tab,
+.section-tab:hover,
+.section-tab.active,
+.filter-chip,
+.filter-chip:hover,
+.filter-chip.active,
+.media-tab,
+.media-tab:hover,
+.media-tab.active,
+.picker-tab,
+.picker-tab:hover,
+.picker-tab.active,
+.theme-card,
+.theme-card:hover,
+.theme-card.active,
+.wallpaper-tile,
+.wallpaper-tile:hover,
+.wallpaper-tile.active,
+.cw-select-option,
+.cw-select-option:hover,
+.cw-select-option.selected {
+  color: var(--text-primary) !important;
+}
+
+/* Lock icon color & remove interior fill-opacity shift on hover / active / selected */
+.channel-row svg,
+.channel-row:hover svg,
+.channel-row.selected svg,
+.settings-nav-item:not(.danger) svg,
+.settings-nav-item:not(.danger):hover svg,
+.settings-nav-item:not(.danger).active svg,
+.icon-btn:not(.danger):not(.btn-danger):not(.profile-close),
+.icon-btn:not(.danger):not(.btn-danger):not(.profile-close):hover,
+.icon-btn:not(.danger):not(.btn-danger):not(.profile-close).active,
+.icon-btn:not(.danger):not(.btn-danger):not(.profile-close) svg,
+.icon-btn:not(.danger):not(.btn-danger):not(.profile-close):hover svg,
+.icon-btn:not(.danger):not(.btn-danger):not(.profile-close).active svg,
+.sidebar-section-btn,
+.sidebar-section-btn:hover,
+.sidebar-section-btn svg,
+.sidebar-section-btn:hover svg {
+  color: var(--text-secondary) !important;
+}
+.rail-item:not(.has-logo),
+.rail-item:not(.has-logo):hover,
+.rail-item.active:not(.has-logo),
+.rail-item:not(.has-logo) svg,
+.rail-item:not(.has-logo):hover svg,
+.rail-item.active:not(.has-logo) svg {
+  color: var(--text-primary);
+}
+html[data-rail-tone="dark"] .app-rail .rail-item:not(.has-logo),
+html[data-rail-tone="dark"] .app-rail .rail-item:not(.has-logo):hover,
+html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo),
+html[data-rail-tone="dark"] .app-rail .rail-item:not(.has-logo) svg,
+html[data-rail-tone="dark"] .app-rail .rail-item:not(.has-logo):hover svg,
+html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo) svg {
+  color: rgba(241, 245, 249, 0.90) !important;
+}
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.has-logo),
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.has-logo):hover,
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo),
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.has-logo) svg,
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.has-logo):hover svg,
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo) svg {
+  color: #1F2937 !important;
+}
+.rail-item.active .cw-icon [fill-opacity],
+.settings-nav-item.active .cw-icon [fill-opacity],
+.channel-row.selected .cw-icon [fill-opacity],
+.icon-btn.active .cw-icon [fill-opacity] {
+  fill-opacity: 0 !important;
+}
+
+/* Lock font-weight so clicking / activating any button, nav item, tab, chip, or option NEVER bolds text */
+.btn-primary,
+.btn-primary:active,
+.btn-secondary,
+.btn-secondary:active,
+.btn-ghost,
+.btn-ghost:active,
+.btn-small-primary,
+.btn-small-primary:active,
+.btn-small-secondary,
+.btn-small-secondary:active,
+.btn-danger-outline,
+.btn-danger-outline:active,
+.segmented button,
+.segmented button:hover,
+.segmented button:active,
+.segmented button.active,
+.settings-nav-item,
+.settings-nav-item:hover,
+.settings-nav-item:active,
+.settings-nav-item.active,
+.channel-row,
+.channel-row:hover,
+.channel-row:active,
+.channel-row.selected,
+.section-tab,
+.section-tab:hover,
+.section-tab:active,
+.section-tab.active,
+.filter-chip,
+.filter-chip:hover,
+.filter-chip:active,
+.filter-chip.active,
+.media-tab,
+.media-tab:hover,
+.media-tab:active,
+.media-tab.active,
+.picker-tab,
+.picker-tab:hover,
+.picker-tab:active,
+.picker-tab.active,
+.theme-card,
+.theme-card.active,
+.wallpaper-tile,
+.wallpaper-tile.active,
+.cw-dropdown-item,
+.cw-dropdown-item:active,
+.menu-item,
+.menu-item:active {
+  font-weight: var(--weight-medium) !important;
+}
+.chat-item .chat-item-name:not(.unread),
+.chat-item.selected .chat-item-name:not(.unread),
+.chat-item.active .chat-item-name:not(.unread) {
+  font-weight: var(--weight-medium) !important;
+}
+.cw-select-option,
+.cw-select-option:active,
+.cw-select-option.selected,
+.cw-dp-day,
+.cw-dp-day:active,
+.cw-dp-day.selected,
+.cw-tp-item,
+.cw-tp-item:active,
+.cw-tp-item.selected {
+  font-weight: var(--weight-regular) !important;
 }

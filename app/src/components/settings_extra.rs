@@ -48,7 +48,6 @@ pub fn CustomizationSettings() -> Element {
     let p = ctx.prefs.read().clone();
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Thanh lối tắt" }
             div { class: "settings-group-desc", "Chọn những mục bạn muốn ghim lên thanh bên trái để mở nhanh" }
             div { class: "settings-list",
                 Toggle {
@@ -66,7 +65,6 @@ pub fn CustomizationSettings() -> Element {
             }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", "Thông báo và hiệu ứng" }
             div { class: "settings-list",
                 Toggle {
                     label: "Âm báo tin nhắn".to_string(),
@@ -536,7 +534,6 @@ pub fn AccountSecurity(
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Thông tin tài khoản" }
                     div { class: "settings-list",
                         div { class: "settings-row",
                             div { class: "settings-row-text", span { class: "settings-label", "Tên đăng nhập" } span { class: "settings-sublabel", "{username}" } }
@@ -561,7 +558,6 @@ pub fn AccountSecurity(
             }
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Mật khẩu và bảo mật" }
                     div { class: "settings-list",
                         div { class: "settings-row",
                             div { class: "settings-row-text",
@@ -583,7 +579,6 @@ pub fn AccountSecurity(
                 }
                 if !current_user_id.is_empty() {
                     div { class: "settings-group",
-                        div { class: "settings-group-title", "Thông tin định danh" }
                         div { class: "settings-list",
                             div { class: "settings-row",
                                 span { class: "settings-label", "Tên tài khoản" }
@@ -771,7 +766,6 @@ pub fn LibrarySettings(current_user_id: String) -> Element {
         div { class: "guide-hero compact",
             Illustration { kind: "library".to_string() }
             div {
-                div { class: "settings-group-title", "Thư viện của bạn" }
                 div { class: "settings-group-desc", "Sticker, emoji và GIF bạn thêm ở đây dùng được trong mọi cuộc trò chuyện. Tên luôn là tiếng Anh." }
                 div { class: "segmented", role: "tablist",
                     button { r#type: "button", role: "tab", class: if tab() == LibTab::Sticker { "active" } else { "" }, onclick: move |_| tab.set(LibTab::Sticker), "Sticker" }

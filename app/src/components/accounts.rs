@@ -264,7 +264,6 @@ pub fn SecuritySettings() -> Element {
     let enabled = s.as_ref().is_some_and(|s| s.totp_enabled);
     rsx! {
         div { class: "settings-section security-settings",
-            div { class: "settings-group-title", "Tài khoản" }
             p { class: "settings-row-desc", "Tối đa 5 tài khoản. Mỗi tài khoản có khóa mã hóa, cài đặt, chủ đề, thông báo và mã PIN riêng; chuyển nhanh trong menu ảnh đại diện ở góc dưới." }
             div { class: "account-list", "data-drag-group": "account-order",
                 for (i, a) in accounts().into_iter().enumerate() {
@@ -349,7 +348,6 @@ pub fn SecuritySettings() -> Element {
                 }
             }
 
-            div { class: "settings-group-title", "Xác minh hai bước" }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, role: "status", "{m}" } }
             if enabled {
                 div { class: "settings-row",

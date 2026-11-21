@@ -8,7 +8,7 @@ use crate::{
     components::{
         avatar::Avatar,
         chat_extras::WALLPAPER_NAMES,
-        icons::{BellIcon, BlockIcon, ImageIcon, LockIcon},
+        icons::{ImageIcon, LockIcon},
     },
     i18n::{LANGUAGES, t},
     models::{BlockedUser, PrivacySettings},
@@ -93,7 +93,6 @@ pub fn ChatPrefsSettings() -> Element {
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Khi trò chuyện" }
                     Toggle { label: "Bấm hai lần để trả lời", desc: "Bấm đúp cạnh tin nhắn để trả lời nhanh", checked: pr.double_click_reply, on_change: move |v| c.update(|p| p.double_click_reply = v) }
                     Toggle { label: "Nhấn Enter để gửi", desc: "Bấm phím Enter để gửi tin nhắn", checked: pr.enter_to_send, on_change: move |v| c.update(|p| p.enter_to_send = v) }
                     Toggle { label: "Gợi ý hình dán", desc: "Tự gợi ý hình dán khi gõ chữ", checked: pr.sticker_suggest, on_change: move |v| c.update(|p| p.sticker_suggest = v) }
@@ -104,7 +103,6 @@ pub fn ChatPrefsSettings() -> Element {
             }
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Trạng thái" }
                     if let Some(e) = err() { div { class: "status-badge error", "{e}" } }
                     Toggle { label: "Báo đang gõ chữ", desc: "Cho bạn bè biết khi bạn đang soạn tin", checked: pv.typing, disabled: privacy().is_none(),
                         on_change: move |v: bool| save_privacy(privacy, err, json!({ "typing": v })) }
@@ -131,7 +129,6 @@ pub fn NotificationSettings() -> Element {
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", BellIcon {} " Tùy chọn thông báo" }
                     Toggle { label: "Bật thông báo tin nhắn mới", desc: "Báo khi có tin nhắn gửi đến", checked: pr.notify,
                         on_change: move |v: bool| {
                             c.update(|p| p.notify = v);
@@ -159,7 +156,6 @@ pub fn NotificationSettings() -> Element {
             }
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Âm thanh" }
                     Toggle { label: "Phát âm thanh khi có thông báo", checked: pr.sound, on_change: move |v| c.update(|p| p.sound = v) }
                     div { class: "settings-row column-layout",
                         span { class: "settings-label", "Âm báo" }
@@ -191,7 +187,6 @@ pub fn PrivacySettingsPanel() -> Element {
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Ai có thể liên hệ với bạn" }
                     div { class: "settings-row column-layout",
                         span { class: "settings-label", "Ai được gửi lời mời kết bạn" }
                         Segmented { label: "Lời mời kết bạn", value: pv.friend_requests.clone(), options: opts(&[("everyone", "Mọi người"), ("nobody", "Không ai")]),
@@ -215,7 +210,7 @@ pub fn PrivacySettingsPanel() -> Element {
             }
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", BlockIcon { size: 18 } " Danh sách chặn" }
+                    div { class: "settings-group-title", "Danh sách chặn" }
                     p { class: "settings-group-desc", "Người bị chặn không thể nhắn tin hay gọi cho bạn" }
                     if blocked.read().is_empty() { div { class: "sidebar-empty", "Bạn chưa chặn ai" } }
                     for b in blocked() {
@@ -237,7 +232,6 @@ pub fn PrivacySettingsPanel() -> Element {
                     }
                 }
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Bảo vệ tin nhắn" }
                     p { class: "settings-group-desc", "Tin nhắn riêng tư giữa hai người được bảo vệ an toàn, người ngoài và máy chủ không thể đọc được" }
                 }
             }
@@ -350,7 +344,6 @@ pub fn LockSettings(on_lock_now: EventHandler<()>) -> Element {
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", LockIcon { size: 18 } " Khóa ứng dụng" }
                     p { class: "settings-group-desc", "Khóa ứng dụng bằng mật khẩu số để bảo vệ tin nhắn trên máy này" }
                     if has_pin {
                         Toggle { label: "Bật khóa ứng dụng", checked: pr.lock_enabled, on_change: move |v| c.update(|p| p.lock_enabled = v) }
@@ -410,7 +403,6 @@ pub fn AutoReplySettings() -> Element {
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Bật trả lời tự động" }
                     p { class: "settings-group-desc", "Tự động nhắn lại khi có người nhắn tin lúc bạn bận" }
                     Toggle { label: "Bật trả lời tự động", checked: pr.auto_reply, on_change: move |v| c.update(|p| p.auto_reply = v) }
                     div { class: "settings-row column-layout",
@@ -469,7 +461,6 @@ pub fn AppearanceColorsShapes() -> Element {
     let other_val = if pr.bubble_other.is_empty() { "#EEF1F5".to_string() } else { pr.bubble_other.clone() };
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Màu sắc nâng cao" }
             div { class: "settings-row",
                 span { class: "grow", span { class: "settings-label", "Màu nhấn tùy chọn" } span { class: "settings-row-desc", "Thay cho bảng màu nhấn có sẵn" } }
                 input { r#type: "color", aria_label: "Màu nhấn", value: "{accent_val}", onchange: move |e| { let v = e.value().to_uppercase(); c.update(move |p| p.custom_accent = v) } }
@@ -487,7 +478,6 @@ pub fn AppearanceColorsShapes() -> Element {
             }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", "Hình dạng và bố cục" }
             div { class: "settings-row column-layout",
                 span { class: "settings-label", "Bong bóng" }
                 Segmented { label: "Bong bóng", value: pr.bubble_shape.clone(), options: opts(&[("round", "Tròn"), ("soft", "Mềm"), ("square", "Vuông"), ("leaf", "Chiếc lá")]), on_change: move |v: String| c.update(|p| p.bubble_shape = v) }
@@ -703,7 +693,6 @@ pub fn SyncMotionSettings() -> Element {
     let version = crate::services::settings_sync::known_version();
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Đồng bộ và chuyển động" }
             Toggle {
                 label: "Đồng bộ cài đặt với các máy khác",
                 desc: "Lưu cài đặt của bạn để dùng trên máy khác",

@@ -264,6 +264,7 @@ pub fn MessageList(
     /// Older history pagination state (Spec 046: load newest first, scroll up for older).
     #[props(default)] has_more: bool,
     #[props(default)] loading_more: bool,
+    #[props(default)] loading_initial: bool,
     #[props(default)] on_load_more: Option<EventHandler<()>>,
 ) -> Element {
     let mut full_picker_for = use_signal(|| Option::<String>::None);
@@ -320,7 +321,11 @@ pub fn MessageList(
             },
             div { class: "message-stream",
                 div { class: "message-stream-start" }
-                if loading_more {
+                if loading_initial && messages.is_empty() {
+                    div { class: "chat-loading-initial", role: "status", aria_label: "Đang tải tin nhắn",
+                        span { class: "spinner" }
+                    }
+                } else if loading_more {
                     div { class: "load-older-bar",
                         span { class: "spinner" }
                         span { "Đang tải tin nhắn cũ hơn" }
