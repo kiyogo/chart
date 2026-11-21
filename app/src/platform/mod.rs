@@ -531,6 +531,7 @@ if (!window.__chatwRecomputeContrast) {
                 ctx.drawImage(img, 0, 0, sz, sz);
                 const data = ctx.getImageData(0, 0, sz, sz).data;
                 let sum = 0, sumSq = 0, railSum = 0, railN = 0, edgeSum = 0;
+                let leftMainSum = 0, leftMainN = 0, rightMainSum = 0, rightMainN = 0;
                 let darkCount = 0, brightCount = 0;
                 let rSum = 0, gSum = 0, bSum = 0;
                 const total = sz * sz;
@@ -545,9 +546,11 @@ if (!window.__chatwRecomputeContrast) {
                         sum += b;
                         sumSq += b * b;
                         rSum += r; gSum += g; bSum += bl;
-                        if (b < 0.28) darkCount++;
-                        if (b > 0.72) brightCount++;
+                        if (b < 0.30) darkCount++;
+                        if (b > 0.70) brightCount++;
                         if (x < 7) { railSum += b; railN++; }
+                        else if (x < 28) { leftMainSum += b; leftMainN++; }
+                        else { rightMainSum += b; rightMainN++; }
                         if (x > 0) edgeSum += Math.abs(b - grid[p - 1]);
                         if (y > 0) edgeSum += Math.abs(b - grid[p - sz]);
                     }
@@ -558,6 +561,8 @@ if (!window.__chatwRecomputeContrast) {
                 window.__chatwWpMetrics[url] = {
                     meanB,
                     railB: railN ? (railSum / railN) : meanB,
+                    leftMainB: leftMainN ? (leftMainSum / leftMainN) : meanB,
+                    rightMainB: rightMainN ? (rightMainSum / rightMainN) : meanB,
                     stdB: Math.sqrt(variance),
                     edgeB,
                     darkRatio: darkCount / total,
@@ -662,14 +667,13 @@ if (!window.__chatwRecomputeContrast) {
 
         const surfaceTone = (c.wpKind === 'none' && alpha >= 0.99)
             ? baseTheme
-            : (panelEffectiveB < 0.48 ? 'dark' : 'light');
-        const railTone = (c.wpKind === 'none' && alpha >= 0.99)
-            ? baseTheme
-            : (panelEffectiveB < 0.48 ? 'dark' : 'light');
+            : ((panelEffectiveB < 0.48 || (c.wpKind === 'image' && alpha < 0.55 && darkRatio > 0.52)) ? 'dark' : 'light');
+        const railTone = surfaceTone;
         const wpBusy = (c.wpKind === 'image' && (stdB > 0.13 || edgeB > 0.045 || (darkRatio > 0.15 && brightRatio > 0.15))) || (c.wpKind !== 'none' && transparency > 0.35);
         const panelScrim = (c.wpKind !== 'none' || transparency > 0.15) && (alpha < 0.85 || (wpBusy && alpha < 0.94));
         const railScrim = panelScrim;
-        const needsHalo = transparency >= 0.15 || (c.wpKind !== 'none' && alpha < 0.92);
+        // Activate deep black ink + soft dark glow behind text once transparency reaches >= 20%
+        const needsHalo = transparency >= 0.20;
 
         root.setAttribute('data-surface-tone', surfaceTone);
         root.setAttribute('data-rail-tone', railTone);
@@ -678,26 +682,64 @@ if (!window.__chatwRecomputeContrast) {
         root.setAttribute('data-rail-scrim', String(railScrim));
         root.setAttribute('data-text-halo', String(needsHalo));
 
+        // Extract dominant wallpaper color for subtle UI harmony
+        let domHex = '#64748B';
+        if (c.wpKind === 'image' && window.__chatwWpMetrics[c.wpImageUrl]?.domHex) {
+            domHex = window.__chatwWpMetrics[c.wpImageUrl].domHex;
+        } else if (c.wpKind === 'color' && parseHex(c.wpColor)) {
+            domHex = c.wpColor;
+        }
+        root.style.setProperty('--wp-dom-color', domHex);
+
+        // For uploaded high-contrast images with dark patches (like black hair / dark dress),
+        // maintain a subtle protective veil floor so deep black text + dark glow never lands on 0%-lifted pitch black.
+        if (c.wpKind === 'image' && (darkRatio > 0.10 || stdB > 0.14)) {
+            const minVeilPct = Math.min(24, Math.max(14, Math.round((darkRatio * 42 + stdB * 30) * 100)));
+            const reqPct = Math.round(alpha * 100);
+            root.style.setProperty('--panel-opacity', `${Math.max(minVeilPct, reqPct)}%`);
+        } else if (c.panelOpacity != null) {
+            root.style.setProperty('--panel-opacity', `${Math.round(alpha * 100)}%`);
+        }
+
         if (needsHalo) {
-            const strength = Math.min(1, Math.max(0.35, transparency * 1.15 + (wpBusy ? 0.25 : 0)));
+            // Smooth ramp from 20% transparency (0.0) to 100% transparency (1.0)
+            const ramp = Math.min(1, Math.max(0, (transparency - 0.20) / 0.80));
+            const strength = Math.min(1, 0.25 + ramp * 0.75 + (wpBusy ? 0.12 : 0));
+            // Soft dark/black glow behind text (NEVER white rgba(255,255,255,...) which makes dark text look chalky and washed-out!)
             if (surfaceTone === 'light') {
-                const darkGlowA = (0.48 * strength).toFixed(2);
-                const darkSoftA = (0.30 * strength).toFixed(2);
-                const lightRimA = (0.94 * strength).toFixed(2);
+                const coreA = (0.42 * strength).toFixed(2);
+                const glowA = (0.26 * strength).toFixed(2);
+                const outerA = (0.16 * strength).toFixed(2);
                 root.style.setProperty(
                     '--adaptive-text-halo',
-                    `0 0 8px rgba(255, 255, 255, ${lightRimA}), 0 0 3px rgba(255, 255, 255, ${lightRimA}), 0 1px 4px rgba(0, 0, 0, ${darkGlowA}), 0 2px 10px rgba(0, 0, 0, ${darkSoftA})`
+                    `0 1px 2px rgba(0, 0, 0, ${coreA}), 0 0 6px rgba(0, 0, 0, ${glowA}), 0 2px 11px rgba(0, 0, 0, ${outerA})`
                 );
             } else {
-                const darkCoreA = (0.94 * strength).toFixed(2);
-                const darkOuterA = (0.78 * strength).toFixed(2);
+                const darkCoreA = (0.90 * strength).toFixed(2);
+                const darkGlowA = (0.70 * strength).toFixed(2);
+                const darkOuterA = (0.48 * strength).toFixed(2);
                 root.style.setProperty(
                     '--adaptive-text-halo',
-                    `0 1px 3px rgba(0, 0, 0, ${darkCoreA}), 0 0 8px rgba(0, 0, 0, ${darkOuterA}), 0 2px 14px rgba(0, 0, 0, ${darkOuterA})`
+                    `0 1px 2px rgba(0, 0, 0, ${darkCoreA}), 0 0 8px rgba(0, 0, 0, ${darkGlowA}), 0 2px 14px rgba(0, 0, 0, ${darkOuterA})`
                 );
             }
+            const ctrlAlpha = Math.min(0.72, Math.max(0.28, transparency * 0.58));
+            root.style.setProperty(
+                '--adaptive-ctrl-bg',
+                surfaceTone === 'light'
+                    ? `color-mix(in srgb, #FFFFFF ${Math.round(ctrlAlpha * 100)}%, transparent)`
+                    : `color-mix(in srgb, #0F172A ${Math.round(ctrlAlpha * 100)}%, transparent)`
+            );
+            root.style.setProperty(
+                '--adaptive-ctrl-border',
+                surfaceTone === 'light'
+                    ? 'rgba(15, 23, 42, 0.18)'
+                    : 'rgba(255, 255, 255, 0.22)'
+            );
         } else {
             root.style.removeProperty('--adaptive-text-halo');
+            root.style.removeProperty('--adaptive-ctrl-bg');
+            root.style.removeProperty('--adaptive-ctrl-border');
         }
 
         const surfaceBgHex = surfaceTone === 'dark' ? '#171B24' : '#FFFFFF';

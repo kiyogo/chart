@@ -3727,7 +3727,7 @@ html[data-panel-scrim="true"][data-surface-tone="light"] .settings-body,
 html[data-panel-scrim="true"][data-surface-tone="light"] .settings-nav,
 html[data-panel-scrim="true"][data-surface-tone="light"] .nav-sidebar,
 html[data-panel-scrim="true"][data-surface-tone="light"] .chat-header {
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
 }
 html[data-panel-scrim="true"][data-surface-tone="dark"] .settings-body,
 html[data-panel-scrim="true"][data-surface-tone="dark"] .settings-nav,
@@ -9643,17 +9643,17 @@ html[data-panel-glass="true"] .app-rail:not(:has(.modal-overlay, .settings-modal
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }
 
-/* 5. Adaptive Contrast & Dark/Dual-Polarity Halo Over Transparent/Wallpaper Panels (Image 9) */
+/* 5. Adaptive Contrast & Razor-Sharp Single-Polarity Halo Over Transparent/Wallpaper Panels (Image 9) */
 html[data-text-halo="true"][data-surface-tone="light"] {
-  --text: #04060C;
-  --text-primary: #04060C;
-  --text-secondary: #0F172A;
+  --text: #000000;
+  --text-primary: #000000;
+  --text-secondary: #0B1120;
   --text-muted: #1E293B;
 }
 html[data-text-halo="true"][data-surface-tone="dark"] {
   --text: #FFFFFF;
   --text-primary: #FFFFFF;
-  --text-secondary: #E2E8F0;
+  --text-secondary: #F1F5F9;
   --text-muted: #CBD5E1;
 }
 html[data-text-halo="true"] .settings-body,
@@ -9671,6 +9671,24 @@ html[data-text-halo="true"] .download-page,
 html[data-text-halo="true"] .search-page {
   text-shadow: var(--adaptive-text-halo) !important;
 }
+html[data-text-halo="true"] .settings-label,
+html[data-text-halo="true"] .wallpaper-tile span {
+  font-weight: var(--weight-medium);
+}
+html[data-text-halo="true"] .btn-secondary,
+html[data-text-halo="true"] .btn-ghost,
+html[data-text-halo="true"] .segmented button:not(.active) {
+  background: var(--adaptive-ctrl-bg, rgba(255, 255, 255, 0.65)) !important;
+  border: 1px solid var(--adaptive-ctrl-border, rgba(15, 23, 42, 0.15)) !important;
+}
+html[data-text-halo="true"] input[type="checkbox"].switch:not(:checked) {
+  background: rgba(15, 23, 42, 0.30) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+html[data-text-halo="true"][data-surface-tone="dark"] input[type="checkbox"].switch:not(:checked) {
+  background: rgba(255, 255, 255, 0.28) !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
 .chat-column[data-chat-tone="dark"] .chat-header,
 .chat-column[data-chat-tone="dark"] .chat-header .chat-header-title,
 .chat-column[data-chat-tone="dark"] .chat-header .chat-header-meta,
@@ -9683,7 +9701,7 @@ html[data-text-halo="true"] .search-page {
 .chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header,
 .chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header .chat-header-title,
 .chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header .chat-header-meta {
-  text-shadow: 0 0 8px rgba(255, 255, 255, 0.95), 0 1px 4px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42), 0 0 6px rgba(0, 0, 0, 0.24);
 }
 
 /* 6. Full-Bleed <input type="color"> Swatch (zero inner black border) & Framed .btn-ghost Everywhere (Images 5, 11, 12) */

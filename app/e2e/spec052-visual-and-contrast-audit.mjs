@@ -299,10 +299,12 @@ try {
     };
   });
   record(
-    'Left Rail (.app-rail) opacity synchronizes 100% with .settings-nav and Adaptive Contrast Engine activates dark+light text halo',
+    'Left Rail (.app-rail) opacity synchronizes 100% with .settings-nav and Adaptive Contrast Engine activates deep black ink + soft dark glow (zero white haze)',
     railAndHaloAudit.railBg === railAndHaloAudit.navBg &&
       railAndHaloAudit.textHaloAttr === 'true' &&
-      railAndHaloAudit.bodyTextShadow !== 'none',
+      railAndHaloAudit.textPrimaryColor === 'rgb(0, 0, 0)' &&
+      railAndHaloAudit.bodyTextShadow.includes('rgba(0, 0, 0') &&
+      !railAndHaloAudit.bodyTextShadow.includes('255, 255, 255'),
     JSON.stringify(railAndHaloAudit)
   );
 
