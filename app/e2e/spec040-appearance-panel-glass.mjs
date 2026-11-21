@@ -175,6 +175,7 @@ try {
       headerBorder: headerCs ? headerCs.borderBottomWidth : null,
       headerBeforeDisplay: headerBeforeCs ? headerBeforeCs.display : null,
       composerBeforeBlur: composerBeforeCs ? composerBeforeCs.backdropFilter : null,
+      composerBeforeBg: composerBeforeCs ? composerBeforeCs.backgroundImage : null,
     };
   });
   record(
@@ -191,9 +192,11 @@ try {
     JSON.stringify({ headerBg: chatGlass.headerBg, headerBeforeDisplay: chatGlass.headerBeforeDisplay }),
   );
   record(
-    'Chat composer has faint frosted white translucent mist blur backdrop',
-    chatGlass.composerBeforeBlur && chatGlass.composerBeforeBlur.includes('blur(14px)'),
-    `composerBeforeBlur=${chatGlass.composerBeforeBlur}`,
+    'Chat composer has sheer low-% white gradient with zero blur ("chỉ có trắng thôi % ít không có mờ")',
+    chatGlass.composerBeforeBg &&
+      chatGlass.composerBeforeBg.includes('linear-gradient') &&
+      (chatGlass.composerBeforeBlur === 'none' || !chatGlass.composerBeforeBlur),
+    `bg=${chatGlass.composerBeforeBg}, blur=${chatGlass.composerBeforeBlur}`,
   );
   await page.screenshot({ path: path.join(OUT, '02_chat_translucent_glass_ocean.png') });
 
