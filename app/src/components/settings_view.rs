@@ -469,15 +469,25 @@ pub fn SettingsView(
 
                                 div { class: "settings-group",
                                     div { class: "settings-group-title", "Xem trước" }
-                                    div { class: "settings-preview-chat",
-                                        div { class: "message-row received group-start group-end",
-                                            div { class: "message-content-wrapper",
-                                                div { class: "message-bubble", "Bố cục mới dễ đọc hơn nhiều trên màn hình lớn." span { class: "bubble-meta", "09:41" } }
-                                            }
-                                        }
-                                        div { class: "message-row sent group-start group-end",
-                                            div { class: "message-content-wrapper",
-                                                div { class: "message-bubble", "Đồng ý, cỡ chữ và màu nhấn đổi ngay lập tức." span { class: "bubble-meta", "09:42" } }
+                                    {
+                                        let preview_wp = prefs_ctx.prefs.read().wallpaper.clone();
+                                        let preview_cls = if preview_wp.is_empty() || preview_wp == "none" {
+                                            "settings-preview-chat".to_string()
+                                        } else {
+                                            format!("settings-preview-chat wp-{preview_wp}")
+                                        };
+                                        rsx! {
+                                            div { class: "{preview_cls}",
+                                                div { class: "message-row received group-start group-end",
+                                                    div { class: "message-content-wrapper",
+                                                        div { class: "message-bubble", "Chữ và màu nền tự cân bằng rất dễ đọc." span { class: "bubble-meta", "09:41" } }
+                                                    }
+                                                }
+                                                div { class: "message-row sent group-start group-end",
+                                                    div { class: "message-content-wrapper",
+                                                        div { class: "message-bubble", "Đẹp và rõ nét ở mọi kiểu giao diện." span { class: "bubble-meta", "09:42" } }
+                                                    }
+                                                }
                                             }
                                         }
                                     }

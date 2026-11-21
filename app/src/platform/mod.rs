@@ -359,33 +359,292 @@ fn hex_luminance(hex: &str) -> f64 {
     0.2126 * lin(ch(0)) + 0.7152 * lin(ch(2)) + 0.0722 * lin(ch(4))
 }
 
-/// Readable text colour on top of a custom background colour.
+/// Readable text colour on top of a custom background colour (exact WCAG 2.1 contrast).
 pub fn contrast_text(hex: &str) -> &'static str {
-    if hex_luminance(hex) > 0.42 { "#111419" } else { "#FFFFFF" }
+    let lum = hex_luminance(hex);
+    let c_white = (1.0 + 0.05) / (lum + 0.05);
+    let c_dark = (lum + 0.05) / (0.0085 + 0.05);
+    if c_dark > c_white { "#0F172A" } else { "#FFFFFF" }
 }
+
+/// Real-time adaptive contrast, wallpaper pixel luminance sampler, and WCAG 2.1
+/// color compensator shared by `apply_appearance` and `apply_customization` (Spec 045).
+const CONTRAST_ENGINE_JS: &str = r#"
+if (!window.__chatwRecomputeContrast) {
+    window.__chatwWpMetrics = window.__chatwWpMetrics || {};
+    const parseHex = (hex) => {
+        if (!hex || typeof hex !== 'string') return null;
+        const h = hex.trim().replace(/^#/, '');
+        if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+        return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    };
+    const toHex = (r, g, b) => '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
+    const srgbB = (r, g, b) => (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const wcagLum = (r, g, b) => {
+        const lin = (v) => {
+            const c = v / 255;
+            return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    };
+    const contrast = (l1, l2) => (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    const rgbToHsl = (r, g, b) => {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h = 0, s = 0;
+        const l = (max + min) / 2;
+        if (max !== min) {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+            else if (max === g) h = ((b - r) / d + 2) * 60;
+            else h = ((r - g) / d + 4) * 60;
+        }
+        return [h, s, l];
+    };
+    const hslToRgb = (h, s, l) => {
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = l - c / 2;
+        let r = 0, g = 0, b = 0;
+        if (h < 60) { r = c; g = x; }
+        else if (h < 120) { r = x; g = c; }
+        else if (h < 180) { g = c; b = x; }
+        else if (h < 240) { g = x; b = c; }
+        else if (h < 300) { r = x; b = c; }
+        else { r = c; b = x; }
+        return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+    };
+    const pickInk = (r, g, b) => {
+        const lum = wcagLum(r, g, b);
+        const cWhite = contrast(1.0, lum);
+        const cDark = contrast(lum, 0.0085);
+        return cDark > cWhite
+            ? { text: '#0F172A', meta: 'rgba(15, 23, 42, 0.68)' }
+            : { text: '#FFFFFF', meta: 'rgba(255, 255, 255, 0.80)' };
+    };
+    const tuneLightness = (hex, bgLum, minRatio, towardDark, capSat) => {
+        const rgb = parseHex(hex);
+        if (!rgb) return hex;
+        if (contrast(wcagLum(rgb[0], rgb[1], rgb[2]), bgLum) >= minRatio) return hex;
+        const [h, s0, l0] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+        let lo = towardDark ? 0.05 : l0;
+        let hi = towardDark ? l0 : 0.94;
+        let best = towardDark ? 0.05 : 0.94;
+        for (let i = 0; i < 16; i++) {
+            const mid = (lo + hi) / 2;
+            const s = (capSat && towardDark && mid < 0.45) ? Math.min(s0, 0.82) : s0;
+            const [r, g, b] = hslToRgb(h, s, mid);
+            const ok = contrast(wcagLum(r, g, b), bgLum) >= minRatio;
+            if (towardDark) {
+                if (ok) { best = mid; lo = mid; } else { hi = mid; }
+            } else {
+                if (ok) { best = mid; hi = mid; } else { lo = mid; }
+            }
+        }
+        const sFinal = (capSat && towardDark && best < 0.45) ? Math.min(s0, 0.82) : s0;
+        const [r, g, b] = hslToRgb(h, sFinal, best);
+        return toHex(r, g, b);
+    };
+    const ensureSeparation = (hex, bgHex, minRatio) => {
+        const rgb = parseHex(hex);
+        const bg = parseHex(bgHex);
+        if (!rgb || !bg) return hex;
+        const bgLum = wcagLum(bg[0], bg[1], bg[2]);
+        if (contrast(wcagLum(rgb[0], rgb[1], rgb[2]), bgLum) >= minRatio) return hex;
+        const target = bgLum > 0.45 ? [148, 163, 184] : [180, 196, 224];
+        for (let t = 0.08; t <= 0.42; t += 0.04) {
+            const nr = rgb[0] * (1 - t) + target[0] * t;
+            const ng = rgb[1] * (1 - t) + target[1] * t;
+            const nb = rgb[2] * (1 - t) + target[2] * t;
+            if (contrast(wcagLum(nr, ng, nb), bgLum) >= minRatio) return toHex(nr, ng, nb);
+        }
+        return toHex(rgb[0] * 0.72 + target[0] * 0.28, rgb[1] * 0.72 + target[1] * 0.28, rgb[2] * 0.72 + target[2] * 0.28);
+    };
+    const sampleImage = (url) => {
+        if (!url || window.__chatwWpMetrics[url] || window.__chatwWpMetrics['__pending_' + url]) return;
+        window.__chatwWpMetrics['__pending_' + url] = true;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            try {
+                const sz = 32;
+                const canvas = document.createElement('canvas');
+                canvas.width = sz; canvas.height = sz;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(img, 0, 0, sz, sz);
+                const data = ctx.getImageData(0, 0, sz, sz).data;
+                let sum = 0, sumSq = 0, railSum = 0, railN = 0;
+                const total = sz * sz;
+                for (let y = 0; y < sz; y++) {
+                    for (let x = 0; x < sz; x++) {
+                        const idx = (y * sz + x) * 4;
+                        const b = srgbB(data[idx], data[idx + 1], data[idx + 2]);
+                        sum += b;
+                        sumSq += b * b;
+                        if (x < 5) { railSum += b; railN++; }
+                    }
+                }
+                const meanB = sum / total;
+                const variance = Math.max(0, (sumSq / total) - meanB * meanB);
+                window.__chatwWpMetrics[url] = {
+                    meanB,
+                    railB: railN ? (railSum / railN) : meanB,
+                    stdB: Math.sqrt(variance),
+                };
+            } catch (_) {
+                window.__chatwWpMetrics[url] = { meanB: 0.44, railB: 0.44, stdB: 0.24 };
+            }
+            delete window.__chatwWpMetrics['__pending_' + url];
+            window.__chatwRecomputeContrast();
+        };
+        img.onerror = () => {
+            window.__chatwWpMetrics[url] = { meanB: 0.44, railB: 0.44, stdB: 0.24 };
+            delete window.__chatwWpMetrics['__pending_' + url];
+            window.__chatwRecomputeContrast();
+        };
+        img.src = url;
+    };
+
+    window.__chatwRecomputeContrast = () => {
+        const root = document.documentElement;
+        const baseTheme = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        const c = window.__chatwCustom || {
+            wpKind: 'none', wpColor: '', wpImageUrl: '', dim: 0,
+            panelOpacity: 100, panelGlass: false,
+            customAccent: '', bubbleSelf: '', bubbleOther: '',
+        };
+        const shellB = baseTheme === 'dark' ? 0.06 : 0.93;
+        const panelBaseB = baseTheme === 'dark' ? 0.12 : 1.0;
+        let meanB = shellB, railB = shellB, stdB = 0.0;
+
+        if (c.wpKind === 'preset-night') {
+            meanB = 0.07; railB = 0.07; stdB = 0.04;
+        } else if (c.wpKind === 'preset-dots') {
+            meanB = baseTheme === 'dark' ? 0.08 : 0.92; railB = meanB; stdB = 0.05;
+        } else if (c.wpKind === 'preset-paper') {
+            meanB = baseTheme === 'dark' ? 0.44 : 0.91; railB = meanB; stdB = 0.02;
+        } else if (c.wpKind === 'preset-bubbles') {
+            meanB = baseTheme === 'dark' ? 0.14 : 0.88; railB = meanB; stdB = 0.08;
+        } else if (c.wpKind === 'preset-aurora') {
+            meanB = baseTheme === 'dark' ? 0.20 : 0.84; railB = meanB; stdB = 0.10;
+        } else if (c.wpKind === 'preset-ocean') {
+            meanB = baseTheme === 'dark' ? 0.22 : 0.77; railB = meanB; stdB = 0.08;
+        } else if (c.wpKind === 'preset-mint') {
+            meanB = baseTheme === 'dark' ? 0.23 : 0.85; railB = meanB; stdB = 0.08;
+        } else if (c.wpKind === 'preset-sunset') {
+            meanB = baseTheme === 'dark' ? 0.20 : 0.74; railB = meanB; stdB = 0.09;
+        } else if (c.wpKind === 'color') {
+            const rgb = parseHex(c.wpColor);
+            meanB = rgb ? srgbB(rgb[0], rgb[1], rgb[2]) : shellB;
+            railB = meanB; stdB = 0.0;
+        } else if (c.wpKind === 'image') {
+            const cached = window.__chatwWpMetrics[c.wpImageUrl];
+            if (cached) {
+                meanB = cached.meanB; railB = cached.railB; stdB = cached.stdB;
+            } else {
+                sampleImage(c.wpImageUrl);
+                meanB = 0.46; railB = 0.46; stdB = 0.26;
+            }
+        }
+
+        const effDim = c.wpKind === 'none' ? 0 : Math.max(0, Math.min(80, Number(c.dim) || 0)) / 100;
+        const alpha = Math.max(0, Math.min(100, c.panelOpacity == null ? 100 : Number(c.panelOpacity))) / 100;
+        const backdropB = meanB * (1 - effDim);
+        const railBackdropB = railB * (1 - effDim);
+        const panelEffectiveB = (1 - alpha) * backdropB + alpha * panelBaseB;
+
+        const surfaceTone = (c.wpKind === 'none' && alpha >= 0.99)
+            ? baseTheme
+            : (panelEffectiveB < 0.48 ? 'dark' : 'light');
+        const railTone = c.wpKind === 'none'
+            ? baseTheme
+            : (railBackdropB < 0.50 ? 'dark' : 'light');
+        const wpBusy = c.wpKind === 'image' && stdB > 0.15;
+        const panelScrim = c.wpKind !== 'none' && (alpha < 0.72 || (wpBusy && alpha < 0.88));
+        const railScrim = wpBusy && effDim < 0.55;
+
+        root.setAttribute('data-surface-tone', surfaceTone);
+        root.setAttribute('data-rail-tone', railTone);
+        root.setAttribute('data-wp-busy', String(wpBusy));
+        root.setAttribute('data-panel-scrim', String(panelScrim));
+        root.setAttribute('data-rail-scrim', String(railScrim));
+
+        const surfaceBgHex = surfaceTone === 'dark' ? '#171B24' : '#FFFFFF';
+        const surfaceBgLum = surfaceTone === 'dark' ? 0.014 : 1.0;
+
+        let accentInk = null;
+        if (c.customAccent && parseHex(c.customAccent)) {
+            const safeAccent = tuneLightness(
+                c.customAccent,
+                surfaceBgLum,
+                surfaceTone === 'light' ? 4.75 : 4.0,
+                surfaceTone === 'light',
+                true,
+            );
+            const safeText = tuneLightness(c.customAccent, surfaceBgLum, 5.4, surfaceTone === 'light', true);
+            const aRgb = parseHex(safeAccent);
+            accentInk = pickInk(aRgb[0], aRgb[1], aRgb[2]);
+            root.style.setProperty('--accent', safeAccent);
+            root.style.setProperty('--accent-hover', surfaceTone === 'dark'
+                ? `color-mix(in srgb, ${safeAccent} 86%, #FFFFFF)`
+                : `color-mix(in srgb, ${safeAccent} 86%, #000000)`);
+            root.style.setProperty('--on-accent', accentInk.text);
+            root.style.setProperty('--accent-text', safeText);
+            root.style.setProperty('--accent-soft', surfaceTone === 'dark'
+                ? `color-mix(in srgb, ${safeAccent} 24%, #1A1F29)`
+                : `color-mix(in srgb, ${safeAccent} 14%, #FFFFFF)`);
+            root.style.setProperty('--accent-soft-strong', surfaceTone === 'dark'
+                ? `color-mix(in srgb, ${safeAccent} 34%, #1A1F29)`
+                : `color-mix(in srgb, ${safeAccent} 24%, #FFFFFF)`);
+        } else {
+            ['--accent', '--accent-hover', '--on-accent', '--accent-text', '--accent-soft', '--accent-soft-strong']
+                .forEach((k) => root.style.removeProperty(k));
+        }
+
+        if (c.bubbleSelf && parseHex(c.bubbleSelf)) {
+            const safeSelf = ensureSeparation(c.bubbleSelf, surfaceBgHex, 1.18);
+            const rgb = parseHex(safeSelf);
+            const ink = pickInk(rgb[0], rgb[1], rgb[2]);
+            root.style.setProperty('--msg-sent', safeSelf);
+            root.style.setProperty('--msg-sent-text', ink.text);
+            root.style.setProperty('--msg-sent-meta', ink.meta);
+        } else if (accentInk) {
+            root.style.removeProperty('--msg-sent');
+            root.style.removeProperty('--msg-sent-text');
+            root.style.setProperty('--msg-sent-meta', accentInk.meta);
+        } else {
+            ['--msg-sent', '--msg-sent-text', '--msg-sent-meta'].forEach((k) => root.style.removeProperty(k));
+        }
+
+        if (c.bubbleOther && parseHex(c.bubbleOther)) {
+            const safeOther = ensureSeparation(c.bubbleOther, surfaceBgHex, 1.18);
+            const rgb = parseHex(safeOther);
+            const ink = pickInk(rgb[0], rgb[1], rgb[2]);
+            root.style.setProperty('--msg-recv', safeOther);
+            root.style.setProperty('--msg-recv-text', ink.text);
+            root.style.setProperty('--msg-recv-meta', ink.meta);
+        } else {
+            ['--msg-recv', '--msg-recv-text', '--msg-recv-meta'].forEach((k) => root.style.removeProperty(k));
+        }
+    };
+}
+"#;
 
 /// Apply the user's deep customisation (custom accent, bubbles, shapes, widths,
 /// fonts, app wallpaper). Values are validated by `Prefs::sanitize` first.
 pub fn apply_customization(p: &crate::prefs::Prefs) {
-    let (wp_kind, wp_value) = if p.app_wallpaper.is_empty() {
-        ("none".to_string(), String::new())
+    let (wp_kind, wp_value, wp_raw_url) = if p.app_wallpaper.is_empty() {
+        ("none".to_string(), String::new(), String::new())
     } else if let Some(c) = p.app_wallpaper.strip_prefix("color:") {
-        ("color".to_string(), c.to_string())
+        ("color".to_string(), c.to_string(), String::new())
     } else if p.app_wallpaper.starts_with("/uploads/media/") {
-        ("image".to_string(), format!("url('{}')", resolve_asset_url(&p.app_wallpaper)))
+        let resolved = resolve_asset_url(&p.app_wallpaper);
+        ("image".to_string(), format!("url('{}')", resolved), resolved)
     } else {
-        (format!("preset-{}", p.app_wallpaper), String::new())
+        (format!("preset-{}", p.app_wallpaper), String::new(), String::new())
     };
     let vars = serde_json::json!({
-        "--accent": p.custom_accent,
-        "--accent-hover": if p.custom_accent.is_empty() { String::new() } else { format!("color-mix(in srgb, {} 86%, #000)", p.custom_accent) },
-        "--accent-soft": if p.custom_accent.is_empty() { String::new() } else { format!("color-mix(in srgb, {} 14%, transparent)", p.custom_accent) },
-        "--accent-soft-strong": if p.custom_accent.is_empty() { String::new() } else { format!("color-mix(in srgb, {} 24%, transparent)", p.custom_accent) },
-        "--on-accent": if p.custom_accent.is_empty() { "" } else { contrast_text(&p.custom_accent) },
-        "--msg-sent": p.bubble_self,
-        "--msg-sent-text": if p.bubble_self.is_empty() { "" } else { contrast_text(&p.bubble_self) },
-        "--msg-recv": p.bubble_other,
-        "--msg-recv-text": if p.bubble_other.is_empty() { "" } else { contrast_text(&p.bubble_other) },
         "--app-wp-color": if wp_kind == "color" { wp_value.clone() } else { String::new() },
         "--app-wp-image": if wp_kind == "image" { wp_value.clone() } else { String::new() },
         "--app-wp-dim": format!("{}", p.app_wallpaper_dim as f32 / 100.0),
@@ -405,9 +664,21 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
         "data-panel-translucent": (p.panel_opacity < 100).to_string(),
         "data-custom-accent": (!p.custom_accent.is_empty()).to_string(),
     });
+    let custom_state = serde_json::json!({
+        "wpKind": wp_kind,
+        "wpColor": if wp_kind == "color" { wp_value } else { String::new() },
+        "wpImageUrl": wp_raw_url,
+        "dim": p.app_wallpaper_dim,
+        "panelOpacity": p.panel_opacity,
+        "panelGlass": p.panel_glass,
+        "customAccent": p.custom_accent,
+        "bubbleSelf": p.bubble_self,
+        "bubbleOther": p.bubble_other,
+    });
     let _ = dioxus::document::eval(&format!(
         r#"
         (function() {{
+            {engine}
             const root = document.documentElement;
             const vars = {vars};
             for (const [k, v] of Object.entries(vars)) {{
@@ -415,8 +686,11 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
             }}
             const attrs = {attrs};
             for (const [k, v] of Object.entries(attrs)) root.setAttribute(k, v);
+            window.__chatwCustom = {custom_state};
+            window.__chatwRecomputeContrast();
         }})();
-        "#
+        "#,
+        engine = CONTRAST_ENGINE_JS,
     ));
 }
 
@@ -429,6 +703,7 @@ pub fn apply_appearance(a: &Appearance) {
     let script = format!(
         r#"
         (function() {{
+            {engine}
             const root = document.documentElement;
             const pref = {theme:?};
             const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
@@ -442,16 +717,19 @@ pub fn apply_appearance(a: &Appearance) {
             else root.style.removeProperty('--font-size-root');
             const meta = document.querySelector('meta[name="theme-color"]');
             if (meta) meta.setAttribute('content', resolve() === 'dark' ? '#111419' : '#FFFFFF');
+            window.__chatwRecomputeContrast();
             if (mq && !window.__chatwThemeListener) {{
                 window.__chatwThemeListener = true;
                 mq.addEventListener('change', () => {{
                     if (root.getAttribute('data-theme-pref') === 'system') {{
                         root.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+                        if (window.__chatwRecomputeContrast) window.__chatwRecomputeContrast();
                     }}
                 }});
             }}
         }})();
         "#,
+        engine = CONTRAST_ENGINE_JS,
         theme = a.theme,
         accent = a.accent,
         density = a.density,

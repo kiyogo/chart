@@ -1821,9 +1821,15 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08), 0 2px 12px rgba(15, 23, 42, 0.04);
   transition: background-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
 }
-html[data-theme="dark"] .composer-box::before {
-  background: rgba(30, 41, 59, 0.92);
+html[data-theme="dark"] .composer-box::before,
+html[data-surface-tone="dark"] .composer-box::before,
+.chat-column.wp-night .composer-box::before {
+  background: rgba(24, 32, 48, 0.92);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+html[data-theme="dark"][data-surface-tone="light"] .composer-box::before {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08), 0 2px 12px rgba(15, 23, 42, 0.04);
 }
 .composer-box:focus-within,
 .composer-box:focus,
@@ -1836,9 +1842,15 @@ html[data-theme="dark"] .composer-box::before {
   background: #FFFFFF;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10), 0 4px 16px rgba(15, 23, 42, 0.05);
 }
-html[data-theme="dark"] .composer-box:focus-within::before {
-  background: rgba(30, 41, 59, 0.98);
+html[data-theme="dark"] .composer-box:focus-within::before,
+html[data-surface-tone="dark"] .composer-box:focus-within::before,
+.chat-column.wp-night .composer-box:focus-within::before {
+  background: rgba(28, 37, 56, 0.98);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::before {
+  background: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10), 0 4px 16px rgba(15, 23, 42, 0.05);
 }
 .composer-box .icon-btn {
   width: 2.125rem;
@@ -2280,7 +2292,8 @@ html[data-theme="dark"] .composer-box:focus-within::before {
 }
 .btn-avatar-upload:hover { background: var(--bg-active); }
 .settings-group { display: flex; flex-direction: column; gap: var(--space-2); }
-.settings-group-title { font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text-primary); }
+.settings-group-title { display: inline-flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text-primary); }
+.settings-group-title .cw-icon { flex-shrink: 0; }
 .settings-group-desc { font-size: var(--text-sm); color: var(--text-secondary); margin-top: -2px; margin-bottom: var(--space-1); }
 .settings-list { display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--bg-surface-hover); overflow: hidden; }
 .settings-row {
@@ -3328,15 +3341,68 @@ html[data-theme="dark"] .composer-box:focus-within::before {
 .paste-choice-remember { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); }
 
 /* ---------- Wallpapers (chat + app) ---------- */
-.chat-column.wp-sunset, .wallpaper-sample.wp-sunset { background-image: linear-gradient(160deg, color-mix(in srgb, #F97316 16%, var(--bg-chat)), color-mix(in srgb, #DB2777 14%, var(--bg-chat))); }
-.chat-column.wp-ocean, .wallpaper-sample.wp-ocean { background-image: linear-gradient(170deg, color-mix(in srgb, #0EA5E9 16%, var(--bg-chat)), color-mix(in srgb, #2563EB 12%, var(--bg-chat))); }
-.chat-column.wp-mint, .wallpaper-sample.wp-mint { background-image: linear-gradient(160deg, color-mix(in srgb, #10B981 14%, var(--bg-chat)), color-mix(in srgb, #A3E635 10%, var(--bg-chat))); }
-.chat-column.wp-night, .wallpaper-sample.wp-night {
-  background-color: color-mix(in srgb, #0B1023 70%, var(--bg-chat));
-  background-image: radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.7), transparent 60%), radial-gradient(1px 1px at 70% 20%, rgba(255,255,255,0.6), transparent 60%), radial-gradient(1.5px 1.5px at 40% 70%, rgba(255,255,255,0.5), transparent 60%), radial-gradient(1px 1px at 85% 75%, rgba(255,255,255,0.6), transparent 60%);
-  background-size: 180px 180px;
+.chat-column.wp-dots, .settings-preview-chat.wp-dots, .wallpaper-sample.wp-dots { background-image: radial-gradient(color-mix(in srgb, var(--text-muted) 22%, transparent) 1.2px, transparent 1.4px); background-size: 18px 18px; }
+.chat-column.wp-bubbles, .settings-preview-chat.wp-bubbles, .wallpaper-sample.wp-bubbles {
+  background-image:
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent) 12%, transparent) 0 42px, transparent 43px),
+    radial-gradient(circle at 82% 30%, color-mix(in srgb, var(--accent) 9%, transparent) 0 64px, transparent 65px),
+    radial-gradient(circle at 30% 82%, color-mix(in srgb, #EC4899 9%, transparent) 0 54px, transparent 55px),
+    radial-gradient(circle at 88% 88%, color-mix(in srgb, #14B8A6 10%, transparent) 0 36px, transparent 37px);
+  background-attachment: local;
 }
-.chat-column.wp-night .message-row.received .message-bubble { background: color-mix(in srgb, #1E2638 85%, transparent); color: #F1F4FA; }
+.chat-column.wp-aurora, .settings-preview-chat.wp-aurora, .wallpaper-sample.wp-aurora {
+  background-image:
+    radial-gradient(60% 50% at 10% 0%, color-mix(in srgb, #22D3EE 16%, transparent), transparent 70%),
+    radial-gradient(60% 50% at 90% 10%, color-mix(in srgb, #A78BFA 18%, transparent), transparent 70%),
+    radial-gradient(70% 60% at 50% 100%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%);
+}
+.chat-column.wp-paper, .settings-preview-chat.wp-paper, .wallpaper-sample.wp-paper { background-color: color-mix(in srgb, #F5E9D3 22%, var(--bg-chat)); }
+.chat-column.wp-sunset, .settings-preview-chat.wp-sunset, .wallpaper-sample.wp-sunset { background-image: linear-gradient(160deg, color-mix(in srgb, #F97316 18%, var(--bg-chat)), color-mix(in srgb, #DB2777 16%, var(--bg-chat))); }
+.chat-column.wp-ocean, .settings-preview-chat.wp-ocean, .wallpaper-sample.wp-ocean { background-image: linear-gradient(170deg, color-mix(in srgb, #0EA5E9 18%, var(--bg-chat)), color-mix(in srgb, #2563EB 14%, var(--bg-chat))); }
+.chat-column.wp-mint, .settings-preview-chat.wp-mint, .wallpaper-sample.wp-mint { background-image: linear-gradient(160deg, color-mix(in srgb, #10B981 16%, var(--bg-chat)), color-mix(in srgb, #A3E635 12%, var(--bg-chat))); }
+.chat-column.wp-night, .settings-preview-chat.wp-night, .wallpaper-sample.wp-night {
+  background-color: #0E152B;
+  background-image:
+    radial-gradient(1.2px 1.2px at 20% 30%, rgba(255,255,255,0.82), transparent 60%),
+    radial-gradient(1px 1px at 70% 20%, rgba(255,255,255,0.7), transparent 60%),
+    radial-gradient(1.6px 1.6px at 40% 70%, rgba(196,218,255,0.68), transparent 60%),
+    radial-gradient(1px 1px at 85% 75%, rgba(255,255,255,0.72), transparent 60%),
+    linear-gradient(165deg, #101833 0%, #090E1F 100%);
+  background-size: 180px 180px, 180px 180px, 180px 180px, 180px 180px, 100% 100%;
+}
+.chat-column.wp-night,
+.settings-preview-chat.wp-night {
+  --text: #F4F6FA;
+  --text-primary: #F4F6FA;
+  --text-secondary: #C5CFE0;
+  --text-muted: #93A0B8;
+  --bg-surface: #141C33;
+  --bg-elevated: #1A2442;
+  --bg-input: rgba(24, 32, 52, 0.86);
+  --bg-hover: rgba(255, 255, 255, 0.14);
+  --bg-active: rgba(255, 255, 255, 0.18);
+  --bg-surface-hover: rgba(24, 32, 52, 0.84);
+  --bg-selected: rgba(56, 114, 240, 0.28);
+  --accent-soft: rgba(56, 114, 240, 0.28);
+  --accent-text: #A6C8FF;
+  --text-selected: #A6C8FF;
+  --text-link: #A6C8FF;
+  --bg-warning: rgba(250, 204, 21, 0.14);
+  --status-warning: #FBBF24;
+  --msg-recv: rgba(30, 39, 60, 0.90);
+  --msg-recv-text: #F1F4FA;
+  --msg-recv-meta: rgba(241, 244, 250, 0.74);
+  color: #F4F6FA;
+}
+.chat-column.wp-night .e2ee-notice {
+  background: rgba(250, 204, 21, 0.14);
+  color: #FDE68A;
+}
+.chat-column.wp-night .message-row.received .message-bubble,
+.settings-preview-chat.wp-night .message-row.received .message-bubble {
+  background: rgba(30, 39, 60, 0.90);
+  color: #F1F4FA;
+}
 .chat-column.wp-custom { background-color: var(--chat-wp-color, var(--bg-chat)); }
 .chat-column.wp-image { background-image: var(--chat-wp-image); background-size: cover; background-position: center; }
 .chat-column.wp-image .composer-box::before {
@@ -3374,12 +3440,150 @@ html[data-app-wp="preset-aurora"] .workspace-shell::before { background-image: r
 html[data-app-wp="preset-sunset"] .workspace-shell::before { background-image: linear-gradient(160deg, rgba(249, 115, 22, 0.35), rgba(219, 39, 119, 0.3)); }
 html[data-app-wp="preset-ocean"] .workspace-shell::before { background-image: linear-gradient(170deg, rgba(14, 165, 233, 0.35), rgba(37, 99, 235, 0.3)); }
 html[data-app-wp="preset-mint"] .workspace-shell::before { background-image: linear-gradient(160deg, rgba(16, 185, 129, 0.3), rgba(163, 230, 53, 0.25)); }
-html[data-app-wp="preset-night"] .workspace-shell::before { background: #0B1023; }
+html[data-app-wp="preset-night"] .workspace-shell::before {
+  background-color: #0B1023;
+  background-image:
+    radial-gradient(1.2px 1.2px at 18% 26%, rgba(255,255,255,0.65), transparent 60%),
+    radial-gradient(1px 1px at 72% 18%, rgba(255,255,255,0.55), transparent 60%),
+    radial-gradient(1.5px 1.5px at 44% 72%, rgba(186,214,255,0.55), transparent 60%),
+    radial-gradient(1px 1px at 86% 78%, rgba(255,255,255,0.55), transparent 60%),
+    linear-gradient(165deg, #101936 0%, #090E1F 100%);
+  background-size: 220px 220px, 220px 220px, 220px 220px, 220px 220px, 100% 100%;
+}
 html[data-app-wp="preset-dots"] .workspace-shell::before { background-image: radial-gradient(color-mix(in srgb, var(--text-muted) 30%, transparent) 1.2px, transparent 1.4px); background-size: 18px 18px; }
 html[data-app-wp="preset-bubbles"] .workspace-shell::before { background-image: radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent) 22%, transparent) 0 80px, transparent 81px), radial-gradient(circle at 82% 70%, rgba(236, 72, 153, 0.18) 0 120px, transparent 121px); }
 html[data-app-wp="preset-paper"] .workspace-shell::before { background: color-mix(in srgb, #F5E9D3 50%, var(--bg-app)); }
+html[data-theme="dark"][data-app-wp="preset-paper"] .workspace-shell::before { background: color-mix(in srgb, #F5E9D3 14%, var(--bg-app)); }
 
-/* ---------- Adjustable translucent white/surface panels (Spec 040 & 042) ---------- */
+/* ---------- Spec 045: Adaptive Contrast & Aesthetic Compensation ---------- */
+html[data-surface-tone="light"] {
+  --scrim-card-solid: #FFFFFF;
+  --scrim-card-bg: rgba(242, 245, 251, 0.88);
+  --scrim-pill-bg: rgba(242, 245, 251, 0.86);
+  --scrim-pill-hover: rgba(232, 238, 248, 0.96);
+}
+html[data-surface-tone="light"][data-wp-busy="true"] {
+  --scrim-card-bg: rgba(255, 255, 255, 0.92);
+  --scrim-pill-bg: rgba(255, 255, 255, 0.90);
+  --scrim-pill-hover: rgba(255, 255, 255, 0.98);
+}
+html[data-surface-tone="dark"] {
+  --scrim-card-solid: #171C27;
+  --scrim-card-bg: rgba(18, 22, 32, 0.80);
+  --scrim-pill-bg: rgba(18, 22, 32, 0.74);
+  --scrim-pill-hover: rgba(30, 37, 52, 0.92);
+}
+html[data-surface-tone="dark"][data-wp-busy="true"] {
+  --scrim-card-bg: rgba(15, 19, 28, 0.86);
+  --scrim-pill-bg: rgba(15, 19, 28, 0.82);
+  --scrim-pill-hover: rgba(28, 35, 50, 0.95);
+}
+
+/* Automatic Dark Surface Compensation when Light Theme is placed over a dark or heavily dimmed backdrop */
+html[data-theme="light"][data-surface-tone="dark"] {
+  color-scheme: dark;
+  --bg-surface: #141821;
+  --bg-primary: #141821;
+  --bg-secondary: #1A1F2B;
+  --bg-chat: #141821;
+  --bg-sidebar: #141821;
+  --bg-surface-hover: #1E2432;
+  --bg-elevated: #242B3B;
+  --bg-hover: rgba(255, 255, 255, 0.14);
+  --bg-active: rgba(255, 255, 255, 0.24);
+  --bg-input: rgba(24, 30, 42, 0.84);
+  --bg-input-focus: rgba(30, 38, 54, 0.94);
+  --accent-soft: color-mix(in srgb, var(--accent) 26%, #1A202E);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 36%, #1A202E);
+  --accent-text: color-mix(in srgb, var(--accent) 52%, #FFFFFF);
+  --bg-selected: var(--accent-soft);
+  --text: #F4F6FA;
+  --text-primary: #F4F6FA;
+  --text-secondary: #CBD3E1;
+  --text-muted: #98A4BA;
+  --text-selected: var(--accent-text);
+  --text-link: var(--accent-text);
+  --msg-recv: rgba(28, 34, 48, 0.88);
+  --msg-recv-text: #F4F6FA;
+  --msg-recv-meta: rgba(244, 246, 250, 0.72);
+  --bg-error: rgba(127, 29, 29, 0.72);
+  --bg-success: rgba(20, 83, 45, 0.72);
+  --bg-warning: rgba(120, 53, 15, 0.72);
+  --status-success: #4ADE80;
+  --status-warning: #FBBF24;
+  --status-danger: #FF6B70;
+  --danger: #FF6B70;
+}
+
+/* Automatic Light Surface Compensation when Dark Theme is placed over a bright transparent backdrop */
+html[data-theme="dark"][data-surface-tone="light"] {
+  color-scheme: light;
+  --bg-surface: #FFFFFF;
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F4F6FA;
+  --bg-chat: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --bg-surface-hover: #F5F7FA;
+  --bg-elevated: #FFFFFF;
+  --bg-hover: rgba(15, 23, 42, 0.08);
+  --bg-active: rgba(15, 23, 42, 0.16);
+  --bg-input: rgba(255, 255, 255, 0.88);
+  --bg-input-focus: #FFFFFF;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, #FFFFFF);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 26%, #FFFFFF);
+  --accent-text: color-mix(in srgb, var(--accent) 78%, #000000);
+  --bg-selected: var(--accent-soft);
+  --text: #111827;
+  --text-primary: #111827;
+  --text-secondary: #3D4657;
+  --text-muted: #5C6678;
+  --text-selected: var(--accent-text);
+  --text-link: var(--accent-text);
+  --msg-recv: rgba(244, 246, 250, 0.94);
+  --msg-recv-text: #111827;
+  --msg-recv-meta: #525C6E;
+  --bg-error: #FDEDEE;
+  --bg-success: #E7F6EE;
+  --bg-warning: #FDF4E3;
+  --status-success: #169B62;
+  --status-warning: #D48A10;
+  --status-danger: #E5484D;
+  --danger: #E5484D;
+}
+
+/* Adaptive Left Rail Contrast (independently tracks the wallpaper directly behind .app-rail) */
+html[data-rail-tone="dark"] .app-rail .rail-item:not(.active):not(.has-logo) {
+  color: rgba(241, 245, 249, 0.86);
+}
+html[data-rail-tone="dark"] .app-rail .rail-item:not(.has-logo):hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+}
+html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo) {
+  background: rgba(24, 30, 44, 0.86);
+  color: color-mix(in srgb, var(--accent) 55%, #FFFFFF);
+}
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.active):not(.has-logo) {
+  color: #1F2937;
+}
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item:not(.has-logo):hover {
+  background: rgba(255, 255, 255, 0.84);
+  color: #111827;
+}
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo) {
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--accent-text);
+}
+html[data-rail-scrim="true"][data-rail-tone="light"] .app-rail {
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: var(--panel-radius);
+}
+html[data-rail-scrim="true"][data-rail-tone="dark"] .app-rail {
+  background: rgba(15, 19, 28, 0.74);
+  border-radius: var(--panel-radius);
+}
+
+/* ---------- Adjustable translucent white/surface panels (Spec 040, 042 & 045) ---------- */
 html[data-panel-translucent="true"] .nav-sidebar,
 html[data-panel-translucent="true"] .settings-nav,
 html[data-panel-translucent="true"] .settings-body,
@@ -3429,10 +3633,11 @@ html[data-panel-glass="true"] .search-page:not(:has(.modal-overlay, .settings-mo
   backdrop-filter: blur(var(--panel-blur, 12px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }
+/* Crisp luminous card surfaces over translucent panels (never muddy flat grey, never unreadable low opacity) */
 html[data-panel-translucent="true"] .settings-list,
 html[data-panel-translucent="true"] .settings-row,
 html[data-panel-translucent="true"] .settings-profile-card,
-html[data-panel-translucent="true"] .settings-preview-chat,
+html[data-panel-translucent="true"] .settings-preview-chat:not([class*="wp-"]),
 html[data-panel-translucent="true"] .wallpaper-tile,
 html[data-panel-translucent="true"] .theme-card,
 html[data-panel-translucent="true"] .meet-card,
@@ -3442,26 +3647,95 @@ html[data-panel-translucent="true"] .mod-card,
 html[data-panel-glass="true"] .settings-list,
 html[data-panel-glass="true"] .settings-row,
 html[data-panel-glass="true"] .settings-profile-card,
-html[data-panel-glass="true"] .settings-preview-chat,
+html[data-panel-glass="true"] .settings-preview-chat:not([class*="wp-"]),
 html[data-panel-glass="true"] .wallpaper-tile,
 html[data-panel-glass="true"] .theme-card,
 html[data-panel-glass="true"] .meet-card,
 html[data-panel-glass="true"] .feed-card,
 html[data-panel-glass="true"] .feed-compose-bar,
 html[data-panel-glass="true"] .mod-card {
-  background: color-mix(in srgb, var(--bg-surface-hover) max(30%, var(--panel-opacity, 100%)), transparent);
+  background: color-mix(in srgb, var(--scrim-card-solid, var(--bg-surface-hover)) max(80%, var(--panel-opacity, 100%)), transparent);
+}
+html[data-panel-scrim="true"] .settings-list,
+html[data-panel-scrim="true"] .settings-row,
+html[data-panel-scrim="true"] .settings-profile-card,
+html[data-panel-scrim="true"] .settings-preview-chat:not([class*="wp-"]),
+html[data-panel-scrim="true"] .wallpaper-tile,
+html[data-panel-scrim="true"] .theme-card,
+html[data-panel-scrim="true"] .meet-card,
+html[data-panel-scrim="true"] .feed-card,
+html[data-panel-scrim="true"] .feed-compose-bar,
+html[data-panel-scrim="true"] .mod-card,
+html[data-panel-scrim="true"] .btn-secondary,
+html[data-panel-scrim="true"] .btn-avatar-upload,
+html[data-panel-scrim="true"] .segmented {
+  background: var(--scrim-card-bg);
+  color: var(--text-primary);
+}
+html[data-panel-scrim="true"] .btn-secondary:hover:not(:disabled),
+html[data-panel-scrim="true"] .btn-avatar-upload:hover {
+  background: var(--scrim-pill-hover);
+}
+html[data-panel-translucent="true"] .wallpaper-tile.active,
+html[data-panel-scrim="true"] .wallpaper-tile.active,
+html[data-panel-translucent="true"] .theme-card.active,
+html[data-panel-scrim="true"] .theme-card.active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--scrim-card-solid, var(--bg-surface)));
+  color: var(--accent-text);
 }
 html[data-panel-translucent="true"] .settings-list .settings-row,
-html[data-panel-glass="true"] .settings-list .settings-row {
+html[data-panel-glass="true"] .settings-list .settings-row,
+html[data-panel-scrim="true"] .settings-list .settings-row {
   background: transparent;
+}
+/* Floating navigation, headings, chat header islands & list items over transparent/busy wallpapers */
+html[data-panel-scrim="true"] .settings-nav-item {
+  background: var(--scrim-pill-bg);
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+html[data-panel-scrim="true"] .settings-nav-item:hover {
+  background: var(--scrim-pill-hover);
+  color: var(--text-primary);
+}
+html[data-panel-scrim="true"] .settings-nav-item.active {
+  background: color-mix(in srgb, var(--accent) 22%, var(--scrim-card-solid, var(--bg-surface)));
+  color: var(--accent-text);
+  font-weight: var(--weight-semibold);
+}
+html[data-panel-scrim="true"] .settings-nav-title,
+html[data-panel-scrim="true"] .settings-group-title,
+html[data-panel-scrim="true"] .settings-page-title {
+  width: fit-content;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--scrim-pill-bg);
+  color: var(--text-primary);
+}
+html[data-panel-scrim="true"] .chat-item,
+html[data-panel-scrim="true"] .sidebar-search,
+html[data-panel-scrim="true"] .section-tabs {
+  background: var(--scrim-pill-bg);
+}
+html[data-panel-scrim="true"] .chat-item:hover {
+  background: var(--scrim-pill-hover);
+}
+html[data-panel-scrim="true"] .chat-item.active {
+  background: color-mix(in srgb, var(--accent) 20%, var(--scrim-card-solid, var(--bg-surface)));
+}
+html[data-panel-scrim="true"] .chat-header-identity {
+  padding: 4px 14px 4px 6px;
+  border-radius: var(--radius-full);
+  background: var(--scrim-pill-bg);
+}
+html[data-panel-scrim="true"] .chat-header-actions {
+  padding: 3px 6px;
+  border-radius: var(--radius-full);
+  background: var(--scrim-pill-bg);
 }
 html[data-panel-translucent="true"] .composer-box::before,
 html[data-panel-glass="true"] .composer-box::before {
-  background: color-mix(in srgb, var(--bg-input) max(42%, var(--panel-opacity, 100%)), transparent);
-}
-html[data-panel-translucent="true"] .rail-item.active,
-html[data-panel-glass="true"] .rail-item.active {
-  background: color-mix(in srgb, var(--bg-surface) max(52%, var(--panel-opacity, 100%)), transparent);
+  background: color-mix(in srgb, var(--scrim-card-solid, var(--bg-input)) max(74%, var(--panel-opacity, 100%)), transparent);
 }
 html[data-panel-glass="true"] .rail-item.active {
   backdrop-filter: blur(var(--panel-blur, 12px));
@@ -3485,7 +3759,7 @@ html[data-font] body { font-family: var(--font-family); }
 html[data-reduce-motion="true"] *, html[data-reduce-motion="true"] *::before, html[data-reduce-motion="true"] *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 html[data-show-avatars="false"] .message-avatar-slot { visibility: hidden; width: 0; min-width: 0; }
 html[data-custom-accent="true"] { --accent-text: color-mix(in srgb, var(--accent) 78%, #000); }
-html[data-theme="dark"][data-custom-accent="true"] { --accent-text: color-mix(in srgb, var(--accent) 55%, #fff); }
+html[data-surface-tone="dark"][data-custom-accent="true"] { --accent-text: color-mix(in srgb, var(--accent) 55%, #fff); }
 html[dir="rtl"] .app-toast { transform: translateX(50%); left: auto; right: 50%; }
 html[dir="rtl"] .account-menu-item, html[dir="rtl"] .suggest-item, html[dir="rtl"] .pinned-bar-text { text-align: right; }
 
