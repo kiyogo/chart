@@ -18,7 +18,7 @@ use crate::{
         schema::{
             PERMISSION_CATALOG, PluginManifest, compute_package_sha256, is_safe_http_url,
             is_sensitive_permission, is_valid_permission, is_valid_slug,
-            validate_manifest_and_artifacts,
+            validate_manifest_and_artifacts, verify_package_signature,
         },
         security::is_platform_admin,
     },
@@ -77,6 +77,8 @@ pub struct RegisterPublisherReq {
     pub website_url: Option<String>,
     #[serde(default)]
     pub bio: Option<String>,
+    #[serde(default)]
+    pub public_key: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -240,8 +242,8 @@ pub async fn register_publisher(
     let id = Uuid::new_v4();
     let now = Utc::now();
     sqlx::query(
-        "INSERT INTO plugin_publishers (id, user_id, slug, display_name, website_url, bio, verification_status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'unverified', $7, $7)",
+        "INSERT INTO plugin_publishers (id, user_id, slug, display_name, website_url, bio, public_key, verification_status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'unverified', $8, $8)",
     )
     .bind(id)
     .bind(uid)
@@ -249,6 +251,7 @@ pub async fn register_publisher(
     .bind(display)
     .bind(req.website_url.as_deref())
     .bind(req.bio.as_deref())
+    .bind(req.public_key.as_deref())
     .bind(now)
     .execute(&state.db)
     .await?;
@@ -411,13 +414,14 @@ pub async fn publish_package(
     Json(mut req): Json<PublishPackageReq>,
 ) -> AppResult<Json<Value>> {
     let uid = auth_user(&state, &headers).await?;
-    let pub_row = sqlx::query("SELECT id, slug FROM plugin_publishers WHERE user_id = $1")
+    let pub_row = sqlx::query("SELECT id, slug, public_key FROM plugin_publishers WHERE user_id = $1")
         .bind(uid)
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::Forbidden("publisher_registration_required"))?;
     let publisher_id: Uuid = pub_row.get("id");
     let publisher_slug: String = pub_row.get("slug");
+    let publisher_pubkey: Option<String> = pub_row.try_get("public_key").ok().flatten();
 
     req.manifest.publisher = publisher_slug.clone();
     let (sha256, size_bytes, clean_perms) = validate_manifest_and_artifacts(
@@ -429,6 +433,17 @@ pub async fn publish_package(
         req.sha256.as_deref(),
     )
     .map_err(AppError::BadRequest)?;
+
+    let signature_verified = match (publisher_pubkey.as_deref().filter(|s| !s.trim().is_empty()), req.signature.as_deref().filter(|s| !s.trim().is_empty())) {
+        (Some(pk), Some(sig)) => {
+            verify_package_signature(pk, sig, &req.manifest.plugin_key, &req.manifest.version, &sha256)
+                .map_err(AppError::BadRequest)?;
+            true
+        }
+        (Some(_), None) => return Err(AppError::BadRequest("package_signature_required")),
+        (None, Some(_)) => return Err(AppError::BadRequest("publisher_public_key_required")),
+        (None, None) => false,
+    };
 
     let icon_url = req.icon_url.unwrap_or_default();
     if !icon_url.is_empty() && !icon_url.starts_with('/') && !icon_url.starts_with("logo:") && !is_safe_http_url(&icon_url) {
@@ -485,8 +500,8 @@ pub async fn publish_package(
     .await?;
 
     sqlx::query(
-        "INSERT INTO plugin_versions (id, package_id, version, changelog, runtime, sdk_version, manifest, bundle_code, wasm_base64, ui_html, sha256, signature, size_bytes, requested_permissions, sensitive_approval_status, approved_permissions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, '[]'::jsonb)",
+        "INSERT INTO plugin_versions (id, package_id, version, changelog, runtime, sdk_version, manifest, bundle_code, wasm_base64, ui_html, sha256, signature, signature_verified, size_bytes, requested_permissions, sensitive_approval_status, approved_permissions)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, '[]'::jsonb)",
     )
     .bind(ver_id)
     .bind(pkg_id)
@@ -500,6 +515,7 @@ pub async fn publish_package(
     .bind(&req.ui_html)
     .bind(&sha256)
     .bind(req.signature.as_deref())
+    .bind(signature_verified)
     .bind(size_bytes as i32)
     .bind(serde_json::to_value(&clean_perms).unwrap_or_else(|_| json!([])))
     .bind(sens_status)
@@ -514,6 +530,7 @@ pub async fn publish_package(
         "plugin_key": req.manifest.plugin_key,
         "version": req.manifest.version,
         "sha256": sha256,
+        "signature_verified": signature_verified,
         "size_bytes": size_bytes,
         "sensitive_approval_status": sens_status,
         "requested_permissions": clean_perms,
@@ -528,7 +545,7 @@ pub async fn publish_version(
 ) -> AppResult<Json<Value>> {
     let uid = auth_user(&state, &headers).await?;
     let pkg = sqlx::query(
-        "SELECT p.plugin_key, p.publisher_id, pub.slug, pub.user_id
+        "SELECT p.plugin_key, p.publisher_id, pub.slug, pub.user_id, pub.public_key
          FROM plugin_packages p
          JOIN plugin_publishers pub ON pub.id = p.publisher_id
          WHERE p.id = $1",
@@ -544,6 +561,7 @@ pub async fn publish_version(
     }
     let plugin_key: String = pkg.get("plugin_key");
     let pub_slug: String = pkg.get("slug");
+    let pub_pubkey: Option<String> = pkg.try_get("public_key").ok().flatten();
     if req.manifest.plugin_key != plugin_key {
         return Err(AppError::BadRequest("plugin_key_immutable"));
     }
@@ -558,6 +576,17 @@ pub async fn publish_version(
         req.sha256.as_deref(),
     )
     .map_err(AppError::BadRequest)?;
+
+    let signature_verified = match (pub_pubkey.as_deref().filter(|s| !s.trim().is_empty()), req.signature.as_deref().filter(|s| !s.trim().is_empty())) {
+        (Some(pk), Some(sig)) => {
+            verify_package_signature(pk, sig, &req.manifest.plugin_key, &req.manifest.version, &sha256)
+                .map_err(AppError::BadRequest)?;
+            true
+        }
+        (Some(_), None) => return Err(AppError::BadRequest("package_signature_required")),
+        (None, Some(_)) => return Err(AppError::BadRequest("publisher_public_key_required")),
+        (None, None) => false,
+    };
 
     let dup: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM plugin_versions WHERE package_id = $1 AND version = $2",
@@ -576,8 +605,8 @@ pub async fn publish_version(
 
     let mut tx = state.db.begin().await?;
     sqlx::query(
-        "INSERT INTO plugin_versions (id, package_id, version, changelog, runtime, sdk_version, manifest, bundle_code, wasm_base64, ui_html, sha256, signature, size_bytes, requested_permissions, sensitive_approval_status, approved_permissions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, '[]'::jsonb)",
+        "INSERT INTO plugin_versions (id, package_id, version, changelog, runtime, sdk_version, manifest, bundle_code, wasm_base64, ui_html, sha256, signature, signature_verified, size_bytes, requested_permissions, sensitive_approval_status, approved_permissions)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, '[]'::jsonb)",
     )
     .bind(ver_id)
     .bind(package_id)
@@ -591,6 +620,7 @@ pub async fn publish_version(
     .bind(&req.ui_html)
     .bind(&sha256)
     .bind(req.signature.as_deref())
+    .bind(signature_verified)
     .bind(size_bytes as i32)
     .bind(serde_json::to_value(&clean_perms).unwrap_or_else(|_| json!([])))
     .bind(sens_status)
@@ -609,6 +639,7 @@ pub async fn publish_version(
         "version_id": ver_id,
         "version": req.manifest.version,
         "sha256": sha256,
+        "signature_verified": signature_verified,
         "sensitive_approval_status": sens_status,
     })))
 }

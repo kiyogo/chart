@@ -37,6 +37,30 @@ pub struct ViewMessage {
 
 const GROUP_WINDOW_SECS: i64 = 5 * 60;
 
+/// Default initial DOM render window for large message histories (10,000+ messages).
+/// Older slices are mounted progressively on scroll-up or click with zero layout shift.
+pub const MESSAGE_DOM_WINDOW_STEP: usize = 120;
+
+/// Computes the slice range `(start_idx, end_idx)` of `total_len` messages to mount in the DOM
+/// given the current `render_limit` and an optional `highlight_idx` that must remain visible.
+pub fn compute_message_window_bounds(
+    total_len: usize,
+    render_limit: usize,
+    highlight_idx: Option<usize>,
+) -> (usize, usize) {
+    if total_len == 0 {
+        return (0, 0);
+    }
+    let effective_limit = render_limit.max(MESSAGE_DOM_WINDOW_STEP);
+    let mut start = total_len.saturating_sub(effective_limit);
+    if let Some(h_idx) = highlight_idx {
+        if h_idx < start {
+            start = h_idx.saturating_sub(20);
+        }
+    }
+    (start, total_len)
+}
+
 /// Reactions offered when hovering the single react button.
 const QUICK_REACTIONS: [&str; 8] = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "🙏"];
 
@@ -282,6 +306,7 @@ pub fn MessageList(
         });
     }
     let mut scroll_checking = use_signal(|| false);
+    let mut dom_render_limit = use_signal(|| MESSAGE_DOM_WINDOW_STEP);
     let prefs_ctx = try_consume_context::<crate::prefs::PrefsCtx>();
     let fav_stickers = prefs_ctx.map(|c| c.prefs.read().fav_stickers.clone()).unwrap_or_default();
     // Poll votes are messages too: tally them and hide them from the list.
@@ -291,7 +316,17 @@ pub fn MessageList(
             tally.entry(poll_id).or_default().insert(m.sender_id.clone(), option);
         }
     }
-    let messages: Vec<ViewMessage> = messages.into_iter().filter(|m| !matches!(parse_rich(&m.text), Some(Rich::Vote { .. }))).collect();
+    let all_messages: Vec<ViewMessage> = messages.into_iter().filter(|m| !matches!(parse_rich(&m.text), Some(Rich::Vote { .. }))).collect();
+    let highlight_idx = highlight_id
+        .as_deref()
+        .and_then(|hid| all_messages.iter().position(|m| m.id == hid));
+    let (win_start, win_end) = compute_message_window_bounds(
+        all_messages.len(),
+        *dom_render_limit.read(),
+        highlight_idx,
+    );
+    let hidden_older_in_memory = win_start;
+    let messages: Vec<ViewMessage> = all_messages[win_start..win_end].to_vec();
     let mention_token = if my_username.is_empty() { String::new() } else { format!("@{}", my_username.to_lowercase()) };
     let count = messages.len();
     let parsed: Vec<Option<DateTime<Local>>> = messages.iter().map(|m| parse_local(&m.created_at)).collect();
@@ -303,20 +338,23 @@ pub fn MessageList(
             role: "log",
             aria_live: "polite",
             onscroll: move |_| {
-                if has_more && !loading_more && !*scroll_checking.peek() {
-                    if let Some(h) = on_load_more {
-                        scroll_checking.set(true);
-                        spawn(async move {
-                            let mut ev = dioxus::document::eval(
-                                "const el = document.getElementById('chat-messages-scroll'); dioxus.send(el ? el.scrollTop <= 180 : false);"
-                            );
-                            let near_top = ev.recv::<bool>().await.unwrap_or(false);
-                            scroll_checking.set(false);
-                            if near_top {
+                if (hidden_older_in_memory > 0 || has_more) && !loading_more && !*scroll_checking.peek() {
+                    scroll_checking.set(true);
+                    spawn(async move {
+                        let mut ev = dioxus::document::eval(
+                            "const el = document.getElementById('chat-messages-scroll'); dioxus.send(el ? el.scrollTop <= 180 : false);"
+                        );
+                        let near_top = ev.recv::<bool>().await.unwrap_or(false);
+                        scroll_checking.set(false);
+                        if near_top {
+                            if hidden_older_in_memory > 0 {
+                                let cur = *dom_render_limit.peek();
+                                dom_render_limit.set(cur.saturating_add(MESSAGE_DOM_WINDOW_STEP));
+                            } else if let Some(h) = on_load_more {
                                 h.call(());
                             }
-                        });
-                    }
+                        }
+                    });
                 }
             },
             div { class: "message-stream",
@@ -324,6 +362,18 @@ pub fn MessageList(
                 if loading_initial && messages.is_empty() {
                     div { class: "chat-loading-initial", role: "status", aria_label: "Đang tải tin nhắn",
                         span { class: "spinner" }
+                    }
+                } else if hidden_older_in_memory > 0 {
+                    div { class: "load-older-bar",
+                        button {
+                            r#type: "button",
+                            class: "btn-ghost load-older-btn",
+                            onclick: move |_| {
+                                let cur = *dom_render_limit.peek();
+                                dom_render_limit.set(cur.saturating_add(MESSAGE_DOM_WINDOW_STEP));
+                            },
+                            "Hiển thị thêm tin nhắn trước đó ({hidden_older_in_memory})"
+                        }
                     }
                 } else if loading_more {
                     div { class: "load-older-bar",
@@ -706,3 +756,23 @@ pub fn MessageList(
 }
 
 pub use crate::components::composer::{Composer, MentionCandidate};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_windowed_message_slice_10000_messages_performance_and_highlight() {
+        let total = 10_000usize;
+        let t0 = std::time::Instant::now();
+        let (s1, e1) = compute_message_window_bounds(total, MESSAGE_DOM_WINDOW_STEP, None);
+        assert_eq!(e1, 10_000);
+        assert_eq!(e1 - s1, MESSAGE_DOM_WINDOW_STEP);
+
+        // When jumping to an older message (#420), window expands smoothly to include #420 with 20-message context
+        let (s2, e2) = compute_message_window_bounds(total, MESSAGE_DOM_WINDOW_STEP, Some(420));
+        assert_eq!(s2, 400);
+        assert_eq!(e2, 10_000);
+        assert!(t0.elapsed().as_micros() < 1000, "window bound calculation must be O(1) sub-millisecond");
+    }
+}

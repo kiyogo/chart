@@ -1,6 +1,10 @@
 //! Official ChatW Plugin Permission Catalog, Manifest Schema & Discord Embed Validators.
 
-use base64::{Engine, engine::general_purpose::STANDARD as B64};
+use base64::{Engine, engine::general_purpose::{STANDARD as B64, URL_SAFE_NO_PAD}};
+use p256::ecdsa::{
+    Signature as EcdsaSignature, SigningKey as EcdsaSigningKey, VerifyingKey as EcdsaVerifyingKey,
+    signature::{Signer, Verifier},
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -74,6 +78,16 @@ pub fn is_valid_permission(id: &str) -> bool {
 
 pub fn is_sensitive_permission(id: &str) -> bool {
     find_permission(id).map(|p| p.sensitive).unwrap_or(true)
+}
+
+/// Permissions that access a specific individual user's private profile, contacts, or decrypted E2EE messages.
+/// These grants NEVER carry across users (a server/group admin's or another member's grant cannot grant access
+/// to a different member's personal profile, contacts, or E2EE plaintext).
+pub fn is_personal_permission(id: &str) -> bool {
+    matches!(
+        id,
+        "profile.read" | "contacts.read" | "contacts.write"
+    ) || id.starts_with("e2ee.")
 }
 
 pub fn is_valid_slug(s: &str) -> bool {
@@ -195,6 +209,71 @@ pub fn compute_package_sha256(manifest_json: &str, bundle_code: &str, ui_html: &
     hasher.update(b"\n---WASM---\n");
     hasher.update(wasm_base64.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+/// Canonical signing payload for cryptographic plugin package verification:
+/// `chatw-plugin-sig-v1:<plugin_key>:<version>:<sha256_hex>`
+pub fn canonical_package_signing_payload(plugin_key: &str, version: &str, sha256_hex: &str) -> String {
+    format!(
+        "chatw-plugin-sig-v1:{}:{}:{}",
+        plugin_key.trim(),
+        version.trim(),
+        sha256_hex.trim().to_ascii_lowercase()
+    )
+}
+
+fn decode_hex_or_b64(raw: &str) -> Result<Vec<u8>, &'static str> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Err("empty_encoded_key");
+    }
+    if s.bytes().all(|b| b.is_ascii_hexdigit()) && s.len() % 2 == 0 {
+        if let Ok(v) = hex::decode(s) {
+            return Ok(v);
+        }
+    }
+    URL_SAFE_NO_PAD
+        .decode(s)
+        .or_else(|_| B64.decode(s))
+        .map_err(|_| "invalid_key_or_signature_encoding")
+}
+
+/// Signs canonical package metadata using a P-256 ECDSA 32-byte secret scalar (hex or base64url).
+pub fn sign_package_digest(
+    secret_key_raw: &[u8; 32],
+    plugin_key: &str,
+    version: &str,
+    sha256_hex: &str,
+) -> Result<(String, String), &'static str> {
+    let sk = EcdsaSigningKey::from_slice(secret_key_raw).map_err(|_| "invalid_signing_key")?;
+    let vk_sec1 = sk.verifying_key().to_encoded_point(false);
+    let payload = canonical_package_signing_payload(plugin_key, version, sha256_hex);
+    let sig: EcdsaSignature = sk.sign(payload.as_bytes());
+    Ok((
+        hex::encode(vk_sec1.as_bytes()),
+        hex::encode(sig.to_bytes()),
+    ))
+}
+
+/// Verifies a cryptographic P-256 ECDSA signature (`signature_encoded`) against the publisher's
+/// registered public key (`public_key_encoded`, SEC1 compressed/uncompressed hex or base64url)
+/// over `chatw-plugin-sig-v1:<plugin_key>:<version>:<sha256_hex>`.
+pub fn verify_package_signature(
+    public_key_encoded: &str,
+    signature_encoded: &str,
+    plugin_key: &str,
+    version: &str,
+    sha256_hex: &str,
+) -> Result<(), &'static str> {
+    let pk_bytes = decode_hex_or_b64(public_key_encoded)?;
+    let vk = EcdsaVerifyingKey::from_sec1_bytes(&pk_bytes).map_err(|_| "invalid_publisher_public_key")?;
+    let sig_bytes = decode_hex_or_b64(signature_encoded)?;
+    let sig = EcdsaSignature::from_slice(&sig_bytes)
+        .or_else(|_| EcdsaSignature::from_der(&sig_bytes))
+        .map_err(|_| "invalid_package_signature_format")?;
+    let payload = canonical_package_signing_payload(plugin_key, version, sha256_hex);
+    vk.verify(payload.as_bytes(), &sig)
+        .map_err(|_| "package_signature_verification_failed")
 }
 
 pub fn validate_manifest_and_artifacts(

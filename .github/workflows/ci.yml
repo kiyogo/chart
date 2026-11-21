@@ -11,13 +11,43 @@ env:
 
 jobs:
   test-backend:
-    name: Backend Tests (Axum + SQLx)
+    name: Backend Tests (Axum + SQLx + Integration)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: chatw
+          POSTGRES_PASSWORD: chatw_dev_password
+          POSTGRES_DB: chatw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U chatw -d chatw"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql://chatw:chatw_dev_password@127.0.0.1:5432/chatw
+      SESSION_SECRET: ci-test-session-secret-at-least-32-bytes-long!
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Run Backend Tests
-        run: cargo test -p chatw --lib
+      - name: Apply PostgreSQL Schema Migrations
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          for f in $(ls web/backend/migrations/*.sql | sort); do
+            echo "Applying migration $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+      - name: Run Shared Crate & Backend Unit Tests
+        run: |
+          cargo test -p kiyo-kdata
+          cargo test -p chatw --lib
+          cargo test -p chatw-app --lib
+      - name: Run Plugin Platform & Security Integration Tests
+        run: cargo test -p chatw --test plugin_platform
 
   build-web:
     name: Web Client (WASM + wasm-bindgen)

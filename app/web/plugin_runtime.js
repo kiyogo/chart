@@ -8,8 +8,20 @@
 
   const instances = new Map(); // instId -> runtime state
   const uiFrames = new Map();  // frameNonce -> { instId, iframe, slot, context }
+  const workerFrames = new Map(); // workerNonce -> { instId, iframe, workerSrc }
   const seenDeliveries = new Set();
   const maxSeenDeliveries = 500;
+  const MAX_PENDING_INVOKES = 64;
+  const WORKER_BOOT_TIMEOUT_MS = 5000;
+  const PERSONAL_PERMISSIONS = new Set([
+    'profile.read',
+    'contacts.read',
+    'contacts.write',
+    'e2ee.read_decrypted',
+    'e2ee.process_local',
+    'e2ee.egress_external',
+    'e2ee.store_external',
+  ]);
   let globalAccount = { id: '', username: '', displayName: '' };
   let decryptedMessagesProvider = null; // (conversationId) => Array<{id, senderName, text, createdAt}>
   let composerInsertHandler = null;
@@ -51,7 +63,14 @@
       if (g.revoked_at) continue;
       if (g.expires_at && Date.parse(g.expires_at) <= now) continue;
       if (g.permission !== perm) continue;
+      // Personal permissions (profile, contacts, E2EE) MUST be granted by the active principal (globalAccount.id)
+      if (PERSONAL_PERMISSIONS.has(perm) && globalAccount.id && g.user_id && String(g.user_id) !== String(globalAccount.id)) {
+        continue;
+      }
       if (perm.startsWith('e2ee.')) {
+        if (perm === 'e2ee.egress_external' || perm === 'e2ee.store_external') {
+          if (!scopeId || (g.scope_id && String(g.scope_id) === String(scopeId))) return true;
+        }
         if (scopeId && g.scope_id && String(g.scope_id) === String(scopeId)) return true;
         continue;
       }
@@ -151,7 +170,10 @@ function _handleHostMessage(msg) {
   }
   if (msg.__cwReady) {
     _isReady = true;
-    while (_readyCbs.length) { try { _readyCbs.shift()(msg.context || {}); } catch (e) { console.error(e); } }
+    while (_readyCbs.length) {
+      const cb = _readyCbs.shift();
+      try { Promise.resolve(cb(msg.context || {})).catch((e) => console.warn('[plugin onReady]', e)); } catch (e) { console.warn('[plugin onReady]', e); }
+    }
     return;
   }
   if (msg.__cwInvoke) {
@@ -335,8 +357,19 @@ const chatw = {
   },
   onCommand: (trigger, handler) => chatw.commands.register(trigger, '', handler),
   onMessageAction: (actionId, handler) => { _msgActionHandlers.set(actionId, handler); },
-  onReady: (cb) => { if (_isReady) cb({}); else _readyCbs.push(cb); },
+  onReady: (cb) => {
+    if (_isReady) {
+      try { Promise.resolve(cb({})).catch((e) => console.warn('[plugin onReady]', e)); } catch (e) { console.warn('[plugin onReady]', e); }
+    } else {
+      _readyCbs.push(cb);
+    }
+  },
 };
+if (typeof globalThis.addEventListener === 'function') {
+  globalThis.addEventListener('unhandledrejection', (ev) => {
+    if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+  });
+}
 globalThis.chatw = chatw;
 `;
   }
@@ -346,7 +379,7 @@ globalThis.chatw = chatw;
   // ==========================================================================
   function buildWorkerSource(inst, nonce) {
     const wasmB64 = (inst.wasm_base64 || '').trim();
-    const maxPages = Math.min(4096, Math.max(16, Math.ceil(((inst.manifest?.resource_limits?.max_memory_mb) || 32) * 16)));
+    const maxPages = Math.min(4096, Math.max(256, Math.ceil(((inst.manifest?.resource_limits?.max_memory_mb) || 32) * 16)));
     const wasmLoader = wasmB64
       ? `
 let _wasmInst = null;
@@ -609,10 +642,75 @@ ${wasmLoader}
     }
   }
 
-  // Global listener for sandboxed iframe postMessages
+  // Global listener for sandboxed iframe (UI & opaque-origin Worker host) postMessages
   window.addEventListener('message', async (e) => {
     const data = e.data;
     if (!data || !data.nonce) return;
+
+    // 1. Check if message comes from an opaque-origin Worker host iframe
+    const wEntry = workerFrames.get(data.nonce);
+    if (wEntry && wEntry.iframe && e.source === wEntry.iframe.contentWindow) {
+      const inst = instances.get(wEntry.instId);
+      if (!inst) return;
+      if (data.__cwSandboxShellReady) {
+        try {
+          wEntry.iframe.contentWindow.postMessage(
+            { __cwSpawnWorker: true, nonce: data.nonce, workerSrc: wEntry.workerSrc },
+            '*'
+          );
+        } catch (_) {}
+        return;
+      }
+      if (data.__cwWorkerBooted) {
+        if (inst.bootTimer) { clearTimeout(inst.bootTimer); inst.bootTimer = null; }
+        inst.status = 'running';
+        addLog(inst, 'info', `Khởi chạy sandbox (${inst.runtime}, origin=null) thành công`);
+        try {
+          inst.worker.postMessage({
+            __cwReady: true,
+            nonce: data.nonce,
+            context: { installationId: inst.id, pluginKey: inst.plugin_key },
+          });
+        } catch (_) {}
+        if (Array.isArray(inst.bootWaiters)) {
+          while (inst.bootWaiters.length) {
+            try { inst.bootWaiters.shift()(true); } catch (_) {}
+          }
+        }
+        return;
+      }
+      if (data.__cwWorkerError) {
+        if (inst.bootTimer) { clearTimeout(inst.bootTimer); inst.bootTimer = null; }
+        inst.status = 'crashed';
+        inst.lastError = data.error;
+        addLog(inst, 'error', 'Lỗi khởi chạy Plugin', data.error);
+        if (Array.isArray(inst.bootWaiters)) {
+          while (inst.bootWaiters.length) {
+            try { inst.bootWaiters.shift()(false); } catch (_) {}
+          }
+        }
+        return;
+      }
+      if (data.__cwInvokeRes) {
+        const p = inst.pendingInvokes && inst.pendingInvokes.get(data.invId);
+        if (!p) return;
+        inst.pendingInvokes.delete(data.invId);
+        if (data.ok) p.resolve(data.result);
+        else p.reject(new Error(data.error || 'PLUGIN_INVOKE_ERROR'));
+        return;
+      }
+      if (data.__cwRpc) {
+        try {
+          const result = await handleRpcCall(inst, data.method, data.args);
+          if (inst.worker) inst.worker.postMessage({ __cwRpcRes: true, nonce: data.nonce, id: data.id, result });
+        } catch (err) {
+          if (inst.worker) inst.worker.postMessage({ __cwRpcRes: true, nonce: data.nonce, id: data.id, error: (err && err.message) || String(err) });
+        }
+      }
+      return;
+    }
+
+    // 2. Check if message comes from a sandboxed UI iframe
     const entry = uiFrames.get(data.nonce);
     if (!entry || !entry.iframe || e.source !== entry.iframe.contentWindow) return;
     if (data.__cwSandboxShellReady) {
@@ -644,6 +742,16 @@ ${wasmLoader}
   function stopInstance(instId) {
     const inst = instances.get(instId);
     if (!inst) return;
+    if (inst.bootTimer) {
+      clearTimeout(inst.bootTimer);
+      inst.bootTimer = null;
+    }
+    if (inst.pendingInvokes) {
+      for (const [, p] of inst.pendingInvokes.entries()) {
+        try { p.reject(new Error('PLUGIN_STOPPED')); } catch (_) {}
+      }
+      inst.pendingInvokes.clear();
+    }
     if (inst.worker) {
       try { inst.worker.terminate(); } catch (_) {}
       inst.worker = null;
@@ -651,6 +759,12 @@ ${wasmLoader}
     if (inst.workerUrl) {
       try { URL.revokeObjectURL(inst.workerUrl); } catch (_) {}
       inst.workerUrl = null;
+    }
+    for (const [nonce, wf] of workerFrames.entries()) {
+      if (wf.instId === instId) {
+        if (wf.iframe && wf.iframe.parentNode) wf.iframe.parentNode.removeChild(wf.iframe);
+        workerFrames.delete(nonce);
+      }
     }
     for (const [nonce, f] of uiFrames.entries()) {
       if (f.instId === instId) {
@@ -661,6 +775,13 @@ ${wasmLoader}
         uiFrames.delete(nonce);
       }
     }
+    const uiContrib = (inst.manifest && inst.manifest.ui_contributions) || {};
+    inst.commands = inst.enabled && Array.isArray(inst.manifest?.commands)
+      ? inst.manifest.commands.map((c) => ({ trigger: String(c.trigger || '').toLowerCase(), description: String(c.description || '') }))
+      : [];
+    inst.messageActions = inst.enabled && Array.isArray(uiContrib.messageActions) ? [...uiContrib.messageActions] : [];
+    inst.composerButtons = inst.enabled && Array.isArray(uiContrib.composerButtons) ? [...uiContrib.composerButtons] : [];
+    inst.subscriptions = inst.enabled && Array.isArray(inst.manifest?.event_subscriptions) ? [...inst.manifest.event_subscriptions] : [];
     inst.status = 'stopped';
   }
 
@@ -675,81 +796,90 @@ ${wasmLoader}
     inst.workerNonce = nonce;
     inst.pendingInvokes = new Map();
     const src = buildWorkerSource(inst, nonce);
-    const blob = new Blob([src], { type: 'application/javascript' });
-    const url = URL.createObjectURL(blob);
-    inst.workerUrl = url;
-    const worker = new Worker(url);
-    inst.worker = worker;
-    inst.status = 'starting';
 
-    worker.onmessage = async (e) => {
-      const data = e.data;
-      if (!data || data.nonce !== nonce) return;
-      if (data.__cwWorkerBooted) {
-        inst.status = 'running';
-        addLog(inst, 'info', `Khởi chạy sandbox (${inst.runtime}) thành công`);
-        try {
-          worker.postMessage({
-            __cwReady: true,
-            nonce,
-            context: { installationId: inst.id, pluginKey: inst.plugin_key },
-          });
-        } catch (_) {}
-        return;
-      }
-      if (data.__cwWorkerError) {
-        inst.status = 'crashed';
-        inst.lastError = data.error;
-        addLog(inst, 'error', 'Lỗi khởi chạy Plugin', data.error);
-        return;
-      }
-      if (data.__cwInvokeRes) {
-        const p = inst.pendingInvokes.get(data.invId);
-        if (!p) return;
-        inst.pendingInvokes.delete(data.invId);
-        if (data.ok) p.resolve(data.result);
-        else p.reject(new Error(data.error || 'PLUGIN_INVOKE_ERROR'));
-        return;
-      }
-      if (data.__cwRpc) {
-        try {
-          const result = await handleRpcCall(inst, data.method, data.args);
-          worker.postMessage({ __cwRpcRes: true, nonce, id: data.id, result });
-        } catch (err) {
-          worker.postMessage({ __cwRpcRes: true, nonce, id: data.id, error: (err && err.message) || String(err) });
+    // Spawn the plugin Worker inside a hidden opaque-origin `<iframe sandbox="allow-scripts">`
+    // (NO allow-same-origin!) so the Worker runs under a null opaque origin with zero access to
+    // host cookies, localStorage, IndexedDB, or same-origin /api endpoints.
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts');
+    iframe.setAttribute('referrerpolicy', 'no-referrer');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.className = 'plugin-worker-sandbox-frame';
+    iframe.style.cssText = 'display:none !important;width:0;height:0;border:0;position:absolute;pointer-events:none;';
+
+    const apiBase =
+      window.location && (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+        ? ''
+        : (window.CHATW_API_URL || 'http://127.0.0.1:8085');
+    iframe.src = `${apiBase}/plugin-sandbox-frame#${nonce}`;
+
+    workerFrames.set(nonce, { instId: inst.id, iframe, workerSrc: src });
+    (document.body || document.documentElement).appendChild(iframe);
+
+    const workerProxy = {
+      postMessage(payload) {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.postMessage({ __cwToWorker: true, nonce, payload }, '*');
         }
+      },
+      terminate() {
+        try {
+          if (iframe.contentWindow) {
+            iframe.contentWindow.postMessage({ __cwTerminateWorker: true, nonce }, '*');
+          }
+        } catch (_) {}
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        workerFrames.delete(nonce);
+      },
+    };
+    inst.worker = workerProxy;
+    inst.status = 'starting';
+    inst.bootTimer = setTimeout(() => {
+      if (inst.status === 'starting') {
+        inst.status = 'timeout_killed';
+        inst.lastError = `Quá thời gian khởi động sandbox (${WORKER_BOOT_TIMEOUT_MS}ms)`;
+        addLog(inst, 'error', 'Đã dừng Plugin do treo khi khởi động', inst.lastError);
+        try { workerProxy.terminate(); } catch (_) {}
+        inst.worker = null;
       }
-    };
-
-    worker.onerror = (err) => {
-      inst.status = 'crashed';
-      inst.lastError = err.message || 'Worker runtime crash';
-      addLog(inst, 'error', 'Sandbox bị lỗi và đã cách ly', inst.lastError);
-      try { worker.terminate(); } catch (_) {}
-      inst.worker = null;
-    };
+    }, WORKER_BOOT_TIMEOUT_MS);
   }
 
   function invokeWorker(inst, payload) {
     return new Promise((resolve, reject) => {
       if (!inst || !inst.enabled || !inst.worker) return resolve(null);
-      const invId = randNonce();
-      const timeoutMs = Math.min(10000, Math.max(500, (inst.manifest?.resource_limits?.max_exec_ms) || 3000));
-      const timer = setTimeout(() => {
-        inst.pendingInvokes.delete(invId);
-        // Kill runaway/infinite-loop plugin immediately!
-        inst.status = 'timeout_killed';
-        inst.lastError = `Vượt quá giới hạn thực thi (${timeoutMs}ms)`;
-        addLog(inst, 'error', 'Đã dừng Plugin do treo hoặc quá thời gian xử lý', inst.lastError);
-        try { inst.worker.terminate(); } catch (_) {}
-        inst.worker = null;
-        reject(new Error('PLUGIN_EXECUTION_TIMEOUT'));
-      }, timeoutMs);
-      inst.pendingInvokes.set(invId, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
-      });
-      inst.worker.postMessage({ __cwInvoke: true, nonce: inst.workerNonce, invId, ...payload });
+      if (inst.pendingInvokes && inst.pendingInvokes.size >= MAX_PENDING_INVOKES) {
+        return reject(new Error('PLUGIN_QUEUE_OVERFLOW'));
+      }
+      const sendNow = () => {
+        if (!inst || !inst.enabled || !inst.worker) return resolve(null);
+        const invId = randNonce();
+        const timeoutMs = Math.min(10000, Math.max(500, (inst.manifest?.resource_limits?.max_exec_ms) || 3000));
+        const timer = setTimeout(() => {
+          inst.pendingInvokes.delete(invId);
+          // Kill runaway/infinite-loop plugin immediately!
+          inst.status = 'timeout_killed';
+          inst.lastError = `Vượt quá giới hạn thực thi (${timeoutMs}ms)`;
+          addLog(inst, 'error', 'Đã dừng Plugin do treo hoặc quá thời gian xử lý', inst.lastError);
+          try { inst.worker.terminate(); } catch (_) {}
+          inst.worker = null;
+          reject(new Error('PLUGIN_EXECUTION_TIMEOUT'));
+        }, timeoutMs);
+        inst.pendingInvokes.set(invId, {
+          resolve: (v) => { clearTimeout(timer); resolve(v); },
+          reject: (e) => { clearTimeout(timer); reject(e); },
+        });
+        inst.worker.postMessage({ __cwInvoke: true, nonce: inst.workerNonce, invId, ...payload });
+      };
+      if (inst.status === 'starting') {
+        inst.bootWaiters = inst.bootWaiters || [];
+        inst.bootWaiters.push((ok) => {
+          if (ok) sendNow();
+          else resolve(null);
+        });
+      } else {
+        sendNow();
+      }
     });
   }
 

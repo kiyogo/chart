@@ -27,6 +27,18 @@ use crate::{
     error::{AppError, AppResult},
 };
 
+pub const OAUTH_TICKET_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+pub const OAUTH_TICKET_MAX_CAPACITY: usize = 1024;
+
+#[derive(Clone, Debug)]
+pub struct OAuthTicketEntry {
+    pub token: Option<String>,
+    pub created_at: std::time::Instant,
+}
+
+pub type OAuthTicketStore =
+    Arc<tokio::sync::RwLock<std::collections::HashMap<Uuid, OAuthTicketEntry>>>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
@@ -34,7 +46,7 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub jwks_cache: Arc<tokio::sync::RwLock<google::GoogleJwksCache>>,
     pub ws_hub: Arc<crate::websocket::WsHub>,
-    pub oauth_tickets: Arc<tokio::sync::RwLock<std::collections::HashMap<Uuid, Option<String>>>>,
+    pub oauth_tickets: OAuthTicketStore,
     pub storage: Arc<crate::storage::StorageRegistry>,
     pub sfu: Arc<crate::calls::sfu::SfuHandle>,
 }
@@ -85,9 +97,34 @@ pub fn routes() -> Router<AppState> {
         .merge(crate::security::auth_routes())
 }
 
+pub fn prune_expired_oauth_tickets(
+    tickets: &mut std::collections::HashMap<Uuid, OAuthTicketEntry>,
+    now: std::time::Instant,
+) {
+    tickets.retain(|_, entry| now.duration_since(entry.created_at) < OAUTH_TICKET_TTL);
+    if tickets.len() >= OAUTH_TICKET_MAX_CAPACITY {
+        if let Some(oldest_key) = tickets
+            .iter()
+            .min_by_key(|(_, entry)| entry.created_at)
+            .map(|(k, _)| *k)
+        {
+            tickets.remove(&oldest_key);
+        }
+    }
+}
+
 async fn handle_create_oauth_ticket(State(state): State<AppState>) -> Json<CreateTicketResponse> {
     let ticket = Uuid::new_v4();
-    state.oauth_tickets.write().await.insert(ticket, None);
+    let now = std::time::Instant::now();
+    let mut tickets = state.oauth_tickets.write().await;
+    prune_expired_oauth_tickets(&mut tickets, now);
+    tickets.insert(
+        ticket,
+        OAuthTicketEntry {
+            token: None,
+            created_at: now,
+        },
+    );
     Json(CreateTicketResponse { ticket })
 }
 
@@ -95,10 +132,13 @@ async fn handle_check_oauth_ticket(
     State(state): State<AppState>,
     axum::extract::Path(ticket_id): axum::extract::Path<Uuid>,
 ) -> Json<CheckTicketResponse> {
+    let now = std::time::Instant::now();
     let mut tickets = state.oauth_tickets.write().await;
-    if let Some(token_opt) = tickets.get(&ticket_id) {
-        if let Some(token) = token_opt {
+    prune_expired_oauth_tickets(&mut tickets, now);
+    if let Some(entry) = tickets.get(&ticket_id) {
+        if let Some(ref token) = entry.token {
             let tok = token.clone();
+            // Atomic one-time consumption: ticket is destroyed immediately once token is claimed
             tickets.remove(&ticket_id);
             return Json(CheckTicketResponse {
                 ready: true,
@@ -250,11 +290,12 @@ async fn handle_google_callback(
     };
 
     if let Some(ticket_id) = saved.ticket {
-        state
-            .oauth_tickets
-            .write()
-            .await
-            .insert(ticket_id, Some(raw_token));
+        let now = std::time::Instant::now();
+        let mut tickets = state.oauth_tickets.write().await;
+        prune_expired_oauth_tickets(&mut tickets, now);
+        if let Some(entry) = tickets.get_mut(&ticket_id) {
+            entry.token = Some(raw_token);
+        }
     }
 
     // Clear oauth cookie
@@ -569,4 +610,87 @@ async fn handle_delete_session(
     .await;
 
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+/// Strict CORS origin check: parses the `Origin` header as a URL and permits only exact
+/// `localhost` / `127.0.0.1` loopback hosts (any port) or the configured `public_origin`.
+/// Rejects prefix-bypass origins like `http://localhost.attacker.evil` or `http://127.0.0.1.evil.com`.
+pub fn is_allowed_cors_origin(origin_raw: &str, configured_public_origin: &str) -> bool {
+    let trimmed = origin_raw.trim();
+    if trimmed.is_empty() || trimmed == "null" {
+        return false;
+    }
+    let Ok(parsed) = reqwest::Url::parse(trimmed) else {
+        return false;
+    };
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return false;
+    }
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return false;
+    }
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    if host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" {
+        return true;
+    }
+    if let Ok(pub_url) = reqwest::Url::parse(configured_public_origin.trim()) {
+        if pub_url.scheme() == parsed.scheme()
+            && pub_url.host_str() == parsed.host_str()
+            && pub_url.port_or_known_default() == parsed.port_or_known_default()
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strict_cors_origin_rejects_subdomain_prefix_bypass() {
+        assert!(is_allowed_cors_origin("http://localhost:8085", "http://localhost:8085"));
+        assert!(is_allowed_cors_origin("http://127.0.0.1:5173", "http://localhost:8085"));
+        assert!(is_allowed_cors_origin("https://chat.example.com", "https://chat.example.com"));
+        // Prefix-spoofed attacker domains MUST be rejected
+        assert!(!is_allowed_cors_origin("http://localhost.attacker.evil", "http://localhost:8085"));
+        assert!(!is_allowed_cors_origin("http://localhost.evil.com:8085", "http://localhost:8085"));
+        assert!(!is_allowed_cors_origin("http://127.0.0.1.evil.com", "http://localhost:8085"));
+        assert!(!is_allowed_cors_origin("null", "http://localhost:8085"));
+        assert!(!is_allowed_cors_origin("javascript:alert(1)", "http://localhost:8085"));
+    }
+
+    #[test]
+    fn test_oauth_ticket_ttl_and_capacity_eviction() {
+        let mut store = std::collections::HashMap::new();
+        let base = std::time::Instant::now();
+        let expired_id = Uuid::new_v4();
+        store.insert(
+            expired_id,
+            OAuthTicketEntry {
+                token: Some("old".into()),
+                created_at: base,
+            },
+        );
+        let fresh_id = Uuid::new_v4();
+        let later = base + OAUTH_TICKET_TTL + std::time::Duration::from_secs(1);
+        store.insert(
+            fresh_id,
+            OAuthTicketEntry {
+                token: Some("fresh".into()),
+                created_at: later,
+            },
+        );
+        prune_expired_oauth_tickets(&mut store, later);
+        assert!(!store.contains_key(&expired_id), "expired ticket must be evicted");
+        assert!(store.contains_key(&fresh_id), "fresh ticket must remain");
+    }
 }

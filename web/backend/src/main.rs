@@ -37,7 +37,7 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
         headers.insert(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'unsafe-inline'; img-src data: https: blob:; font-src data:; frame-ancestors 'self' http://127.0.0.1:* http://localhost:* https://*;",
+                "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src blob:; connect-src 'none'; style-src 'unsafe-inline'; img-src data: https: blob:; font-src data:; frame-ancestors 'self' http://127.0.0.1:* http://localhost:* https://*;",
             ),
         );
     } else {
@@ -76,11 +76,47 @@ async fn plugin_sandbox_frame_html() -> ([(axum::http::header::HeaderName, &'sta
 (function () {
   const SHELL_NONCE = (location.hash || '').replace(/^#/, '');
   let mounted = false;
-  window.addEventListener('message', function onBoot(ev) {
+  let innerWorker = null;
+  let innerWorkerUrl = null;
+  window.addEventListener('message', function onMsg(ev) {
     const d = ev.data;
-    if (mounted || !d || !d.__cwMountDoc || d.nonce !== SHELL_NONCE) return;
+    if (!d || d.nonce !== SHELL_NONCE) return;
+    if (!mounted && d.__cwSpawnWorker) {
+      mounted = true;
+      try {
+        const blob = new Blob([String(d.workerSrc || '')], { type: 'application/javascript' });
+        innerWorkerUrl = URL.createObjectURL(blob);
+        innerWorker = new Worker(innerWorkerUrl);
+        innerWorker.onmessage = function (we) {
+          window.parent.postMessage(we.data, '*');
+        };
+        innerWorker.onerror = function (err) {
+          window.parent.postMessage({
+            __cwWorkerError: true,
+            nonce: SHELL_NONCE,
+            error: (err && err.message) || 'Opaque worker runtime crash'
+          }, '*');
+        };
+      } catch (err) {
+        window.parent.postMessage({
+          __cwWorkerError: true,
+          nonce: SHELL_NONCE,
+          error: (err && err.message) || String(err)
+        }, '*');
+      }
+      return;
+    }
+    if (d.__cwToWorker && innerWorker) {
+      try { innerWorker.postMessage(d.payload); } catch (_) {}
+      return;
+    }
+    if (d.__cwTerminateWorker) {
+      if (innerWorker) { try { innerWorker.terminate(); } catch (_) {} innerWorker = null; }
+      if (innerWorkerUrl) { try { URL.revokeObjectURL(innerWorkerUrl); } catch (_) {} innerWorkerUrl = null; }
+      return;
+    }
+    if (mounted || !d.__cwMountDoc) return;
     mounted = true;
-    window.removeEventListener('message', onBoot);
     try {
       if (d.cssVars) {
         const st = document.createElement('style');
@@ -291,6 +327,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 7b. CORS layer for web development and same-origin requests
+    let public_origin_for_cors = config.public_origin.clone();
     let cors = CorsLayer::new()
         .allow_methods([
             Method::GET,
@@ -310,9 +347,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             header::HeaderName::from_static("x-backup-password"),
         ]))
         .allow_credentials(true)
-        .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
+        .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _| {
             let s = origin.to_str().unwrap_or("");
-            s.starts_with("http://localhost") || s.starts_with("http://127.0.0.1")
+            auth::is_allowed_cors_origin(s, &public_origin_for_cors)
         }));
 
     let app = app

@@ -3,6 +3,7 @@ pub mod existing;
 pub mod local_cas;
 pub mod migration;
 pub mod permissions;
+pub mod references;
 pub mod router;
 pub mod s3;
 pub mod temp_relay;

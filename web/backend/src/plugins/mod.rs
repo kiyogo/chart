@@ -2,6 +2,7 @@
 
 pub mod installations;
 pub mod marketplace;
+pub mod runtime_bridge;
 pub mod schema;
 pub mod security;
 pub mod webhooks;

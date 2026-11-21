@@ -253,12 +253,56 @@ pub fn validate_remote_endpoint(raw_url: &str, allow_lan_nas: bool) -> Result<re
     if (host_lower == "localhost" || host_lower == "127.0.0.1" || host_lower == "::1") && !allow_loopback_test {
         return Err(CloudError::SsrfBlocked(host.to_string()));
     }
-    if let Ok(ip) = host.parse::<IpAddr>() {
+    let host_unbracketed = host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = host_unbracketed.parse::<IpAddr>() {
         if is_forbidden_ssrf_ip(ip, allow_lan_nas, allow_loopback_test) {
             return Err(CloudError::SsrfBlocked(host.to_string()));
         }
     }
     Ok(url)
+}
+
+/// Builds a redirect-disabled (`redirect::Policy::none()`) HTTP client and resolves DNS upfront
+/// to prevent 302 redirect SSRF and DNS rebinding against private/metadata IP ranges.
+async fn build_safe_cloud_http_client(
+    url: &reqwest::Url,
+    allow_lan_nas: bool,
+) -> Result<reqwest::Client, CloudError> {
+    let allow_loopback_test = std::env::var("ALLOW_LOOPBACK_CLOUD_TEST")
+        .ok()
+        .is_some_and(|v| v == "1" || v == "true");
+    let host = url
+        .host_str()
+        .ok_or_else(|| CloudError::InvalidConfig("Thiếu host trong URL".into()))?
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| CloudError::InvalidConfig("Cổng URL không hợp lệ".into()))?;
+
+    let mut builder = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(15));
+
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_forbidden_ssrf_ip(ip, allow_lan_nas, allow_loopback_test) {
+            return Err(CloudError::SsrfBlocked(host.to_string()));
+        }
+    } else if let Ok(addrs) = tokio::net::lookup_host((host, port)).await {
+        let resolved: Vec<std::net::SocketAddr> = addrs.collect();
+        for addr in &resolved {
+            if is_forbidden_ssrf_ip(addr.ip(), allow_lan_nas, allow_loopback_test) {
+                return Err(CloudError::SsrfBlocked(format!("{} -> {}", host, addr.ip())));
+            }
+        }
+        if let Some(first) = resolved.first() {
+            builder = builder.resolve(host, *first);
+        }
+    }
+
+    builder
+        .build()
+        .map_err(|e| CloudError::Network(e.to_string()))
 }
 
 fn sanitize_remote_key(key: &str) -> Result<String, CloudError> {
@@ -276,6 +320,7 @@ pub struct WebDavProvider {
     pub username: String,
     pub password: String,
     pub folder: String,
+    pub allow_lan: bool,
 }
 
 impl WebDavProvider {
@@ -296,7 +341,12 @@ impl WebDavProvider {
             username,
             password,
             folder: if folder.is_empty() { "KIYO_Backups".into() } else { folder },
+            allow_lan,
         })
+    }
+
+    async fn safe_client(&self) -> Result<reqwest::Client, CloudError> {
+        build_safe_cloud_http_client(&self.base_url, self.allow_lan).await
     }
 
     fn url_for(&self, rel: &str) -> Result<String, CloudError> {
@@ -395,17 +445,21 @@ impl CloudStorageProvider for WebDavProvider {
 
     fn verify_connection<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        _http: &'a reqwest::Client,
     ) -> BoxFuture<'a, Result<(Option<String>, CloudQuotaInfo), CloudError>> {
         Box::pin(async move {
+            let safe_http = self.safe_client().await?;
             let propfind = Method::from_bytes(b"PROPFIND").map_err(|_| CloudError::Unsupported("PROPFIND"))?;
             let url = self.base_url.to_string();
             let resp = self
-                .apply_auth(http.request(propfind, &url).header("Depth", "0"))
+                .apply_auth(safe_http.request(propfind, &url).header("Depth", "0"))
                 .send()
                 .await
                 .map_err(|e| CloudError::Network(e.to_string()))?;
             let status = resp.status().as_u16();
+            if (300..400).contains(&status) {
+                return Err(CloudError::SsrfBlocked("WebDAV redirect is forbidden".into()));
+            }
             if status == 401 || status == 403 {
                 return Err(CloudError::AuthRequired);
             }
@@ -419,7 +473,7 @@ impl CloudStorageProvider for WebDavProvider {
                 (Some(u), Some(f)) => Some(u.saturating_add(f)),
                 _ => None,
             };
-            self.ensure_dir(http, "").await?;
+            self.ensure_dir(&safe_http, "").await?;
             Ok((
                 if self.username.is_empty() { None } else { Some(self.username.clone()) },
                 CloudQuotaInfo {
@@ -433,18 +487,22 @@ impl CloudStorageProvider for WebDavProvider {
 
     fn list_backups<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        _http: &'a reqwest::Client,
         _prefix: &'a str,
     ) -> BoxFuture<'a, Result<Vec<CloudBackupItem>, CloudError>> {
         Box::pin(async move {
+            let safe_http = self.safe_client().await?;
             let propfind = Method::from_bytes(b"PROPFIND").map_err(|_| CloudError::Unsupported("PROPFIND"))?;
             let url = self.url_for("")?;
             let resp = self
-                .apply_auth(http.request(propfind, &url).header("Depth", "infinity"))
+                .apply_auth(safe_http.request(propfind, &url).header("Depth", "infinity"))
                 .send()
                 .await
                 .map_err(|e| CloudError::Network(e.to_string()))?;
             let st = resp.status().as_u16();
+            if (300..400).contains(&st) {
+                return Err(CloudError::SsrfBlocked("WebDAV redirect is forbidden".into()));
+            }
             if st == 401 || st == 403 {
                 return Err(CloudError::AuthRequired);
             }
@@ -458,26 +516,30 @@ impl CloudStorageProvider for WebDavProvider {
 
     fn upload_backup<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        _http: &'a reqwest::Client,
         remote_key: &'a str,
         bytes: Vec<u8>,
     ) -> BoxFuture<'a, Result<CloudBackupItem, CloudError>> {
         Box::pin(async move {
+            let safe_http = self.safe_client().await?;
             let clean = sanitize_remote_key(remote_key)?;
             if let Some((parent, _)) = clean.rsplit_once('/') {
-                self.ensure_dir(http, parent).await?;
+                self.ensure_dir(&safe_http, parent).await?;
             } else {
-                self.ensure_dir(http, "").await?;
+                self.ensure_dir(&safe_http, "").await?;
             }
             let sha = hex::encode(crate::storage::sha256_bytes(&bytes));
             let len = bytes.len() as u64;
             let url = self.url_for(&clean)?;
             let resp = self
-                .apply_auth(http.put(&url).body(bytes))
+                .apply_auth(safe_http.put(&url).body(bytes))
                 .send()
                 .await
                 .map_err(|e| CloudError::Network(e.to_string()))?;
             let st = resp.status().as_u16();
+            if (300..400).contains(&st) {
+                return Err(CloudError::SsrfBlocked("WebDAV redirect is forbidden".into()));
+            }
             if st == 401 || st == 403 {
                 return Err(CloudError::AuthRequired);
             }
@@ -499,18 +561,22 @@ impl CloudStorageProvider for WebDavProvider {
 
     fn download_backup<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        _http: &'a reqwest::Client,
         remote_key: &'a str,
     ) -> BoxFuture<'a, Result<Vec<u8>, CloudError>> {
         Box::pin(async move {
+            let safe_http = self.safe_client().await?;
             let clean = sanitize_remote_key(remote_key)?;
             let url = self.url_for(&clean)?;
             let resp = self
-                .apply_auth(http.get(&url))
+                .apply_auth(safe_http.get(&url))
                 .send()
                 .await
                 .map_err(|e| CloudError::Network(e.to_string()))?;
             let st = resp.status().as_u16();
+            if (300..400).contains(&st) {
+                return Err(CloudError::SsrfBlocked("WebDAV redirect is forbidden".into()));
+            }
             if st == 401 || st == 403 {
                 return Err(CloudError::AuthRequired);
             }
@@ -523,14 +589,15 @@ impl CloudStorageProvider for WebDavProvider {
 
     fn delete_backup<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        _http: &'a reqwest::Client,
         remote_key: &'a str,
     ) -> BoxFuture<'a, Result<bool, CloudError>> {
         Box::pin(async move {
+            let safe_http = self.safe_client().await?;
             let clean = sanitize_remote_key(remote_key)?;
             let url = self.url_for(&clean)?;
             let resp = self
-                .apply_auth(http.delete(&url))
+                .apply_auth(safe_http.delete(&url))
                 .send()
                 .await
                 .map_err(|e| CloudError::Network(e.to_string()))?;

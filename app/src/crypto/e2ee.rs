@@ -129,11 +129,97 @@ pub fn get_user_keys(user_id: Option<&str>) -> Option<UserKeys> {
     // Never fall back to chatw_e2ee_keys_current when user_id is specified;
     // doing so leaks Account A's private key into Account B on the same browser.
     let raw = platform::storage_get(&primary_key)?;
-    parse_stored_user_keys(&raw).ok()
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let was_legacy_plaintext = !raw.trim_start().starts_with("enc:v1:");
+    let keys = parse_stored_user_keys(&raw, &primary_key).ok()?;
+    if was_legacy_plaintext {
+        // Transparent non-destructive migration: upgrade legacy plaintext keys to AES-256-GCM wrapped format in-place
+        store_user_keys(user_id, &keys);
+    }
+    Some(keys)
 }
 
-fn parse_stored_user_keys(raw: &str) -> Result<UserKeys, String> {
-    let stored: StoredUserKeys = serde_json::from_str(raw).map_err(|_| "invalid_key_json")?;
+#[allow(deprecated)]
+fn derive_local_wrapping_key(storage_slot: &str) -> Result<[u8; 32], String> {
+    let seed_b64 = match platform::storage_get("__chatw_device_kwrap_v1") {
+        Some(s) if s.len() >= 40 => s,
+        _ => {
+            let mut seed = [0u8; 32];
+            OsRng.fill_bytes(&mut seed);
+            let encoded = base64url_encode(&seed);
+            platform::storage_set("__chatw_device_kwrap_v1", &encoded);
+            encoded
+        }
+    };
+    let seed_bytes = base64url_decode(&seed_b64)?;
+    let hk = Hkdf::<Sha256>::new(Some(b"chatw-local-keywrap-v1"), &seed_bytes);
+    let mut kek = [0u8; 32];
+    hk.expand(format!("slot:{storage_slot}").as_bytes(), &mut kek)
+        .map_err(|_| "hkdf_wrap_failed".to_string())?;
+    Ok(kek)
+}
+
+#[allow(deprecated)]
+fn encrypt_stored_payload(storage_slot: &str, plaintext_json: &str) -> Result<String, String> {
+    let kek = derive_local_wrapping_key(storage_slot)?;
+    let cipher = Aes256Gcm::new_from_slice(&kek).map_err(|_| "aes_wrap_init_failed".to_string())?;
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let ct = cipher
+        .encrypt(
+            Nonce::from_slice(&nonce_bytes),
+            Payload {
+                msg: plaintext_json.as_bytes(),
+                aad: storage_slot.as_bytes(),
+            },
+        )
+        .map_err(|_| "aes_wrap_encrypt_failed".to_string())?;
+    Ok(format!(
+        "enc:v1:{}:{}",
+        base64url_encode(&nonce_bytes),
+        base64url_encode(&ct)
+    ))
+}
+
+#[allow(deprecated)]
+fn decrypt_stored_payload(storage_slot: &str, wrapped: &str) -> Result<String, String> {
+    let rest = wrapped
+        .trim()
+        .strip_prefix("enc:v1:")
+        .ok_or_else(|| "not_encrypted_v1".to_string())?;
+    let (nonce_b64, ct_b64) = rest
+        .split_once(':')
+        .ok_or_else(|| "invalid_enc_v1_format".to_string())?;
+    let nonce_vec = base64url_decode(nonce_b64)?;
+    if nonce_vec.len() != 12 {
+        return Err("invalid_wrap_nonce".into());
+    }
+    let ct_vec = base64url_decode(ct_b64)?;
+    let kek = derive_local_wrapping_key(storage_slot)?;
+    let cipher = Aes256Gcm::new_from_slice(&kek).map_err(|_| "aes_wrap_init_failed".to_string())?;
+    let pt = cipher
+        .decrypt(
+            Nonce::from_slice(&nonce_vec),
+            Payload {
+                msg: &ct_vec,
+                aad: storage_slot.as_bytes(),
+            },
+        )
+        .map_err(|_| "aes_wrap_decrypt_failed".to_string())?;
+    String::from_utf8(pt).map_err(|_| "invalid_wrap_utf8".into())
+}
+
+fn parse_stored_user_keys(raw: &str, storage_slot: &str) -> Result<UserKeys, String> {
+    let trimmed = raw.trim();
+    let json_payload = if trimmed.starts_with("enc:v1:") {
+        decrypt_stored_payload(storage_slot, trimmed)?
+    } else {
+        trimmed.to_string()
+    };
+    let stored: StoredUserKeys =
+        serde_json::from_str(&json_payload).map_err(|_| "invalid_key_json")?;
     let ecdh_vec = base64url_decode(&stored.ecdh_secret_b64)?;
     let ecdsa_vec = base64url_decode(&stored.ecdsa_secret_b64)?;
     if ecdh_vec.len() != 32 || ecdsa_vec.len() != 32 {
@@ -157,14 +243,13 @@ pub fn store_user_keys(user_id: Option<&str>, keys: &UserKeys) {
         ecdh_secret_b64: base64url_encode(&keys.ecdh_secret),
         ecdsa_secret_b64: base64url_encode(&keys.ecdsa_secret),
     };
+    let slot = match user_id {
+        Some(uid) if !uid.is_empty() => format!("chatw_e2ee_keys_{uid}"),
+        _ => "chatw_e2ee_keys_current".to_string(),
+    };
     if let Ok(json) = serde_json::to_string(&stored) {
-        if let Some(uid) = user_id
-            && !uid.is_empty()
-        {
-            platform::storage_set(&format!("chatw_e2ee_keys_{uid}"), &json);
-        } else {
-            platform::storage_set("chatw_e2ee_keys_current", &json);
-        }
+        let to_store = encrypt_stored_payload(&slot, &json).unwrap_or(json);
+        platform::storage_set(&slot, &to_store);
     }
 }
 
@@ -177,7 +262,8 @@ pub fn export_user_keys_json(keys: &UserKeys) -> String {
 }
 
 pub fn import_user_keys_json(user_id: &str, raw_json: &str) -> Result<UserKeys, String> {
-    let keys = parse_stored_user_keys(raw_json.trim())?;
+    let slot = format!("chatw_e2ee_keys_{user_id}");
+    let keys = parse_stored_user_keys(raw_json.trim(), &slot)?;
     store_user_keys(Some(user_id), &keys);
     Ok(keys)
 }
@@ -561,5 +647,40 @@ mod tests {
         assert_eq!(get_user_keys(Some(&uid_a)).unwrap().fingerprint, keys_a.fingerprint);
         // Account B must NEVER inherit Account A's keys
         assert!(get_user_keys(Some(&uid_b)).is_none());
+    }
+
+    #[test]
+    fn test_e2ee_non_destructive_legacy_plaintext_migration() {
+        let uid = format!("legacy_mig_{}", Uuid::new_v4());
+        let slot = format!("chatw_e2ee_keys_{uid}");
+        let legacy_keys = UserKeys::generate();
+        let legacy_plaintext_json = serde_json::to_string(&StoredUserKeys {
+            ecdh_secret_b64: base64url_encode(&legacy_keys.ecdh_secret),
+            ecdsa_secret_b64: base64url_encode(&legacy_keys.ecdsa_secret),
+        })
+        .unwrap();
+
+        // Simulate legacy plaintext key stored before Spec 051
+        platform::storage_set(&slot, &legacy_plaintext_json);
+
+        // First read must transparently decrypt/parse AND migrate in-place to enc:v1:...
+        let loaded = get_user_keys(Some(&uid)).expect("load legacy keys without data loss");
+        assert_eq!(loaded.fingerprint, legacy_keys.fingerprint);
+        assert_eq!(loaded.ecdh_secret, legacy_keys.ecdh_secret);
+        assert_eq!(loaded.ecdsa_secret, legacy_keys.ecdsa_secret);
+
+        let after_raw = platform::storage_get(&slot).expect("migrated slot exists");
+        assert!(
+            after_raw.starts_with("enc:v1:"),
+            "legacy plaintext key must be migrated to enc:v1: ciphertext, got: {after_raw}"
+        );
+        assert!(
+            !after_raw.contains(&base64url_encode(&legacy_keys.ecdh_secret)),
+            "migrated storage must not contain raw private scalar in plaintext"
+        );
+
+        // Subsequent reads continue to return the exact same keypair
+        let loaded_again = get_user_keys(Some(&uid)).expect("reload migrated keys");
+        assert_eq!(loaded_again.fingerprint, legacy_keys.fingerprint);
     }
 }

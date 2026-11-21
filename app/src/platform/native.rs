@@ -98,6 +98,112 @@ fn storage_file_path() -> PathBuf {
     base.join("chatw").join("client_storage.json")
 }
 
+fn vault_key_path() -> PathBuf {
+    storage_file_path()
+        .parent()
+        .map(|p| p.join(".vault.key"))
+        .unwrap_or_else(|| std::env::temp_dir().join(".chatw_vault.key"))
+}
+
+fn load_or_create_vault_master_key() -> [u8; 32] {
+    use p256::elliptic_curve::rand_core::{OsRng, RngCore};
+    let path = vault_key_path();
+    if let Ok(bytes) = std::fs::read(&path) {
+        if bytes.len() == 32 {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&bytes);
+            return key;
+        }
+    }
+    let mut key = [0u8; 32];
+    OsRng.fill_bytes(&mut key);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, key);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    key
+}
+
+fn is_sensitive_storage_key(key: &str) -> bool {
+    key == "chatw_session_token"
+        || key == "chatw_device_passkey_v1"
+        || key == "__chatw_device_kwrap_v1"
+        || key.starts_with("chatw_e2ee_keys_")
+}
+
+#[allow(deprecated)]
+fn encrypt_vault_value(key: &str, plaintext: &str) -> Option<String> {
+    use aes_gcm::{
+        Aes256Gcm, KeyInit, Nonce,
+        aead::{Aead, Payload},
+    };
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use hkdf::Hkdf;
+    use p256::elliptic_curve::rand_core::{OsRng, RngCore};
+    use sha2::Sha256;
+
+    let master = load_or_create_vault_master_key();
+    let hk = Hkdf::<Sha256>::new(Some(b"chatw-native-vault-v1"), &master);
+    let mut subkey = [0u8; 32];
+    hk.expand(key.as_bytes(), &mut subkey).ok()?;
+    let cipher = Aes256Gcm::new_from_slice(&subkey).ok()?;
+    let mut nonce = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce);
+    let ct = cipher
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: plaintext.as_bytes(),
+                aad: key.as_bytes(),
+            },
+        )
+        .ok()?;
+    Some(format!(
+        "vault:v1:{}:{}",
+        URL_SAFE_NO_PAD.encode(nonce),
+        URL_SAFE_NO_PAD.encode(ct)
+    ))
+}
+
+#[allow(deprecated)]
+fn decrypt_vault_value(key: &str, wrapped: &str) -> Option<String> {
+    use aes_gcm::{
+        Aes256Gcm, KeyInit, Nonce,
+        aead::{Aead, Payload},
+    };
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use hkdf::Hkdf;
+    use sha2::Sha256;
+
+    let rest = wrapped.strip_prefix("vault:v1:")?;
+    let (nonce_b64, ct_b64) = rest.split_once(':')?;
+    let nonce = URL_SAFE_NO_PAD.decode(nonce_b64).ok()?;
+    if nonce.len() != 12 {
+        return None;
+    }
+    let ct = URL_SAFE_NO_PAD.decode(ct_b64).ok()?;
+    let master = load_or_create_vault_master_key();
+    let hk = Hkdf::<Sha256>::new(Some(b"chatw-native-vault-v1"), &master);
+    let mut subkey = [0u8; 32];
+    hk.expand(key.as_bytes(), &mut subkey).ok()?;
+    let cipher = Aes256Gcm::new_from_slice(&subkey).ok()?;
+    let pt = cipher
+        .decrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: &ct,
+                aad: key.as_bytes(),
+            },
+        )
+        .ok()?;
+    String::from_utf8(pt).ok()
+}
+
 fn load_storage_map() -> HashMap<String, String> {
     let path = storage_file_path();
     std::fs::read_to_string(path)
@@ -123,13 +229,30 @@ fn save_storage_map(map: &HashMap<String, String>) {
 
 pub fn storage_get(key: &str) -> Option<String> {
     let _g = STORAGE_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
-    load_storage_map().get(key).cloned()
+    let mut map = load_storage_map();
+    let raw = map.get(key)?.clone();
+    if raw.starts_with("vault:v1:") {
+        return decrypt_vault_value(key, &raw);
+    }
+    // Automatic non-destructive migration for legacy plaintext sensitive keys in client_storage.json
+    if !raw.is_empty() && is_sensitive_storage_key(key) {
+        if let Some(encrypted) = encrypt_vault_value(key, &raw) {
+            map.insert(key.to_string(), encrypted);
+            save_storage_map(&map);
+        }
+    }
+    Some(raw)
 }
 
 pub fn storage_set(key: &str, value: &str) {
     let _g = STORAGE_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
     let mut map = load_storage_map();
-    map.insert(key.to_string(), value.to_string());
+    let stored_val = if !value.is_empty() && is_sensitive_storage_key(key) && !value.starts_with("vault:v1:") {
+        encrypt_vault_value(key, value).unwrap_or_else(|| value.to_string())
+    } else {
+        value.to_string()
+    };
+    map.insert(key.to_string(), stored_val);
     save_storage_map(&map);
 }
 

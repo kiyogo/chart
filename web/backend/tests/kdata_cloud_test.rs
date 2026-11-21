@@ -1086,7 +1086,7 @@ async fn test_s3_minio_auto_scheduler_retention_and_passkey_reauth() {
     // 1. Register P-256 Passkey -> Challenge -> Sign -> Reauth -> Export .kdata
     let sk = SigningKey::random(&mut OsRng);
     let pk_sec1 = sk.verifying_key().to_encoded_point(false).as_bytes().to_vec();
-    let cred_id = "cred-test-p256-001";
+    let cred_id = format!("cred-test-p256-{}", Uuid::new_v4().simple());
     let (st, reg_v) = json_req(
         &app,
         "POST",

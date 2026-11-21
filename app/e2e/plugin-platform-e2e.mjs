@@ -157,6 +157,25 @@ try {
     JSON.stringify(iframeAttrs)
   );
 
+  // 4b. Spec 051 P0.1: Verify Background Worker alsos runs inside hidden opaque-origin sandbox="allow-scripts" iframe (origin === "null", direct fetch('/api/auth/me') fails!)
+  const workerIsolationProbe = await pageA.evaluate(async () => {
+    const wf = document.querySelector('iframe.plugin-worker-sandbox-frame');
+    return {
+      hasWorkerSandboxFrame: !!wf,
+      sandboxAttr: wf ? wf.getAttribute('sandbox') : null,
+      e2eeStorageEncrypted: Object.keys(localStorage)
+        .filter((k) => k.startsWith('chatw_e2ee_keys_'))
+        .every((k) => (localStorage.getItem(k) || '').startsWith('enc:v1:')),
+    };
+  });
+  record(
+    'Background Plugin Worker runs inside hidden opaque-origin sandbox="allow-scripts" frame & E2EE private keys in localStorage are encrypted (enc:v1:)',
+    workerIsolationProbe.hasWorkerSandboxFrame &&
+      workerIsolationProbe.sandboxAttr === 'allow-scripts' &&
+      workerIsolationProbe.e2eeStorageEncrypted,
+    JSON.stringify(workerIsolationProbe)
+  );
+
   const frame = pageA.frameLocator('#plugin-hub-sandbox-stage iframe.plugin-sandbox-frame');
   await frame.locator('#task-input').waitFor({ timeout: 10000 });
   await frame.locator('#task-input').fill('Hoàn thiện ChatW Plugin SDK');
