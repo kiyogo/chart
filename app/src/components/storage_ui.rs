@@ -6,7 +6,7 @@ use crate::{
     services::storage_sync::{self, DevicesListResponse, RecoveryListResponse, StoragePolicy},
     storage::{
         DEVICE_TRUST_STATE, PENDING_APPROVAL_ALERT, SYNC_PROGRESS, LocalQuotaInfo,
-        availability_badge_label, clear_safe_cache, format_bytes_human, get_quota_estimate,
+        clear_safe_cache, format_bytes_human, get_quota_estimate,
         recovery, sync_manager,
     },
 };
@@ -290,21 +290,18 @@ pub fn SyncRecoverySettingsPanel(
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Đồng bộ nhiều thiết bị" }
+                    div { class: "settings-group-title", "Đồng bộ thiết bị" }
                     div { class: "settings-list",
-                        div { class: "settings-row column-layout",
+                        div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Trạng thái đồng bộ" }
-                                span { class: "settings-sublabel",
-                                    if progress.phase_a_done { "Đã đồng bộ · {progress.last_sync_label}" } else { "Sẵn sàng đồng bộ dữ liệu mới" }
-                                }
+                                span { class: "settings-label", "Trạng thái" }
                             }
                             div { class: "inline-form",
                                 button {
                                     r#type: "button",
                                     class: "btn-secondary",
                                     onclick: move |_| sync_manager::toggle_phase_b_pause(),
-                                    if progress.phase_b_paused { "Tiếp tục tải nền" } else { "Tạm dừng tải nền" }
+                                    if progress.phase_b_paused { "Tiếp tục" } else { "Tạm dừng" }
                                 }
                                 button {
                                     r#type: "button",
@@ -314,7 +311,7 @@ pub fn SyncRecoverySettingsPanel(
                                             match sync_manager::run_incremental_delta_sync().await {
                                                 Ok(()) => {
                                                     let _ = sync_manager::report_cached_copies_to_server().await;
-                                                    status_msg.set(Some((false, "Đã đồng bộ xong dữ liệu mới".into())));
+                                                    status_msg.set(Some((false, "Đã đồng bộ xong".into())));
                                                 }
                                                 Err(e) => status_msg.set(Some((true, format!("Chưa đồng bộ được: {e}")))),
                                             }
@@ -326,8 +323,7 @@ pub fn SyncRecoverySettingsPanel(
                         }
                         label { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Hỏi xác nhận khi đăng nhập máy mới" }
-                                span { class: "settings-sublabel", "Máy mới cần nhập mã 6 số từ máy cũ để tải dữ liệu" }
+                                span { class: "settings-label", "Xác nhận máy mới" }
                             }
                             input {
                                 r#type: "checkbox",
@@ -344,8 +340,7 @@ pub fn SyncRecoverySettingsPanel(
                         }
                         label { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Lưu bản sao mã hóa cho tệp chat riêng" }
-                                span { class: "settings-sublabel", "Giữ bản mã hóa trên máy chủ phòng khi mất hết máy" }
+                                span { class: "settings-label", "Sao lưu tệp riêng" }
                             }
                             input {
                                 r#type: "checkbox",
@@ -362,8 +357,7 @@ pub fn SyncRecoverySettingsPanel(
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Thời gian giữ tệp gửi tạm" }
-                                span { class: "settings-sublabel", "Tự xóa sau khi máy nhận đã tải về" }
+                                span { class: "settings-label", "Giữ tệp gửi tạm" }
                             }
                             select {
                                 class: "settings-select",
@@ -379,29 +373,21 @@ pub fn SyncRecoverySettingsPanel(
                                 },
                                 option { value: "24", "24 giờ" }
                                 option { value: "72", "3 ngày" }
-                                option { value: "168", "7 ngày · Mặc định" }
+                                option { value: "168", "7 ngày" }
                                 option { value: "720", "30 ngày" }
                             }
                         }
                     }
                 }
 
-                div { class: "settings-group",
-                    div { class: "settings-group-title", "Yêu cầu khôi phục tệp" }
-                    div { class: "settings-list",
-                        if requests().requests.is_empty() {
-                            div { class: "settings-row",
-                                span { class: "settings-sublabel", "Chưa có yêu cầu khôi phục tệp nào." }
-                            }
-                        } else {
+                if !requests().requests.is_empty() {
+                    div { class: "settings-group",
+                        div { class: "settings-group-title", "Khôi phục tệp" }
+                        div { class: "settings-list",
                             for rr in requests().requests {
                                 div { key: "{rr.id}", class: "settings-row",
                                     div { class: "settings-row-text",
                                         span { class: "settings-label", "{rr.file_name} · {format_bytes_human(rr.byte_size.max(0) as u64)}" }
-                                        span { class: "settings-sublabel",
-                                            if rr.is_incoming { "Yêu cầu đến · " } else { "Yêu cầu của bạn · " }
-                                            "{availability_badge_label(&rr.status)}"
-                                        }
                                     }
                                     if rr.is_incoming && (rr.status == "pending" || rr.status == "queued_offline_peer") {
                                         div { class: "inline-form",
@@ -422,11 +408,11 @@ pub fn SyncRecoverySettingsPanel(
                                                         });
                                                     }
                                                 },
-                                                "Gửi khôi phục"
+                                                "Gửi"
                                             }
                                             button {
                                                 r#type: "button",
-                                                class: "btn-ghost",
+                                                class: "btn-secondary",
                                                 onclick: {
                                                     let rid = rr.id.clone();
                                                     move |_| {
@@ -450,17 +436,17 @@ pub fn SyncRecoverySettingsPanel(
 
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Khôi phục khi mất máy" }
+                    div { class: "settings-group-title", "Khôi phục khóa" }
                     div { class: "settings-list",
                         if let Some(k) = user_keys.clone() {
                             div { class: "settings-row column-layout",
                                 div { class: "settings-label",
-                                    if has_backup() { "Đã lưu bản sao chìa khóa an toàn trên máy chủ" } else { "Lưu bản sao chìa khóa bằng mật khẩu riêng" }
+                                    if has_backup() { "Đã lưu khóa" } else { "Lưu bản sao khóa" }
                                 }
                                 div { class: "inline-form",
                                     input {
                                         r#type: "password",
-                                        placeholder: "Mật khẩu từ 6 ký tự trở lên",
+                                        placeholder: "Từ 6 ký tự",
                                         aria_label: "Mật khẩu khôi phục khóa",
                                         value: "{passphrase}",
                                         oninput: move |e| passphrase.set(e.value()),
@@ -478,7 +464,7 @@ pub fn SyncRecoverySettingsPanel(
                                                             Ok(_) => {
                                                                 passphrase.set(String::new());
                                                                 has_backup.set(true);
-                                                                status_msg.set(Some((false, "Đã lưu bản sao chìa khóa thành công".into())));
+                                                                status_msg.set(Some((false, "Đã lưu bản sao khóa".into())));
                                                             }
                                                             Err(e) => status_msg.set(Some((true, format!("Lỗi sao lưu: {}", e.code)))),
                                                         }
@@ -487,25 +473,24 @@ pub fn SyncRecoverySettingsPanel(
                                                 }
                                             });
                                         },
-                                        "Lưu bản sao khóa"
+                                        "Lưu khóa"
                                     }
                                 }
                             }
                         }
                         div { class: "settings-row column-layout",
-                            div { class: "settings-label", "Khôi phục lại quyền đọc tin nhắn" }
-                            span { class: "settings-sublabel", "Nhập mã xác minh nếu có và mật khẩu khôi phục bạn đã đặt." }
+                            div { class: "settings-label", "Mở khóa tin nhắn" }
                             div { class: "inline-form",
                                 input {
                                     r#type: "text",
-                                    placeholder: "Mã 6 số hoặc mã dự phòng",
+                                    placeholder: "Mã 6 số",
                                     aria_label: "Mã xác minh mất thiết bị",
                                     value: "{twofa_code}",
                                     oninput: move |e| twofa_code.set(e.value()),
                                 }
                                 input {
                                     r#type: "password",
-                                    placeholder: "Mật khẩu khôi phục khóa",
+                                    placeholder: "Mật khẩu khóa",
                                     aria_label: "Mật khẩu giải mã khóa sao lưu",
                                     value: "{restore_passphrase}",
                                     oninput: move |e| restore_passphrase.set(e.value()),
@@ -528,7 +513,7 @@ pub fn SyncRecoverySettingsPanel(
                                                         match sync_manager::decrypt_keys_from_backup(&uid, wrapped, salt, iters, &pass) {
                                                             Ok(restored) => {
                                                                 on_keys_imported.call(restored);
-                                                                status_msg.set(Some((false, "Đã xác nhận máy mới và mở khóa tin nhắn thành công".into())));
+                                                                status_msg.set(Some((false, "Đã mở khóa tin nhắn".into())));
                                                             }
                                                             Err(e) => status_msg.set(Some((true, format!("Đã xác nhận máy nhưng {e}")))),
                                                         }
@@ -542,7 +527,7 @@ pub fn SyncRecoverySettingsPanel(
                                             }
                                         });
                                     },
-                                    "Khôi phục quyền truy cập"
+                                    "Khôi phục"
                                 }
                             }
                         }

@@ -120,7 +120,7 @@ try {
   const selfChatAudit = await page.evaluate(() => {
     const hdr = document.querySelector('.chat-column > .chat-header');
     const hdrCS = getComputedStyle(hdr);
-    const hdrBeforeCS = getComputedStyle(hdr, '::before');
+    const hdrAfterCS = getComputedStyle(hdr, '::after');
     const idEl = hdr.querySelector('.chat-header-identity');
     const devStrip = hdr.querySelector('.header-inline-devices');
     const hasThietBiLabel = document.body.innerText.includes('Thiết bị:');
@@ -132,8 +132,8 @@ try {
     return {
       hdrPos: hdrCS.position,
       hdrBg: hdrCS.backgroundColor,
-      beforeBgImg: hdrBeforeCS.backgroundImage,
-      beforeBlur: hdrBeforeCS.backdropFilter || hdrBeforeCS.webkitBackdropFilter || 'none',
+      afterBgImg: hdrAfterCS.backgroundImage,
+      afterBlur: hdrAfterCS.backdropFilter || hdrAfterCS.webkitBackdropFilter || 'none',
       hasThietBiLabel,
       devicesRightOfTitle: idR && devR ? devR.left >= idR.right + 8 : false,
       datePos: dateSepCS ? dateSepCS.position : '',
@@ -141,16 +141,40 @@ try {
     };
   });
   record(
-    'Self-chat header removes "Thiết bị:", places device pills inline right of title, floats header with unblurred top fade, and fixes date pill format & non-sticky layout',
-    selfChatAudit.hdrPos === 'absolute' &&
+    'Self-chat header removes "Thiết bị:", places device pills inline right of title, uses non-overlapping relative flow with unblurred top fade, and fixes date pill format',
+    selfChatAudit.hdrPos === 'relative' &&
       selfChatAudit.hdrBg === 'rgba(0, 0, 0, 0)' &&
-      selfChatAudit.beforeBgImg.includes('linear-gradient') &&
-      selfChatAudit.beforeBlur === 'none' &&
+      selfChatAudit.afterBgImg.includes('linear-gradient') &&
+      selfChatAudit.afterBlur === 'none' &&
       !selfChatAudit.hasThietBiLabel &&
       selfChatAudit.devicesRightOfTitle &&
       selfChatAudit.datePos === 'relative' &&
       /^\d{1,2} tháng \d{1,2}$/.test(selfChatAudit.dateText),
     JSON.stringify(selfChatAudit)
+  );
+
+  // 2b. Feed View ("Mới"): verify centered .feed-inner layout (max-width <= 740px, centered horizontally)
+  await page.locator('.app-rail button[aria-label="Mới"]').click();
+  await page.waitForSelector('.feed-column .feed-inner', { timeout: 10000 });
+  const feedAudit = await page.evaluate(() => {
+    const col = document.querySelector('.feed-column');
+    const inner = document.querySelector('.feed-column .feed-inner');
+    const colR = col.getBoundingClientRect();
+    const inR = inner.getBoundingClientRect();
+    const leftMargin = Math.round(inR.left - colR.left);
+    const rightMargin = Math.round(colR.right - inR.right);
+    return {
+      innerWidth: Math.round(inR.width),
+      colWidth: Math.round(colR.width),
+      leftMargin,
+      rightMargin,
+      centered: Math.abs(leftMargin - rightMargin) <= 16 && leftMargin >= 40,
+    };
+  });
+  record(
+    'Feed view ("Mới") preserves its clean centered layout (not stretched full-width to the left edge)',
+    feedAudit.centered,
+    JSON.stringify(feedAudit)
   );
 
   // 3. Meet View (.meet-column): rounded bottom corners and bottom gap matching .app-rail (never touching bottom of viewport)
@@ -207,11 +231,11 @@ try {
     };
   });
   record(
-    'Settings nav & body have exact 8px top/left/right padding, large bold .settings-group-title (matching "Tin nhắn"), and full-bleed color input',
+    'Settings nav has 8px pill inset, Settings body has balanced breathing room (>=14px top/left so text never touches rounded corners), large bold .settings-group-title (matching "Tin nhắn"), and full-bleed color input',
     appearanceAudit.navPadLeft === '8px' &&
       appearanceAudit.navPadTop === '8px' &&
-      appearanceAudit.bodyPadLeft === '8px' &&
-      appearanceAudit.bodyPadTop === '8px' &&
+      parseFloat(appearanceAudit.bodyPadLeft) >= 14 &&
+      parseFloat(appearanceAudit.bodyPadTop) >= 13 &&
       appearanceAudit.grpTitleSize === chatItemAudit.sidebarTitleSize &&
       Number(appearanceAudit.grpTitleWeight) >= 700 &&
       appearanceAudit.colorPadding === '0px' &&

@@ -9582,10 +9582,13 @@ html[data-surface-tone="dark"] .chat-item.has-nameplate:hover:not(.selected):not
   box-shadow: inset 0 0 0 1px var(--accent) !important;
 }
 
-/* 2. Unified 8px (100% equal to chat item inset) left, right & top internal padding across all panels */
+/* 2. Balanced panel padding:
+      - Pill-list sidebars (.nav-sidebar, .settings-nav) use 8px around pill items, with 47px centered header
+      - Content panels (.settings-body, etc.) use 14px 18px so text aligns with text inside sidebar items & never touches rounded corners
+      - Feed ("Mới") & Meet keep their clean centered layout (max-width: 46rem / 56rem, margin: 0 auto) */
 .nav-sidebar .sidebar-top-header {
-  height: 2.85rem;
-  padding: var(--panel-inset, 8px) var(--panel-inset, 8px) 4px !important;
+  height: 3.125rem;
+  padding: 0 var(--panel-inset, 8px) 0 calc(var(--panel-inset, 8px) + 0.35rem) !important;
 }
 .nav-sidebar .sidebar-search,
 .nav-sidebar .sidebar-filters {
@@ -9601,27 +9604,7 @@ html[data-surface-tone="dark"] .chat-item.has-nameplate:hover:not(.selected):not
 }
 .settings-body,
 .server-settings-stage .settings-body {
-  padding: var(--panel-inset, 8px) !important;
-}
-.feed-column > .feed-scroll,
-.meet-column > .feed-scroll,
-.notifications-page,
-.download-page,
-.search-page {
-  padding: var(--panel-inset, 8px) !important;
-}
-.feed-inner,
-.meet-inner {
-  max-width: 100%;
-  padding: 0 !important;
-}
-.meet-hero-card,
-.meet-card,
-.feed-card,
-.feed-compose-bar,
-.feed-stories-card {
-  padding-left: var(--panel-inset, 8px) !important;
-  padding-right: var(--panel-inset, 8px) !important;
+  padding: 0.95rem 1.15rem !important;
 }
 
 /* 3. Settings Section Titles: large & bold matching the "Tin nhắn" (.sidebar-title) heading */
@@ -9740,11 +9723,13 @@ input[type="color"]::-moz-color-swatch {
   background: var(--bg-hover) !important;
 }
 
-/* 7. Hide Guide Banners & Verbose Explanatory Descriptions Across Settings (Image 13) */
+/* 7. Hide Guide Banners & Verbose Explanatory Descriptions Across Settings (Image 13 & Sync tab) */
 .cw-cloud-guide,
 .settings-row-desc,
 .settings-page-desc,
-.settings-group-desc {
+.settings-group-desc,
+.settings-row-text > .settings-sublabel,
+.settings-group > .settings-sublabel {
   display: none !important;
 }
 
@@ -9755,44 +9740,32 @@ input[type="color"]::-moz-color-swatch {
   z-index: 1;
 }
 
-/* 9. Floating Top Chat Header (no solid white bar blocking messages), Top Unblurred Surface Fade,
-      and Inline Device Pills to the Right of "Chính mình" Title (Image 15) */
+/* 9. Transparent Chat Header in Normal Flow (zero overlap with Enterprise "Tổng quan" or cards),
+      Unblurred Top Surface Fade Over Message Stream, and Inline Device Pills Right of "Chính mình" */
 .chat-column > .chat-header {
-  position: absolute !important;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative !important;
   z-index: 12;
-  padding: 0 var(--panel-inset, 8px) !important;
+  padding: 0 1rem !important;
   background: transparent !important;
 }
-.chat-column > .chat-header::before {
+.chat-column:has(> .chat-messages) > .chat-header::after {
   content: "";
   position: absolute;
-  top: 0;
   left: 0;
   right: 0;
-  bottom: -1.25rem;
+  top: 100%;
+  height: 1.1rem;
   pointer-events: none;
-  z-index: -1;
+  z-index: 4;
   display: block !important;
   background: linear-gradient(
     to bottom,
     color-mix(in srgb, var(--bg-chat) var(--panel-opacity, 100%), transparent) 0%,
-    color-mix(in srgb, var(--bg-chat) calc(var(--panel-opacity, 100%) * 0.55), transparent) 55%,
+    color-mix(in srgb, var(--bg-chat) calc(var(--panel-opacity, 100%) * 0.45), transparent) 55%,
     transparent 100%
   );
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-}
-.chat-column > .chat-messages {
-  padding-top: calc(var(--header-height) + var(--space-2)) !important;
-}
-.chat-column > .pinned-bar {
-  margin-top: var(--header-height);
-}
-.chat-column > .pinned-bar + .chat-messages {
-  padding-top: var(--space-3) !important;
 }
 .chat-header-identity.self-header-identity {
   margin-right: 0 !important;
