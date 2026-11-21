@@ -391,7 +391,7 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
         "--app-wp-dim": format!("{}", p.app_wallpaper_dim as f32 / 100.0),
         "--app-wp-blur": format!("{}px", p.app_wallpaper_blur),
         "--panel-opacity": format!("{}%", p.panel_opacity),
-        "--panel-blur": format!("{}px", p.panel_blur),
+        "--panel-blur": format!("{}px", if p.panel_glass { p.panel_blur } else { 0 }),
     });
     let attrs = serde_json::json!({
         "data-bubble-shape": p.bubble_shape,
@@ -401,7 +401,8 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
         "data-reduce-motion": p.reduce_motion.to_string(),
         "data-show-avatars": p.show_avatars.to_string(),
         "data-app-wp": wp_kind,
-        "data-panel-glass": (p.panel_opacity < 100).to_string(),
+        "data-panel-glass": (p.panel_glass && p.panel_opacity < 100).to_string(),
+        "data-panel-translucent": (p.panel_opacity < 100).to_string(),
         "data-custom-accent": (!p.custom_accent.is_empty()).to_string(),
     });
     let _ = dioxus::document::eval(&format!(

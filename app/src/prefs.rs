@@ -77,6 +77,8 @@ pub struct Prefs {
     pub app_wallpaper_blur: u8,
     /// Opacity percentage for white/surface panels (0-100; 100 = solid opaque)
     pub panel_opacity: u8,
+    /// Whether frosted glass blur is enabled on translucent panels (default false)
+    pub panel_glass: bool,
     /// Backdrop glass blur in px for translucent panels (0-32)
     pub panel_blur: u8,
     pub show_avatars: bool,
@@ -137,6 +139,7 @@ impl Default for Prefs {
             app_wallpaper_dim: 0,
             app_wallpaper_blur: 0,
             panel_opacity: 100,
+            panel_glass: false,
             panel_blur: 12,
             show_avatars: true,
             time_24h: true,

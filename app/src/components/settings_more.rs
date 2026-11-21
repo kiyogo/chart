@@ -428,7 +428,8 @@ pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventH
     let self_val = if pr.bubble_self.is_empty() { accent_val.clone() } else { pr.bubble_self.clone() };
     let other_val = if pr.bubble_other.is_empty() { "#EEF1F5".to_string() } else { pr.bubble_other.clone() };
     let wp_color = pr.app_wallpaper.strip_prefix("color:").unwrap_or("#1F2A44").to_string();
-    let panel_opacity_pct = pr.panel_opacity;
+    let panel_transparency = 100u8.saturating_sub(pr.panel_opacity);
+    let panel_transparency_pct = panel_transparency;
     let panel_blur_pct = ((pr.panel_blur as f32 / 32.0) * 100.0).round() as u8;
     let wp_dim_pct = ((pr.app_wallpaper_dim as f32 / 80.0) * 100.0).round() as u8;
     let wp_blur_pct = ((pr.app_wallpaper_blur as f32 / 24.0) * 100.0).round() as u8;
@@ -525,32 +526,50 @@ pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventH
             if let Some(m) = msg() { div { class: "status-badge error", "{m}" } }
             div { class: "settings-row",
                 span { class: "grow",
-                    span { class: "settings-label", "Độ mờ đục khung trắng: {pr.panel_opacity}%" }
-                    span { class: "settings-row-desc", "Giảm xuống để khung danh sách, chat và cài đặt trong suốt, hiện hình nền phía sau" }
+                    span { class: "settings-label", "Độ trong suốt khung trắng: {panel_transparency}%" }
+                    span { class: "settings-row-desc", "Tăng lên để khung danh sách, chat và cài đặt trong suốt, hiện hình nền phía sau" }
                 }
                 input {
                     r#type: "range",
                     min: "0",
                     max: "100",
-                    value: "{pr.panel_opacity}",
-                    style: "--range-pct: {panel_opacity_pct}%;",
-                    aria_label: "Độ mờ đục khung trắng",
-                    oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(100); c.update(move |p| p.panel_opacity = v) },
+                    value: "{panel_transparency}",
+                    style: "--range-pct: {panel_transparency_pct}%;",
+                    aria_label: "Độ trong suốt khung trắng",
+                    oninput: move |e| {
+                        let t: u8 = e.value().parse().unwrap_or(0);
+                        c.update(move |p| p.panel_opacity = 100u8.saturating_sub(t));
+                    },
                 }
             }
-            div { class: "settings-row",
-                span { class: "grow",
-                    span { class: "settings-label", "Làm mờ kính khung: {pr.panel_blur}px" }
-                    span { class: "settings-row-desc", "Hiệu ứng kính mờ khi khung trắng đang ở chế độ trong suốt" }
-                }
-                input {
-                    r#type: "range",
-                    min: "0",
-                    max: "32",
-                    value: "{pr.panel_blur}",
-                    style: "--range-pct: {panel_blur_pct}%;",
-                    aria_label: "Làm mờ kính khung",
-                    oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(12); c.update(move |p| p.panel_blur = v) },
+            Toggle {
+                label: "Làm mờ kính khung (Frosted glass)",
+                desc: "Bật hiệu ứng kính mờ phía sau các khung khi trong suốt",
+                checked: pr.panel_glass,
+                on_change: move |enabled: bool| {
+                    c.update(move |p| {
+                        p.panel_glass = enabled;
+                        if enabled && p.panel_opacity == 100 {
+                            p.panel_opacity = 60;
+                        }
+                    });
+                },
+            }
+            if pr.panel_glass {
+                div { class: "settings-row",
+                    span { class: "grow",
+                        span { class: "settings-label", "Mức độ làm mờ kính: {pr.panel_blur}px" }
+                        span { class: "settings-row-desc", "Điều chỉnh độ nhòe mờ của lớp kính (0px đến 32px)" }
+                    }
+                    input {
+                        r#type: "range",
+                        min: "0",
+                        max: "32",
+                        value: "{pr.panel_blur}",
+                        style: "--range-pct: {panel_blur_pct}%;",
+                        aria_label: "Mức độ làm mờ kính",
+                        oninput: move |e| { let v: u8 = e.value().parse().unwrap_or(12); c.update(move |p| p.panel_blur = v) },
+                    }
                 }
             }
             if !pr.app_wallpaper.is_empty() {
@@ -600,6 +619,7 @@ pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventH
                         p.app_wallpaper_dim = d.app_wallpaper_dim;
                         p.app_wallpaper_blur = d.app_wallpaper_blur;
                         p.panel_opacity = d.panel_opacity;
+                        p.panel_glass = d.panel_glass;
                         p.panel_blur = d.panel_blur;
                         p.reduce_motion = d.reduce_motion;
                     });

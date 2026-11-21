@@ -3379,7 +3379,17 @@ html[data-app-wp="preset-dots"] .workspace-shell::before { background-image: rad
 html[data-app-wp="preset-bubbles"] .workspace-shell::before { background-image: radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent) 22%, transparent) 0 80px, transparent 81px), radial-gradient(circle at 82% 70%, rgba(236, 72, 153, 0.18) 0 120px, transparent 121px); }
 html[data-app-wp="preset-paper"] .workspace-shell::before { background: color-mix(in srgb, #F5E9D3 50%, var(--bg-app)); }
 
-/* ---------- Adjustable translucent white/surface panels (Spec 040) ---------- */
+/* ---------- Adjustable translucent white/surface panels (Spec 040 & 042) ---------- */
+html[data-panel-translucent="true"] .nav-sidebar,
+html[data-panel-translucent="true"] .settings-nav,
+html[data-panel-translucent="true"] .settings-body,
+html[data-panel-translucent="true"] .details-panel,
+html[data-panel-translucent="true"] .partner-info-sidebar,
+html[data-panel-translucent="true"] .server-members-panel,
+html[data-panel-translucent="true"] .notifications-page,
+html[data-panel-translucent="true"] .download-page,
+html[data-panel-translucent="true"] .search-page,
+html[data-panel-translucent="true"] .main-stage > .empty-state,
 html[data-panel-glass="true"] .nav-sidebar,
 html[data-panel-glass="true"] .settings-nav,
 html[data-panel-glass="true"] .settings-body,
@@ -3392,12 +3402,17 @@ html[data-panel-glass="true"] .search-page,
 html[data-panel-glass="true"] .main-stage > .empty-state {
   background: color-mix(in srgb, var(--bg-surface) var(--panel-opacity, 100%), transparent);
 }
+html[data-panel-translucent="true"] .chat-column,
+html[data-panel-translucent="true"] .meet-column,
+html[data-panel-translucent="true"] .feed-column,
+html[data-panel-translucent="true"] .plugin-panel,
 html[data-panel-glass="true"] .chat-column,
 html[data-panel-glass="true"] .meet-column,
 html[data-panel-glass="true"] .feed-column,
 html[data-panel-glass="true"] .plugin-panel {
   background-color: color-mix(in srgb, var(--bg-chat) var(--panel-opacity, 100%), transparent);
 }
+html[data-panel-translucent="true"] .chat-header,
 html[data-panel-glass="true"] .chat-header {
   background: transparent;
 }
@@ -3414,6 +3429,16 @@ html[data-panel-glass="true"] .search-page:not(:has(.modal-overlay, .settings-mo
   backdrop-filter: blur(var(--panel-blur, 12px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }
+html[data-panel-translucent="true"] .settings-list,
+html[data-panel-translucent="true"] .settings-row,
+html[data-panel-translucent="true"] .settings-profile-card,
+html[data-panel-translucent="true"] .settings-preview-chat,
+html[data-panel-translucent="true"] .wallpaper-tile,
+html[data-panel-translucent="true"] .theme-card,
+html[data-panel-translucent="true"] .meet-card,
+html[data-panel-translucent="true"] .feed-card,
+html[data-panel-translucent="true"] .feed-compose-bar,
+html[data-panel-translucent="true"] .mod-card,
 html[data-panel-glass="true"] .settings-list,
 html[data-panel-glass="true"] .settings-row,
 html[data-panel-glass="true"] .settings-profile-card,
@@ -3426,14 +3451,19 @@ html[data-panel-glass="true"] .feed-compose-bar,
 html[data-panel-glass="true"] .mod-card {
   background: color-mix(in srgb, var(--bg-surface-hover) max(30%, var(--panel-opacity, 100%)), transparent);
 }
+html[data-panel-translucent="true"] .settings-list .settings-row,
 html[data-panel-glass="true"] .settings-list .settings-row {
   background: transparent;
 }
+html[data-panel-translucent="true"] .composer-box::before,
 html[data-panel-glass="true"] .composer-box::before {
   background: color-mix(in srgb, var(--bg-input) max(42%, var(--panel-opacity, 100%)), transparent);
 }
+html[data-panel-translucent="true"] .rail-item.active,
 html[data-panel-glass="true"] .rail-item.active {
   background: color-mix(in srgb, var(--bg-surface) max(52%, var(--panel-opacity, 100%)), transparent);
+}
+html[data-panel-glass="true"] .rail-item.active {
   backdrop-filter: blur(var(--panel-blur, 12px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }

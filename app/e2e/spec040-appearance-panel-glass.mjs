@@ -66,7 +66,7 @@ try {
       appText.includes('Hình dạng và bố cục') &&
       appText.includes('Hình nền trò chuyện mặc định') &&
       appText.includes('Hình nền toàn ứng dụng') &&
-      appText.includes('Độ mờ đục khung trắng') &&
+      appText.includes('Độ trong suốt khung trắng') &&
       appText.includes('Làm mờ kính khung'),
     'all unified sections present',
   );
@@ -100,7 +100,7 @@ try {
   });
   record(
     'All range sliders render as slim 6px tracks (zero giant gray pill bug)',
-    sliderAudit.length >= 5 && sliderAudit.every((s) => s.height <= 8 && s.width >= 140),
+    sliderAudit.length >= 4 && sliderAudit.every((s) => s.height <= 8 && s.width >= 140),
     JSON.stringify(sliderAudit),
   );
 
@@ -113,8 +113,11 @@ try {
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }, value);
   };
-  await setRange('Độ mờ đục khung trắng', 58);
-  await setRange('Làm mờ kính khung', 16);
+  await setRange('Độ trong suốt khung trắng', 42); // 42% transparency => 58% opacity
+  // Enable glass blur switch (Spec 042)
+  const glassSwitch = page.locator('.toggle-row', { hasText: 'Làm mờ kính khung' }).locator('input.switch');
+  if (!(await glassSwitch.isChecked())) await glassSwitch.click();
+  await setRange('Mức độ làm mờ kính', 16);
   await setRange('Độ tối phủ lên ảnh', 20);
   await page.waitForTimeout(300);
 
