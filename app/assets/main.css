@@ -353,15 +353,15 @@ input[type="color"] {
   min-height: 0;
 }
 .rail-brand {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.625rem;
+  height: 2.625rem;
   border-radius: var(--radius-lg);
   background: var(--accent);
   color: var(--on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: calc((var(--header-height) - 2.5rem) / 2) 0 0;
+  margin: calc((var(--header-height) - 2.625rem) / 2) 0 0;
   flex-shrink: 0;
 }
 .plugin-custom-logo, .plugin-brand-logo {
@@ -397,14 +397,18 @@ input[type="color"] {
 @keyframes tip-in { from { opacity: 0; } to { opacity: 1; } }
 .rail-item {
   position: relative;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.625rem;
+  height: 2.625rem;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-lg);
   color: var(--text-secondary);
+}
+.rail-item.compact {
+  width: 2.5rem;
+  height: 2.5rem;
 }
 .rail-item:focus,
 .rail-item:focus-visible { outline: none; }
@@ -1356,7 +1360,8 @@ body.resizing-panel * {
   min-height: 0;
   position: relative;
   background: var(--bg-chat);
-  border-radius: var(--panel-radius);
+  border-radius: var(--panel-radius) var(--panel-radius) 0 0;
+  margin-bottom: calc(-1 * var(--shell-gap));
   overflow: hidden;
 }
 

@@ -1,13 +1,12 @@
-//! ChatW icon set — "ChatW Duo".
+//! ChatW icon set — "ChatW Duo v2" (Sculpted Modern Duotone).
 //!
-//! Original SVG icons drawn on a 24px grid: rounded 1.8px strokes plus a soft
-//! filled layer in the current color (16% opacity). The duotone layer is what
-//! gives ChatW its own look; every icon keeps the same optical size and weight.
+//! Original SVG icons drawn on a full-bleed 24px optical grid (2..22):
+//! confident 2.05px rounded strokes paired with a rich duotone fill layer
+//! (22% opacity) and crisp solid accent points for high legibility at all sizes.
 
 use dioxus::prelude::*;
 
-/// Base wrapper: stroke layer uses `currentColor`; children with class `duo`
-/// render as the soft fill layer.
+/// Base wrapper: stroke layer uses `currentColor`; duotone children render soft fill depth.
 #[component]
 fn Duo(size: u32, children: Element) -> Element {
     rsx! {
@@ -18,7 +17,7 @@ fn Duo(size: u32, children: Element) -> Element {
             view_box: "0 0 24 24",
             fill: "none",
             stroke: "currentColor",
-            stroke_width: "1.8",
+            stroke_width: "2.05",
             stroke_linecap: "round",
             stroke_linejoin: "round",
             "aria-hidden": "true",
@@ -34,360 +33,371 @@ macro_rules! duo_fill {
     };
 }
 
-/// Brand mark: a speech bubble carrying a "w".
+/// Brand mark: sculpted speech bubble carrying a crisp rounded "W".
 #[component]
-pub fn LogoIcon(#[props(default = 20)] size: u32) -> Element {
+pub fn LogoIcon(#[props(default = 24)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.18", stroke: "none", d: "M6 3.5h12A3.5 3.5 0 0 1 21.5 7v7.5A3.5 3.5 0 0 1 18 18h-6.5l-4.6 3.3c-.5.36-1.2 0-1.2-.62V18H6a3.5 3.5 0 0 1-3.5-3.5V7A3.5 3.5 0 0 1 6 3.5z" }
-        path { d: "M6 3.5h12A3.5 3.5 0 0 1 21.5 7v7.5A3.5 3.5 0 0 1 18 18h-6.5l-4.6 3.3c-.5.36-1.2 0-1.2-.62V18H6a3.5 3.5 0 0 1-3.5-3.5V7A3.5 3.5 0 0 1 6 3.5z" }
-        path { d: "M7.5 9l1.7 4.5L12 9.6l2.8 3.9L16.5 9" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", stroke: "none", d: "M5.5 2.5h13A3.8 3.8 0 0 1 22.3 6.3v8.4a3.8 3.8 0 0 1-3.8 3.8h-6.8l-4.9 3.4c-.55.38-1.3 0-1.3-.68v-2.72A3.8 3.8 0 0 1 1.7 14.7V6.3A3.8 3.8 0 0 1 5.5 2.5z" }
+        path { d: "M5.5 2.5h13A3.8 3.8 0 0 1 22.3 6.3v8.4a3.8 3.8 0 0 1-3.8 3.8h-6.8l-4.9 3.4c-.55.38-1.3 0-1.3-.68v-2.72A3.8 3.8 0 0 1 1.7 14.7V6.3A3.8 3.8 0 0 1 5.5 2.5z" }
+        path { stroke_width: "2.25", d: "M7.2 8.4l1.9 5.1L12 9.2l2.9 4.3 1.9-5.1" }
     } }
 }
 
 #[component]
-pub fn MessageIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn MessageIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", stroke: "none", d: "M6.5 4h11A3.5 3.5 0 0 1 21 7.5v6A3.5 3.5 0 0 1 17.5 17H12l-4.4 3.2c-.46.33-1.1 0-1.1-.56V17A3.5 3.5 0 0 1 3 13.5v-6A3.5 3.5 0 0 1 6.5 4z" }
-        path { d: "M6.5 4h11A3.5 3.5 0 0 1 21 7.5v6A3.5 3.5 0 0 1 17.5 17H12l-4.4 3.2c-.46.33-1.1 0-1.1-.56V17A3.5 3.5 0 0 1 3 13.5v-6A3.5 3.5 0 0 1 6.5 4z" }
-        circle { cx: "8.5", cy: "10.5", r: "1", fill: "currentColor", stroke: "none" }
-        circle { cx: "12", cy: "10.5", r: "1", fill: "currentColor", stroke: "none" }
-        circle { cx: "15.5", cy: "10.5", r: "1", fill: "currentColor", stroke: "none" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", stroke: "none", d: "M6 3h12a4 4 0 0 1 4 4v7a4 4 0 0 1-4 4h-6.2l-4.7 3.3c-.52.36-1.25 0-1.25-.64V18A4 4 0 0 1 2 14V7a4 4 0 0 1 4-4z" }
+        path { d: "M6 3h12a4 4 0 0 1 4 4v7a4 4 0 0 1-4 4h-6.2l-4.7 3.3c-.52.36-1.25 0-1.25-.64V18A4 4 0 0 1 2 14V7a4 4 0 0 1 4-4z" }
+        circle { cx: "8.2", cy: "10.5", r: "1.35", fill: "currentColor", stroke: "none" }
+        circle { cx: "12", cy: "10.5", r: "1.35", fill: "currentColor", stroke: "none" }
+        circle { cx: "15.8", cy: "10.5", r: "1.35", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn FriendsIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn FriendsIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "9", cy: "8", r: "3.5", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M2.8 19.5c.6-3.3 3.1-5.5 6.2-5.5s5.6 2.2 6.2 5.5" }
-        path { d: "M15.2 4.9a3.3 3.3 0 0 1 0 6.2" }
-        path { d: "M17.4 14.4c2 .7 3.4 2.6 3.8 5.1" }
+        circle { cx: "9.2", cy: "7.4", r: "3.9", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", stroke: "none", d: "M2.1 20.6c.6-3.8 3.4-6.1 7.1-6.1s6.5 2.3 7.1 6.1z" }
+        path { d: "M2.1 20.6c.6-3.8 3.4-6.1 7.1-6.1s6.5 2.3 7.1 6.1" }
+        path { fill: duo_fill!(), fill_opacity: "0.14", stroke: "none", d: "M15.8 4.4a3.5 3.5 0 0 1 0 6.6z" }
+        path { d: "M15.8 4.4a3.5 3.5 0 0 1 0 6.6" }
+        path { d: "M18 14.8c2.1.8 3.6 2.8 4 5.8" }
     } }
 }
 
 #[component]
-pub fn UserIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn UserIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "8", r: "4", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M4.5 20.2c.8-3.8 3.8-6.2 7.5-6.2s6.7 2.4 7.5 6.2" }
+        circle { cx: "12", cy: "7.8", r: "4.2", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { fill: duo_fill!(), fill_opacity: "0.2", stroke: "none", d: "M3.8 20.8c.9-4.1 4.1-6.6 8.2-6.6s7.3 2.5 8.2 6.6z" }
+        path { d: "M3.8 20.8c.9-4.1 4.1-6.6 8.2-6.6s7.3 2.5 8.2 6.6" }
     } }
 }
 
 #[component]
-pub fn UserPlusIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn UserPlusIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "10", cy: "8", r: "3.8", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M3 20c.7-3.6 3.5-5.9 7-5.9 1.4 0 2.7.4 3.8 1" }
-        path { d: "M18.5 13.5v6M15.5 16.5h6" }
+        circle { cx: "9.8", cy: "7.8", r: "4", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { fill: duo_fill!(), fill_opacity: "0.18", stroke: "none", d: "M2.5 20.5c.8-3.8 3.8-6.2 7.3-6.2 1.5 0 2.9.4 4.1 1.1v5.1z" }
+        path { d: "M2.5 20.5c.8-3.8 3.8-6.2 7.3-6.2 1.5 0 2.9.4 4.1 1.1" }
+        path { d: "M19 13.5v6.5M15.75 16.75h6.5" }
     } }
 }
 
 #[component]
-pub fn GroupIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn GroupIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "8.5", r: "3.2", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M6.8 19.5c.6-2.9 2.6-4.8 5.2-4.8s4.6 1.9 5.2 4.8" }
-        circle { cx: "5.2", cy: "10.2", r: "2.2" }
-        circle { cx: "18.8", cy: "10.2", r: "2.2" }
-        path { d: "M2 18.3c.3-1.6 1.3-2.7 2.7-3.1M22 18.3c-.3-1.6-1.3-2.7-2.7-3.1" }
+        circle { cx: "12", cy: "8", r: "3.5", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { fill: duo_fill!(), fill_opacity: "0.2", stroke: "none", d: "M6.2 20.2c.7-3.2 2.9-5.2 5.8-5.2s5.1 2 5.8 5.2z" }
+        path { d: "M6.2 20.2c.7-3.2 2.9-5.2 5.8-5.2s5.1 2 5.8 5.2" }
+        circle { cx: "4.8", cy: "10", r: "2.4", fill: duo_fill!(), fill_opacity: "0.16" }
+        circle { cx: "19.2", cy: "10", r: "2.4", fill: duo_fill!(), fill_opacity: "0.16" }
+        path { d: "M1.6 19c.3-1.8 1.4-3 2.9-3.4M22.4 19c-.3-1.8-1.4-3-2.9-3.4" }
     } }
 }
 
 #[component]
-pub fn SettingsIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn SettingsIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M10.3 3.2a3.4 3.4 0 0 1 3.4 0l5.1 2.95a3.4 3.4 0 0 1 1.7 2.95v5.8a3.4 3.4 0 0 1-1.7 2.95l-5.1 2.95a3.4 3.4 0 0 1-3.4 0l-5.1-2.95a3.4 3.4 0 0 1-1.7-2.95V9.1a3.4 3.4 0 0 1 1.7-2.95z" }
-        circle { cx: "12", cy: "12", r: "3" }
+        path {
+            fill: duo_fill!(),
+            fill_opacity: "0.22",
+            fill_rule: "evenodd",
+            stroke: "none",
+            d: "M10.4 2.55a1.9 1.9 0 0 1 3.2 0l.65 1.1a1.8 1.8 0 0 0 2.2.76l1.18-.44a1.9 1.9 0 0 1 2.4 2.4l-.44 1.18a1.8 1.8 0 0 0 .76 2.2l1.1.65a1.9 1.9 0 0 1 0 3.2l-1.1.65a1.8 1.8 0 0 0-.76 2.2l.44 1.18a1.9 1.9 0 0 1-2.4 2.4l-1.18-.44a1.8 1.8 0 0 0-2.2.76l-.65 1.1a1.9 1.9 0 0 1-3.2 0l-.65-1.1a1.8 1.8 0 0 0-2.2-.76l-1.18.44a1.9 1.9 0 0 1-2.4-2.4l.44-1.18a1.8 1.8 0 0 0-.76-2.2l-1.1-.65a1.9 1.9 0 0 1 0-3.2l1.1-.65a1.8 1.8 0 0 0 .76-2.2l-.44-1.18a1.9 1.9 0 0 1 2.4-2.4l1.18.44a1.8 1.8 0 0 0 2.2-.76zM12 8.7a3.3 3.3 0 1 0 0 6.6 3.3 3.3 0 1 0 0-6.6z",
+        }
+        path {
+            d: "M10.4 2.55a1.9 1.9 0 0 1 3.2 0l.65 1.1a1.8 1.8 0 0 0 2.2.76l1.18-.44a1.9 1.9 0 0 1 2.4 2.4l-.44 1.18a1.8 1.8 0 0 0 .76 2.2l1.1.65a1.9 1.9 0 0 1 0 3.2l-1.1.65a1.8 1.8 0 0 0-.76 2.2l.44 1.18a1.9 1.9 0 0 1-2.4 2.4l-1.18-.44a1.8 1.8 0 0 0-2.2.76l-.65 1.1a1.9 1.9 0 0 1-3.2 0l-.65-1.1a1.8 1.8 0 0 0-2.2-.76l-1.18.44a1.9 1.9 0 0 1-2.4-2.4l.44-1.18a1.8 1.8 0 0 0-.76-2.2l-1.1-.65a1.9 1.9 0 0 1 0-3.2l1.1-.65a1.8 1.8 0 0 0 .76-2.2l-.44-1.18a1.9 1.9 0 0 1 2.4-2.4l1.18.44a1.8 1.8 0 0 0 2.2-.76z",
+        }
+        circle { cx: "12", cy: "12", r: "3.3" }
     } }
 }
 
 #[component]
-pub fn SlidersIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn SlidersIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3", y: "4.5", width: "18", height: "6", rx: "3" }
-        circle { cx: "15.5", cy: "7.5", r: "1.6", fill: "currentColor", stroke: "none" }
-        rect { x: "3", y: "13.5", width: "18", height: "6", rx: "3", fill: duo_fill!(), fill_opacity: "0.16" }
-        circle { cx: "8.5", cy: "16.5", r: "1.6", fill: "currentColor", stroke: "none" }
+        rect { x: "2.5", y: "4", width: "19", height: "6.4", rx: "3.2" }
+        circle { cx: "15.8", cy: "7.2", r: "1.8", fill: "currentColor", stroke: "none" }
+        rect { x: "2.5", y: "13.6", width: "19", height: "6.4", rx: "3.2", fill: duo_fill!(), fill_opacity: "0.22" }
+        circle { cx: "8.2", cy: "16.8", r: "1.8", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn EmojiIcon(#[props(default = 20)] size: u32) -> Element {
+pub fn EmojiIcon(#[props(default = 24)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "9", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M8 9.6q1-1.2 2 0M14 9.6q1-1.2 2 0" }
-        path { d: "M7.8 13.6c1 1.9 2.5 2.9 4.2 2.9s3.2-1 4.2-2.9" }
+        circle { cx: "12", cy: "12", r: "9.5", fill: duo_fill!(), fill_opacity: "0.22" }
+        circle { cx: "8.8", cy: "9.8", r: "1.3", fill: "currentColor", stroke: "none" }
+        circle { cx: "15.2", cy: "9.8", r: "1.3", fill: "currentColor", stroke: "none" }
+        path { d: "M7.8 14c1.1 2.1 2.6 3.1 4.2 3.1s3.1-1 4.2-3.1" }
     } }
 }
 
 #[component]
-pub fn StickerIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn StickerIcon(#[props(default = 24)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M7 3.5h10A3.5 3.5 0 0 1 20.5 7v6.5l-7 7H7A3.5 3.5 0 0 1 3.5 17V7A3.5 3.5 0 0 1 7 3.5z" }
-        path { d: "M20.5 13.5h-3.5a3.5 3.5 0 0 0-3.5 3.5v3.5" }
-        path { d: "M8.6 10.5q.9-1 1.8 0M13.6 10.5q.9-1 1.8 0" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M6.5 2.5h11a4 4 0 0 1 4 4v7.2l-7.8 7.8H6.5a4 4 0 0 1-4-4v-11a4 4 0 0 1 4-4z" }
+        path { d: "M21.5 13.7h-4a3.8 3.8 0 0 0-3.8 3.8v4" }
+        circle { cx: "9.2", cy: "10", r: "1.25", fill: "currentColor", stroke: "none" }
+        circle { cx: "14.8", cy: "10", r: "1.25", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn SendIcon(#[props(default = 20)] size: u32) -> Element {
+pub fn SendIcon(#[props(default = 24)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.2", d: "M4.4 4.6l15.4 6.5c.75.32.75 1.38 0 1.7L4.4 19.4c-.8.34-1.6-.45-1.27-1.24L5.8 12 3.13 5.84c-.33-.8.47-1.58 1.27-1.24z" }
-        path { d: "M4.4 4.6l15.4 6.5c.75.32.75 1.38 0 1.7L4.4 19.4c-.8.34-1.6-.45-1.27-1.24L5.8 12 3.13 5.84c-.33-.8.47-1.58 1.27-1.24z" }
-        path { d: "M5.8 12h6" }
+        path { fill: duo_fill!(), fill_opacity: "0.25", d: "M3.8 3.8l16.8 7.3c.82.36.82 1.44 0 1.8L3.8 20.2c-.86.38-1.74-.48-1.36-1.34L5.6 12 2.44 5.14C2.06 4.28 2.94 3.42 3.8 3.8z" }
+        path { d: "M5.6 12h6.8" }
     } }
 }
 
 #[component]
-pub fn BackIcon(#[props(default = 20)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M10 5.5L3.5 12l6.5 6.5" } path { d: "M4 12h16.5" } } }
+pub fn BackIcon(#[props(default = 22)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M10.2 5L3.2 12l7 7" } path { d: "M3.8 12h17" } } }
 }
 
 #[component]
-pub fn ChevronLeftIcon(#[props(default = 18)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M14.5 5.5L8 12l6.5 6.5" } } }
+pub fn ChevronLeftIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M14.8 5L7.8 12l7 7" } } }
 }
 
 #[component]
-pub fn ChevronRightIcon(#[props(default = 14)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M9.5 5.5L16 12l-6.5 6.5" } } }
+pub fn ChevronRightIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M9.2 5l7 7-7 7" } } }
 }
 
 #[component]
-pub fn ChevronDownIcon(#[props(default = 14)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M5.5 9.5L12 16l6.5-6.5" } } }
+pub fn ChevronDownIcon(#[props(default = 16)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M5 9.2l7 7 7-7" } } }
 }
 
 #[component]
-pub fn LogoutIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn LogoutIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M13 3.5H7A3 3 0 0 0 4 6.5v11a3 3 0 0 0 3 3h6" }
-        path { d: "M13 3.5H7A3 3 0 0 0 4 6.5v11a3 3 0 0 0 3 3h6" }
-        path { d: "M16.5 8l4 4-4 4M20.5 12H10" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", stroke: "none", d: "M13 2.8H6.8a3.3 3.3 0 0 0-3.3 3.3v11.8a3.3 3.3 0 0 0 3.3 3.3H13z" }
+        path { d: "M13 2.8H6.8a3.3 3.3 0 0 0-3.3 3.3v11.8a3.3 3.3 0 0 0 3.3 3.3H13" }
+        path { d: "M16.8 7.6l4.4 4.4-4.4 4.4M21.2 12H9.8" }
     } }
 }
 
 #[component]
-pub fn MenuIcon(#[props(default = 20)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M4 7h16M4 12h11M4 17h7" } } }
+pub fn MenuIcon(#[props(default = 22)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M3.5 6.5h17M3.5 12h12M3.5 17.5h8" } } }
 }
 
 #[component]
-pub fn CloseIcon(#[props(default = 18)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M6.5 6.5l11 11M17.5 6.5l-11 11" } } }
+pub fn CloseIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M6 6l12 12M18 6L6 18" } } }
 }
 
 #[component]
-pub fn ServerIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn ServerIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3.5", y: "4", width: "17", height: "7", rx: "3", fill: duo_fill!(), fill_opacity: "0.16" }
-        rect { x: "3.5", y: "13", width: "17", height: "7", rx: "3" }
-        circle { cx: "7.5", cy: "7.5", r: "1", fill: "currentColor", stroke: "none" }
-        circle { cx: "7.5", cy: "16.5", r: "1", fill: "currentColor", stroke: "none" }
+        rect { x: "2.8", y: "3.2", width: "18.4", height: "7.6", rx: "3.2", fill: duo_fill!(), fill_opacity: "0.22" }
+        rect { x: "2.8", y: "13.2", width: "18.4", height: "7.6", rx: "3.2" }
+        circle { cx: "7.2", cy: "7", r: "1.2", fill: "currentColor", stroke: "none" }
+        circle { cx: "7.2", cy: "17", r: "1.2", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn PhoneIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn PhoneIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M6.6 3.5h2.1c.5 0 .95.34 1.07.83l.9 3.6a1.1 1.1 0 0 1-.4 1.15l-1.5 1.1a12.2 12.2 0 0 0 5.05 5.05l1.1-1.5a1.1 1.1 0 0 1 1.15-.4l3.6.9c.49.12.83.57.83 1.07v2.1a2.6 2.6 0 0 1-2.8 2.6C9.6 19.4 4.6 14.4 4 6.3a2.6 2.6 0 0 1 2.6-2.8z" }
-        path { d: "M6.6 3.5h2.1c.5 0 .95.34 1.07.83l.9 3.6a1.1 1.1 0 0 1-.4 1.15l-1.5 1.1a12.2 12.2 0 0 0 5.05 5.05l1.1-1.5a1.1 1.1 0 0 1 1.15-.4l3.6.9c.49.12.83.57.83 1.07v2.1a2.6 2.6 0 0 1-2.8 2.6C9.6 19.4 4.6 14.4 4 6.3a2.6 2.6 0 0 1 2.6-2.8z" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M6.2 2.8h2.3c.55 0 1.04.38 1.18.92l.95 3.8a1.2 1.2 0 0 1-.44 1.26l-1.6 1.2a13 13 0 0 0 5.43 5.43l1.2-1.6a1.2 1.2 0 0 1 1.26-.44l3.8.95c.54.14.92.63.92 1.18v2.3a2.8 2.8 0 0 1-3.02 2.8C9.3 20.1 3.9 14.7 3.4 5.82A2.8 2.8 0 0 1 6.2 2.8z" }
     } }
 }
 
 #[component]
-pub fn PhoneOffIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn PhoneOffIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M3.2 13.6c4.9-4.6 12.7-4.6 17.6 0 .5.47.53 1.25.08 1.76l-1.4 1.55c-.38.42-1 .52-1.5.24l-2.3-1.3a1.1 1.1 0 0 1-.55-1.02l.08-1.7a10 10 0 0 0-6.42 0l.08 1.7c.02.42-.2.82-.55 1.02l-2.3 1.3c-.5.28-1.12.18-1.5-.24l-1.4-1.55a1.25 1.25 0 0 1 .08-1.76z" }
-        path { d: "M3.2 13.6c4.9-4.6 12.7-4.6 17.6 0 .5.47.53 1.25.08 1.76l-1.4 1.55c-.38.42-1 .52-1.5.24l-2.3-1.3a1.1 1.1 0 0 1-.55-1.02l.08-1.7a10 10 0 0 0-6.42 0l.08 1.7c.02.42-.2.82-.55 1.02l-2.3 1.3c-.5.28-1.12.18-1.5-.24l-1.4-1.55a1.25 1.25 0 0 1 .08-1.76z" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M2.6 13.6c5.3-4.9 13.5-4.9 18.8 0 .54.5.56 1.35.08 1.88l-1.5 1.65c-.4.45-1.08.56-1.62.26l-2.45-1.38a1.2 1.2 0 0 1-.6-1.1l.08-1.8a10.5 10.5 0 0 0-6.78 0l.08 1.8c.02.46-.22.88-.6 1.1l-2.45 1.38c-.54.3-1.22.19-1.62-.26l-1.5-1.65a1.34 1.34 0 0 1 .08-1.88z" }
     } }
 }
 
 #[component]
-pub fn VideoIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn VideoIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "2.5", y: "5.5", width: "13", height: "13", rx: "3.5", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M15.5 10.2l4.6-2.6c.6-.34 1.4.1 1.4.8v7.2c0 .7-.8 1.14-1.4.8l-4.6-2.6" }
+        rect { x: "1.8", y: "4.8", width: "14.2", height: "14.4", rx: "4.2", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { fill: duo_fill!(), fill_opacity: "0.3", d: "M16 9.8l4.9-2.9c.68-.4 1.55.1 1.55.88v8.44c0 .78-.87 1.28-1.55.88L16 14.2z" }
+        circle { cx: "6.4", cy: "9.2", r: "1.25", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn VideoOffIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn VideoOffIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M15.5 12.5V9a3.5 3.5 0 0 0-3.5-3.5H8M4.2 6.2A3.5 3.5 0 0 0 2.5 9v6A3.5 3.5 0 0 0 6 18.5h6a3.5 3.5 0 0 0 3-1.7" }
-        path { d: "M15.5 10.2l4.6-2.6c.6-.34 1.4.1 1.4.8v7.2c0 .4-.25.72-.6.85" }
-        path { d: "M3 3l18 18" }
+        path { d: "M16 12.5V8.8a4 4 0 0 0-4-4H7.5M3.8 5.8A4 4 0 0 0 2 9v6a4 4 0 0 0 4 4h6a4 4 0 0 0 3.4-1.9" }
+        path { d: "M16 9.8l4.9-2.9c.68-.4 1.55.1 1.55.88v8.44c0 .44-.27.8-.65.94" }
+        path { d: "M2.5 2.5l19 19" }
     } }
 }
 
 #[component]
-pub fn MicIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn MicIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "8.5", y: "2.5", width: "7", height: "12", rx: "3.5", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M5 11.5a7 7 0 0 0 14 0M12 18.5v3" }
+        rect { x: "8", y: "2", width: "8", height: "12.5", rx: "4", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { d: "M4.5 11.2a7.5 7.5 0 0 0 15 0M12 18.7v3.3M8.8 22h6.4" }
     } }
 }
 
 #[component]
-pub fn MicOffIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn MicOffIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M15.5 10V6a3.5 3.5 0 0 0-6.6-1.6M8.5 9.5V11a3.5 3.5 0 0 0 5.6 2.8" }
-        path { d: "M5 11.5a7 7 0 0 0 11.3 5.5M18.6 13.6c.26-.66.4-1.37.4-2.1M12 18.5v3" }
-        path { d: "M3 3l18 18" }
+        path { d: "M16 10V6a4 4 0 0 0-7.4-2M8 9.2V11a4 4 0 0 0 6.2 3.3" }
+        path { d: "M4.5 11.2a7.5 7.5 0 0 0 12 6M19.2 13.6c.2-.75.3-1.55.3-2.4M12 18.7v3.3" }
+        path { d: "M2.5 2.5l19 19" }
     } }
 }
 
 #[component]
-pub fn PlusIcon(#[props(default = 18)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M12 5v14M5 12h14" } } }
+pub fn PlusIcon(#[props(default = 24)] size: u32) -> Element {
+    rsx! { Duo { size, path { stroke_width: "2.3", d: "M12 4v16M4 12h16" } } }
 }
 
 #[component]
-pub fn InfoIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn InfoIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "9", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M12 11v5.5" }
-        circle { cx: "12", cy: "7.8", r: "1.1", fill: "currentColor", stroke: "none" }
+        circle { cx: "12", cy: "12", r: "9.5", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { d: "M12 11v6" }
+        circle { cx: "12", cy: "7.5", r: "1.3", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn HashIcon(#[props(default = 16)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M9.5 3.5L7.5 20.5M16.5 3.5l-2 17M4 9h16.5M3.5 15H20" } } }
+pub fn HashIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M9.5 3L7.2 21M16.8 3l-2.3 18M3.5 8.8h17.5M3 15.2h17.5" } } }
 }
 
 #[component]
-pub fn VolumeIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn VolumeIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M4 9.2h2.8L11 5.6c.6-.5 1.5-.08 1.5.7v11.4c0 .78-.9 1.2-1.5.7l-4.2-3.6H4a1 1 0 0 1-1-1v-3.6a1 1 0 0 1 1-1z" }
-        path { d: "M4 9.2h2.8L11 5.6c.6-.5 1.5-.08 1.5.7v11.4c0 .78-.9 1.2-1.5.7l-4.2-3.6H4a1 1 0 0 1-1-1v-3.6a1 1 0 0 1 1-1z" }
-        path { d: "M16 9a4.2 4.2 0 0 1 0 6M18.8 6.4a7.8 7.8 0 0 1 0 11.2" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M3.2 8.8h3.2L11 5c.65-.52 1.6-.08 1.6.75v12.5c0 .83-.95 1.27-1.6.75l-4.6-3.8H3.2a1.2 1.2 0 0 1-1.2-1.2v-4a1.2 1.2 0 0 1 1.2-1.2z" }
+        path { d: "M16.4 8.6a4.8 4.8 0 0 1 0 6.8M19.4 5.8a8.6 8.6 0 0 1 0 12.4" }
     } }
 }
 
 #[component]
-pub fn MegaphoneIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn MegaphoneIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M4 10v4a1.5 1.5 0 0 0 1.5 1.5H8l9.5 4.2V4.3L8 8.5H5.5A1.5 1.5 0 0 0 4 10z" }
-        path { d: "M4 10v4a1.5 1.5 0 0 0 1.5 1.5H8l9.5 4.2V4.3L8 8.5H5.5A1.5 1.5 0 0 0 4 10z" }
-        path { d: "M8 15.5l1.2 4M20.5 10v4" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M3.5 9.8v4.4a1.8 1.8 0 0 0 1.8 1.8H8l10 4.5V3.5L8 8H5.3a1.8 1.8 0 0 0-1.8 1.8z" }
+        path { d: "M8 16l1.4 4.5M21 9.5v5" }
     } }
 }
 
 #[component]
-pub fn ShieldIcon(#[props(default = 14)] size: u32) -> Element {
+pub fn ShieldIcon(#[props(default = 16)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M12 2.8l7.5 3v5.6c0 4.7-3.2 8.3-7.5 9.8-4.3-1.5-7.5-5.1-7.5-9.8V5.8z" }
-        path { d: "M12 2.8l7.5 3v5.6c0 4.7-3.2 8.3-7.5 9.8-4.3-1.5-7.5-5.1-7.5-9.8V5.8z" }
-        path { d: "M8.8 12l2.2 2.2 4.2-4.4" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M12 2.2l8 3.2v6c0 5.1-3.4 9-8 10.6-4.6-1.6-8-5.5-8-10.6v-6z" }
+        path { d: "M8.6 12l2.4 2.4 4.6-4.8" }
     } }
 }
 
 #[component]
-pub fn LockIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn LockIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "4", y: "10.5", width: "16", height: "10.5", rx: "3", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5" }
-        path { d: "M12 14.5v2.5" }
+        rect { x: "3.5", y: "10.2", width: "17", height: "11.2", rx: "3.5", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { d: "M7.2 10.2V7.6a4.8 4.8 0 0 1 9.6 0v2.6" }
+        circle { cx: "12", cy: "15.5", r: "1.4", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn KeyIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn KeyIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "8", cy: "15.5", r: "4.5", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M11.3 12.3L20 3.6M16.5 7.1l2.4 2.4M18.4 5.2l2 2" }
-        circle { cx: "8", cy: "15.5", r: "1.2", fill: "currentColor", stroke: "none" }
+        circle { cx: "7.8", cy: "15.8", r: "4.8", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { d: "M11.3 12.3L20.8 2.8M16.8 6.8l2.6 2.6M18.8 4.8l2.2 2.2" }
+        circle { cx: "7.8", cy: "15.8", r: "1.35", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn SunIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn SunIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "4.2", fill: duo_fill!(), fill_opacity: "0.2" }
-        path { d: "M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" }
+        circle { cx: "12", cy: "12", r: "4.6", fill: duo_fill!(), fill_opacity: "0.25" }
+        path { d: "M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6" }
     } }
 }
 
 #[component]
-pub fn MoonIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn MoonIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.18", d: "M20 14.6A8.3 8.3 0 0 1 9.4 4a8.3 8.3 0 1 0 10.6 10.6z" }
-        path { d: "M20 14.6A8.3 8.3 0 0 1 9.4 4a8.3 8.3 0 1 0 10.6 10.6z" }
-        path { d: "M16.5 3.5v3M15 5h3" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M20.6 14.8A8.8 8.8 0 0 1 9.2 3.4a8.8 8.8 0 1 0 11.4 11.4z" }
+        path { d: "M17 3v3.2M15.4 4.6h3.2" }
     } }
 }
 
 #[component]
-pub fn MonitorIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn MonitorIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "2.5", y: "3.5", width: "19", height: "13", rx: "3", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M9 20.5h6M12 16.5v4" }
+        rect { x: "2", y: "3", width: "20", height: "13.8", rx: "3.2", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { d: "M8.5 21h7M12 16.8V21" }
     } }
 }
 
 #[component]
-pub fn SearchIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn SearchIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "10.5", cy: "10.5", r: "6.5", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M15.4 15.4l5.1 5.1" }
+        circle { cx: "10.5", cy: "10.5", r: "7.6", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { stroke_opacity: "0.5", stroke_width: "1.7", d: "M7.2 8a4 4 0 0 1 4.4-1.4" }
+        path { stroke_width: "2.45", d: "M16.1 16.1l5.3 5.3" }
     } }
 }
 
 #[component]
-pub fn CheckIcon(#[props(default = 16)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M5 12.5l4.5 4.5L19 7.5" } } }
+pub fn CheckIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M4.5 12.6l4.8 4.8L19.5 6.8" } } }
 }
 
 #[component]
-pub fn CopyIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn CopyIcon(#[props(default = 19)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "8.5", y: "8.5", width: "12", height: "12", rx: "3", fill: duo_fill!(), fill_opacity: "0.16" }
-        path { d: "M15.5 8.5V6.5a3 3 0 0 0-3-3h-6a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h2" }
+        rect { x: "8.2", y: "8.2", width: "12.8", height: "12.8", rx: "3.2", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { d: "M15.8 8.2V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v6.8a3 3 0 0 0 3 3h2.2" }
     } }
 }
 
 #[component]
-pub fn BellIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BellIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M12 3a6 6 0 0 0-6 6v3.5L4.3 16a.7.7 0 0 0 .62 1h14.16a.7.7 0 0 0 .62-1L18 12.5V9a6 6 0 0 0-6-6z" }
-        path { d: "M12 3a6 6 0 0 0-6 6v3.5L4.3 16a.7.7 0 0 0 .62 1h14.16a.7.7 0 0 0 .62-1L18 12.5V9a6 6 0 0 0-6-6z" }
-        path { d: "M9.8 20a2.4 2.4 0 0 0 4.4 0" }
+        path { d: "M12 2.2v1.3" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M12 3.5a6.4 6.4 0 0 0-6.4 6.4v3.4l-1.9 3.2c-.35.58.07 1.3.75 1.3h15.1c.68 0 1.1-.72.75-1.3l-1.9-3.2V9.9A6.4 6.4 0 0 0 12 3.5z" }
+        path { d: "M9.4 20.5a2.8 2.8 0 0 0 5.2 0" }
     } }
 }
 
 #[component]
-pub fn PaletteIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn PaletteIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: duo_fill!(), fill_opacity: "0.16", d: "M12 3a9 9 0 0 0 0 18c1.2 0 1.8-.9 1.5-1.9-.3-1 .2-2.1 1.4-2.1H17a4 4 0 0 0 4-4C21 7 17 3 12 3z" }
-        path { d: "M12 3a9 9 0 0 0 0 18c1.2 0 1.8-.9 1.5-1.9-.3-1 .2-2.1 1.4-2.1H17a4 4 0 0 0 4-4C21 7 17 3 12 3z" }
-        circle { cx: "7.8", cy: "11", r: "1.2", fill: "currentColor", stroke: "none" }
-        circle { cx: "10.5", cy: "7.3", r: "1.2", fill: "currentColor", stroke: "none" }
-        circle { cx: "15.2", cy: "7.8", r: "1.2", fill: "currentColor", stroke: "none" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", d: "M12 2.5a9.5 9.5 0 0 0 0 19c1.3 0 2-1 1.6-2.1-.3-1.1.2-2.2 1.5-2.2h2.1a4.3 4.3 0 0 0 4.3-4.3C21.5 7.2 17.3 2.5 12 2.5z" }
+        circle { cx: "7.5", cy: "11.2", r: "1.35", fill: "currentColor", stroke: "none" }
+        circle { cx: "10.6", cy: "7.1", r: "1.35", fill: "currentColor", stroke: "none" }
+        circle { cx: "15.5", cy: "7.8", r: "1.35", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn PanelRightIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn PanelRightIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3", y: "4", width: "18", height: "16", rx: "3.5" }
-        path { fill: duo_fill!(), fill_opacity: "0.2", stroke: "none", d: "M14 4h3.5A3.5 3.5 0 0 1 21 7.5v9a3.5 3.5 0 0 1-3.5 3.5H14z" }
-        path { d: "M14 4v16" }
+        rect { x: "2.5", y: "3.5", width: "19", height: "17", rx: "3.8" }
+        path { fill: duo_fill!(), fill_opacity: "0.24", stroke: "none", d: "M14.2 3.5h3.5a3.8 3.8 0 0 1 3.8 3.8v9.4a3.8 3.8 0 0 1-3.8 3.8h-3.5z" }
+        path { d: "M14.2 3.5v17" }
     } }
 }
 
 #[component]
-pub fn CompassIcon(#[props(default = 20)] size: u32) -> Element {
+pub fn CompassIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "9" }
-        path { fill: duo_fill!(), fill_opacity: "0.25", d: "M15.6 8.4l-2 5.2-5.2 2 2-5.2z" }
-        path { d: "M15.6 8.4l-2 5.2-5.2 2 2-5.2z" }
+        circle { cx: "12", cy: "12", r: "9.6", fill: duo_fill!(), fill_opacity: "0.18" }
+        path { fill: "currentColor", stroke: "none", d: "M16.5 7.5l-2.4 6.4-4-4z" }
+        path { fill: duo_fill!(), fill_opacity: "0.35", stroke: "none", d: "M7.5 16.5l2.4-6.4 4 4z" }
+        path { stroke_width: "1.75", d: "M16.5 7.5l-2.4 6.4-6.6 2.6 2.4-6.4z" }
     } }
 }
 
 #[component]
-pub fn TypeIcon(#[props(default = 18)] size: u32) -> Element {
-    rsx! { Duo { size, path { d: "M5 7V5h14v2M12 5v14M9 19h6" } } }
+pub fn TypeIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! { Duo { size, path { d: "M4.5 6.8V4.5h15v2.3M12 4.5v15M8.5 19.5h7" } } }
 }
 
 #[component]
@@ -419,299 +429,300 @@ pub fn GoogleIcon() -> Element {
 
 
 #[component]
-pub fn ReplyIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn ReplyIcon(#[props(default = 19)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M9.5 5.5L3.5 11l6 5.5v-3.2c4.8-.3 8 1.2 11 5.2-.6-6-4.2-9.7-11-10.3z" }
-        path { d: "M9.5 5.5L3.5 11l6 5.5v-3.2c4.8-.3 8 1.2 11 5.2-.6-6-4.2-9.7-11-10.3z" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M9.5 4.8L3 10.8l6.5 6v-3.5c5-.3 8.4 1.3 11.5 5.6-.7-6.4-4.5-10.3-11.5-11z" }
     } }
 }
 
 #[component]
-pub fn ClockIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn ClockIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "9", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M12 7v5l3.2 2" }
+        circle { cx: "12", cy: "12", r: "9.5", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M12 6.8v5.4l3.6 2.2" }
     } }
 }
 
 #[component]
-pub fn GifIcon(#[props(default = 20)] size: u32) -> Element {
+pub fn GifIcon(#[props(default = 24)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "2.5", y: "5", width: "19", height: "14", rx: "4", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M10 9.5H8.2A1.7 1.7 0 0 0 6.5 11.2v1.6a1.7 1.7 0 0 0 1.7 1.7H10V12H8.6" }
-        path { d: "M12.5 9.5v5M15.5 14.5v-5H18M15.5 12h2" }
+        rect { x: "2", y: "4.5", width: "20", height: "15", rx: "4.2", fill: "currentColor", fill_opacity: "0.22" }
+        path { stroke_width: "1.95", d: "M9.8 9.2H7.9a1.8 1.8 0 0 0-1.8 1.8v2a1.8 1.8 0 0 0 1.8 1.8h1.9V12H8.2" }
+        path { stroke_width: "1.95", d: "M12.5 9.2v5.6M15.4 14.8V9.2h2.8M15.4 12h2.2" }
     } }
 }
 
 #[component]
-pub fn SmilePlusIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn SmilePlusIcon(#[props(default = 19)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M20.5 12a8.5 8.5 0 1 1-6.1-8.16" }
-        path { d: "M20.5 12a8.5 8.5 0 1 1-6.1-8.16" }
-        path { d: "M8.6 10q.8-1 1.6 0M13.8 10q.8-1 1.6 0M8.2 14q1.5 2.4 3.8 2.4t3.8-2.4" }
-        path { d: "M19 2.5v5M16.5 5h5" }
+        circle { cx: "12", cy: "12", r: "9", fill: "currentColor", fill_opacity: "0.22", stroke: "none" }
+        path { d: "M21 12a9 9 0 1 1-6.4-8.6" }
+        circle { cx: "9.2", cy: "10", r: "1.2", fill: "currentColor", stroke: "none" }
+        circle { cx: "14.8", cy: "10", r: "1.2", fill: "currentColor", stroke: "none" }
+        path { d: "M8 14.2q1.6 2.5 4 2.5t4-2.5" }
+        path { d: "M19.2 2v5.4M16.5 4.7h5.4" }
     } }
 }
 
 #[component]
-pub fn SparkleIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn SparkleIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.2", d: "M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1z" }
-        path { d: "M12 3l2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1z" }
-        path { d: "M19 17.5v3M17.5 19h3" }
+        path { fill: "currentColor", fill_opacity: "0.24", d: "M12 2.2l2.3 6.5L21 11l-6.7 2.3L12 19.8l-2.3-6.5L3 11l6.7-2.3z" }
+        path { d: "M19.2 17.4v3.4M17.5 19.1h3.4" }
     } }
 }
 
 #[component]
-pub fn BrushIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BrushIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M8.5 14.5c-2 0-3.5 1.5-3.5 3.5 0 1-.5 2-1.5 2.5 3 .5 7-.5 7-4" }
-        path { d: "M8.5 14.5c-2 0-3.5 1.5-3.5 3.5 0 1-.5 2-1.5 2.5 3 .5 7-.5 7-4" }
-        path { d: "M9.5 13.5l9.8-9.8a1.8 1.8 0 0 1 2.5 2.5L12 16" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M8.5 14.5c-2.2 0-3.8 1.6-3.8 3.8 0 1-.5 2-1.7 2.6 3.2.6 7.5-.5 7.5-4.3" }
+        path { d: "M9.6 13.4l10-10a2 2 0 0 1 2.8 2.8l-10 10" }
     } }
 }
 
 #[component]
-pub fn DevicesIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn DevicesIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "2.5", y: "4", width: "14", height: "10", rx: "2.5", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M6 18h7M9.5 14v4" }
-        rect { x: "16", y: "8", width: "5.5", height: "11", rx: "1.8" }
+        rect { x: "2", y: "3.5", width: "14.5", height: "10.8", rx: "2.8", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M5.8 18.5h7M9.3 14.3v4.2" }
+        rect { x: "15.8", y: "7.8", width: "6.2", height: "12.2", rx: "2" }
     } }
 }
 
 #[component]
-pub fn BookIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BookIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" }
-        path { d: "M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5" }
-        path { d: "M9 7.5h7M9 11h5" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M3.5 5A2.5 2.5 0 0 1 6 2.5h14.5v16H6A2.5 2.5 0 0 0 3.5 21z" }
+        path { d: "M3.5 21A2.5 2.5 0 0 0 6 23h14.5v-4.5" }
+        path { d: "M8.8 7.5h7.4M8.8 11.2h5.2" }
     } }
 }
 
 #[component]
-pub fn LibraryIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn LibraryIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3", y: "3", width: "8", height: "8", rx: "2.5", fill: "currentColor", fill_opacity: "0.16" }
-        rect { x: "13", y: "3", width: "8", height: "8", rx: "2.5" }
-        rect { x: "3", y: "13", width: "8", height: "8", rx: "2.5" }
-        circle { cx: "17", cy: "17", r: "4", fill: "currentColor", fill_opacity: "0.16" }
+        rect { x: "2.5", y: "2.5", width: "8.4", height: "8.4", rx: "2.6", fill: "currentColor", fill_opacity: "0.22" }
+        rect { x: "13.1", y: "2.5", width: "8.4", height: "8.4", rx: "2.6" }
+        rect { x: "2.5", y: "13.1", width: "8.4", height: "8.4", rx: "2.6" }
+        circle { cx: "17.3", cy: "17.3", r: "4.2", fill: "currentColor", fill_opacity: "0.22" }
     } }
 }
 
 #[component]
-pub fn PinIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn PinIcon(#[props(default = 19)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M9 3.5h6l-1 5 3.5 3.5v1.5h-11V12L10 8.5z" }
-        path { d: "M9 3.5h6l-1 5 3.5 3.5v1.5h-11V12L10 8.5zM12 13.5v7" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M8.8 3h6.4l-1.1 5.4 3.7 3.7v1.6H6.2v-1.6l3.7-3.7z" }
+        path { d: "M12 13.7v7.5" }
     } }
 }
 
 #[component]
-pub fn TagIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn TagIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M3.5 4.5v6.3a2 2 0 0 0 .6 1.4l7.7 7.7a2 2 0 0 0 2.8 0l5.3-5.3a2 2 0 0 0 0-2.8L12.2 4.1a2 2 0 0 0-1.4-.6H4.5a1 1 0 0 0-1 1z" }
-        path { d: "M3.5 4.5v6.3a2 2 0 0 0 .6 1.4l7.7 7.7a2 2 0 0 0 2.8 0l5.3-5.3a2 2 0 0 0 0-2.8L12.2 4.1a2 2 0 0 0-1.4-.6H4.5a1 1 0 0 0-1 1z" }
-        circle { cx: "8", cy: "8", r: "1.4", fill: "currentColor", stroke: "none" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M3 4.2v6.6a2.2 2.2 0 0 0 .65 1.55l8 8a2.2 2.2 0 0 0 3.1 0l5.6-5.6a2.2 2.2 0 0 0 0-3.1l-8-8A2.2 2.2 0 0 0 10.8 3H4.2A1.2 1.2 0 0 0 3 4.2z" }
+        circle { cx: "7.8", cy: "7.8", r: "1.5", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn MoreIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn MoreIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "5.5", cy: "12", r: "1.6", fill: "currentColor", stroke: "none" }
-        circle { cx: "12", cy: "12", r: "1.6", fill: "currentColor", stroke: "none" }
-        circle { cx: "18.5", cy: "12", r: "1.6", fill: "currentColor", stroke: "none" }
+        circle { cx: "5", cy: "12", r: "1.85", fill: "currentColor", stroke: "none" }
+        circle { cx: "12", cy: "12", r: "1.85", fill: "currentColor", stroke: "none" }
+        circle { cx: "19", cy: "12", r: "1.85", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn BlockIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BlockIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "8.5", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M6 6l12 12" }
+        circle { cx: "12", cy: "12", r: "9", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M5.8 5.8l12.4 12.4" }
     } }
 }
 
 #[component]
-pub fn BotIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BotIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "4", y: "7", width: "16", height: "12", rx: "4", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M12 3.5V7M9 12.5v1M15 12.5v1M2.5 12v3M21.5 12v3" }
-        circle { cx: "12", cy: "3", r: "1.2", fill: "currentColor", stroke: "none" }
+        rect { x: "3.5", y: "6.8", width: "17", height: "13", rx: "4.2", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M12 3v3.8M2 11.8v3.4M22 11.8v3.4" }
+        circle { cx: "9", cy: "13.2", r: "1.3", fill: "currentColor", stroke: "none" }
+        circle { cx: "15", cy: "13.2", r: "1.3", fill: "currentColor", stroke: "none" }
+        circle { cx: "12", cy: "2.6", r: "1.3", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn PluginIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn PluginIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3.5", y: "3.5", width: "7", height: "7", rx: "2", fill: duo_fill!(), fill_opacity: "0.16" }
-        rect { x: "3.5", y: "13.5", width: "7", height: "7", rx: "2" }
-        rect { x: "13.5", y: "13.5", width: "7", height: "7", rx: "2" }
-        rect { x: "14.2", y: "4.2", width: "5.8", height: "5.8", rx: "1.6", transform: "rotate(45 17.1 7.1)", fill: duo_fill!(), fill_opacity: "0.22" }
+        rect { x: "2.4", y: "2.4", width: "8", height: "8", rx: "2.6", fill: duo_fill!(), fill_opacity: "0.22" }
+        rect { x: "2.4", y: "13.6", width: "8", height: "8", rx: "2.6", fill: duo_fill!(), fill_opacity: "0.14" }
+        rect { x: "13.6", y: "13.6", width: "8", height: "8", rx: "2.6", fill: duo_fill!(), fill_opacity: "0.14" }
+        rect { x: "14.1", y: "3.1", width: "6.8", height: "6.8", rx: "2", transform: "rotate(45 17.5 6.5)", fill: duo_fill!(), fill_opacity: "0.34" }
     } }
 }
 
 #[component]
-pub fn StoreIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn StoreIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M4 9.5h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" }
-        path { d: "M3.5 9.5L5.2 4.5h13.6l1.7 5M4 9.5h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM9.5 20.5v-5h5v5" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M3.5 9.2h17v9.6a2.2 2.2 0 0 1-2.2 2.2H5.7a2.2 2.2 0 0 1-2.2-2.2z" }
+        path { d: "M2.8 9.2L4.8 3.8h14.4l2 5.4M9.2 21v-5.5h5.6V21" }
     } }
 }
 
 #[component]
-pub fn GlobeIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn GlobeIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "9", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9M12 3c-2.6 2.6-3.8 5.6-3.8 9s1.2 6.4 3.8 9" }
+        circle { cx: "12", cy: "12", r: "9.5", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M2.5 12h19M12 2.5c2.8 2.8 4.1 6 4.1 9.5s-1.3 6.7-4.1 9.5M12 2.5c-2.8 2.8-4.1 6-4.1 9.5s1.3 6.7 4.1 9.5" }
     } }
 }
 
 #[component]
-pub fn LinkIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn LinkIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2" }
+        path { d: "M9.8 14.2a4.8 4.8 0 0 0 6.8 0l3.1-3.1a4.8 4.8 0 0 0-6.8-6.8l-1.3 1.3M14.2 9.8a4.8 4.8 0 0 0-6.8 0l-3.1 3.1a4.8 4.8 0 0 0 6.8 6.8l1.3-1.3" }
     } }
 }
 
 #[component]
-pub fn BellOffIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn BellOffIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M6 16.5V11a6 6 0 0 1 9.4-4.9M18 11v5.5l1.5 1.5H8" }
-        path { d: "M6 16.5V11a6 6 0 0 1 9.4-4.9M18 11v5.5l1.5 1.5H8M4.5 18h1M10 21h4M3 3l18 18" }
+        path { fill: "currentColor", fill_opacity: "0.22", stroke: "none", d: "M5.6 16.8V10.8a6.4 6.4 0 0 1 10-5.3L18.4 10.8v6l1.8 1.6H7.6z" }
+        path { d: "M5.6 16.8V10.8a6.4 6.4 0 0 1 10-5.3M18.4 10.8v6l1.8 1.6H7.6M4 18.4h1.2M9.6 21.2h4.8M2.5 2.5l19 19" }
     } }
 }
 
 #[component]
-pub fn ImageIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn ImageIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3.5", y: "4.5", width: "17", height: "15", rx: "3.5", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M3.5 16l4.5-4.5 3.5 3.5 2.5-2.5 6.5 6" }
-        rect { x: "3.5", y: "4.5", width: "17", height: "15", rx: "3.5" }
-        circle { cx: "15.5", cy: "9", r: "1.6" }
+        rect { x: "2.8", y: "3.8", width: "18.4", height: "16.4", rx: "3.8", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M2.8 16.2l4.8-4.8 3.8 3.8 2.8-2.8 7 6.4" }
+        circle { cx: "15.8", cy: "8.8", r: "1.7", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn CrownIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn CrownIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M4 8l4 3.5L12 5l4 6.5L20 8l-1.5 10h-13z" }
-        path { d: "M4 8l4 3.5L12 5l4 6.5L20 8l-1.5 10h-13z" }
+        path { fill: "currentColor", fill_opacity: "0.24", d: "M3.2 7.5l4.4 3.8L12 4.2l4.4 7.1 4.4-3.8-1.6 11.3H4.8z" }
     } }
 }
 
 #[component]
-pub fn TrashIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn TrashIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M6 7h12l-1 12.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 19.5z" }
-        path { d: "M4.5 7h15M9.5 7V4.5h5V7M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5L18 7M10 11v6M14 11v6" }
+        path { fill: "currentColor", fill_opacity: "0.22", stroke: "none", d: "M5.5 6.8h13l-1.1 13a1.8 1.8 0 0 1-1.8 1.7H8.4a1.8 1.8 0 0 1-1.8-1.7z" }
+        path { d: "M4 6.8h16M9.2 6.8V4a1.5 1.5 0 0 1 1.5-1.5h2.6A1.5 1.5 0 0 1 14.8 4v2.8M5.5 6.8l1.1 13a1.8 1.8 0 0 0 1.8 1.7h7.2a1.8 1.8 0 0 0 1.8-1.7l1.1-13M9.8 11v6.2M14.2 11v6.2" }
     } }
 }
 
 #[component]
-pub fn ShareIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn ShareIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "18", cy: "5.5", r: "2.5", fill: "currentColor", fill_opacity: "0.16" }
-        circle { cx: "6", cy: "12", r: "2.5", fill: "currentColor", fill_opacity: "0.16" }
-        circle { cx: "18", cy: "18.5", r: "2.5", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M8.3 10.8l7.4-4.1M8.3 13.2l7.4 4.1" }
+        circle { cx: "18.2", cy: "5.2", r: "2.8", fill: "currentColor", fill_opacity: "0.22" }
+        circle { cx: "5.8", cy: "12", r: "2.8", fill: "currentColor", fill_opacity: "0.22" }
+        circle { cx: "18.2", cy: "18.8", r: "2.8", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M8.3 10.6l7.4-4M8.3 13.4l7.4 4" }
     } }
 }
 
 #[component]
-pub fn RefreshIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn RefreshIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4" }
+        path { d: "M20.2 12a8.2 8.2 0 1 1-2.4-5.8M20.2 3.8v4.6h-4.6" }
     } }
 }
 
 #[component]
-pub fn DownloadIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn DownloadIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M12 4v11M7.5 11.5L12 16l4.5-4.5M5 19.5h14" }
+        path { fill: duo_fill!(), fill_opacity: "0.22", stroke: "none", d: "M3.2 14.5h17.6v3.2a3.3 3.3 0 0 1-3.3 3.3H6.5a3.3 3.3 0 0 1-3.3-3.3z" }
+        path { d: "M3.2 14.5v3.2a3.3 3.3 0 0 0 3.3 3.3h11a3.3 3.3 0 0 0 3.3-3.3v-3.2" }
+        path { stroke_width: "2.25", d: "M12 3v12M7.2 10.4L12 15.2l4.8-4.8" }
     } }
 }
 
 #[component]
-pub fn BuildingIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BuildingIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "4", y: "3", width: "10", height: "18", rx: "1.5", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M4 21h16M14 9h6v12M8 7.5h2M8 11.5h2M8 15.5h2M17 13h.5M17 16.5h.5" }
+        rect { x: "3.2", y: "2.6", width: "10.8", height: "18.8", rx: "2.2", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M2.5 21.4h19M14 8.5h5.2a1.8 1.8 0 0 1 1.8 1.8v11.1M7.4 7.4h2.4M7.4 11.4h2.4M7.4 15.4h2.4M17.2 12.8h.6M17.2 16.4h.6" }
     } }
 }
 
 #[component]
-pub fn BriefcaseIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BriefcaseIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3", y: "7", width: "18", height: "13", rx: "2", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M8.5 7V5a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 5v2M3 12.5h18" }
+        rect { x: "2.5", y: "6.8", width: "19", height: "13.8", rx: "3.2", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M8.2 6.8V5a2 2 0 0 1 2-2h3.6a2 2 0 0 1 2 2v1.8M2.5 12.6h19" }
     } }
 }
 
 #[component]
-pub fn ListChecksIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn ListChecksIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3.5", y: "4", width: "17", height: "16", rx: "2.5", fill: "currentColor", fill_opacity: "0.12" }
-        path { d: "M6.5 9l1.5 1.5 2.5-3M6.5 15l1.5 1.5 2.5-3M13 9h4.5M13 15h4.5" }
+        rect { x: "2.8", y: "3.2", width: "18.4", height: "17.6", rx: "3.4", fill: "currentColor", fill_opacity: "0.2" }
+        path { d: "M6.4 9.2l1.6 1.6 2.8-3.2M6.4 15.2l1.6 1.6 2.8-3.2M13.2 9.2h4.6M13.2 15.2h4.6" }
     } }
 }
 
 #[component]
-pub fn CalendarIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn CalendarIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3.5", y: "5", width: "17", height: "15.5", rx: "2", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M3.5 9.5h17M8 3.5v3M16 3.5v3M8 13.5h2M12 13.5h2M16 13.5h.5" }
+        rect { x: "2.8", y: "4.6", width: "18.4", height: "16.4", rx: "3.2", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M2.8 9.6h18.4M7.8 2.6v3.4M16.2 2.6v3.4M7.8 13.8h2M12 13.8h2M16 13.8h.6" }
     } }
 }
 
 #[component]
-pub fn FileTextIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn FileTextIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M6 3.5h8.5L18.5 7.5V20a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V5A1.5 1.5 0 0 1 6 3.5z" }
-        path { d: "M14.5 3.5V7.5h4M8.5 12h7M8.5 15.5h7M8.5 18.5h4" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M6 2.6h8.2l5.3 5.3v11.5a2.1 2.1 0 0 1-2.1 2.1H6a2.1 2.1 0 0 1-2.1-2.1V4.7A2.1 2.1 0 0 1 6 2.6z" }
+        path { d: "M14.2 2.6v5.3h5.3M8 12.2h8M8 15.8h8M8 18.8h4.5" }
     } }
 }
 
 #[component]
-pub fn ClipboardCheckIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn ClipboardCheckIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "5", y: "4.5", width: "14", height: "16.5", rx: "2", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M9.5 4.5a2 2 0 0 1 5 0M9 13l2 2 4-4" }
+        rect { x: "4.2", y: "4.2", width: "15.6", height: "17.2", rx: "3", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M9.2 4.2a2.8 2.8 0 0 1 5.6 0M8.6 13.2l2.3 2.3 4.6-4.6" }
     } }
 }
 
 #[component]
-pub fn BarChartIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BarChartIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "4", y: "12", width: "3.5", height: "7.5", rx: "1", fill: "currentColor", fill_opacity: "0.18" }
-        rect { x: "10.2", y: "7.5", width: "3.5", height: "12", rx: "1", fill: "currentColor", fill_opacity: "0.18" }
-        rect { x: "16.5", y: "4.5", width: "3.5", height: "15", rx: "1", fill: "currentColor", fill_opacity: "0.18" }
+        rect { x: "3", y: "12.2", width: "4.2", height: "8.8", rx: "1.6", fill: "currentColor", fill_opacity: "0.22" }
+        rect { x: "9.9", y: "7.2", width: "4.2", height: "13.8", rx: "1.6", fill: "currentColor", fill_opacity: "0.22" }
+        rect { x: "16.8", y: "3.2", width: "4.2", height: "17.8", rx: "1.6", fill: "currentColor", fill_opacity: "0.22" }
     } }
 }
 
 #[component]
-pub fn NetworkIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn NetworkIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "9.5", y: "3.5", width: "5", height: "4", rx: "1", fill: "currentColor", fill_opacity: "0.16" }
-        rect { x: "3.5", y: "16.5", width: "5", height: "4", rx: "1", fill: "currentColor", fill_opacity: "0.16" }
-        rect { x: "15.5", y: "16.5", width: "5", height: "4", rx: "1", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M12 7.5V12M6 16.5V12h12v4.5" }
+        rect { x: "9", y: "2.6", width: "6", height: "4.8", rx: "1.6", fill: "currentColor", fill_opacity: "0.22" }
+        rect { x: "2.6", y: "16.6", width: "6", height: "4.8", rx: "1.6", fill: "currentColor", fill_opacity: "0.22" }
+        rect { x: "15.4", y: "16.6", width: "6", height: "4.8", rx: "1.6", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M12 7.4V12M5.6 16.6V12h12.8v4.6" }
     } }
 }
 
 #[component]
-pub fn EditIcon(#[props(default = 16)] size: u32) -> Element {
+pub fn EditIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M14.5 4.5l5 5L8 21H3v-5L14.5 4.5zM12 7l5 5" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M15 3.6l5.4 5.4L8.4 21H3v-5.4L15 3.6z" }
+        path { d: "M12.4 6.2l5.4 5.4" }
     } }
 }
 
 #[component]
-pub fn PlugIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn PlugIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { fill: "currentColor", fill_opacity: "0.16", d: "M7 8h10v3.5a5 5 0 0 1-10 0V8z" }
-        path { d: "M9.5 3.5V8M14.5 3.5V8M12 16.5V21" }
+        path { fill: "currentColor", fill_opacity: "0.22", d: "M6.5 7.8h11v3.8a5.5 5.5 0 0 1-11 0V7.8z" }
+        path { d: "M9.2 2.8v5M14.8 2.8v5M12 17.1v4.3" }
     } }
 }
 
@@ -768,16 +779,16 @@ pub fn VicoAiIcon(#[props(default = 18)] size: u32, #[props(default = false)] fu
 
 /// Threads / Social Feed ("Mới") icon
 #[component]
-pub fn FeedThreadsIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn FeedThreadsIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "9", fill: duo_fill!(), fill_opacity: "0.14", stroke: "none" }
-        circle { cx: "12", cy: "12", r: "3.5" }
-        path { d: "M15.5 11.4v1.4a2.65 2.65 0 0 0 5.3 0V12a8.8 8.8 0 1 0-3.2 6.79" }
+        circle { cx: "12", cy: "12", r: "9.5", fill: duo_fill!(), fill_opacity: "0.2", stroke: "none" }
+        circle { cx: "12", cy: "12", r: "3.7" }
+        path { d: "M15.7 11.2v1.6a2.9 2.9 0 0 0 5.8 0V12a9.5 9.5 0 1 0-3.6 7.45" }
     } }
 }
 
 #[component]
-pub fn HeartIcon(#[props(default = 16)] size: u32, #[props(default = false)] filled: bool) -> Element {
+pub fn HeartIcon(#[props(default = 18)] size: u32, #[props(default = false)] filled: bool) -> Element {
     rsx! {
         svg {
             class: "cw-icon",
@@ -786,11 +797,11 @@ pub fn HeartIcon(#[props(default = 16)] size: u32, #[props(default = false)] fil
             view_box: "0 0 24 24",
             fill: if filled { "currentColor" } else { "none" },
             stroke: "currentColor",
-            stroke_width: "1.9",
+            stroke_width: "2.05",
             stroke_linecap: "round",
             stroke_linejoin: "round",
             "aria-hidden": "true",
-            path { d: "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" }
+            path { d: "M21.2 4.4a5.7 5.7 0 0 0-8.1 0L12 5.5l-1.1-1.1a5.7 5.7 0 0 0-8.1 8.1l1.1 1.1L12 21.5l8.1-7.9 1.1-1.1a5.7 5.7 0 0 0 0-8.1z" }
         }
     }
 }
@@ -806,82 +817,88 @@ pub fn RepeatIcon(#[props(default = 16)] size: u32) -> Element {
 }
 
 #[component]
-pub fn DiceIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn DiceIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3.5", y: "3.5", width: "17", height: "17", rx: "4", fill: "currentColor", fill_opacity: "0.18" }
-        circle { cx: "8.5", cy: "8.5", r: "1.2", fill: "currentColor" }
-        circle { cx: "15.5", cy: "8.5", r: "1.2", fill: "currentColor" }
-        circle { cx: "12", cy: "12", r: "1.2", fill: "currentColor" }
-        circle { cx: "8.5", cy: "15.5", r: "1.2", fill: "currentColor" }
-        circle { cx: "15.5", cy: "15.5", r: "1.2", fill: "currentColor" }
+        rect { x: "2.8", y: "2.8", width: "18.4", height: "18.4", rx: "4.4", fill: "currentColor", fill_opacity: "0.22" }
+        circle { cx: "8.2", cy: "8.2", r: "1.3", fill: "currentColor", stroke: "none" }
+        circle { cx: "15.8", cy: "8.2", r: "1.3", fill: "currentColor", stroke: "none" }
+        circle { cx: "12", cy: "12", r: "1.3", fill: "currentColor", stroke: "none" }
+        circle { cx: "8.2", cy: "15.8", r: "1.3", fill: "currentColor", stroke: "none" }
+        circle { cx: "15.8", cy: "15.8", r: "1.3", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn CoinIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn CoinIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "8.5", fill: "currentColor", fill_opacity: "0.18" }
-        circle { cx: "12", cy: "12", r: "4.5" }
-        path { d: "M12 7.5v9" }
+        circle { cx: "12", cy: "12", r: "9.2", fill: "currentColor", fill_opacity: "0.22" }
+        circle { cx: "12", cy: "12", r: "4.8" }
+        path { d: "M12 7.2v9.6" }
     } }
 }
 
 #[component]
-pub fn CalcIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn CalcIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "4.5", y: "2.5", width: "15", height: "19", rx: "3", fill: "currentColor", fill_opacity: "0.16" }
-        rect { x: "7.5", y: "5.5", width: "9", height: "3.5", rx: "1" }
-        path { d: "M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01" }
+        rect { x: "3.8", y: "2.2", width: "16.4", height: "19.6", rx: "3.4", fill: "currentColor", fill_opacity: "0.22" }
+        rect { x: "7", y: "5.2", width: "10", height: "3.8", rx: "1.2" }
+        circle { cx: "8", cy: "13", r: "1.1", fill: "currentColor", stroke: "none" }
+        circle { cx: "12", cy: "13", r: "1.1", fill: "currentColor", stroke: "none" }
+        circle { cx: "16", cy: "13", r: "1.1", fill: "currentColor", stroke: "none" }
+        circle { cx: "8", cy: "17.2", r: "1.1", fill: "currentColor", stroke: "none" }
+        circle { cx: "12", cy: "17.2", r: "1.1", fill: "currentColor", stroke: "none" }
+        circle { cx: "16", cy: "17.2", r: "1.1", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn HelpCircleIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn HelpCircleIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "9", fill: "currentColor", fill_opacity: "0.16" }
-        path { d: "M9.4 9.3a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.3-2.6 3.8" }
-        circle { cx: "12", cy: "17.2", r: "0.9", fill: "currentColor" }
+        circle { cx: "12", cy: "12", r: "9.4", fill: "currentColor", fill_opacity: "0.22" }
+        path { d: "M9.3 9.2a2.8 2.8 0 0 1 5.4.9c0 1.9-2.7 2.4-2.7 3.9" }
+        circle { cx: "12", cy: "17.4", r: "1.2", fill: "currentColor", stroke: "none" }
     } }
 }
 
 #[component]
-pub fn LogInIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn LogInIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" }
-        polyline { points: "10 17 15 12 10 7" }
-        path { d: "M15 12H3" }
+        path { fill: "currentColor", fill_opacity: "0.22", stroke: "none", d: "M15 2.8h3.4a2.8 2.8 0 0 1 2.8 2.8v12.8a2.8 2.8 0 0 1-2.8 2.8H15z" }
+        path { d: "M15 2.8h3.4a2.8 2.8 0 0 1 2.8 2.8v12.8a2.8 2.8 0 0 1-2.8 2.8H15" }
+        path { d: "M10.2 17l5-5-5-5M15.2 12H2.8" }
     } }
 }
 
 #[component]
-pub fn LogOutIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn LogOutIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" }
-        polyline { points: "16 17 21 12 16 7" }
-        path { d: "M21 12H9" }
+        path { fill: "currentColor", fill_opacity: "0.22", stroke: "none", d: "M9 2.8H5.6a2.8 2.8 0 0 0-2.8 2.8v12.8a2.8 2.8 0 0 0 2.8 2.8H9z" }
+        path { d: "M9 21.2H5.6a2.8 2.8 0 0 1-2.8-2.8V5.6a2.8 2.8 0 0 1 2.8-2.8H9" }
+        path { d: "M16.2 17l5-5-5-5M21.2 12H8.8" }
     } }
 }
 
 #[component]
-pub fn BoltIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn BoltIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        polygon { points: "13 2.5 5 13.5 11.5 13.5 10.5 21.5 19 10.5 12.5 10.5", fill: "currentColor", fill_opacity: "0.18" }
+        polygon { points: "13.2 2.2 4.6 13.4 11.4 13.4 10.2 21.8 19.4 10.6 12.6 10.6", fill: "currentColor", fill_opacity: "0.24" }
     } }
 }
 
 #[component]
-pub fn ArchiveIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn ArchiveIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        rect { x: "3", y: "4", width: "18", height: "4", rx: "1.2", fill: duo_fill!(), fill_opacity: "0.14" }
-        path { d: "M4 8v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" }
-        path { d: "M10 13h4" }
+        rect { x: "2.4", y: "3.4", width: "19.2", height: "4.6", rx: "1.6", fill: duo_fill!(), fill_opacity: "0.22" }
+        path { fill: duo_fill!(), fill_opacity: "0.14", stroke: "none", d: "M4 8h16v10.2a2.4 2.4 0 0 1-2.4 2.4H6.4A2.4 2.4 0 0 1 4 18.2z" }
+        path { d: "M4 8v10.2a2.4 2.4 0 0 0 2.4 2.4h11.2a2.4 2.4 0 0 0 2.4-2.4V8" }
+        path { d: "M9.8 13.2h4.4" }
     } }
 }
 
 #[component]
-pub fn CloudIcon(#[props(default = 18)] size: u32) -> Element {
+pub fn CloudIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M17.5 19H7a4.5 4.5 0 0 1-.4-8.98A5.5 5.5 0 0 1 17.3 9a4 4 0 0 1 .2 10Z", fill: duo_fill!(), fill_opacity: "0.14" }
+        path { d: "M17.8 19.4H6.8a4.7 4.7 0 0 1-.4-9.38A5.7 5.7 0 0 1 17.6 8.8a4.2 4.2 0 0 1 .2 10.6Z", fill: duo_fill!(), fill_opacity: "0.22" }
     } }
 }
 

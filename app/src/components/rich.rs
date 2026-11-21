@@ -787,7 +787,7 @@ pub fn ComposerTools(
                             }
                         });
                     },
-                    MicIcon { size: 18 }
+                    MicIcon { size: 24 }
                 }
             }
             button {
@@ -797,7 +797,7 @@ pub fn ComposerTools(
                 aria_label: "Thêm ảnh, video, tệp, ghi âm, bình chọn",
                 aria_expanded: "{open()}",
                 onclick: move |e| { e.stop_propagation(); open.set(!open()); },
-                PlusIcon { size: 20 }
+                PlusIcon { size: 24 }
             }
             if open() {
                 button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| open.set(false) }

@@ -555,7 +555,7 @@ pub fn MessageList(
                                                 title: if pinned_now { "Bỏ ghim" } else { "Ghim tin nhắn" },
                                                 aria_label: if pinned_now { "Bỏ ghim" } else { "Ghim tin nhắn" },
                                                 onclick: move |_| if let Some(h) = on_pin { h.call((pin_id.clone(), !pinned_now)) },
-                                                PinIcon { size: 16 }
+                                                PinIcon {}
                                             }
                                         }
                                         if on_reply.is_some() {

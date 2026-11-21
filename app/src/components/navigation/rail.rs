@@ -93,7 +93,7 @@ pub fn AppRail(
     rsx! {
         nav { class: "{cls}", aria_label: "Điều hướng chính",
             div { class: "rail-brand", title: "chatw", aria_hidden: "true",
-                LogoIcon { size: 22 }
+                LogoIcon { size: 30 }
             }
             div { class: "rail-nav",
                 button {
@@ -103,7 +103,7 @@ pub fn AppRail(
                     aria_label: "{t(\"nav.messages\")}",
                     aria_current: if in_dm { "page" } else { "false" },
                     onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_select_dm.call(()); },
-                    span { class: "rail-icon", MessageIcon { size: 20 }
+                    span { class: "rail-icon", MessageIcon { size: 28 }
                         if unread_dm_count > 0 { span { class: "rail-count", "{badge(unread_dm_count)}" } }
                     }
                 }
@@ -114,7 +114,7 @@ pub fn AppRail(
                     aria_label: "{t(\"nav.friends\")}",
                     aria_current: if in_friends { "page" } else { "false" },
                     onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_select_friends.call(()); },
-                    span { class: "rail-icon", FriendsIcon {}
+                    span { class: "rail-icon", FriendsIcon { size: 28 }
                         if pending_friend_count > 0 { span { class: "rail-count", "{badge(pending_friend_count)}" } }
                     }
                 }
@@ -125,7 +125,7 @@ pub fn AppRail(
                     aria_label: "{t(\"nav.communities\")}",
                     aria_current: if in_comm { "page" } else { "false" },
                     onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_select_communities.call(()); },
-                    span { class: "rail-icon", CompassIcon { size: 20 } }
+                    span { class: "rail-icon", CompassIcon { size: 28 } }
                 }
                 button {
                     r#type: "button",
@@ -138,7 +138,7 @@ pub fn AppRail(
                         *ACTIVE_LEFT_PLUGIN.write() = None;
                         if let Some(h) = on_select_meet { h.call(()); }
                     },
-                    span { class: "rail-icon", VideoIcon { size: 20 } }
+                    span { class: "rail-icon", VideoIcon { size: 28 } }
                 }
                 button {
                     r#type: "button",
@@ -151,7 +151,7 @@ pub fn AppRail(
                         *ACTIVE_LEFT_PLUGIN.write() = None;
                         if let Some(h) = on_select_feed { h.call(()); }
                     },
-                    span { class: "rail-icon", FeedThreadsIcon { size: 20 } }
+                    span { class: "rail-icon", FeedThreadsIcon { size: 28 } }
                 }
                 button {
                     r#type: "button",
@@ -164,7 +164,7 @@ pub fn AppRail(
                         *ACTIVE_LEFT_PLUGIN.write() = None;
                         if let Some(h) = on_select_vico_ai { h.call(()); }
                     },
-                    span { class: "rail-icon", VicoAiIcon { size: 40, full: true } }
+                    span { class: "rail-icon", VicoAiIcon { size: 42, full: true } }
                 }
                 button {
                     r#type: "button",
@@ -177,7 +177,7 @@ pub fn AppRail(
                         *ACTIVE_LEFT_PLUGIN.write() = None;
                         match on_select_search { Some(h) => h.call(()), None => on_quick_switch.call(()) }
                     },
-                    span { class: "rail-icon", SearchIcon { size: 20 } }
+                    span { class: "rail-icon", SearchIcon { size: 28 } }
                 }
                 button {
                     r#type: "button",
@@ -190,13 +190,13 @@ pub fn AppRail(
                         *EDITING_PLUGIN_ID.write() = None;
                         *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
                     },
-                    span { class: "rail-icon", PluginIcon { size: 20 } }
+                    span { class: "rail-icon", PluginIcon { size: 28 } }
                 }
                 for (pid, picon, plogo, ptitle) in left_apps {
                     {
                         let is_act = active_left_plugin.as_deref() == Some(pid.as_str()) && !in_mod;
                         let is_logo = !plogo.trim().is_empty() && !plogo.trim().starts_with("svg:");
-                        let g_size = if is_logo { 40 } else { 20 };
+                        let g_size = if is_logo { 42 } else { 28 };
                         let cls = match (is_logo, is_act) {
                             (true, true) => "rail-item has-logo active",
                             (true, false) => "rail-item has-logo",
@@ -232,7 +232,7 @@ pub fn AppRail(
                     {
                         let is_act = active_mod_page.as_deref() == Some(pid.as_str());
                         let is_logo = !plogo.trim().is_empty() && !plogo.trim().starts_with("svg:");
-                        let g_size = if is_logo { 40 } else { 20 };
+                        let g_size = if is_logo { 42 } else { 28 };
                         let cls = match (is_logo, is_act) {
                             (true, true) => "rail-item has-logo active",
                             (true, false) => "rail-item has-logo",
@@ -318,7 +318,7 @@ pub fn AppRail(
                             cb.call(());
                         }
                     },
-                    span { class: "rail-icon", BellIcon { size: 18 } }
+                    span { class: "rail-icon", BellIcon { size: 26 } }
                     if notif_count > 0 {
                         span { class: "rail-badge", "{badge(notif_count)}" }
                     }
@@ -342,7 +342,7 @@ pub fn AppRail(
                                 cb.call("all".to_string());
                             }
                         },
-                        span { class: "rail-icon", DownloadIcon { size: 18 } }
+                        span { class: "rail-icon", DownloadIcon { size: 26 } }
                     }
                     if download_hover_open() {
                         div { class: "account-menu rail-menu download-rail-menu", role: "region", aria_label: "Tải ứng dụng",
@@ -407,7 +407,7 @@ pub fn AppRail(
                         *ACTIVE_LEFT_PLUGIN.write() = None;
                         on_open_settings.call(());
                     },
-                    span { class: "rail-icon", SettingsIcon {} }
+                    span { class: "rail-icon", SettingsIcon { size: 26 } }
                 }
                 button {
                     r#type: "button",
@@ -420,7 +420,7 @@ pub fn AppRail(
                         download_hover_open.set(false);
                         menu_open.set(!menu_open());
                     },
-                    Avatar { name: current_username.clone(), avatar_url: current_avatar_url.clone(), size: 38 }
+                    Avatar { name: current_username.clone(), avatar_url: current_avatar_url.clone(), size: 40 }
                 }
                 if menu_open() {
                     button { r#type: "button", class: "menu-dismiss", aria_label: "Đóng menu", tabindex: "-1", onclick: move |_| menu_open.set(false) }

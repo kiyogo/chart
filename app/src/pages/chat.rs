@@ -3145,7 +3145,7 @@ pub fn Chat(
                                                 let id = active.id.clone();
                                                 move |_| start_call("audio", Some(id.clone()), None)
                                             },
-                                            PhoneIcon { size: 20 }
+                                            PhoneIcon { size: 22 }
                                         }
                                         button {
                                             r#type: "button",
@@ -3156,7 +3156,7 @@ pub fn Chat(
                                                 let id = active.id.clone();
                                                 move |_| start_call("video", Some(id.clone()), None)
                                             },
-                                            VideoIcon { size: 20 }
+                                            VideoIcon { size: 22 }
                                         }
                                     }
                                     if !self_mode {
@@ -3168,7 +3168,7 @@ pub fn Chat(
                                             aria_label: "Thông tin tài khoản",
                                             aria_pressed: "{is_partner_info_open()}",
                                             onclick: move |_| is_partner_info_open.set(!is_partner_info_open()),
-                                            PanelRightIcon { size: 20 }
+                                            PanelRightIcon { size: 22 }
                                         }
                                     }
                                     button {
@@ -3179,7 +3179,7 @@ pub fn Chat(
                                         aria_haspopup: "menu",
                                         aria_expanded: "{chat_menu_open()}",
                                         onclick: move |e| { e.stop_propagation(); chat_menu_open.set(!chat_menu_open()); },
-                                        MoreIcon { size: 18 }
+                                        MoreIcon { size: 20 }
                                     }
                                 }
                                 if chat_menu_open() {
@@ -3420,7 +3420,7 @@ pub fn Chat(
                                             let gid = grp.id.clone();
                                             move |_| start_call("audio", None, Some(gid.clone()))
                                         },
-                                        PhoneIcon { size: 20 }
+                                        PhoneIcon { size: 22 }
                                     }
                                     button {
                                         r#type: "button",
@@ -3431,7 +3431,7 @@ pub fn Chat(
                                             let gid = grp.id.clone();
                                             move |_| start_call("video", None, Some(gid.clone()))
                                         },
-                                        VideoIcon { size: 20 }
+                                        VideoIcon { size: 22 }
                                     }
                                     button {
                                         r#type: "button",
@@ -3440,7 +3440,7 @@ pub fn Chat(
                                         aria_label: "Thông tin nhóm",
                                         aria_pressed: "{is_group_info_open()}",
                                         onclick: move |_| is_group_info_open.set(!is_group_info_open()),
-                                        PanelRightIcon { size: 20 }
+                                        PanelRightIcon { size: 22 }
                                     }
                                     button {
                                         r#type: "button",
@@ -3450,7 +3450,7 @@ pub fn Chat(
                                         aria_haspopup: "menu",
                                         aria_expanded: "{chat_menu_open()}",
                                         onclick: move |e| { e.stop_propagation(); chat_menu_open.set(!chat_menu_open()); },
-                                        MoreIcon { size: 18 }
+                                        MoreIcon { size: 20 }
                                         if is_group_admin && gs_now.as_ref().is_some_and(|s| s.pending_requests > 0) {
                                             span { class: "dot-badge", aria_label: "Có yêu cầu tham gia" }
                                         }
