@@ -509,12 +509,13 @@ pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventH
                     onchange: move |_| {
                         uploading.set(true);
                         spawn(async move {
-                            match platform::read_selected_file_raw("app-wp-file").await {
+                            match platform::process_selected_wallpaper_webp("app-wp-file").await {
                                 Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                     Ok(url) => c.update(move |p| p.app_wallpaper = url),
                                     Err(_) => msg.set(Some("Không tải ảnh lên được".into())),
                                 },
                                 Err(e) if e == "too_large" => msg.set(Some("Ảnh lớn hơn 2 MB".into())),
+                                Err(e) if e == "unsupported" => msg.set(Some("Định dạng ảnh không được hỗ trợ".into())),
                                 Err(_) => {}
                             }
                             uploading.set(false);
@@ -543,7 +544,7 @@ pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventH
                 }
             }
             Toggle {
-                label: "Làm mờ kính khung (Frosted glass)",
+                label: "Làm mờ kính khung",
                 desc: "Bật hiệu ứng kính mờ phía sau các khung khi trong suốt",
                 checked: pr.panel_glass,
                 on_change: move |enabled: bool| {

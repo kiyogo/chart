@@ -677,6 +677,122 @@ pub async fn read_selected_file_raw(input_id: &str) -> Result<(Vec<u8>, String),
     Ok((bytes, val.get("mime").and_then(|v| v.as_str()).unwrap_or("image/png").to_string()))
 }
 
+/// Read and compress a wallpaper image picked in `<input type=file id=input_id>`.
+/// - If the file is > 1 MB, it automatically scales and compresses it into high quality WebP.
+/// - If the file is <= 1 MB, it converts it to WebP format.
+/// - Maximum allowed output size is strictly 2 MB; returns Err("too_large") if it exceeds 2 MB.
+/// Returns (bytes, "image/webp").
+pub async fn process_selected_wallpaper_webp(input_id: &str) -> Result<(Vec<u8>, String), String> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            const input = document.getElementById({id_json});
+            if (!input || !input.files || input.files.length === 0) {{
+                dioxus.send({{ error: 'no_file' }});
+                return;
+            }}
+            const file = input.files[0];
+            const toB64 = (buf) => {{
+                let s = ''; const bytes = new Uint8Array(buf);
+                for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                return btoa(s);
+            }};
+
+            if (file.size > 25 * 1024 * 1024) {{
+                dioxus.send({{ error: 'too_large' }});
+                input.value = '';
+                return;
+            }}
+
+            try {{
+                if (file.type === 'image/webp' && file.size <= 1024 * 1024) {{
+                    const ab = await file.arrayBuffer();
+                    dioxus.send({{ b64: toB64(ab), mime: 'image/webp' }});
+                    input.value = '';
+                    return;
+                }}
+
+                let drawableSource;
+                let srcWidth, srcHeight;
+                if (typeof createImageBitmap === 'function') {{
+                    const bmp = await createImageBitmap(file);
+                    srcWidth = bmp.width;
+                    srcHeight = bmp.height;
+                    drawableSource = bmp;
+                }} else {{
+                    const img = new Image();
+                    const url = URL.createObjectURL(file);
+                    await new Promise((resolve, reject) => {{
+                        img.onload = () => resolve();
+                        img.onerror = () => reject(new Error('img_load_err'));
+                        img.src = url;
+                    }});
+                    URL.revokeObjectURL(url);
+                    srcWidth = img.naturalWidth || img.width;
+                    srcHeight = img.naturalHeight || img.height;
+                    drawableSource = img;
+                }}
+
+                const maxDim = 2560;
+                let scale = 1;
+                if (srcWidth > maxDim || srcHeight > maxDim) {{
+                    scale = Math.min(maxDim / srcWidth, maxDim / srcHeight);
+                }}
+                const targetW = Math.max(1, Math.round(srcWidth * scale));
+                const targetH = Math.max(1, Math.round(srcHeight * scale));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = targetW;
+                canvas.height = targetH;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) throw new Error('no_canvas');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(drawableSource, 0, 0, targetW, targetH);
+
+                let quality = file.size > 1024 * 1024 ? 0.82 : 0.90;
+                let blob = await new Promise((r) => canvas.toBlob(r, 'image/webp', quality));
+
+                if (blob && blob.size > 1024 * 1024) {{
+                    const lowerBlob = await new Promise((r) => canvas.toBlob(r, 'image/webp', 0.75));
+                    if (lowerBlob) blob = lowerBlob;
+                }}
+
+                if (blob && blob.size > 2 * 1024 * 1024) {{
+                    const minBlob = await new Promise((r) => canvas.toBlob(r, 'image/webp', 0.60));
+                    if (minBlob) blob = minBlob;
+                }}
+
+                if (!blob) throw new Error('compression_failed');
+
+                if (blob.size > 2 * 1024 * 1024) {{
+                    dioxus.send({{ error: 'too_large' }});
+                    input.value = '';
+                    return;
+                }}
+
+                const ab = await blob.arrayBuffer();
+                dioxus.send({{ b64: toB64(ab), mime: 'image/webp' }});
+                input.value = '';
+            }} catch (e) {{
+                dioxus.send({{ error: 'unsupported' }});
+                input.value = '';
+            }}
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let val = eval.recv::<serde_json::Value>().await.map_err(|_| "eval_failed".to_string())?;
+    if let Some(err) = val.get("error").and_then(|e| e.as_str()) {
+        return Err(err.to_string());
+    }
+    use base64::Engine;
+    let b64 = val.get("b64").and_then(|v| v.as_str()).ok_or("no_data")?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "decode_failed".to_string())?;
+    Ok((bytes, "image/webp".to_string()))
+}
+
 // ---------------------------------------------------------------------------
 // Spec 007 helpers: notifications, deep links, idle lock, paste, table images
 // ---------------------------------------------------------------------------

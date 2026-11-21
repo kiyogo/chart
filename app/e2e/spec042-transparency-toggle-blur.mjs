@@ -68,7 +68,7 @@ try {
     `hasLabel=${bodyText.includes('Độ trong suốt khung trắng: 0%')}`,
   );
 
-  const glassSwitch = page.locator('.toggle-row', { hasText: 'Làm mờ kính khung (Frosted glass)' }).locator('input.switch');
+  const glassSwitch = page.locator('.toggle-row', { hasText: 'Làm mờ kính khung' }).locator('input.switch');
   const isCheckedInitial = await glassSwitch.isChecked();
   record(
     'Glass blur switch defaults to OFF (no blur by default)',

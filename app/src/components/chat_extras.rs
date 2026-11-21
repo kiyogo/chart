@@ -130,12 +130,13 @@ pub fn WallpaperPicker(current: Option<String>, shared: bool, on_pick: EventHand
                             uploading.set(true);
                             error.set(None);
                             spawn(async move {
-                                match platform::read_selected_file_raw("chat-wp-file").await {
+                                match platform::process_selected_wallpaper_webp("chat-wp-file").await {
                                     Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                         Ok(url) => on_pick.call(url),
                                         Err(_) => error.set(Some("Không tải ảnh lên được".into())),
                                     },
                                     Err(e) if e == "too_large" => error.set(Some("Ảnh lớn hơn 2 MB".into())),
+                                    Err(e) if e == "unsupported" => error.set(Some("Định dạng ảnh không được hỗ trợ".into())),
                                     Err(_) => {}
                                 }
                                 uploading.set(false);
