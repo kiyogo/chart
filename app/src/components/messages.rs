@@ -70,14 +70,10 @@ fn parse_local(iso: &str) -> Option<DateTime<Local>> {
 
 fn day_label(date: NaiveDate) -> String {
     let today = Local::now().date_naive();
-    if date == today {
-        "Hôm nay".to_string()
-    } else if Some(date) == today.pred_opt() {
-        "Hôm qua".to_string()
-    } else if date.year() == today.year() {
+    if date.year() == today.year() {
         format!("{} tháng {}", date.day(), date.month())
     } else {
-        format!("{:02}/{:02}/{}", date.day(), date.month(), date.year())
+        format!("{} tháng {} năm {}", date.day(), date.month(), date.year())
     }
 }
 
@@ -774,5 +770,16 @@ mod tests {
         assert_eq!(s2, 400);
         assert_eq!(e2, 10_000);
         assert!(t0.elapsed().as_micros() < 1000, "window bound calculation must be O(1) sub-millisecond");
+    }
+
+    #[test]
+    fn test_day_label_current_year_and_previous_year() {
+        let cur_year = Local::now().date_naive().year();
+        let d_cur = NaiveDate::from_ymd_opt(cur_year, 11, 20).unwrap();
+        assert_eq!(day_label(d_cur), "20 tháng 11");
+        let d_old = NaiveDate::from_ymd_opt(2025, 11, 22).unwrap();
+        if cur_year != 2025 {
+            assert_eq!(day_label(d_old), "22 tháng 11 năm 2025");
+        }
     }
 }

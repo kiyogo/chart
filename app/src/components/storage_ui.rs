@@ -69,21 +69,17 @@ pub fn StorageSettingsPanel() -> Element {
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Bộ nhớ trên máy này" }
+                    div { class: "settings-group-title", "Bộ nhớ máy" }
                     div { class: "settings-list",
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Lưu trữ trên máy" }
-                                span { class: "settings-sublabel",
-                                    if q.persisted { "Lưu bền vững đã bật" } else { "Chế độ lưu trình duyệt" }
-                                }
+                                span { class: "settings-label", "Đã lưu" }
                             }
                             span { class: "chip-privacy", "{q.local_object_count} tệp · {format_bytes_human(q.total_local_bytes)}" }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Bộ nhớ đệm có thể dọn" }
-                                span { class: "settings-sublabel", "Tệp nhóm và máy chủ: {format_bytes_human(q.disposable_cache_bytes)}" }
+                                span { class: "settings-label", "Bộ nhớ đệm" }
                             }
                             button {
                                 r#type: "button",
@@ -92,24 +88,23 @@ pub fn StorageSettingsPanel() -> Element {
                                     spawn(async move {
                                         match clear_safe_cache(false).await {
                                             Ok((freed, kept)) => {
-                                                notice.set(Some((false, format!("Đã giải phóng {}, giữ nguyên {kept} tệp riêng chưa sao lưu", format_bytes_human(freed)))));
+                                                notice.set(Some((false, format!("Đã giải phóng {}, giữ {kept} tệp riêng", format_bytes_human(freed)))));
                                                 reload();
                                             }
                                             Err(e) => notice.set(Some((true, format!("Không dọn được đệm: {e}")))),
                                         }
                                     });
                                 },
-                                "Xóa bộ nhớ đệm"
+                                "Xóa đệm"
                             }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Tệp gốc chỉ có trên máy này" }
-                                span { class: "settings-sublabel", "Được giữ an toàn khi dọn đệm: {format_bytes_human(q.pinned_unique_bytes)}" }
+                                span { class: "settings-label", "Tệp gốc trên máy" }
                             }
                             if confirm_purge_unique() {
                                 div { class: "inline-form",
-                                    button { r#type: "button", class: "btn-ghost", onclick: move |_| confirm_purge_unique.set(false), "Hủy" }
+                                    button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_purge_unique.set(false), "Hủy" }
                                     button {
                                         r#type: "button",
                                         class: "btn-danger",
@@ -117,7 +112,7 @@ pub fn StorageSettingsPanel() -> Element {
                                             confirm_purge_unique.set(false);
                                             spawn(async move {
                                                 let _ = clear_safe_cache(true).await;
-                                                notice.set(Some((false, "Đã xóa toàn bộ bản lưu trên máy này".into())));
+                                                notice.set(Some((false, "Đã xóa bản lưu trên máy".into())));
                                                 reload();
                                             });
                                         },
@@ -125,13 +120,14 @@ pub fn StorageSettingsPanel() -> Element {
                                     }
                                 }
                             } else if q.pinned_unique_bytes > 0 {
-                                button { r#type: "button", class: "btn-danger-outline", onclick: move |_| confirm_purge_unique.set(true), "Xóa bản lưu duy nhất" }
+                                button { r#type: "button", class: "btn-danger-outline", onclick: move |_| confirm_purge_unique.set(true), "Xóa bản lưu" }
+                            } else {
+                                span { class: "chip-privacy", "{format_bytes_human(q.pinned_unique_bytes)}" }
                             }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Giới hạn bộ nhớ đệm" }
-                                span { class: "settings-sublabel", "Tự động dọn đệm khi vượt mức chọn" }
+                                span { class: "settings-label", "Giới hạn đệm" }
                             }
                             select {
                                 class: "settings-select",
@@ -149,7 +145,7 @@ pub fn StorageSettingsPanel() -> Element {
                                     }
                                 },
                                 option { value: "500", "500 MB" }
-                                option { value: "1024", "1 GB · Mặc định" }
+                                option { value: "1024", "1 GB" }
                                 option { value: "2048", "2 GB" }
                                 option { value: "5120", "5 GB" }
                                 option { value: "10240", "10 GB" }
@@ -158,8 +154,7 @@ pub fn StorageSettingsPanel() -> Element {
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Tự động tải ảnh và video" }
-                                span { class: "settings-sublabel", "Chọn lúc tự động tải tệp về máy" }
+                                span { class: "settings-label", "Tự động tải" }
                             }
                             select {
                                 class: "settings-select",
@@ -171,15 +166,14 @@ pub fn StorageSettingsPanel() -> Element {
                                     policy.set(next.clone());
                                     spawn(async move { let _ = storage_sync::update_policy(&next).await; });
                                 },
-                                option { value: "always", "Luôn tự động" }
-                                option { value: "wifi", "Ưu tiên Wi-Fi" }
-                                option { value: "manual", "Chỉ tải khi mở" }
+                                option { value: "always", "Luôn tải" }
+                                option { value: "wifi", "Qua Wi-Fi" }
+                                option { value: "manual", "Thủ công" }
                             }
                         }
                         label { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Giữ ảnh gốc khi gửi" }
-                                span { class: "settings-sublabel", "Tắt để tự nén ảnh gọn nhẹ mà vẫn rõ nét" }
+                                span { class: "settings-label", "Giữ ảnh gốc" }
                             }
                             input {
                                 r#type: "checkbox",
@@ -200,31 +194,23 @@ pub fn StorageSettingsPanel() -> Element {
 
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Dung lượng đang dùng" }
+                    div { class: "settings-group-title", "Dung lượng" }
                     div { class: "settings-list",
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Theo cuộc trò chuyện" }
-                                span { class: "settings-sublabel",
-                                    "Chat riêng: {format_bytes_human(dm_bytes)} · Nhóm: {format_bytes_human(group_bytes)} · Máy chủ: {format_bytes_human(channel_bytes)}"
-                                }
+                                span { class: "settings-label", "Trò chuyện" }
                             }
+                            span { class: "chip-privacy", "Riêng {format_bytes_human(dm_bytes)} · Nhóm {format_bytes_human(group_bytes)} · Kênh {format_bytes_human(channel_bytes)}" }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Dung lượng đã tiết kiệm" }
-                                span { class: "settings-sublabel",
-                                    "Trùng lặp: {format_bytes_human(dedup_saved)} · Nén tệp: {format_bytes_human(comp_saved)}"
-                                }
+                                span { class: "settings-label", "Đã tiết kiệm" }
                             }
-                            span { class: "chip-privacy", "Đang lưu: {format_bytes_human(server_physical)}" }
+                            span { class: "chip-privacy", "Lưu {format_bytes_human(server_physical)} · Giảm {format_bytes_human(dedup_saved + comp_saved)}" }
                         }
-                        div { class: "settings-row column-layout",
+                        div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Hệ thống lưu trữ" }
-                                span { class: "settings-sublabel",
-                                    if s3_ready { "Đã kết nối kho lưu trữ mở rộng" } else { "Lưu trực tiếp trên máy chủ" }
-                                }
+                                span { class: "settings-label", if s3_ready { "Kho lưu trữ mở rộng" } else { "Máy chủ lưu trữ" } }
                             }
                             div { class: "inline-form",
                                 button {
@@ -237,32 +223,26 @@ pub fn StorageSettingsPanel() -> Element {
                                             }
                                         });
                                     },
-                                    "Kiểm tra dữ liệu"
+                                    "Kiểm tra"
                                 }
                                 button {
                                     r#type: "button",
-                                    class: "btn-ghost",
+                                    class: "btn-secondary",
                                     onclick: move |_| {
                                         spawn(async move {
                                             let _ = storage_sync::trigger_cleanup().await;
                                             reload();
                                         });
                                     },
-                                    "Dọn tệp hết hạn"
+                                    "Dọn tệp"
                                 }
                             }
                         }
                         if let Some(mr) = migration_res() {
                             div { class: "settings-row",
-                                span { class: "settings-sublabel",
-                                    "Đã kiểm tra {mr[\"scanned_objects\"]} tệp · Hợp lệ {mr[\"verified_objects\"]} · Lỗi {mr[\"failed_objects\"]}"
+                                span { class: "chip-privacy",
+                                    "Kiểm tra {mr[\"scanned_objects\"]} · Hợp lệ {mr[\"verified_objects\"]} · Lỗi {mr[\"failed_objects\"]}"
                                 }
-                            }
-                        }
-                        div { class: "settings-row",
-                            div { class: "settings-row-text",
-                                span { class: "settings-label", "Sao lưu an toàn" }
-                                span { class: "settings-sublabel", "Bạn có thể tải tệp sao lưu về máy hoặc lưu lên đám mây ở mục Sao lưu và Đám mây." }
                             }
                         }
                     }

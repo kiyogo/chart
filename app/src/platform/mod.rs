@@ -524,38 +524,60 @@ if (!window.__chatwRecomputeContrast) {
         img.crossOrigin = 'anonymous';
         img.onload = () => {
             try {
-                const sz = 32;
+                const sz = 48;
                 const canvas = document.createElement('canvas');
                 canvas.width = sz; canvas.height = sz;
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 ctx.drawImage(img, 0, 0, sz, sz);
                 const data = ctx.getImageData(0, 0, sz, sz).data;
-                let sum = 0, sumSq = 0, railSum = 0, railN = 0;
+                let sum = 0, sumSq = 0, railSum = 0, railN = 0, edgeSum = 0;
+                let darkCount = 0, brightCount = 0;
+                let rSum = 0, gSum = 0, bSum = 0;
                 const total = sz * sz;
+                const grid = new Float32Array(total);
                 for (let y = 0; y < sz; y++) {
                     for (let x = 0; x < sz; x++) {
-                        const idx = (y * sz + x) * 4;
-                        const b = srgbB(data[idx], data[idx + 1], data[idx + 2]);
+                        const p = y * sz + x;
+                        const idx = p * 4;
+                        const r = data[idx], g = data[idx + 1], bl = data[idx + 2];
+                        const b = srgbB(r, g, bl);
+                        grid[p] = b;
                         sum += b;
                         sumSq += b * b;
-                        if (x < 5) { railSum += b; railN++; }
+                        rSum += r; gSum += g; bSum += bl;
+                        if (b < 0.28) darkCount++;
+                        if (b > 0.72) brightCount++;
+                        if (x < 7) { railSum += b; railN++; }
+                        if (x > 0) edgeSum += Math.abs(b - grid[p - 1]);
+                        if (y > 0) edgeSum += Math.abs(b - grid[p - sz]);
                     }
                 }
                 const meanB = sum / total;
                 const variance = Math.max(0, (sumSq / total) - meanB * meanB);
+                const edgeB = edgeSum / (2 * total);
                 window.__chatwWpMetrics[url] = {
                     meanB,
                     railB: railN ? (railSum / railN) : meanB,
                     stdB: Math.sqrt(variance),
+                    edgeB,
+                    darkRatio: darkCount / total,
+                    brightRatio: brightCount / total,
+                    domHex: toHex(rSum / total, gSum / total, bSum / total),
                 };
             } catch (_) {
-                window.__chatwWpMetrics[url] = { meanB: 0.44, railB: 0.44, stdB: 0.24 };
+                window.__chatwWpMetrics[url] = {
+                    meanB: 0.44, railB: 0.44, stdB: 0.24, edgeB: 0.08,
+                    darkRatio: 0.25, brightRatio: 0.25, domHex: '#334155',
+                };
             }
             delete window.__chatwWpMetrics['__pending_' + url];
             window.__chatwRecomputeContrast();
         };
         img.onerror = () => {
-            window.__chatwWpMetrics[url] = { meanB: 0.44, railB: 0.44, stdB: 0.24 };
+            window.__chatwWpMetrics[url] = {
+                meanB: 0.44, railB: 0.44, stdB: 0.24, edgeB: 0.08,
+                darkRatio: 0.25, brightRatio: 0.25, domHex: '#334155',
+            };
             delete window.__chatwWpMetrics['__pending_' + url];
             window.__chatwRecomputeContrast();
         };
@@ -572,10 +594,10 @@ if (!window.__chatwRecomputeContrast) {
         };
         const shellB = baseTheme === 'dark' ? 0.06 : 0.93;
         const panelBaseB = baseTheme === 'dark' ? 0.12 : 1.0;
-        let meanB = shellB, railB = shellB, stdB = 0.0;
+        let meanB = shellB, railB = shellB, stdB = 0.0, edgeB = 0.0, darkRatio = 0.0, brightRatio = 0.0;
 
         if (c.wpKind === 'preset-night') {
-            meanB = 0.07; railB = 0.07; stdB = 0.04;
+            meanB = 0.07; railB = 0.07; stdB = 0.04; darkRatio = 0.95;
         } else if (c.wpKind === 'preset-dots') {
             meanB = baseTheme === 'dark' ? 0.08 : 0.92; railB = meanB; stdB = 0.05;
         } else if (c.wpKind === 'preset-paper') {
@@ -598,14 +620,42 @@ if (!window.__chatwRecomputeContrast) {
             const cached = window.__chatwWpMetrics[c.wpImageUrl];
             if (cached) {
                 meanB = cached.meanB; railB = cached.railB; stdB = cached.stdB;
+                edgeB = cached.edgeB || 0.08;
+                darkRatio = cached.darkRatio || 0.25;
+                brightRatio = cached.brightRatio || 0.25;
             } else {
                 sampleImage(c.wpImageUrl);
-                meanB = 0.46; railB = 0.46; stdB = 0.26;
+                meanB = 0.46; railB = 0.46; stdB = 0.26; edgeB = 0.09;
+                darkRatio = 0.28; brightRatio = 0.28;
+            }
+        }
+
+        // Also sample any active chat wallpaper image on .chat-column
+        const chatCol = document.querySelector('.chat-column');
+        if (chatCol) {
+            const st = chatCol.getAttribute('style') || '';
+            const m = st.match(/url\(['"]?([^'")]+)['"]?\)/);
+            if (m && m[1]) {
+                const chatUrl = m[1];
+                const cm = window.__chatwWpMetrics[chatUrl];
+                if (cm) {
+                    chatCol.setAttribute('data-chat-tone', cm.meanB < 0.48 ? 'dark' : 'light');
+                    chatCol.setAttribute('data-chat-busy', String(cm.stdB > 0.14 || (cm.edgeB || 0) > 0.05));
+                } else {
+                    sampleImage(chatUrl);
+                }
+            } else if (chatCol.classList.contains('wp-night')) {
+                chatCol.setAttribute('data-chat-tone', 'dark');
+                chatCol.setAttribute('data-chat-busy', 'false');
+            } else {
+                chatCol.removeAttribute('data-chat-tone');
+                chatCol.removeAttribute('data-chat-busy');
             }
         }
 
         const effDim = c.wpKind === 'none' ? 0 : Math.max(0, Math.min(80, Number(c.dim) || 0)) / 100;
         const alpha = Math.max(0, Math.min(100, c.panelOpacity == null ? 100 : Number(c.panelOpacity))) / 100;
+        const transparency = 1 - alpha;
         const backdropB = meanB * (1 - effDim);
         const railBackdropB = railB * (1 - effDim);
         const panelEffectiveB = (1 - alpha) * backdropB + alpha * panelBaseB;
@@ -613,18 +663,42 @@ if (!window.__chatwRecomputeContrast) {
         const surfaceTone = (c.wpKind === 'none' && alpha >= 0.99)
             ? baseTheme
             : (panelEffectiveB < 0.48 ? 'dark' : 'light');
-        const railTone = c.wpKind === 'none'
+        const railTone = (c.wpKind === 'none' && alpha >= 0.99)
             ? baseTheme
-            : (railBackdropB < 0.50 ? 'dark' : 'light');
-        const wpBusy = c.wpKind === 'image' && stdB > 0.15;
-        const panelScrim = c.wpKind !== 'none' && (alpha < 0.72 || (wpBusy && alpha < 0.88));
-        const railScrim = wpBusy && effDim < 0.55;
+            : (panelEffectiveB < 0.48 ? 'dark' : 'light');
+        const wpBusy = (c.wpKind === 'image' && (stdB > 0.13 || edgeB > 0.045 || (darkRatio > 0.15 && brightRatio > 0.15))) || (c.wpKind !== 'none' && transparency > 0.35);
+        const panelScrim = (c.wpKind !== 'none' || transparency > 0.15) && (alpha < 0.85 || (wpBusy && alpha < 0.94));
+        const railScrim = panelScrim;
+        const needsHalo = transparency >= 0.15 || (c.wpKind !== 'none' && alpha < 0.92);
 
         root.setAttribute('data-surface-tone', surfaceTone);
         root.setAttribute('data-rail-tone', railTone);
         root.setAttribute('data-wp-busy', String(wpBusy));
         root.setAttribute('data-panel-scrim', String(panelScrim));
         root.setAttribute('data-rail-scrim', String(railScrim));
+        root.setAttribute('data-text-halo', String(needsHalo));
+
+        if (needsHalo) {
+            const strength = Math.min(1, Math.max(0.35, transparency * 1.15 + (wpBusy ? 0.25 : 0)));
+            if (surfaceTone === 'light') {
+                const darkGlowA = (0.48 * strength).toFixed(2);
+                const darkSoftA = (0.30 * strength).toFixed(2);
+                const lightRimA = (0.94 * strength).toFixed(2);
+                root.style.setProperty(
+                    '--adaptive-text-halo',
+                    `0 0 8px rgba(255, 255, 255, ${lightRimA}), 0 0 3px rgba(255, 255, 255, ${lightRimA}), 0 1px 4px rgba(0, 0, 0, ${darkGlowA}), 0 2px 10px rgba(0, 0, 0, ${darkSoftA})`
+                );
+            } else {
+                const darkCoreA = (0.94 * strength).toFixed(2);
+                const darkOuterA = (0.78 * strength).toFixed(2);
+                root.style.setProperty(
+                    '--adaptive-text-halo',
+                    `0 1px 3px rgba(0, 0, 0, ${darkCoreA}), 0 0 8px rgba(0, 0, 0, ${darkOuterA}), 0 2px 14px rgba(0, 0, 0, ${darkOuterA})`
+                );
+            }
+        } else {
+            root.style.removeProperty('--adaptive-text-halo');
+        }
 
         const surfaceBgHex = surfaceTone === 'dark' ? '#171B24' : '#FFFFFF';
         const surfaceBgLum = surfaceTone === 'dark' ? 0.014 : 1.0;

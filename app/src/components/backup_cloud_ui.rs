@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use serde_json::json;
 
 use crate::{
-    components::brand_logos::{CloudProviderLogo, E2eeLiveShield, PasskeyLogo, ZipBackupLogo},
+    components::brand_logos::{CloudProviderLogo, PasskeyLogo, ZipBackupLogo},
     platform,
     storage::format_bytes_human,
     services::backup_cloud::{
@@ -11,32 +11,6 @@ use crate::{
         ProviderCapability, ReauthMethods, RestoreResult,
     },
 };
-
-fn cloud_provider_hint(pid: &str, oauth_configured: bool, auth_kind: &str) -> &'static str {
-    if auth_kind == "icloud_platform" {
-        return "Đồng bộ tự động trên iPhone, iPad và máy Mac";
-    }
-    if auth_kind == "oauth2_pkce" && !oauth_configured {
-        return match pid {
-            "google_drive" => "Lưu bản sao mã hóa trên Google Drive · Chưa mở kết nối nhanh",
-            "onedrive" => "Lưu bản sao trên Microsoft OneDrive · Chưa mở kết nối nhanh",
-            "dropbox" => "Đồng bộ bản sao qua Dropbox · Chưa mở kết nối nhanh",
-            _ => "Chưa mở kết nối nhanh trên máy chủ này",
-        };
-    }
-    match pid {
-        "google_drive" => "Lưu bản sao mã hóa an toàn trên Google Drive",
-        "onedrive" => "Lưu giữ tin nhắn an toàn trên Microsoft OneDrive",
-        "dropbox" => "Đồng bộ bản sao nhanh chóng qua Dropbox",
-        "nextcloud" => "Kết nối máy chủ Nextcloud riêng của bạn",
-        "webdav" => "Lưu trữ qua mọi máy chủ hỗ trợ WebDAV",
-        "s3" | "amazon_s3" => "Kho lưu trữ đám mây Amazon S3 tốc độ cao",
-        "r2" | "cloudflare_r2" => "Kho lưu trữ Cloudflare R2 linh hoạt",
-        "minio" => "Máy chủ lưu trữ MinIO tự vận hành",
-        "nas" => "Ổ lưu trữ NAS ngay tại nhà của bạn",
-        _ => "Kết nối trực tiếp bằng tài khoản của bạn",
-    }
-}
 
 fn format_api_error(code: &str) -> &'static str {
     match code {
@@ -655,32 +629,20 @@ pub fn CloudAccountsPanel() -> Element {
                 "Ảnh chụp #{run.snapshot_seq}: tổng {format_bytes_human(run.total_plain_bytes)}, tải mới {format_bytes_human(run.uploaded_delta_bytes)}, tiết kiệm {format_bytes_human(run.deduplicated_bytes)}"
             }
         }
-        div { class: "cw-cloud-guide cw-stagger",
-            E2eeLiveShield { size: 32 }
-            div { class: "cw-cloud-guide-body",
-                div { class: "cw-cloud-guide-title", "Sao lưu đám mây riêng tư trong 3 bước" }
-                div { class: "cw-cloud-guide-steps",
-                    span { class: "cw-step-pill", span { class: "cw-step-num", "1" } "Đặt mật khẩu khóa" }
-                    span { class: "cw-step-pill", span { class: "cw-step-num", "2" } "Chọn dịch vụ quen dùng" }
-                    span { class: "cw-step-pill", span { class: "cw-step-num", "3" } "Tự động lưu an toàn" }
-                }
-            }
-        }
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Mật khẩu sao lưu đám mây" }
+                    div { class: "settings-group-title", "Mật khẩu đám mây" }
                     div { class: "settings-list",
                         div { class: "settings-row column-layout",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Mật khẩu bảo vệ dữ liệu đám mây" }
-                                span { class: "settings-sublabel", "Dữ liệu được khóa bằng mật khẩu này trước khi gửi lên đám mây." }
+                                span { class: "settings-label", "Mật khẩu khóa" }
                             }
                             input {
                                 class: "settings-input",
                                 id: "cloud-backup-passphrase",
                                 r#type: "password",
-                                placeholder: "Nhập mật khẩu từ 6 ký tự trở lên",
+                                placeholder: "Từ 6 ký tự trở lên",
                                 value: "{cloud_passphrase}",
                                 oninput: move |e| cloud_passphrase.set(e.value()),
                             }
@@ -689,16 +651,13 @@ pub fn CloudAccountsPanel() -> Element {
                 }
 
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Dịch vụ lưu trữ đám mây" }
+                    div { class: "settings-group-title", "Dịch vụ đám mây" }
                     div { class: "settings-list",
                         for prov in providers() {
                             div { key: "{prov.provider_id}", class: "settings-row cw-brand-row",
                                 CloudProviderLogo { provider_id: prov.provider_id.clone(), size: 32 }
                                 div { class: "settings-row-text",
                                     span { class: "settings-label", "{prov.display_name}" }
-                                    span { class: "settings-sublabel",
-                                        "{cloud_provider_hint(&prov.provider_id, prov.oauth_configured, &prov.auth_kind)}"
-                                    }
                                 }
                                 if prov.auth_kind == "oauth2_pkce" {
                                     button {
@@ -1118,12 +1077,11 @@ pub fn CloudAccountsPanel() -> Element {
                 }
 
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Lịch sao lưu tự động" }
+                    div { class: "settings-group-title", "Sao lưu tự động" }
                     div { class: "settings-list",
                         label { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Tự động sao lưu đám mây" }
-                                span { class: "settings-sublabel", "Chỉ tải phần mới thay đổi theo lịch chọn." }
+                                span { class: "settings-label", "Tự động sao lưu" }
                             }
                             input {
                                 r#type: "checkbox",
@@ -1138,7 +1096,7 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         div { class: "settings-row",
-                            span { class: "settings-label", "Chu kỳ sao lưu" }
+                            span { class: "settings-label", "Chu kỳ" }
                             select {
                                 class: "settings-select",
                                 aria_label: "Chu kỳ sao lưu Cloud",
@@ -1151,7 +1109,7 @@ pub fn CloudAccountsPanel() -> Element {
                                 option { value: "manual", "Thủ công" }
                                 option { value: "daily", "Hàng ngày" }
                                 option { value: "weekly", "Hàng tuần" }
-                                option { value: "on_change", "Khi có thay đổi lớn" }
+                                option { value: "on_change", "Khi thay đổi" }
                             }
                         }
                         if !connections().is_empty() {
@@ -1175,7 +1133,7 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Chỉ sao lưu khi dùng Wi-Fi" }
+                            span { class: "settings-label", "Chỉ qua Wi-Fi" }
                             input {
                                 r#type: "checkbox",
                                 role: "switch",
@@ -1189,7 +1147,7 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Chỉ sao lưu khi đang sạc pin" }
+                            span { class: "settings-label", "Chỉ khi sạc" }
                             input {
                                 r#type: "checkbox",
                                 role: "switch",
@@ -1203,7 +1161,7 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Tạm dừng đồng bộ đám mây" }
+                            span { class: "settings-label", "Tạm dừng" }
                             input {
                                 r#type: "checkbox",
                                 role: "switch",
@@ -1217,7 +1175,7 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         div { class: "settings-row",
-                            span { class: "settings-label", "Số bản sao giữ lại" }
+                            span { class: "settings-label", "Bản sao giữ lại" }
                             select {
                                 class: "settings-select",
                                 aria_label: "Số bản chụp giữ lại",
@@ -1237,40 +1195,27 @@ pub fn CloudAccountsPanel() -> Element {
                         }
                         div { class: "settings-row column-layout",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Mật khẩu chạy sao lưu tự động" }
-                                span { class: "settings-sublabel",
-                                    if pol.has_auto_key {
-                                        "Đã lưu khóa mã hóa để tự chạy theo lịch."
-                                    } else {
-                                        "Nhập mật khẩu từ 6 ký tự nếu muốn tự sao lưu theo lịch."
-                                    }
-                                    if let Some(ref nr) = pol.next_run_at {
-                                        " · Chạy tiếp: {nr}"
-                                    }
-                                    if let Some(ref lr) = pol.last_run_at {
-                                        " · Chạy gần nhất: {lr}"
-                                    }
-                                }
+                                span { class: "settings-label", "Mật khẩu tự động" }
                             }
                             div { class: "inline-form",
                                 input {
                                     class: "settings-input",
                                     id: "cloud-auto-passphrase",
                                     r#type: "password",
-                                    placeholder: if pol.has_auto_key { "Nhập mới để đổi mật khẩu tự động" } else { "Mật khẩu chạy tự động từ 6 ký tự" },
+                                    placeholder: if pol.has_auto_key { "Đổi mật khẩu tự động" } else { "Từ 6 ký tự" },
                                     value: "{auto_backup_passphrase}",
                                     oninput: move |e| auto_backup_passphrase.set(e.value()),
                                 }
                                 if pol.has_auto_key {
                                     label { class: "inline-form",
                                         input { r#type: "checkbox", checked: clear_auto_key(), onchange: move |e| clear_auto_key.set(e.checked()) }
-                                        span { class: "settings-sublabel", "Xóa khóa tự động" }
+                                        span { class: "settings-sublabel", "Xóa khóa" }
                                     }
                                 }
                             }
                         }
                         div { class: "settings-row",
-                            span { class: "settings-label", "Lưu lịch sao lưu đám mây" }
+                            span { class: "settings-label", "Lưu lịch" }
                             button {
                                 r#type: "button",
                                 id: "btn-save-cloud-policy",

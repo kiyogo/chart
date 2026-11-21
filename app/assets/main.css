@@ -9544,3 +9544,281 @@ html[data-panel-glass="true"] .plugin-panel:not(:has(.modal-overlay, .settings-m
 html[data-reduce-motion="true"] .cw-spotlight::before {
   display: none !important;
 }
+
+/* ==========================================================================
+   Spec 052: Unified 8px Panel Insets, Crisp 1px Nameplate Borders, Larger
+   List Avatars, Bold Settings Titles, Left Rail Opacity Sync, Full-Bleed
+   Color Swatches, Framed Ghost Buttons, Non-Overlapping Date Pills, Floating
+   Top Chat Header Fade & Meet Bottom Rounded Gap
+   ========================================================================== */
+
+:root {
+  --panel-inset: 8px;
+  --avatar-list: 3.375rem;
+}
+
+/* 1. Chat Item: exact 8px left/right inset, larger avatar closer to top/bottom/left/right,
+      and crisp 1px border on hover (grey) or click/selected (accent) when decorated (.has-nameplate) */
+.conv-row .chat-item,
+.chat-item {
+  padding: 3px 6px 3px 3px;
+  gap: 0.55rem;
+}
+.chat-item.has-nameplate,
+.chat-item.has-nameplate:hover,
+.chat-item.has-nameplate.selected,
+.chat-item.has-nameplate.active {
+  background: transparent !important;
+}
+.chat-item.has-nameplate:hover:not(.selected):not(.active) {
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.24) !important;
+}
+[data-theme="dark"] .chat-item.has-nameplate:hover:not(.selected):not(.active),
+html[data-surface-tone="dark"] .chat-item.has-nameplate:hover:not(.selected):not(.active) {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.30) !important;
+}
+.chat-item.has-nameplate.selected,
+.chat-item.has-nameplate.active {
+  box-shadow: inset 0 0 0 1px var(--accent) !important;
+}
+
+/* 2. Unified 8px (100% equal to chat item inset) left, right & top internal padding across all panels */
+.nav-sidebar .sidebar-top-header {
+  height: 2.85rem;
+  padding: var(--panel-inset, 8px) var(--panel-inset, 8px) 4px !important;
+}
+.nav-sidebar .sidebar-search,
+.nav-sidebar .sidebar-filters {
+  padding-left: var(--panel-inset, 8px) !important;
+  padding-right: var(--panel-inset, 8px) !important;
+}
+.nav-sidebar .sidebar-scrollable {
+  padding: 0 var(--panel-inset, 8px) var(--panel-inset, 8px) !important;
+}
+.settings-nav,
+.server-settings-stage .settings-nav {
+  padding: var(--panel-inset, 8px) !important;
+}
+.settings-body,
+.server-settings-stage .settings-body {
+  padding: var(--panel-inset, 8px) !important;
+}
+.feed-column > .feed-scroll,
+.meet-column > .feed-scroll,
+.notifications-page,
+.download-page,
+.search-page {
+  padding: var(--panel-inset, 8px) !important;
+}
+.feed-inner,
+.meet-inner {
+  max-width: 100%;
+  padding: 0 !important;
+}
+.meet-hero-card,
+.meet-card,
+.feed-card,
+.feed-compose-bar,
+.feed-stories-card {
+  padding-left: var(--panel-inset, 8px) !important;
+  padding-right: var(--panel-inset, 8px) !important;
+}
+
+/* 3. Settings Section Titles: large & bold matching the "Tin nhắn" (.sidebar-title) heading */
+.settings-page .settings-group-title,
+.server-settings-stage .settings-group-title,
+.settings-group-title {
+  font-size: var(--text-xl) !important;
+  font-weight: var(--weight-bold) !important;
+  letter-spacing: -0.01em;
+  color: var(--text-primary) !important;
+  line-height: 1.25;
+  margin: 0 0 4px !important;
+}
+
+/* 4. Left Rail (.app-rail) 100% Synchronized with Interface Panel Transparency & Glass Blur (Image 10) */
+.app-rail {
+  background-color: var(--bg-primary);
+  border-radius: var(--panel-radius);
+}
+html[data-rail-scrim="true"][data-rail-tone="light"] .app-rail,
+html[data-rail-scrim="true"][data-rail-tone="dark"] .app-rail,
+html[data-panel-translucent="true"] .app-rail,
+html[data-panel-glass="true"] .app-rail {
+  background: color-mix(in srgb, var(--bg-primary) var(--panel-opacity, 100%), transparent) !important;
+  border-radius: var(--panel-radius);
+}
+html[data-panel-glass="true"] .app-rail:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)) {
+  backdrop-filter: blur(var(--panel-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
+}
+
+/* 5. Adaptive Contrast & Dark/Dual-Polarity Halo Over Transparent/Wallpaper Panels (Image 9) */
+html[data-text-halo="true"][data-surface-tone="light"] {
+  --text: #04060C;
+  --text-primary: #04060C;
+  --text-secondary: #0F172A;
+  --text-muted: #1E293B;
+}
+html[data-text-halo="true"][data-surface-tone="dark"] {
+  --text: #FFFFFF;
+  --text-primary: #FFFFFF;
+  --text-secondary: #E2E8F0;
+  --text-muted: #CBD5E1;
+}
+html[data-text-halo="true"] .settings-body,
+html[data-text-halo="true"] .settings-nav,
+html[data-text-halo="true"] .nav-sidebar,
+html[data-text-halo="true"] .app-rail,
+html[data-text-halo="true"] .chat-header,
+html[data-text-halo="true"] .feed-column,
+html[data-text-halo="true"] .meet-column,
+html[data-text-halo="true"] .details-panel,
+html[data-text-halo="true"] .partner-info-sidebar,
+html[data-text-halo="true"] .plugin-panel,
+html[data-text-halo="true"] .notifications-page,
+html[data-text-halo="true"] .download-page,
+html[data-text-halo="true"] .search-page {
+  text-shadow: var(--adaptive-text-halo) !important;
+}
+.chat-column[data-chat-tone="dark"] .chat-header,
+.chat-column[data-chat-tone="dark"] .chat-header .chat-header-title,
+.chat-column[data-chat-tone="dark"] .chat-header .chat-header-meta,
+.chat-column[data-chat-tone="dark"] .chat-header .icon-btn,
+.chat-column[data-chat-tone="dark"] .chat-header .icon-btn svg,
+.chat-column[data-chat-tone="dark"] .chat-header .device-chip {
+  color: #F8FAFC !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.65);
+}
+.chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header,
+.chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header .chat-header-title,
+.chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header .chat-header-meta {
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.95), 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+/* 6. Full-Bleed <input type="color"> Swatch (zero inner black border) & Framed .btn-ghost Everywhere (Images 5, 11, 12) */
+input[type="color"],
+.settings-row input[type="color"],
+.color-field input[type="color"],
+.studio-color {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 2.75rem !important;
+  max-width: 2.75rem !important;
+  height: 2.25rem !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  flex: 0 0 2.75rem !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--input-border, rgba(15, 23, 42, 0.16)) !important;
+  background: transparent !important;
+  overflow: hidden !important;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0 !important;
+  border: none !important;
+  border-radius: inherit;
+}
+input[type="color"]::-webkit-color-swatch {
+  border: none !important;
+  border-radius: inherit;
+}
+input[type="color"]::-moz-color-swatch {
+  border: none !important;
+  border-radius: inherit;
+}
+
+.btn-ghost {
+  background: var(--bg-surface-hover) !important;
+  border: 1px solid var(--input-border, rgba(15, 23, 42, 0.10)) !important;
+  color: var(--text-primary) !important;
+  border-radius: var(--radius-md);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+}
+
+/* 7. Hide Guide Banners & Verbose Explanatory Descriptions Across Settings (Image 13) */
+.cw-cloud-guide,
+.settings-row-desc,
+.settings-page-desc,
+.settings-group-desc {
+  display: none !important;
+}
+
+/* 8. Non-Overlapping Date Separator in Chat (Image 14) */
+.date-separator {
+  position: relative !important;
+  top: auto !important;
+  z-index: 1;
+}
+
+/* 9. Floating Top Chat Header (no solid white bar blocking messages), Top Unblurred Surface Fade,
+      and Inline Device Pills to the Right of "Chính mình" Title (Image 15) */
+.chat-column > .chat-header {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 12;
+  padding: 0 var(--panel-inset, 8px) !important;
+  background: transparent !important;
+}
+.chat-column > .chat-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: -1.25rem;
+  pointer-events: none;
+  z-index: -1;
+  display: block !important;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bg-chat) var(--panel-opacity, 100%), transparent) 0%,
+    color-mix(in srgb, var(--bg-chat) calc(var(--panel-opacity, 100%) * 0.55), transparent) 55%,
+    transparent 100%
+  );
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.chat-column > .chat-messages {
+  padding-top: calc(var(--header-height) + var(--space-2)) !important;
+}
+.chat-column > .pinned-bar {
+  margin-top: var(--header-height);
+}
+.chat-column > .pinned-bar + .chat-messages {
+  padding-top: var(--space-3) !important;
+}
+.chat-header-identity.self-header-identity {
+  margin-right: 0 !important;
+  flex-shrink: 0;
+}
+.chat-header .header-inline-devices {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 1rem;
+  margin-right: auto;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.chat-header .header-inline-devices::-webkit-scrollbar {
+  display: none;
+}
+
+/* 10. Meet View (.meet-column): rounded bottom corners & never touches bottom of browser viewport */
+.meet-column {
+  border-radius: var(--panel-radius) !important;
+  margin-bottom: 0 !important;
+}
+

@@ -463,19 +463,19 @@ pub fn AppearanceColorsShapes() -> Element {
     rsx! {
         div { class: "settings-group",
             div { class: "settings-row",
-                span { class: "grow", span { class: "settings-label", "Màu nhấn tùy chọn" } span { class: "settings-row-desc", "Thay cho bảng màu nhấn có sẵn" } }
+                span { class: "grow", span { class: "settings-label", "Màu nhấn tùy chọn" } }
+                if !pr.custom_accent.is_empty() { button { r#type: "button", class: "btn-secondary", onclick: move |_| c.update(|p| p.custom_accent.clear()), "Mặc định" } }
                 input { r#type: "color", aria_label: "Màu nhấn", value: "{accent_val}", onchange: move |e| { let v = e.value().to_uppercase(); c.update(move |p| p.custom_accent = v) } }
-                if !pr.custom_accent.is_empty() { button { r#type: "button", class: "btn-ghost", onclick: move |_| c.update(|p| p.custom_accent.clear()), "Mặc định" } }
             }
             div { class: "settings-row",
-                span { class: "grow", span { class: "settings-label", "Bong bóng tin nhắn của bạn" } }
+                span { class: "grow", span { class: "settings-label", "Bong bóng của bạn" } }
+                if !pr.bubble_self.is_empty() { button { r#type: "button", class: "btn-secondary", onclick: move |_| c.update(|p| p.bubble_self.clear()), "Mặc định" } }
                 input { r#type: "color", aria_label: "Màu bong bóng của bạn", value: "{self_val}", onchange: move |e| { let v = e.value().to_uppercase(); c.update(move |p| p.bubble_self = v) } }
-                if !pr.bubble_self.is_empty() { button { r#type: "button", class: "btn-ghost", onclick: move |_| c.update(|p| p.bubble_self.clear()), "Mặc định" } }
             }
             div { class: "settings-row",
-                span { class: "grow", span { class: "settings-label", "Bong bóng tin nhắn người khác" } }
+                span { class: "grow", span { class: "settings-label", "Bong bóng người khác" } }
+                if !pr.bubble_other.is_empty() { button { r#type: "button", class: "btn-secondary", onclick: move |_| c.update(|p| p.bubble_other.clear()), "Mặc định" } }
                 input { r#type: "color", aria_label: "Màu bong bóng người khác", value: "{other_val}", onchange: move |e| { let v = e.value().to_uppercase(); c.update(move |p| p.bubble_other = v) } }
-                if !pr.bubble_other.is_empty() { button { r#type: "button", class: "btn-ghost", onclick: move |_| c.update(|p| p.bubble_other.clear()), "Mặc định" } }
             }
         }
         div { class: "settings-group",

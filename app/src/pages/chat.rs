@@ -3527,11 +3527,29 @@ pub fn Chat(
                                     BackIcon {}
                                 }
                                 if self_mode {
-                                    div { class: "chat-header-identity",
+                                    div { class: "chat-header-identity self-header-identity",
                                         span { class: "self-chat-avatar", aria_hidden: "true", DevicesIcon { size: 20 } }
                                         div { class: "chat-header-info",
                                             h2 { class: "chat-header-title", "{t(\"chat.self\")}" }
                                             span { class: "chat-header-meta secure", ShieldIcon { size: 12 } "Chỉ mình bạn · {sessions_now.len()} thiết bị" }
+                                        }
+                                    }
+                                    div { class: "device-strip header-inline-devices", aria_label: "Thiết bị của bạn",
+                                        for sess in sessions_now.iter().cloned() {
+                                            {
+                                                let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Thiết bị".into());
+                                                let sid = sess.id.clone();
+                                                let l2 = label.clone();
+                                                rsx! {
+                                                    button { key: "{sess.id}", r#type: "button", class: if sess.is_current { "device-chip current" } else { "device-chip" },
+                                                        title: "Bấm để đổi tên thiết bị",
+                                                        onclick: move |_| rename_device.set(Some((sid.clone(), l2.clone()))),
+                                                        DevicesIcon { size: 14 }
+                                                        "{label}"
+                                                        if sess.is_current { span { class: "device-chip-tag", "thiết bị này" } }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 } else {
@@ -3618,28 +3636,6 @@ pub fn Chat(
                                                 _ => {}
                                             }
                                         },
-                                    }
-                                }
-                            }
-
-                            if self_mode {
-                                div { class: "device-strip", aria_label: "Thiết bị của bạn",
-                                    span { class: "device-strip-label", "Thiết bị:" }
-                                    for sess in sessions_now.iter().cloned() {
-                                        {
-                                            let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Thiết bị".into());
-                                            let sid = sess.id.clone();
-                                            let l2 = label.clone();
-                                            rsx! {
-                                                button { key: "{sess.id}", r#type: "button", class: if sess.is_current { "device-chip current" } else { "device-chip" },
-                                                    title: "Bấm để đổi tên thiết bị",
-                                                    onclick: move |_| rename_device.set(Some((sid.clone(), l2.clone()))),
-                                                    DevicesIcon { size: 14 }
-                                                    "{label}"
-                                                    if sess.is_current { span { class: "device-chip-tag", "thiết bị này" } }
-                                                }
-                                            }
-                                        }
                                     }
                                 }
                             }
