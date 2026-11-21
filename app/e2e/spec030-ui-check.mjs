@@ -517,6 +517,53 @@ try {
     clip: { x: Math.max(0, vBox.x - 12), y: Math.max(0, vBox.y - 12), width: vBox.width + 24, height: vBox.height + 24 },
   });
 
+  // 10. Friends tab (.friends-scroll) matches Messages & Communities 100% (6.75px inset/pad, 4.5px gap, 64px cards)
+  await page.locator('.app-rail button[aria-label="Bạn bè"]').click();
+  await page.waitForSelector('.friends-scroll', { timeout: 8000 });
+  await page.locator('.add-friend-form input').fill('s030_');
+  await page.waitForSelector('.friends-scroll .request-card', { timeout: 8000 });
+  await page.waitForTimeout(250);
+  const friendsParity = await page.evaluate(() => {
+    const scroll = document.querySelector('.friends-scroll');
+    const cards = document.querySelectorAll('.friends-scroll .request-card');
+    const addBox = document.querySelector('.add-friend-container');
+    if (!scroll || cards.length < 1 || !addBox) return null;
+    const scs = getComputedStyle(scroll);
+    const acs = getComputedStyle(addBox);
+    const ccs = getComputedStyle(cards[0]);
+    const sr = scroll.getBoundingClientRect();
+    const r0 = cards[0].getBoundingClientRect();
+    const r1 = cards[1] ? cards[1].getBoundingClientRect() : null;
+    return {
+      addLeftPad: acs.paddingLeft,
+      addRightPad: acs.paddingRight,
+      scrollLeftPad: scs.paddingLeft,
+      scrollRightPad: scs.paddingRight,
+      scrollRowGap: scs.rowGap,
+      cardPad: `${ccs.paddingTop} ${ccs.paddingRight} ${ccs.paddingBottom} ${ccs.paddingLeft}`,
+      cardHeight: Math.round(r0.height),
+      cardLeftInset: Math.round((r0.left - sr.left) * 100) / 100,
+      gapBetweenCardsPx: r1 ? Math.round((r1.top - r0.bottom) * 100) / 100 : null,
+    };
+  });
+  record(
+    'Friends tab (.friends-scroll & cards) matches Messages & Communities 100% (6.75px inset/pad, 4.5px gap, 64px height)',
+    !!(
+      friendsParity &&
+      friendsParity.addLeftPad === '6.75px' &&
+      friendsParity.addRightPad === '6.75px' &&
+      friendsParity.scrollLeftPad === '6.75px' &&
+      friendsParity.scrollRightPad === '6.75px' &&
+      friendsParity.scrollRowGap === '4.5px' &&
+      friendsParity.cardPad === '6.75px 6.75px 6.75px 6.75px' &&
+      friendsParity.cardHeight === 64 &&
+      Math.abs(friendsParity.cardLeftInset - 6.75) <= 0.5 &&
+      (friendsParity.gapBetweenCardsPx === null || Math.abs(friendsParity.gapBetweenCardsPx - 4.5) <= 1)
+    ),
+    JSON.stringify(friendsParity),
+  );
+  await page.screenshot({ path: path.join(OUT, '10_friends_sidebar_parity.png') });
+
   record('Zero pageerror events', errors.length === 0, errors.join('; '));
 } finally {
   await browser.close();
