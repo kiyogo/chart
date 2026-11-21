@@ -51,7 +51,7 @@ const NAV: [(&str, SettingsTab, &str); 22] = [
     ("Tài khoản", SettingsTab::Account, "Tài khoản"),
     ("Tài khoản", SettingsTab::Privacy, "Quyền riêng tư"),
     ("Tài khoản", SettingsTab::Security, "Bảo mật"),
-    ("Tài khoản", SettingsTab::Lock, "Khóa PIN"),
+    ("Tài khoản", SettingsTab::Lock, "Khóa ứng dụng"),
     ("Tài khoản", SettingsTab::Session, "Thiết bị"),
     ("Tài khoản", SettingsTab::Storage, "Lưu trữ"),
     ("Tài khoản", SettingsTab::SyncRecovery, "Đồng bộ"),
@@ -64,11 +64,11 @@ const NAV: [(&str, SettingsTab, &str); 22] = [
     ("Ứng dụng", SettingsTab::Customize, "Tùy chỉnh"),
     ("Ứng dụng", SettingsTab::Language, "Ngôn ngữ"),
     ("Sáng tạo", SettingsTab::Stickers, "Thư viện"),
-    ("Sáng tạo", SettingsTab::Studio, "Studio"),
+    ("Sáng tạo", SettingsTab::Studio, "Vẽ hình"),
     ("Sáng tạo", SettingsTab::Inventory, "Kho đồ"),
-    ("Sáng tạo", SettingsTab::Demo, "Demo"),
+    ("Sáng tạo", SettingsTab::Demo, "Xem thử"),
     ("Khác", SettingsTab::Business, "Kinh doanh"),
-    ("Khác", SettingsTab::Bots, "Plugin"),
+    ("Khác", SettingsTab::Bots, "Tiện ích"),
     ("Khác", SettingsTab::Guide, "Hướng dẫn"),
 ];
 
@@ -406,7 +406,7 @@ pub fn SettingsView(
                                         div { class: "settings-row column-layout",
                                             div { class: "settings-row-text",
                                                 span { class: "settings-label", "Cỡ chữ" }
-                                                span { class: "settings-sublabel", "Tự động tăng nhẹ trên màn hình 2K/4K. Không dùng phóng to toàn trang." }
+                                                span { class: "settings-sublabel", "Tự động chỉnh vừa mắt hoặc chọn kích thước bên dưới" }
                                             }
                                             div { class: "range-row",
                                                 label { style: "display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap;",
@@ -448,7 +448,7 @@ pub fn SettingsView(
                                         div { class: "settings-row",
                                             div { class: "settings-row-text",
                                                 span { class: "settings-label", "Mật độ hiển thị" }
-                                                span { class: "settings-sublabel", "Khoảng cách danh sách, tin nhắn và kích thước nút." }
+                                                span { class: "settings-sublabel", "Khoảng cách giữa các tin nhắn và danh sách" }
                                             }
                                             div { class: "segmented", role: "radiogroup", aria_label: "Mật độ hiển thị",
                                                 for (val, label) in [("compact", "Gọn"), ("comfortable", "Vừa"), ("spacious", "Rộng")] {
@@ -495,25 +495,21 @@ pub fn SettingsView(
                             SettingsTab::Security => rsx! {
                                 crate::components::accounts::SecuritySettings {}
                                 div { class: "settings-group",
-                                    div { class: "settings-group-title", "Mã hóa đầu cuối" }
+                                    div { class: "settings-group-title", "Bảo vệ tin nhắn" }
                                     div { class: "settings-row",
-                                        span { class: "settings-label", "Thuật toán trao đổi khóa & mã hóa" }
-                                        span { class: "settings-value", "ECDH P-256 / HKDF-SHA-256 / AES-256-GCM" }
+                                        span { class: "settings-label", "Tiêu chuẩn bảo vệ" }
+                                        span { class: "settings-value", "Mã hóa hai đầu chuẩn cao nhất" }
                                     }
                                     div { class: "settings-row",
-                                        span { class: "settings-label", "Chữ ký xác thực người gửi" }
-                                        span { class: "settings-value", "ECDSA P-256 / SHA-256" }
-                                    }
-                                    div { class: "settings-row",
-                                        span { class: "settings-label", "Trạng thái khóa thiết bị" }
+                                        span { class: "settings-label", "Trạng thái bảo vệ" }
                                         span { class: "settings-value tag-active",
-                                            if user_keys.is_some() { "Đã kích hoạt cục bộ" } else { "Chưa có khóa" }
+                                            if user_keys.is_some() { "Đang hoạt động an toàn" } else { "Chưa có khóa" }
                                         }
                                     }
                                     if let Some(ref keys) = user_keys {
                                         div { class: "settings-row column-layout",
                                             div { style: "display: flex; justify-content: space-between; width: 100%; align-items: center;",
-                                                span { class: "settings-label", "Vân tay khóa công khai" }
+                                                span { class: "settings-label", "Vân tay bảo mật" }
                                                 button {
                                                     r#type: "button",
                                                     class: "btn-secondary",
@@ -532,12 +528,11 @@ pub fn SettingsView(
                                     }
                                 }
 
-                                // Client-only E2EE Key Backup & Recovery
                                 div { class: "settings-group",
-                                    div { class: "settings-group-title", "Sao lưu & Khôi phục khóa cục bộ" }
+                                    div { class: "settings-group-title", "Sao lưu chìa khóa bảo mật" }
                                     div { class: "settings-row column-layout",
                                         div { style: "font-size: 13px; color: var(--text-secondary);",
-                                            "Khóa riêng tư chỉ lưu trên thiết bị này, không bao giờ gửi lên máy chủ. Bản sao lưu chứa khóa riêng tư ở dạng chưa mã hóa: chỉ lưu ở nơi an toàn, không gửi qua tin nhắn hay email."
+                                            "Chìa khóa bảo mật chỉ lưu trên máy này và không gửi lên mạng. Bạn có thể lưu lại để chuyển sang máy khác."
                                         }
                                         if let Some(ref keys) = user_keys {
                                             button {
@@ -552,7 +547,7 @@ pub fn SettingsView(
                                                     }
                                                 },
                                                 KeyIcon { size: 15 }
-                                                span { "Xuất & sao chép khóa sao lưu" }
+                                                span { "Sao chép chìa khóa bảo mật" }
                                             }
                                         }
                                         if let Some(ref exp) = exported_json() {
@@ -565,10 +560,10 @@ pub fn SettingsView(
                                     }
 
                                     div { class: "settings-row column-layout",
-                                        label { class: "form-label", "Khôi phục từ bản sao lưu JSON" }
+                                        label { class: "form-label", "Nhập chìa khóa bảo mật" }
                                         textarea {
                                             style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
-                                            placeholder: "Dán chuỗi JSON khóa sao lưu tại đây",
+                                            placeholder: "Dán chìa khóa bảo mật vào đây",
                                             value: "{import_input}",
                                             oninput: move |e| import_input.set(e.value()),
                                         }
@@ -589,16 +584,16 @@ pub fn SettingsView(
                                                                 let _ = api::keys_register(&ecdh, &ecdsa).await;
                                                                 on_keys_imported.call(restored_clone);
                                                                 import_input.set(String::new());
-                                                                import_status.set(Some((false, "Đã khôi phục khóa E2EE thành công".into())));
+                                                                import_status.set(Some((false, "Đã khôi phục chìa khóa thành công".into())));
                                                             });
                                                         }
                                                         Err(_) => {
-                                                            import_status.set(Some((true, "Chuỗi khóa sao lưu không hợp lệ".into())));
+                                                            import_status.set(Some((true, "Chìa khóa không hợp lệ".into())));
                                                         }
                                                     }
                                                 }
                                             },
-                                            "Khôi phục khóa"
+                                            "Khôi phục chìa khóa"
                                         }
                                         if let Some((is_err, msg)) = import_status() {
                                             div {

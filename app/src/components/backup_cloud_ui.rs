@@ -1514,7 +1514,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                     div { class: "settings-row",
                         style: "width: 100%; padding: 0; border: none;",
                         div { class: "settings-row-text",
-                            span { class: "settings-label", "Xuất ZIP không mã hóa (tắt mặc định)" }
+                            span { class: "settings-label", "Xuất ZIP không mã hóa" }
                             span { class: "settings-sublabel", "Đang khóa để bảo vệ dữ liệu. Bắt buộc xác thực lại và xác nhận nhiều bước trước khi dùng một lần." }
                         }
                         if !zip_panel_open() {

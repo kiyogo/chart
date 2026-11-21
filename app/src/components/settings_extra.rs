@@ -48,18 +48,18 @@ pub fn CustomizationSettings() -> Element {
     let p = ctx.prefs.read().clone();
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Cột điều hướng bên trái" }
-            div { class: "settings-group-desc", "Cột trái chỉ hiện biểu tượng: Tin nhắn, Bạn bè, Cộng đồng, Tìm nhanh. Rê chuột để xem tên. Bạn chọn thêm lối tắt được ghim bên dưới." }
+            div { class: "settings-group-title", "Thanh lối tắt" }
+            div { class: "settings-group-desc", "Chọn những mục bạn muốn ghim lên thanh bên trái để mở nhanh" }
             div { class: "settings-list",
                 Toggle {
                     label: "Ghim cộng đồng".to_string(),
-                    sub: "Hiện biểu tượng các cộng đồng bạn tham gia ngay trên cột trái.".to_string(),
+                    sub: "Hiện biểu tượng cộng đồng trên thanh bên".to_string(),
                     checked: p.pin_communities,
                     on_change: move |v| ctx.update(|p| p.pin_communities = v),
                 }
                 Toggle {
-                    label: "Ghim nhóm trò chuyện".to_string(),
-                    sub: "Hiện ảnh đại diện các nhóm để mở nhanh.".to_string(),
+                    label: "Ghim nhóm".to_string(),
+                    sub: "Hiện ảnh đại diện nhóm trên thanh bên".to_string(),
                     checked: p.pin_groups,
                     on_change: move |v| ctx.update(|p| p.pin_groups = v),
                 }
@@ -69,8 +69,8 @@ pub fn CustomizationSettings() -> Element {
             div { class: "settings-group-title", "Thông báo và hiệu ứng" }
             div { class: "settings-list",
                 Toggle {
-                    label: "Âm báo tin nhắn mới".to_string(),
-                    sub: "Phát âm ngắn khi có tin nhắn hoặc lời mời mới.".to_string(),
+                    label: "Âm báo tin nhắn".to_string(),
+                    sub: "Phát chuông khi có tin nhắn hoặc lời mời mới".to_string(),
                     checked: p.sound,
                     on_change: move |v| {
                         ctx.update(|p| p.sound = v);
@@ -78,8 +78,8 @@ pub fn CustomizationSettings() -> Element {
                     },
                 }
                 Toggle {
-                    label: "Hiệu ứng hồ sơ động".to_string(),
-                    sub: "Hiển thị hiệu ứng như tuyết rơi, lấp lánh trên hồ sơ người khác.".to_string(),
+                    label: "Hiệu ứng hồ sơ".to_string(),
+                    sub: "Hiện hiệu ứng trang trí khi xem hồ sơ".to_string(),
                     checked: p.profile_effects,
                     on_change: move |v| ctx.update(|p| p.profile_effects = v),
                 }
@@ -314,7 +314,7 @@ fn UsernameDialog(current: String, on_close: EventHandler<()>, on_changed: Event
                     UserStep::Edit => rsx! {
                         div { class: "story-body",
                             h2 { class: "story-title", "Đổi tên đăng nhập" }
-                            p { class: "story-text", "Bạn bè tìm và kết bạn với bạn bằng tên này. 2–32 ký tự, không trùng với người khác." }
+                            p { class: "story-text", "Bạn bè tìm bạn bằng tên này. Viết liền từ 2 đến 32 chữ cái hoặc số." }
                             label { class: "form-field", style: "text-align: left;",
                                 span { class: "form-label", "Tên đăng nhập mới" }
                                 input { maxlength: "32", value: "{value}", autocomplete: "off", oninput: move |e| { value.set(e.value()); error.set(None); } }
@@ -403,7 +403,7 @@ fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> E
                 }
                 div { class: "story-body",
                     h2 { class: "story-title", "Thiết bị đã đăng nhập" }
-                    p { class: "story-text", "Đăng xuất hoặc thu hồi quyền những thiết bị bạn không nhận ra. Thiết bị mới cần xác nhận từ thiết bị tin cậy." }
+                    p { class: "story-text", "Quản lý các máy đang dùng tài khoản của bạn. Bấm đăng xuất nếu thấy máy lạ." }
                 }
                 div { style: "padding: 0 var(--space-5);",
                     crate::components::storage_ui::DeviceTrustPanel {}
@@ -539,14 +539,14 @@ pub fn AccountSecurity(current_username: String, on_username_changed: EventHandl
                 div { class: "settings-row",
                     div { class: "settings-row-text",
                         span { class: "settings-label", "Email" }
-                        span { class: "settings-sublabel", "ChatW không lưu email. Bạn đăng nhập bằng Google; máy chủ chỉ giữ mã định danh ẩn danh." }
+                        span { class: "settings-sublabel", "Không lưu email. Bạn đăng nhập an toàn bằng tài khoản Google." }
                     }
                     span { class: "chip-privacy", LockIcon { size: 14 } "Không lưu" }
                 }
                 div { class: "settings-row",
                     div { class: "settings-row-text",
                         span { class: "settings-label", "Số điện thoại" }
-                        span { class: "settings-sublabel", "Không cần số điện thoại để dùng ChatW." }
+                        span { class: "settings-sublabel", "Không cần số điện thoại." }
                     }
                     span { class: "chip-privacy", LockIcon { size: 14 } "Không yêu cầu" }
                 }
@@ -558,13 +558,13 @@ pub fn AccountSecurity(current_username: String, on_username_changed: EventHandl
                 div { class: "settings-row",
                     div { class: "settings-row-text",
                         span { class: "settings-label", "Phương thức đăng nhập" }
-                        span { class: "settings-sublabel", "Google OAuth PKCE. Bật xác minh 2 bước trên tài khoản Google để bảo vệ thêm." }
+                        span { class: "settings-sublabel", "Đăng nhập an toàn bằng tài khoản Google." }
                     }
                 }
                 button { r#type: "button", class: "settings-row row-button", onclick: move |_| dialog.set(Some("devices")),
                     div { class: "settings-row-text",
                         span { class: "settings-label", "Thiết bị đã đăng nhập" }
-                        span { class: "settings-sublabel", "Xem và đăng xuất từ xa" }
+                        span { class: "settings-sublabel", "Xem các máy đang đăng nhập" }
                     }
                     span { class: "row-trail",
                         if let Some(n) = device_count() { "{n} thiết bị" }
