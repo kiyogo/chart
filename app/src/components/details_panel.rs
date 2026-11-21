@@ -58,15 +58,19 @@ pub fn DmDetailsPanel(
     let mut search = use_signal(String::new);
     let mut copied = use_signal(|| false);
 
-    let uid = user_id.clone();
-    use_effect(use_reactive!(|uid| {
+    let mut loaded_uid = use_signal(String::new);
+    if *loaded_uid.peek() != user_id {
+        let uid = user_id.clone();
+        loaded_uid.set(uid.clone());
         profile.set(None);
         spawn(async move {
             if let Ok(p) = api::get_user_profile(&uid).await {
-                profile.set(Some(p));
+                if *loaded_uid.peek() == uid {
+                    profile.set(Some(p));
+                }
             }
         });
-    }));
+    }
 
     let p = profile();
     let display_name = p

@@ -74,8 +74,61 @@ pub fn set_document_title(title: &str) {
 pub fn scroll_chat_to_bottom(instant: bool) {
     let behavior = if instant { "instant" } else { "smooth" };
     let _ = dioxus::document::eval(&format!(
-        "const el = document.getElementById('chat-messages-scroll'); if (el) el.scrollTo({{ top: 0, behavior: '{behavior}' }});"
+        r#"
+        (function() {{
+            const scroll = () => {{
+                const el = document.getElementById('chat-messages-scroll');
+                if (!el) return;
+                el.scrollTo({{ top: el.scrollHeight, behavior: '{behavior}' }});
+            }};
+            requestAnimationFrame(() => {{
+                scroll();
+                if ('{behavior}' === 'instant') requestAnimationFrame(scroll);
+            }});
+        }})();
+        "#
     ));
+}
+
+/// Snapshot scroll metrics right before prepending older messages, then call
+/// `restore_chat_scroll_after_prepend` right after the state signal updates.
+pub async fn snapshot_chat_scroll_height() {
+    let mut ev = dioxus::document::eval(
+        r#"
+        const el = document.getElementById('chat-messages-scroll');
+        if (el) {
+            window.__chatwPrependSnap = { h: el.scrollHeight, t: el.scrollTop };
+        }
+        dioxus.send(true);
+        "#,
+    );
+    let _ = ev.recv::<bool>().await;
+}
+
+pub fn restore_chat_scroll_after_prepend() {
+    let _ = dioxus::document::eval(
+        r#"
+        (() => {
+            let tries = 0;
+            const apply = () => {
+                const el = document.getElementById('chat-messages-scroll');
+                const snap = window.__chatwPrependSnap;
+                if (!el || !snap) return;
+                const delta = el.scrollHeight - snap.h;
+                if (delta > 4) {
+                    el.scrollTop = snap.t + delta;
+                    window.__chatwPrependSnap = null;
+                } else if (tries < 8) {
+                    tries += 1;
+                    requestAnimationFrame(apply);
+                } else {
+                    window.__chatwPrependSnap = null;
+                }
+            };
+            requestAnimationFrame(apply);
+        })();
+        "#,
+    );
 }
 
 /// Focus the DM message input box.

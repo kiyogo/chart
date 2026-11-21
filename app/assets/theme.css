@@ -109,8 +109,9 @@
   --bg-hover: #EEF1F5;
   --bg-active: #E4E8EE;
   --bg-selected: var(--accent-soft);
-  --bg-input: #F1F3F6;
+  --bg-input: #F8F9FB;
   --bg-input-focus: #FFFFFF;
+  --input-border: rgba(15, 23, 42, 0.14);
   --bg-overlay: rgba(16, 22, 34, 0.42);
   --bg-error: #FDEDEE;
   --bg-success: #E7F6EE;
@@ -172,8 +173,9 @@
   --bg-surface-hover: #21252C;
   --bg-hover: #242A33;
   --bg-active: #2C333D;
-  --bg-input: #232930;
-  --bg-input-focus: #262C34;
+  --bg-input: #1A1E27;
+  --bg-input-focus: #1F2531;
+  --input-border: rgba(255, 255, 255, 0.14);
   --bg-overlay: rgba(0, 0, 0, 0.56);
   --bg-error: #3A1D20;
   --bg-success: #15301F;

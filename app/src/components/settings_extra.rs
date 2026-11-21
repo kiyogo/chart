@@ -517,7 +517,11 @@ fn DevicesDialog(on_close: EventHandler<()>, on_count: EventHandler<usize>) -> E
 }
 
 #[component]
-pub fn AccountSecurity(current_username: String, on_username_changed: EventHandler<String>) -> Element {
+pub fn AccountSecurity(
+    current_username: String,
+    #[props(default)] current_user_id: String,
+    on_username_changed: EventHandler<String>,
+) -> Element {
     let mut username = use_signal(|| current_username.clone());
     let mut dialog = use_signal(|| Option::<&'static str>::None);
     let mut device_count = use_signal(|| Option::<usize>::None);
@@ -529,46 +533,67 @@ pub fn AccountSecurity(current_username: String, on_username_changed: EventHandl
         });
     });
     rsx! {
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Thông tin tài khoản" }
-            div { class: "settings-list",
-                div { class: "settings-row",
-                    div { class: "settings-row-text", span { class: "settings-label", "Tên đăng nhập" } span { class: "settings-sublabel", "{username}" } }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| dialog.set(Some("username")), "Chỉnh sửa" }
-                }
-                div { class: "settings-row",
-                    div { class: "settings-row-text",
-                        span { class: "settings-label", "Email" }
-                        span { class: "settings-sublabel", "Không lưu email. Bạn đăng nhập an toàn bằng tài khoản Google." }
+        div { class: "settings-cols",
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Thông tin tài khoản" }
+                    div { class: "settings-list",
+                        div { class: "settings-row",
+                            div { class: "settings-row-text", span { class: "settings-label", "Tên đăng nhập" } span { class: "settings-sublabel", "{username}" } }
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| dialog.set(Some("username")), "Chỉnh sửa" }
+                        }
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Email" }
+                                span { class: "settings-sublabel", "Không lưu email. Bạn đăng nhập an toàn bằng Google." }
+                            }
+                            span { class: "chip-privacy", LockIcon { size: 14 } "Không lưu" }
+                        }
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Số điện thoại" }
+                                span { class: "settings-sublabel", "Không cần số điện thoại." }
+                            }
+                            span { class: "chip-privacy", LockIcon { size: 14 } "Không yêu cầu" }
+                        }
                     }
-                    span { class: "chip-privacy", LockIcon { size: 14 } "Không lưu" }
-                }
-                div { class: "settings-row",
-                    div { class: "settings-row-text",
-                        span { class: "settings-label", "Số điện thoại" }
-                        span { class: "settings-sublabel", "Không cần số điện thoại." }
-                    }
-                    span { class: "chip-privacy", LockIcon { size: 14 } "Không yêu cầu" }
                 }
             }
-        }
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Mật khẩu và bảo mật" }
-            div { class: "settings-list",
-                div { class: "settings-row",
-                    div { class: "settings-row-text",
-                        span { class: "settings-label", "Phương thức đăng nhập" }
-                        span { class: "settings-sublabel", "Đăng nhập an toàn bằng tài khoản Google." }
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Mật khẩu và bảo mật" }
+                    div { class: "settings-list",
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Phương thức đăng nhập" }
+                                span { class: "settings-sublabel", "Đăng nhập an toàn bằng tài khoản Google." }
+                            }
+                        }
+                        button { r#type: "button", class: "settings-row row-button", onclick: move |_| dialog.set(Some("devices")),
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Thiết bị đã đăng nhập" }
+                                span { class: "settings-sublabel", "Xem các máy đang đăng nhập" }
+                            }
+                            span { class: "row-trail",
+                                if let Some(n) = device_count() { "{n} thiết bị" }
+                                ChevronRightIcon { size: 16 }
+                            }
+                        }
                     }
                 }
-                button { r#type: "button", class: "settings-row row-button", onclick: move |_| dialog.set(Some("devices")),
-                    div { class: "settings-row-text",
-                        span { class: "settings-label", "Thiết bị đã đăng nhập" }
-                        span { class: "settings-sublabel", "Xem các máy đang đăng nhập" }
-                    }
-                    span { class: "row-trail",
-                        if let Some(n) = device_count() { "{n} thiết bị" }
-                        ChevronRightIcon { size: 16 }
+                if !current_user_id.is_empty() {
+                    div { class: "settings-group",
+                        div { class: "settings-group-title", "Thông tin định danh" }
+                        div { class: "settings-list",
+                            div { class: "settings-row",
+                                span { class: "settings-label", "Tên tài khoản" }
+                                span { class: "settings-value", "{username}" }
+                            }
+                            div { class: "settings-row column-layout",
+                                span { class: "settings-label", "Mã định danh" }
+                                span { class: "settings-value mono", "{current_user_id}" }
+                            }
+                        }
                     }
                 }
             }

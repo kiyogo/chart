@@ -903,7 +903,7 @@ pub fn ScopedWebhookManager(
             if let Some((label, val)) = revealed_secret() {
                 div { class: "webhook-secret-banner",
                     div { class: "grow",
-                        strong { "{label} (chỉ hiển thị một lần)" }
+                        strong { "{label} · Chỉ hiển thị một lần" }
                         code { class: "webhook-secret-code", "{val}" }
                     }
                     button {
@@ -927,21 +927,21 @@ pub fn ScopedWebhookManager(
 
             if can_manage && scope_type != "user" {
                 div { class: "plugin-dev-publish-box",
-                    strong { "Tạo Webhook mới (Tương thích Embed kiểu Discord & Ký HMAC-SHA256)" }
+                    strong { "Tạo Webhook mới" }
                     div { class: "form-grid-2",
                         label { class: "form-field",
                             span { class: "form-label", "Loại Webhook" }
                             select {
                                 value: "{direction}",
                                 onchange: move |e| direction.set(e.value()),
-                                option { value: "incoming", "Incoming Webhook (Nhận tin & Embed từ hệ thống ngoài)" }
-                                option { value: "outgoing", "Outgoing Webhook (Gửi sự kiện có ký HMAC ra ngoài)" }
+                                option { value: "incoming", "Nhận tin từ hệ thống ngoài" }
+                                option { value: "outgoing", "Gửi sự kiện ra ngoài" }
                             }
                         }
                         label { class: "form-field",
                             span { class: "form-label", "Tên hiển thị Webhook" }
                             input {
-                                placeholder: "ví dụ: GitHub Actions, Hệ thống Cảnh báo",
+                                placeholder: "Ví dụ: GitHub, Cảnh báo",
                                 value: "{name}",
                                 oninput: move |e| name.set(e.value()),
                             }
@@ -961,7 +961,7 @@ pub fn ScopedWebhookManager(
                     }
                     if direction() == "outgoing" {
                         label { class: "form-field",
-                            span { class: "form-label", "URL đích (Bắt buộc HTTPS, chống SSRF)" }
+                            span { class: "form-label", "Đường dẫn nhận HTTPS" }
                             input {
                                 placeholder: "https://api.example.com/chatw-hook",
                                 value: "{target_url}",
@@ -1310,7 +1310,7 @@ pub fn ScopedPluginAndWebhookTab(
                 }
             }
 
-            div { class: "settings-group-title", style: "margin-top: 16px;", "Webhook (Incoming & Outgoing)" }
+            div { class: "settings-group-title", style: "margin-top: 16px;", "Webhook" }
             ScopedWebhookManager {
                 scope_type: scope_type,
                 scope_id: scope_id,

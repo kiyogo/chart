@@ -214,6 +214,8 @@ pub struct ChannelItem {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChannelMessageItem {
     pub id: String,
+    #[serde(default)]
+    pub seq: i64,
     pub channel_id: String,
     pub sender_id: String,
     #[serde(alias = "sender_name")]

@@ -261,19 +261,26 @@ pub fn MessageList(
     #[props(default)] on_save_self: Option<EventHandler<String>>,
     /// Create an enterprise task directly from a channel message `(msg_id, preview)`.
     #[props(default)] on_create_task: Option<EventHandler<(String, String)>>,
+    /// Older history pagination state (Spec 046: load newest first, scroll up for older).
+    #[props(default)] has_more: bool,
+    #[props(default)] loading_more: bool,
+    #[props(default)] on_load_more: Option<EventHandler<()>>,
 ) -> Element {
     let mut full_picker_for = use_signal(|| Option::<String>::None);
     let mut sticker_menu_for = use_signal(|| Option::<String>::None);
     let mut plugin_actions = use_signal(Vec::<crate::services::plugin_api::DynamicMessageAction>::new);
+    let mut loaded_installs_len = use_signal(|| usize::MAX);
     let installs_len = crate::components::plugin_hub::PLUGIN_INSTALLATIONS().len();
-    let msg_count_sig = messages.len();
-    use_effect(use_reactive!(|installs_len, msg_count_sig| {
-        let _ = (installs_len, msg_count_sig);
+    if *loaded_installs_len.peek() != installs_len {
+        loaded_installs_len.set(installs_len);
         spawn(async move {
             let acts = crate::services::plugin_api::host_get_message_actions(None).await;
-            plugin_actions.set(acts);
+            if *plugin_actions.peek() != acts {
+                plugin_actions.set(acts);
+            }
         });
-    }));
+    }
+    let mut scroll_checking = use_signal(|| false);
     let prefs_ctx = try_consume_context::<crate::prefs::PrefsCtx>();
     let fav_stickers = prefs_ctx.map(|c| c.prefs.read().fav_stickers.clone()).unwrap_or_default();
     // Poll votes are messages too: tally them and hide them from the list.
@@ -289,21 +296,60 @@ pub fn MessageList(
     let parsed: Vec<Option<DateTime<Local>>> = messages.iter().map(|m| parse_local(&m.created_at)).collect();
 
     rsx! {
-        div { id: "chat-messages-scroll", class: "chat-messages", role: "log", aria_live: "polite",
-            div { class: "message-stream",
-                div { class: "message-stream-start" }
-                div { class: "conversation-intro",
-                    if !intro_title.is_empty() {
-                        div { class: "conversation-intro-title", "{intro_title}" }
-                    }
-                    if !intro_sub.is_empty() {
-                        div { class: "empty-chat-sub", "{intro_sub}" }
+        div {
+            id: "chat-messages-scroll",
+            class: "chat-messages",
+            role: "log",
+            aria_live: "polite",
+            onscroll: move |_| {
+                if has_more && !loading_more && !*scroll_checking.peek() {
+                    if let Some(h) = on_load_more {
+                        scroll_checking.set(true);
+                        spawn(async move {
+                            let mut ev = dioxus::document::eval(
+                                "const el = document.getElementById('chat-messages-scroll'); dioxus.send(el ? el.scrollTop <= 180 : false);"
+                            );
+                            let near_top = ev.recv::<bool>().await.unwrap_or(false);
+                            scroll_checking.set(false);
+                            if near_top {
+                                h.call(());
+                            }
+                        });
                     }
                 }
-                if e2ee {
-                    div { class: "e2ee-notice",
-                        ShieldIcon { size: 16 }
-                        span { "Tin nhắn được mã hóa đầu cuối trên thiết bị. Máy chủ chỉ chuyển tiếp bản mã và không thể đọc nội dung." }
+            },
+            div { class: "message-stream",
+                div { class: "message-stream-start" }
+                if loading_more {
+                    div { class: "load-older-bar",
+                        span { class: "spinner" }
+                        span { "Đang tải tin nhắn cũ hơn" }
+                    }
+                } else if has_more {
+                    if let Some(h) = on_load_more {
+                        div { class: "load-older-bar",
+                            button {
+                                r#type: "button",
+                                class: "btn-ghost load-older-btn",
+                                onclick: move |_| h.call(()),
+                                "Tải thêm tin nhắn cũ hơn"
+                            }
+                        }
+                    }
+                } else {
+                    div { class: "conversation-intro",
+                        if !intro_title.is_empty() {
+                            div { class: "conversation-intro-title", "{intro_title}" }
+                        }
+                        if !intro_sub.is_empty() {
+                            div { class: "empty-chat-sub", "{intro_sub}" }
+                        }
+                    }
+                    if e2ee {
+                        div { class: "e2ee-notice",
+                            ShieldIcon { size: 16 }
+                            span { "Tin nhắn được mã hóa đầu cuối trên thiết bị. Máy chủ chỉ chuyển tiếp bản mã và không thể đọc nội dung." }
+                        }
                     }
                 }
                 for (i, msg) in messages.iter().enumerate() {

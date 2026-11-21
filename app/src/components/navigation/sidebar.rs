@@ -6,8 +6,9 @@ use crate::{
         avatar::Avatar,
         enterprise::module_icon,
         icons::{
-            ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, HashIcon, MegaphoneIcon, MicIcon,
-            MicOffIcon, PhoneOffIcon, PlusIcon, SearchIcon, UserPlusIcon, VolumeIcon,
+            ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, DevicesIcon, GroupIcon, HashIcon,
+            MegaphoneIcon, MicIcon, MicOffIcon, PhoneOffIcon, PlusIcon, SearchIcon,
+            UserPlusIcon, VolumeIcon,
         },
         navigation::NavSection,
     },
@@ -126,11 +127,16 @@ pub fn NavigationSidebar(
     #[props(default)] enterprise_config: Option<EnterpriseConfig>,
     #[props(default)] active_ent_module: Option<String>,
     #[props(default)] on_select_ent_module: Option<EventHandler<String>>,
+    /// Whether "Chính mình" self-chat currently exists (Spec 046).
+    #[props(default = true)] self_chat_enabled: bool,
+    /// Restore "Chính mình" self-chat from the Messages "+" dropdown menu.
+    #[props(default)] on_create_self: Option<EventHandler<()>>,
 ) -> Element {
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
     let mut dm_query = use_signal(String::new);
     let dm_filter = use_signal(|| "all");
     let mut community_query = use_signal(String::new);
+    let mut dm_plus_menu = use_signal(|| false);
 
     let sidebar_cls = if hidden_mobile {
         "nav-sidebar hidden-mobile"
@@ -164,7 +170,8 @@ pub fn NavigationSidebar(
         .collect();
 
     let in_dm = active_section == NavSection::DirectMessages;
-    let in_communities = matches!(active_section, NavSection::Communities | NavSection::Server(_));
+    let in_server = matches!(active_section, NavSection::Server(_));
+    let in_communities = matches!(active_section, NavSection::Communities);
     let cq = community_query().trim().to_lowercase();
     let mut seen_srv = HashSet::new();
     let servers_shown: Vec<ServerItem> = servers
@@ -175,39 +182,88 @@ pub fn NavigationSidebar(
 
     rsx! {
         aside { class: "{sidebar_cls}", aria_label: "Danh sách điều hướng",
-            // Section title + contextual action (navigation lives in the left rail)
-            div { class: "sidebar-top-header",
-                span { class: "sidebar-title",
-                    match &active_section {
-                        NavSection::DirectMessages => "Tin nhắn",
-                        NavSection::Friends => "Bạn bè",
-                        NavSection::Communities | NavSection::Server(_) => "Cộng đồng",
-                        NavSection::Meet => "Họp nhóm",
-                        NavSection::Feed => "Mới",
-                        NavSection::VicoAi => "Vico AI",
-                        NavSection::Search => "Tìm kiếm",
-                        NavSection::Notifications => "Thông báo",
-                        NavSection::Download => "Tải ứng dụng",
-                        NavSection::Settings => "Cài đặt",
+            // Hide the "Cộng đồng" + "+" top bar when inside a specific server (Spec 046)
+            if !in_server {
+                div { class: "sidebar-top-header",
+                    span { class: "sidebar-title",
+                        match &active_section {
+                            NavSection::DirectMessages => "Tin nhắn",
+                            NavSection::Friends => "Bạn bè",
+                            NavSection::Communities | NavSection::Server(_) => "Cộng đồng",
+                            NavSection::Meet => "Họp nhóm",
+                            NavSection::Feed => "Mới",
+                            NavSection::VicoAi => "Vico AI",
+                            NavSection::Search => "Tìm kiếm",
+                            NavSection::Notifications => "Thông báo",
+                            NavSection::Download => "Tải ứng dụng",
+                            NavSection::Settings => "Cài đặt",
+                        }
                     }
-                }
-                if in_dm {
-                    button {
-                        r#type: "button",
-                        class: "icon-btn",
-                        title: "Tạo nhóm mới",
-                        aria_label: "Tạo nhóm mới",
-                        onclick: move |_| on_open_create_group.call(()),
-                        PlusIcon { size: 20 }
-                    }
-                } else if in_communities {
-                    button {
-                        r#type: "button",
-                        class: "icon-btn",
-                        title: "Tạo hoặc tham gia cộng đồng",
-                        aria_label: "Tạo hoặc tham gia cộng đồng",
-                        onclick: move |_| on_open_create_server.call(()),
-                        PlusIcon { size: 20 }
+                    if in_dm {
+                        div { class: "sidebar-plus-wrap",
+                            button {
+                                r#type: "button",
+                                class: if dm_plus_menu() { "icon-btn active" } else { "icon-btn" },
+                                title: "Tạo mới",
+                                aria_label: "Tạo mới",
+                                aria_haspopup: "menu",
+                                aria_expanded: "{dm_plus_menu()}",
+                                onclick: move |e| {
+                                    e.stop_propagation();
+                                    dm_plus_menu.set(!dm_plus_menu());
+                                },
+                                PlusIcon { size: 20 }
+                            }
+                            if dm_plus_menu() {
+                                button {
+                                    r#type: "button",
+                                    class: "menu-dismiss",
+                                    tabindex: "-1",
+                                    aria_label: "Đóng",
+                                    onclick: move |_| dm_plus_menu.set(false),
+                                }
+                                div {
+                                    class: "cw-dropdown-menu sidebar-plus-menu",
+                                    role: "menu",
+                                    onkeydown: move |e| if e.key() == Key::Escape { dm_plus_menu.set(false) },
+                                    button {
+                                        r#type: "button",
+                                        role: "menuitem",
+                                        class: "cw-dropdown-item",
+                                        onclick: move |_| {
+                                            dm_plus_menu.set(false);
+                                            on_open_create_group.call(());
+                                        },
+                                        GroupIcon { size: 16 }
+                                        span { "Tạo nhóm mới" }
+                                    }
+                                    if !self_chat_enabled {
+                                        button {
+                                            r#type: "button",
+                                            role: "menuitem",
+                                            class: "cw-dropdown-item",
+                                            onclick: move |_| {
+                                                dm_plus_menu.set(false);
+                                                if let Some(h) = on_create_self {
+                                                    h.call(());
+                                                }
+                                            },
+                                            DevicesIcon { size: 16 }
+                                            span { "Tạo lại \"Chính mình\"" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if in_communities {
+                        button {
+                            r#type: "button",
+                            class: "icon-btn",
+                            title: "Tạo hoặc tham gia cộng đồng",
+                            aria_label: "Tạo hoặc tham gia cộng đồng",
+                            onclick: move |_| on_open_create_server.call(()),
+                            PlusIcon { size: 20 }
+                        }
                     }
                 }
             }

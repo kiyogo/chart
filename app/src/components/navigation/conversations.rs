@@ -94,7 +94,7 @@ pub fn ConversationList(
 ) -> Element {
     let mut query = use_signal(String::new);
     let mut filter = use_signal(|| "all".to_string());
-    let _ = on_create_group;
+    let _ = (on_create_group, on_create_self);
     let mut menu_for = use_signal(|| Option::<String>::None);
     let mut label_menu = use_signal(|| false);
     let mut manage_labels = use_signal(|| false);
@@ -360,12 +360,6 @@ pub fn ConversationList(
                         move |fr: FriendItem| on_open.call(ConvOpen::Dm(fr))
                     },
                     on_note_reply: on_note_reply,
-                }
-            }
-            if !self_chat && q.is_empty() && f == "all" {
-                button { r#type: "button", class: "self-chat-create", onclick: move |_| on_create_self.call(()),
-                    span { class: "self-chat-avatar small", DevicesIcon { size: 16 } }
-                    span { "Tạo lại \"{t(\"chat.self\")}\" để lưu ghi chú giữa các thiết bị" }
                 }
             }
             if !pinned.is_empty() {

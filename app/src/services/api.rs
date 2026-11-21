@@ -332,9 +332,14 @@ pub async fn messages_toggle_reaction(message_id: &str, emoji: &str) -> Result<(
 pub async fn channels_get_messages(
     channel_id: &str,
     limit: i64,
+    before_seq: Option<i64>,
 ) -> Result<Vec<ChannelMessageItem>, ApiError> {
     let encoded = urlencoding::encode(channel_id);
-    get_json(&format!("/api/channels/{encoded}/messages?limit={limit}")).await
+    let mut url = format!("/api/channels/{encoded}/messages?limit={limit}");
+    if let Some(seq) = before_seq {
+        url.push_str(&format!("&before_seq={seq}"));
+    }
+    get_json(&url).await
 }
 
 pub async fn channels_post_message(

@@ -90,27 +90,33 @@ pub fn ChatPrefsSettings() -> Element {
     let (privacy, err) = use_privacy();
     let pv = privacy().unwrap_or_default();
     rsx! {
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Khi trò chuyện" }
-            Toggle { label: "Bấm hai lần để trả lời", desc: "Bấm đúp cạnh tin nhắn để trả lời nhanh", checked: pr.double_click_reply, on_change: move |v| c.update(|p| p.double_click_reply = v) }
-            Toggle { label: "Nhấn Enter để gửi", desc: "Bấm phím Enter để gửi tin nhắn", checked: pr.enter_to_send, on_change: move |v| c.update(|p| p.enter_to_send = v) }
-            Toggle { label: "Gợi ý hình dán", desc: "Tự gợi ý hình dán khi gõ chữ", checked: pr.sticker_suggest, on_change: move |v| c.update(|p| p.sticker_suggest = v) }
-            Toggle { label: "Gợi ý nhắc tên", desc: "Gõ @ để gọi tên bạn bè", checked: pr.mention_suggest, on_change: move |v| c.update(|p| p.mention_suggest = v) }
-            Toggle { label: "Gợi ý mặt cười", desc: "Gõ hai chấm để tìm mặt cười", checked: pr.emoji_suggest, on_change: move |v| c.update(|p| p.emoji_suggest = v) }
-            Toggle { label: "Hiện ảnh đại diện trong tin nhắn", checked: pr.show_avatars, on_change: move |v| c.update(|p| p.show_avatars = v) }
-        }
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Dán bảng tính" }
-            p { class: "settings-group-desc", "Cách dán khi sao chép từ bảng tính vào ô chat" }
-            Segmented { label: "Cách dán bảng tính", value: pr.paste_mode.clone(), options: opts(&[("ask", "Hỏi trước"), ("image", "Dạng ảnh"), ("table", "Dạng bảng"), ("text", "Dạng chữ")]), on_change: move |v: String| c.update(|p| p.paste_mode = v) }
-        }
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Trạng thái" }
-            if let Some(e) = err() { div { class: "status-badge error", "{e}" } }
-            Toggle { label: "Báo đang gõ chữ", desc: "Cho bạn bè biết khi bạn đang soạn tin", checked: pv.typing, disabled: privacy().is_none(),
-                on_change: move |v: bool| save_privacy(privacy, err, json!({ "typing": v })) }
-            Toggle { label: "Báo đã xem", desc: "Cho bạn bè biết khi bạn đã đọc tin", checked: pv.read_receipts, disabled: privacy().is_none(),
-                on_change: move |v: bool| save_privacy(privacy, err, json!({ "read_receipts": v })) }
+        div { class: "settings-cols",
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Khi trò chuyện" }
+                    Toggle { label: "Bấm hai lần để trả lời", desc: "Bấm đúp cạnh tin nhắn để trả lời nhanh", checked: pr.double_click_reply, on_change: move |v| c.update(|p| p.double_click_reply = v) }
+                    Toggle { label: "Nhấn Enter để gửi", desc: "Bấm phím Enter để gửi tin nhắn", checked: pr.enter_to_send, on_change: move |v| c.update(|p| p.enter_to_send = v) }
+                    Toggle { label: "Gợi ý hình dán", desc: "Tự gợi ý hình dán khi gõ chữ", checked: pr.sticker_suggest, on_change: move |v| c.update(|p| p.sticker_suggest = v) }
+                    Toggle { label: "Gợi ý nhắc tên", desc: "Gõ @ để gọi tên bạn bè", checked: pr.mention_suggest, on_change: move |v| c.update(|p| p.mention_suggest = v) }
+                    Toggle { label: "Gợi ý mặt cười", desc: "Gõ hai chấm để tìm mặt cười", checked: pr.emoji_suggest, on_change: move |v| c.update(|p| p.emoji_suggest = v) }
+                    Toggle { label: "Hiện ảnh đại diện trong tin nhắn", checked: pr.show_avatars, on_change: move |v| c.update(|p| p.show_avatars = v) }
+                }
+            }
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Trạng thái" }
+                    if let Some(e) = err() { div { class: "status-badge error", "{e}" } }
+                    Toggle { label: "Báo đang gõ chữ", desc: "Cho bạn bè biết khi bạn đang soạn tin", checked: pv.typing, disabled: privacy().is_none(),
+                        on_change: move |v: bool| save_privacy(privacy, err, json!({ "typing": v })) }
+                    Toggle { label: "Báo đã xem", desc: "Cho bạn bè biết khi bạn đã đọc tin", checked: pv.read_receipts, disabled: privacy().is_none(),
+                        on_change: move |v: bool| save_privacy(privacy, err, json!({ "read_receipts": v })) }
+                }
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Dán bảng tính" }
+                    p { class: "settings-group-desc", "Cách dán khi sao chép từ bảng tính vào ô chat" }
+                    Segmented { label: "Cách dán bảng tính", value: pr.paste_mode.clone(), options: opts(&[("ask", "Hỏi trước"), ("image", "Dạng ảnh"), ("table", "Dạng bảng"), ("text", "Dạng chữ")]), on_change: move |v: String| c.update(|p| p.paste_mode = v) }
+                }
+            }
         }
     }
 }
@@ -121,42 +127,48 @@ pub fn NotificationSettings() -> Element {
     let pr = c.prefs.read().clone();
     let mut perm = use_signal(|| Option::<String>::None);
     rsx! {
-        div { class: "settings-group",
-            div { class: "settings-group-title", BellIcon {} " Tùy chọn thông báo" }
-            Toggle { label: "Bật thông báo tin nhắn mới", desc: "Báo khi có tin nhắn gửi đến", checked: pr.notify,
-                on_change: move |v: bool| {
-                    c.update(|p| p.notify = v);
-                    if v {
-                        spawn(async move {
-                            let r = platform::request_notification_permission().await;
-                            perm.set(Some(r));
-                        });
+        div { class: "settings-cols",
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", BellIcon {} " Tùy chọn thông báo" }
+                    Toggle { label: "Bật thông báo tin nhắn mới", desc: "Báo khi có tin nhắn gửi đến", checked: pr.notify,
+                        on_change: move |v: bool| {
+                            c.update(|p| p.notify = v);
+                            if v {
+                                spawn(async move {
+                                    let r = platform::request_notification_permission().await;
+                                    perm.set(Some(r));
+                                });
+                            }
+                        },
                     }
-                },
-            }
-            if let Some(p) = perm() {
-                div { class: if p == "granted" { "status-badge success" } else { "status-badge error" },
-                    match p.as_str() {
-                        "granted" => "Đã cho phép thông báo",
-                        "denied" => "Trình duyệt đang chặn thông báo. Hãy cho phép trong cài đặt trang web.",
-                        _ => "Thiết bị này không hỗ trợ thông báo",
+                    if let Some(p) = perm() {
+                        div { class: if p == "granted" { "status-badge success" } else { "status-badge error" },
+                            match p.as_str() {
+                                "granted" => "Đã cho phép thông báo",
+                                "denied" => "Trình duyệt đang chặn thông báo. Hãy cho phép trong cài đặt trang web.",
+                                _ => "Thiết bị này không hỗ trợ thông báo",
+                            }
+                        }
                     }
+                    Toggle { label: "Hiện nội dung trong thông báo", desc: "Xem trước nội dung tin nhắn", checked: pr.notify_preview, on_change: move |v| c.update(|p| p.notify_preview = v) }
+                    Toggle { label: "Thông báo tin nhắn nhóm", checked: pr.notify_groups, on_change: move |v| c.update(|p| p.notify_groups = v) }
+                    Toggle { label: "Thông báo cuộc gọi đến", checked: pr.notify_calls, on_change: move |v| c.update(|p| p.notify_calls = v) }
                 }
             }
-            Toggle { label: "Hiện nội dung trong thông báo", desc: "Xem trước nội dung tin nhắn", checked: pr.notify_preview, on_change: move |v| c.update(|p| p.notify_preview = v) }
-            Toggle { label: "Thông báo tin nhắn nhóm", checked: pr.notify_groups, on_change: move |v| c.update(|p| p.notify_groups = v) }
-            Toggle { label: "Thông báo cuộc gọi đến", checked: pr.notify_calls, on_change: move |v| c.update(|p| p.notify_calls = v) }
-        }
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Âm thanh" }
-            Toggle { label: "Phát âm thanh khi có thông báo", checked: pr.sound, on_change: move |v| c.update(|p| p.sound = v) }
-            div { class: "settings-row",
-                span { class: "settings-label", "Âm báo" }
-                Segmented { label: "Âm báo", value: pr.sound_name.clone(), options: opts(&[("pop", "Pop"), ("chime", "Chuông"), ("soft", "Nhẹ"), ("bubble", "Bong bóng")]),
-                    on_change: move |v: String| { platform::play_sound(&v); c.update(|p| p.sound_name = v); },
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Âm thanh" }
+                    Toggle { label: "Phát âm thanh khi có thông báo", checked: pr.sound, on_change: move |v| c.update(|p| p.sound = v) }
+                    div { class: "settings-row column-layout",
+                        span { class: "settings-label", "Âm báo" }
+                        Segmented { label: "Âm báo", value: pr.sound_name.clone(), options: opts(&[("pop", "Pop"), ("chime", "Chuông"), ("soft", "Nhẹ"), ("bubble", "Bong bóng")]),
+                            on_change: move |v: String| { platform::play_sound(&v); c.update(|p| p.sound_name = v); },
+                        }
+                    }
+                    p { class: "settings-group-desc", "Tắt thông báo cho từng cuộc trò chuyện trong cài đặt của cuộc trò chuyện đó" }
                 }
             }
-            p { class: "settings-group-desc", "Tắt thông báo cho từng cuộc trò chuyện trong cài đặt của cuộc trò chuyện đó" }
         }
     }
 }
@@ -175,53 +187,59 @@ pub fn PrivacySettingsPanel() -> Element {
     });
     rsx! {
         if let Some(e) = err() { div { class: "status-badge error", "{e}" } }
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Ai có thể liên hệ với bạn" }
-            div { class: "settings-row column-layout",
-                span { class: "settings-label", "Ai được gửi lời mời kết bạn" }
-                Segmented { label: "Lời mời kết bạn", value: pv.friend_requests.clone(), options: opts(&[("everyone", "Mọi người"), ("nobody", "Không ai")]),
-                    on_change: move |v: String| save_privacy(privacy, err, json!({ "friend_requests": v })) }
+        div { class: "settings-cols",
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Ai có thể liên hệ với bạn" }
+                    div { class: "settings-row column-layout",
+                        span { class: "settings-label", "Ai được gửi lời mời kết bạn" }
+                        Segmented { label: "Lời mời kết bạn", value: pv.friend_requests.clone(), options: opts(&[("everyone", "Mọi người"), ("nobody", "Không ai")]),
+                            on_change: move |v: String| save_privacy(privacy, err, json!({ "friend_requests": v })) }
+                    }
+                    div { class: "settings-row column-layout",
+                        span { class: "settings-label", "Ai được gọi cho bạn" }
+                        Segmented { label: "Cuộc gọi", value: pv.calls.clone(), options: opts(&[("friends", "Bạn bè"), ("nobody", "Không ai")]),
+                            on_change: move |v: String| save_privacy(privacy, err, json!({ "calls": v })) }
+                    }
+                    div { class: "settings-row column-layout",
+                        span { class: "settings-label", "Ai được thêm bạn vào nhóm" }
+                        Segmented { label: "Thêm vào nhóm", value: pv.group_invites.clone(), options: opts(&[("everyone", "Mọi người"), ("friends", "Bạn bè"), ("nobody", "Không ai")]),
+                            on_change: move |v: String| save_privacy(privacy, err, json!({ "group_invites": v })) }
+                    }
+                    Toggle { label: "Cho phép tìm thấy tôi bằng tên tài khoản", desc: "Người khác có thể tìm thấy bạn qua tên tài khoản", checked: pv.discoverable, disabled: privacy().is_none(),
+                        on_change: move |v: bool| save_privacy(privacy, err, json!({ "discoverable": v })) }
+                    Toggle { label: "Báo đã xem", checked: pv.read_receipts, disabled: privacy().is_none(), on_change: move |v: bool| save_privacy(privacy, err, json!({ "read_receipts": v })) }
+                    Toggle { label: "Báo đang gõ chữ", checked: pv.typing, disabled: privacy().is_none(), on_change: move |v: bool| save_privacy(privacy, err, json!({ "typing": v })) }
+                }
             }
-            div { class: "settings-row column-layout",
-                span { class: "settings-label", "Ai được gọi cho bạn" }
-                Segmented { label: "Cuộc gọi", value: pv.calls.clone(), options: opts(&[("friends", "Bạn bè"), ("nobody", "Không ai")]),
-                    on_change: move |v: String| save_privacy(privacy, err, json!({ "calls": v })) }
-            }
-            div { class: "settings-row column-layout",
-                span { class: "settings-label", "Ai được thêm bạn vào nhóm" }
-                Segmented { label: "Thêm vào nhóm", value: pv.group_invites.clone(), options: opts(&[("everyone", "Mọi người"), ("friends", "Bạn bè"), ("nobody", "Không ai")]),
-                    on_change: move |v: String| save_privacy(privacy, err, json!({ "group_invites": v })) }
-            }
-            Toggle { label: "Cho phép tìm thấy tôi bằng tên tài khoản", desc: "Người khác có thể tìm thấy bạn qua tên tài khoản", checked: pv.discoverable, disabled: privacy().is_none(),
-                on_change: move |v: bool| save_privacy(privacy, err, json!({ "discoverable": v })) }
-            Toggle { label: "Báo đã xem", checked: pv.read_receipts, disabled: privacy().is_none(), on_change: move |v: bool| save_privacy(privacy, err, json!({ "read_receipts": v })) }
-            Toggle { label: "Báo đang gõ chữ", checked: pv.typing, disabled: privacy().is_none(), on_change: move |v: bool| save_privacy(privacy, err, json!({ "typing": v })) }
-        }
-        div { class: "settings-group",
-            div { class: "settings-group-title", BlockIcon { size: 18 } " Danh sách chặn" }
-            p { class: "settings-group-desc", "Người bị chặn không thể nhắn tin hay gọi cho bạn" }
-            if blocked.read().is_empty() { div { class: "sidebar-empty", "Bạn chưa chặn ai" } }
-            for b in blocked() {
-                {
-                    let id = b.id.clone();
-                    rsx! {
-                        div { key: "{b.id}", class: "member-row",
-                            Avatar { name: b.username.clone(), avatar_url: b.avatar_url.clone(), size: 36 }
-                            span { class: "grow member-name", "{b.username}" }
-                            button { r#type: "button", class: "btn-secondary",
-                                onclick: move |_| { let id = id.clone(); spawn(async move {
-                                    if social::unblock_user(&id).await.is_ok() { blocked.with_mut(|l| l.retain(|x| x.id != id)); }
-                                }); },
-                                "Bỏ chặn"
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", BlockIcon { size: 18 } " Danh sách chặn" }
+                    p { class: "settings-group-desc", "Người bị chặn không thể nhắn tin hay gọi cho bạn" }
+                    if blocked.read().is_empty() { div { class: "sidebar-empty", "Bạn chưa chặn ai" } }
+                    for b in blocked() {
+                        {
+                            let id = b.id.clone();
+                            rsx! {
+                                div { key: "{b.id}", class: "member-row",
+                                    Avatar { name: b.username.clone(), avatar_url: b.avatar_url.clone(), size: 36 }
+                                    span { class: "grow member-name", "{b.username}" }
+                                    button { r#type: "button", class: "btn-secondary",
+                                        onclick: move |_| { let id = id.clone(); spawn(async move {
+                                            if social::unblock_user(&id).await.is_ok() { blocked.with_mut(|l| l.retain(|x| x.id != id)); }
+                                        }); },
+                                        "Bỏ chặn"
+                                    }
+                                }
                             }
                         }
                     }
                 }
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Bảo vệ tin nhắn" }
+                    p { class: "settings-group-desc", "Tin nhắn riêng tư giữa hai người được bảo vệ an toàn, người ngoài và máy chủ không thể đọc được" }
+                }
             }
-        }
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Bảo vệ tin nhắn" }
-            p { class: "settings-group-desc", "Tin nhắn riêng tư giữa hai người được bảo vệ an toàn, người ngoài và máy chủ không thể đọc được" }
         }
     }
 }
@@ -328,41 +346,55 @@ pub fn LockSettings(on_lock_now: EventHandler<()>) -> Element {
         });
     };
     rsx! {
-        div { class: "settings-group",
-            div { class: "settings-group-title", LockIcon { size: 18 } " Khóa ứng dụng" }
-            p { class: "settings-group-desc", "Khóa ứng dụng bằng mật khẩu số để bảo vệ tin nhắn của bạn trên máy này" }
-            if has_pin {
-                Toggle { label: "Bật khóa ứng dụng", checked: pr.lock_enabled, on_change: move |v| c.update(|p| p.lock_enabled = v) }
-                Toggle { label: "Khóa mỗi khi mở lại ứng dụng", checked: pr.lock_on_start, on_change: move |v| c.update(|p| p.lock_on_start = v) }
-                div { class: "settings-row",
-                    span { class: "settings-label", "Khóa sau khi không dùng" }
-                    Segmented { label: "Thời gian khóa", value: pr.lock_minutes.to_string(), options: opts(&[("1", "1 phút"), ("5", "5 phút"), ("15", "15 phút"), ("30", "30 phút"), ("60", "1 giờ")]),
-                        on_change: move |v: String| c.update(|p| p.lock_minutes = v.parse().unwrap_or(5)) }
-                }
-                div { class: "inline-form",
-                    button { r#type: "button", class: "btn-secondary", disabled: !pr.lock_enabled, onclick: move |_| on_lock_now.call(()), LockIcon { size: 16 } "Khóa ngay" }
-                }
-            }
-        }
-        div { class: "settings-group",
-            div { class: "settings-group-title", if has_pin { "Đổi mật khẩu khóa" } else { "Đặt mật khẩu khóa" } }
-            div { class: "form-grid",
-                if has_pin {
-                    label { class: "form-field", span { "Mật khẩu hiện tại" }
-                        input { r#type: "password", class: "pin-input", inputmode: "numeric", autocomplete: "off", maxlength: "8", value: "{current}", oninput: move |e| current.set(e.value().chars().filter(|c| c.is_ascii_digit()).collect()) }
+        div { class: "settings-cols",
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", LockIcon { size: 18 } " Khóa ứng dụng" }
+                    p { class: "settings-group-desc", "Khóa ứng dụng bằng mật khẩu số để bảo vệ tin nhắn trên máy này" }
+                    if has_pin {
+                        Toggle { label: "Bật khóa ứng dụng", checked: pr.lock_enabled, on_change: move |v| c.update(|p| p.lock_enabled = v) }
+                        Toggle { label: "Khóa mỗi khi mở lại ứng dụng", checked: pr.lock_on_start, on_change: move |v| c.update(|p| p.lock_on_start = v) }
+                        div { class: "settings-row column-layout",
+                            span { class: "settings-label", "Khóa sau khi không dùng" }
+                            Segmented { label: "Thời gian khóa", value: pr.lock_minutes.to_string(), options: opts(&[("1", "1 phút"), ("5", "5 phút"), ("15", "15 phút"), ("30", "30 phút"), ("60", "1 giờ")]),
+                                on_change: move |v: String| c.update(|p| p.lock_minutes = v.parse().unwrap_or(5)) }
+                        }
+                        div { class: "inline-form",
+                            button { r#type: "button", class: "btn-secondary", disabled: !pr.lock_enabled, onclick: move |_| on_lock_now.call(()), LockIcon { size: 16 } "Khóa ngay" }
+                        }
+                    } else {
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Trạng thái khóa" }
+                                span { class: "settings-sublabel", "Đặt mật khẩu số ở bên phải để khóa ứng dụng trên máy này" }
+                            }
+                            span { class: "chip-privacy", "Chưa bật" }
+                        }
                     }
                 }
-                label { class: "form-field", span { "Mật khẩu mới từ 4 đến 8 số" }
-                    input { r#type: "password", class: "pin-input", inputmode: "numeric", autocomplete: "new-password", maxlength: "8", value: "{pin1}", oninput: move |e| pin1.set(e.value().chars().filter(|c| c.is_ascii_digit()).collect()) }
-                }
-                label { class: "form-field", span { "Nhập lại mật khẩu mới" }
-                    input { r#type: "password", class: "pin-input", inputmode: "numeric", autocomplete: "new-password", maxlength: "8", value: "{pin2}", oninput: move |e| pin2.set(e.value().chars().filter(|c| c.is_ascii_digit()).collect()) }
-                }
             }
-            if let Some((is_err, m)) = msg() { div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{m}" } }
-            div { class: "inline-form",
-                button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: set_pin, if has_pin { "Đổi mật khẩu" } else { "Đặt mật khẩu" } }
-                if has_pin { button { r#type: "button", class: "btn-danger-outline", onclick: remove_pin, "Tắt khóa" } }
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", if has_pin { "Đổi mật khẩu khóa" } else { "Đặt mật khẩu khóa" } }
+                    div { class: "form-grid",
+                        if has_pin {
+                            label { class: "form-field", span { "Mật khẩu hiện tại" }
+                                input { r#type: "password", class: "pin-input", inputmode: "numeric", autocomplete: "off", maxlength: "8", value: "{current}", oninput: move |e| current.set(e.value().chars().filter(|c| c.is_ascii_digit()).collect()) }
+                            }
+                        }
+                        label { class: "form-field", span { "Mật khẩu mới từ 4 đến 8 số" }
+                            input { r#type: "password", class: "pin-input", inputmode: "numeric", autocomplete: "new-password", maxlength: "8", value: "{pin1}", oninput: move |e| pin1.set(e.value().chars().filter(|c| c.is_ascii_digit()).collect()) }
+                        }
+                        label { class: "form-field", span { "Nhập lại mật khẩu mới" }
+                            input { r#type: "password", class: "pin-input", inputmode: "numeric", autocomplete: "new-password", maxlength: "8", value: "{pin2}", oninput: move |e| pin2.set(e.value().chars().filter(|c| c.is_ascii_digit()).collect()) }
+                        }
+                    }
+                    if let Some((is_err, m)) = msg() { div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{m}" } }
+                    div { class: "inline-form",
+                        button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: set_pin, if has_pin { "Đổi mật khẩu" } else { "Đặt mật khẩu" } }
+                        if has_pin { button { r#type: "button", class: "btn-danger-outline", onclick: remove_pin, "Tắt khóa" } }
+                    }
+                }
             }
         }
     }
@@ -374,26 +406,35 @@ pub fn AutoReplySettings() -> Element {
     let pr = c.prefs.read().clone();
     let mut text = use_signal(|| pr.auto_reply_text.clone());
     rsx! {
-        div { class: "settings-group",
-            div { class: "settings-group-title", "Tin nhắn tự động khi vắng mặt" }
-            p { class: "settings-group-desc", "Tự động nhắn lại khi có người nhắn tin lúc bạn bận" }
-            Toggle { label: "Bật trả lời tự động", checked: pr.auto_reply, on_change: move |v| c.update(|p| p.auto_reply = v) }
-            div { class: "settings-row column-layout",
-                span { class: "settings-label", "Khi nào trả lời" }
-                Segmented { label: "Khi nào trả lời", value: pr.auto_reply_mode.clone(), options: opts(&[("away", "Khi vắng mặt"), ("hours", "Theo khung giờ"), ("always", "Luôn luôn")]),
-                    on_change: move |v: String| c.update(|p| p.auto_reply_mode = v) }
-                if pr.auto_reply_mode == "hours" {
-                    div { class: "inline-form",
-                        label { class: "form-field", span { "Từ" } input { r#type: "time", value: "{pr.auto_reply_from}", onchange: move |e| { let v = e.value(); c.update(move |p| p.auto_reply_from = v) } } }
-                        label { class: "form-field", span { "Đến" } input { r#type: "time", value: "{pr.auto_reply_to}", onchange: move |e| { let v = e.value(); c.update(move |p| p.auto_reply_to = v) } } }
+        div { class: "settings-cols",
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Bật trả lời tự động" }
+                    p { class: "settings-group-desc", "Tự động nhắn lại khi có người nhắn tin lúc bạn bận" }
+                    Toggle { label: "Bật trả lời tự động", checked: pr.auto_reply, on_change: move |v| c.update(|p| p.auto_reply = v) }
+                    div { class: "settings-row column-layout",
+                        span { class: "settings-label", "Khi nào trả lời" }
+                        Segmented { label: "Khi nào trả lời", value: pr.auto_reply_mode.clone(), options: opts(&[("away", "Khi vắng mặt"), ("hours", "Theo khung giờ"), ("always", "Luôn luôn")]),
+                            on_change: move |v: String| c.update(|p| p.auto_reply_mode = v) }
+                        if pr.auto_reply_mode == "hours" {
+                            div { class: "inline-form",
+                                label { class: "form-field", span { "Từ" } input { r#type: "time", value: "{pr.auto_reply_from}", onchange: move |e| { let v = e.value(); c.update(move |p| p.auto_reply_from = v) } } }
+                                label { class: "form-field", span { "Đến" } input { r#type: "time", value: "{pr.auto_reply_to}", onchange: move |e| { let v = e.value(); c.update(move |p| p.auto_reply_to = v) } } }
+                            }
+                        }
                     }
                 }
             }
-            label { class: "form-field",
-                span { "Nội dung" }
-                textarea { rows: "3", maxlength: "500", value: "{text}", oninput: move |e| text.set(e.value()), onchange: move |_| { let v = text(); c.update(move |p| p.auto_reply_text = v) } }
+            div { class: "settings-col",
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Nội dung tin nhắn tự động" }
+                    label { class: "form-field",
+                        span { "Tin nhắn gửi đi" }
+                        textarea { rows: "4", maxlength: "500", value: "{text}", oninput: move |e| text.set(e.value()), onchange: move |_| { let v = text(); c.update(move |p| p.auto_reply_text = v) } }
+                    }
+                    p { class: "settings-group-desc", "Tin nhắn tự động có thêm chữ [Tự động] ở đầu để người nhận biết" }
+                }
             }
-            p { class: "settings-group-desc", "Tin nhắn tự động có thêm chữ [Tự động] để người nhận biết" }
         }
     }
 }
@@ -419,20 +460,12 @@ pub fn LanguageSettings() -> Element {
 }
 
 #[component]
-pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventHandler<()>>) -> Element {
+pub fn AppearanceColorsShapes() -> Element {
     let c = ctx();
     let pr: Prefs = c.prefs.read().clone();
-    let mut uploading = use_signal(|| false);
-    let mut msg = use_signal(|| Option::<String>::None);
     let accent_val = if pr.custom_accent.is_empty() { "#2764E7".to_string() } else { pr.custom_accent.clone() };
     let self_val = if pr.bubble_self.is_empty() { accent_val.clone() } else { pr.bubble_self.clone() };
     let other_val = if pr.bubble_other.is_empty() { "#EEF1F5".to_string() } else { pr.bubble_other.clone() };
-    let wp_color = pr.app_wallpaper.strip_prefix("color:").unwrap_or("#1F2A44").to_string();
-    let panel_transparency = 100u8.saturating_sub(pr.panel_opacity);
-    let panel_transparency_pct = panel_transparency;
-    let panel_blur_pct = ((pr.panel_blur as f32 / 32.0) * 100.0).round() as u8;
-    let wp_dim_pct = ((pr.app_wallpaper_dim as f32 / 80.0) * 100.0).round() as u8;
-    let wp_blur_pct = ((pr.app_wallpaper_blur as f32 / 24.0) * 100.0).round() as u8;
     rsx! {
         div { class: "settings-group",
             div { class: "settings-group-title", "Màu sắc nâng cao" }
@@ -472,6 +505,22 @@ pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventH
             }
             Toggle { label: "Giảm chuyển động", desc: "Tắt hiệu ứng động và chuyển cảnh", checked: pr.reduce_motion, on_change: move |v| c.update(|p| p.reduce_motion = v) }
         }
+    }
+}
+
+#[component]
+pub fn AppearanceWallpapersGlass(#[props(default)] on_reset_appearance: Option<EventHandler<()>>) -> Element {
+    let c = ctx();
+    let pr: Prefs = c.prefs.read().clone();
+    let mut uploading = use_signal(|| false);
+    let mut msg = use_signal(|| Option::<String>::None);
+    let wp_color = pr.app_wallpaper.strip_prefix("color:").unwrap_or("#1F2A44").to_string();
+    let panel_transparency = 100u8.saturating_sub(pr.panel_opacity);
+    let panel_transparency_pct = panel_transparency;
+    let panel_blur_pct = ((pr.panel_blur as f32 / 32.0) * 100.0).round() as u8;
+    let wp_dim_pct = ((pr.app_wallpaper_dim as f32 / 80.0) * 100.0).round() as u8;
+    let wp_blur_pct = ((pr.app_wallpaper_blur as f32 / 24.0) * 100.0).round() as u8;
+    rsx! {
         div { class: "settings-group",
             div { class: "settings-group-title", "Hình nền trò chuyện mặc định" }
             div { class: "wallpaper-grid", role: "radiogroup", aria_label: "Hình nền trò chuyện",
@@ -490,8 +539,8 @@ pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventH
             }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", ImageIcon { size: 18 } " Hình nền toàn ứng dụng & Khung giao diện" }
-            p { class: "settings-group-desc", "Chọn hình nền phía sau toàn bộ ChatW và chỉnh độ mờ của khung trắng để nhìn xuyên qua hình nền." }
+            div { class: "settings-group-title", ImageIcon { size: 18 } " Hình nền toàn ứng dụng" }
+            p { class: "settings-group-desc", "Chọn hình nền phía sau toàn bộ ứng dụng và chỉnh độ trong suốt của khung." }
             div { class: "wallpaper-grid",
                 button { r#type: "button", class: if pr.app_wallpaper.is_empty() { "wallpaper-tile active" } else { "wallpaper-tile" }, onclick: move |_| c.update(|p| p.app_wallpaper.clear()),
                     span { class: "wallpaper-sample wp-none" } span { "Không" }
@@ -634,6 +683,14 @@ pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventH
     }
 }
 
+#[component]
+pub fn AdvancedLookSettings(#[props(default)] on_reset_appearance: Option<EventHandler<()>>) -> Element {
+    rsx! {
+        AppearanceColorsShapes {}
+        AppearanceWallpapersGlass { on_reset_appearance: on_reset_appearance }
+    }
+}
+
 /// Spec 009: settings sync between devices and the avatar-motion budget for lists.
 #[component]
 pub fn SyncMotionSettings() -> Element {
@@ -641,18 +698,18 @@ pub fn SyncMotionSettings() -> Element {
     let p = ctx.prefs.read().clone();
     let version = crate::services::settings_sync::known_version();
     rsx! {
-        div { class: "settings-section",
-            div { class: "settings-group-title", "Đồng bộ" }
+        div { class: "settings-group",
+            div { class: "settings-group-title", "Đồng bộ và chuyển động" }
             Toggle {
-                label: "Đồng bộ cài đặt với các thiết bị khác",
+                label: "Đồng bộ cài đặt với các máy khác",
                 desc: "Lưu cài đặt của bạn để dùng trên máy khác",
                 checked: p.sync_settings,
                 on_change: move |v: bool| ctx.update(move |x| x.sync_settings = v),
             }
             if p.sync_settings && version > 0 {
-                div { class: "settings-row-desc", style: "padding: 0 var(--space-3);", "Phiên bản đồng bộ: {version}" }
+                div { class: "settings-row-desc", "Phiên bản đồng bộ: {version}" }
             }
-            div { class: "settings-row",
+            div { class: "settings-row column-layout",
                 span { class: "grow",
                     span { class: "settings-label", "Hiệu ứng ảnh đại diện trong danh sách" }
                     span { class: "settings-row-desc", "Bật chuyển động cho ảnh đại diện trong danh sách" }

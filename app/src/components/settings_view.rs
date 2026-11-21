@@ -6,7 +6,7 @@ use crate::{
         details_panel::format_fingerprint,
         guide::GuideSettings,
         settings_extra::{AccountSecurity, CustomizationSettings, LibrarySettings},
-        settings_more::{AdvancedLookSettings, AutoReplySettings, ChatPrefsSettings, LanguageSettings, LockSettings, NotificationSettings, PrivacySettingsPanel},
+        settings_more::{AppearanceColorsShapes, AppearanceWallpapersGlass, AutoReplySettings, ChatPrefsSettings, LanguageSettings, LockSettings, NotificationSettings, PrivacySettingsPanel},
         business_view::BusinessSettings,
         plugins_view::BotsSettings,
         icons::{
@@ -316,307 +316,314 @@ pub fn SettingsView(
 
                                 AccountSecurity {
                                     current_username: current_username.clone(),
+                                    current_user_id: current_user_id.clone(),
                                     on_username_changed: move |n: String| if let Some(h) = on_username_changed { h.call(n) },
-                                }
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Thông tin định danh" }
-                                    div { class: "settings-list",
-                                        div { class: "settings-row",
-                                            span { class: "settings-label", "Tên tài khoản" }
-                                            span { class: "settings-value", "{current_username}" }
-                                        }
-                                        div { class: "settings-row column-layout",
-                                            span { class: "settings-label", "Mã định danh" }
-                                            span { class: "settings-value mono", "{current_user_id}" }
-                                        }
-                                    }
                                 }
                             },
 
                             SettingsTab::Appearance => rsx! {
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Chủ đề" }
-                                    div { class: "theme-preview", role: "radiogroup", aria_label: "Chủ đề",
-                                        for (val, label) in [("light", "Sáng"), ("dark", "Tối"), ("system", "Theo hệ thống")] {
-                                            button {
-                                                key: "{val}",
-                                                r#type: "button",
-                                                role: "radio",
-                                                aria_checked: "{appearance().theme == val}",
-                                                class: if appearance().theme == val { "theme-card active" } else { "theme-card" },
-                                                onclick: move |_| update_appearance(&|a| a.theme = val.to_string()),
-                                                div {
-                                                    class: "theme-card-swatch",
-                                                    style: match val {
-                                                        "light" => "background: #F7F8FA;",
-                                                        "dark" => "background: #111419;",
-                                                        _ => "background: linear-gradient(90deg, #F7F8FA 50%, #111419 50%);",
-                                                    },
-                                                    i { style: "width: 28%; background: var(--accent);" }
-                                                    i { style: "flex: 1; background: rgba(127,127,127,0.25);" }
-                                                }
-                                                span { style: "display: inline-flex; align-items: center; gap: 6px;",
-                                                    match val {
-                                                        "light" => rsx! { SunIcon { size: 15 } },
-                                                        "dark" => rsx! { MoonIcon { size: 15 } },
-                                                        _ => rsx! { MonitorIcon { size: 15 } },
-                                                    }
-                                                    "{label}"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Màu nhấn" }
-                                    div { class: "settings-group-desc", "Áp dụng cho nút chính, bong bóng tin nhắn đã gửi và mục đang chọn." }
-                                    div { class: "accent-swatches", role: "radiogroup", aria_label: "Màu nhấn",
-                                        for (val, color, label) in [
-                                            ("blue", "#2764E7", "Xanh dương"),
-                                            ("violet", "#6D4AE0", "Tím"),
-                                            ("green", "#138A5A", "Xanh lá"),
-                                            ("orange", "#D9620F", "Cam"),
-                                            ("rose", "#D6336C", "Hồng"),
-                                        ] {
-                                            button {
-                                                key: "{val}",
-                                                r#type: "button",
-                                                role: "radio",
-                                                title: "{label}",
-                                                aria_label: "{label}",
-                                                aria_checked: "{appearance().accent == val}",
-                                                class: if appearance().accent == val { "accent-swatch active" } else { "accent-swatch" },
-                                                style: "background: {color};",
-                                                onclick: move |_| {
-                                                    if !prefs_ctx.prefs.read().custom_accent.is_empty() {
-                                                        prefs_ctx.update(|p| p.custom_accent.clear());
-                                                    }
-                                                    update_appearance(&|a| a.accent = val.to_string());
-                                                },
-                                                if appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty() { CheckIcon { size: 16 } }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Chữ và mật độ" }
-                                    div { class: "settings-list",
-                                        div { class: "settings-row column-layout",
-                                            div { class: "settings-row-text",
-                                                span { class: "settings-label", "Cỡ chữ" }
-                                                span { class: "settings-sublabel", "Tự động chỉnh vừa mắt hoặc chọn kích thước bên dưới" }
-                                            }
-                                            div { class: "range-row",
-                                                label { style: "display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap;",
-                                                    input {
-                                                        r#type: "checkbox",
-                                                        checked: appearance().font_size == "auto",
-                                                        onchange: move |e| {
-                                                            let auto = e.checked();
-                                                            update_appearance(&|a| a.font_size = if auto { "auto".to_string() } else { "15".to_string() });
-                                                        },
-                                                    }
-                                                    "Tự động"
-                                                }
-                                                {
-                                                    let cur_font: f32 = if appearance().font_size == "auto" { 15.0 } else { appearance().font_size.parse().unwrap_or(15.0) };
-                                                    let font_pct = (((cur_font - 13.0) / 7.0) * 100.0).clamp(0.0, 100.0).round() as u8;
-                                                    rsx! {
-                                                        input {
-                                                            r#type: "range",
-                                                            min: "13",
-                                                            max: "20",
-                                                            step: "1",
-                                                            style: "--range-pct: {font_pct}%;",
-                                                            aria_label: "Cỡ chữ",
-                                                            disabled: appearance().font_size == "auto",
-                                                            value: if appearance().font_size == "auto" { "15".to_string() } else { appearance().font_size },
-                                                            oninput: move |e| {
-                                                                let v = e.value();
-                                                                update_appearance(&|a| a.font_size = v.clone());
-                                                            },
-                                                        }
-                                                    }
-                                                }
-                                                span { class: "range-value",
-                                                    if appearance().font_size == "auto" { "Tự động" } else { "{appearance().font_size}px" }
-                                                }
-                                            }
-                                        }
-                                        div { class: "settings-row",
-                                            div { class: "settings-row-text",
-                                                span { class: "settings-label", "Mật độ hiển thị" }
-                                                span { class: "settings-sublabel", "Khoảng cách giữa các tin nhắn và danh sách" }
-                                            }
-                                            div { class: "segmented", role: "radiogroup", aria_label: "Mật độ hiển thị",
-                                                for (val, label) in [("compact", "Gọn"), ("comfortable", "Vừa"), ("spacious", "Rộng")] {
+                                div { class: "settings-cols",
+                                    div { class: "settings-col",
+                                        div { class: "settings-group",
+                                            div { class: "settings-group-title", "Chủ đề" }
+                                            div { class: "theme-preview", role: "radiogroup", aria_label: "Chủ đề",
+                                                for (val, label) in [("light", "Sáng"), ("dark", "Tối"), ("system", "Theo hệ thống")] {
                                                     button {
                                                         key: "{val}",
                                                         r#type: "button",
                                                         role: "radio",
-                                                        aria_checked: "{appearance().density == val}",
-                                                        class: if appearance().density == val { "active" } else { "" },
-                                                        onclick: move |_| update_appearance(&|a| a.density = val.to_string()),
-                                                        "{label}"
+                                                        aria_checked: "{appearance().theme == val}",
+                                                        class: if appearance().theme == val { "theme-card active" } else { "theme-card" },
+                                                        onclick: move |_| update_appearance(&|a| a.theme = val.to_string()),
+                                                        div {
+                                                            class: "theme-card-swatch",
+                                                            style: match val {
+                                                                "light" => "background: #F7F8FA;",
+                                                                "dark" => "background: #111419;",
+                                                                _ => "background: linear-gradient(90deg, #F7F8FA 50%, #111419 50%);",
+                                                            },
+                                                            i { style: "width: 28%; background: var(--accent);" }
+                                                            i { style: "flex: 1; background: rgba(127,127,127,0.25);" }
+                                                        }
+                                                        span { style: "display: inline-flex; align-items: center; gap: 6px;",
+                                                            match val {
+                                                                "light" => rsx! { SunIcon { size: 15 } },
+                                                                "dark" => rsx! { MoonIcon { size: 15 } },
+                                                                _ => rsx! { MonitorIcon { size: 15 } },
+                                                            }
+                                                            "{label}"
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
-                                    }
-                                }
 
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Xem trước" }
-                                    {
-                                        let preview_wp = prefs_ctx.prefs.read().wallpaper.clone();
-                                        let preview_cls = if preview_wp.is_empty() || preview_wp == "none" {
-                                            "settings-preview-chat".to_string()
-                                        } else {
-                                            format!("settings-preview-chat wp-{preview_wp}")
-                                        };
-                                        rsx! {
-                                            div { class: "{preview_cls}",
-                                                div { class: "message-row received group-start group-end",
-                                                    div { class: "message-content-wrapper",
-                                                        div { class: "message-bubble", "Chữ và màu nền tự cân bằng rất dễ đọc." span { class: "bubble-meta", "09:41" } }
-                                                    }
-                                                }
-                                                div { class: "message-row sent group-start group-end",
-                                                    div { class: "message-content-wrapper",
-                                                        div { class: "message-bubble", "Đẹp và rõ nét ở mọi kiểu giao diện." span { class: "bubble-meta", "09:42" } }
+                                        div { class: "settings-group",
+                                            div { class: "settings-group-title", "Màu nhấn" }
+                                            div { class: "settings-group-desc", "Áp dụng cho nút chính, bong bóng tin nhắn đã gửi và mục đang chọn." }
+                                            div { class: "accent-swatches", role: "radiogroup", aria_label: "Màu nhấn",
+                                                for (val, color, label) in [
+                                                    ("blue", "#2764E7", "Xanh dương"),
+                                                    ("violet", "#6D4AE0", "Tím"),
+                                                    ("green", "#138A5A", "Xanh lá"),
+                                                    ("orange", "#D9620F", "Cam"),
+                                                    ("rose", "#D6336C", "Hồng"),
+                                                ] {
+                                                    button {
+                                                        key: "{val}",
+                                                        r#type: "button",
+                                                        role: "radio",
+                                                        title: "{label}",
+                                                        aria_label: "{label}",
+                                                        aria_checked: "{appearance().accent == val}",
+                                                        class: if appearance().accent == val { "accent-swatch active" } else { "accent-swatch" },
+                                                        style: "background: {color};",
+                                                        onclick: move |_| {
+                                                            if !prefs_ctx.prefs.read().custom_accent.is_empty() {
+                                                                prefs_ctx.update(|p| p.custom_accent.clear());
+                                                            }
+                                                            update_appearance(&|a| a.accent = val.to_string());
+                                                        },
+                                                        if appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty() { CheckIcon { size: 16 } }
                                                     }
                                                 }
                                             }
                                         }
-                                    }
-                                }
 
-                                AdvancedLookSettings {
-                                    on_reset_appearance: move |_| {
-                                        let d = platform::Appearance::default();
-                                        platform::apply_appearance(&d);
-                                        appearance.set(d);
-                                    },
+                                        div { class: "settings-group",
+                                            div { class: "settings-group-title", "Chữ và mật độ" }
+                                            div { class: "settings-list",
+                                                div { class: "settings-row column-layout",
+                                                    div { class: "settings-row-text",
+                                                        span { class: "settings-label", "Cỡ chữ" }
+                                                        span { class: "settings-sublabel", "Tự động chỉnh vừa mắt hoặc chọn kích thước bên dưới" }
+                                                    }
+                                                    div { class: "range-row",
+                                                        label { style: "display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap;",
+                                                            input {
+                                                                r#type: "checkbox",
+                                                                checked: appearance().font_size == "auto",
+                                                                onchange: move |e| {
+                                                                    let auto = e.checked();
+                                                                    update_appearance(&|a| a.font_size = if auto { "auto".to_string() } else { "15".to_string() });
+                                                                },
+                                                            }
+                                                            "Tự động"
+                                                        }
+                                                        {
+                                                            let cur_font: f32 = if appearance().font_size == "auto" { 15.0 } else { appearance().font_size.parse().unwrap_or(15.0) };
+                                                            let font_pct = (((cur_font - 13.0) / 7.0) * 100.0).clamp(0.0, 100.0).round() as u8;
+                                                            rsx! {
+                                                                input {
+                                                                    r#type: "range",
+                                                                    min: "13",
+                                                                    max: "20",
+                                                                    step: "1",
+                                                                    style: "--range-pct: {font_pct}%;",
+                                                                    aria_label: "Cỡ chữ",
+                                                                    disabled: appearance().font_size == "auto",
+                                                                    value: if appearance().font_size == "auto" { "15".to_string() } else { appearance().font_size },
+                                                                    oninput: move |e| {
+                                                                        let v = e.value();
+                                                                        update_appearance(&|a| a.font_size = v.clone());
+                                                                    },
+                                                                }
+                                                            }
+                                                        }
+                                                        span { class: "range-value",
+                                                            if appearance().font_size == "auto" { "Tự động" } else { "{appearance().font_size}px" }
+                                                        }
+                                                    }
+                                                }
+                                                div { class: "settings-row",
+                                                    div { class: "settings-row-text",
+                                                        span { class: "settings-label", "Mật độ hiển thị" }
+                                                        span { class: "settings-sublabel", "Khoảng cách giữa các tin nhắn và danh sách" }
+                                                    }
+                                                    div { class: "segmented", role: "radiogroup", aria_label: "Mật độ hiển thị",
+                                                        for (val, label) in [("compact", "Gọn"), ("comfortable", "Vừa"), ("spacious", "Rộng")] {
+                                                            button {
+                                                                key: "{val}",
+                                                                r#type: "button",
+                                                                role: "radio",
+                                                                aria_checked: "{appearance().density == val}",
+                                                                class: if appearance().density == val { "active" } else { "" },
+                                                                onclick: move |_| update_appearance(&|a| a.density = val.to_string()),
+                                                                "{label}"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        AppearanceColorsShapes {}
+                                    }
+
+                                    div { class: "settings-col",
+                                        div { class: "settings-group",
+                                            div { class: "settings-group-title", "Xem trước" }
+                                            {
+                                                let preview_wp = prefs_ctx.prefs.read().wallpaper.clone();
+                                                let preview_cls = if preview_wp.is_empty() || preview_wp == "none" {
+                                                    "settings-preview-chat".to_string()
+                                                } else {
+                                                    format!("settings-preview-chat wp-{preview_wp}")
+                                                };
+                                                rsx! {
+                                                    div { class: "{preview_cls}",
+                                                        div { class: "message-row received group-start group-end",
+                                                            div { class: "message-content-wrapper",
+                                                                div { class: "message-bubble", "Chữ và màu nền tự cân bằng rất dễ đọc." span { class: "bubble-meta", "09:41" } }
+                                                            }
+                                                        }
+                                                        div { class: "message-row sent group-start group-end",
+                                                            div { class: "message-content-wrapper",
+                                                                div { class: "message-bubble", "Đẹp và rõ nét ở mọi kiểu giao diện." span { class: "bubble-meta", "09:42" } }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        AppearanceWallpapersGlass {
+                                            on_reset_appearance: move |_| {
+                                                let d = platform::Appearance::default();
+                                                platform::apply_appearance(&d);
+                                                appearance.set(d);
+                                            },
+                                        }
+                                    }
                                 }
                             },
 
                             SettingsTab::Security => rsx! {
-                                crate::components::accounts::SecuritySettings {}
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Bảo vệ tin nhắn" }
-                                    div { class: "settings-row",
-                                        span { class: "settings-label", "Tiêu chuẩn bảo vệ" }
-                                        span { class: "settings-value", "Mã hóa hai đầu chuẩn cao nhất" }
-                                    }
-                                    div { class: "settings-row",
-                                        span { class: "settings-label", "Trạng thái bảo vệ" }
-                                        span { class: "settings-value tag-active",
-                                            if user_keys.is_some() { "Đang hoạt động an toàn" } else { "Chưa có khóa" }
+                                div { class: "settings-cols",
+                                    div { class: "settings-col",
+                                        crate::components::accounts::SecuritySettings {}
+                                        div { class: "settings-group",
+                                            div { class: "settings-group-title", "Bảo vệ tin nhắn" }
+                                            div { class: "settings-row",
+                                                span { class: "settings-label", "Tiêu chuẩn bảo vệ" }
+                                                span { class: "settings-value", "Mã hóa hai đầu chuẩn cao nhất" }
+                                            }
+                                            div { class: "settings-row",
+                                                span { class: "settings-label", "Trạng thái bảo vệ" }
+                                                span { class: "settings-value tag-active",
+                                                    if user_keys.is_some() { "Đang hoạt động an toàn" } else { "Chưa có khóa" }
+                                                }
+                                            }
+                                            if let Some(ref keys) = user_keys {
+                                                div { class: "settings-row column-layout",
+                                                    div { style: "display: flex; justify-content: space-between; width: 100%; align-items: center;",
+                                                        span { class: "settings-label", "Vân tay bảo mật" }
+                                                        button {
+                                                            r#type: "button",
+                                                            class: "btn-secondary",
+                                                            onclick: {
+                                                                let fp = keys.fingerprint_b64.clone();
+                                                                move |_| {
+                                                                    platform::copy_to_clipboard(&fp);
+                                                                    copied_fp.set(true);
+                                                                }
+                                                            },
+                                                            if copied_fp() { "Đã sao chép" } else { "Sao chép" }
+                                                        }
+                                                    }
+                                                    div { class: "fingerprint", "{format_fingerprint(&keys.fingerprint_b64)}" }
+                                                }
+                                            }
                                         }
                                     }
-                                    if let Some(ref keys) = user_keys {
-                                        div { class: "settings-row column-layout",
-                                            div { style: "display: flex; justify-content: space-between; width: 100%; align-items: center;",
-                                                span { class: "settings-label", "Vân tay bảo mật" }
+
+                                    div { class: "settings-col",
+                                        div { class: "settings-group",
+                                            div { class: "settings-group-title", "Sao lưu chìa khóa bảo mật" }
+                                            div { class: "settings-row column-layout",
+                                                div { style: "font-size: 13px; color: var(--text-secondary);",
+                                                    "Chìa khóa bảo mật chỉ lưu trên máy này và không gửi lên mạng. Bạn có thể lưu lại để chuyển sang máy khác."
+                                                }
+                                                if let Some(ref keys) = user_keys {
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "btn-secondary",
+                                                        onclick: {
+                                                            let k = keys.clone();
+                                                            move |_| {
+                                                                let j = export_user_keys_json(&k);
+                                                                platform::copy_to_clipboard(&j);
+                                                                exported_json.set(Some(j));
+                                                            }
+                                                        },
+                                                        KeyIcon { size: 15 }
+                                                        span { "Sao chép chìa khóa bảo mật" }
+                                                    }
+                                                }
+                                                if let Some(ref exp) = exported_json() {
+                                                    textarea {
+                                                        readonly: true,
+                                                        style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
+                                                        value: "{exp}",
+                                                    }
+                                                }
+                                            }
+
+                                            div { class: "settings-row column-layout",
+                                                label { class: "form-label", "Nhập chìa khóa bảo mật" }
+                                                textarea {
+                                                    style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
+                                                    placeholder: "Dán chìa khóa bảo mật vào đây",
+                                                    value: "{import_input}",
+                                                    oninput: move |e| import_input.set(e.value()),
+                                                }
                                                 button {
                                                     r#type: "button",
-                                                    class: "btn-secondary",
+                                                    class: "btn-primary",
+                                                    disabled: import_input().trim().is_empty(),
                                                     onclick: {
-                                                        let fp = keys.fingerprint_b64.clone();
+                                                        let uid = current_user_id.clone();
                                                         move |_| {
-                                                            platform::copy_to_clipboard(&fp);
-                                                            copied_fp.set(true);
+                                                            let raw = import_input();
+                                                            match import_user_keys_json(&uid, &raw) {
+                                                                Ok(restored) => {
+                                                                    let ecdh = restored.ecdh_raw_b64.clone();
+                                                                    let ecdsa = restored.ecdsa_raw_b64.clone();
+                                                                    let restored_clone = restored.clone();
+                                                                    spawn(async move {
+                                                                        let _ = api::keys_register(&ecdh, &ecdsa).await;
+                                                                        on_keys_imported.call(restored_clone);
+                                                                        import_input.set(String::new());
+                                                                        import_status.set(Some((false, "Đã khôi phục chìa khóa thành công".into())));
+                                                                    });
+                                                                }
+                                                                Err(_) => {
+                                                                    import_status.set(Some((true, "Chìa khóa không hợp lệ".into())));
+                                                                }
+                                                            }
                                                         }
                                                     },
-                                                    if copied_fp() { "Đã sao chép" } else { "Sao chép" }
+                                                    "Khôi phục chìa khóa"
                                                 }
-                                            }
-                                            div { class: "fingerprint", "{format_fingerprint(&keys.fingerprint_b64)}" }
-                                        }
-                                    }
-                                }
-
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Sao lưu chìa khóa bảo mật" }
-                                    div { class: "settings-row column-layout",
-                                        div { style: "font-size: 13px; color: var(--text-secondary);",
-                                            "Chìa khóa bảo mật chỉ lưu trên máy này và không gửi lên mạng. Bạn có thể lưu lại để chuyển sang máy khác."
-                                        }
-                                        if let Some(ref keys) = user_keys {
-                                            button {
-                                                r#type: "button",
-                                                class: "btn-secondary",
-                                                onclick: {
-                                                    let k = keys.clone();
-                                                    move |_| {
-                                                        let j = export_user_keys_json(&k);
-                                                        platform::copy_to_clipboard(&j);
-                                                        exported_json.set(Some(j));
-                                                    }
-                                                },
-                                                KeyIcon { size: 15 }
-                                                span { "Sao chép chìa khóa bảo mật" }
-                                            }
-                                        }
-                                        if let Some(ref exp) = exported_json() {
-                                            textarea {
-                                                readonly: true,
-                                                style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
-                                                value: "{exp}",
-                                            }
-                                        }
-                                    }
-
-                                    div { class: "settings-row column-layout",
-                                        label { class: "form-label", "Nhập chìa khóa bảo mật" }
-                                        textarea {
-                                            style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
-                                            placeholder: "Dán chìa khóa bảo mật vào đây",
-                                            value: "{import_input}",
-                                            oninput: move |e| import_input.set(e.value()),
-                                        }
-                                        button {
-                                            r#type: "button",
-                                            class: "btn-primary",
-                                            disabled: import_input().trim().is_empty(),
-                                            onclick: {
-                                                let uid = current_user_id.clone();
-                                                move |_| {
-                                                    let raw = import_input();
-                                                    match import_user_keys_json(&uid, &raw) {
-                                                        Ok(restored) => {
-                                                            let ecdh = restored.ecdh_raw_b64.clone();
-                                                            let ecdsa = restored.ecdsa_raw_b64.clone();
-                                                            let restored_clone = restored.clone();
-                                                            spawn(async move {
-                                                                let _ = api::keys_register(&ecdh, &ecdsa).await;
-                                                                on_keys_imported.call(restored_clone);
-                                                                import_input.set(String::new());
-                                                                import_status.set(Some((false, "Đã khôi phục chìa khóa thành công".into())));
-                                                            });
-                                                        }
-                                                        Err(_) => {
-                                                            import_status.set(Some((true, "Chìa khóa không hợp lệ".into())));
-                                                        }
+                                                if let Some((is_err, msg)) = import_status() {
+                                                    div {
+                                                        class: if is_err { "status-badge error" } else { "status-badge success" },
+                                                        "{msg}"
                                                     }
                                                 }
-                                            },
-                                            "Khôi phục chìa khóa"
-                                        }
-                                        if let Some((is_err, msg)) = import_status() {
-                                            div {
-                                                class: if is_err { "status-badge error" } else { "status-badge success" },
-                                                "{msg}"
                                             }
                                         }
+                                        crate::components::backup_cloud_ui::AdvancedSecurityExportSection {}
                                     }
                                 }
-                                crate::components::backup_cloud_ui::AdvancedSecurityExportSection {}
                             },
 
-                            SettingsTab::Customize => rsx! { crate::components::settings_more::SyncMotionSettings {} CustomizationSettings {} },
+                            SettingsTab::Customize => rsx! {
+                                div { class: "settings-cols",
+                                    div { class: "settings-col", CustomizationSettings {} }
+                                    div { class: "settings-col", crate::components::settings_more::SyncMotionSettings {} }
+                                }
+                            },
                             SettingsTab::Inventory => rsx! { crate::components::inventory::Inventory { my_id: current_user_id.clone() } },
                             SettingsTab::Studio => rsx! { crate::components::studio::StudioHome { my_id: current_user_id.clone() } },
                             SettingsTab::Demo => rsx! { crate::components::demo_gallery::DemoGallery { my_id: current_user_id.clone(), my_name: current_username.clone(), my_avatar: my_avatar_url.clone() } },
@@ -645,22 +652,26 @@ pub fn SettingsView(
                                 crate::components::backup_cloud_ui::CloudAccountsPanel {}
                             },
                             SettingsTab::Session => rsx! {
-                                crate::components::storage_ui::DeviceTrustPanel {}
-                                div { class: "settings-group",
-                                    div { class: "settings-group-title", "Quản lý phiên" }
-                                    div { class: "settings-row",
-                                        div {
-                                            div { style: "font-weight: 600;", "Đăng xuất tài khoản" }
-                                            div { style: "font-size: 12px; color: var(--text-secondary);",
-                                                "Kết thúc phiên hiện tại trên trình duyệt này. Khóa E2EE cục bộ vẫn được giữ riêng cho tài khoản."
+                                div { class: "settings-cols",
+                                    div { class: "settings-col",
+                                        crate::components::storage_ui::DeviceTrustPanel {}
+                                    }
+                                    div { class: "settings-col",
+                                        div { class: "settings-group",
+                                            div { class: "settings-group-title", "Đăng xuất" }
+                                            div { class: "settings-row",
+                                                div { class: "settings-row-text",
+                                                    span { class: "settings-label", "Đăng xuất tài khoản" }
+                                                    span { class: "settings-sublabel", "Thoát tài khoản khỏi máy này. Tin nhắn của bạn vẫn an toàn." }
+                                                }
+                                                button {
+                                                    r#type: "button",
+                                                    class: "btn-danger-outline",
+                                                    onclick: move |_| on_logout.call(()),
+                                                    LogoutIcon {}
+                                                    span { "Đăng xuất" }
+                                                }
                                             }
-                                        }
-                                        button {
-                                            r#type: "button",
-                                            class: "btn-danger-outline",
-                                            onclick: move |_| on_logout.call(()),
-                                            LogoutIcon {}
-                                            span { "Đăng xuất" }
                                         }
                                     }
                                 }

@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::{
@@ -184,6 +184,8 @@ pub fn Chat(
     let mut channels = use_signal(Vec::<ChannelItem>::new);
     let mut selected_channel = use_signal(|| Option::<ChannelItem>::None);
     let mut channel_messages = use_signal(Vec::<ChannelMessageItem>::new);
+    let mut channel_has_more = use_signal(|| false);
+    let mut channel_loading_more = use_signal(|| false);
     let mut channel_input = use_signal(String::new);
     let mut active_voice_channel = use_signal(|| Option::<ChannelItem>::None);
     let mut is_voice_muted = use_signal(|| false);
@@ -195,6 +197,10 @@ pub fn Chat(
     let mut group_channels = use_signal(Vec::<GroupChannelItem>::new);
     let mut group_categories = use_signal(Vec::<GroupCategoryItem>::new);
     let mut group_messages = use_signal(Vec::<GroupMessageItem>::new);
+    let mut group_has_more = use_signal(|| false);
+    let mut group_loading_more = use_signal(|| false);
+    let mut dm_has_more = use_signal(|| false);
+    let mut dm_loading_more = use_signal(|| false);
     let mut group_input = use_signal(String::new);
     let mut is_create_group_open = use_signal(|| false);
     let mut is_group_info_open = use_signal(|| false);
@@ -1310,8 +1316,10 @@ pub fn Chat(
         });
     });
 
-    // Helper: select a channel
+    // Helper: select a channel (always loads newest first, sorted ascending, scrolls to bottom)
     let mut select_channel = move |ch: ChannelItem| {
+        let same = selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(ch.id.as_str())
+            && !channel_messages.peek().is_empty();
         server_settings_open.set(false);
         active_ent_module.set(None);
         selected_channel.set(Some(ch.clone()));
@@ -1321,11 +1329,23 @@ pub fn Chat(
         unread_counts.with_mut(|m| {
             m.remove(&ch.id);
         });
+        if same {
+            return;
+        }
+        channel_has_more.set(false);
+        channel_loading_more.set(false);
         if ch.channel_type == "text" || ch.channel_type == "announcement" {
+            channel_messages.set(Vec::new());
             let cid = ch.id.clone();
             spawn(async move {
-                if let Ok(msgs) = api::channels_get_messages(&cid, 50).await {
-                    channel_messages.set(msgs);
+                if let Ok(mut msgs) = api::channels_get_messages(&cid, 30, None).await {
+                    let has_more = msgs.len() >= 30;
+                    msgs.sort_by_key(|m| m.seq);
+                    if selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(cid.as_str()) {
+                        channel_has_more.set(has_more);
+                        channel_messages.set(msgs);
+                        platform::scroll_chat_to_bottom(true);
+                    }
                 }
             });
         } else if ch.channel_type == "voice" {
@@ -1339,24 +1359,61 @@ pub fn Chat(
         }
     };
 
-    // Helper: select a group
+    let load_more_channel = use_callback(move |_: ()| {
+        if *channel_loading_more.peek() || !*channel_has_more.peek() {
+            return;
+        }
+        let Some(ch) = selected_channel.peek().clone() else { return };
+        let Some(oldest_seq) = channel_messages.peek().iter().map(|m| m.seq).min() else { return };
+        channel_loading_more.set(true);
+        let cid = ch.id.clone();
+        spawn(async move {
+            if let Ok(mut older) = api::channels_get_messages(&cid, 30, Some(oldest_seq)).await {
+                let more = older.len() >= 30;
+                older.sort_by_key(|m| m.seq);
+                if selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(cid.as_str()) {
+                    channel_has_more.set(more);
+                    if !older.is_empty() {
+                        platform::snapshot_chat_scroll_height().await;
+                        channel_messages.with_mut(|list| {
+                            let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
+                            let mut fresh: Vec<ChannelMessageItem> = older.into_iter().filter(|m| !existing.contains(&m.id)).collect();
+                            fresh.append(list);
+                            *list = fresh;
+                        });
+                        platform::restore_chat_scroll_after_prepend();
+                    }
+                }
+            }
+            channel_loading_more.set(false);
+        });
+    });
+
+    // Helper: select a group (always loads newest first, sorted ascending, scrolls to bottom)
     let select_group = use_callback(move |grp: GroupItem| {
+        let same = active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(grp.id.as_str())
+            && !group_messages.peek().is_empty();
         is_settings_open.set(false);
         server_settings_open.set(false);
         nav_section.set(NavSection::DirectMessages);
+        unread_counts.with_mut(|m| {
+            m.remove(&grp.id);
+        });
+        if same {
+            return;
+        }
         group_reply_to.set(None);
         selected_channel.set(None);
         active_friend.set(None);
         active_bot.set(None);
         active_group.set(Some(grp.clone()));
         group_messages.set(Vec::new());
+        group_has_more.set(false);
+        group_loading_more.set(false);
         group_settings.set(None);
         group_members.set(Vec::new());
         chat_wallpaper.set(None);
         chat_menu_open.set(false);
-        unread_counts.with_mut(|m| {
-            m.remove(&grp.id);
-        });
 
         let gid = grp.id.clone();
         let gid2 = grp.id.clone();
@@ -1373,21 +1430,58 @@ pub fn Chat(
         });
         spawn(async move {
             let _ = groups::groups_list_categories(&gid).await.map(|cats| group_categories.set(cats));
-            if let Ok(chs) = groups::groups_list_channels(&gid).await {
+            let fetched = if let Ok(chs) = groups::groups_list_channels(&gid).await {
                 let first = chs.first().cloned();
                 group_channels.set(chs);
                 active_group_channel.set(first.clone());
                 let cid = first.as_ref().map(|c| c.id.as_str());
-                if let Ok(msgs) = groups::groups_get_messages(&gid, cid, 50, None).await {
+                groups::groups_get_messages(&gid, cid, 30, None).await
+            } else {
+                groups::groups_get_messages(&gid, None, 30, None).await
+            };
+            if let Ok(mut msgs) = fetched {
+                let has_more = msgs.len() >= 30;
+                msgs.sort_by_key(|m| m.seq);
+                if active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str()) {
+                    group_has_more.set(has_more);
                     group_messages.set(msgs);
+                    let gname = groups.peek().iter().find(|g| g.id == gid).map(|g| g.name.clone()).unwrap_or_default();
+                    let texts: Vec<(String, String)> = group_messages.peek().iter().map(|m| (m.content.clone(), gname.clone())).collect();
+                    register_reminders(&my_id_sig.peek(), &texts);
+                    platform::scroll_chat_to_bottom(true);
                 }
-            } else if let Ok(msgs) = groups::groups_get_messages(&gid, None, 50, None).await {
-                group_messages.set(msgs);
             }
-            let gname = groups.peek().iter().find(|g| g.id == gid).map(|g| g.name.clone()).unwrap_or_default();
-            let texts: Vec<(String, String)> = group_messages.peek().iter().map(|m| (m.content.clone(), gname.clone())).collect();
-            register_reminders(&my_id_sig.peek(), &texts);
-            platform::scroll_chat_to_bottom(false);
+        });
+    });
+
+    let load_more_group = use_callback(move |_: ()| {
+        if *group_loading_more.peek() || !*group_has_more.peek() {
+            return;
+        }
+        let Some(grp) = active_group.peek().clone() else { return };
+        let Some(oldest_seq) = group_messages.peek().iter().map(|m| m.seq).min() else { return };
+        let cid = active_group_channel.peek().as_ref().map(|c| c.id.clone());
+        group_loading_more.set(true);
+        let gid = grp.id.clone();
+        spawn(async move {
+            if let Ok(mut older) = groups::groups_get_messages(&gid, cid.as_deref(), 30, Some(oldest_seq)).await {
+                let more = older.len() >= 30;
+                older.sort_by_key(|m| m.seq);
+                if active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str()) {
+                    group_has_more.set(more);
+                    if !older.is_empty() {
+                        platform::snapshot_chat_scroll_height().await;
+                        group_messages.with_mut(|list| {
+                            let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
+                            let mut fresh: Vec<GroupMessageItem> = older.into_iter().filter(|m| !existing.contains(&m.id)).collect();
+                            fresh.append(list);
+                            *list = fresh;
+                        });
+                        platform::restore_chat_scroll_after_prepend();
+                    }
+                }
+            }
+            group_loading_more.set(false);
         });
     });
 
@@ -1447,33 +1541,50 @@ pub fn Chat(
         });
     };
 
-    // Helper: select a friend DM
+    // Helper: select a friend DM (always loads newest first, retries key boot, no jitter on same-chat click)
     let uid_for_select = current_user_id.clone();
     let pkey_for_select = preview_storage_key.clone();
     let select_friend = use_callback(move |friend: FriendItem| {
+        let same = active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str())
+            && !messages.peek().is_empty();
         is_settings_open.set(false);
         server_settings_open.set(false);
         nav_section.set(NavSection::DirectMessages);
+        unread_counts.with_mut(|m| {
+            m.remove(&friend.id);
+        });
+        if same {
+            return;
+        }
         selected_channel.set(None);
         active_group.set(None);
         active_bot.set(None);
         active_friend.set(Some(friend.clone()));
         is_friend_typing.set(false);
         messages.set(Vec::new());
+        dm_has_more.set(false);
+        dm_loading_more.set(false);
         partner_fingerprint.set(None);
         dm_reply_to.set(None);
         partner_read_seq.set(None);
         chat_wallpaper.set(None);
         chat_menu_open.set(false);
 
-        unread_counts.with_mut(|m| {
-            m.remove(&friend.id);
-        });
-
         let uid = uid_for_select.clone();
         let pkey = pkey_for_select.clone();
         spawn(async move {
-            let Some(keys) = user_keys() else {
+            // Wait briefly if E2EE keys are still loading on initial boot
+            let mut keys_opt = user_keys.peek().clone();
+            if keys_opt.is_none() {
+                for _ in 0..30 {
+                    platform::sleep_ms(100).await;
+                    keys_opt = user_keys.peek().clone();
+                    if keys_opt.is_some() {
+                        break;
+                    }
+                }
+            }
+            let Some(keys) = keys_opt else {
                 return;
             };
 
@@ -1501,7 +1612,8 @@ pub fn Chat(
                 }
             };
 
-            if let Ok(mut wire_list) = api::messages_get(&friend.id, None, Some(50)).await {
+            if let Ok(mut wire_list) = api::messages_get(&friend.id, None, Some(30)).await {
+                let has_more = wire_list.len() >= 30;
                 wire_list.sort_by_key(|m| m.seq);
                 let mut decrypted_list = Vec::with_capacity(wire_list.len());
                 for wire in wire_list {
@@ -1540,6 +1652,9 @@ pub fn Chat(
                         }),
                     }
                 }
+                if active_friend.peek().as_ref().map(|f| f.id.as_str()) != Some(friend.id.as_str()) {
+                    return;
+                }
                 if let Some(last) = decrypted_list.last() {
                     let txt = last.text.clone();
                     last_previews.with_mut(|m| {
@@ -1551,6 +1666,7 @@ pub fn Chat(
                 let texts: Vec<(String, String)> = decrypted_list.iter().map(|m| (split_device_prefix(&m.text).1, place.clone())).collect();
                 register_reminders(&uid, &texts);
                 let last_partner_seq = decrypted_list.iter().filter(|m| !m.is_self).map(|m| m.seq).max();
+                dm_has_more.set(has_more);
                 messages.set(decrypted_list);
                 platform::scroll_chat_to_bottom(true);
                 if friend.id == uid {
@@ -1568,6 +1684,92 @@ pub fn Chat(
                     }
                 }
             }
+        });
+    });
+
+    let uid_for_more = current_user_id.clone();
+    let load_more_dm = use_callback(move |_: ()| {
+        if *dm_loading_more.peek() || !*dm_has_more.peek() {
+            return;
+        }
+        let Some(friend) = active_friend.peek().clone() else { return };
+        let Some(oldest_seq) = messages.peek().iter().map(|m| m.seq).min() else { return };
+        let Some(keys) = user_keys.peek().clone() else { return };
+        let peer_keys_opt = peer_keys_cache.peek().get(&friend.id).cloned();
+        dm_loading_more.set(true);
+        let uid = uid_for_more.clone();
+        spawn(async move {
+            let peer_keys = match peer_keys_opt {
+                Some(pk) => pk,
+                None => {
+                    let Ok(pk_resp) = api::keys_get(&friend.id).await else {
+                        dm_loading_more.set(false);
+                        return;
+                    };
+                    let Ok(pk) = get_or_verify_peer_keys(
+                        &pk_resp.user_id,
+                        &pk_resp.ecdh_public,
+                        &pk_resp.ecdsa_public,
+                        &pk_resp.fingerprint,
+                    ) else {
+                        dm_loading_more.set(false);
+                        return;
+                    };
+                    peer_keys_cache.write().insert(friend.id.clone(), pk.clone());
+                    pk
+                }
+            };
+            if let Ok(mut wire_list) = api::messages_get(&friend.id, Some(oldest_seq), Some(30)).await {
+                let more = wire_list.len() >= 30;
+                wire_list.sort_by_key(|m| m.seq);
+                let mut older = Vec::with_capacity(wire_list.len());
+                for wire in wire_list {
+                    let is_self = wire.sender_id == uid;
+                    let sender_ecdsa = if is_self { &keys.ecdsa_raw } else { &peer_keys.ecdsa_raw };
+                    match decrypt_chat_message(&wire.envelope, &keys, sender_ecdsa) {
+                        Ok(dec) => older.push(DisplayMessage {
+                            id: wire.id,
+                            seq: wire.seq,
+                            sender_id: wire.sender_id,
+                            recipient_id: wire.recipient_id,
+                            text: dec.text,
+                            created_at: wire.created_at,
+                            is_self,
+                            status: MessageStatus::Sent,
+                            reply_to_id: wire.reply_to_id,
+                            reactions: wire.reactions.iter().map(|r| (r.emoji.clone(), r.user_ids.clone())).collect(),
+                            is_pinned: wire.is_pinned,
+                        }),
+                        Err(_) => older.push(DisplayMessage {
+                            id: wire.id,
+                            seq: wire.seq,
+                            sender_id: wire.sender_id,
+                            recipient_id: wire.recipient_id,
+                            text: "Không đọc được trên máy này".to_string(),
+                            created_at: wire.created_at,
+                            is_self,
+                            status: MessageStatus::Error,
+                            reply_to_id: None,
+                            reactions: Vec::new(),
+                            is_pinned: false,
+                        }),
+                    }
+                }
+                if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str()) {
+                    dm_has_more.set(more);
+                    if !older.is_empty() {
+                        platform::snapshot_chat_scroll_height().await;
+                        messages.with_mut(|list| {
+                            let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
+                            let mut fresh: Vec<DisplayMessage> = older.into_iter().filter(|m| !existing.contains(&m.id)).collect();
+                            fresh.append(list);
+                            *list = fresh;
+                        });
+                        platform::restore_chat_scroll_after_prepend();
+                    }
+                }
+            }
+            dm_loading_more.set(false);
         });
     });
 
@@ -2807,6 +3009,17 @@ pub fn Chat(
                         selected_channel.set(None);
                         active_ent_module.set(Some(m));
                     },
+                    self_chat_enabled: privacy.read().self_chat,
+                    on_create_self: move |_| {
+                        spawn(async move {
+                            if social::self_chat_enable().await.is_ok() {
+                                privacy.with_mut(|p| p.self_chat = true);
+                                open_self_chat.call(());
+                            } else {
+                                toast.set(Some("Không tạo được \"Chính mình\"".into()));
+                            }
+                        });
+                    },
                     active_section: section.clone(),
                     current_username: current_username.clone(),
                     current_avatar_url: my_avatar_url(),
@@ -3295,6 +3508,9 @@ pub fn Chat(
                                 on_send_raw: move |raw: String| send_dm_text.call((raw, None)),
                                 on_save_self: if self_mode { None } else { Some(EventHandler::new(move |t: String| save_to_self.call(t))) },
                                 on_open_invite: move |(kind, code): (String, String)| invite_open.set(Some((kind, code))),
+                                has_more: dm_has_more(),
+                                loading_more: dm_loading_more(),
+                                on_load_more: move |_| load_more_dm.call(()),
                             }
 
                             div { class: "typing-indicator", aria_live: "polite",
@@ -3519,9 +3735,14 @@ pub fn Chat(
                                                     onclick: move |_| {
                                                         let c = ch_clone.clone();
                                                         active_group_channel.set(Some(c.clone()));
+                                                        group_has_more.set(false);
+                                                        group_loading_more.set(false);
                                                         let g = gid.clone();
                                                         spawn(async move {
-                                                            if let Ok(msgs) = groups::groups_get_messages(&g, Some(&c.id), 50, None).await {
+                                                            if let Ok(mut msgs) = groups::groups_get_messages(&g, Some(&c.id), 30, None).await {
+                                                                let more = msgs.len() >= 30;
+                                                                msgs.sort_by_key(|m| m.seq);
+                                                                group_has_more.set(more);
                                                                 group_messages.set(msgs);
                                                             }
                                                             platform::scroll_chat_to_bottom(true);
@@ -3574,6 +3795,9 @@ pub fn Chat(
                                 on_send_raw: move |raw: String| send_group_raw.call(raw),
                                 on_save_self: move |t: String| save_to_self.call(t),
                                 on_open_invite: move |(kind, code): (String, String)| invite_open.set(Some((kind, code))),
+                                has_more: group_has_more(),
+                                loading_more: group_loading_more(),
+                                on_load_more: move |_| load_more_group.call(()),
                             }
 
                             Composer {
@@ -3782,6 +4006,9 @@ pub fn Chat(
                                             on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
                                             on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
                                             on_create_task: on_task_handler,
+                                            has_more: channel_has_more(),
+                                            loading_more: channel_loading_more(),
+                                            on_load_more: move |_| load_more_channel.call(()),
                                         }
                                     }
                                 }
@@ -4218,7 +4445,7 @@ pub fn Chat(
                                                 active_friend.set(None);
                                             }
                                             last_previews.with_mut(|m| { m.remove(&me); });
-                                            toast.set(Some("Đã xóa \"Chính mình\". Bạn có thể tạo lại ở đầu danh sách tin nhắn.".into()));
+                                            toast.set(Some("Đã xóa \"Chính mình\". Bạn có thể bấm dấu + ở trên để tạo lại.".into()));
                                         }
                                         Err(_) => toast.set(Some("Không xóa được".into())),
                                     }
