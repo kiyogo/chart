@@ -79,12 +79,15 @@ pub fn scroll_chat_to_bottom(instant: bool) {
             const scroll = () => {{
                 const el = document.getElementById('chat-messages-scroll');
                 if (!el) return;
-                el.scrollTo({{ top: el.scrollHeight, behavior: '{behavior}' }});
+                if ('{behavior}' === 'instant') {{
+                    el.scrollTop = el.scrollHeight;
+                }} else {{
+                    el.scrollTo({{ top: el.scrollHeight, behavior: 'smooth' }});
+                }}
             }};
-            requestAnimationFrame(() => {{
-                scroll();
-                if ('{behavior}' === 'instant') requestAnimationFrame(scroll);
-            }});
+            scroll();
+            queueMicrotask(scroll);
+            requestAnimationFrame(scroll);
         }})();
         "#
     ));

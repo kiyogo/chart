@@ -67,9 +67,7 @@ button {
   outline: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease),
-    border-color var(--dur-hover) var(--ease), opacity var(--dur-hover) var(--ease),
-    transform var(--dur-fast) var(--ease), border-radius var(--dur-menu) var(--ease);
+  transition: background-color var(--dur-hover) var(--ease), opacity var(--dur-hover) var(--ease);
 }
 button:disabled { cursor: not-allowed; }
 button:focus-visible, a:focus-visible, [tabindex]:focus-visible,
@@ -1413,9 +1411,11 @@ body.resizing-panel * {
 }
 
 .chat-header {
+  height: var(--header-height);
   min-height: var(--header-height);
-  height: auto;
-  padding: var(--space-2) var(--space-4);
+  max-height: var(--header-height);
+  box-sizing: border-box;
+  padding: 0 var(--space-4);
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -1517,7 +1517,6 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   padding: var(--space-4) clamp(var(--space-3), 2.5vw, var(--space-8)) calc(var(--space-4) + 4.75rem);
 }
@@ -2079,9 +2078,7 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
   width: var(--details-width);
   flex-shrink: 0;
   height: 100%;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--pc-1, var(--bg-primary)) 12%, var(--bg-primary)) 0%,
-    var(--bg-primary) 42%);
+  background: var(--bg-primary);
   border-radius: var(--panel-radius);
   display: flex;
   flex-direction: column;
@@ -2940,8 +2937,7 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
   backdrop-filter: blur(12px);
   opacity: 0.38;
   filter: saturate(65%);
-  transform: translateY(2px);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.2s ease, background-color 0.2s ease;
 }
 .studio:hover .studio-tools,
 .studio-tools:hover,
@@ -2949,7 +2945,6 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
 .studio-tools:active {
   opacity: 1;
   filter: none;
-  transform: translateY(0);
   background: var(--bg-surface-hover);
   box-shadow: none;
   border-color: transparent;
@@ -3112,17 +3107,19 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
 /* ---------- Conversation list ---------- */
 .conv-row { position: relative; display: block; }
 .conv-row .chat-item { padding-right: 0.45rem; }
-.conv-row:hover .chat-item,
-.conv-row:focus-within .chat-item { padding-right: 2.25rem; }
+.conv-row:hover .chat-item-time,
+.conv-row:focus-within .chat-item-time,
+.conv-row:hover .chat-item-badge,
+.conv-row:focus-within .chat-item-badge { opacity: 0; }
 .conv-more {
   position: absolute; top: 50%; right: var(--space-2); transform: translateY(-50%);
   width: 1.875rem; height: 1.875rem; border-radius: var(--radius-full);
   display: flex; align-items: center; justify-content: center;
   color: var(--text-secondary); background: transparent;
-  opacity: 0; transition: opacity var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
+  opacity: 0; pointer-events: none; transition: opacity var(--dur-hover) var(--ease), background-color var(--dur-hover) var(--ease);
 }
 .conv-more:hover { background: var(--bg-hover); color: var(--text-secondary); }
-.conv-row:hover .conv-more, .conv-more:focus-visible, .conv-more.active { opacity: 1; }
+.conv-row:hover .conv-more, .conv-row:focus-within .conv-more, .conv-more:focus-visible, .conv-more.active { opacity: 1; pointer-events: auto; }
 @media (hover: none) { .conv-more { opacity: 0.7; } }
 .conv-menu { top: calc(100% - 6px); left: auto; right: var(--space-2); min-width: 15rem; }
 .chat-item-icon { display: inline-flex; color: var(--text-muted); flex-shrink: 0; }
@@ -4170,7 +4167,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   overflow-y: auto;
   opacity: 0.45;
   filter: saturate(70%);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.2s ease, background-color 0.2s ease;
 }
 .studio-main .studio-tools:hover,
 .studio-main .studio-tools:focus-within,
@@ -4234,7 +4231,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   gap: var(--space-2);
   opacity: 0.45;
   filter: saturate(70%);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.2s ease, background-color 0.2s ease;
 }
 .studio-timeline:hover,
 .studio-timeline:focus-within,
@@ -6056,7 +6053,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 
 /* ---------- Spec 016: Threads Social Feed ("Mới") ---------- */
 .feed-column {
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
 }
 .feed-scroll {
   flex: 1;
@@ -6110,19 +6107,19 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   height: 2.5rem;
   padding: 0 1rem;
   border-radius: 9999px;
-  background: var(--bg-input);
+  background: transparent;
   color: var(--text-secondary);
   font-size: 0.9375rem;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border: none;
+  border: 1px solid var(--input-border);
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease);
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .feed-compose-pill:hover {
-  background: var(--bg-surface-hover);
+  background: var(--bg-hover);
 }
 .feed-compose-quick-actions {
   display: flex;
@@ -7097,7 +7094,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 
 /* Google Meet / Zoom-style MeetView */
 .meet-column {
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
 }
 .meet-inner {
   max-width: 56rem;
@@ -7196,8 +7193,8 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   height: 2.25rem;
   padding: 0 var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--bg-surface-hover);
-  color: var(--text-secondary);
+  background: transparent;
+  color: var(--text-primary);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   display: inline-flex;
@@ -7205,9 +7202,13 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   justify-content: center;
   gap: 6px;
 }
+.meet-mode-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
 .meet-mode-chip.active {
   background: var(--accent-soft);
-  color: var(--accent-text);
+  color: var(--text-primary);
 }
 .meet-btn-row {
   display: flex;
@@ -7223,7 +7224,8 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   margin-top: var(--space-1);
   padding: var(--space-3);
   border-radius: var(--radius-lg);
-  background: var(--bg-surface-hover);
+  background: transparent;
+  border: 1px solid var(--input-border);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -7288,9 +7290,9 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: var(--space-3) 0;
   border-radius: var(--radius-lg);
-  background: var(--bg-surface-hover);
+  background: transparent;
   flex-wrap: wrap;
 }
 .meet-room-info {
@@ -9145,14 +9147,10 @@ html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .r
   background: color-mix(in srgb, var(--text-primary) 4%, transparent);
   color: var(--text-primary) !important;
   text-align: left;
-  transition: background-color var(--dur-hover) var(--ease), transform 200ms var(--spring-snappy);
+  transition: background-color var(--dur-hover) var(--ease);
 }
 .cw-quickstart-card:hover {
   background: var(--bg-hover) !important;
-  transform: translateY(-2px);
-}
-.cw-quickstart-card:active {
-  transform: scale(0.98);
 }
 .cw-qs-icon {
   width: 2.5rem;
@@ -9310,10 +9308,7 @@ html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .r
   line-height: var(--leading-relaxed);
 }
 .guide-card {
-  transition: transform 200ms var(--spring-snappy), background-color var(--dur-hover) var(--ease);
-}
-.guide-card:hover {
-  transform: translateY(-2px);
+  transition: background-color var(--dur-hover) var(--ease);
 }
 .guide-card .settings-label {
   white-space: normal !important;
@@ -9402,40 +9397,23 @@ html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .r
   will-change: transform, opacity;
 }
 .download-os-card {
-  transition: background-color var(--dur-hover) var(--ease), transform 200ms var(--spring-snappy);
-}
-.download-os-card:hover {
-  transform: translateY(-2px);
+  transition: background-color var(--dur-hover) var(--ease);
 }
 
-/* 8. Global Tactile Spring Micro-Interactions (Linear / Emil Kowalski 150-240ms Standard) */
-@keyframes cw-rise-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: none; }
-}
-@keyframes cw-msg-pop {
-  from { opacity: 0; transform: translateY(6px) scale(0.985); }
-  to   { opacity: 1; transform: none; }
-}
-@keyframes cw-modal-pop {
-  from { opacity: 0; transform: scale(0.96) translateY(6px); }
-  to   { opacity: 1; transform: none; }
-}
+/* 8. Global Zero-Morph Micro-Interactions (Spec 049 & Spec 050):
+   - Message rows, chat frames & page grids render rock-solid with ZERO scale/translate morphing on switch.
+   - Elastic spring physics stay focused on tactile controls (switches, reactions, accent swatches, ambient orb/pulse). */
+.message-row,
 .cw-stagger,
 .settings-body > .settings-content > .settings-cols {
-  animation: cw-rise-in 210ms var(--spring-smooth);
-}
-.message-row {
-  animation: cw-msg-pop 190ms var(--spring-smooth);
-}
-.modal-dialog {
-  animation: cw-modal-pop 200ms var(--spring-smooth);
+  animation: none !important;
+  transform: none !important;
 }
 .reaction-pill {
   transition: transform 180ms var(--spring-bounce), background-color var(--dur-hover) var(--ease);
 }
-.reaction-pill:hover { transform: scale(1.07); }
-.reaction-pill:active { transform: scale(0.94); }
+.reaction-pill:hover { transform: scale(1.06); }
+.reaction-pill:active { transform: scale(0.95); }
 
 /* Elastic spring switch knob */
 input[type="checkbox"].switch::after {
@@ -9448,15 +9426,6 @@ input[type="checkbox"].switch:checked:active::after {
   transform: translateX(14px);
 }
 
-/* Tactile press feedback on action controls (zero text color / weight shift) */
-.btn-primary:active:not(:disabled),
-.btn-secondary:active:not(:disabled),
-.btn-danger:active:not(:disabled),
-.btn-danger-outline:active:not(:disabled),
-.send-btn:active:not(:disabled),
-.accent-swatch:active {
-  transform: scale(0.965);
-}
 .accent-swatch {
   transition: transform 200ms var(--spring-bounce), box-shadow 180ms var(--ease);
 }
@@ -9483,12 +9452,91 @@ input[type="checkbox"].switch:checked:active::after {
   pointer-events: none;
 }
 
+/* ==========================================================================
+   Spec 050: Pure Crisp White Panels Across Feed, Meet, Details & Entire Web
+   + Authoritative Translucent / Glass Parity (never overridden by page styles)
+   ========================================================================== */
+.feed-column,
+.meet-column,
+.chat-column,
+.vico-chat-column,
+.plugin-panel,
+.nav-sidebar,
+.settings-nav,
+.settings-body,
+.details-panel,
+.partner-info-sidebar,
+.right-panel,
+.server-members-panel,
+.notifications-page,
+.download-page,
+.search-page,
+.main-stage > .empty-state {
+  background-color: var(--bg-primary);
+}
+.details-panel,
+.partner-info-sidebar,
+.right-panel,
+.feed-column,
+.meet-column {
+  background-image: none;
+}
+.feed-stories-card,
+.meet-hero-card,
+.meet-list-card,
+.meet-room-item,
+.meet-created-box {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+/* Authoritative translucent & glass panel parity (wins over all page defaults) */
+html[data-panel-translucent="true"] .feed-column,
+html[data-panel-translucent="true"] .meet-column,
+html[data-panel-translucent="true"] .chat-column,
+html[data-panel-translucent="true"] .vico-chat-column,
+html[data-panel-translucent="true"] .plugin-panel,
+html[data-panel-translucent="true"] .nav-sidebar,
+html[data-panel-translucent="true"] .settings-nav,
+html[data-panel-translucent="true"] .settings-body,
+html[data-panel-translucent="true"] .details-panel,
+html[data-panel-translucent="true"] .partner-info-sidebar,
+html[data-panel-translucent="true"] .right-panel,
+html[data-panel-translucent="true"] .server-members-panel,
+html[data-panel-translucent="true"] .notifications-page,
+html[data-panel-translucent="true"] .download-page,
+html[data-panel-translucent="true"] .search-page,
+html[data-panel-translucent="true"] .main-stage > .empty-state,
+html[data-panel-glass="true"] .feed-column,
+html[data-panel-glass="true"] .meet-column,
+html[data-panel-glass="true"] .chat-column,
+html[data-panel-glass="true"] .vico-chat-column,
+html[data-panel-glass="true"] .plugin-panel,
+html[data-panel-glass="true"] .nav-sidebar,
+html[data-panel-glass="true"] .settings-nav,
+html[data-panel-glass="true"] .settings-body,
+html[data-panel-glass="true"] .details-panel,
+html[data-panel-glass="true"] .partner-info-sidebar,
+html[data-panel-glass="true"] .right-panel,
+html[data-panel-glass="true"] .server-members-panel,
+html[data-panel-glass="true"] .notifications-page,
+html[data-panel-glass="true"] .download-page,
+html[data-panel-glass="true"] .search-page,
+html[data-panel-glass="true"] .main-stage > .empty-state {
+  background-color: color-mix(in srgb, var(--bg-primary) var(--panel-opacity, 100%), transparent);
+}
+html[data-panel-glass="true"] .feed-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
+html[data-panel-glass="true"] .meet-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
+html[data-panel-glass="true"] .vico-chat-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
+html[data-panel-glass="true"] .plugin-panel:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)) {
+  backdrop-filter: blur(var(--panel-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
+}
+
 /* Full Respect for Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
   .cw-live-dot, .presence-dot, .cw-shield-pulse svg, .cw-orb-ring, .cw-orb-core,
   .cw-orb-core::after, .cw-orb-sat, .cw-living-ill .cw-ill-float, .cw-living-ill .cw-ill-halo,
-  .cw-living-ill .cw-ill-spark, .cw-qr-scan, .rail-brand::after, .cw-stagger,
-  .message-row, .modal-dialog, .cw-step-enter {
+  .cw-living-ill .cw-ill-spark, .cw-qr-scan, .rail-brand::after, .cw-step-enter {
     animation: none !important;
     transition: none !important;
   }

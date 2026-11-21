@@ -206,7 +206,7 @@ pub fn Chat(
     let mut dm_has_more = use_signal(|| false);
     let mut dm_loading_more = use_signal(|| false);
     let mut dm_loading_initial = use_signal(|| false);
-    let mut dm_cache = use_signal(HashMap::<String, (Vec<DisplayMessage>, bool)>::new);
+    let mut dm_cache = use_signal(HashMap::<String, (Vec<DisplayMessage>, bool, Option<i64>, Option<String>)>::new);
     let mut group_input = use_signal(String::new);
     let mut is_create_group_open = use_signal(|| false);
     let mut is_group_info_open = use_signal(|| false);
@@ -1329,7 +1329,10 @@ pub fn Chat(
         // Save outgoing active chat into in-memory cache before switching
         if let Some(prev_f) = active_friend.peek().clone() {
             if !*dm_loading_initial.peek() {
-                dm_cache.write().insert(prev_f.id, (messages.peek().clone(), *dm_has_more.peek()));
+                dm_cache.write().insert(
+                    prev_f.id,
+                    (messages.peek().clone(), *dm_has_more.peek(), *partner_read_seq.peek(), chat_wallpaper.peek().clone()),
+                );
             }
         }
         if let Some(prev_g) = active_group.peek().clone() {
@@ -1453,7 +1456,10 @@ pub fn Chat(
             && (!group_messages.peek().is_empty() || group_cache.peek().contains_key(&grp.id));
         if let Some(prev_f) = active_friend.peek().clone() {
             if !*dm_loading_initial.peek() {
-                dm_cache.write().insert(prev_f.id, (messages.peek().clone(), *dm_has_more.peek()));
+                dm_cache.write().insert(
+                    prev_f.id,
+                    (messages.peek().clone(), *dm_has_more.peek(), *partner_read_seq.peek(), chat_wallpaper.peek().clone()),
+                );
             }
         }
         if let Some(prev_c) = selected_channel.peek().clone() {
@@ -1658,7 +1664,10 @@ pub fn Chat(
             && (!messages.peek().is_empty() || dm_cache.peek().contains_key(&friend.id));
         if let Some(prev_f) = active_friend.peek().clone() {
             if prev_f.id != friend.id && !*dm_loading_initial.peek() {
-                dm_cache.write().insert(prev_f.id, (messages.peek().clone(), *dm_has_more.peek()));
+                dm_cache.write().insert(
+                    prev_f.id,
+                    (messages.peek().clone(), *dm_has_more.peek(), *partner_read_seq.peek(), chat_wallpaper.peek().clone()),
+                );
             }
         }
         if let Some(prev_g) = active_group.peek().clone() {
@@ -1688,19 +1697,25 @@ pub fn Chat(
         dm_loading_more.set(false);
         partner_fingerprint.set(None);
         dm_reply_to.set(None);
-        partner_read_seq.set(None);
-        chat_wallpaper.set(None);
         chat_menu_open.set(false);
 
         let cached = dm_cache.peek().get(&friend.id).cloned();
         let had_cache = cached.is_some();
-        if let Some((cached_msgs, cached_more)) = cached {
+        if let Some((cached_msgs, cached_more, cached_read_seq, cached_wp)) = cached {
             dm_has_more.set(cached_more);
+            partner_read_seq.set(cached_read_seq);
+            chat_wallpaper.set(cached_wp);
             messages.set(cached_msgs);
             dm_loading_initial.set(false);
             platform::scroll_chat_to_bottom(true);
         } else {
             dm_has_more.set(false);
+            partner_read_seq.set(None);
+            chat_wallpaper.set(if friend.id == uid_for_select {
+                platform::storage_get(&format!("chatw_selfwp_{uid_for_select}"))
+            } else {
+                None
+            });
             messages.set(Vec::new());
             dm_loading_initial.set(true);
         }
@@ -1756,7 +1771,24 @@ pub fn Chat(
                 }
             };
 
-            if let Ok(mut wire_list) = api::messages_get(&friend.id, None, Some(30)).await {
+            let (wire_res, read_res, wp_res) = futures_util::join!(
+                api::messages_get(&friend.id, None, Some(30)),
+                async {
+                    if friend.id != uid {
+                        social::partner_read(&friend.id).await.ok().flatten()
+                    } else {
+                        None
+                    }
+                },
+                async {
+                    if friend.id == uid {
+                        platform::storage_get(&format!("chatw_selfwp_{uid}"))
+                    } else {
+                        social::wallpaper_get("dm", &friend.id).await.ok().flatten()
+                    }
+                }
+            );
+            if let Ok(mut wire_list) = wire_res {
                 let has_more = wire_list.len() >= 30;
                 wire_list.sort_by_key(|m| m.seq);
                 let mut decrypted_list = Vec::with_capacity(wire_list.len());
@@ -1824,29 +1856,34 @@ pub fn Chat(
                             list.sort_by_key(|m| m.seq);
                         }
                     });
-                    dm_cache.write().insert(friend.id.clone(), (messages.peek().clone(), *dm_has_more.peek()));
+                    if *partner_read_seq.peek() != read_res {
+                        partner_read_seq.set(read_res);
+                    }
+                    if *chat_wallpaper.peek() != wp_res {
+                        chat_wallpaper.set(wp_res.clone());
+                    }
+                    dm_cache.write().insert(
+                        friend.id.clone(),
+                        (messages.peek().clone(), *dm_has_more.peek(), read_res, wp_res),
+                    );
                     if changed {
                         platform::scroll_chat_to_bottom(true);
                     }
                 } else {
                     dm_has_more.set(has_more);
+                    partner_read_seq.set(read_res);
+                    chat_wallpaper.set(wp_res.clone());
                     messages.set(decrypted_list.clone());
-                    dm_cache.write().insert(friend.id.clone(), (decrypted_list, has_more));
+                    dm_cache.write().insert(
+                        friend.id.clone(),
+                        (decrypted_list, has_more, read_res, wp_res),
+                    );
                     platform::scroll_chat_to_bottom(true);
                 }
                 dm_loading_initial.set(false);
-                if friend.id == uid {
-                    chat_wallpaper.set(platform::storage_get(&format!("chatw_selfwp_{uid}")));
-                }
                 if friend.id != uid {
                     if let Some(seq) = last_partner_seq {
                         let _ = social::mark_read(&friend.id, seq).await;
-                    }
-                    if let Ok(seq) = social::partner_read(&friend.id).await {
-                        partner_read_seq.set(seq);
-                    }
-                    if let Ok(w) = social::wallpaper_get("dm", &friend.id).await {
-                        chat_wallpaper.set(w);
                     }
                 }
             } else if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str()) {
@@ -1933,7 +1970,10 @@ pub fn Chat(
                             fresh.append(list);
                             *list = fresh;
                         });
-                        dm_cache.write().insert(friend.id.clone(), (messages.peek().clone(), more));
+                        dm_cache.write().insert(
+                            friend.id.clone(),
+                            (messages.peek().clone(), more, *partner_read_seq.peek(), chat_wallpaper.peek().clone()),
+                        );
                         platform::restore_chat_scroll_after_prepend();
                     }
                 }
