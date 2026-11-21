@@ -377,6 +377,8 @@ pub enum WsEvent {
     RecoveryP2pSignal(serde_json::Value),
     #[serde(rename = "media.delete_for_all")]
     MediaDeleteForAll(serde_json::Value),
+    #[serde(rename = "plugin.sync")]
+    PluginSync(serde_json::Value),
     #[serde(other)]
     Unknown,
 }

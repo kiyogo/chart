@@ -1,0 +1,49 @@
+{
+  "plugin_key": "acme.task_tracker",
+  "name": "Task Tracker Pro",
+  "version": "1.0.0",
+  "publisher": "acme",
+  "entry_point": "worker.js",
+  "runtime": "js",
+  "sdk_version": "1.0.0",
+  "platforms": ["web", "desktop"],
+  "permissions": [
+    "storage.local",
+    "storage.sync",
+    "commands.register",
+    "ui.page",
+    "ui.sidebar",
+    "ui.message_action",
+    "ui.composer",
+    "events.lifecycle",
+    "notifications.send"
+  ],
+  "ui_contributions": {
+    "page": true,
+    "sidebar": true,
+    "title": "Task Tracker Pro",
+    "messageActions": [
+      { "id": "create_task_card", "label": "Tạo thẻ", "icon": "check-square" }
+    ]
+  },
+  "commands": [
+    { "trigger": "/track", "description": "Tạo nhanh một thẻ công việc mới vào bảng Kanban" },
+    { "trigger": "/tasks", "description": "Xem tổng số công việc đang mở" }
+  ],
+  "event_subscriptions": ["onMessageReceived"],
+  "settings_schema": [
+    { "key": "default_column", "label": "Cột mặc định", "type": "select", "options": ["todo", "doing", "done"], "default": "todo" },
+    { "key": "auto_tag_prefix", "label": "Tiền tố thẻ", "type": "text", "default": "[TASK]" }
+  ],
+  "resource_limits": {
+    "max_memory_mb": 32,
+    "max_exec_ms": 3000,
+    "max_storage_kb": 512,
+    "max_requests_per_min": 30
+  },
+  "summary": "Bảng công việc Kanban độc lập phát triển hoàn toàn qua ChatW SDK",
+  "description": "Plugin bên thứ ba chứng minh giao diện HTML/CSS/JS tự do, lưu trữ đồng bộ, lệnh slash /track, nút thao tác trên tin nhắn và Event Hook.",
+  "category": "productivity",
+  "entry_js": "worker.js",
+  "entry_ui": "ui.html"
+}

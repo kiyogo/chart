@@ -17,9 +17,10 @@ ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 
 mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$APP_DIR" "$ICON_DIR"
 
-# 1. Install desktop binary
-cp "$TARGET_BIN" "$INSTALL_DIR/chatw-desktop"
-chmod 755 "$INSTALL_DIR/chatw-desktop"
+# 1. Install desktop binary (atomic swap avoids ETXTBSY if ChatW is currently open)
+cp "$TARGET_BIN" "$INSTALL_DIR/chatw-desktop.new"
+chmod 755 "$INSTALL_DIR/chatw-desktop.new"
+mv -f "$INSTALL_DIR/chatw-desktop.new" "$INSTALL_DIR/chatw-desktop"
 
 # 2. Install crisp vector SVG icon (blue rounded square + white ChatW bubble mark)
 cat << 'EOF' > "$ICON_DIR/chatw.svg"

@@ -70,6 +70,7 @@ enum Tab {
     Roles,
     Members,
     Audit,
+    Plugins,
     EntGeneral,
     EntHr,
     EntWork,
@@ -107,13 +108,14 @@ impl Tab {
     }
 }
 
-const NAV: [(&str, Tab, &str); 13] = [
+const NAV: [(&str, Tab, &str); 14] = [
     ("Cộng đồng", Tab::Overview, "Tổng quan"),
     ("Cộng đồng", Tab::Welcome, "Chào mừng"),
     ("Cộng đồng", Tab::Expressions, "Biểu cảm"),
     ("Quản lý", Tab::Roles, "Vai trò"),
     ("Quản lý", Tab::Members, "Thành viên"),
     ("Quản lý", Tab::Audit, "Kiểm duyệt"),
+    ("Quản lý", Tab::Plugins, "Plugin & Webhook"),
     ("Doanh nghiệp", Tab::EntGeneral, "Thiết lập"),
     ("Doanh nghiệp", Tab::EntHr, "Nhân sự"),
     ("Doanh nghiệp", Tab::EntWork, "Công việc"),
@@ -135,6 +137,7 @@ fn tab_keywords(t: Tab) -> &'static str {
         Tab::Roles => "vai tro quyen admin quan tri vien permissions role",
         Tab::Members => "thanh vien member kick gan vai tro",
         Tab::Audit => "kiem duyet audit log lich su",
+        Tab::Plugins => "plugin webhook bot api tich hop discord embed",
         Tab::EntGeneral => "thiet lap chung giao dien thanh ben mui gio website",
         Tab::EntHr => "nhan su ma nhan vien khach moi nghi viec",
         Tab::EntWork => "cong viec du an kenh nhac han duyet",
@@ -153,6 +156,7 @@ fn tab_icon(t: Tab) -> Element {
         Tab::Roles => rsx! { ShieldIcon { size: 18 } },
         Tab::Members => rsx! { FriendsIcon { size: 18 } },
         Tab::Audit => rsx! { FileTextIcon { size: 18 } },
+        Tab::Plugins => rsx! { crate::components::icons::PluginIcon { size: 18 } },
         Tab::EntGeneral => rsx! { SlidersIcon { size: 18 } },
         Tab::EntHr => rsx! { BriefcaseIcon { size: 18 } },
         Tab::EntWork => rsx! { ListChecksIcon { size: 18 } },
@@ -175,6 +179,7 @@ pub fn ServerSettingsView(
     let mut has_detail = use_signal(|| false);
     let mut roles = use_signal(Vec::<ServerRole>::new);
     let mut members = use_signal(Vec::<ServerMemberItem>::new);
+    let mut channels = use_signal(Vec::<crate::models::ChannelItem>::new);
     let mut settings = use_signal(|| Option::<ServerSettings>::None);
     let mut mine = use_signal(|| (0i64, 0i64, false));
     let mut editing = use_signal(|| Option::<String>::None);
@@ -197,6 +202,9 @@ pub fn ServerSettingsView(
                 }
                 if let Ok(m) = api::servers_get_members(&sid).await {
                     members.set(m);
+                }
+                if let Ok(chs) = api::servers_get_channels(&sid).await {
+                    channels.set(chs);
                 }
                 if let Ok(s) = social::server_settings(&sid).await {
                     settings.set(Some(s));
@@ -607,6 +615,16 @@ pub fn ServerSettingsView(
                                 Tab::Audit => rsx! {
                                     div { class: "settings-group",
                                         crate::components::community_ui::AuditLogView { server_id: server.id.clone() }
+                                    }
+                                },
+                                Tab::Plugins => rsx! {
+                                    div { class: "settings-group",
+                                        crate::components::plugin_hub::ScopedPluginAndWebhookTab {
+                                            scope_type: "server".to_string(),
+                                            scope_id: server.id.clone(),
+                                            channels: channels(),
+                                            can_manage: is_owner || (bits & MANAGE_SERVER != 0) || (bits & ADMINISTRATOR != 0),
+                                        }
                                     }
                                 },
                                 Tab::Members => rsx! {

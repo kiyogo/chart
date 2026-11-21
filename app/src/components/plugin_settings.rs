@@ -10,11 +10,12 @@ use crate::{
         icons::{
             BackIcon, CheckIcon, CopyIcon, DownloadIcon, PlusIcon, SlidersIcon, TrashIcon,
         },
+        plugin_hub::PluginHubPanel,
         plugins_view::{
-            ACTIVE_LEFT_PLUGIN, ACTIVE_PLUGIN_PAGE, EDITING_PLUGIN_ID, PLUGINS, PluginCommand,
-            PluginComposerBtn, PluginCustomBlock, PluginGlyph, PluginMod, PluginSettingDef,
-            PluginTheme, SOUNDBOARD_PADS, VOXEL_PALETTE, glyph_slot_size, init_plugins,
-            play_mod_sound, play_mod_sound_opts, save_plugins, try_run_plugin_command,
+            ACTIVE_LEFT_PLUGIN, ACTIVE_PLUGIN_ACCOUNT_ID, ACTIVE_PLUGIN_PAGE, EDITING_PLUGIN_ID,
+            PLUGINS, PluginCommand, PluginComposerBtn, PluginCustomBlock, PluginGlyph, PluginMod,
+            PluginSettingDef, PluginTheme, SOUNDBOARD_PADS, VOXEL_PALETTE, glyph_slot_size,
+            init_plugins, play_mod_sound, play_mod_sound_opts, save_plugins, try_run_plugin_command,
             NOTES_KEY, TODOS_KEY, VOXEL_KEY,
         },
     },
@@ -262,12 +263,13 @@ pub fn PluginsSettings(
                                 let d = new_display().trim().to_string();
                                 if d.is_empty() { return; }
                                 let u_raw = new_username().trim().to_lowercase().replace(' ', "_");
+                                let uid_hex = uuid::Uuid::new_v4().simple().to_string();
                                 let u = if u_raw.is_empty() {
-                                    format!("plugin_{}", chrono::Utc::now().timestamp_millis() % 100000)
+                                    format!("plugin_{}", &uid_hex[..8])
                                 } else {
                                     u_raw
                                 };
-                                let pid = format!("mod:custom_{}", chrono::Utc::now().timestamp_millis());
+                                let pid = format!("mod:custom_{}", uuid::Uuid::new_v4());
                                 let lg = if new_logo().trim().is_empty() { "logo:code".to_string() } else { new_logo().trim().to_string() };
                                 let tpl = new_template();
                                 let custom_blocks = if tpl == "blocks" {
@@ -388,27 +390,27 @@ pub fn PluginsSettings(
                             onclick: move |_| {
                                 match serde_json::from_str::<PluginMod>(&import_json()) {
                                     Ok(mut pm) => {
-                                        if pm.id.is_empty() {
-                                            pm.id = format!("mod:import_{}", chrono::Utc::now().timestamp_millis());
+                                        let mut list = PLUGINS.peek().clone();
+                                        // Never use timestamp IDs and never allow colliding ID to silently overwrite an existing plugin
+                                        if pm.id.trim().is_empty() || list.iter().any(|x| x.id == pm.id) {
+                                            pm.id = format!("mod:import_{}", uuid::Uuid::new_v4());
                                         }
                                         if pm.default_logo_url.is_empty() {
                                             pm.default_logo_url = pm.logo_url.clone();
                                         }
+                                        // Strip untrusted global CSS & never auto-enable imported untrusted JSON without user toggle
                                         pm.hud_enabled = false;
                                         pm.bot_enabled = false;
+                                        pm.theme_enabled = false;
+                                        pm.theme.custom_css.clear();
                                         pm.installed = true;
-                                        pm.enabled = true;
-                                        let mut list = PLUGINS.peek().clone();
-                                        if let Some(ex) = list.iter_mut().find(|x| x.id == pm.id) {
-                                            *ex = pm;
-                                        } else {
-                                            list.insert(0, pm);
-                                        }
+                                        pm.enabled = false;
+                                        list.insert(0, pm);
                                         save_plugins(&list);
                                         *PLUGINS.write() = list;
                                         import_json.set(String::new());
                                         import_open.set(false);
-                                        status.set(Some((false, "Đã cài đặt Plugin.".into())));
+                                        status.set(Some((false, "Đã nhập Plugin ở trạng thái tắt. Hãy kiểm tra và bật thủ công khi tin cậy.".into())));
                                     }
                                     Err(_) => status.set(Some((true, "JSON không hợp lệ".into()))),
                                 }
@@ -552,7 +554,12 @@ pub fn PluginsSettings(
                     div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
                 }
 
-                div { class: "mod-section-heading", "Đã cài đặt ({installed_plugins.len()})" }
+                PluginHubPanel {
+                    my_user_id: ACTIVE_PLUGIN_ACCOUNT_ID(),
+                    my_username: my_username.clone(),
+                }
+
+                div { class: "mod-section-heading", style: "margin-top: 18px;", "Tiện ích tích hợp ({installed_plugins.len()})" }
                 if installed_plugins.is_empty() {
                     div { class: "mod-store-empty", "Chưa cài đặt Plugin nào." }
                 } else {
@@ -1488,7 +1495,27 @@ fn CyberPluginSettings(plugin: PluginMod) -> Element {
                         class: "btn-secondary",
                         onclick: move |_| {
                             if cmd_sound { play_mod_sound("scifi"); }
-                            diag_out.set(Some("Kênh mã hóa AES-GCM 256-bit và ECDH P-256 đang hoạt động.".into()));
+                            let uid = ACTIVE_PLUGIN_ACCOUNT_ID();
+                            let uid_opt = (!uid.trim().is_empty()).then_some(uid.as_str());
+                            let probe_plain = b"chatw-e2ee-real-selftest";
+                            let aes_ok = crate::crypto::blob::seal(probe_plain)
+                                .and_then(|s| crate::crypto::blob::open(&s.cipher, &s.key_b64, &s.nonce_b64))
+                                .map(|pt| pt == probe_plain)
+                                .unwrap_or(false);
+                            match (crate::crypto::e2ee::get_user_keys(uid_opt), aes_ok) {
+                                (Some(k), true) => {
+                                    let fp_hex: String = k.fingerprint.iter().take(6).map(|b| format!("{b:02x}")).collect();
+                                    diag_out.set(Some(format!(
+                                        "Xác thực thực tế thành công: Khóa định danh ECDH/ECDSA P-256 tồn tại (vân tay {fp_hex}), kiểm thử vòng lặp AES-256-GCM đạt."
+                                    )));
+                                }
+                                (None, true) => {
+                                    diag_out.set(Some("Cảnh báo: AES-256-GCM hoạt động nhưng chưa tìm thấy khóa định danh P-256 của tài khoản trên thiết bị này.".into()));
+                                }
+                                _ => {
+                                    diag_out.set(Some("Lỗi kiểm thử mật mã: Không thể xác minh vòng lặp mã hóa AES-256-GCM cục bộ.".into()));
+                                }
+                            }
                         },
                         "Kiểm tra E2EE"
                     }

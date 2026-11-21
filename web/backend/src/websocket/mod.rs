@@ -232,6 +232,9 @@ pub enum WsEvent {
     /// Authoritative remote cache wipe when sender deletes media for everyone.
     #[serde(rename = "media.delete_for_all")]
     MediaDeleteForAll(serde_json::Value),
+    /// Realtime multi-device / server / group Plugin & Permission Sync event.
+    #[serde(rename = "plugin.sync")]
+    PluginSync(serde_json::Value),
 }
 
 pub struct WsHub {

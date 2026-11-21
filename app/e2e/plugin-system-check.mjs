@@ -198,7 +198,7 @@ try {
     const txt = root?.innerText || '';
     return {
       orderRows: root?.querySelectorAll('.plugin-order-row').length || 0,
-      hasDiag: txt.includes('AES-GCM'),
+      hasDiag: txt.includes('AES-256-GCM') && txt.includes('vân tay'),
     };
   });
   record('Cyber Neon removed cloned reorder list and runs live E2EE diagnostic', cyberAudit.orderRows === 0 && cyberAudit.hasDiag, JSON.stringify(cyberAudit));

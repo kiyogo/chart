@@ -1,0 +1,15 @@
+{
+  "name": "@chatw/plugin-sdk",
+  "version": "1.0.0",
+  "description": "Official TypeScript & JavaScript SDK for ChatW Plugin Platform",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "license": "MIT"
+}

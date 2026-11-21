@@ -3,6 +3,7 @@ pub mod avatar;
 pub mod avatar_motion;
 pub mod backup_cloud_ui;
 pub mod business_view;
+pub mod plugin_hub;
 pub mod plugin_settings;
 pub mod plugins_view;
 pub use plugins_view as bots_view;

@@ -29,6 +29,7 @@ enum Tab {
     Join,
     Members,
     Public,
+    Plugins,
 }
 
 #[component]
@@ -114,7 +115,7 @@ pub fn GroupManageDialog(
                     button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
                 }
                 div { class: "sidebar-filters", role: "tablist",
-                    for (tb, label) in [(Tab::Perms, "Quyền thành viên"), (Tab::Join, "Tham gia"), (Tab::Members, "Trưởng & phó nhóm"), (Tab::Public, "Công khai & chặn")] {
+                    for (tb, label) in [(Tab::Perms, "Quyền thành viên"), (Tab::Join, "Tham gia"), (Tab::Members, "Trưởng & phó nhóm"), (Tab::Public, "Công khai & chặn"), (Tab::Plugins, "Plugin & Webhook")] {
                         button { key: "{label}", r#type: "button", role: "tab", aria_selected: "{tab() == tb}", class: if tab() == tb { "filter-chip active" } else { "filter-chip" }, onclick: move |_| tab.set(tb),
                             "{label}"
                             if tb == Tab::Join && !requests.read().is_empty() { span { class: "chat-item-badge", "{requests.read().len()}" } }
@@ -318,6 +319,14 @@ pub fn GroupManageDialog(
                                 div { class: "settings-group-title", ShieldIcon { size: 16 } " Chặn nhóm" }
                                 p { class: "settings-group-desc", "Rời nhóm và không ai có thể thêm bạn vào nhóm này nữa, kể cả qua liên kết mời." }
                                 button { r#type: "button", class: "btn-danger", onclick: move |_| confirm_block.set(true), BlockIcon { size: 16 } "Chặn nhóm này" }
+                            }
+                        },
+                        Tab::Plugins => rsx! {
+                            crate::components::plugin_hub::ScopedPluginAndWebhookTab {
+                                scope_type: "group".to_string(),
+                                scope_id: gid.clone(),
+                                channels: Vec::new(),
+                                can_manage: is_admin,
                             }
                         },
                     }

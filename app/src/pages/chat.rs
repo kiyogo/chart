@@ -336,9 +336,14 @@ pub fn Chat(
         });
     });
 
+    let uname_for_plugin_boot = current_username.clone();
     let reload_social = use_callback(move |_: ()| {
         let me_uid = my_id_sig.peek().clone();
+        let me_uname = uname_for_plugin_boot.clone();
+        crate::components::plugins_view::set_plugin_account_id(&me_uid);
+        crate::services::plugin_api::host_set_account(&me_uid, &me_uname, &me_uname);
         spawn(async move {
+            crate::components::plugin_hub::reload_user_installations().await;
             if let Ok(me_prof) = api::get_user_profile(&me_uid).await {
                 my_status_text.set(me_prof.status_text.filter(|s| !s.trim().is_empty()));
                 my_status_emoji.set(me_prof.status_emoji.filter(|s| !s.trim().is_empty()));
@@ -715,6 +720,17 @@ pub fn Chat(
                     }
                     WsEvent::ChannelMessageNew(payload) => {
                         let msg = payload.into_item();
+                        crate::services::plugin_api::host_emit_event(
+                            "onMessageReceived",
+                            serde_json::json!({
+                                "scope": "channel",
+                                "id": msg.id,
+                                "channelId": msg.channel_id,
+                                "senderId": msg.sender_id,
+                                "senderName": msg.sender_username,
+                                "content": msg.content,
+                            }),
+                        );
                         if selected_channel()
                             .as_ref()
                             .map(|c| c.id == msg.channel_id)
@@ -802,6 +818,17 @@ pub fn Chat(
                         }
                     WsEvent::GroupMessageNew(payload) => {
                         let msg = payload.into_item();
+                        crate::services::plugin_api::host_emit_event(
+                            "onMessageReceived",
+                            serde_json::json!({
+                                "scope": "group",
+                                "id": msg.id,
+                                "groupId": msg.group_id,
+                                "senderId": msg.sender_id,
+                                "senderName": msg.sender_username,
+                                "content": msg.content,
+                            }),
+                        );
                         let is_active_group = active_group().as_ref().map(|g| g.id == msg.group_id).unwrap_or(false);
                         let gname = groups.peek().iter().find(|g| g.id == msg.group_id).map(|g| g.name.clone()).unwrap_or_default();
                         last_previews.with_mut(|map| {
@@ -1062,6 +1089,9 @@ pub fn Chat(
                                 group_settings.set(Some(st));
                             }
                         }
+                    }
+                    WsEvent::PluginSync(_) => {
+                        crate::components::plugin_hub::reload_user_installations().await;
                     }
                     WsEvent::GroupSettings(v) => {
                         let gid = v.get("group_id").and_then(|x| x.as_str()).unwrap_or_default().to_string();
@@ -1748,11 +1778,6 @@ pub fn Chat(
         if raw_text.is_empty() || is_sending() || user_keys().is_none() {
             return;
         }
-        let text = if raw_text.starts_with('/') {
-            crate::components::plugins_view::try_run_plugin_command(&raw_text, &uname_for_dm_cmd).unwrap_or(raw_text)
-        } else {
-            raw_text
-        };
         if is_currently_typing() {
             is_currently_typing.set(false);
             let next_seq = typing_seq() + 1;
@@ -1766,7 +1791,29 @@ pub fn Chat(
         is_emoji_open.set(false);
         let reply = dm_reply_to().map(|(id, _)| id);
         dm_reply_to.set(None);
-        send_dm_text.call((text, reply));
+        if raw_text.starts_with('/') {
+            if let Some(legacy_out) = crate::components::plugins_view::try_run_plugin_command(&raw_text, &uname_for_dm_cmd) {
+                send_dm_text.call((legacy_out, reply));
+            } else {
+                let send_cb = send_dm_text;
+                let aid = active.id.clone();
+                spawn(async move {
+                    let mut parts = raw_text.splitn(2, char::is_whitespace);
+                    let trig = parts.next().unwrap_or("");
+                    let args = parts.next().unwrap_or("").trim();
+                    let final_text = crate::services::plugin_api::host_run_command(
+                        trig,
+                        args,
+                        serde_json::json!({ "scope": "dm", "conversationId": aid }),
+                    )
+                    .await
+                    .unwrap_or(raw_text);
+                    send_cb.call((final_text, reply));
+                });
+            }
+        } else {
+            send_dm_text.call((raw_text, reply));
+        }
     });
 
     // Keep a copy of any message in "Chính mình": sent to myself, end-to-end encrypted.
@@ -2046,13 +2093,29 @@ pub fn Chat(
                 }
             }
         }
-        let content = if raw_content.starts_with('/') {
-            crate::components::plugins_view::try_run_plugin_command(&raw_content, &uname_for_ch_cmd).unwrap_or(raw_content)
+        let legacy_cmd_out = if raw_content.starts_with('/') {
+            crate::components::plugins_view::try_run_plugin_command(&raw_content, &uname_for_ch_cmd)
         } else {
-            raw_content
+            None
         };
         channel_input.set(String::new());
         spawn(async move {
+            let content = if let Some(out) = legacy_cmd_out {
+                out
+            } else if raw_content.starts_with('/') {
+                let mut parts = raw_content.splitn(2, char::is_whitespace);
+                let trig = parts.next().unwrap_or("");
+                let args = parts.next().unwrap_or("").trim();
+                crate::services::plugin_api::host_run_command(
+                    trig,
+                    args,
+                    serde_json::json!({ "scope": "channel", "channelId": ch.id }),
+                )
+                .await
+                .unwrap_or(raw_content)
+            } else {
+                raw_content
+            };
             if let Ok(posted) = api::channels_post_message(&ch.id, &content).await {
                 channel_messages.with_mut(|list| {
                     if !list.iter().any(|m| m.id == posted.id) {
@@ -2073,10 +2136,10 @@ pub fn Chat(
         if raw_text.is_empty() {
             return;
         }
-        let text = if raw_text.starts_with('/') {
-            crate::components::plugins_view::try_run_plugin_command(&raw_text, &uname_for_grp_cmd).unwrap_or(raw_text)
+        let legacy_cmd_out = if raw_text.starts_with('/') {
+            crate::components::plugins_view::try_run_plugin_command(&raw_text, &uname_for_grp_cmd)
         } else {
-            raw_text
+            None
         };
         group_input.set(String::new());
         let reply = group_reply_to().map(|(id, _)| id);
@@ -2084,6 +2147,22 @@ pub fn Chat(
         let gid = grp.id.clone();
         let cid = active_group_channel().map(|c| c.id);
         spawn(async move {
+            let text = if let Some(out) = legacy_cmd_out {
+                out
+            } else if raw_text.starts_with('/') {
+                let mut parts = raw_text.splitn(2, char::is_whitespace);
+                let trig = parts.next().unwrap_or("");
+                let args = parts.next().unwrap_or("").trim();
+                crate::services::plugin_api::host_run_command(
+                    trig,
+                    args,
+                    serde_json::json!({ "scope": "group", "groupId": gid }),
+                )
+                .await
+                .unwrap_or(raw_text)
+            } else {
+                raw_text
+            };
             if let Ok(msg) = groups::groups_send_message(&gid, cid.as_deref(), &text, reply).await {
                 group_messages.with_mut(|list| {
                     if !list.iter().any(|m| m.id == msg.id) {

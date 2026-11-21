@@ -36,6 +36,29 @@ pub(crate) const NOTES_KEY: &str = "chatw_plugin_notes_v1";
 pub(crate) const TODOS_KEY: &str = "chatw_plugin_todos_v1";
 pub(crate) const VOXEL_KEY: &str = "chatw_plugin_voxel_v1";
 
+pub static ACTIVE_PLUGIN_ACCOUNT_ID: GlobalSignal<String> = Signal::global(String::new);
+
+fn account_storage_key(base: &str) -> String {
+    let uid = ACTIVE_PLUGIN_ACCOUNT_ID.peek();
+    if uid.trim().is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}_{}", uid.trim())
+    }
+}
+
+/// Switches legacy local plugin state to an account-partitioned namespace so multiple accounts never collide.
+pub fn set_plugin_account_id(uid: &str) {
+    let clean = uid.trim().to_string();
+    if *ACTIVE_PLUGIN_ACCOUNT_ID.peek() == clean {
+        return;
+    }
+    *ACTIVE_PLUGIN_ACCOUNT_ID.write() = clean;
+    let reloaded = load_plugins_from_storage();
+    sync_plugins_to_dom(&reloaded);
+    *PLUGINS.write() = reloaded;
+}
+
 fn default_true() -> bool {
     true
 }
@@ -604,7 +627,16 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
     let logo_migrated = platform::storage_get("chatw_plugin_logos_v2").is_some();
     let store_migrated = platform::storage_get(STORE_MIGRATED_KEY).is_some();
     let modular_migrated = platform::storage_get(MODULAR_MIGRATED_KEY).is_some();
-    if let Some(raw) = platform::storage_get(STORAGE_KEY) {
+    let scoped_key = account_storage_key(STORAGE_KEY);
+    let raw_opt = platform::storage_get(&scoped_key).or_else(|| {
+        // Safe one-time migration from un-partitioned legacy key if present
+        if scoped_key != STORAGE_KEY {
+            platform::storage_get(STORAGE_KEY)
+        } else {
+            None
+        }
+    });
+    if let Some(raw) = raw_opt {
         if let Ok(saved) = serde_json::from_str::<Vec<PluginMod>>(&raw) {
             for mut s in saved {
                 if !store_migrated {
@@ -666,7 +698,7 @@ fn load_plugins_from_storage() -> Vec<PluginMod> {
         platform::storage_set(STORE_MIGRATED_KEY, "1");
         platform::storage_set(MODULAR_MIGRATED_KEY, "1");
         if let Ok(s) = serde_json::to_string(&defaults) {
-            platform::storage_set(STORAGE_KEY, &s);
+            platform::storage_set(&scoped_key, &s);
         }
     }
     defaults
@@ -914,8 +946,9 @@ pub fn PluginGlyph(icon: String, #[props(default)] logo_url: String, #[props(def
 }
 
 pub fn save_plugins(list: &[PluginMod]) {
+    let scoped_key = account_storage_key(STORAGE_KEY);
     if let Ok(s) = serde_json::to_string(list) {
-        platform::storage_set(STORAGE_KEY, &s);
+        platform::storage_set(&scoped_key, &s);
     }
     sync_plugins_to_dom(list);
 }

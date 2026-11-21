@@ -24,6 +24,7 @@ pub mod library;
 pub mod media_opt;
 pub mod messages;
 pub mod models;
+pub mod plugins;
 pub mod privacy;
 pub mod profile_ext;
 pub mod profile_plus;

@@ -264,6 +264,16 @@ pub fn MessageList(
 ) -> Element {
     let mut full_picker_for = use_signal(|| Option::<String>::None);
     let mut sticker_menu_for = use_signal(|| Option::<String>::None);
+    let mut plugin_actions = use_signal(Vec::<crate::services::plugin_api::DynamicMessageAction>::new);
+    let installs_len = crate::components::plugin_hub::PLUGIN_INSTALLATIONS().len();
+    let msg_count_sig = messages.len();
+    use_effect(use_reactive!(|installs_len, msg_count_sig| {
+        let _ = (installs_len, msg_count_sig);
+        spawn(async move {
+            let acts = crate::services::plugin_api::host_get_message_actions(None).await;
+            plugin_actions.set(acts);
+        });
+    }));
     let prefs_ctx = try_consume_context::<crate::prefs::PrefsCtx>();
     let fav_stickers = prefs_ctx.map(|c| c.prefs.read().fav_stickers.clone()).unwrap_or_default();
     // Poll votes are messages too: tally them and hide them from the list.
@@ -576,6 +586,39 @@ pub fn MessageList(
                                                 aria_label: "Lưu vào Chính mình",
                                                 onclick: { let t = m_copy.clone(); move |_| h.call(t.clone()) },
                                                 crate::components::icons::DevicesIcon { size: 16 }
+                                            }
+                                        }
+                                        for pact in plugin_actions() {
+                                            {
+                                                let iid = pact.installation_id.clone();
+                                                let aid = pact.id.clone();
+                                                let mid_p = mid.clone();
+                                                let txt_p = m_copy.clone();
+                                                let sender_p = msg.sender_name.clone();
+                                                rsx! {
+                                                    button {
+                                                        key: "pact-{pact.installation_id}-{pact.id}",
+                                                        r#type: "button",
+                                                        class: "message-action-btn plugin-msg-action-btn",
+                                                        title: "{pact.label} ({pact.plugin_name})",
+                                                        aria_label: "{pact.label}",
+                                                        "data-plugin-msg-action": "{pact.id}",
+                                                        onclick: move |_| {
+                                                            let iid2 = iid.clone();
+                                                            let aid2 = aid.clone();
+                                                            let payload = serde_json::json!({
+                                                                "id": mid_p,
+                                                                "content": txt_p,
+                                                                "text": txt_p,
+                                                                "senderName": sender_p,
+                                                            });
+                                                            spawn(async move {
+                                                                let _ = crate::services::plugin_api::host_trigger_message_action(&iid2, &aid2, payload).await;
+                                                            });
+                                                        },
+                                                        span { class: "plugin-msg-action-label", "{pact.label}" }
+                                                    }
+                                                }
                                             }
                                         }
                                         button {

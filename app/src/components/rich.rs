@@ -104,6 +104,92 @@ pub struct InviteData {
     pub from: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct EmbedAuthorItem {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub icon_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct EmbedMediaItem {
+    #[serde(default)]
+    pub url: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct EmbedFooterItem {
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub icon_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct EmbedFieldItem {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub value: String,
+    #[serde(default)]
+    pub inline: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct DiscordEmbedItem {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub color: Option<u32>,
+    #[serde(default)]
+    pub timestamp: Option<String>,
+    #[serde(default)]
+    pub author: Option<EmbedAuthorItem>,
+    #[serde(default)]
+    pub footer: Option<EmbedFooterItem>,
+    #[serde(default)]
+    pub thumbnail: Option<EmbedMediaItem>,
+    #[serde(default)]
+    pub image: Option<EmbedMediaItem>,
+    #[serde(default)]
+    pub fields: Vec<EmbedFieldItem>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct WebhookComponentButton {
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub custom_id: Option<String>,
+    #[serde(default)]
+    pub style: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct WebhookEmbedData {
+    #[serde(default)]
+    pub webhook_id: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub embeds: Vec<DiscordEmbedItem>,
+    #[serde(default)]
+    pub components: Vec<WebhookComponentButton>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Rich {
     Poll(PollData),
@@ -116,6 +202,7 @@ pub enum Rich {
     Audio(MediaFileData),
     Video(MediaFileData),
     Invite(InviteData),
+    Embed(WebhookEmbedData),
 }
 
 pub fn parse_rich(text: &str) -> Option<Rich> {
@@ -162,7 +249,15 @@ pub fn parse_rich(text: &str) -> Option<Rich> {
             .filter(|i| (i.kind == "group" || i.kind == "server") && i.code.chars().all(|c| c.is_ascii_alphanumeric()))
             .map(Rich::Invite);
     }
+    if let Some(rest) = t.strip_prefix("embed:") {
+        return serde_json::from_str::<WebhookEmbedData>(rest).ok().map(Rich::Embed);
+    }
     None
+}
+
+fn is_safe_ext_url(u: &str) -> bool {
+    let l = u.trim().to_ascii_lowercase();
+    (l.starts_with("https://") || l.starts_with("http://")) && !l.contains("javascript:") && !l.contains("data:")
 }
 
 pub fn build_rich_media_wire(
@@ -221,6 +316,19 @@ pub fn rich_preview(r: &Rich) -> String {
         Rich::Audio(_) => "Tin nhắn thoại".into(),
         Rich::Video(_) => "Video".into(),
         Rich::Invite(i) => format!("Lời mời tham gia {}", i.name),
+        Rich::Embed(w) => {
+            if !w.content.trim().is_empty() {
+                w.content.clone()
+            } else if let Some(first) = w.embeds.first() {
+                first
+                    .title
+                    .clone()
+                    .or_else(|| first.description.clone())
+                    .unwrap_or_else(|| format!("Webhook: {}", w.username))
+            } else {
+                format!("Webhook: {}", w.username)
+            }
+        }
     }
 }
 
@@ -533,6 +641,98 @@ pub fn RichContent(
                     button { r#type: "button", class: "btn-primary btn-block", disabled: on_open_invite.is_none(),
                         onclick: move |_| if let Some(h) = on_open_invite { h.call((k.clone(), c.clone())) },
                         "Xem và tham gia"
+                    }
+                }
+            }
+        }
+        Rich::Embed(w) => {
+            rsx! {
+                div { class: "webhook-msg-wrap",
+                    div { class: "webhook-msg-author",
+                        if let Some(av) = w.avatar_url.as_deref().filter(|u| is_safe_ext_url(u) || platform::safe_asset_path(u)) {
+                            img { class: "webhook-msg-avatar", src: "{av}", alt: "{w.username}" }
+                        }
+                        span { class: "webhook-msg-name", "{w.username}" }
+                        span { class: "webhook-badge", "WEBHOOK" }
+                    }
+                    if !w.content.trim().is_empty() {
+                        div { class: "webhook-msg-text", "{w.content}" }
+                    }
+                    for (ei, emb) in w.embeds.iter().enumerate() {
+                        {
+                            let color_hex = emb.color.map(|c| format!("#{:06x}", c & 0xffffff)).unwrap_or_else(|| "var(--accent)".into());
+                            let bar_style = format!("border-left-color: {color_hex};");
+                            rsx! {
+                                div { key: "{ei}", class: "discord-embed-card", style: "{bar_style}",
+                                    div { class: "discord-embed-main",
+                                        if let Some(author) = &emb.author {
+                                            div { class: "discord-embed-author",
+                                                if let Some(ic) = author.icon_url.as_deref().filter(|u| is_safe_ext_url(u)) {
+                                                    img { class: "discord-embed-author-icon", src: "{ic}", alt: "{author.name}" }
+                                                }
+                                                if let Some(au) = author.url.as_deref().filter(|u| is_safe_ext_url(u)) {
+                                                    a { href: "{au}", target: "_blank", rel: "noopener noreferrer", "{author.name}" }
+                                                } else {
+                                                    span { "{author.name}" }
+                                                }
+                                            }
+                                        }
+                                        if let Some(title) = emb.title.as_deref().filter(|s| !s.trim().is_empty()) {
+                                            if let Some(u) = emb.url.as_deref().filter(|u| is_safe_ext_url(u)) {
+                                                a { class: "discord-embed-title", href: "{u}", target: "_blank", rel: "noopener noreferrer", "{title}" }
+                                            } else {
+                                                div { class: "discord-embed-title", "{title}" }
+                                            }
+                                        }
+                                        if let Some(desc) = emb.description.as_deref().filter(|s| !s.trim().is_empty()) {
+                                            div { class: "discord-embed-desc", "{desc}" }
+                                        }
+                                        if !emb.fields.is_empty() {
+                                            div { class: "discord-embed-fields",
+                                                for (fi, f) in emb.fields.iter().enumerate() {
+                                                    div {
+                                                        key: "{fi}",
+                                                        class: if f.inline { "discord-embed-field inline" } else { "discord-embed-field" },
+                                                        div { class: "discord-embed-field-name", "{f.name}" }
+                                                        div { class: "discord-embed-field-val", "{f.value}" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if let Some(img) = emb.image.as_ref().filter(|m| is_safe_ext_url(&m.url)) {
+                                            img { class: "discord-embed-image", src: "{img.url}", alt: "Embed image", loading: "lazy" }
+                                        }
+                                        if emb.footer.is_some() || emb.timestamp.is_some() {
+                                            div { class: "discord-embed-footer",
+                                                if let Some(ft) = &emb.footer {
+                                                    if let Some(ic) = ft.icon_url.as_deref().filter(|u| is_safe_ext_url(u)) {
+                                                        img { class: "discord-embed-footer-icon", src: "{ic}", alt: "" }
+                                                    }
+                                                    span { "{ft.text}" }
+                                                }
+                                                if let Some(ts) = emb.timestamp.as_deref().filter(|s| !s.is_empty()) {
+                                                    span { class: "discord-embed-ts", " · {ts}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if let Some(th) = emb.thumbnail.as_ref().filter(|m| is_safe_ext_url(&m.url)) {
+                                        img { class: "discord-embed-thumb", src: "{th.url}", alt: "Thumbnail", loading: "lazy" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if !w.components.is_empty() {
+                        div { class: "webhook-components-row",
+                            for (bi, btn) in w.components.iter().enumerate() {
+                                if let Some(u) = btn.url.as_deref().filter(|u| is_safe_ext_url(u)) {
+                                    a { key: "{bi}", class: "btn-secondary webhook-comp-btn", href: "{u}", target: "_blank", rel: "noopener noreferrer", "{btn.label}" }
+                                } else {
+                                    span { key: "{bi}", class: "btn-secondary webhook-comp-btn", "{btn.label}" }
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -1039,6 +1039,15 @@ async fn send_message(
         .send_to_users(&member_ids, WsEvent::GroupMessageNew { message: item.clone() })
         .await;
     crate::bots::on_group_message(&state.db, &item).await;
+    crate::plugins::webhooks::dispatch_outgoing_event(
+        state.clone(),
+        "group",
+        group_id,
+        payload.channel_id,
+        "onGroupMessage",
+        serde_json::to_value(&item).unwrap_or_default(),
+    )
+    .await;
 
     Ok(Json(item))
 }

@@ -18,12 +18,13 @@ use chatw::{
     auth::{self, AppState, google::GoogleJwksCache},
     backup, calls, cloud, community,
     config::Config,
-    admin, bots, business, convo, crypto, db, devices_sync, directory, drawings, enterprise, feed, friends, groups, library, messages, privacy, public_pages, servers,
+    admin, bots, business, convo, crypto, db, devices_sync, directory, drawings, enterprise, feed, friends, groups, library, messages, plugins, privacy, public_pages, servers,
     profile_ext, profile_plus, security, stickers, storage, typing, users, vico, webrtc,
     websocket::{self, WsHub},
 };
 
 async fn security_headers_middleware(req: axum::extract::Request, next: Next) -> Response {
+    let is_plugin_sandbox = req.uri().path() == "/plugin-sandbox-frame";
     let mut response = next.run(req).await;
     let headers = response.headers_mut();
 
@@ -31,7 +32,23 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
-    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    if is_plugin_sandbox {
+        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("SAMEORIGIN"));
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(
+                "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'unsafe-inline'; img-src data: https: blob:; font-src data:; frame-ancestors 'self' http://127.0.0.1:* http://localhost:* https://*;",
+            ),
+        );
+    } else {
+        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(
+                "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' blob:; worker-src 'self' blob:; frame-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://ipc.localhost ipc:; img-src 'self' data: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
+            ),
+        );
+    }
     headers.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("strict-origin-when-cross-origin"),
@@ -41,17 +58,69 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
         HeaderValue::from_static("camera=(self), microphone=(self), display-capture=(self), geolocation=()"),
     );
     headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://ipc.localhost ipc:; img-src 'self' data: https://*.googleusercontent.com https://lh3.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
-        ),
-    );
-    headers.insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("no-store, no-cache, must-revalidate"),
     );
 
     response
+}
+
+async fn plugin_sandbox_frame_html() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        r#"<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body>
+<script>
+(function () {
+  const SHELL_NONCE = (location.hash || '').replace(/^#/, '');
+  let mounted = false;
+  window.addEventListener('message', function onBoot(ev) {
+    const d = ev.data;
+    if (mounted || !d || !d.__cwMountDoc || d.nonce !== SHELL_NONCE) return;
+    mounted = true;
+    window.removeEventListener('message', onBoot);
+    try {
+      if (d.cssVars) {
+        const st = document.createElement('style');
+        st.textContent = d.cssVars;
+        document.head.appendChild(st);
+      }
+      if (d.sdkCode) {
+        const sdk = document.createElement('script');
+        sdk.textContent = d.sdkCode;
+        document.head.appendChild(sdk);
+      }
+      const parser = new DOMParser();
+      const parsed = parser.parseFromString(String(d.html || ''), 'text/html');
+      parsed.head.querySelectorAll('style').forEach((s) => {
+        const ns = document.createElement('style');
+        ns.textContent = s.textContent || '';
+        document.head.appendChild(ns);
+      });
+      const scripts = [];
+      parsed.body.querySelectorAll('script').forEach((s) => {
+        if (!s.src) scripts.push(s.textContent || '');
+        s.remove();
+      });
+      document.body.innerHTML = parsed.body.innerHTML;
+      for (const code of scripts) {
+        const el = document.createElement('script');
+        el.textContent = code;
+        document.body.appendChild(el);
+      }
+      window.postMessage({ __cwReady: true, nonce: SHELL_NONCE, context: d.readyContext || {} }, '*');
+    } catch (err) {
+      document.body.textContent = 'Sandbox mount error: ' + (err && err.message ? err.message : String(err));
+    }
+  });
+  window.parent.postMessage({ __cwSandboxShellReady: true, nonce: SHELL_NONCE }, '*');
+})();
+</script>
+</body>
+</html>"#,
+    )
 }
 
 async fn robots_txt() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
@@ -145,10 +214,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/stickers", stickers::routes())
         .nest("/media", library::routes())
         .nest("/privacy", privacy::routes())
+        .nest("/plugins", plugins::plugin_routes())
+        .nest("/webhooks", plugins::webhook_routes())
         .nest("/bots", bots::routes())
         .nest("/business", business::routes())
         .nest("/directory", directory::routes())
-        .nest("/admin", admin::routes())
+        .nest("/admin", admin::routes().nest("/plugins", plugins::admin_plugin_routes()))
         .nest("/bot", bots::api_routes())
         .nest("/conversations", convo::routes())
         .nest("/webrtc", webrtc::routes())
@@ -161,6 +232,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(websocket::routes())
         .with_state(state.clone());
     profile_ext::spawn_status_expiry(state.clone());
+    plugins::webhooks::spawn_webhook_retry_worker(state.clone());
+    plugins::marketplace::seed_official_catalog(&state.db).await;
     {
         let cloud_bg = state.clone();
         tokio::spawn(async move {
@@ -200,6 +273,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = Router::new()
         .nest("/api", api_router)
+        .route("/plugin-sandbox-frame", axum::routing::get(plugin_sandbox_frame_html))
         .route("/robots.txt", axum::routing::get(robots_txt))
         .route("/llms.txt", axum::routing::get(llms_txt))
         .merge(public_pages)

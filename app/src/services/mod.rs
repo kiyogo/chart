@@ -11,6 +11,7 @@ pub mod groups;
 pub mod library;
 pub mod social;
 pub mod openmoji;
+pub mod plugin_api;
 pub mod profile_ext;
 pub mod profile_plus;
 pub mod security;

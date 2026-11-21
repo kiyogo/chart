@@ -366,6 +366,16 @@ pub fn Composer(
 
     let mut plugin_cmds = extra_commands;
     plugin_cmds.extend(crate::components::plugins_view::enabled_slash_commands());
+    for inst in crate::components::plugin_hub::PLUGIN_INSTALLATIONS().iter().filter(|i| i.enabled) {
+        if let Some(cmds) = inst.manifest.get("commands").and_then(|c| c.as_array()) {
+            for cmd in cmds {
+                if let Some(trig) = cmd.get("trigger").and_then(|t| t.as_str()) {
+                    let desc = cmd.get("description").and_then(|d| d.as_str()).unwrap_or(&inst.name);
+                    plugin_cmds.push((String::new(), "svg:plugin".to_string(), trig.to_string(), desc.to_string()));
+                }
+            }
+        }
+    }
     let suggestions: Vec<Suggest> = if disabled || dismissed_for() == value {
         Vec::new()
     } else {

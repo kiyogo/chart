@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--cw-font, system-ui, sans-serif);
+      background: var(--cw-bg, #ffffff);
+      color: var(--cw-text, #0f172a);
+      padding: 16px;
+    }
+    .hdr { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .hdr h2 { font-size: 16px; font-weight: 700; }
+    .badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--cw-surface, #f1f5f9); color: var(--cw-text-secondary, #475569); }
+    .row { display: flex; gap: 8px; margin-bottom: 14px; }
+    input, select {
+      flex: 1; padding: 8px 10px; border-radius: 8px; border: 0;
+      background: var(--cw-input, #f1f5f9); color: var(--cw-text, #0f172a); font-size: 13px;
+    }
+    button {
+      padding: 8px 12px; border-radius: 8px; border: 0; cursor: pointer;
+      background: var(--cw-accent, #2563eb); color: #fff; font-size: 13px; font-weight: 600;
+    }
+    button.sec { background: var(--cw-surface, #f1f5f9); color: var(--cw-text, #0f172a); }
+    .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+    .col { background: var(--cw-surface, #f8fafc); border-radius: 10px; padding: 10px; min-height: 140px; }
+    .col h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--cw-text-secondary, #64748b); margin-bottom: 8px; }
+    .card { background: var(--cw-bg, #fff); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+    .card-actions { display: flex; gap: 6px; }
+    .card-actions button { padding: 4px 8px; font-size: 11px; }
+    .panel { background: var(--cw-surface, #f8fafc); border-radius: 10px; padding: 10px 12px; font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .probe-out { font-family: monospace; font-size: 11px; padding: 6px 8px; border-radius: 6px; background: var(--cw-bg, #fff); color: var(--cw-text, #0f172a); }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <div>
+      <h2>Task Tracker Pro</h2>
+      <div style="font-size:12px;color:var(--cw-text-secondary,#64748b)">Giao diện Kanban tùy biến hoàn toàn trong Sandbox</div>
+    </div>
+    <span class="badge" id="stats-badge">0 thẻ · 0 sự kiện</span>
+  </div>
+
+  <div class="row">
+    <input id="task-input" placeholder="Nhập tên công việc mới" />
+    <select id="col-select" style="flex:0 0 130px">
+      <option value="todo">Cần làm</option>
+      <option value="doing">Đang làm</option>
+      <option value="done">Hoàn thành</option>
+    </select>
+    <button id="add-btn">Thêm thẻ</button>
+  </div>
+
+  <div class="board">
+    <div class="col"><h3>Cần làm</h3><div id="col-todo"></div></div>
+    <div class="col"><h3>Đang làm</h3><div id="col-doing"></div></div>
+    <div class="col"><h3>Hoàn thành</h3><div id="col-done"></div></div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label style="font-weight:600">Tiền tố:</label>
+      <input id="prefix-input" style="max-width:140px" placeholder="[TASK]" />
+      <button class="sec" id="save-settings-btn">Lưu cài đặt</button>
+      <button class="sec" id="probe-perm-btn">Kiểm thử từ chối quyền E2EE</button>
+      <button class="sec" id="probe-sandbox-btn">Kiểm thử cách ly Sandbox</button>
+    </div>
+    <div class="probe-out" id="probe-out">Sẵn sàng</div>
+  </div>
+
+  <script>
+    let tasks = [];
+
+    function render() {
+      ['todo', 'doing', 'done'].forEach((col) => {
+        const el = document.getElementById('col-' + col);
+        el.innerHTML = '';
+        tasks.filter((t) => t.column === col).forEach((t) => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          const title = document.createElement('div');
+          title.textContent = t.title;
+          const acts = document.createElement('div');
+          acts.className = 'card-actions';
+          if (col !== 'done') {
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'sec';
+            nextBtn.textContent = col === 'todo' ? 'Bắt đầu' : 'Hoàn thành';
+            nextBtn.onclick = async () => {
+              t.column = col === 'todo' ? 'doing' : 'done';
+              await chatw.storage.set('tasks', tasks, { syncable: true });
+              render();
+            };
+            acts.appendChild(nextBtn);
+          }
+          const delBtn = document.createElement('button');
+          delBtn.className = 'sec';
+          delBtn.textContent = 'Xóa';
+          delBtn.onclick = async () => {
+            tasks = tasks.filter((x) => x.id !== t.id);
+            await chatw.storage.set('tasks', tasks, { syncable: true });
+            render();
+          };
+          acts.appendChild(delBtn);
+          card.appendChild(title);
+          card.appendChild(acts);
+          el.appendChild(card);
+        });
+      });
+    }
+
+    async function refreshAll() {
+      const saved = await chatw.storage.get('tasks');
+      tasks = Array.isArray(saved) ? saved : [];
+      const stats = (await chatw.storage.get('event_stats')) || { receivedCount: 0 };
+      const settings = (await chatw.settings.get()) || {};
+      document.getElementById('prefix-input').value = settings.auto_tag_prefix || '[TASK]';
+      document.getElementById('col-select').value = settings.default_column || 'todo';
+      document.getElementById('stats-badge').textContent = `${tasks.length} thẻ · ${stats.receivedCount || 0} sự kiện`;
+      render();
+    }
+
+    document.getElementById('add-btn').onclick = async () => {
+      const inp = document.getElementById('task-input');
+      const val = inp.value.trim();
+      if (!val) return;
+      const prefix = document.getElementById('prefix-input').value.trim() || '[TASK]';
+      const col = document.getElementById('col-select').value || 'todo';
+      tasks.unshift({ id: 'ui_' + Date.now(), title: `${prefix} ${val}`, column: col, createdAt: new Date().toISOString() });
+      await chatw.storage.set('tasks', tasks, { syncable: true });
+      inp.value = '';
+      await refreshAll();
+    };
+
+    document.getElementById('save-settings-btn').onclick = async () => {
+      const prefix = document.getElementById('prefix-input').value.trim() || '[TASK]';
+      const col = document.getElementById('col-select').value || 'todo';
+      await chatw.settings.set({ auto_tag_prefix: prefix, default_column: col });
+      document.getElementById('probe-out').textContent = `SETTINGS_SAVED: ${prefix} / ${col}`;
+    };
+
+    document.getElementById('probe-perm-btn').onclick = async () => {
+      try {
+        await chatw.messages.readDecrypted('00000000-0000-0000-0000-000000000001');
+        document.getElementById('probe-out').textContent = 'UNEXPECTED_ALLOW';
+      } catch (e) {
+        document.getElementById('probe-out').textContent = 'DENIED_OK: ' + (e.message || e);
+      }
+    };
+
+    document.getElementById('probe-sandbox-btn').onclick = () => {
+      let parentBlocked = false;
+      let lsBlocked = false;
+      try { void window.parent.document.cookie; } catch (_) { parentBlocked = true; }
+      try { void window.localStorage.getItem('chatw_plugins_v2'); } catch (_) { lsBlocked = true; }
+      document.getElementById('probe-out').textContent = `SANDBOX_ISOLATED: parentBlocked=${parentBlocked} localStorageBlocked=${lsBlocked}`;
+    };
+
+    chatw.onReady(() => { refreshAll(); });
+  </script>
+</body>
+</html>

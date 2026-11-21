@@ -1,0 +1,88 @@
+{
+  "manifest": {
+    "plugin_key": "acme.task_tracker",
+    "name": "Task Tracker Pro",
+    "version": "1.0.0",
+    "publisher": "acme",
+    "entry_point": "worker.js",
+    "runtime": "js",
+    "sdk_version": "1.0.0",
+    "platforms": [
+      "web",
+      "desktop"
+    ],
+    "permissions": [
+      "storage.local",
+      "storage.sync",
+      "commands.register",
+      "ui.page",
+      "ui.sidebar",
+      "ui.message_action",
+      "ui.composer",
+      "events.lifecycle",
+      "notifications.send"
+    ],
+    "dependencies": [],
+    "ui_contributions": {
+      "page": true,
+      "sidebar": true,
+      "title": "Task Tracker Pro",
+      "messageActions": [
+        {
+          "id": "create_task_card",
+          "label": "Tạo thẻ",
+          "icon": "check-square"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "trigger": "/track",
+        "description": "Tạo nhanh một thẻ công việc mới vào bảng Kanban"
+      },
+      {
+        "trigger": "/tasks",
+        "description": "Xem tổng số công việc đang mở"
+      }
+    ],
+    "event_subscriptions": [
+      "onMessageReceived"
+    ],
+    "settings_schema": [
+      {
+        "key": "default_column",
+        "label": "Cột mặc định",
+        "type": "select",
+        "options": [
+          "todo",
+          "doing",
+          "done"
+        ],
+        "default": "todo"
+      },
+      {
+        "key": "auto_tag_prefix",
+        "label": "Tiền tố thẻ",
+        "type": "text",
+        "default": "[TASK]"
+      }
+    ],
+    "resource_limits": {
+      "max_memory_mb": 32,
+      "max_exec_ms": 3000,
+      "max_storage_kb": 512,
+      "max_requests_per_min": 30
+    },
+    "allowed_domains": [],
+    "allow_custom_logo": null
+  },
+  "summary": "Bảng công việc Kanban độc lập phát triển hoàn toàn qua ChatW SDK",
+  "description": "Plugin bên thứ ba chứng minh giao diện HTML/CSS/JS tự do, lưu trữ đồng bộ, lệnh slash /track, nút thao tác trên tin nhắn và Event Hook.",
+  "category": "productivity",
+  "is_public": true,
+  "changelog": "Phát hành phiên bản 1.0.0",
+  "bundle_code": "// Third-party ChatW Plugin Worker: acme.task_tracker\n// Uses ONLY the public sandboxed `chatw.*` SDK — zero ChatW core edits.\n\nasync function loadTasks() {\n  const existing = await chatw.storage.get('tasks');\n  return Array.isArray(existing) ? existing : [];\n}\n\nasync function saveTasks(tasks) {\n  await chatw.storage.set('tasks', tasks, { syncable: true });\n}\n\nchatw.onReady(async () => {\n  await chatw.ui.registerMessageAction({\n    id: 'create_task_card',\n    label: 'Tạo thẻ',\n    icon: 'check-square',\n  });\n\n  await chatw.ui.registerComposerButton({\n    id: 'insert_task_summary',\n    label: 'Chèn danh sách việc',\n    content: '/tasks',\n  });\n\n  await chatw.commands.register('/track', 'Tạo nhanh thẻ công việc mới', async (ctx) => {\n    const title = String(ctx.args || '').trim();\n    if (!title) {\n      return { text: 'Cú pháp: /track <tên công việc>' };\n    }\n    const settings = await chatw.settings.get();\n    const col = (settings && settings.default_column) || 'todo';\n    const prefix = (settings && settings.auto_tag_prefix) || '[TASK]';\n    const tasks = await loadTasks();\n    const item = {\n      id: 't_' + Date.now(),\n      title: `${prefix} ${title}`.trim(),\n      column: col,\n      createdAt: new Date().toISOString(),\n    };\n    tasks.unshift(item);\n    await saveTasks(tasks);\n    await chatw.ui.notify(`Đã thêm công việc: ${item.title}`, 'success');\n    return { text: `Đã tạo thẻ công việc \"${item.title}\" (${col}). Tổng số thẻ: ${tasks.length}` };\n  });\n\n  await chatw.commands.register('/tasks', 'Hiển thị tóm tắt thẻ công việc', async () => {\n    const tasks = await loadTasks();\n    const open = tasks.filter((t) => t.column !== 'done').length;\n    return { text: `Task Tracker Pro: ${open} việc đang mở / ${tasks.length} tổng số thẻ.` };\n  });\n\n  chatw.onMessageAction('create_task_card', async (message) => {\n    const snippet = String(message.content || message.text || 'Tin nhắn không có văn bản').slice(0, 120);\n    const tasks = await loadTasks();\n    const item = {\n      id: 'm_' + Date.now(),\n      title: `[MSG] ${snippet}`,\n      column: 'todo',\n      sourceMessageId: message.id || null,\n      createdAt: new Date().toISOString(),\n    };\n    tasks.unshift(item);\n    await saveTasks(tasks);\n    await chatw.ui.notify(`Đã chuyển tin nhắn thành thẻ công việc`, 'success');\n    return { ok: true, taskId: item.id, count: tasks.length };\n  });\n\n  await chatw.events.on('onMessageReceived', async (payload) => {\n    const stats = (await chatw.storage.get('event_stats')) || { receivedCount: 0, lastSnippet: '' };\n    stats.receivedCount = Number(stats.receivedCount || 0) + 1;\n    stats.lastSnippet = String(payload.content || payload.text || '').slice(0, 80);\n    stats.lastAt = new Date().toISOString();\n    await chatw.storage.set('event_stats', stats, { syncable: false });\n  });\n});\n",
+  "ui_html": "<!DOCTYPE html>\n<html lang=\"vi\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <style>\n    * { box-sizing: border-box; margin: 0; padding: 0; }\n    body {\n      font-family: var(--cw-font, system-ui, sans-serif);\n      background: var(--cw-bg, #ffffff);\n      color: var(--cw-text, #0f172a);\n      padding: 16px;\n    }\n    .hdr { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }\n    .hdr h2 { font-size: 16px; font-weight: 700; }\n    .badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--cw-surface, #f1f5f9); color: var(--cw-text-secondary, #475569); }\n    .row { display: flex; gap: 8px; margin-bottom: 14px; }\n    input, select {\n      flex: 1; padding: 8px 10px; border-radius: 8px; border: 0;\n      background: var(--cw-input, #f1f5f9); color: var(--cw-text, #0f172a); font-size: 13px;\n    }\n    button {\n      padding: 8px 12px; border-radius: 8px; border: 0; cursor: pointer;\n      background: var(--cw-accent, #2563eb); color: #fff; font-size: 13px; font-weight: 600;\n    }\n    button.sec { background: var(--cw-surface, #f1f5f9); color: var(--cw-text, #0f172a); }\n    .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }\n    .col { background: var(--cw-surface, #f8fafc); border-radius: 10px; padding: 10px; min-height: 140px; }\n    .col h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--cw-text-secondary, #64748b); margin-bottom: 8px; }\n    .card { background: var(--cw-bg, #fff); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }\n    .card-actions { display: flex; gap: 6px; }\n    .card-actions button { padding: 4px 8px; font-size: 11px; }\n    .panel { background: var(--cw-surface, #f8fafc); border-radius: 10px; padding: 10px 12px; font-size: 12px; display: flex; flex-direction: column; gap: 8px; }\n    .probe-out { font-family: monospace; font-size: 11px; padding: 6px 8px; border-radius: 6px; background: var(--cw-bg, #fff); color: var(--cw-text, #0f172a); }\n  </style>\n</head>\n<body>\n  <div class=\"hdr\">\n    <div>\n      <h2>Task Tracker Pro</h2>\n      <div style=\"font-size:12px;color:var(--cw-text-secondary,#64748b)\">Giao diện Kanban tùy biến hoàn toàn trong Sandbox</div>\n    </div>\n    <span class=\"badge\" id=\"stats-badge\">0 thẻ · 0 sự kiện</span>\n  </div>\n\n  <div class=\"row\">\n    <input id=\"task-input\" placeholder=\"Nhập tên công việc mới\" />\n    <select id=\"col-select\" style=\"flex:0 0 130px\">\n      <option value=\"todo\">Cần làm</option>\n      <option value=\"doing\">Đang làm</option>\n      <option value=\"done\">Hoàn thành</option>\n    </select>\n    <button id=\"add-btn\">Thêm thẻ</button>\n  </div>\n\n  <div class=\"board\">\n    <div class=\"col\"><h3>Cần làm</h3><div id=\"col-todo\"></div></div>\n    <div class=\"col\"><h3>Đang làm</h3><div id=\"col-doing\"></div></div>\n    <div class=\"col\"><h3>Hoàn thành</h3><div id=\"col-done\"></div></div>\n  </div>\n\n  <div class=\"panel\">\n    <div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:center\">\n      <label style=\"font-weight:600\">Tiền tố:</label>\n      <input id=\"prefix-input\" style=\"max-width:140px\" placeholder=\"[TASK]\" />\n      <button class=\"sec\" id=\"save-settings-btn\">Lưu cài đặt</button>\n      <button class=\"sec\" id=\"probe-perm-btn\">Kiểm thử từ chối quyền E2EE</button>\n      <button class=\"sec\" id=\"probe-sandbox-btn\">Kiểm thử cách ly Sandbox</button>\n    </div>\n    <div class=\"probe-out\" id=\"probe-out\">Sẵn sàng</div>\n  </div>\n\n  <script>\n    let tasks = [];\n\n    function render() {\n      ['todo', 'doing', 'done'].forEach((col) => {\n        const el = document.getElementById('col-' + col);\n        el.innerHTML = '';\n        tasks.filter((t) => t.column === col).forEach((t) => {\n          const card = document.createElement('div');\n          card.className = 'card';\n          const title = document.createElement('div');\n          title.textContent = t.title;\n          const acts = document.createElement('div');\n          acts.className = 'card-actions';\n          if (col !== 'done') {\n            const nextBtn = document.createElement('button');\n            nextBtn.className = 'sec';\n            nextBtn.textContent = col === 'todo' ? 'Bắt đầu' : 'Hoàn thành';\n            nextBtn.onclick = async () => {\n              t.column = col === 'todo' ? 'doing' : 'done';\n              await chatw.storage.set('tasks', tasks, { syncable: true });\n              render();\n            };\n            acts.appendChild(nextBtn);\n          }\n          const delBtn = document.createElement('button');\n          delBtn.className = 'sec';\n          delBtn.textContent = 'Xóa';\n          delBtn.onclick = async () => {\n            tasks = tasks.filter((x) => x.id !== t.id);\n            await chatw.storage.set('tasks', tasks, { syncable: true });\n            render();\n          };\n          acts.appendChild(delBtn);\n          card.appendChild(title);\n          card.appendChild(acts);\n          el.appendChild(card);\n        });\n      });\n    }\n\n    async function refreshAll() {\n      const saved = await chatw.storage.get('tasks');\n      tasks = Array.isArray(saved) ? saved : [];\n      const stats = (await chatw.storage.get('event_stats')) || { receivedCount: 0 };\n      const settings = (await chatw.settings.get()) || {};\n      document.getElementById('prefix-input').value = settings.auto_tag_prefix || '[TASK]';\n      document.getElementById('col-select').value = settings.default_column || 'todo';\n      document.getElementById('stats-badge').textContent = `${tasks.length} thẻ · ${stats.receivedCount || 0} sự kiện`;\n      render();\n    }\n\n    document.getElementById('add-btn').onclick = async () => {\n      const inp = document.getElementById('task-input');\n      const val = inp.value.trim();\n      if (!val) return;\n      const prefix = document.getElementById('prefix-input').value.trim() || '[TASK]';\n      const col = document.getElementById('col-select').value || 'todo';\n      tasks.unshift({ id: 'ui_' + Date.now(), title: `${prefix} ${val}`, column: col, createdAt: new Date().toISOString() });\n      await chatw.storage.set('tasks', tasks, { syncable: true });\n      inp.value = '';\n      await refreshAll();\n    };\n\n    document.getElementById('save-settings-btn').onclick = async () => {\n      const prefix = document.getElementById('prefix-input').value.trim() || '[TASK]';\n      const col = document.getElementById('col-select').value || 'todo';\n      await chatw.settings.set({ auto_tag_prefix: prefix, default_column: col });\n      document.getElementById('probe-out').textContent = `SETTINGS_SAVED: ${prefix} / ${col}`;\n    };\n\n    document.getElementById('probe-perm-btn').onclick = async () => {\n      try {\n        await chatw.messages.readDecrypted('00000000-0000-0000-0000-000000000001');\n        document.getElementById('probe-out').textContent = 'UNEXPECTED_ALLOW';\n      } catch (e) {\n        document.getElementById('probe-out').textContent = 'DENIED_OK: ' + (e.message || e);\n      }\n    };\n\n    document.getElementById('probe-sandbox-btn').onclick = () => {\n      let parentBlocked = false;\n      let lsBlocked = false;\n      try { void window.parent.document.cookie; } catch (_) { parentBlocked = true; }\n      try { void window.localStorage.getItem('chatw_plugins_v2'); } catch (_) { lsBlocked = true; }\n      document.getElementById('probe-out').textContent = `SANDBOX_ISOLATED: parentBlocked=${parentBlocked} localStorageBlocked=${lsBlocked}`;\n    };\n\n    chatw.onReady(() => { refreshAll(); });\n  </script>\n</body>\n</html>\n",
+  "wasm_base64": "",
+  "sha256": "5509b96045bc10bcfff33ceb000b313813b109d8668c1df0a0861fd0160f0b38"
+}

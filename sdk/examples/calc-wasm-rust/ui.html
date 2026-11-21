@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--cw-font, system-ui, sans-serif);
+      background: var(--cw-bg, #ffffff);
+      color: var(--cw-text, #0f172a);
+      padding: 16px;
+    }
+    h2 { font-size: 16px; margin-bottom: 6px; }
+    .sub { font-size: 12px; color: var(--cw-text-secondary, #64748b); margin-bottom: 14px; }
+    .row { display: flex; gap: 8px; margin-bottom: 12px; }
+    input { flex: 1; padding: 9px 12px; border-radius: 8px; border: 0; background: var(--cw-input, #f1f5f9); color: var(--cw-text, #0f172a); font-family: monospace; font-size: 14px; }
+    button { padding: 9px 14px; border-radius: 8px; border: 0; background: var(--cw-accent, #2563eb); color: #fff; font-weight: 600; cursor: pointer; }
+    .out { padding: 12px; border-radius: 10px; background: var(--cw-surface, #f8fafc); font-family: monospace; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h2>Rust WASM Calculator</h2>
+  <div class="sub">Biểu thức được đánh giá trực tiếp trong Rust WebAssembly Worker (lệnh <code>/wcalc</code>).</div>
+  <div class="row">
+    <input id="expr" value="(12 + 30) * 2 - 4" placeholder="Nhập biểu thức, ví dụ: (12 + 30) * 2" />
+    <button id="eval-btn">Tính bằng WASM</button>
+  </div>
+  <div class="out" id="out">Nhập biểu thức hoặc chạy /wcalc (12 + 30) * 2 trong khung chat.</div>
+  <script>
+    document.getElementById('eval-btn').onclick = async () => {
+      const expr = document.getElementById('expr').value.trim();
+      if (!expr) return;
+      await chatw.storage.set('last_expr', expr, { syncable: false });
+      await chatw.ui.notify('Gửi biểu thức tới lệnh /wcalc: ' + expr, 'info');
+      document.getElementById('out').textContent = 'Biểu thức đã lưu: ' + expr + ' (chạy qua /wcalc ' + expr + ')';
+    };
+    chatw.onReady(async () => {
+      const last = await chatw.storage.get('last_expr');
+      if (last) document.getElementById('expr').value = String(last);
+    });
+  </script>
+</body>
+</html>

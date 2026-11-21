@@ -1,0 +1,35 @@
+{
+  "plugin_key": "acme.calc_wasm",
+  "name": "Rust WASM Calculator",
+  "version": "1.0.0",
+  "publisher": "acme",
+  "entry_point": "plugin.wasm",
+  "runtime": "wasm",
+  "sdk_version": "1.0.0",
+  "platforms": ["web", "desktop"],
+  "permissions": [
+    "commands.register",
+    "ui.page",
+    "storage.local"
+  ],
+  "ui_contributions": {
+    "page": true,
+    "title": "Rust WASM Calculator"
+  },
+  "commands": [
+    { "trigger": "/wcalc", "description": "Tính toán biểu thức toán học bằng module Rust WebAssembly" }
+  ],
+  "event_subscriptions": [],
+  "settings_schema": [],
+  "resource_limits": {
+    "max_memory_mb": 16,
+    "max_exec_ms": 2000,
+    "max_storage_kb": 128,
+    "max_requests_per_min": 30
+  },
+  "summary": "Máy tính biểu thức biên dịch từ Rust sang WebAssembly chạy trong Worker cách ly",
+  "description": "Chứng minh khả năng biên dịch mã nguồn Rust thành tệp nhị phân .wasm hợp lệ và chạy thực tế qua ABI chatw_alloc / chatw_invoke.",
+  "category": "utilities",
+  "entry_wasm": "plugin.wasm",
+  "entry_ui": "ui.html"
+}

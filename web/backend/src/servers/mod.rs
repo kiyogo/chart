@@ -1191,6 +1191,15 @@ async fn handle_post_channel_message(
             },
         )
         .await;
+    crate::plugins::webhooks::dispatch_outgoing_event(
+        state.clone(),
+        "server",
+        ch.server_id,
+        Some(channel_id),
+        "onChannelMessage",
+        serde_json::to_value(&item).unwrap_or_default(),
+    )
+    .await;
 
     Ok(Json(item))
 }

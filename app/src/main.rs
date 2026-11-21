@@ -6,9 +6,10 @@ fn main() {
         const RESIZER_JS: &str = include_str!("../web/panel_resizer.js");
         const STORAGE_JS: &str = include_str!("../web/storage_engine.js");
         const MEDIA_JS: &str = include_str!("../web/media_optimizer.js");
+        const PLUGIN_RUNTIME_JS: &str = include_str!("../web/plugin_runtime.js");
 
         let custom_head = format!(
-            "<script>{SCROLLBARS_JS}</script>\n<script>{RESIZER_JS}</script>\n<script>{STORAGE_JS}</script>\n<script>{MEDIA_JS}</script>"
+            "<script>{SCROLLBARS_JS}</script>\n<script>{RESIZER_JS}</script>\n<script>{STORAGE_JS}</script>\n<script>{MEDIA_JS}</script>\n<script>{PLUGIN_RUNTIME_JS}</script>"
         );
         let window = WindowBuilder::new()
             .with_title("ChatW")
