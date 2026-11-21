@@ -17,7 +17,7 @@ fn Duo(size: u32, children: Element) -> Element {
             view_box: "0 0 24 24",
             fill: "none",
             stroke: "currentColor",
-            stroke_width: "2.05",
+            stroke_width: "1.95",
             stroke_linecap: "round",
             stroke_linejoin: "round",
             "aria-hidden": "true",
@@ -339,8 +339,8 @@ pub fn MonitorIcon(#[props(default = 18)] size: u32) -> Element {
 pub fn SearchIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
         circle { cx: "10.5", cy: "10.5", r: "7.6", fill: duo_fill!(), fill_opacity: "0.22" }
-        path { stroke_opacity: "0.5", stroke_width: "1.7", d: "M7.2 8a4 4 0 0 1 4.4-1.4" }
-        path { stroke_width: "2.45", d: "M16.1 16.1l5.3 5.3" }
+        path { stroke_opacity: "0.45", stroke_width: "1.6", d: "M7.2 8a4 4 0 0 1 4.4-1.4" }
+        path { stroke_width: "2.35", d: "M16.1 16.1l5.3 5.3" }
     } }
 }
 
@@ -389,9 +389,8 @@ pub fn PanelRightIcon(#[props(default = 22)] size: u32) -> Element {
 pub fn CompassIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
         circle { cx: "12", cy: "12", r: "9.6", fill: duo_fill!(), fill_opacity: "0.18" }
-        path { fill: "currentColor", stroke: "none", d: "M16.5 7.5l-2.4 6.4-4-4z" }
-        path { fill: duo_fill!(), fill_opacity: "0.35", stroke: "none", d: "M7.5 16.5l2.4-6.4 4 4z" }
-        path { stroke_width: "1.75", d: "M16.5 7.5l-2.4 6.4-6.6 2.6 2.4-6.4z" }
+        path { fill: duo_fill!(), fill_opacity: "0.26", stroke_width: "1.8", d: "M16.4 7.6l-2.3 6.2-6.5 2.6 2.3-6.2z" }
+        circle { cx: "12", cy: "12", r: "1.1", fill: "currentColor", stroke: "none" }
     } }
 }
 
@@ -781,7 +780,6 @@ pub fn VicoAiIcon(#[props(default = 18)] size: u32, #[props(default = false)] fu
 #[component]
 pub fn FeedThreadsIcon(#[props(default = 22)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "12", cy: "12", r: "9.5", fill: duo_fill!(), fill_opacity: "0.2", stroke: "none" }
         circle { cx: "12", cy: "12", r: "3.7" }
         path { d: "M15.7 11.2v1.6a2.9 2.9 0 0 0 5.8 0V12a9.5 9.5 0 1 0-3.6 7.45" }
     } }

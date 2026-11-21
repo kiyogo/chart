@@ -82,6 +82,10 @@ try {
     const composerSvgs = Array.from(document.querySelectorAll('.composer-box svg.cw-icon'));
     const settingsSvg = document.querySelector('.rail-bottom button[aria-label="Cài đặt"] svg.cw-icon');
     const settingsFillPath = settingsSvg?.querySelector('path[fill-rule="evenodd"]');
+    const inactiveDuoFills = Array.from(document.querySelectorAll('.app-rail .rail-item:not(.active):not(.has-logo) svg.cw-icon [fill-opacity]'))
+      .map((el) => parseFloat(getComputedStyle(el).fillOpacity));
+    const activeDuoFills = Array.from(document.querySelectorAll('.app-rail .rail-item.active:not(.has-logo) svg.cw-icon [fill-opacity]'))
+      .map((el) => parseFloat(getComputedStyle(el).fillOpacity));
 
     const dims = (els) => els.map((s) => `${Math.round(s.getBoundingClientRect().width)}x${Math.round(s.getBoundingClientRect().height)}`);
 
@@ -107,6 +111,8 @@ try {
       bottomNavSizes: dims(bottomNavSvgs),
       composerSizes: dims(composerSvgs),
       settingsHasEvenOddCutout: !!settingsFillPath,
+      inactiveDuoFills,
+      activeDuoFills,
     };
   });
 
@@ -160,6 +166,18 @@ try {
     'SettingsIcon uses transparent SVG evenodd cutout (no white center patch)',
     !!(audit && audit.settingsHasEvenOddCutout),
     JSON.stringify({ settingsHasEvenOddCutout: audit?.settingsHasEvenOddCutout }),
+  );
+
+  record(
+    'Inactive icons have 0% muddy gray interior fill while active rail icon gets clean luminous accent tint',
+    !!(
+      audit &&
+      audit.inactiveDuoFills.length > 0 &&
+      audit.inactiveDuoFills.every((v) => v === 0) &&
+      audit.activeDuoFills.length > 0 &&
+      audit.activeDuoFills.every((v) => v > 0.1 && v <= 0.22)
+    ),
+    JSON.stringify({ inactiveCount: audit?.inactiveDuoFills?.length, inactiveMax: Math.max(...(audit?.inactiveDuoFills || [0])), activeFills: audit?.activeDuoFills }),
   );
 
   // Hover one message row so we also capture the redesigned message hover action bar
