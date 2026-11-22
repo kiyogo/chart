@@ -168,8 +168,8 @@ try {
       selfChatAudit.beforeDisplay === 'block' &&
       selfChatAudit.beforeMask.includes('linear-gradient') &&
       selfChatAudit.beforeBlur === 'none' &&
-      selfChatAudit.beforeHeight >= 50 &&
-      selfChatAudit.beforeHeight <= 72 &&
+      selfChatAudit.beforeHeight >= 72 &&
+      selfChatAudit.beforeHeight <= 98 &&
       selfChatAudit.afterDisplay === 'none' &&
       selfChatAudit.msgsStartsAtTop &&
       selfChatAudit.idBg === 'rgba(0, 0, 0, 0)' &&

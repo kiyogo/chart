@@ -185,31 +185,40 @@ try {
     JSON.stringify(oceanFadeAudit)
   );
 
-  // 3b. Spec 065: Verify .chat-messages applies crisp viewport edge mask so scrolled blue message bubbles NEVER collide with header icons or get washed in milky haze!
+  // 3b. Spec 068: Verify silky multi-stop cubic cloud mist on .chat-messages, .chat-header::before & .composer::before — ZERO hard solid white bar!
   const maskAudit = await page.evaluate(() => {
     const sc = document.getElementById('chat-messages-scroll');
-    // Scroll mid-way so a bright blue sent bubble sits directly beneath the top header band
+    // Scroll mid-way so bright blue sent bubbles pass smoothly through the top & bottom cloud mist zones
     if (sc && sc.scrollHeight > sc.clientHeight) {
       sc.scrollTop = Math.min(180, Math.floor((sc.scrollHeight - sc.clientHeight) / 2));
     }
     const cs = getComputedStyle(sc);
     const hdr = document.querySelector('.chat-column > .chat-header');
     const hdrB = getComputedStyle(hdr, '::before');
+    const comp = document.querySelector('.chat-column > .composer');
+    const compB = getComputedStyle(comp, '::before');
     return {
       msgsMask: cs.maskImage || cs.webkitMaskImage || 'none',
       hdrBeforeH: Math.round(parseFloat(hdrB.height) || 0),
       hdrH: Math.round(hdr.getBoundingClientRect().height),
       hdrBeforeMask: hdrB.maskImage || hdrB.webkitMaskImage || 'none',
+      compBeforeMask: compB.maskImage || compB.webkitMaskImage || 'none',
     };
   });
   await page.waitForTimeout(150);
-  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '01b_scrolled_bubbles_clean_header_separation.png') });
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '01b_scrolled_bubbles_soft_cloud_mist_ocean.png') });
   record(
-    'Spec 065: .chat-messages applies crisp viewport mask keeping scrolled blue bubbles strictly clear of header icons & composer with zero milky washout',
+    'Spec 068: Soft per-pixel cubic cloud mist dissolves scrolled bubbles smoothly at top & bottom with ZERO hard solid bar (no 84%/86% plateau)',
     maskAudit.msgsMask.includes('linear-gradient') &&
-      maskAudit.msgsMask.includes('rgba(0, 0, 0, 0)') &&
-      Math.abs(maskAudit.hdrBeforeH - maskAudit.hdrH) <= 2 &&
-      maskAudit.hdrBeforeMask.includes('84%'),
+      maskAudit.msgsMask.includes('0.02') &&
+      maskAudit.msgsMask.includes('0.42') &&
+      maskAudit.hdrBeforeH >= maskAudit.hdrH + 24 &&
+      maskAudit.hdrBeforeMask.includes('0.86') &&
+      maskAudit.hdrBeforeMask.includes('0.4') &&
+      !maskAudit.hdrBeforeMask.includes('84%') &&
+      maskAudit.compBeforeMask.includes('0.86') &&
+      !maskAudit.compBeforeMask.includes('86% 0%') &&
+      !maskAudit.compBeforeMask.includes('rgb(0, 0, 0) 86%'),
     JSON.stringify(maskAudit)
   );
 

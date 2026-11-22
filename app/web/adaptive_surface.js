@@ -553,7 +553,9 @@
     const hdr = chatCol.querySelector(':scope > .chat-header');
     const comp = chatCol.querySelector(':scope > .composer');
     const hdrH = hdr ? Math.max(48, hdr.getBoundingClientRect().height) : 56;
-    const compH = comp ? Math.max(52, comp.getBoundingClientRect().height + 6) : 68;
+    const compRectH = comp ? Math.max(48, comp.getBoundingClientRect().height) : 62;
+    const topMistH = hdrH + 30;
+    const botMistH = compRectH + 30;
 
     if (chatCol.classList.contains('wp-image')) {
       chatCol.removeAttribute('data-chat-edge-strip');
@@ -576,7 +578,7 @@
           const drawH = nh * scale;
           const offX = (colRect.width - drawW) / 2;
           const offY = (colRect.height - drawH) / 2;
-          const botOffY = offY - (colRect.height - compH);
+          const botOffY = offY - (colRect.height - botMistH);
           chatCol.style.setProperty('--chat-bg-w', `${drawW.toFixed(2)}px`);
           chatCol.style.setProperty('--chat-bg-h', `${drawH.toFixed(2)}px`);
           chatCol.style.setProperty('--chat-bg-x', `${offX.toFixed(2)}px`);
@@ -614,11 +616,11 @@
     if (!hasExplicitChatWallpaper(chatCol) && wpKind !== 'none' && panelOpacity < 99 && panelPixels) {
       const vw = Math.max(1, window.innerWidth || 1440);
       const vh = Math.max(1, window.innerHeight || 900);
-      const edgeKey = `${lastBackdropKey}|${Math.round(colRect.left)},${Math.round(colRect.top)},${Math.round(colRect.width)},${Math.round(colRect.height)},${Math.round(hdrH)},${Math.round(compH)}`;
+      const edgeKey = `${lastBackdropKey}|${Math.round(colRect.left)},${Math.round(colRect.top)},${Math.round(colRect.width)},${Math.round(colRect.height)},${Math.round(topMistH)},${Math.round(botMistH)}`;
       if (edgeKey !== lastEdgeKey) {
         try {
-          const topUrl = cropPanelStripDataUrl(colRect.left, colRect.top, colRect.width, hdrH, vw, vh);
-          const botUrl = cropPanelStripDataUrl(colRect.left, colRect.bottom - compH, colRect.width, compH, vw, vh);
+          const topUrl = cropPanelStripDataUrl(colRect.left, colRect.top, colRect.width, topMistH, vw, vh);
+          const botUrl = cropPanelStripDataUrl(colRect.left, colRect.bottom - botMistH, colRect.width, botMistH, vw, vh);
           chatCol.style.setProperty('--chat-top-fade-strip', `url("${topUrl}")`);
           chatCol.style.setProperty('--chat-bot-fade-strip', `url("${botUrl}")`);
           chatCol.setAttribute('data-chat-edge-strip', 'true');
