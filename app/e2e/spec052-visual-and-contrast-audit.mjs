@@ -149,9 +149,10 @@ try {
       beforeHeight: parseFloat(hdrBeforeCS.height) || 0,
       afterDisplay: hdrAfterCS.display,
       msgsStartsAtTop: msgsR ? Math.abs(msgsR.top - colR.top) <= 1 : false,
-      idRadius: idCS ? parseFloat(idCS.borderTopLeftRadius) : 0,
       idBg: idCS ? idCS.backgroundColor : '',
-      actRadius: actCS ? parseFloat(actCS.borderTopLeftRadius) : 0,
+      idShadow: idCS ? idCS.boxShadow : '',
+      actBg: actCS ? actCS.backgroundColor : '',
+      actShadow: actCS ? actCS.boxShadow : '',
       curChipBg: hdr.querySelector('.device-chip.current') ? getComputedStyle(hdr.querySelector('.device-chip.current')).backgroundColor : '',
       hasThietBiLabel,
       devicesRightOfTitle: idR && devR ? devR.left >= idR.right + 4 : false,
@@ -160,20 +161,21 @@ try {
     };
   });
   record(
-    'Self-chat header floats Avatar+Name & Actions as frosted capsules with wallpaper-matched unblurred top edge fade (~41px) and opaque non-bleeding current device chip',
+    'Self-chat header floats frameless Avatar+Name & Actions over wallpaper-matched unblurred top fade and opaque non-bleeding current device chip',
     selfChatAudit.hdrPos === 'absolute' &&
       selfChatAudit.hdrBg === 'rgba(0, 0, 0, 0)' &&
       selfChatAudit.hdrPointer === 'none' &&
       selfChatAudit.beforeDisplay === 'block' &&
       selfChatAudit.beforeMask.includes('linear-gradient') &&
       selfChatAudit.beforeBlur === 'none' &&
-      selfChatAudit.beforeHeight >= 34 &&
-      selfChatAudit.beforeHeight <= 48 &&
+      selfChatAudit.beforeHeight >= 50 &&
+      selfChatAudit.beforeHeight <= 72 &&
       selfChatAudit.afterDisplay === 'none' &&
       selfChatAudit.msgsStartsAtTop &&
-      selfChatAudit.idRadius >= 20 &&
-      selfChatAudit.idBg !== 'rgba(0, 0, 0, 0)' &&
-      selfChatAudit.actRadius >= 20 &&
+      selfChatAudit.idBg === 'rgba(0, 0, 0, 0)' &&
+      selfChatAudit.idShadow === 'none' &&
+      selfChatAudit.actBg === 'rgba(0, 0, 0, 0)' &&
+      selfChatAudit.actShadow === 'none' &&
       !selfChatAudit.hasThietBiLabel &&
       selfChatAudit.devicesRightOfTitle &&
       selfChatAudit.datePos === 'relative' &&
@@ -459,10 +461,10 @@ try {
       idleSeg72?.shadow.includes('inset') &&
       Boolean(
         navActiveRgba &&
-          navActiveRgba.r >= 228 &&
-          navActiveRgba.g >= 234 &&
+          navActiveRgba.r >= 215 &&
+          navActiveRgba.g >= 225 &&
           navActiveRgba.b >= 245 &&
-          navActiveRgba.b - navActiveRgba.r >= 15 &&
+          navActiveRgba.b - navActiveRgba.r >= 18 &&
           navActiveRgba.a >= 0.76
       ) &&
       Boolean(sec52Rgba && sec52Rgba.r === 255 && sec52Rgba.g === 255 && sec52Rgba.b === 255 && sec52Rgba.a >= 0.55) &&
@@ -588,12 +590,10 @@ try {
   });
 
   record(
-    'Light/Dark chat wallpaper integrity: .wp-night keeps dark pills + dark ChatMoreMenu + bright text + navy top fade, and .wp-ocean top fade matches Ocean gradient',
+    'Light/Dark chat wallpaper integrity: .wp-night keeps frameless transparent header + dark ChatMoreMenu + bright text + navy top fade, and .wp-ocean top fade matches Ocean gradient',
     Boolean(
-      nightAudit.idRgb &&
-        nightAudit.idRgb.r < 50 &&
-        nightAudit.actRgb &&
-        nightAudit.actRgb.r < 50 &&
+      nightAudit.idBg === 'rgba(0, 0, 0, 0)' &&
+        nightAudit.actBg === 'rgba(0, 0, 0, 0)' &&
         nightAudit.titleRgb &&
         nightAudit.titleRgb.r > 220 &&
         nightAudit.beforeRgb &&

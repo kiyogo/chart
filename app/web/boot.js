@@ -5,8 +5,10 @@
     const root = document.documentElement;
     const get = (k, d) => localStorage.getItem(k) || d;
     const pref = get('chatw_theme', 'system');
-    const dark = pref === 'dark' || (pref === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+    const sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const variant = pref === 'system' ? (sysDark ? 'dark' : 'light') : (['light', 'ash', 'dark', 'oled'].includes(pref) ? pref : 'light');
+    root.setAttribute('data-theme', variant === 'light' ? 'light' : 'dark');
+    root.setAttribute('data-theme-variant', variant);
     root.setAttribute('data-theme-pref', pref);
     root.setAttribute('data-accent', get('chatw_accent', 'blue'));
     root.setAttribute('data-density', get('chatw_density', 'comfortable'));

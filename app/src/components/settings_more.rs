@@ -457,16 +457,11 @@ pub fn LanguageSettings() -> Element {
 pub fn AppearanceColorsShapes() -> Element {
     let c = ctx();
     let pr: Prefs = c.prefs.read().clone();
-    let accent_val = if pr.custom_accent.is_empty() { "#2764E7".to_string() } else { pr.custom_accent.clone() };
+    let accent_val = if pr.custom_accent.is_empty() { "#2E7CF6".to_string() } else { pr.custom_accent.clone() };
     let self_val = if pr.bubble_self.is_empty() { accent_val.clone() } else { pr.bubble_self.clone() };
     let other_val = if pr.bubble_other.is_empty() { "#EEF1F5".to_string() } else { pr.bubble_other.clone() };
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-row",
-                span { class: "grow", span { class: "settings-label", "Màu nhấn tùy chọn" } }
-                if !pr.custom_accent.is_empty() { button { r#type: "button", class: "btn-secondary", onclick: move |_| c.update(|p| p.custom_accent.clear()), "Mặc định" } }
-                input { r#type: "color", aria_label: "Màu nhấn", value: "{accent_val}", onchange: move |e| { let v = e.value().to_uppercase(); c.update(move |p| p.custom_accent = v) } }
-            }
             div { class: "settings-row",
                 span { class: "grow", span { class: "settings-label", "Bong bóng của bạn" } }
                 if !pr.bubble_self.is_empty() { button { r#type: "button", class: "btn-secondary", onclick: move |_| c.update(|p| p.bubble_self.clear()), "Mặc định" } }

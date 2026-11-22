@@ -326,8 +326,14 @@ pub fn SettingsView(
                                     div { class: "settings-col",
                                         div { class: "settings-group",
                                             div { class: "settings-group-title", "Chủ đề" }
-                                            div { class: "theme-preview", role: "radiogroup", aria_label: "Chủ đề",
-                                                for (val, label) in [("light", "Sáng"), ("dark", "Tối"), ("system", "Theo hệ thống")] {
+                                            div { class: "theme-preview theme-preview-5", role: "radiogroup", aria_label: "Chủ đề",
+                                                for (val, label) in [
+                                                    ("light", "Sáng"),
+                                                    ("ash", "Xám tro"),
+                                                    ("dark", "Tối"),
+                                                    ("oled", "Đen huyền"),
+                                                    ("system", "Theo hệ thống"),
+                                                ] {
                                                     button {
                                                         key: "{val}",
                                                         r#type: "button",
@@ -338,18 +344,28 @@ pub fn SettingsView(
                                                         div {
                                                             class: "theme-card-swatch",
                                                             style: match val {
-                                                                "light" => "background: #F7F8FA;",
-                                                                "dark" => "background: #111419;",
-                                                                _ => "background: linear-gradient(90deg, #F7F8FA 50%, #111419 50%);",
+                                                                "light" => "background: #F4F6FA;",
+                                                                "ash" => "background: #313338;",
+                                                                "dark" => "background: #1C1F26;",
+                                                                "oled" => "background: #06070A;",
+                                                                _ => "background: linear-gradient(90deg, #F4F6FA 50%, #1C1F26 50%);",
                                                             },
                                                             i { style: "width: 28%; background: var(--accent);" }
-                                                            i { style: "flex: 1; background: rgba(127,127,127,0.25);" }
+                                                            i {
+                                                                style: match val {
+                                                                    "light" => "flex: 1; background: #D8DEE8;",
+                                                                    "ash" => "flex: 1; background: #434751;",
+                                                                    "dark" => "flex: 1; background: #2B303C;",
+                                                                    "oled" => "flex: 1; background: #161923;",
+                                                                    _ => "flex: 1; background: rgba(127, 134, 148, 0.30);",
+                                                                },
+                                                            }
                                                         }
-                                                        span { style: "display: inline-flex; align-items: center; gap: 6px;",
+                                                        span { style: "display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;",
                                                             match val {
-                                                                "light" => rsx! { SunIcon { size: 15 } },
-                                                                "dark" => rsx! { MoonIcon { size: 15 } },
-                                                                _ => rsx! { MonitorIcon { size: 15 } },
+                                                                "light" => rsx! { SunIcon { size: 14 } },
+                                                                "ash" | "dark" | "oled" => rsx! { MoonIcon { size: 14 } },
+                                                                _ => rsx! { MonitorIcon { size: 14 } },
                                                             }
                                                             "{label}"
                                                         }
@@ -363,11 +379,12 @@ pub fn SettingsView(
                                             div { class: "settings-group-desc", "Áp dụng cho nút chính, bong bóng tin nhắn đã gửi và mục đang chọn." }
                                             div { class: "accent-swatches", role: "radiogroup", aria_label: "Màu nhấn",
                                                 for (val, color, label) in [
-                                                    ("blue", "#2764E7", "Xanh dương"),
-                                                    ("violet", "#6D4AE0", "Tím"),
-                                                    ("green", "#138A5A", "Xanh lá"),
-                                                    ("orange", "#D9620F", "Cam"),
-                                                    ("rose", "#D6336C", "Hồng"),
+                                                    ("blue", "#2E7CF6", "Xanh dương"),
+                                                    ("violet", "#8B5CF6", "Tím"),
+                                                    ("green", "#10B981", "Xanh lá"),
+                                                    ("orange", "#F97316", "Cam"),
+                                                    ("rose", "#F43F7E", "Hồng"),
+                                                    ("cyan", "#06B6D4", "Xanh ngọc"),
                                                 ] {
                                                     button {
                                                         key: "{val}",
@@ -375,8 +392,8 @@ pub fn SettingsView(
                                                         role: "radio",
                                                         title: "{label}",
                                                         aria_label: "{label}",
-                                                        aria_checked: "{appearance().accent == val}",
-                                                        class: if appearance().accent == val { "accent-swatch active" } else { "accent-swatch" },
+                                                        aria_checked: "{appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty()}",
+                                                        class: if appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty() { "accent-swatch active" } else { "accent-swatch" },
                                                         style: "background: {color};",
                                                         onclick: move |_| {
                                                             if !prefs_ctx.prefs.read().custom_accent.is_empty() {
@@ -385,6 +402,40 @@ pub fn SettingsView(
                                                             update_appearance(&|a| a.accent = val.to_string());
                                                         },
                                                         if appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty() { CheckIcon { size: 16 } }
+                                                    }
+                                                }
+                                            }
+                                            {
+                                                let cur_custom = prefs_ctx.prefs.read().custom_accent.clone();
+                                                let preset_hex = match appearance().accent.as_str() {
+                                                    "cyan" => "#06B6D4",
+                                                    "violet" => "#8B5CF6",
+                                                    "green" => "#10B981",
+                                                    "orange" => "#F97316",
+                                                    "rose" => "#F43F7E",
+                                                    _ => "#2E7CF6",
+                                                };
+                                                let picker_val = if cur_custom.is_empty() { preset_hex.to_string() } else { cur_custom.clone() };
+                                                rsx! {
+                                                    div { class: "settings-row accent-custom-row",
+                                                        span { class: "grow", span { class: "settings-label", "Màu nhấn tùy chọn" } }
+                                                        if !cur_custom.is_empty() {
+                                                            button {
+                                                                r#type: "button",
+                                                                class: "btn-secondary",
+                                                                onclick: move |_| prefs_ctx.update(|p| p.custom_accent.clear()),
+                                                                "Mặc định"
+                                                            }
+                                                        }
+                                                        input {
+                                                            r#type: "color",
+                                                            aria_label: "Màu nhấn",
+                                                            value: "{picker_val}",
+                                                            onchange: move |e| {
+                                                                let v = e.value().to_uppercase();
+                                                                prefs_ctx.update(move |p| p.custom_accent = v);
+                                                            },
+                                                        }
                                                     }
                                                 }
                                             }

@@ -1,0 +1,7 @@
+# Tasks: Spec 053 — 5 Themes, Vibrant Accents, Frameless Color & Chat Header, Symmetrical Avatar Spacing
+
+- [x] **T001**: Update `app/web/boot.js` and `app/src/platform/mod.rs` to support all 5 themes (`light`, `ash`, `dark`, `oled`, `system`) via `data-theme` + `data-theme-variant`, vibrant 6-color preset accents (`blue`, `cyan`, `violet`, `green`, `orange`, `rose`), and slightly richer `12%` / `13%` / `18%` `--accent-soft`.
+- [x] **T002**: Update `app/assets/theme.css` with calibrated high-contrast palettes for `Sáng`, `Xám tro` (`#313338`), `Tối` (`#1C1F26`), and `Đen huyền` (`#090A0E`/`#000000`), plus fresh vibrant default accent colors and `12%`/`18%` soft accent tints.
+- [x] **T003**: Update `app/src/components/settings_view.rs` and `app/src/components/settings_more.rs` to render all 5 theme cards, vibrant preset swatches, and the custom accent color picker directly beneath the `Màu nhấn` swatches.
+- [x] **T004**: Update `app/assets/main.css` to remove borders on `input[type="color"]` & `.cw-cp-swatch`, remove the black ring on `.accent-swatch.active`, remove outer capsule frames from `.chat-header-identity` / `.chat-header-actions` / `.back-btn` across all chats while keeping the smooth wallpaper-matched unblurred top fade, and equalize top/bottom/left avatar padding inside `.chat-item`.
+- [x] **T005**: Build Web release bundle, update Spec 052 & create Spec 053 Playwright E2E suite, visually inspect live screenshots across all 5 themes + Settings + Chat + Sidebar, verify all regression suites pass, and commit + push to `origin/main`.

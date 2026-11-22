@@ -92,12 +92,12 @@
   --z-toast: 1200;
 
   /* Accent (overridden by data-accent) */
-  --accent-h: 222;
-  --accent: #2764E7;
-  --accent-hover: #1853D2;
-  --accent-soft: color-mix(in srgb, var(--accent) 9%, transparent);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 14%, transparent);
-  --accent-text: #1B4FC4;
+  --accent-h: 217;
+  --accent: #2E7CF6;
+  --accent-hover: #1D6AE5;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-text: #1B5FD4;
   --on-accent: #FFFFFF;
 
   /* ---------- Light theme ---------- */
@@ -160,65 +160,121 @@
   --accent-primary: var(--accent);
 }
 
-/* ---------- Dark theme ---------- */
+/* ---------- Dark theme (Tối — comfortable deep slate, softer than pitch black) ---------- */
 [data-theme="dark"] {
   color-scheme: dark;
-  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 22%, transparent);
-  --accent-text: color-mix(in srgb, var(--accent) 55%, #FFFFFF);
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 26%, transparent);
+  --accent-text: color-mix(in srgb, var(--accent) 62%, #FFFFFF);
 
-  --bg-app: #0C0E12;
-  --bg-sidebar: #171A20;
-  --bg-primary: #191C22;
-  --bg-secondary: #14171C;
-  --bg-chat: #191C22;
-  --bg-surface: #22262E;
-  --bg-elevated: #242930;
-  --bg-surface-hover: rgba(255, 255, 255, 0.055);
-  --bg-hover: rgba(255, 255, 255, 0.08);
-  --bg-active: rgba(255, 255, 255, 0.13);
+  --bg-app: #111318;
+  --bg-sidebar: #1C1F26;
+  --bg-primary: #1C1F26;
+  --bg-secondary: #171A20;
+  --bg-chat: #1C1F26;
+  --bg-surface: #232732;
+  --bg-elevated: #272C38;
+  --bg-surface-hover: rgba(255, 255, 255, 0.06);
+  --bg-hover: rgba(255, 255, 255, 0.085);
+  --bg-active: rgba(255, 255, 255, 0.135);
   --bg-selected: var(--accent-soft);
-  --bg-input: #1A1E27;
-  --bg-input-focus: #1F2531;
+  --bg-input: #171A21;
+  --bg-input-focus: #20242F;
   --input-border: rgba(255, 255, 255, 0.14);
   --bg-overlay: rgba(0, 0, 0, 0.56);
   --bg-error: #3A1D20;
   --bg-success: #15301F;
   --bg-warning: #382A12;
 
-  --text: #E8EAED;
-  --text-primary: #E8EAED;
-  --text-secondary: #A4ABB6;
-  --text-muted: #7B838F;
+  --text: #EDF0F5;
+  --text-primary: #EDF0F5;
+  --text-secondary: #B2BAC9;
+  --text-muted: #828C9E;
 
-  --border: #2A3039;
-  --border-subtle: #22272F;
-  --border-strong: #38404B;
+  --border: #2C313D;
+  --border-subtle: #242934;
+  --border-strong: #3B4252;
 
-  --msg-recv: #262C35;
-  --msg-recv-text: #E8EAED;
-  --msg-recv-meta: #8B939E;
+  --msg-recv: #282D38;
+  --msg-recv-text: #EDF0F5;
+  --msg-recv-meta: #949EB0;
 
-  --status-success: #3DBE7E;
-  --status-warning: #F0AE3C;
-  --status-danger: #F2555A;
-  --danger-hover: #FF6B70;
+  --status-success: #34D399;
+  --status-warning: #FBBF24;
+  --status-danger: #FB7185;
+  --danger-hover: #F43F5E;
 
   --shadow-sm: none;
   --shadow-md: none;
   --shadow-lg: none;
 }
 
-/* ---------- Accent palettes (translucent --accent-soft inherits dynamically) ---------- */
-[data-accent="violet"] { --accent: #6D4AE0; --accent-hover: #5A37CF; --accent-text: #5530C4; }
-[data-accent="green"]  { --accent: #138A5A; --accent-hover: #0E764C; --accent-text: #0E6E47; }
-[data-accent="orange"] { --accent: #D9620F; --accent-hover: #BF530A; --accent-text: #A84A08; }
-[data-accent="rose"]   { --accent: #D6336C; --accent-hover: #BE2659; --accent-text: #B0204F; }
+/* ---------- Ash theme (Xám tro — soft mid-dark charcoal slate) ---------- */
+[data-theme="dark"][data-theme-variant="ash"] {
+  --bg-app: #23252A;
+  --bg-sidebar: #313338;
+  --bg-primary: #313338;
+  --bg-secondary: #2B2D31;
+  --bg-chat: #313338;
+  --bg-surface: #373A42;
+  --bg-elevated: #3D414A;
+  --bg-surface-hover: rgba(255, 255, 255, 0.07);
+  --bg-hover: rgba(255, 255, 255, 0.10);
+  --bg-active: rgba(255, 255, 255, 0.15);
+  --bg-input: #27292E;
+  --bg-input-focus: #2E3138;
+  --input-border: rgba(255, 255, 255, 0.15);
+  --text: #F2F3F5;
+  --text-primary: #F2F3F5;
+  --text-secondary: #C4C9D4;
+  --text-muted: #969DA9;
+  --border: #41454E;
+  --border-subtle: #393C44;
+  --border-strong: #4E535E;
+  --msg-recv: #3C3F48;
+  --msg-recv-text: #F2F3F5;
+  --msg-recv-meta: #A6ADB9;
+}
+
+/* ---------- Obsidian OLED theme (Đen huyền — true pitch black with crisp legibility) ---------- */
+[data-theme="dark"][data-theme-variant="oled"] {
+  --bg-app: #000000;
+  --bg-sidebar: #090A0E;
+  --bg-primary: #090A0E;
+  --bg-secondary: #050608;
+  --bg-chat: #090A0E;
+  --bg-surface: #11131A;
+  --bg-elevated: #161923;
+  --bg-surface-hover: rgba(255, 255, 255, 0.06);
+  --bg-hover: rgba(255, 255, 255, 0.09);
+  --bg-active: rgba(255, 255, 255, 0.14);
+  --bg-input: #101219;
+  --bg-input-focus: #161923;
+  --input-border: rgba(255, 255, 255, 0.15);
+  --text: #F5F7FA;
+  --text-primary: #F5F7FA;
+  --text-secondary: #B4BCCB;
+  --text-muted: #80899C;
+  --border: #1C202B;
+  --border-subtle: #141720;
+  --border-strong: #2A3040;
+  --msg-recv: #161923;
+  --msg-recv-text: #F5F7FA;
+  --msg-recv-meta: #9099AA;
+}
+
+/* ---------- Vibrant fresh accent palettes (translucent --accent-soft inherits dynamically) ---------- */
+[data-accent="cyan"]   { --accent: #06B6D4; --accent-hover: #0891B2; --accent-text: #0E7490; }
+[data-accent="violet"] { --accent: #8B5CF6; --accent-hover: #7C3AED; --accent-text: #6D28D9; }
+[data-accent="green"]  { --accent: #10B981; --accent-hover: #059669; --accent-text: #047857; }
+[data-accent="orange"] { --accent: #F97316; --accent-hover: #EA580C; --accent-text: #C2410C; }
+[data-accent="rose"]   { --accent: #F43F7E; --accent-hover: #E11D60; --accent-text: #BE185D; }
+[data-theme="dark"][data-accent="cyan"],
 [data-theme="dark"][data-accent="violet"],
 [data-theme="dark"][data-accent="green"],
 [data-theme="dark"][data-accent="orange"],
 [data-theme="dark"][data-accent="rose"] {
-  --accent-text: color-mix(in srgb, var(--accent) 50%, #FFFFFF);
+  --accent-text: color-mix(in srgb, var(--accent) 62%, #FFFFFF);
 }
 
 /* ---------- Density ---------- */

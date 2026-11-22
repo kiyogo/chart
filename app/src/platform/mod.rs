@@ -365,9 +365,9 @@ pub async fn get_viewport_width() -> u32 {
 /// `data-*` attributes on `<html>` so the CSS token layer reacts without zoom.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Appearance {
-    /// "light" | "dark" | "system"
+    /// "light" | "ash" | "dark" | "oled" | "system"
     pub theme: String,
-    /// "blue" | "violet" | "green" | "orange" | "rose"
+    /// "blue" | "cyan" | "violet" | "green" | "orange" | "rose"
     pub accent: String,
     /// "compact" | "comfortable" | "spacious"
     pub density: String,
@@ -400,8 +400,8 @@ pub fn load_appearance() -> Appearance {
         _ => "auto".to_string(),
     };
     Appearance {
-        theme: pick(storage_get("chatw_theme"), &["light", "dark", "system"], "system"),
-        accent: pick(storage_get("chatw_accent"), &["blue", "violet", "green", "orange", "rose"], "blue"),
+        theme: pick(storage_get("chatw_theme"), &["light", "ash", "dark", "oled", "system"], "system"),
+        accent: pick(storage_get("chatw_accent"), &["blue", "cyan", "violet", "green", "orange", "rose"], "blue"),
         density: pick(storage_get("chatw_density"), &["compact", "comfortable", "spacious"], "comfortable"),
         font_size,
     }
@@ -642,13 +642,14 @@ if (!window.__chatwRecomputeContrast) {
     window.__chatwRecomputeContrast = () => {
         const root = document.documentElement;
         const baseTheme = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        const themeVariant = root.getAttribute('data-theme-variant') || baseTheme;
         const c = window.__chatwCustom || {
             wpKind: 'none', wpColor: '', wpImageUrl: '', dim: 0,
             panelOpacity: 100, panelGlass: false,
             customAccent: '', bubbleSelf: '', bubbleOther: '',
         };
-        const shellB = baseTheme === 'dark' ? 0.06 : 0.93;
-        const panelBaseB = baseTheme === 'dark' ? 0.12 : 1.0;
+        const shellB = themeVariant === 'ash' ? 0.15 : (themeVariant === 'oled' ? 0.0 : (baseTheme === 'dark' ? 0.07 : 0.93));
+        const panelBaseB = themeVariant === 'ash' ? 0.21 : (themeVariant === 'oled' ? 0.04 : (baseTheme === 'dark' ? 0.13 : 1.0));
         let meanB = shellB, railB = shellB, stdB = 0.0, edgeB = 0.0, darkRatio = 0.0, brightRatio = 0.0;
         let domHex = '#64748B', wpChroma = 0.0;
 
@@ -799,15 +800,16 @@ if (!window.__chatwRecomputeContrast) {
 
         // Perceptual tint generator: prevents complementary alpha-blending mud (e.g. 16% blue over 84% pink -> dull grey-purple)
         const PRESET_ACCENTS = {
-            blue: '#2764E7',
-            violet: '#6D4AE0',
-            green: '#138A5A',
-            orange: '#D9620F',
-            rose: '#D6336C',
+            blue: '#2E7CF6',
+            cyan: '#06B6D4',
+            violet: '#8B5CF6',
+            green: '#10B981',
+            orange: '#F97316',
+            rose: '#F43F7E',
         };
         const effAccentHex = (c.customAccent && parseHex(c.customAccent))
             ? c.customAccent
-            : (PRESET_ACCENTS[root.getAttribute('data-accent') || 'blue'] || '#2764E7');
+            : (PRESET_ACCENTS[root.getAttribute('data-accent') || 'blue'] || '#2E7CF6');
         const makeVibrantRgb = (hex, darkMode) => {
             const raw = parseHex(hex) || [39, 100, 231];
             const [h, s0] = rgbToHsl(raw[0], raw[1], raw[2]);
@@ -937,25 +939,25 @@ if (!window.__chatwRecomputeContrast) {
             root.style.setProperty('--on-accent', accentInk.text);
             root.style.setProperty('--accent-text', safeText);
             root.style.setProperty('--accent-soft', surfaceTone === 'dark'
-                ? `color-mix(in srgb, ${safeAccent} 15%, transparent)`
-                : `color-mix(in srgb, ${safeAccent} 9%, transparent)`);
+                ? `color-mix(in srgb, ${safeAccent} 18%, transparent)`
+                : `color-mix(in srgb, ${safeAccent} 12%, transparent)`);
             root.style.setProperty('--accent-soft-strong', surfaceTone === 'dark'
-                ? `color-mix(in srgb, ${safeAccent} 22%, transparent)`
-                : `color-mix(in srgb, ${safeAccent} 14%, transparent)`);
+                ? `color-mix(in srgb, ${safeAccent} 26%, transparent)`
+                : `color-mix(in srgb, ${safeAccent} 18%, transparent)`);
         } else {
             ['--accent', '--accent-hover', '--on-accent', '--accent-text', '--accent-soft', '--accent-soft-strong']
                 .forEach((k) => root.style.removeProperty(k));
         }
 
-        // Luminance-normalized ultra-light airy active/selected/pressed pills & glass hover over translucent wallpapers
+        // Luminance-normalized vivid airy active/selected/pressed pills & glass hover over translucent wallpapers
         if (needsLuminousControls) {
             const lumRamp = Math.min(1, Math.max(0, (transparency - 0.28) / 0.72));
             const isDarkSurf = surfaceTone === 'dark';
-            const pillA = isDarkSurf ? (0.76 + lumRamp * 0.12) : (0.78 + lumRamp * 0.10);
+            const pillA = isDarkSurf ? (0.76 + lumRamp * 0.12) : (0.79 + lumRamp * 0.10);
             const [vr, vg, vb] = makeVibrantRgb(effAccentHex, isDarkSurf);
-            root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.18 : 0.10, pillA));
-            root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.26 : 0.14, Math.min(0.94, pillA + 0.06)));
-            root.style.setProperty('--adaptive-active-ring', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${isDarkSurf ? '0.24' : '0.11'})`);
+            root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.22 : 0.13, pillA));
+            root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.30 : 0.19, Math.min(0.95, pillA + 0.06)));
+            root.style.setProperty('--adaptive-active-ring', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${isDarkSurf ? '0.28' : '0.14'})`);
             if (!isDarkSurf && isColoredSurface) {
                 root.style.setProperty('--bg-hover', `rgba(255, 255, 255, ${(0.46 + lumRamp * 0.18).toFixed(2)})`);
                 root.style.setProperty('--bg-active', `rgba(255, 255, 255, ${(0.64 + lumRamp * 0.18).toFixed(2)})`);
@@ -1114,22 +1116,33 @@ pub fn apply_appearance(a: &Appearance) {
             const root = document.documentElement;
             const pref = {theme:?};
             const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-            const resolve = () => pref === 'system' ? ((mq && mq.matches) ? 'dark' : 'light') : pref;
-            root.setAttribute('data-theme', resolve());
-            root.setAttribute('data-theme-pref', pref);
+            const resolveVariant = () => pref === 'system' ? ((mq && mq.matches) ? 'dark' : 'light') : (['light', 'ash', 'dark', 'oled'].includes(pref) ? pref : 'light');
+            const applyThemeAttrs = () => {{
+                const variant = resolveVariant();
+                const base = variant === 'light' ? 'light' : 'dark';
+                root.setAttribute('data-theme', base);
+                root.setAttribute('data-theme-variant', variant);
+                root.setAttribute('data-theme-pref', pref);
+                const meta = document.querySelector('meta[name="theme-color"]');
+                if (meta) {{
+                    const themeColors = {{ light: '#FFFFFF', ash: '#313338', dark: '#1C1F26', oled: '#000000' }};
+                    meta.setAttribute('content', themeColors[variant] || '#FFFFFF');
+                }}
+            }};
+            applyThemeAttrs();
             root.setAttribute('data-accent', {accent:?});
             root.setAttribute('data-density', {density:?});
             root.setAttribute('data-font-size', {font_size:?});
             if ({font_px:?}) root.style.setProperty('--font-size-root', {font_px:?});
             else root.style.removeProperty('--font-size-root');
-            const meta = document.querySelector('meta[name="theme-color"]');
-            if (meta) meta.setAttribute('content', resolve() === 'dark' ? '#111419' : '#FFFFFF');
             window.__chatwRecomputeContrast();
             if (mq && !window.__chatwThemeListener) {{
                 window.__chatwThemeListener = true;
                 mq.addEventListener('change', () => {{
                     if (root.getAttribute('data-theme-pref') === 'system') {{
-                        root.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+                        const v = mq.matches ? 'dark' : 'light';
+                        root.setAttribute('data-theme', v);
+                        root.setAttribute('data-theme-variant', v);
                         if (window.__chatwRecomputeContrast) window.__chatwRecomputeContrast();
                     }}
                 }});
