@@ -195,19 +195,19 @@ pub async fn build_export_preview(pool: &PgPool, user_id: Uuid) -> AppResult<Exp
     }
 
     let categories = vec![
-        "Hồ sơ tài khoản & cài đặt cá nhân (không chứa mật khẩu hay token)".to_string(),
-        format!("Tin nhắn chat riêng ({dm_messages})"),
-        format!("Tin nhắn nhóm ({group_messages})"),
-        format!("Tin nhắn máy chủ được quyền xem ({channel_messages})"),
-        format!("Tệp phương tiện trên máy chủ ({durable_media_count} tệp)"),
+        "Account profile & personal settings (no passwords or tokens)".to_string(),
+        format!("Private chat messages ({dm_messages})"),
+        format!("Group messages ({group_messages})"),
+        format!("Messages the server is allowed to view ({channel_messages})"),
+        format!("Media files on the server ({durable_media_count} files)"),
     ];
 
     let honest_notice = if missing_or_client_only_count > 0 {
         format!(
-            "Có {missing_or_client_only_count} tệp chat riêng chỉ lưu cục bộ trên thiết bị hoặc ở phía đối tác và không có trên máy chủ; tệp thiếu sẽ được ghi nhận trung thực trong manifest."
+            "There are {missing_or_client_only_count} private chat files that are only saved locally on the device or on the partner's side and not on the server; Missing files will be faithfully noted in the manifest."
         )
     } else {
-        "Tất cả dữ liệu thuộc quyền truy cập hợp lệ trên máy chủ đều sẵn sàng đưa vào bản sao lưu.".to_string()
+        "All data with valid access rights on the server is ready to be included in the backup.".to_string()
     };
 
     Ok(ExportPreviewResponse {
@@ -599,7 +599,7 @@ pub(crate) async fn prepare_backup_dataset(
                     scope_type,
                     scope_id,
                     original_filename: raw_name,
-                    reason: format!("Tệp không có bản sao trên máy chủ ({avail}); cần đồng bộ trực tiếp từ thiết bị giữ file"),
+                    reason: format!("The file has no copy on the server ({avail}); Need to sync directly from the device holding the file"),
                 });
                 continue;
             };
@@ -639,7 +639,7 @@ pub(crate) async fn prepare_backup_dataset(
                         scope_type,
                         scope_id,
                         original_filename: raw_name,
-                        reason: "Tệp trên backend lưu trữ không tồn tại hoặc đã hết hạn trung chuyển".into(),
+                        reason: "The file on the storage backend does not exist or has expired in transit".into(),
                     });
                 }
             }
@@ -648,11 +648,11 @@ pub(crate) async fn prepare_backup_dataset(
 
     let complete = missing_media.is_empty();
     let mut notes = vec![
-        "Định dạng chính thức .kdata (Argon2id + XChaCha20-Poly1305 STREAM BE32 + SHA-256)".to_string(),
+        "Official format .kdata (Argon2id + XChaCha20-Poly1305 STREAM BE32 + SHA-256)".to_string(),
     ];
     if !complete {
         notes.push(format!(
-            "Có {} tệp phương tiện chưa có sẵn bản sao trên máy chủ tại thời điểm xuất.",
+            "There are {} media files that do not have a copy available on the server at the time of export.",
             missing_media.len()
         ));
     }
@@ -906,7 +906,7 @@ fn assemble_decoded_bundle(
                 if let Ok(mut list) = serde_json::from_slice::<Vec<ExportedMessageRecord>>(&data) {
                     messages.append(&mut list);
                 } else {
-                    warnings.push(format!("Không đọc được tệp tin nhắn {}", entry.logical_path));
+                    warnings.push(format!("Unable to read message file {}", entry.logical_path));
                 }
             }
             KdataEntryKind::MediaBlob | KdataEntryKind::Avatar | KdataEntryKind::Sticker => {
@@ -1002,7 +1002,7 @@ pub async fn inspect_backup_archive(
         .is_some_and(|m| m.owner_user_id != user_id);
     let mut warnings = decoded.warnings.clone();
     if owner_mismatch {
-        warnings.push("Bản sao lưu thuộc về tài khoản khác: hệ thống sẽ chặn nhập trái phép sang tài khoản hiện tại.".into());
+        warnings.push("The backup belongs to another account: the system will block unauthorized import to the current account.".into());
     }
 
     let total_plain_bytes: u64 = decoded
@@ -1446,7 +1446,7 @@ pub async fn restore_backup_archive(
 
     if skipped_unauthorized_messages > 0 {
         warnings.push(format!(
-            "Đã bỏ qua {skipped_unauthorized_messages} mục không thuộc quyền sở hữu hoặc không có quyền khôi phục trên máy chủ."
+            "Ignored {skipped_unauthorized_messages} items that are not owned or do not have restore permissions on the server."
         ));
     }
 

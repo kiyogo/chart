@@ -7,15 +7,15 @@ use serde_json::{Value, json};
 use crate::{models::ApiError, platform};
 
 pub const SECTIONS: [(&str, &str); 9] = [
-    ("about", "Giới thiệu"),
-    ("details", "Thông tin"),
-    ("badges", "Huy hiệu"),
-    ("showcase", "Khu trưng bày"),
-    ("achievements", "Thành tích"),
-    ("guestbook", "Sổ lưu bút"),
-    ("communities", "Cộng đồng chung"),
-    ("mutual", "Bạn chung"),
-    ("links", "Liên kết"),
+    ("about", "Introduction"),
+    ("details", "Information"),
+    ("badges", "Badge"),
+    ("showcase", "Exhibition area"),
+    ("achievements", "Achievements"),
+    ("guestbook", "Guestbook"),
+    ("communities", "General community"),
+    ("mutual", "Mutual friend"),
+    ("links", "Link"),
 ];
 
 /// (id, English template name)
@@ -45,21 +45,21 @@ pub const TEMPLATES: [(&str, &str); 21] = [
 
 /// (id, title, description)
 pub const ACHIEVEMENTS: [(&str, &str, &str); 15] = [
-    ("first_message", "Lời chào đầu tiên", "Gửi tin nhắn đầu tiên"),
-    ("chatterbox", "Người trò chuyện", "Gửi 100 tin nhắn"),
-    ("first_friend", "Người bạn đầu tiên", "Kết bạn lần đầu"),
-    ("social", "Hòa đồng", "Có 10 người bạn"),
-    ("group_founder", "Người lập nhóm", "Tạo một nhóm"),
-    ("community_member", "Thành viên cộng đồng", "Tham gia một cộng đồng"),
-    ("sticker_maker", "Nhà làm sticker", "Tạo bộ sticker có ít nhất một sticker"),
-    ("artist", "Họa sĩ", "Lưu một dự án trong ChatW Studio"),
-    ("animator", "Nhà làm hoạt hình", "Lưu hoạt ảnh từ 8 khung hình"),
-    ("secure", "Khóa chặt", "Bật xác minh hai bước"),
-    ("stylist", "Phong cách", "Dùng hiệu ứng avatar, hiệu ứng tên hoặc bảng tên"),
-    ("storyteller", "Người kể chuyện", "Điền ít nhất 4 mục hồ sơ"),
-    ("bot_builder", "Thợ làm plugin", "Tạo một plugin"),
-    ("merchant", "Chủ cửa hàng", "Bật trang Kinh doanh"),
-    ("night_owl", "Cú đêm", "Thành tích ẩn"),
+    ("first_message", "First greeting", "Send the first message"),
+    ("chatterbox", "People chatting", "Send 100 messages"),
+    ("first_friend", "First friend", "Making friends for the first time"),
+    ("social", "Sociable", "Have 10 friends"),
+    ("group_founder", "Group founder", "Create a group"),
+    ("community_member", "Community members", "Join a community"),
+    ("sticker_maker", "Sticker maker", "Create a sticker set with at least one sticker"),
+    ("artist", "Painter", "Save a project in ChatW Studio"),
+    ("animator", "Animation maker", "Save animation from 8 frames"),
+    ("secure", "Lock tight", "Turn on two-step verification"),
+    ("stylist", "Style", "Use avatar effects, name effects or nameplates"),
+    ("storyteller", "Storyteller", "Fill in at least 4 profile entries"),
+    ("bot_builder", "Plugin maker", "Create a plugin"),
+    ("merchant", "Store owner", "Turn on the Business page"),
+    ("night_owl", "Night owl", "Hidden achievements"),
 ];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -151,7 +151,7 @@ pub fn default_sections() -> Vec<Section> {
 }
 
 pub fn section_label(id: &str) -> &'static str {
-    SECTIONS.iter().find(|s| s.0 == id).map(|s| s.1).unwrap_or("Mục")
+    SECTIONS.iter().find(|s| s.0 == id).map(|s| s.1).unwrap_or("Section")
 }
 
 pub fn template_name(id: &str) -> &'static str {

@@ -66,12 +66,12 @@ pub fn Illustration(kind: String) -> Element {
 }
 
 const TOUR: [(&str, &str, &str); 6] = [
-    ("chat", "Chào mừng đến ChatW", "Nhắn tin riêng tư, cộng đồng nhiều kênh, gọi thoại và video. Cùng xem nhanh những điều bạn có thể làm."),
-    ("shield", "Tin nhắn trực tiếp được mã hóa đầu cuối", "Khóa riêng tư nằm trên thiết bị của bạn. Máy chủ chỉ chuyển tiếp bản mã. So sánh vân tay khóa trong bảng Thông tin để xác minh bạn bè."),
-    ("user", "Hồ sơ mang dấu ấn riêng", "Màu chủ đề, khung avatar, hiệu ứng tên, bảng tên, hiệu ứng động. Bạn còn có thể tự vẽ hoặc tải ảnh lên để trang trí."),
-    ("library", "Emoji, sticker và GIF của bạn", "Mở bảng chọn ở ô soạn tin. Thêm emoji, sticker, GIF riêng trong Cài đặt › Thư viện và dùng ở mọi cuộc trò chuyện."),
-    ("devices", "Kiểm soát thiết bị", "Xem các thiết bị đang đăng nhập và đăng xuất từ xa trong Cài đặt › Tài khoản của tôi."),
-    ("chat", "Mẹo: Ctrl + K", "Nhấn Ctrl + K ở bất kỳ đâu để nhảy tới một cuộc trò chuyện, nhóm hoặc cộng đồng."),
+    ("chat", "Welcome to ChatW", "Private messaging, multi-channel communities, voice and video calling. Let's take a quick look at what you can do."),
+    ("shield", "Direct messages are end-to-end encrypted", "The private key is located on your device. The server only forwards the ciphertext. Compare lock fingerprints in the Info panel to verify friends."),
+    ("user", "Profiles have their own imprint", "Theme color, avatar frame, name effect, nameplate, animation effect. You can also draw yourself or upload a photo to decorate."),
+    ("library", "Your emojis, stickers and GIFs", "Open the menu in the compose box. Add your own emojis, stickers, and GIFs in Settings › Library and use them in every conversation."),
+    ("devices", "Device control", "See which devices are remotely signed in and signed out in Settings › My Account."),
+    ("chat", "Tip: Ctrl + K", "Press Ctrl + K anywhere to jump to a chat, group, or community."),
 ];
 
 #[component]
@@ -81,7 +81,7 @@ pub fn WelcomeTour(on_close: EventHandler<()>) -> Element {
     let last = step() + 1 == TOUR.len();
     rsx! {
         div { class: "modal-overlay", onclick: move |_| on_close.call(()),
-            div { class: "modal-dialog story-dialog", role: "dialog", aria_modal: "true", aria_label: "Giới thiệu ChatW",
+            div { class: "modal-dialog story-dialog", role: "dialog", aria_modal: "true", aria_label: "Introducing ChatW",
                 onclick: move |e| e.stop_propagation(),
                 onkeydown: move |e| match e.key() {
                     Key::Escape => on_close.call(()),
@@ -90,8 +90,8 @@ pub fn WelcomeTour(on_close: EventHandler<()>) -> Element {
                     _ => {}
                 },
                 div { class: "story-art",
-                    button { r#type: "button", class: "icon-btn story-close", aria_label: "Bỏ qua giới thiệu", onclick: move |_| on_close.call(()), CloseIcon {} }
-                    div { class: "story-step-badge", "Bước {step() + 1} / {TOUR.len()}" }
+                    button { r#type: "button", class: "icon-btn story-close", aria_label: "Skip tour", onclick: move |_| on_close.call(()), CloseIcon {} }
+                    div { class: "story-step-badge", "Step {step() + 1} / {TOUR.len()}" }
                     div { key: "{step()}", class: "cw-step-enter",
                         Illustration { kind: art.to_string() }
                     }
@@ -107,15 +107,15 @@ pub fn WelcomeTour(on_close: EventHandler<()>) -> Element {
                     p { class: "story-text", "{body}" }
                     div { class: "story-dots", role: "tablist",
                         for i in 0..TOUR.len() {
-                            button { key: "{i}", r#type: "button", class: if i == step() { "story-dot active" } else { "story-dot" }, aria_label: "Bước {i + 1}", onclick: move |_| step.set(i) }
+                            button { key: "{i}", r#type: "button", class: if i == step() { "story-dot active" } else { "story-dot" }, aria_label: "Step {i + 1}", onclick: move |_| step.set(i) }
                         }
                     }
                 }
                 div { class: "story-actions",
                     if step() > 0 {
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| step.set(step() - 1), "Quay lại" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| step.set(step() - 1), "Back" }
                     } else {
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Bỏ qua" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Skip" }
                     }
                     button {
                         r#type: "button",
@@ -128,7 +128,7 @@ pub fn WelcomeTour(on_close: EventHandler<()>) -> Element {
                                 step.set(step() + 1);
                             }
                         },
-                        if last { "Bắt đầu khám phá" } else { "Tiếp tục" }
+                        if last { "Start exploring" } else { "Continue" }
                     }
                 }
             }
@@ -137,127 +137,127 @@ pub fn WelcomeTour(on_close: EventHandler<()>) -> Element {
 }
 
 const SHORTCUTS: [(&str, &str); 11] = [
-    ("Ctrl + K", "Tìm nhanh cuộc trò chuyện, nhóm, cộng đồng"),
-    ("@ rồi gõ tên", "Nhắc tên một người; Tab hoặc Enter để chèn"),
-    (": rồi gõ tên emoji", "Gợi ý emoji, ví dụ :fire"),
-    ("/ rồi gõ phím tắt", "Chèn trả lời nhanh của Kinh doanh"),
-    ("Bấm đúp cạnh tin nhắn", "Trả lời tin nhắn đó"),
-    ("Enter", "Gửi tin nhắn"),
-    ("Shift + Enter", "Xuống dòng"),
-    ("Esc", "Đóng bảng chọn, hộp thoại, hồ sơ"),
-    ("↑ ↓ ← →", "Di chuyển trong bảng emoji"),
-    ("Ctrl + K rồi gõ \"Cài đặt\"", "Mở cài đặt"),
-    ("Tab", "Di chuyển giữa các nút"),
+    ("Ctrl + K", "Quickly find chats, groups, communities"),
+    ("@ then type the name", "Mention a person's name; Tab or Enter to insert"),
+    (": then type the emoji name", "Emoji suggestions, for example :fire"),
+    ("/ then type the shortcut", "Insert Quick Reply by Business"),
+    ("Double-click next to the message", "Reply to that message"),
+    ("Enter", "Send a message"),
+    ("Shift + Enter", "Down line"),
+    ("Esc", "Close menus, dialog boxes, records"),
+    ("↑ ↓ ← →", "Navigate the emoji panel"),
+    ("Ctrl + K then type \"Settings\"", "Open settings"),
+    ("Tab", "Move between buttons"),
 ];
 
 const GUIDES: [(&str, &str, &[&str]); 16] = [
-    ("user", "Avatar Studio: avatar xoay và 40 hiệu ứng", &[
-        "Mở hồ sơ của bạn › Chỉnh sửa hồ sơ › thẻ Avatar Studio.",
-        "Chọn một hiệu ứng như Spin, Orbit, Hearts, Glitch, chỉnh Tốc độ, Cường độ, Màu và Hướng xoay.",
-        "Kích hoạt: Luôn chạy, Khi rê chuột hoặc Khi nhấp. Đặt Số lần lặp nếu không muốn chạy mãi.",
-        "Bấm Lưu. Bạn bè thấy hiệu ứng trên hồ sơ, danh sách trò chuyện và danh sách bạn bè.",
+    ("user", "Avatar Studio: rotating avatars and 40 effects", &[
+        "Open your profile › Edit profile › Avatar Studio tab.",
+        "Choose an effect like Spin, Orbit, Hearts, Glitch, adjust Speed, Intensity, Color and Rotation Direction.",
+        "Trigger: Always run, On hover or On click. Set Number of iterations if you don't want to run forever.",
+        "Click Save. Friends see effects on their profile, chat list, and friends list.",
     ]),
-    ("chat", "Demo Gallery: thử trước khi dùng", &[
-        "Cài đặt › Demo.",
-        "Xem toàn bộ hiệu ứng Avatar, Hiệu ứng tên, Bảng tên, Hiệu ứng hồ sơ và Hình nền chat.",
-        "Bấm Áp dụng: thay đổi được lưu thật vào hồ sơ hoặc cài đặt.",
+    ("chat", "Demo Gallery: try before using", &[
+        "Settings › Demo.",
+        "See all Avatar effects, Name effects, Nameplates, Profile effects and Chat backgrounds.",
+        "Click Apply: the changes are actually saved to the profile or settings.",
     ]),
-    ("user", "Thông tin hồ sơ và quyền xem", &[
-        "Chỉnh sửa hồ sơ › Thông tin: thêm danh xưng, công việc, nơi sống, website, sở thích.",
-        "Mỗi mục có quyền riêng: Mọi người, Bạn bè hoặc Chỉ mình tôi. Máy chủ chỉ gửi mục đó cho người được phép.",
-        "Trạng thái tùy chỉnh có thể tự xóa sau 30 phút, 1 giờ, 4 giờ, hết hôm nay hoặc 7 ngày.",
-        "Ảnh bìa GIF hoặc WebP động giữ nguyên chuyển động tối đa 8 MB.",
+    ("user", "Profile information and viewing permissions", &[
+        "Edit profile › Information: add name, job, place of residence, website, interests.",
+        "Each section has its own permissions: Everyone, Friends, or Only Me. The server sends the item only to authorized users.",
+        "Custom status can be automatically deleted after 30 minutes, 1 hour, 4 hours, end of today or 7 days.",
+        "Animated animated GIF or WebP cover images up to 8 MB in size.",
     ]),
-    ("chat", "Sticker, GIF và emoji yêu thích", &[
-        "Rê chuột lên sticker hoặc GIF trong bảng chọn và bấm ☆ để thêm vào mục yêu thích.",
-        "Thẻ gần đây giữ 24 sticker bạn gửi gần nhất.",
-        "Bấm vào sticker trong tin nhắn để thêm vào yêu thích, gửi lại hoặc tìm sticker tương tự.",
-        "Emoji: nhấp chuột phải vào emoji, hoặc bấm ☆ ở chân bảng chọn. Danh sách yêu thích đồng bộ giữa các thiết bị.",
+    ("chat", "Favorite stickers, GIFs and emojis", &[
+        "Hover over the sticker or GIF in the menu and press ☆ to add it to favorites.",
+        "The recent tab holds the 24 most recent stickers you sent.",
+        "Click on a sticker in a message to add it to favorites, resend it, or find similar stickers.",
+        "Emoji: right-click on the emoji, or press ☆ at the foot of the menu. Favorites list syncs between devices.",
     ]),
-    ("devices", "Đồng bộ cài đặt giữa các thiết bị", &[
-        "Cài đặt › Tùy chỉnh › Đồng bộ cài đặt với các thiết bị khác.",
-        "Giao diện, gợi ý, thông báo và danh sách yêu thích đi theo tài khoản.",
-        "Mã PIN khóa ứng dụng không bao giờ rời khỏi thiết bị.",
-        "Hai thiết bị cùng sửa: bản ghi sau cùng được giữ, không thiết bị nào ghi đè dữ liệu mới hơn mà không đọc lại.",
+    ("devices", "Sync settings between devices", &[
+        "Settings › Customization › Sync settings with other devices.",
+        "Interface, suggestions, notifications and favorites list follow the account.",
+        "The app lock PIN never leaves the device.",
+        "Two devices edit together: the last record is kept, neither device overwrites newer data without re-reading it.",
     ]),
-    ("lock", "Biệt danh, ghi chú riêng và lưu tin nhắn", &[
-        "Mở bảng Thông tin của một cuộc trò chuyện › Biệt danh và ghi chú riêng.",
-        "Biệt danh thay tên người đó trong danh sách của bạn; chỉ bạn thấy.",
-        "Rê chuột lên một tin nhắn và bấm biểu tượng thiết bị để lưu bản sao vào \"Chính mình\".",
-        "Tìm cài đặt nhanh bằng ô Tìm cài đặt ở đầu trang Cài đặt.",
+    ("lock", "Nickname, private notes and save messages", &[
+        "Open a conversation's Info panel › Nicknames and private notes.",
+        "The nickname replaces the person's name on your list; only you see.",
+        "Hover over a message and click the device icon to save a copy to \"Yourself\".",
+        "Find quick settings using the Find settings box at the top of the Settings page.",
     ]),
-    ("devices", "\"Chính mình\": ghi chú giữa các thiết bị", &[
-        "Mở \"Chính mình\" ở đầu danh sách Tin nhắn; tin nhắn được mã hóa bằng khóa của bạn.",
-        "Mỗi tin ghi tên thiết bị đã gửi. Bấm tên thiết bị để đổi tên.",
-        "Menu tùy chọn để đổi hình nền hoặc xóa; tạo lại bằng nút ở đầu danh sách.",
+    ("devices", "\"Yourself\": notes between devices", &[
+        "Open \"Yourself\" at the top of the Messages list; the message is encrypted with your key.",
+        "Each message records the name of the device sent. Click the device name to change the name.",
+        "Options menu to change wallpaper or delete; recreate using the button at the top of the list.",
     ]),
-    ("chat", "Ghim, thẻ phân loại, tắt thông báo", &[
-        "Rê chuột lên một cuộc trò chuyện rồi bấm nút tùy chọn.",
-        "Ghim lên đầu, gắn thẻ phân loại, tắt thông báo, chuyển nhóm sang Cộng đồng, chặn.",
-        "Quản lý thẻ bằng nút thẻ phân loại phía trên danh sách.",
+    ("chat", "Pin, categorize, turn off notifications", &[
+        "Hover over a conversation and click the options button.",
+        "Pin to top, tag categories, turn off notifications, move group to Community, block.",
+        "Manage tags using the category tags button above the list.",
     ]),
-    ("user", "Quản lý nhóm", &[
-        "Trong nhóm bấm nút tùy chọn › Quản lý nhóm.",
-        "Bật / tắt quyền thành viên: gửi tin, bình chọn, ghi chú, nhắc hẹn, ghim, đổi tên, đổi ảnh.",
-        "Tham gia: duyệt thành viên mới, liên kết mời, yêu cầu chờ duyệt.",
-        "Trưởng nhóm bổ nhiệm phó nhóm hoặc chuyển quyền trưởng nhóm.",
+    ("user", "Manage group", &[
+        "In groups, click the options button › Manage groups.",
+        "Enable/disable membership rights: send messages, vote, take notes, remind appointments, pin, change name, change photo.",
+        "Join: approve new members, invite link, request pending approval.",
+        "The group leader appoints a deputy or transfers the group leader's authority.",
     ]),
-    ("shield", "Khóa ChatW bằng mã PIN", &[
-        "Cài đặt › Khóa PIN › đặt mã PIN 4 đến 8 số.",
-        "Chọn thời gian không hoạt động trước khi khóa, hoặc khóa mỗi lần mở.",
-        "Quên mã PIN: đăng xuất trên màn hình khóa rồi đăng nhập lại.",
+    ("shield", "Lock ChatW with PIN code", &[
+        "Settings › PIN Lock › set a 4 to 8 digit PIN code.",
+        "Choose inactivity time before locking, or locking every time you open it.",
+        "Forgot your PIN: sign out on the lock screen then sign in again.",
     ]),
-    ("library", "Plugin và tùy chỉnh giao diện", &[
-        "Bấm biểu tượng Plugin trên thanh điều hướng trái hoặc vào Cài đặt › Plugin.",
-        "Bật các Plugin có sẵn hoặc tạo Plugin mới.",
-        "Mỗi Plugin có thể làm Bot trò chuyện, đổi giao diện, thêm trang và bật HUD.",
+    ("library", "Plugins and theme customization", &[
+        "Click the Plugin icon on the left navigation bar or go to Settings › Plugins.",
+        "Enable existing Plugins or create new Plugins.",
+        "Each Plugin can make a Chat Bot, change the interface, add pages and enable HUD.",
     ]),
-    ("shield", "Xác minh mã hóa với bạn bè", &[
-        "Mở cuộc trò chuyện, bấm biểu tượng bảng Thông tin ở góc phải.",
-        "Mở mục \"Bảo mật và mã hóa\" để xem vân tay khóa.",
-        "So sánh từng khối 4 ký tự với bạn bè qua gặp mặt hoặc cuộc gọi.",
+    ("shield", "Verify encryption with friends", &[
+        "Open the chat, click the Information panel icon in the right corner.",
+        "Open the \"Security and encryption\" section to view the lock fingerprint.",
+        "Compare each 4-letter block with friends via face-to-face or call.",
     ]),
-    ("user", "Trang trí hồ sơ", &[
-        "Bấm avatar ở góc dưới cột trái › Hồ sơ của tôi › Chỉnh sửa hồ sơ.",
-        "Tab Trang trí: màu chủ đề, khung avatar, hiệu ứng hồ sơ.",
-        "Tab Hiệu ứng: avatar xoay, nhịp, hiệu ứng tên và bảng tên.",
-        "Tab Tự tạo: tải ảnh lên hoặc vẽ trong app, chọn chuyển động rồi lưu.",
+    ("user", "Profile decoration", &[
+        "Click avatar in the lower left corner › My profile › Edit profile.",
+        "Decoration tab: theme colors, avatar frames, profile effects.",
+        "Effects tab: avatar rotation, rhythm, name effects, and nameplates.",
+        "Custom tab: upload a photo or draw in the app, choose a motion, then save.",
     ]),
-    ("library", "Thêm emoji, sticker, GIF của riêng bạn", &[
-        "Cài đặt › Thư viện, chọn Sticker, Emoji hoặc GIF.",
-        "Emoji cần tên tiếng Anh gồm chữ, số, gạch dưới, ví dụ party_cat.",
-        "Dùng ngay trong bảng chọn ở ô soạn tin, trong mọi cuộc trò chuyện.",
+    ("library", "Add your own emoji, stickers, GIFs", &[
+        "Settings › Gallery, select Sticker, Emoji or GIF.",
+        "Emoji needs an English name consisting of letters, numbers, and underscores, for example party_cat.",
+        "Use it right in the menu in the compose box, in every conversation.",
     ]),
-    ("devices", "Đăng xuất thiết bị bị mất", &[
-        "Cài đặt › Tài khoản › Thiết bị đã đăng nhập.",
-        "Bấm \"Đăng xuất\" ở thiết bị lạ, hoặc đăng xuất tất cả thiết bị khác.",
-        "Thiết bị mới sẽ có khóa mã hóa riêng; hãy sao lưu khóa trong Bảo mật và mã hóa.",
+    ("devices", "Sign out of the lost device", &[
+        "Settings › Account › Signed in devices.",
+        "Click \"Sign out\" on an unfamiliar device, or sign out all other devices.",
+        "The new device will have its own encryption key; Back up the key in Security and encryption.",
     ]),
-    ("chat", "Cộng đồng và kênh", &[
-        "Cột trái › Cộng đồng › nút + để tạo hoặc tham gia bằng mã mời.",
-        "Trong cộng đồng: tạo danh mục, kênh văn bản và kênh thoại.",
-        "Ghim cộng đồng lên cột trái trong Cài đặt › Tùy chỉnh.",
+    ("chat", "Communities and channels", &[
+        "Left column › Community › + button to create or join using invite code.",
+        "In the community: create categories, text channels, and voice channels.",
+        "Pin the community to the left column in Settings › Customization.",
     ]),
 ];
 
 const FAQ: [(&str, &str); 9] = [
-    ("Bộ sticker OpenMoji lấy từ đâu?", "Hơn 2.000 sticker trong thẻ OpenMoji là tác phẩm của dự án mã nguồn mở OpenMoji, dùng theo giấy phép CC BY-SA 4.0. Tên và từ khóa tìm kiếm lấy từ dữ liệu Unicode CLDR, nên bạn tìm được bằng cả tiếng Việt lẫn tiếng Anh."),
-    ("Vì sao trả lời tự động không chạy khi tôi tắt máy?", "Tin nhắn riêng được mã hóa đầu cuối nên máy chủ không thể tự viết trả lời. Trả lời tự động chạy trên thiết bị của bạn khi ChatW đang mở."),
-    ("Ẩn \"Đã xem\" có tác dụng gì?", "Người khác không biết bạn đã đọc, và bạn cũng không thấy họ đã đọc. Đổi trong Cài đặt › Trò chuyện."),
-    ("Làm sao để nhóm hoặc cộng đồng hiện trong Tìm kiếm?", "Bật Công khai trong Quản lý nhóm hoặc Cài đặt cộng đồng. Đội ngũ ChatW xác minh trước khi hiện cho mọi người."),
-    ("Vì sao có tin nhắn \"Không thể giải mã\"?", "Mỗi trình duyệt có khóa mã hóa riêng. Tin gửi tới khóa cũ không đọc được ở thiết bị mới. Hãy khôi phục bản sao lưu khóa trong Bảo mật và mã hóa."),
-    ("Tin nhắn nhóm có được mã hóa đầu cuối không?", "Chưa. Hiện chỉ tin nhắn trực tiếp được mã hóa đầu cuối; nhóm và kênh cộng đồng được máy chủ lưu ở dạng thường."),
-    ("ChatW có lưu email hay số điện thoại không?", "Không. Bạn đăng nhập bằng Google; máy chủ chỉ lưu mã định danh ẩn danh do Google cấp."),
-    ("Ai thấy được hiệu ứng hồ sơ của tôi?", "Mọi người xem hồ sơ của bạn. Người xem có thể tắt hiệu ứng động trong Cài đặt › Tùy chỉnh."),
-    ("Tệp tải lên được giới hạn thế nào?", "Sticker tối đa 512 KB; emoji, GIF và ảnh trang trí hồ sơ tối đa 2 MB; máy chủ kiểm tra định dạng thật của tệp."),
+    ("Where does the OpenMoji sticker set come from?", "More than 2,000 stickers in the OpenMoji tab are the work of the OpenMoji open source project, used under a CC BY-SA 4.0 license. Names and search keywords come from Unicode CLDR data, so you can search in both Vietnamese and English."),
+    ("Why doesn't automatic reply work when I turn off my phone?", "Private messages are end-to-end encrypted so the server cannot write its own reply. Automatic replies run on your device when ChatW is open."),
+    ("What is the effect of hiding \"Seen\"?", "Other people don't know you've read it, and you won't see they've read it either. Change in Settings › Chat."),
+    ("How do groups or communities show up in Search?", "Turn on Public in Group Management or Community Settings. ChatW team verifies before showing to everyone."),
+    ("Why is there a message \"Unable to decode\"?", "Each browser has its own encryption key. Messages sent to the old key cannot be read on the new device. Restore the key backup in Security and encryption."),
+    ("Are group messages end-to-end encrypted?", "Not yet. Currently only direct messages are end-to-end encrypted; Community groups and channels are saved by the server in their normal form."),
+    ("Does ChatW save emails or phone numbers?", "No. You sign in with Google; The server only stores an anonymous identifier issued by Google."),
+    ("Who sees my profile effects?", "People see your profile. Viewers can turn off animations in Settings › Customization."),
+    ("How are file uploads limited?", "Sticker maximum 512 KB; Emojis, GIFs and profile decorations up to 2 MB; The server checks the actual format of the file."),
 ];
 
 const BEGINNER_CHECKLIST: [(&str, &str, &str); 5] = [
-    ("theme", "Tùy biến giao diện theo phong cách riêng", "Đổi màu chủ đề, ảnh nền và độ trong suốt khung kính trong Cài đặt › Giao diện"),
-    ("self", "Gửi ghi chú đầu tiên cho \"Chính mình\"", "Lưu nhanh ảnh, liên kết và ghi chú riêng giữa điện thoại và máy tính"),
-    ("friend", "Kết bạn hoặc tạo cộng đồng đầu tiên", "Bấm biểu tượng Bạn bè hoặc Cộng đồng ở thanh bên trái để kết nối ngay"),
-    ("backup", "Sao lưu chìa khóa bảo mật an toàn", "Vào Cài đặt › Bảo mật hoặc Đám mây để lưu dự phòng chìa khóa riêng"),
-    ("shortcut", "Thử mở tìm nhanh bằng phím Ctrl + K", "Nhảy tức thì tới mọi cuộc trò chuyện, kênh hoặc mục cài đặt"),
+    ("theme", "Customize the interface according to your own style", "Change theme color, background image, and frame transparency in Settings › Appearance"),
+    ("self", "Send the first note to \"Yourself\"", "Quickly save photos, links, and notes separately between your phone and computer"),
+    ("friend", "Make friends or create your first community", "Click the Friends or Community icon in the left sidebar to connect now"),
+    ("backup", "Secure security key backup", "Go to Settings › Security or Cloud to back up your private key"),
+    ("shortcut", "Try opening a quick search with Ctrl + K", "Jump instantly to any chat, channel, or setting"),
 ];
 
 const CHECKLIST_STORAGE_KEY: &str = "chatw_beginner_checklist_v1";
@@ -286,24 +286,24 @@ pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
     rsx! {
         div { class: "search-field help-search",
             crate::components::icons::SearchIcon { size: 16 }
-            input { r#type: "search", placeholder: "Tìm trong hướng dẫn", aria_label: "Tìm trong hướng dẫn", value: "{query}", oninput: move |e| query.set(e.value()) }
+            input { r#type: "search", placeholder: "Find it in the instructions", aria_label: "Find it in the instructions", value: "{query}", oninput: move |e| query.set(e.value()) }
         }
         if !q.is_empty() && guides.is_empty() && faq.is_empty() && shortcuts.is_empty() {
-            div { class: "sidebar-empty", "Không có hướng dẫn phù hợp" }
+            div { class: "sidebar-empty", "There are no suitable instructions" }
         }
         div { class: "guide-hero cw-spotlight cw-stagger",
             Illustration { kind: "chat".to_string() }
             div {
-                div { class: "cw-guide-hero-title", "Bắt đầu với ChatW" }
-                div { class: "cw-guide-hero-sub", "Xem lại phần giới thiệu từng bước bất cứ lúc nào để làm quen nhanh trong 1 phút." }
-                button { r#type: "button", class: "btn-primary", onclick: move |_| on_replay_tour.call(()), LogoIcon { size: 16 } span { "Xem lại giới thiệu" } }
+                div { class: "cw-guide-hero-title", "Get started with ChatW" }
+                div { class: "cw-guide-hero-sub", "Review the step-by-step introduction at any time for a quick 1-minute familiarization." }
+                button { r#type: "button", class: "btn-primary", onclick: move |_| on_replay_tour.call(()), LogoIcon { size: 16 } span { "Review introduction" } }
             }
         }
         if q.is_empty() {
             div { class: "settings-group cw-checklist-wrap cw-stagger",
                 div { class: "cw-checklist-head",
-                    div { class: "settings-group-title", "Lộ trình cho người mới" }
-                    span { class: "cw-checklist-counter", "{done_count}/{BEGINNER_CHECKLIST.len()} hoàn thành" }
+                    div { class: "settings-group-title", "Roadmap for newcomers" }
+                    span { class: "cw-checklist-counter", "{done_count}/{BEGINNER_CHECKLIST.len()} completed" }
                 }
                 div { class: "cw-checklist-bar",
                     div { class: "cw-checklist-bar-fill", style: "width: {pct}%;" }
@@ -344,7 +344,7 @@ pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
             }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", "Hướng dẫn" }
+            div { class: "settings-group-title", "Guide" }
             div { class: "guide-grid",
                 for (art, title, steps) in guides.iter().copied().copied() {
                     div { key: "{title}", class: "guide-card cw-spotlight",
@@ -358,7 +358,7 @@ pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
             }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", "Phím tắt" }
+            div { class: "settings-group-title", "Shortcuts" }
             div { class: "settings-list",
                 for (k, d) in shortcuts.iter().copied().copied() {
                     div { key: "{k}", class: "settings-row", span { class: "settings-label", "{d}" } span { class: "kbd", "{k}" } }
@@ -366,7 +366,7 @@ pub fn GuideSettings(on_replay_tour: EventHandler<()>) -> Element {
             }
         }
         div { class: "settings-group",
-            div { class: "settings-group-title", "Câu hỏi thường gặp" }
+            div { class: "settings-group-title", "Frequently asked questions" }
             for (q, a) in faq.iter().copied().copied() {
                 details { key: "{q}", class: "faq-item",
                     summary { "{q}" }

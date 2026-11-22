@@ -95,7 +95,7 @@ pub fn EnterpriseSettingsPanel(
                         }
                         on_changed.call(());
                     }
-                    Err(e) => msg.set(Some((true, format!("Không lưu được: {}", e.code)))),
+                    Err(e) => msg.set(Some((true, format!("Unable to save: {}", e.code)))),
                 }
             });
         }
@@ -109,13 +109,13 @@ pub fn EnterpriseSettingsPanel(
                 div { class: "ent-toolbar",
                     div { class: "sidebar-filters",
                         for (k, label) in [
-                            ("general", "Thiết lập"),
-                            ("hr", "Nhân sự"),
-                            ("work", "Công việc"),
-                            ("time", "Chấm công"),
-                            ("docs", "Phê duyệt"),
-                            ("security", "Bảo mật"),
-                            ("advanced", "Kiểm toán"),
+                            ("general", "Setup"),
+                            ("hr", "Human resources"),
+                            ("work", "Work"),
+                            ("time", "Timekeeping"),
+                            ("docs", "Approval"),
+                            ("security", "Security"),
+                            ("advanced", "Auditing"),
                         ] {
                             button {
                                 key: "{k}",
@@ -149,26 +149,26 @@ pub fn EnterpriseSettingsPanel(
                             div { class: "settings-group",
                                 div { class: "ent-card",
                                     div { class: "ent-form-grid",
-                                        label { class: "form-field", span { "Tên doanh nghiệp" }
+                                        label { class: "form-field", span { "Business name" }
                                             input { r#type: "text", disabled: !can_ent, value: "{company_name}", oninput: move |e| company_name.set(e.value()) }
                                         }
-                                        label { class: "form-field", span { "Email liên hệ" }
+                                        label { class: "form-field", span { "Contact email" }
                                             input { r#type: "text", disabled: !can_ent, value: "{contact_email}", oninput: move |e| contact_email.set(e.value()) }
                                         }
                                         label { class: "form-field", span { "Website" }
                                             input { r#type: "text", disabled: !can_ent, value: "{website}", oninput: move |e| website.set(e.value()) }
                                         }
-                                        label { class: "form-field", span { "Điện thoại liên hệ" }
+                                        label { class: "form-field", span { "Contact phone" }
                                             input { r#type: "text", disabled: !can_ent, value: "{contact_phone}", oninput: move |e| contact_phone.set(e.value()) }
                                         }
-                                        label { class: "form-field", span { "Múi giờ" }
+                                        label { class: "form-field", span { "Time zone" }
                                             select { disabled: !can_ent, value: "{timezone}", onchange: move |e| timezone.set(e.value()),
-                                                option { value: "Asia/Ho_Chi_Minh", "Việt Nam GMT+7" }
+                                                option { value: "Asia/Ho_Chi_Minh", "Vietnam GMT+7" }
                                                 option { value: "Asia/Tokyo", "Tokyo GMT+9" }
-                                                option { value: "UTC", "Quốc tế UTC" }
+                                                option { value: "UTC", "UTC International" }
                                             }
                                         }
-                                        label { class: "form-field", span { "Định dạng ngày" }
+                                        label { class: "form-field", span { "Date format" }
                                             select { disabled: !can_ent, value: "{date_format}", onchange: move |e| date_format.set(e.value()),
                                                 option { value: "DD/MM/YYYY", "DD/MM/YYYY" }
                                                 option { value: "YYYY-MM-DD", "YYYY-MM-DD" }
@@ -190,10 +190,10 @@ pub fn EnterpriseSettingsPanel(
                                                         obj.insert("website".into(), json!(website()));
                                                         obj.insert("timezone".into(), json!(timezone()));
                                                         obj.insert("date_format".into(), json!(date_format()));
-                                                        save_patch.call((json!({ "general_settings": Value::Object(obj) }), "Đã lưu thiết lập"));
+                                                        save_patch.call((json!({ "general_settings": Value::Object(obj) }), "Settings saved"));
                                                     }
                                                 },
-                                                "Lưu"
+                                                "Save"
                                             }
                                         }
                                     }
@@ -201,10 +201,10 @@ pub fn EnterpriseSettingsPanel(
                             }
 
                             div { class: "settings-group",
-                                h2 { class: "settings-group-title", "Giao diện" }
+                                h2 { class: "settings-group-title", "Appearance" }
                                 div { class: "settings-list",
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Chế độ gọn" } }
+                                        span { class: "grow", span { class: "settings-label", "Compact mode" } }
                                         input {
                                             r#type: "checkbox",
                                             class: "switch",
@@ -213,7 +213,7 @@ pub fn EnterpriseSettingsPanel(
                                             onchange: {
                                                 let base = c.display_settings.clone();
                                                 move |e| {
-                                                    save_patch.call((json!({ "display_settings": with_key(&base, "compact", json!(e.checked())) }), "Đã lưu giao diện"));
+                                                    save_patch.call((json!({ "display_settings": with_key(&base, "compact", json!(e.checked())) }), "Interface saved"));
                                                 }
                                             },
                                         }
@@ -222,7 +222,7 @@ pub fn EnterpriseSettingsPanel(
                             }
 
                             div { class: "settings-group",
-                                h2 { class: "settings-group-title", "Thanh bên" }
+                                h2 { class: "settings-group-title", "Sidebar" }
                                 div { class: "settings-list", "data-drag-group": "ent-sidebar-mods",
                                     for (idx, key) in ordered_mods.iter().enumerate() {
                                         {
@@ -273,7 +273,7 @@ pub fn EnterpriseSettingsPanel(
                                                                     let mut next = cur_order.clone();
                                                                     let item = next.remove(from);
                                                                     next.insert(idx, item);
-                                                                    save_patch.call((json!({ "module_order": next }), "Đã đổi thứ tự"));
+                                                                    save_patch.call((json!({ "module_order": next }), "Changed order"));
                                                                 }
                                                             }
                                                         }
@@ -298,7 +298,7 @@ pub fn EnterpriseSettingsPanel(
                                                                 } else {
                                                                     next.retain(|x| x != &k_str);
                                                                 }
-                                                                save_patch.call((json!({ "enabled_modules": next }), "Đã cập nhật"));
+                                                                save_patch.call((json!({ "enabled_modules": next }), "Updated"));
                                                             },
                                                         }
                                                     }
@@ -314,53 +314,53 @@ pub fn EnterpriseSettingsPanel(
                             div { class: "settings-group",
                                 div { class: "ent-card",
                                     div { class: "ent-inline-bar",
-                                        label { class: "form-field", span { "Mã nhân viên" }
+                                        label { class: "form-field", span { "Employee code" }
                                             input { r#type: "text", disabled: !can_ent, value: "{emp_prefix}", oninput: move |e| emp_prefix.set(e.value()) }
                                         }
                                         if can_ent {
                                             button { r#type: "button", class: "btn-primary", onclick: {
                                                 let base = c.hr_policy.clone();
                                                 move |_| {
-                                                    save_patch.call((json!({ "hr_policy": with_key(&base, "code_prefix", json!(emp_prefix())) }), "Đã lưu"));
+                                                    save_patch.call((json!({ "hr_policy": with_key(&base, "code_prefix", json!(emp_prefix())) }), "Saved"));
                                                 }
-                                            }, "Lưu" }
+                                            }, "Save" }
                                         }
                                     }
                                 }
                                 div { class: "settings-list",
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Duyệt thành viên ngoài" } }
+                                        span { class: "grow", span { class: "settings-label", "Browse external members" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.hr_policy, "approve_external_guests", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.hr_policy.clone();
-                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "approve_external_guests", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "approve_external_guests", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Thu hồi quyền khi nghỉ việc" } }
+                                        span { class: "grow", span { class: "settings-label", "Revocation of rights upon termination of employment" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.hr_policy, "auto_revoke_offboarded", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.hr_policy.clone();
-                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "auto_revoke_offboarded", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "auto_revoke_offboarded", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Tự khởi tạo hồ sơ khi tham gia" } }
+                                        span { class: "grow", span { class: "settings-label", "Create your own profile when joining" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.hr_policy, "auto_onboard_profile", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.hr_policy.clone();
-                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "auto_onboard_profile", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "auto_onboard_profile", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Giới hạn số lượt liên kết mời" } }
+                                        span { class: "grow", span { class: "settings-label", "Limit the number of invitation links" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.hr_policy, "limit_invite_uses", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.hr_policy.clone();
-                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "limit_invite_uses", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "hr_policy": with_key(&base, "limit_invite_uses", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
@@ -372,29 +372,29 @@ pub fn EnterpriseSettingsPanel(
                             div { class: "settings-group",
                                 div { class: "settings-list",
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Duyệt trước khi hoàn thành" } }
+                                        span { class: "grow", span { class: "settings-label", "Browse before completing" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.task_policy, "require_review", false), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.task_policy.clone();
-                                                move |e| save_patch.call((json!({ "task_policy": with_key(&base, "require_review", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "task_policy": with_key(&base, "require_review", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Nhắc hạn công việc" } }
+                                        span { class: "grow", span { class: "settings-label", "Work deadline reminder" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.task_policy, "auto_deadline_reminder", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.task_policy.clone();
-                                                move |e| save_patch.call((json!({ "task_policy": with_key(&base, "auto_deadline_reminder", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "task_policy": with_key(&base, "auto_deadline_reminder", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Ẩn trích dẫn kênh riêng tư" } }
+                                        span { class: "grow", span { class: "settings-label", "Hide private channel quotes" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.project_policy, "redact_private_channel_source", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.project_policy.clone();
-                                                move |e| save_patch.call((json!({ "project_policy": with_key(&base, "redact_private_channel_source", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "project_policy": with_key(&base, "redact_private_channel_source", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
@@ -406,19 +406,19 @@ pub fn EnterpriseSettingsPanel(
                             div { class: "settings-group",
                                 div { class: "ent-card",
                                     div { class: "ent-form-grid",
-                                        label { class: "form-field", span { "Giờ vào ca" }
+                                        label { class: "form-field", span { "Shift time now" }
                                             input { r#type: "time", disabled: !can_ent, value: "{work_start}", oninput: move |e| work_start.set(e.value()) }
                                         }
-                                        label { class: "form-field", span { "Giờ tan ca" }
+                                        label { class: "form-field", span { "Off-duty time" }
                                             input { r#type: "time", disabled: !can_ent, value: "{work_end}", oninput: move |e| work_end.set(e.value()) }
                                         }
-                                        label { class: "form-field", span { "Đi muộn cho phép (phút)" }
+                                        label { class: "form-field", span { "Allowed lateness (minutes)" }
                                             input { r#type: "number", disabled: !can_ent, value: "{grace_mins}", oninput: move |e| grace_mins.set(e.value()) }
                                         }
-                                        label { class: "form-field", span { "Phép năm (ngày)" }
+                                        label { class: "form-field", span { "Annual leave (days)" }
                                             input { r#type: "number", disabled: !can_ent, value: "{annual_days}", oninput: move |e| annual_days.set(e.value()) }
                                         }
-                                        label { class: "form-field", span { "Nghỉ ốm (ngày)" }
+                                        label { class: "form-field", span { "Sick leave (days)" }
                                             input { r#type: "number", disabled: !can_ent, value: "{sick_days}", oninput: move |e| sick_days.set(e.value()) }
                                         }
                                     }
@@ -435,19 +435,19 @@ pub fn EnterpriseSettingsPanel(
                                                     let mut l = lv_base.as_object().cloned().unwrap_or_default();
                                                     l.insert("annual_days".into(), json!(annual_days().parse::<i64>().unwrap_or(12)));
                                                     l.insert("sick_days".into(), json!(sick_days().parse::<i64>().unwrap_or(5)));
-                                                    save_patch.call((json!({ "attendance_policy": Value::Object(a), "leave_policy": Value::Object(l) }), "Đã lưu"));
+                                                    save_patch.call((json!({ "attendance_policy": Value::Object(a), "leave_policy": Value::Object(l) }), "Saved"));
                                                 }
-                                            }, "Lưu" }
+                                            }, "Save" }
                                         }
                                     }
                                 }
                                 div { class: "settings-list",
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Chấm công từ xa" } }
+                                        span { class: "grow", span { class: "settings-label", "Timekeeping remotely" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.attendance_policy, "allow_remote", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.attendance_policy.clone();
-                                                move |e| save_patch.call((json!({ "attendance_policy": with_key(&base, "allow_remote", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "attendance_policy": with_key(&base, "allow_remote", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
@@ -459,7 +459,7 @@ pub fn EnterpriseSettingsPanel(
                             div { class: "settings-group",
                                 div { class: "ent-card",
                                     div { class: "ent-inline-bar",
-                                        label { class: "form-field", span { "Hạn mức lưu trữ (MB)" }
+                                        label { class: "form-field", span { "Storage limit (MB)" }
                                             input { r#type: "number", disabled: !can_ent, value: "{quota_mb}", oninput: move |e| quota_mb.set(e.value()) }
                                         }
                                         if can_ent {
@@ -467,46 +467,46 @@ pub fn EnterpriseSettingsPanel(
                                                 let base = c.document_policy.clone();
                                                 move |_| {
                                                     let mb = quota_mb().parse::<i64>().unwrap_or(2048).max(10);
-                                                    save_patch.call((json!({ "document_policy": with_key(&base, "quota_mb", json!(mb)) }), "Đã lưu"));
+                                                    save_patch.call((json!({ "document_policy": with_key(&base, "quota_mb", json!(mb)) }), "Saved"));
                                                 }
-                                            }, "Lưu" }
+                                            }, "Save" }
                                         }
                                     }
                                 }
                                 div { class: "settings-list",
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Thu hồi đề xuất chờ duyệt" } }
+                                        span { class: "grow", span { class: "settings-label", "Withdraw proposal pending approval" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.approval_policy, "allow_withdraw", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.approval_policy.clone();
-                                                move |e| save_patch.call((json!({ "approval_policy": with_key(&base, "allow_withdraw", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "approval_policy": with_key(&base, "allow_withdraw", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Chống trùng thông báo" } }
+                                        span { class: "grow", span { class: "settings-label", "Anti-duplicate notifications" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.notification_policy, "dedup_alerts", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.notification_policy.clone();
-                                                move |e| save_patch.call((json!({ "notification_policy": with_key(&base, "dedup_alerts", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "notification_policy": with_key(&base, "dedup_alerts", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Kiểm tra định dạng tệp tải lên" } }
+                                        span { class: "grow", span { class: "settings-label", "Check the upload file format" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.document_policy, "verify_magic_bytes", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.document_policy.clone();
-                                                move |e| save_patch.call((json!({ "document_policy": with_key(&base, "verify_magic_bytes", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "document_policy": with_key(&base, "verify_magic_bytes", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Lưu lịch sử phiên bản tài liệu" } }
+                                        span { class: "grow", span { class: "settings-label", "Save document version history" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.document_policy, "keep_versions", true), disabled: !can_ent,
                                             onchange: {
                                                 let base = c.document_policy.clone();
-                                                move |e| save_patch.call((json!({ "document_policy": with_key(&base, "keep_versions", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "document_policy": with_key(&base, "keep_versions", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
@@ -518,35 +518,35 @@ pub fn EnterpriseSettingsPanel(
                             div { class: "settings-group",
                                 div { class: "settings-list",
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Xác thực hai bước cho quản lý" } }
+                                        span { class: "grow", span { class: "settings-label", "Two-step authentication for management" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.security_policy, "require_mfa", false), disabled: !can_sec,
                                             onchange: {
                                                 let base = c.security_policy.clone();
-                                                move |e| save_patch.call((json!({ "security_policy": with_key(&base, "require_mfa", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "security_policy": with_key(&base, "require_mfa", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Ẩn liên hệ với khách mời" } }
+                                        span { class: "grow", span { class: "settings-label", "Hide contact from guests" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.privacy_policy, "hide_contact_from_guests", true), disabled: !can_sec,
                                             onchange: {
                                                 let base = c.privacy_policy.clone();
-                                                move |e| save_patch.call((json!({ "privacy_policy": with_key(&base, "hide_contact_from_guests", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "privacy_policy": with_key(&base, "hide_contact_from_guests", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Yêu cầu thiết bị tin cậy khi đồng bộ" } }
+                                        span { class: "grow", span { class: "settings-label", "Requires a trusted device when synchronizing" } }
                                         input { r#type: "checkbox", class: "switch", checked: bool_val(&c.security_policy, "require_trusted_device", true), disabled: !can_sec,
                                             onchange: {
                                                 let base = c.security_policy.clone();
-                                                move |e| save_patch.call((json!({ "security_policy": with_key(&base, "require_trusted_device", json!(e.checked())) }), "Đã lưu"))
+                                                move |e| save_patch.call((json!({ "security_policy": with_key(&base, "require_trusted_device", json!(e.checked())) }), "Saved"))
                                             }
                                         }
                                     }
                                     label { class: "settings-row toggle-row",
                                         span { class: "grow",
-                                            span { class: "settings-label", VicoAiIcon { size: 15 } " Cho phép Vico AI tổng hợp" }
+                                            span { class: "settings-label", VicoAiIcon { size: 15 } " Allow Vico AI to synthesize" }
                                         }
                                         input {
                                             r#type: "checkbox",
@@ -554,7 +554,7 @@ pub fn EnterpriseSettingsPanel(
                                             checked: bool_val(&c.ai_config, "enabled", false),
                                             disabled: !can_ai,
                                             onchange: move |e| {
-                                                save_patch.call((json!({ "ai_config": { "enabled": e.checked(), "provider": "local" } }), "Đã lưu"));
+                                                save_patch.call((json!({ "ai_config": { "enabled": e.checked(), "provider": "local" } }), "Saved"));
                                             },
                                         }
                                     }
@@ -566,22 +566,22 @@ pub fn EnterpriseSettingsPanel(
                             div { class: "settings-group",
                                 div { class: "settings-list",
                                     label { class: "settings-row toggle-row",
-                                        span { class: "grow", span { class: "settings-label", "Khóa bảo toàn dữ liệu" } }
+                                        span { class: "grow", span { class: "settings-label", "Data security lock" } }
                                         input {
                                             r#type: "checkbox",
                                             class: "switch",
                                             checked: c.retention_locked,
                                             disabled: !can_sec,
                                             onchange: move |e| {
-                                                save_patch.call((json!({ "retention_locked": e.checked() }), "Đã lưu"));
+                                                save_patch.call((json!({ "retention_locked": e.checked() }), "Saved"));
                                             },
                                         }
                                     }
                                 }
                                 div { class: "ent-btn-group", style: "margin-top: 8px;",
-                                    a { class: "btn-secondary", href: "{export_reports_csv_url(&server_id)}", download: "enterprise-report.csv", DownloadIcon { size: 15 } " Xuất báo cáo CSV" }
-                                    a { class: "btn-secondary", href: "{export_audit_csv_url(&server_id)}", download: "enterprise-audit.csv", DownloadIcon { size: 15 } " Xuất kiểm toán CSV" }
-                                    a { class: "btn-secondary", href: "{export_all_json_url(&server_id)}", download: "enterprise-export.json", DownloadIcon { size: 15 } " Xuất dữ liệu JSON" }
+                                    a { class: "btn-secondary", href: "{export_reports_csv_url(&server_id)}", download: "enterprise-report.csv", DownloadIcon { size: 15 } " Export CSV report" }
+                                    a { class: "btn-secondary", href: "{export_audit_csv_url(&server_id)}", download: "enterprise-audit.csv", DownloadIcon { size: 15 } " CSV audit export" }
+                                    a { class: "btn-secondary", href: "{export_all_json_url(&server_id)}", download: "enterprise-export.json", DownloadIcon { size: 15 } " Export JSON data" }
                                 }
                             }
                         }

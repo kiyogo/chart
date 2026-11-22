@@ -91,7 +91,7 @@ pub fn AppRail(
     if hidden_mobile { cls.push_str(" hidden-mobile"); }
 
     rsx! {
-        nav { class: "{cls}", aria_label: "Điều hướng chính",
+        nav { class: "{cls}", aria_label: "Main navigation",
             div { class: "rail-brand", title: "chatw", aria_hidden: "true",
                 LogoIcon { size: 30 }
             }
@@ -130,8 +130,8 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_meet { "rail-item active" } else { "rail-item" },
-                    "data-tip": "Họp nhóm",
-                    aria_label: "Họp nhóm",
+                    "data-tip": "Meetings",
+                    aria_label: "Meetings",
                     aria_current: if in_meet { "page" } else { "false" },
                     onclick: move |_| {
                         *ACTIVE_PLUGIN_PAGE.write() = None;
@@ -143,8 +143,8 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_feed { "rail-item active" } else { "rail-item" },
-                    "data-tip": "Mới",
-                    aria_label: "Mới",
+                    "data-tip": "Feed",
+                    aria_label: "Feed",
                     aria_current: if in_feed { "page" } else { "false" },
                     onclick: move |_| {
                         *ACTIVE_PLUGIN_PAGE.write() = None;
@@ -259,7 +259,7 @@ pub fn AppRail(
             }
 
             if !pinned_servers.is_empty() || !pinned_groups.is_empty() {
-                div { class: "rail-pins", aria_label: "Đã ghim",
+                div { class: "rail-pins", aria_label: "Pinned",
                     for srv in pinned_servers {
                         {
                             let active = matches!(&active_section, NavSection::Server(id) if id == &srv.id);
@@ -270,7 +270,7 @@ pub fn AppRail(
                                     r#type: "button",
                                     class: if active { "rail-pin community active" } else { "rail-pin community" },
                                     "data-tip": "{srv.name}",
-                                    aria_label: "Cộng đồng {srv.name}",
+                                    aria_label: "Community {srv.name}",
                                     onclick: move |_| on_select_server.call(s.clone()),
                                     if let Some(icon) = srv.icon_url.as_ref().filter(|u| !u.is_empty()) {
                                         img { src: "{platform::resolve_asset_url(icon)}", alt: "" }
@@ -291,7 +291,7 @@ pub fn AppRail(
                                     r#type: "button",
                                     class: if active { "rail-pin group active" } else { "rail-pin group" },
                                     "data-tip": "{grp.name}",
-                                    aria_label: "Nhóm {grp.name}",
+                                    aria_label: "Group {grp.name}",
                                     onclick: move |_| on_select_group.call(g.clone()),
                                     Avatar { name: grp.name.clone(), avatar_url: grp.avatar_url.clone(), size: 40 }
                                 }
@@ -307,8 +307,8 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: if in_notifications { "rail-item compact active" } else { "rail-item compact" },
-                    "data-tip": "Thông báo",
-                    aria_label: "Thông báo",
+                    "data-tip": "Notifications",
+                    aria_label: "Notifications",
                     onclick: move |_| {
                         menu_open.set(false);
                         download_hover_open.set(false);
@@ -331,8 +331,8 @@ pub fn AppRail(
                     button {
                         r#type: "button",
                         class: if in_download { "rail-item compact active" } else { "rail-item compact" },
-                        aria_label: "Tải ứng dụng",
-                        title: "Tải ứng dụng",
+                        aria_label: "Download app",
+                        title: "Download app",
                         onclick: move |_| {
                             menu_open.set(false);
                             download_hover_open.set(false);
@@ -345,7 +345,7 @@ pub fn AppRail(
                         span { class: "rail-icon", DownloadIcon { size: 26 } }
                     }
                     if download_hover_open() {
-                        div { class: "account-menu rail-menu download-rail-menu", role: "region", aria_label: "Tải ứng dụng",
+                        div { class: "account-menu rail-menu download-rail-menu", role: "region", aria_label: "Download app",
                             div { class: "download-popover-qr", dangerous_inner_html: "{qr_svg}" }
                             button {
                                 r#type: "button",
@@ -358,14 +358,14 @@ pub fn AppRail(
                                         cb.call("desktop".to_string());
                                     }
                                 },
-                                "Tải cho máy tính"
+                                "Download for desktop"
                             }
                             div { class: "download-popover-stores",
                                 button {
                                     r#type: "button",
                                     class: "download-store-logo-only",
-                                    aria_label: "CH Play",
-                                    title: "CH Play",
+                                    aria_label: "Google Play",
+                                    title: "Google Play",
                                     onclick: move |_| {
                                         download_hover_open.set(false);
                                         *ACTIVE_PLUGIN_PAGE.write() = None;
@@ -412,8 +412,8 @@ pub fn AppRail(
                 button {
                     r#type: "button",
                     class: "rail-account",
-                    title: "Tài khoản: {current_username}",
-                    aria_label: "Tài khoản của tôi",
+                    title: "Account: {current_username}",
+                    aria_label: "My account",
                     aria_haspopup: "menu",
                     aria_expanded: "{menu_open()}",
                     onclick: move |_| {
@@ -423,20 +423,20 @@ pub fn AppRail(
                     Avatar { name: current_username.clone(), avatar_url: current_avatar_url.clone(), size: 40 }
                 }
                 if menu_open() {
-                    button { r#type: "button", class: "menu-dismiss", aria_label: "Đóng menu", tabindex: "-1", onclick: move |_| menu_open.set(false) }
+                    button { r#type: "button", class: "menu-dismiss", aria_label: "Close menu", tabindex: "-1", onclick: move |_| menu_open.set(false) }
                     div { class: "account-menu rail-menu", role: "menu",
                         button { r#type: "button", class: "menu-item", role: "menuitem",
                             onclick: move |_| { menu_open.set(false); on_open_profile.call(()); },
-                            UserIcon {} span { "Hồ sơ của tôi" }
+                            UserIcon {} span { "My profile" }
                         }
-                        button { r#type: "button", class: "menu-item", role: "menuitem", aria_label: "Mở cài đặt",
+                        button { r#type: "button", class: "menu-item", role: "menuitem", aria_label: "Open settings",
                             onclick: move |_| { menu_open.set(false); on_open_settings.call(()); },
-                            SettingsIcon {} span { "Cài đặt" }
+                            SettingsIcon {} span { "Settings" }
                         }
                         crate::components::accounts::AccountSwitcher { on_close: move |_| menu_open.set(false) }
                         button { r#type: "button", class: "menu-item danger", role: "menuitem",
                             onclick: move |_| { menu_open.set(false); on_logout.call(()); },
-                            LogoutIcon {} span { "Đăng xuất" }
+                            LogoutIcon {} span { "Log out" }
                         }
                     }
                 }

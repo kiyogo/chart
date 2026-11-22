@@ -206,11 +206,11 @@
     hexInput.type = 'text';
     hexInput.className = 'cw-cp-hex';
     hexInput.maxLength = 7;
-    hexInput.setAttribute('aria-label', 'Mã màu');
+    hexInput.setAttribute('aria-label', 'Color hex');
     const doneBtn = document.createElement('button');
     doneBtn.type = 'button';
     doneBtn.className = 'btn-primary cw-cp-done';
-    doneBtn.textContent = 'Xong';
+    doneBtn.textContent = 'Done';
     doneBtn.addEventListener('click', closePopover);
     foot.append(preview, hexInput, doneBtn);
 
@@ -280,8 +280,26 @@
     positionPopover(pop, input, false);
   }
 
-  // ==================== 3. CUSTOM VIETNAMESE DATE PICKER ====================
-  const WEEKDAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+  // ==================== 3. CUSTOM LOCALIZED DATE PICKER ====================
+  function getLocalizedWeekdays() {
+    const lang = document.documentElement.getAttribute('lang') || 'en';
+    try {
+      const fmt = new Intl.DateTimeFormat(lang, { weekday: 'short' });
+      // 2024-01-01 is Monday
+      return [0, 1, 2, 3, 4, 5, 6].map((d) => fmt.format(new Date(Date.UTC(2024, 0, 1 + d))));
+    } catch (_) {
+      return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    }
+  }
+
+  function formatMonthYear(year, month) {
+    const lang = document.documentElement.getAttribute('lang') || 'en';
+    try {
+      return new Intl.DateTimeFormat(lang, { month: 'long', year: 'numeric' }).format(new Date(year, month, 1));
+    } catch (_) {
+      return `${year}-${String(month + 1).padStart(2, '0')}`;
+    }
+  }
 
   function openDatePicker(input) {
     if (input.disabled) return;
@@ -308,7 +326,7 @@
       prev.addEventListener('click', () => { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } render(); });
       const title = document.createElement('span');
       title.className = 'cw-dp-title';
-      title.textContent = `Tháng ${viewMonth + 1}, ${viewYear}`;
+      title.textContent = formatMonthYear(viewYear, viewMonth);
       const next = document.createElement('button');
       next.type = 'button'; next.className = 'icon-btn cw-dp-nav'; next.textContent = '›';
       next.addEventListener('click', () => { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } render(); });
@@ -316,7 +334,7 @@
 
       const wk = document.createElement('div');
       wk.className = 'cw-dp-grid cw-dp-weekdays';
-      WEEKDAYS.forEach((d) => {
+      getLocalizedWeekdays().forEach((d) => {
         const s = document.createElement('span');
         s.textContent = d;
         wk.appendChild(s);
@@ -349,10 +367,10 @@
       const foot = document.createElement('div');
       foot.className = 'cw-dp-foot';
       const clearBtn = document.createElement('button');
-      clearBtn.type = 'button'; clearBtn.className = 'btn-ghost'; clearBtn.textContent = 'Xóa';
+      clearBtn.type = 'button'; clearBtn.className = 'btn-ghost'; clearBtn.textContent = 'Clear';
       clearBtn.addEventListener('click', () => { setNativeValue(input, ''); closePopover(); });
       const todayBtn = document.createElement('button');
-      todayBtn.type = 'button'; todayBtn.className = 'btn-secondary'; todayBtn.textContent = 'Hôm nay';
+      todayBtn.type = 'button'; todayBtn.className = 'btn-secondary'; todayBtn.textContent = 'Today';
       todayBtn.addEventListener('click', () => {
         setNativeValue(input, `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`);
         closePopover();
@@ -386,7 +404,7 @@
     const hCol = document.createElement('div');
     hCol.className = 'cw-tp-col';
     const hHead = document.createElement('div');
-    hHead.className = 'cw-tp-col-title'; hHead.textContent = 'Giờ';
+    hHead.className = 'cw-tp-col-title'; hHead.textContent = 'Hour';
     const hList = document.createElement('div');
     hList.className = 'cw-tp-list';
     hCol.append(hHead, hList);
@@ -394,7 +412,7 @@
     const mCol = document.createElement('div');
     mCol.className = 'cw-tp-col';
     const mHead = document.createElement('div');
-    mHead.className = 'cw-tp-col-title'; mHead.textContent = 'Phút';
+    mHead.className = 'cw-tp-col-title'; mHead.textContent = 'Minute';
     const mList = document.createElement('div');
     mList.className = 'cw-tp-list';
     mCol.append(mHead, mList);
@@ -437,14 +455,14 @@
     const foot = document.createElement('div');
     foot.className = 'cw-dp-foot';
     const nowBtn = document.createElement('button');
-    nowBtn.type = 'button'; nowBtn.className = 'btn-ghost'; nowBtn.textContent = 'Bây giờ';
+    nowBtn.type = 'button'; nowBtn.className = 'btn-ghost'; nowBtn.textContent = 'Now';
     nowBtn.addEventListener('click', () => {
       const n = new Date();
       curH = n.getHours(); curM = n.getMinutes();
       emit(); closePopover();
     });
     const okBtn = document.createElement('button');
-    okBtn.type = 'button'; okBtn.className = 'btn-primary'; okBtn.textContent = 'Xong';
+    okBtn.type = 'button'; okBtn.className = 'btn-primary'; okBtn.textContent = 'Done';
     okBtn.addEventListener('click', closePopover);
     foot.append(nowBtn, okBtn);
 

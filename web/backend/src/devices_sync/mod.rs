@@ -157,7 +157,7 @@ async fn handle_register_device(
             .device_label
             .clone()
             .or_else(|| req.device_name.clone())
-            .unwrap_or_else(|| format!("{platform} thiết bị"));
+            .unwrap_or_else(|| format!("{platform} device"));
         sqlx::query(
             r#"
             INSERT INTO devices
@@ -731,7 +731,7 @@ async fn handle_recover_lost_devices(
             "kdf_parallelism": b.try_get::<i32, _>("kdf_parallelism").ok(),
             "root_key_wrapped_b64": b.try_get::<Option<String>, _>("root_key_wrapped_b64").ok().flatten(),
         })),
-        "honest_notice": "Tin nhắn văn bản trên máy chủ, lịch sử nhóm và máy chủ vẫn nguyên vẹn. File chat riêng chưa sao lưu sẽ kiểm tra từ thiết bị của đối phương nếu họ trực tuyến."
+        "honest_notice": "Server text messages, group and server history remain intact. Private chat files that have not been backed up will be checked from the other person's device if they are online."
     })))
 }
 
@@ -1202,7 +1202,7 @@ async fn handle_create_recovery_request(
         .await;
         return Ok(Json(serde_json::json!({
             "status": "no_remaining_copies",
-            "honest_reason": "Không còn bản sao hợp lệ nào trên máy chủ hay thiết bị khác."
+            "honest_reason": "There are no valid copies left on the server or other device."
         })));
     };
 

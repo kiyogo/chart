@@ -37,14 +37,14 @@ pub fn IncomingCallModal(
                 p { style: "color: var(--text-secondary); font-size: 14px; margin: 0 0 24px 0;",
                     if is_group {
                         if let Some(ref gname) = session.group_name {
-                            span { "Cuộc gọi nhóm từ {gname}" }
+                            span { "Group call from {gname}" }
                         } else {
-                            span { "Cuộc gọi nhóm" }
+                            span { "Group call" }
                         }
                     } else if is_video {
-                        span { "Cuộc gọi video đến..." }
+                        span { "Video call to" }
                     } else {
-                        span { "Cuộc gọi thoại đến..." }
+                        span { "Incoming voice call" }
                     }
                 }
 

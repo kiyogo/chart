@@ -450,7 +450,7 @@ pub fn enable_passphrase_vault(
     passphrase: &str,
 ) -> Result<(), String> {
     if passphrase.chars().count() < 8 {
-        return Err("Mật khẩu khóa E2EE cần ít nhất 8 ký tự".into());
+        return Err("The E2EE key password needs at least 8 characters".into());
     }
     let slot = key_slot(Some(user_id));
     let mut salt = [0u8; 16];
@@ -534,7 +534,7 @@ pub fn unlock_passphrase_vault(user_id: &str, passphrase: &str) -> Result<UserKe
                 aad: aad.as_bytes(),
             },
         )
-        .map_err(|_| "Sai mật khẩu mở khóa E2EE".to_string())?;
+        .map_err(|_| "Wrong E2EE unlock password".to_string())?;
     let json_str = std::str::from_utf8(&pt)
         .map_err(|_| "invalid_vault_utf8".to_string())?
         .to_string();
@@ -1278,12 +1278,12 @@ impl DecryptError {
     pub fn user_message(&self) -> String {
         match self {
             DecryptError::WrongDeviceKey => {
-                "Tin nhắn được mã hóa bằng khóa thiết bị khác".to_string()
+                "Messages are encrypted using another device key".to_string()
             }
             DecryptError::SignatureMismatch => {
-                "Không xác minh được chữ ký người gửi".to_string()
+                "Unable to verify sender's signature".to_string()
             }
-            DecryptError::Corrupted(_) => "Dữ liệu mã hóa không hợp lệ".to_string(),
+            DecryptError::Corrupted(_) => "Encrypted data is invalid".to_string(),
         }
     }
 }
@@ -1723,7 +1723,7 @@ mod tests {
         let msg_id = Uuid::new_v4().to_string();
         let alice_id = Uuid::new_v4().to_string();
         let bob_id = Uuid::new_v4().to_string();
-        let text = "Xin chào từ Dioxus E2EE v2! 🔒";
+        let text = "Hello from Dioxus E2EE v2! 🔒";
 
         let (recip_env, sender_env) =
             encrypt_chat_message(&msg_id, &alice_id, &bob_id, &alice, &bob_peer, text)
@@ -1942,7 +1942,7 @@ mod tests {
             &Uuid::new_v4().to_string(),
             &alice,
             &bob_peer,
-            "Tin nhắn bảo mật cần khôi phục",
+            "Secure messages need recovery",
         )
         .unwrap();
 
@@ -1955,7 +1955,7 @@ mod tests {
         let restored = import_user_keys_json("bob-restore-test", &backup).expect("import keys");
         let dec = decrypt_chat_message_detailed(&recip_env, &restored, &alice.ecdsa_raw)
             .expect("decrypt with restored key");
-        assert_eq!(dec.text, "Tin nhắn bảo mật cần khôi phục");
+        assert_eq!(dec.text, "Secure messages need recovery");
     }
 
     #[test]

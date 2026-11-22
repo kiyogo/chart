@@ -469,13 +469,7 @@ pub async fn host_run_command(trigger: &str, args: &str, context: Value) -> Opti
     let ar = serde_json::to_string(args).unwrap_or_else(|_| "\"\"".into());
     let ctx = context.to_string();
     let script = format!(
-        "if (!window.ChatwPluginHost) return null;\
-         const r = await window.ChatwPluginHost.runCommand({tr}, {ar}, {ctx});\
-         if (!r) return null;\
-         if (typeof r === 'string') return r;\
-         if (r.text) return String(r.text);\
-         if (r.error) return 'Lỗi plugin: ' + String(r.error);\
-         return JSON.stringify(r);"
+        "if (!window.ChatwPluginHost) return null;\\\nconst r = await window.ChatwPluginHost.runCommand({tr}, {ar}, {ctx});\\\nif (!r) return null;\\\nif (typeof r === 'string') return r;\\\nif (r.text) return String(r.text);\\\nif (r.error) return 'Plugin error: ' + String(r.error);\\\nreturn JSON.stringify(r);"
     );
     let eval = dioxus::document::eval(&script);
     match eval.await {

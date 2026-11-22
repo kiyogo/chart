@@ -139,11 +139,11 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
         div { class: "plugin-hub-root", "data-plugin-hub": "v2",
             div { class: "plugin-hub-tabs", role: "tablist",
                 for (t, label) in [
-                    (HubTab::Marketplace, "Chợ Plugin"),
-                    (HubTab::Installed, "Đã cài đặt"),
-                    (HubTab::Privacy, "Quyền riêng tư"),
+                    (HubTab::Marketplace, "Plugin Marketplace"),
+                    (HubTab::Installed, "Installed"),
+                    (HubTab::Privacy, "Privacy"),
                     (HubTab::Webhooks, "Webhook"),
-                    (HubTab::Developer, "Nhà phát triển"),
+                    (HubTab::Developer, "Developer"),
                 ] {
                     button {
                         key: "{label}",
@@ -196,8 +196,8 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                             class: "plugin-hub-card",
                             style: "margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;",
                             div {
-                                strong { "Dữ liệu tiện ích cũ đã được lưu trữ an toàn" }
-                                div { class: "plugin-hub-meta", "Ghi chú, việc làm hoặc bản vẽ từ tiện ích cũ đã được giữ nguyên để bạn xuất tệp JSON bất cứ lúc nào." }
+                                strong { "Old utility data has been securely stored" }
+                                div { class: "plugin-hub-meta", "Notes, jobs, or drawings from the old widget have been preserved for you to export to a JSON file at any time." }
                             }
                             div { style: "display: flex; gap: 8px; align-items: center;",
                                 a {
@@ -205,7 +205,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                     href: format!("data:application/json;charset=utf-8,{}", urlencoding::encode(&archive_json)),
                                     download: "chatw-legacy-plugin-data.json",
                                     DownloadIcon { size: 14 }
-                                    "Xuất dữ liệu tiện ích cũ (.json)"
+                                    "Export old widget data (.json)"
                                 }
                                 button {
                                     r#type: "button",
@@ -214,7 +214,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                         crate::components::plugins_view::clear_legacy_plugin_archive(&uid_clear);
                                         archive_tick.set(archive_tick() + 1);
                                     },
-                                    "Ẩn thông báo"
+                                    "Hide notifications"
                                 }
                             }
                         }
@@ -230,7 +230,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                     input {
                         class: "plugin-hub-search",
                         r#type: "search",
-                        placeholder: "Tìm kiếm plugin theo tên, tính năng hoặc nhà phát triển",
+                        placeholder: "Search for plugins by name, features, or developer",
                         value: "{query}",
                         oninput: move |e| {
                             let v = e.value();
@@ -249,21 +249,21 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                 refresh_marketplace(query(), v);
                             },
                         }
-                        span { "Đã xác minh" }
+                        span { "Verified" }
                     }
                     button {
                         r#type: "button",
                         class: "btn-ghost",
                         onclick: move |_| refresh_marketplace(query(), verified_only()),
                         RefreshIcon { size: 15 }
-                        "Làm mới"
+                        "Refresh"
                     }
                 }
 
                 if loading_market() {
-                    div { class: "sidebar-empty", "Đang tải danh mục plugin" }
+                    div { class: "sidebar-empty", "Loading plugin directory" }
                 } else if market_items().is_empty() {
-                    div { class: "sidebar-empty", "Chưa có plugin phù hợp với bộ lọc hiện tại" }
+                    div { class: "sidebar-empty", "There are no plugins that match the current filter" }
                 } else {
                     div { class: "plugin-hub-grid",
                         for pkg in market_items() {
@@ -282,9 +282,9 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                             div { class: "plugin-hub-card-title-row",
                                                 strong { "{pkg.name}" }
                                                 if pkg.publisher_verified {
-                                                    span { class: "plugin-verified-badge", title: "Nhà phát triển đã xác minh",
+                                                    span { class: "plugin-verified-badge", title: "Verified developer",
                                                         CheckIcon { size: 12 }
-                                                        "Đã xác minh"
+                                                        "Verified"
                                                     }
                                                 }
                                             }
@@ -292,7 +292,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                         }
                                         div { class: "plugin-hub-meta",
                                             span { "{pkg.publisher_name} ({pkg.plugin_key})" }
-                                            span { "{pkg.install_count} lượt cài" }
+                                            span { "{pkg.install_count} installs" }
                                         }
                                         if !pkg.summary.is_empty() {
                                             p { class: "plugin-hub-summary", "{pkg.summary}" }
@@ -319,7 +319,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                             tab.set(HubTab::Installed);
                                                         }
                                                     },
-                                                    "Mở Plugin"
+                                                    "Open Plugins"
                                                 }
                                             } else {
                                                 button {
@@ -328,7 +328,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                     "data-install-plugin": "{pkg.plugin_key}",
                                                     onclick: move |_| open_consent(pkg_for_open.clone()),
                                                     DownloadIcon { size: 15 }
-                                                    "Cài đặt"
+                                                    "Settings"
                                                 }
                                             }
                                         }
@@ -345,7 +345,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
             // =================================================================
             if tab() == HubTab::Installed {
                 if installed_list.is_empty() {
-                    div { class: "sidebar-empty", "Bạn chưa cài đặt plugin nền tảng nào từ Chợ Plugin hoặc cổng Nhà phát triển." }
+                    div { class: "sidebar-empty", "You have not installed any platform plugins from the Plugin Market or Developer portal." }
                 } else {
                     div { class: "plugin-installed-list",
                         for inst in installed_list.clone() {
@@ -366,7 +366,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                             }
                                             div { class: "plugin-hub-meta",
                                                 span { "{inst.plugin_key}" }
-                                                span { "{inst.grants.iter().filter(|g| g.revoked_at.is_none()).count()} quyền đang cấp" }
+                                                span { "{inst.grants.iter().filter(|g| g.revoked_at.is_none()).count()} permissions are being granted" }
                                             }
                                         }
                                         div { class: "plugin-installed-actions",
@@ -382,7 +382,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                             *ACTIVE_SANDBOX_INSTALL_ID.write() = Some(iid_open.clone());
                                                         }
                                                     },
-                                                    if is_open { "Đóng giao diện" } else { "Mở giao diện" }
+                                                    if is_open { "Close the interface" } else { "Open the interface" }
                                                 }
                                             }
                                             input {
@@ -400,9 +400,9 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                                     *ACTIVE_SANDBOX_INSTALL_ID.write() = None;
                                                                 }
                                                                 reload_user_installations().await;
-                                                                status_msg.set(Some((false, if next { "Đã bật plugin".into() } else { "Đã tắt và dừng tiến trình sandbox của plugin".into() })));
+                                                                status_msg.set(Some((false, if next { "Plugins enabled".into() } else { "Disabled and stopped the plugin sandbox process".into() })));
                                                             }
-                                                            Err(err) => status_msg.set(Some((true, format!("Không thể cập nhật trạng thái: {}", err.code)))),
+                                                            Err(err) => status_msg.set(Some((true, format!("Unable to update status: {}", err.code)))),
                                                         }
                                                     });
                                                 },
@@ -410,7 +410,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                             button {
                                                 r#type: "button",
                                                 class: "icon-btn danger",
-                                                title: "Gỡ cài đặt plugin",
+                                                title: "Uninstall the plugin",
                                                 "data-uninstall-plugin": "{inst.plugin_key}",
                                                 onclick: move |_| {
                                                     let id = iid_del.clone();
@@ -421,9 +421,9 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                                     *ACTIVE_SANDBOX_INSTALL_ID.write() = None;
                                                                 }
                                                                 reload_user_installations().await;
-                                                                status_msg.set(Some((false, "Đã gỡ cài đặt plugin và thu hồi toàn bộ quyền".into())));
+                                                                status_msg.set(Some((false, "Uninstalled the plugin and revoked all permissions".into())));
                                                             }
-                                                            Err(err) => status_msg.set(Some((true, format!("Lỗi gỡ cài đặt: {}", err.code)))),
+                                                            Err(err) => status_msg.set(Some((true, format!("Uninstall error: {}", err.code)))),
                                                         }
                                                     });
                                                 },
@@ -446,7 +446,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                             rsx! {
                                 div { class: "plugin-sandbox-shell",
                                     div { class: "plugin-sandbox-bar",
-                                        span { strong { "{open_name}" } " · Chạy trong Sandbox cách ly (Opaque Origin)" }
+                                        span { strong { "{open_name}" } " · Runs in Quarantine Sandbox (Opaque Origin)" }
                                         button {
                                             r#type: "button",
                                             class: "icon-btn",
@@ -469,8 +469,8 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                 div { class: "plugin-privacy-section",
                     div { class: "plugin-hub-toolbar",
                         div { class: "grow",
-                            strong { "Bảng kiểm soát Quyền riêng tư & Dữ liệu E2EE" }
-                            div { class: "settings-row-desc", "Thu hồi quyền có hiệu lực ngay lập tức đối với mọi tiến trình sandbox đang chạy." }
+                            strong { "E2EE Data & Privacy Dashboard" }
+                            div { class: "settings-row-desc", "Revocation takes effect immediately for any running sandbox processes." }
                         }
                         button {
                             r#type: "button",
@@ -483,7 +483,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                 });
                             },
                             RefreshIcon { size: 15 }
-                            "Làm mới"
+                            "Refresh"
                         }
                     }
 
@@ -491,7 +491,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                         let active_grants: Vec<_> = privacy().grants.into_iter().filter(|g| g.revoked_at.is_none()).collect();
                         rsx! {
                             if active_grants.is_empty() {
-                                div { class: "sidebar-empty", "Chưa có quyền nào đang được cấp cho plugin." }
+                                div { class: "sidebar-empty", "No permissions are currently granted to the plugin." }
                             } else {
                                 div { class: "plugin-installed-list",
                                     for g in active_grants {
@@ -509,12 +509,12 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                                 "{perm_label} ({g.permission})"
                                                             }
                                                             if g.device_only {
-                                                                span { class: "plugin-perm-pill", "Chỉ thiết bị này" }
+                                                                span { class: "plugin-perm-pill", "This device only" }
                                                             }
                                                         }
                                                         div { class: "plugin-hub-meta",
-                                                            span { "Phạm vi: {g.scope_type}" }
-                                                            span { "Cấp lúc: {g.granted_at}" }
+                                                            span { "Range: {g.scope_type}" }
+                                                            span { "Level at: {g.granted_at}" }
                                                         }
                                                     }
                                                     button {
@@ -532,13 +532,13 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                                         if let Ok(p) = plugin_api::get_privacy_dashboard().await {
                                                                             privacy.set(p);
                                                                         }
-                                                                        status_msg.set(Some((false, "Đã thu hồi quyền ngay lập tức".into())));
+                                                                        status_msg.set(Some((false, "Permissions revoked immediately".into())));
                                                                     }
-                                                                    Err(err) => status_msg.set(Some((true, format!("Không thể thu hồi quyền: {}", err.code)))),
+                                                                    Err(err) => status_msg.set(Some((true, format!("Permission cannot be revoked: {}", err.code)))),
                                                                 }
                                                             });
                                                         },
-                                                        "Thu hồi ngay"
+                                                        "Recall immediately"
                                                     }
                                                 }
                                             }
@@ -550,7 +550,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                     }
 
                     if !privacy().recent_activity.is_empty() {
-                        div { class: "settings-group-title", style: "margin-top: 14px;", "Nhật ký kiểm toán gần đây" }
+                        div { class: "settings-group-title", style: "margin-top: 14px;", "Recent audit logs" }
                         div { class: "plugin-audit-list",
                             for row in privacy().recent_activity.into_iter().take(15) {
                                 div { key: "{row.id}", class: "plugin-audit-row",
@@ -591,12 +591,12 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                     strong { "{pub_info.display_name}" }
                                     span { class: "plugin-runtime-chip", "@{pub_info.slug}" }
                                     if pub_info.verified {
-                                        span { class: "plugin-verified-badge", CheckIcon { size: 12 } "Đã xác minh" }
+                                        span { class: "plugin-verified-badge", CheckIcon { size: 12 } "Verified" }
                                     } else {
-                                        span { class: "plugin-perm-pill", "Trạng thái: {pub_info.verification_status}" }
+                                        span { class: "plugin-perm-pill", "Status: {pub_info.verification_status}" }
                                     }
                                 }
-                                div { class: "settings-row-desc", "Tất cả plugin xuất bản bắt buộc sử dụng định danh {pub_info.slug}.<tên_plugin>." }
+                                div { class: "settings-row-desc", "All publishing plugins are required to use the identifier {pub_info.slug}.<plugin_name>." }
                             }
                             if !pub_info.verified && pub_info.verification_status != "pending" {
                                 button {
@@ -609,23 +609,23 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                     if let Ok(info) = plugin_api::get_my_publisher().await {
                                                         my_pub.set(info);
                                                     }
-                                                    status_msg.set(Some((false, "Đã gửi yêu cầu xác minh nhà phát triển".into())));
+                                                    status_msg.set(Some((false, "Developer verification request sent".into())));
                                                 }
-                                                Err(err) => status_msg.set(Some((true, format!("Không thể gửi yêu cầu: {}", err.code)))),
+                                                Err(err) => status_msg.set(Some((true, format!("Unable to send request: {}", err.code)))),
                                             }
                                         });
                                     },
-                                    "Yêu cầu xác minh"
+                                    "Request verification"
                                 }
                             }
                         }
 
                         div { class: "plugin-dev-publish-box",
-                            strong { "Xuất bản gói Plugin (JSON tạo từ CLI `chatw-plugin pack` — hỗ trợ JS/TS và Rust WASM)" }
+                            strong { "Publish Plugin Package (JSON generated from CLI `ChatW-plugin pack` — JS/TS and Rust WASM supported)" }
                             textarea {
                                 rows: "8",
                                 class: "plugin-json-area",
-                                placeholder: "Dán nội dung tệp .chatw-plugin.json (manifest, bundle_code, ui_html, wasm_base64, sha256)",
+                                placeholder: "Paste the .ChatW-plugin.json file content (manifest, bundle_code, ui_html, wasm_base64, sha256)",
                                 value: "{pkg_json_input}",
                                 oninput: move |e| pkg_json_input.set(e.value()),
                             }
@@ -645,43 +645,43 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                             let key = resp.get("plugin_key").and_then(|v| v.as_str()).unwrap_or("");
                                                             pkg_json_input.set(String::new());
                                                             refresh_marketplace(query(), verified_only());
-                                                            status_msg.set(Some((false, format!("Đã xuất bản gói plugin {key} thành công"))));
+                                                            status_msg.set(Some((false, format!("Plugin package {key} published successfully"))));
                                                         }
-                                                        Err(err) => status_msg.set(Some((true, format!("Xuất bản thất bại: {}", err.code)))),
+                                                        Err(err) => status_msg.set(Some((true, format!("Publishing failed: {}", err.code)))),
                                                     }
                                                 });
                                             }
-                                            Err(_) => status_msg.set(Some((true, "JSON gói plugin không hợp lệ".into()))),
+                                            Err(_) => status_msg.set(Some((true, "Invalid plugin package JSON".into()))),
                                         }
                                     },
-                                    "Xuất bản lên Chợ Plugin"
+                                    "Publish to Plugin Market"
                                 }
                             }
                         }
                     } else {
                         div { class: "plugin-dev-publish-box",
-                            strong { "Đăng ký hồ sơ Nhà phát triển (Namespace cố định)" }
-                            div { class: "settings-row-desc", "Định danh nhà phát triển (slug) là bất biến để chống giả mạo và ghi đè Plugin ID." }
+                            strong { "Register a Developer profile (Fixed Namespace)" }
+                            div { class: "settings-row-desc", "The developer identifier (slug) is immutable to prevent Plugin ID tampering and overwriting." }
                             div { class: "form-grid-2",
                                 label { class: "form-field",
                                     span { class: "form-label", "Namespace (slug)" }
                                     input {
-                                        placeholder: "ví dụ: acme",
+                                        placeholder: "for example: acme",
                                         value: "{pub_slug}",
                                         oninput: move |e| pub_slug.set(e.value()),
                                     }
                                 }
                                 label { class: "form-field",
-                                    span { class: "form-label", "Tên hiển thị" }
+                                    span { class: "form-label", "Display name" }
                                     input {
-                                        placeholder: "Tên tổ chức hoặc tác giả",
+                                        placeholder: "Name of organization or author",
                                         value: "{pub_name}",
                                         oninput: move |e| pub_name.set(e.value()),
                                     }
                                 }
                             }
                             label { class: "form-field",
-                                span { class: "form-label", "Trang web (tùy chọn)" }
+                                span { class: "form-label", "Website (optional)" }
                                 input {
                                     placeholder: "https://example.com",
                                     value: "{pub_web}",
@@ -689,9 +689,9 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                 }
                             }
                             label { class: "form-field",
-                                span { class: "form-label", "Giới thiệu ngắn" }
+                                span { class: "form-label", "Short introduction" }
                                 input {
-                                    placeholder: "Mô tả các plugin bạn phát triển",
+                                    placeholder: "Describe the plugins you develop",
                                     value: "{pub_bio}",
                                     oninput: move |e| pub_bio.set(e.value()),
                                 }
@@ -708,13 +708,13 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                         match plugin_api::register_publisher(&sl, &nm, &wb, &bi).await {
                                             Ok(info) => {
                                                 my_pub.set(Some(info));
-                                                status_msg.set(Some((false, "Đã đăng ký hồ sơ Nhà phát triển".into())));
+                                                status_msg.set(Some((false, "Registered Developer profile".into())));
                                             }
-                                            Err(err) => status_msg.set(Some((true, format!("Không thể đăng ký: {}", err.code)))),
+                                            Err(err) => status_msg.set(Some((true, format!("Unable to register: {}", err.code)))),
                                         }
                                     });
                                 },
-                                "Tạo hồ sơ Nhà phát triển"
+                                "Create a Developer profile"
                             }
                         }
                     }
@@ -747,26 +747,26 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                 onclick: move |e| e.stop_propagation(),
                                 div { class: "modal-header",
                                     div {
-                                        h2 { class: "modal-title", "Xác nhận quyền cài đặt: {pkg_name}" }
+                                        h2 { class: "modal-title", "Confirm installation permission: {pkg_name}" }
                                         div { class: "settings-row-desc", "{pkg.plugin_key} · v{pkg.latest_version} · {pkg.publisher_name}" }
                                     }
                                     button { r#type: "button", class: "icon-btn", onclick: move |_| consent_pkg.set(None), CloseIcon { size: 18 } }
                                 }
                                 div { class: "modal-body",
                                     if !pkg.publisher_verified {
-                                        div { class: "status-badge warning", "Nhà phát triển chưa được xác minh tích xanh. Chỉ cài đặt nếu bạn tin tưởng nguồn gói này." }
+                                        div { class: "status-badge warning", "The developer has not been verified. Only install if you trust the package source." }
                                     }
                                     if has_e2ee {
                                         div { class: "status-badge error",
                                             ShieldIcon { size: 15 }
-                                            " Plugin yêu cầu quyền dữ liệu nhạy cảm / E2EE. Khóa riêng tư E2EE KHÔNG BAO GIỜ được chia sẻ với plugin."
+                                            " Plugin requires sensitive data/E2EE permissions. E2EE private keys are NEVER shared with plugins."
                                         }
                                     }
                                     if !sens_approved {
-                                        div { class: "status-badge warning", "Các quyền nhạy cảm của phiên bản này chưa được quản trị viên duyệt nên sẽ không thể cấp." }
+                                        div { class: "status-badge warning", "Sensitive permissions for this instance have not been approved by the administrator and cannot be granted." }
                                     }
 
-                                    div { class: "settings-group-title", "Quyền plugin yêu cầu" }
+                                    div { class: "settings-group-title", "Required plugin permissions" }
                                     div { class: "plugin-consent-perm-list",
                                         for perm in req_perms {
                                             {
@@ -799,7 +799,7 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                             div { class: "plugin-hub-card-title-row",
                                                                 strong { "{label}" }
                                                                 if is_sens {
-                                                                    span { class: "plugin-perm-pill sensitive", "Nhạy cảm" }
+                                                                    span { class: "plugin-perm-pill sensitive", "Sensitive" }
                                                                 }
                                                             }
                                                             if !desc.is_empty() {
@@ -819,11 +819,11 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                             "data-consent-checkbox": "true",
                                             onchange: move |e| consent_checked.set(e.checked()),
                                         }
-                                        span { "Tôi đã kiểm tra danh sách quyền và đồng ý cài đặt plugin này trong sandbox cách ly." }
+                                        span { "I have checked the permissions list and agree to install this plugin in an isolated sandbox." }
                                     }
                                 }
                                 div { class: "modal-footer",
-                                    button { r#type: "button", class: "btn-secondary", onclick: move |_| consent_pkg.set(None), "Hủy" }
+                                    button { r#type: "button", class: "btn-secondary", onclick: move |_| consent_pkg.set(None), "Cancel" }
                                     button {
                                         r#type: "button",
                                         class: "btn-primary",
@@ -854,15 +854,15 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                                                             *ACTIVE_SANDBOX_INSTALL_ID.write() = Some(iid);
                                                         }
                                                         tab.set(HubTab::Installed);
-                                                        status_msg.set(Some((false, "Đã cài đặt và khởi chạy plugin trong Sandbox".into())));
+                                                        status_msg.set(Some((false, "Installed and launched the plugin in Sandbox".into())));
                                                     }
                                                     Err(err) => {
-                                                        status_msg.set(Some((true, format!("Cài đặt bị từ chối: {}", err.code))));
+                                                        status_msg.set(Some((true, format!("Installation rejected: {}", err.code))));
                                                     }
                                                 }
                                             });
                                         },
-                                        "Xác nhận cài đặt"
+                                        "Confirm installation"
                                     }
                                 }
                             }
@@ -940,7 +940,7 @@ pub fn ScopedWebhookManager(
             if let Some((label, val)) = revealed_secret() {
                 div { class: "webhook-secret-banner",
                     div { class: "grow",
-                        strong { "{label} · Chỉ hiển thị một lần" }
+                        strong { "{label} · Displayed only once" }
                         code { class: "webhook-secret-code", "{val}" }
                     }
                     button {
@@ -948,10 +948,10 @@ pub fn ScopedWebhookManager(
                         class: "btn-secondary",
                         onclick: move |_| {
                             platform::copy_to_clipboard(&val);
-                            msg.set(Some((false, "Đã sao chép vào khay nhớ tạm".into())));
+                            msg.set(Some((false, "Copied to clipboard".into())));
                         },
                         CopyIcon { size: 15 }
-                        "Sao chép"
+                        "Copy"
                     }
                     button {
                         r#type: "button",
@@ -964,21 +964,21 @@ pub fn ScopedWebhookManager(
 
             if can_manage && scope_type != "user" {
                 div { class: "plugin-dev-publish-box",
-                    strong { "Tạo Webhook mới" }
+                    strong { "Create a new Webhook" }
                     div { class: "form-grid-2",
                         label { class: "form-field",
-                            span { class: "form-label", "Loại Webhook" }
+                            span { class: "form-label", "Webhook type" }
                             select {
                                 value: "{direction}",
                                 onchange: move |e| direction.set(e.value()),
-                                option { value: "incoming", "Nhận tin từ hệ thống ngoài" }
-                                option { value: "outgoing", "Gửi sự kiện ra ngoài" }
+                                option { value: "incoming", "Receive information from external systems" }
+                                option { value: "outgoing", "Send events out" }
                             }
                         }
                         label { class: "form-field",
-                            span { class: "form-label", "Tên hiển thị Webhook" }
+                            span { class: "form-label", "Webhook display name" }
                             input {
-                                placeholder: "Ví dụ: GitHub, Cảnh báo",
+                                placeholder: "For example: GitHub, Alerts",
                                 value: "{name}",
                                 oninput: move |e| name.set(e.value()),
                             }
@@ -986,7 +986,7 @@ pub fn ScopedWebhookManager(
                     }
                     if !channels.is_empty() {
                         label { class: "form-field",
-                            span { class: "form-label", "Kênh đích" }
+                            span { class: "form-label", "Destination channel" }
                             select {
                                 value: "{selected_ch}",
                                 onchange: move |e| selected_ch.set(e.value()),
@@ -998,7 +998,7 @@ pub fn ScopedWebhookManager(
                     }
                     if direction() == "outgoing" {
                         label { class: "form-field",
-                            span { class: "form-label", "Đường dẫn nhận HTTPS" }
+                            span { class: "form-label", "HTTPS receive path" }
                             input {
                                 placeholder: "https://api.example.com/chatw-hook",
                                 value: "{target_url}",
@@ -1013,7 +1013,7 @@ pub fn ScopedWebhookManager(
                             let dir = direction();
                             let nm = name().trim().to_string();
                             if nm.len() < 2 {
-                                msg.set(Some((true, "Vui lòng nhập tên Webhook ít nhất 2 ký tự".into())));
+                                msg.set(Some((true, "Please enter a Webhook name of at least 2 characters".into())));
                                 return;
                             }
                             let eff_ch = if !selected_ch().is_empty() {
@@ -1049,27 +1049,27 @@ pub fn ScopedWebhookManager(
                                         name.set(String::new());
                                         target_url.set(String::new());
                                         if let Some(url) = resp.get("execute_url").and_then(|v| v.as_str()) {
-                                            revealed_secret.set(Some(("URL gửi Incoming Webhook".into(), url.to_string())));
+                                            revealed_secret.set(Some(("Incoming Webhook sending URL".into(), url.to_string())));
                                         } else if let Some(sec) = resp.get("signing_secret").and_then(|v| v.as_str()) {
-                                            revealed_secret.set(Some(("Khóa bí mật ký HMAC-SHA256".into(), sec.to_string())));
+                                            revealed_secret.set(Some(("HMAC-SHA256 signing secret key".into(), sec.to_string())));
                                         }
                                         reload_fn();
-                                        msg.set(Some((false, "Đã tạo Webhook thành công".into())));
+                                        msg.set(Some((false, "Webhook created successfully".into())));
                                     }
-                                    Err(err) => msg.set(Some((true, format!("Không thể tạo Webhook: {}", err.code)))),
+                                    Err(err) => msg.set(Some((true, format!("Unable to create Webhook: {}", err.code)))),
                                 }
                             });
                         },
                         PlusIcon { size: 15 }
-                        "Tạo Webhook"
+                        "Create Webhooks"
                     }
                 }
             } else if scope_type == "user" {
-                div { class: "settings-row-desc", style: "margin-bottom: 10px;", "Để tạo Webhook gửi tin vào kênh hoặc nhóm, hãy mở Cài đặt Máy chủ hoặc Quản lý Nhóm -> mục Plugin & Webhook." }
+                div { class: "settings-row-desc", style: "margin-bottom: 10px;", "To create a Webhook that sends messages to a channel or group, open Server Settings or Group Management -> Plugins & Webhooks." }
             }
 
             if webhooks().is_empty() {
-                div { class: "sidebar-empty", "Chưa có Webhook nào trong phạm vi này." }
+                div { class: "sidebar-empty", "There are no Webhooks in this scope yet." }
             } else {
                 div { class: "plugin-installed-list",
                     for wh in webhooks() {
@@ -1095,7 +1095,7 @@ pub fn ScopedWebhookManager(
                                             if let Some(ref u) = wh.target_url {
                                                 span { "{u}" }
                                             } else {
-                                                span { "Phạm vi: {wh.scope_type} · Giới hạn {wh.rate_limit_per_min}/phút" }
+                                                span { "Range: {wh.scope_type} · Limit {wh.rate_limit_per_min}/minute" }
                                             }
                                         }
                                     }
@@ -1108,12 +1108,12 @@ pub fn ScopedWebhookManager(
                                                     let id = wid_test.clone();
                                                     spawn(async move {
                                                         match plugin_api::test_webhook(&id).await {
-                                                            Ok(_) => msg.set(Some((false, "Đã gửi thử Webhook thành công".into()))),
-                                                            Err(err) => msg.set(Some((true, format!("Gửi thử thất bại: {}", err.code)))),
+                                                            Ok(_) => msg.set(Some((false, "Webhook sent successfully".into()))),
+                                                            Err(err) => msg.set(Some((true, format!("Sending attempt failed: {}", err.code)))),
                                                         }
                                                     });
                                                 },
-                                                "Gửi thử"
+                                                "Try sending"
                                             }
                                             button {
                                                 r#type: "button",
@@ -1125,18 +1125,18 @@ pub fn ScopedWebhookManager(
                                                         match plugin_api::rotate_webhook_token(&id).await {
                                                             Ok(v) => {
                                                                 if let Some(u) = v.get("execute_url").and_then(|x| x.as_str()) {
-                                                                    revealed_secret.set(Some(("URL mới sau khi đổi Token".into(), u.to_string())));
+                                                                    revealed_secret.set(Some(("New URL after Token exchange".into(), u.to_string())));
                                                                 } else if let Some(s) = v.get("signing_secret").and_then(|x| x.as_str()) {
-                                                                    revealed_secret.set(Some(("Khóa HMAC mới".into(), s.to_string())));
+                                                                    revealed_secret.set(Some(("New HMAC key".into(), s.to_string())));
                                                                 }
                                                                 rfn();
-                                                                msg.set(Some((false, "Đã xoay vòng Token Webhook — Token cũ đã bị vô hiệu hóa".into())));
+                                                                msg.set(Some((false, "Webhook Token Rotated — Old token has been disabled".into())));
                                                             }
-                                                            Err(err) => msg.set(Some((true, format!("Không thể đổi Token: {}", err.code)))),
+                                                            Err(err) => msg.set(Some((true, format!("Token cannot be exchanged: {}", err.code)))),
                                                         }
                                                     });
                                                 },
-                                                "Đổi Token"
+                                                "Exchange Tokens"
                                             }
                                             button {
                                                 r#type: "button",
@@ -1149,7 +1149,7 @@ pub fn ScopedWebhookManager(
                                                         }
                                                     });
                                                 },
-                                                "Nhật ký"
+                                                "Diary"
                                             }
                                             input {
                                                 r#type: "checkbox",
@@ -1174,7 +1174,7 @@ pub fn ScopedWebhookManager(
                                                     spawn(async move {
                                                         let _ = plugin_api::delete_webhook(&id).await;
                                                         rfn();
-                                                        msg.set(Some((false, "Đã xóa Webhook".into())));
+                                                        msg.set(Some((false, "Webhooks removed".into())));
                                                     });
                                                 },
                                                 TrashIcon { size: 15 }
@@ -1191,11 +1191,11 @@ pub fn ScopedWebhookManager(
             if let Some((_, logs)) = deliveries_for() {
                 div { class: "plugin-dev-publish-box", style: "margin-top: 12px;",
                     div { class: "plugin-hub-card-head",
-                        strong { "Lịch sử gửi Webhook" }
+                        strong { "Webhook submission history" }
                         button { r#type: "button", class: "icon-btn", onclick: move |_| deliveries_for.set(None), CloseIcon { size: 15 } }
                     }
                     if logs.is_empty() {
-                        div { class: "sidebar-empty", "Chưa có lượt gửi nào." }
+                        div { class: "sidebar-empty", "There are no submissions yet." }
                     } else {
                         for d in logs.into_iter().take(15) {
                             div { key: "{d.id}", class: "plugin-audit-row",
@@ -1246,9 +1246,9 @@ pub fn ScopedPluginAndWebhookTab(
                 div { class: if is_err { "status-badge error" } else { "status-badge success" }, role: "status", "{text}" }
             }
 
-            div { class: "settings-group-title", "Plugin đã cài trong phạm vi này" }
+            div { class: "settings-group-title", "Plugins installed in this range" }
             if scoped_installs().is_empty() {
-                div { class: "sidebar-empty", "Chưa cài đặt plugin nào cho phạm vi này." }
+                div { class: "sidebar-empty", "No plugins have been installed for this scope." }
             } else {
                 div { class: "plugin-installed-list",
                     for inst in scoped_installs() {
@@ -1288,7 +1288,7 @@ pub fn ScopedPluginAndWebhookTab(
             }
 
             if can_manage && !market().is_empty() {
-                div { class: "settings-group-title", style: "margin-top: 12px;", "Thêm nhanh Plugin từ Chợ" }
+                div { class: "settings-group-title", style: "margin-top: 12px;", "Quickly add Plugins from the Market" }
                 div { class: "plugin-hub-grid",
                     for pkg in market().into_iter().take(6) {
                         {
@@ -1306,7 +1306,7 @@ pub fn ScopedPluginAndWebhookTab(
                                     div { class: "plugin-hub-card-title-row",
                                         strong { "{pkg.name}" }
                                         if pkg.publisher_verified {
-                                            span { class: "plugin-verified-badge", CheckIcon { size: 12 } "Đã xác minh" }
+                                            span { class: "plugin-verified-badge", CheckIcon { size: 12 } "Verified" }
                                         }
                                     }
                                     div { class: "plugin-hub-meta", "{pkg.plugin_key}" }
@@ -1332,13 +1332,13 @@ pub fn ScopedPluginAndWebhookTab(
                                                         if let Ok(list) = plugin_api::list_installations(Some(&st), Some(&sid)).await {
                                                             scoped_installs.set(list);
                                                         }
-                                                        msg.set(Some((false, "Đã cài đặt plugin vào phạm vi thành công".into())));
+                                                        msg.set(Some((false, "Plugin installed into scope successfully".into())));
                                                     }
-                                                    Err(err) => msg.set(Some((true, format!("Không thể cài plugin: {}", err.code)))),
+                                                    Err(err) => msg.set(Some((true, format!("Unable to install plugin: {}", err.code)))),
                                                 }
                                             });
                                         },
-                                        "Cài vào phạm vi này"
+                                        "Set to this range"
                                     }
                                 }
                             }

@@ -104,7 +104,7 @@ fn build_member_groups(
         sort_bucket(&mut owner_bucket);
         out.push(MemberGroup {
             key: "__owner__".into(),
-            label: format!("Chủ sở hữu {}", owner_bucket.len()),
+            label: format!("Owner {}", owner_bucket.len()),
             is_offline: false,
             members: owner_bucket,
         });
@@ -127,7 +127,7 @@ fn build_member_groups(
         sort_bucket(&mut plain_bucket);
         out.push(MemberGroup {
             key: "__members__".into(),
-            label: format!("Thành viên {}", plain_bucket.len()),
+            label: format!("Member {}", plain_bucket.len()),
             is_offline: false,
             members: plain_bucket,
         });
@@ -137,7 +137,7 @@ fn build_member_groups(
         sort_bucket(&mut offline_bucket);
         out.push(MemberGroup {
             key: "__offline__".into(),
-            label: format!("Ngoại tuyến {}", offline_bucket.len()),
+            label: format!("Offline {}", offline_bucket.len()),
             is_offline: true,
             members: offline_bucket,
         });
@@ -200,8 +200,8 @@ pub fn ServerHeaderTools(
             button {
                 r#type: "button",
                 class: if members_open { "icon-btn active" } else { "icon-btn" },
-                title: if members_open { "Ẩn danh sách thành viên" } else { "Hiện danh sách thành viên" },
-                aria_label: "Danh sách thành viên",
+                title: if members_open { "Hide member list" } else { "Show member list" },
+                aria_label: "Member list",
                 aria_pressed: "{members_open}",
                 onclick: move |_| on_toggle_members.call(()),
                 PanelRightIcon { size: 20 }
@@ -213,7 +213,7 @@ pub fn ServerHeaderTools(
                         r#type: "button",
                         class: "header-search-backdrop",
                         tabindex: "-1",
-                        aria_label: "Đóng tìm kiếm",
+                        aria_label: "Close search",
                         onclick: move |_| focused.set(false),
                     }
                 }
@@ -221,8 +221,8 @@ pub fn ServerHeaderTools(
                     input {
                         r#type: "search",
                         class: "header-server-search-input",
-                        placeholder: "Tìm kiếm {server_name}",
-                        aria_label: "Tìm kiếm trong {server_name}",
+                        placeholder: "Search {server_name}",
+                        aria_label: "Search in {server_name}",
                         value: "{query}",
                         onfocus: move |_| focused.set(true),
                         onkeydown: move |e| {
@@ -274,7 +274,7 @@ pub fn ServerHeaderTools(
                         button {
                             r#type: "button",
                             class: "header-search-clear",
-                            aria_label: "Xóa từ khóa",
+                            aria_label: "Delete keywords",
                             onclick: move |_| {
                                 query.set(String::new());
                                 msg_hits.set(Vec::new());
@@ -289,9 +289,9 @@ pub fn ServerHeaderTools(
                 }
 
                 if show_popover {
-                    div { class: "header-search-popover", role: "listbox", aria_label: "Kết quả tìm kiếm máy chủ",
+                    div { class: "header-search-popover", role: "listbox", aria_label: "Server search results",
                         if !matched_members.is_empty() {
-                            div { class: "header-search-group", "Thành viên" }
+                            div { class: "header-search-group", "Member" }
                             for m in matched_members {
                                 {
                                     let uid = m.user_id.clone();
@@ -317,7 +317,7 @@ pub fn ServerHeaderTools(
                         }
 
                         if !msg_hits().is_empty() {
-                            div { class: "header-search-group", "Tin nhắn kênh" }
+                            div { class: "header-search-group", "Channel messages" }
                             for h in msg_hits().into_iter().take(8) {
                                 {
                                     let cid = h.channel_id.clone();
@@ -343,7 +343,7 @@ pub fn ServerHeaderTools(
                         }
 
                         if is_enterprise && !ent_hits().is_empty() {
-                            div { class: "header-search-group", "Không gian doanh nghiệp" }
+                            div { class: "header-search-group", "Enterprise space" }
                             for eh in ent_hits().into_iter().take(6) {
                                 {
                                     let mod_k = eh.module.clone();
@@ -369,9 +369,9 @@ pub fn ServerHeaderTools(
                         }
 
                         if !busy() && no_members && msg_hits().is_empty() && ent_hits().is_empty() {
-                            div { class: "header-search-empty", "Không tìm thấy kết quả phù hợp" }
+                            div { class: "header-search-empty", "No matching results were found" }
                         } else if busy() && msg_hits().is_empty() {
-                            div { class: "header-search-empty", "Đang tìm kiếm" }
+                            div { class: "header-search-empty", "Searching" }
                         }
                     }
                 }
@@ -395,14 +395,14 @@ pub fn ServerMembersPanel(
         button {
             r#type: "button",
             class: "drawer-backdrop",
-            aria_label: "Đóng danh sách thành viên",
+            aria_label: "Close member list",
             tabindex: "-1",
             onclick: move |_| on_close.call(()),
         }
-        aside { class: "details-panel server-members-panel", aria_label: "Danh sách thành viên máy chủ",
+        aside { class: "details-panel server-members-panel", aria_label: "List of server members",
             div { class: "server-members-scroll",
                 if members.is_empty() {
-                    div { class: "sidebar-empty", "Chưa có thành viên nào" }
+                    div { class: "sidebar-empty", "There are no members yet" }
                 } else {
                     for g in groups {
                         div { key: "{g.key}", class: if g.is_offline { "discord-role-group offline" } else { "discord-role-group" },
@@ -449,7 +449,7 @@ pub fn ServerMembersPanel(
                                                         "{shown}"
                                                     }
                                                     if is_owner_row {
-                                                        span { class: "discord-owner-crown", title: "Chủ sở hữu", aria_label: "Chủ sở hữu", "👑" }
+                                                        span { class: "discord-owner-crown", title: "Owner", aria_label: "Owner", "👑" }
                                                     }
                                                 }
                                                 if !status_line.is_empty() {

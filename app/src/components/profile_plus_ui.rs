@@ -49,10 +49,10 @@ pub fn ProfileSections(
                         "details" => {
                             let d = p.details.clone();
                             let rows: Vec<(&str, String)> = [
-                                ("occupation", "Công việc", d.occupation.clone()),
-                                ("location", "Nơi sống", d.location.clone()),
+                                ("occupation", "Work", d.occupation.clone()),
+                                ("location", "Place to live", d.location.clone()),
                                 ("website", "Website", d.website.clone()),
-                                ("pronouns", "Danh xưng", d.pronouns.clone()),
+                                ("pronouns", "Title", d.pronouns.clone()),
                             ]
                             .into_iter()
                             .filter(|(k, _, v)| shown(k) && v.as_ref().is_some_and(|x| !x.is_empty()))
@@ -104,12 +104,12 @@ pub fn ProfileSections(
                                 div { class: "achievement-grid",
                                     for a in list {
                                         {
-                                            let meta = pp::ACHIEVEMENTS.iter().find(|x| x.0 == a.id).copied().unwrap_or(("", "Thành tích", ""));
+                                            let meta = pp::ACHIEVEMENTS.iter().find(|x| x.0 == a.id).copied().unwrap_or(("", "Achievements", ""));
                                             let secret = a.hidden && !a.unlocked;
                                             rsx! {
                                                 div { key: "{a.id}", class: if a.unlocked { "achievement unlocked" } else { "achievement" }, title: "{meta.2}",
                                                     span { class: "achievement-medal", if a.unlocked { "🏅" } else if secret { "?" } else { "○" } }
-                                                    span { class: "achievement-name", if secret { "Thành tích ẩn" } else { "{meta.1}" } }
+                                                    span { class: "achievement-name", if secret { "Hidden achievements" } else { "{meta.1}" } }
                                                     if !a.unlocked && !secret {
                                                         span { class: "achievement-progress",
                                                             span { class: "achievement-bar", style: "width: {(a.progress as f64 / a.goal.max(1) as f64 * 100.0).round()}%;" }
@@ -136,17 +136,17 @@ pub fn ProfileSections(
                                                 spawn(async move {
                                                     match pp::sign(&u, &b).await {
                                                         Ok(()) => { entry.set(String::new()); error.set(None); if let Some(h) = on_changed { h.call(()) } }
-                                                        Err(e) => error.set(Some(match e.code.as_str() { "rate_limited" => "Bạn viết nhiều quá, thử lại sau".into(), "guestbook_closed" => "Sổ lưu bút đang đóng".into(), _ => "Không gửi được".into() })),
+                                                        Err(e) => error.set(Some(match e.code.as_str() { "rate_limited" => "You wrote too much, try again later".into(), "guestbook_closed" => "The guestbook is closed".into(), _ => "Unable to send".into() })),
                                                     }
                                                 });
                                             } },
-                                            input { maxlength: "300", aria_label: "Viết vào sổ lưu bút", placeholder: "Viết vài lời", value: "{entry}", oninput: move |e| entry.set(e.value()) }
-                                            button { r#type: "submit", class: "btn-small-secondary", disabled: entry().trim().is_empty(), "Gửi" }
+                                            input { maxlength: "300", aria_label: "Write in the guestbook", placeholder: "Write a few words", value: "{entry}", oninput: move |e| entry.set(e.value()) }
+                                            button { r#type: "submit", class: "btn-small-secondary", disabled: entry().trim().is_empty(), "Send" }
                                         }
                                         if let Some(e) = error() { div { class: "status-badge error", "{e}" } }
                                     }
                                     if plus.guestbook.is_empty() {
-                                        div { class: "member-sub", "Chưa có lời nhắn" }
+                                        div { class: "member-sub", "No message yet" }
                                     }
                                     for g in plus.guestbook.iter().cloned() {
                                         div { key: "{g.id}", class: "guestbook-entry",
@@ -156,7 +156,7 @@ pub fn ProfileSections(
                                                 div { "{g.body}" }
                                             }
                                             if g.can_delete && !preview_other {
-                                                button { r#type: "button", class: "icon-btn small", aria_label: "Xóa lời nhắn",
+                                                button { r#type: "button", class: "icon-btn small", aria_label: "Delete message",
                                                     onclick: { let id = g.id.clone(); move |_| { let id = id.clone(); spawn(async move { if pp::delete_entry(&id).await.is_ok() { if let Some(h) = on_changed { h.call(()) } } }); } },
                                                     "×"
                                                 }
@@ -170,7 +170,7 @@ pub fn ProfileSections(
                             div { class: "chip-row", for c in plus.shared_communities.iter().cloned() { span { key: "{c.id}", class: "interest-chip community-chip", "{c.name}" } } }
                         }),
                         "mutual" => (!plus.mutual_friends.is_empty()).then(|| rsx! {
-                            div { class: "member-sub", "{plus.mutual_friends.len()} bạn chung: {plus.mutual_friends.iter().take(5).cloned().collect::<Vec<_>>().join(\", \")}" }
+                            div { class: "member-sub", "{plus.mutual_friends.len()} mutual friends: {plus.mutual_friends.iter().take(5).cloned().collect::<Vec<_>>().join(\", \")}" }
                         }),
                         "links" => {
                             let links: Vec<(String, String)> = p.social_links.as_object().map(|m| m.iter().filter_map(|(k, v)| v.as_str().filter(|u| u.starts_with("https://")).map(|u| (k.clone(), u.to_string()))).collect()).unwrap_or_default();
@@ -183,7 +183,7 @@ pub fn ProfileSections(
                     rsx! {
                         if let Some(b) = body {
                             div { key: "{s.id}", class: "{cls}", "data-section": "{s.id}",
-                                div { class: "profile-card-label", "{pp::section_label(&s.id)}" if hidden_note { span { class: "member-sub", " · đang ẩn" } } }
+                                div { class: "profile-card-label", "{pp::section_label(&s.id)}" if hidden_note { span { class: "member-sub", " · is hidden" } } }
                                 {b}
                             }
                         }
@@ -238,9 +238,9 @@ pub fn LayoutEditor(
     let _ = fav;
     rsx! {
         div { class: "layout-editor",
-            div { class: "settings-group-title", "Mẫu" }
-            p { class: "member-sub", "Mẫu chỉ đổi thẻ hồ sơ, không đổi giao diện ứng dụng." }
-            div { class: "template-grid", role: "radiogroup", aria_label: "Mẫu hồ sơ",
+            div { class: "settings-group-title", "Sample" }
+            p { class: "member-sub", "The template only changes the profile card, not the application interface." }
+            div { class: "template-grid", role: "radiogroup", aria_label: "Profile form",
                 for (id, name) in pp::TEMPLATES {
                     {
                         let (s, g) = (s0.clone(), g0.clone());
@@ -255,7 +255,7 @@ pub fn LayoutEditor(
                     }
                 }
             }
-            div { class: "settings-group-title", "Các mục" }
+            div { class: "settings-group-title", "Items" }
             div { class: "section-list", role: "list", "data-drag-group": "profile-sections",
                 for (i, s) in sections.iter().cloned().enumerate() {
                     {
@@ -308,15 +308,15 @@ pub fn LayoutEditor(
                                     sec_drag_over.set(None);
                                 },
                                 span { class: "grow", "{pp::section_label(&s.id)}" }
-                                select { aria_label: "Kích thước {pp::section_label(&s.id)}", value: "{s.size}",
+                                select { aria_label: "Size {pp::section_label(&s.id)}", value: "{s.size}",
                                     onchange: move |e| { let mut v = all.clone(); v[i].size = e.value(); emit(t.clone(), v, g.clone()); },
-                                    option { value: "normal", selected: s.size == "normal", "Thường" }
-                                    option { value: "wide", selected: s.size == "wide", "Rộng" }
+                                    option { value: "normal", selected: s.size == "normal", "Usually" }
+                                    option { value: "wide", selected: s.size == "wide", "Wide" }
                                 }
                                 label { class: "demo-check",
-                                    input { r#type: "checkbox", checked: s.visible, aria_label: "Hiện {pp::section_label(&s.id)}",
+                                    input { r#type: "checkbox", checked: s.visible, aria_label: "Show {pp::section_label(&s.id)}",
                                         onchange: move |e| { let mut v = all2.clone(); v[i].visible = e.checked(); emit(t2.clone(), v, g2.clone()); } }
-                                    "Hiện"
+                                    "Show"
                                 }
                             }
                         }
@@ -324,39 +324,39 @@ pub fn LayoutEditor(
                 }
             }
             div { class: "inline-form",
-                span { class: "member-sub", "Sổ lưu bút:" }
-                select { aria_label: "Ai được viết sổ lưu bút", value: "{guestbook_mode}",
+                span { class: "member-sub", "Guestbook:" }
+                select { aria_label: "Who gets to write the guestbook?", value: "{guestbook_mode}",
                     onchange: { let (t, s) = (t0.clone(), s0.clone()); move |e: Event<FormData>| emit(t.clone(), s.clone(), e.value()) },
-                    option { value: "friends", selected: guestbook_mode == "friends", "Bạn bè" }
-                    option { value: "everyone", selected: guestbook_mode == "everyone", "Mọi người" }
-                    option { value: "off", selected: guestbook_mode == "off", "Tắt" }
+                    option { value: "friends", selected: guestbook_mode == "friends", "Friends" }
+                    option { value: "everyone", selected: guestbook_mode == "everyone", "Everyone" }
+                    option { value: "off", selected: guestbook_mode == "off", "Off" }
                 }
-                button { r#type: "button", class: "btn-small-secondary", onclick: { let g = g0.clone(); move |_| emit("minimal".into(), pp::default_sections(), g.clone()) }, "Khôi phục mặc định" }
+                button { r#type: "button", class: "btn-small-secondary", onclick: { let g = g0.clone(); move |_| emit("minimal".into(), pp::default_sections(), g.clone()) }, "Restore defaults" }
             }
 
-            div { class: "settings-group-title", "Bản đã lưu" }
+            div { class: "settings-group-title", "Saved version" }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
             div { class: "inline-form",
-                input { maxlength: "40", placeholder: "Tên bản bố cục", aria_label: "Tên bản bố cục", value: "{preset_name}", oninput: move |e| preset_name.set(e.value()) }
+                input { maxlength: "40", placeholder: "Layout name", aria_label: "Layout name", value: "{preset_name}", oninput: move |e| preset_name.set(e.value()) }
                 button { r#type: "button", class: "btn-small-secondary", disabled: preset_name().trim().is_empty(),
                     onclick: { let (t, s) = (t0.clone(), s0.clone()); move |_| {
                         let (t, s, n) = (t.clone(), s.clone(), preset_name().trim().to_string());
                         spawn(async move {
                             match pp::save_preset(&n, &t, &s).await {
-                                Ok(()) => { preset_name.set(String::new()); msg.set(Some((false, "Đã lưu bản bố cục".into()))); if let Ok(p) = pp::presets().await { presets.set(p); } }
-                                Err(e) => msg.set(Some((true, if e.code == "preset_limit_reached" { "Đã đủ 10 bản".into() } else { "Không lưu được".into() }))),
+                                Ok(()) => { preset_name.set(String::new()); msg.set(Some((false, "Layout saved".into()))); if let Ok(p) = pp::presets().await { presets.set(p); } }
+                                Err(e) => msg.set(Some((true, if e.code == "preset_limit_reached" { "There are 10 copies".into() } else { "Unable to save".into() }))),
                             }
                         });
                     } },
-                    "Lưu bản hiện tại"
+                    "Save the current version"
                 }
                 button { r#type: "button", class: "btn-small-secondary",
                     onclick: { let (t, s) = (t0.clone(), s0.clone()); move |_| {
                         let text = pp::export_layout(&t, &s);
                         platform::copy_to_clipboard(&text);
-                        msg.set(Some((false, "Đã sao chép bố cục dạng JSON".into())));
+                        msg.set(Some((false, "JSON layout copied".into())));
                     } },
-                    "Xuất"
+                    "Export"
                 }
                 button { r#type: "button", class: "btn-small-secondary",
                     onclick: { let g = g0.clone(); move |_| {
@@ -365,12 +365,12 @@ pub fn LayoutEditor(
                             let mut ev = dioxus::document::eval("navigator.clipboard.readText().then((t) => dioxus.send(t)).catch(() => dioxus.send(''));");
                             let text: String = ev.recv().await.unwrap_or_default();
                             match pp::import_layout(&text) {
-                                Some((t, s)) => { emit(t, s, g.clone()); msg.set(Some((false, "Đã nhập bố cục từ bộ nhớ tạm".into()))); }
-                                None => msg.set(Some((true, "Bộ nhớ tạm không có bố cục ChatW hợp lệ".into()))),
+                                Some((t, s)) => { emit(t, s, g.clone()); msg.set(Some((false, "Imported layout from clipboard".into()))); }
+                                None => msg.set(Some((true, "The clipboard does not have a valid ChatW layout".into()))),
                             }
                         });
                     } },
-                    "Nhập"
+                    "Enter"
                 }
             }
             div { class: "preset-list",
@@ -381,17 +381,17 @@ pub fn LayoutEditor(
                         rsx! {
                             div { key: "{p.id}", class: "preset-row",
                                 span { class: "grow", "{p.name}" span { class: "member-sub", " · {pp::template_name(&p.template)}" } }
-                                button { r#type: "button", class: "btn-small-secondary", onclick: move |_| emit(pt.clone(), ps.clone(), g.clone()), "Áp dụng" }
+                                button { r#type: "button", class: "btn-small-secondary", onclick: move |_| emit(pt.clone(), ps.clone(), g.clone()), "Apply" }
                                 button { r#type: "button", class: "btn-small-secondary danger",
                                     onclick: move |_| { let id = pid.clone(); spawn(async move { if pp::delete_preset(&id).await.is_ok() { presets.with_mut(|l| l.retain(|x| x.id != id)); } }); },
-                                    "Xóa" }
+                                    "Delete" }
                             }
                         }
                     }
                 }
             }
 
-            div { class: "settings-group-title", "Trưng bày" }
+            div { class: "settings-group-title", "Display" }
             div { class: "showcase-manage", "data-drag-group": "profile-showcase",
                 for (i, it) in showcase.iter().cloned().enumerate() {
                     {
@@ -455,35 +455,35 @@ pub fn LayoutEditor(
                                         let a = a1.clone();
                                         spawn(async move { if pp::order_showcase(&a, &p).await.is_ok() { if let Some(h) = on_showcase_changed { h.call(()) } } });
                                     },
-                                    if it.pinned { "★ Đã ghim" } else { "☆ Ghim" }
+                                    if it.pinned { "★ Pinned" } else { "☆ Ghim" }
                                 }
-                                button { r#type: "button", class: "btn-small-secondary danger", aria_label: "Bỏ khỏi khu trưng bày",
+                                button { r#type: "button", class: "btn-small-secondary danger", aria_label: "Remove from display area",
                                     onclick: move |_| { let id = id_del.clone(); spawn(async move { if pp::delete_showcase(&id).await.is_ok() { if let Some(h) = on_showcase_changed { h.call(()) } } }); },
-                                    "Bỏ" }
+                                    "Quit" }
                             }
                         }
                     }
                 }
             }
             div { class: "inline-form",
-                select { aria_label: "Loại mục trưng bày", value: "{add_kind}", onchange: move |e| add_kind.set(e.value()),
-                    option { value: "link", "Liên kết nổi bật" }
-                    option { value: "image", "Ảnh tải lên" }
-                    option { value: "sticker", "Sticker yêu thích" }
+                select { aria_label: "Type of display item", value: "{add_kind}", onchange: move |e| add_kind.set(e.value()),
+                    option { value: "link", "Featured links" }
+                    option { value: "image", "Photo uploaded" }
+                    option { value: "sticker", "Favorite stickers" }
                 }
-                input { maxlength: "40", placeholder: "Tiêu đề", aria_label: "Tiêu đề mục trưng bày", value: "{add_title}", oninput: move |e| add_title.set(e.value()) }
+                input { maxlength: "40", placeholder: "Title", aria_label: "Title of display item", value: "{add_title}", oninput: move |e| add_title.set(e.value()) }
                 if add_kind() == "link" {
-                    input { maxlength: "300", placeholder: "https://", aria_label: "Địa chỉ liên kết", value: "{add_url}", oninput: move |e| add_url.set(e.value()) }
+                    input { maxlength: "300", placeholder: "https://", aria_label: "Link address", value: "{add_url}", oninput: move |e| add_url.set(e.value()) }
                     button { r#type: "button", class: "btn-small-secondary", disabled: showcase.len() >= 12 || add_url().trim().is_empty(),
                         onclick: move |_| {
                             let (u, t) = (add_url().trim().to_string(), add_title().trim().to_string());
                             spawn(async move {
                                 match pp::add_showcase("link", &u, &t).await {
                                     Ok(()) => { add_url.set(String::new()); add_title.set(String::new()); if let Some(h) = on_showcase_changed { h.call(()) } }
-                                    Err(_e) => msg.set(Some((true, "Không thêm được".into()))),
+                                    Err(_e) => msg.set(Some((true, "Cannot add".into()))),
                                 }
                             });
-                        }, "Thêm" }
+                        }, "Add" }
                 } else if add_kind() == "image" {
                     input { id: "showcase-file", r#type: "file", accept: "image/png,image/jpeg,image/webp,image/gif,image/avif", style: "display: none;",
                         onchange: move |_| {
@@ -493,24 +493,24 @@ pub fn LayoutEditor(
                                     Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                         Ok(url) => match pp::add_showcase(if mime == "image/gif" { "gif" } else { "image" }, &url, &t).await {
                                             Ok(()) => { add_title.set(String::new()); if let Some(h) = on_showcase_changed { h.call(()) } }
-                                            Err(_e) => msg.set(Some((true, "Không thêm được".into()))),
+                                            Err(_e) => msg.set(Some((true, "Cannot add".into()))),
                                         },
-                                        Err(_e) => msg.set(Some((true, "Không tải ảnh lên được".into()))),
+                                        Err(_e) => msg.set(Some((true, "Unable to upload photo".into()))),
                                     },
-                                    Err(e) if e == "too_large" => msg.set(Some((true, "Ảnh lớn hơn 2 MB".into()))),
+                                    Err(e) if e == "too_large" => msg.set(Some((true, "Photo larger than 2 MB".into()))),
                                     Err(_) => {}
                                 }
                             });
                         },
                     }
-                    label { r#for: "showcase-file", class: "btn-small-secondary", role: "button", tabindex: "0", "Chọn ảnh" }
+                    label { r#for: "showcase-file", class: "btn-small-secondary", role: "button", tabindex: "0", "Select photo" }
                 } else {
                     {
                         let favs = try_consume_context::<crate::prefs::PrefsCtx>().map(|c| c.prefs.read().fav_stickers.clone()).unwrap_or_default();
                         rsx! {
-                            if favs.is_empty() { span { class: "member-sub", "Chưa có sticker yêu thích" } }
+                            if favs.is_empty() { span { class: "member-sub", "No favorite stickers yet" } }
                             for u in favs.into_iter().take(12) {
-                                button { key: "{u}", r#type: "button", class: "showcase-pick", aria_label: "Trưng bày sticker này", disabled: showcase.len() >= 12,
+                                button { key: "{u}", r#type: "button", class: "showcase-pick", aria_label: "Display this sticker", disabled: showcase.len() >= 12,
                                     onclick: { let u = u.clone(); move |_| {
                                         let (u, t) = (u.clone(), add_title().trim().to_string());
                                         spawn(async move { if pp::add_showcase("sticker", &u, &t).await.is_ok() { if let Some(h) = on_showcase_changed { h.call(()) } } });

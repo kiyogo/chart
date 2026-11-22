@@ -109,20 +109,20 @@ pub fn SearchPage(
                     input {
                         id: "global-search-input",
                         r#type: "search",
-                        placeholder: "Nhập tên, @tài_khoản, chủ đề",
-                        aria_label: "Tìm kiếm mọi thứ",
+                        placeholder: "Enter name, @account, subject",
+                        aria_label: "Search everything",
                         value: "{query}",
                         oninput: move |e| query.set(e.value()),
                     }
                 }
             }
             if let Some(msg) = status() {
-                div { class: "chat-banner", role: "status", span { "{msg}" } button { r#type: "button", class: "btn-ghost", onclick: move |_| status.set(None), "Đóng" } }
+                div { class: "chat-banner", role: "status", span { "{msg}" } button { r#type: "button", class: "btn-ghost", onclick: move |_| status.set(None), "Close" } }
             }
             div { class: "search-results",
                 if show(Tab::Chats) && (!my_friends.is_empty() || !my_groups.is_empty() || !my_servers.is_empty()) {
                     section { class: "search-section",
-                        h2 { class: "search-section-title", "Cuộc trò chuyện của bạn" }
+                        h2 { class: "search-section-title", "Your conversations" }
                         div { class: "result-grid",
                             for f in my_friends {
                                 {
@@ -133,7 +133,7 @@ pub fn SearchPage(
                                             Avatar { name: f.username.clone(), avatar_url: f.avatar_url.clone(), size: 44 }
                                             div { class: "result-info",
                                                 div { class: "result-name", "{name}" }
-                                                div { class: "result-sub", "@{f.username} · Bạn bè" }
+                                                div { class: "result-sub", "@{f.username} · Friends" }
                                             }
                                         }
                                     }
@@ -147,7 +147,7 @@ pub fn SearchPage(
                                             Avatar { name: g.name.clone(), avatar_url: g.avatar_url.clone(), size: 44 }
                                             div { class: "result-info",
                                                 div { class: "result-name", "{g.name}" }
-                                                div { class: "result-sub", "Nhóm · {g.member_count} thành viên" }
+                                                div { class: "result-sub", "Group · {g.member_count} members" }
                                             }
                                         }
                                     }
@@ -161,7 +161,7 @@ pub fn SearchPage(
                                             Avatar { name: sv.name.clone(), avatar_url: sv.icon_url.clone(), size: 44 }
                                             div { class: "result-info",
                                                 div { class: "result-name", "{sv.name}" }
-                                                div { class: "result-sub", "Cộng đồng · {sv.member_count} thành viên" }
+                                                div { class: "result-sub", "Community · {sv.member_count} members" }
                                             }
                                         }
                                     }
@@ -172,7 +172,7 @@ pub fn SearchPage(
                 }
                 if show(Tab::People) && !people.read().is_empty() {
                     section { class: "search-section",
-                        h2 { class: "search-section-title", "Mọi người" }
+                        h2 { class: "search-section-title", "Everyone" }
                         div { class: "result-grid",
                             for u in people() {
                                 {
@@ -185,18 +185,18 @@ pub fn SearchPage(
                                                 div { class: "result-name", "{u.username}" }
                                                 div { class: "result-sub",
                                                     match u.relationship.as_str() {
-                                                        "friend" => "Bạn bè",
-                                                        "pending_sent" => "Đã gửi lời mời",
-                                                        "pending_received" => "Đang chờ bạn chấp nhận",
-                                                        _ => "Người dùng ChatW",
+                                                        "friend" => "Friends",
+                                                        "pending_sent" => "Invitation sent",
+                                                        "pending_received" => "Waiting for your approval",
+                                                        _ => "ChatW users",
                                                     }
                                                 }
                                             }
                                             if let Some(f) = fr {
-                                                button { r#type: "button", class: "btn-secondary", onclick: move |_| on_open_friend.call(f.clone()), "Nhắn tin" }
+                                                button { r#type: "button", class: "btn-secondary", onclick: move |_| on_open_friend.call(f.clone()), "Message" }
                                             } else if u.relationship == "none" {
                                                 button { r#type: "button", class: "btn-primary", onclick: move |_| { on_add_friend.call(uid.clone()); people.with_mut(|l| for x in l.iter_mut() { if x.id == uid { x.relationship = "pending_sent".into(); } }); },
-                                                    UserPlusIcon { size: 16 } "Kết bạn"
+                                                    UserPlusIcon { size: 16 } "Add friend"
                                                 }
                                             }
                                         }
@@ -207,7 +207,7 @@ pub fn SearchPage(
                     }
                 }
                 if show(Tab::Communities) {
-                    DirSection { title: "Cộng đồng công khai", icon: "community", entries: d.servers.clone(), empty: if q.is_empty() { "Chưa có cộng đồng công khai đã xác minh" } else { "Không có cộng đồng phù hợp" },
+                    DirSection { title: "Public community", icon: "community", entries: d.servers.clone(), empty: if q.is_empty() { "There is no verified public community yet" } else { "There is no suitable community" },
                         on_action: move |e: DirectoryEntry| {
                             let id = e.id.clone().unwrap_or_default();
                             let joined = e.joined;
@@ -219,18 +219,18 @@ pub fn SearchPage(
                                 }
                                 match social::server_join_public(&id).await {
                                     Ok(_) => {
-                                        status.set(Some(format!("Đã tham gia cộng đồng {name}")));
+                                        status.set(Some(format!("Joined community {name}")));
                                         on_joined.call(());
                                         dir.with_mut(|d| for x in d.servers.iter_mut() { if x.id.as_deref() == Some(id.as_str()) { x.joined = true; } });
                                     }
-                                    Err(_) => status.set(Some("Không tham gia được cộng đồng này".into())),
+                                    Err(_) => status.set(Some("Can't join this community".into())),
                                 }
                             });
                         },
                     }
                 }
                 if show(Tab::Groups) {
-                    DirSection { title: "Nhóm công khai", icon: "group", entries: d.groups.clone(), empty: if q.is_empty() { "Chưa có nhóm công khai đã xác minh" } else { "Không có nhóm phù hợp" },
+                    DirSection { title: "Public group", icon: "group", entries: d.groups.clone(), empty: if q.is_empty() { "There is no verified public group yet" } else { "There is no suitable group" },
                         on_action: move |e: DirectoryEntry| {
                             let id = e.id.clone().unwrap_or_default();
                             let joined = e.joined;
@@ -241,15 +241,15 @@ pub fn SearchPage(
                                     return;
                                 }
                                 match social::directory_join_group(&id).await {
-                                    Ok(v) if v.get("status").and_then(|s| s.as_str()) == Some("pending") => status.set(Some(format!("Đã gửi yêu cầu tham gia {name}. Trưởng hoặc phó nhóm sẽ duyệt."))),
+                                    Ok(v) if v.get("status").and_then(|s| s.as_str()) == Some("pending") => status.set(Some(format!("Request to join {name} has been sent. The group leader or deputy will approve."))),
                                     Ok(_) => {
-                                        status.set(Some(format!("Đã tham gia nhóm {name}")));
+                                        status.set(Some(format!("Joined group {name}")));
                                         on_joined.call(());
                                         dir.with_mut(|d| for x in d.groups.iter_mut() { if x.id.as_deref() == Some(id.as_str()) { x.joined = true; } });
                                     }
                                     Err(e) => status.set(Some(match e.code.as_str() {
-                                        "group_blocked" | "blocked_from_group" => "Bạn không thể tham gia nhóm này".to_string(),
-                                        _ => "Không tham gia được nhóm này".to_string(),
+                                        "group_blocked" | "blocked_from_group" => "You cannot join this group".to_string(),
+                                        _ => "Cannot join this group".to_string(),
                                     })),
                                 }
                             });
@@ -260,7 +260,7 @@ pub fn SearchPage(
                     {
                         let plugin_entries = d.bots.clone();
                         rsx! {
-                            DirSection { title: "Bot công khai", icon: "plugin", entries: plugin_entries, empty: if q.is_empty() { "Chưa có bot công khai đã xác minh" } else { "Không có bot phù hợp" },
+                            DirSection { title: "Public bots", icon: "plugin", entries: plugin_entries, empty: if q.is_empty() { "There are no verified public bots yet" } else { "There are no suitable bots" },
                                 on_action: move |e: DirectoryEntry| {
                                     let name = e.username.clone().unwrap_or_default();
                                     spawn(async move {
@@ -272,7 +272,7 @@ pub fn SearchPage(
                     }
                 }
                 if show(Tab::Business) {
-                    DirSection { title: "Trang Kinh doanh", icon: "business", entries: d.businesses.clone(), empty: if q.is_empty() { "Chưa có trang Kinh doanh nào" } else { "Không có trang phù hợp" },
+                    DirSection { title: "Business Page", icon: "business", entries: d.businesses.clone(), empty: if q.is_empty() { "There are no Business pages yet" } else { "There are no matching pages" },
                         base: base.clone(),
                         on_action: move |e: DirectoryEntry| {
                             let h = e.handle.clone().unwrap_or_default();
@@ -281,7 +281,7 @@ pub fn SearchPage(
                         },
                     }
                 }
-                if loading() { div { class: "search-loading", role: "status", "Đang tìm" } }
+                if loading() { div { class: "search-loading", role: "status", "Looking" } }
             }
         }
     }
@@ -309,17 +309,17 @@ fn DirSection(title: String, icon: String, entries: Vec<DirectoryEntry>, empty: 
                         {
                             let name = e.display_name.clone().or(e.name.clone()).unwrap_or_default();
                             let sub = match icon.as_str() {
-                                "community" | "group" => format!("{} thành viên{}", e.member_count, if e.require_approval { " · cần duyệt" } else { "" }),
+                                "community" | "group" => format!("{} members{}", e.member_count, if e.require_approval { " · need approval" } else { "" }),
                                 "plugin" | "bot" => format!("@{}", e.username.clone().unwrap_or_default()),
-                                _ => e.category.clone().unwrap_or_else(|| "Kinh doanh".into()),
+                                _ => e.category.clone().unwrap_or_else(|| "Business".into()),
                             };
                             let banner = e.banner_url.clone().or(e.cover_url.clone()).filter(|u| platform::safe_asset_path(u));
                             let action = match (icon.as_str(), e.joined) {
-                                ("community" | "group", true) => "Mở",
-                                ("community", false) => "Tham gia",
-                                ("group", false) => if e.require_approval { "Xin tham gia" } else { "Tham gia" },
-                                ("plugin" | "bot", _) => "Dùng Plugin",
-                                _ => "Xem trang",
+                                ("community" | "group", true) => "Open",
+                                ("community", false) => "Join",
+                                ("group", false) => if e.require_approval { "Request to join" } else { "Join" },
+                                ("plugin" | "bot", _) => "Use Plugins",
+                                _ => "View page",
                             };
                             let ec = e.clone();
                             rsx! {
@@ -330,13 +330,13 @@ fn DirSection(title: String, icon: String, entries: Vec<DirectoryEntry>, empty: 
                                     div { class: "dir-body",
                                         Avatar { name: name.clone(), avatar_url: e.avatar_url.clone(), size: 44 }
                                         div { class: "result-info",
-                                            div { class: "result-name", "{name}" span { class: "verified-tag", title: "Đã xác minh", "✓" } }
+                                            div { class: "result-name", "{name}" span { class: "verified-tag", title: "Verified", "✓" } }
                                             div { class: "result-sub", "{sub}" }
                                             if let Some(dsc) = e.description.as_ref().filter(|d| !d.trim().is_empty()) {
                                                 div { class: "result-desc", "{dsc}" }
                                             }
                                         }
-                                        button { r#type: "button", class: if action == "Tham gia" || action == "Xin tham gia" { "btn-primary" } else { "btn-secondary" }, onclick: move |_| on_action.call(ec.clone()), "{action}" }
+                                        button { r#type: "button", class: if action == "Join" || action == "Request to join" { "btn-primary" } else { "btn-secondary" }, onclick: move |_| on_action.call(ec.clone()), "{action}" }
                                     }
                                 }
                             }

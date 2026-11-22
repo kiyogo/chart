@@ -51,7 +51,7 @@ pub struct Account {
 
 impl Account {
     pub fn name(&self) -> String {
-        self.display_name.clone().filter(|n| !n.trim().is_empty()).or(self.username.clone()).unwrap_or_else(|| "Tài khoản".into())
+        self.display_name.clone().filter(|n| !n.trim().is_empty()).or(self.username.clone()).unwrap_or_else(|| "Account".into())
     }
 }
 
@@ -132,30 +132,30 @@ pub fn reload_app() {
 /// Vietnamese label for a security event.
 pub fn event_label(kind: &str) -> &'static str {
     match kind {
-        "login" => "Đăng nhập",
-        "login_2fa" => "Đăng nhập có xác minh hai bước",
-        "logout" => "Đăng xuất",
-        "new_device" => "Đăng nhập từ thiết bị mới",
-        "failed_2fa" => "Nhập sai mã xác minh",
-        "backup_code_used" => "Dùng một mã dự phòng",
-        "totp_enabled" => "Bật xác minh hai bước",
-        "totp_disabled" => "Tắt xác minh hai bước",
-        "backup_codes_regenerated" => "Tạo lại mã dự phòng",
-        "sessions_revoked_others" => "Đăng xuất mọi thiết bị khác",
-        "account_added" => "Thêm tài khoản khác trên thiết bị",
-        "account_switched" => "Chuyển sang tài khoản này",
-        _ => "Hoạt động bảo mật",
+        "login" => "Sign in",
+        "login_2fa" => "Sign in with two-step verification",
+        "logout" => "Log out",
+        "new_device" => "Sign in from your new device",
+        "failed_2fa" => "Input the wrong verification code",
+        "backup_code_used" => "Use a backup code",
+        "totp_enabled" => "Turn on two-step verification",
+        "totp_disabled" => "Turn off two-step verification",
+        "backup_codes_regenerated" => "Regenerate backup code",
+        "sessions_revoked_others" => "Sign out of all other devices",
+        "account_added" => "Add another account on the device",
+        "account_switched" => "Switch to this account",
+        _ => "Security operations",
     }
 }
 
 pub fn error_text(code: &str) -> String {
     match code {
-        "invalid_code" => "Mã không đúng hoặc đã dùng".into(),
-        "challenge_expired" | "no_challenge" => "Phiên xác minh đã hết hạn, hãy đăng nhập lại".into(),
-        "rate_limited" => "Nhập sai quá nhiều lần, hãy thử lại sau 15 phút".into(),
-        "second_factor_required" => "Cần mã xác minh hai bước".into(),
-        "account_limit_reached" => "Tối đa 5 tài khoản trên một thiết bị".into(),
-        "account_not_signed_in" => "Tài khoản này đã đăng xuất".into(),
-        _ => "Không thực hiện được".into(),
+        "invalid_code" => "The code is incorrect or has been used".into(),
+        "challenge_expired" | "no_challenge" => "Verification session has expired, please log in again".into(),
+        "rate_limited" => "Entered incorrectly too many times, try again after 15 minutes".into(),
+        "second_factor_required" => "Need two-step verification code".into(),
+        "account_limit_reached" => "Up to 5 accounts on one device".into(),
+        "account_not_signed_in" => "This account has been logged out".into(),
+        _ => "Cannot be done".into(),
     }
 }

@@ -30,7 +30,7 @@ pub fn PinLock(username: String, on_unlock: EventHandler<()>, on_forgot: EventHa
             return;
         }
         if now < wait_until() {
-            error.set(Some(format!("Thử lại sau {} giây", wait_until() - now)));
+            error.set(Some(format!("Try again in {} seconds", wait_until() - now)));
             return;
         }
         checking.set(true);
@@ -51,9 +51,9 @@ pub fn PinLock(username: String, on_unlock: EventHandler<()>, on_forgot: EventHa
                 if n >= 5 {
                     let secs = 30i64 << (n - 5).min(5);
                     wait_until.set(chrono::Utc::now().timestamp() + secs);
-                    error.set(Some(format!("Sai mã PIN {n} lần. Thử lại sau {secs} giây.")));
+                    error.set(Some(format!("Incorrect PIN {n} times. Try again in {secs} seconds.")));
                 } else {
-                    error.set(Some("Mã PIN không đúng".into()));
+                    error.set(Some("Incorrect PIN".into()));
                 }
                 crate::platform::sleep_ms(450).await;
                 shake.set(false);
@@ -68,7 +68,7 @@ pub fn PinLock(username: String, on_unlock: EventHandler<()>, on_forgot: EventHa
             class: "lock-screen",
             role: "dialog",
             aria_modal: "true",
-            aria_label: "ChatW đang khóa",
+            aria_label: "ChatW is locked",
             tabindex: "0",
             onkeydown: move |e| {
                 match e.key() {
@@ -83,10 +83,10 @@ pub fn PinLock(username: String, on_unlock: EventHandler<()>, on_forgot: EventHa
             div { class: if shake() { "lock-card shake" } else { "lock-card" },
                 span { class: "self-chat-avatar", LockIcon { size: 22 } }
                 div {
-                    h2 { class: "modal-title", "ChatW đang khóa" }
-                    p { class: "modal-sub", "Nhập mã PIN của {username} để tiếp tục" }
+                    h2 { class: "modal-title", "ChatW is locked" }
+                    p { class: "modal-sub", "Enter {username}'s PIN to continue" }
                 }
-                div { class: "lock-dots", aria_label: "Đã nhập {len} số",
+                div { class: "lock-dots", aria_label: "Entered {len} number",
                     for i in 0..len.max(4) {
                         span { key: "{i}", class: if i < len { "lock-dot filled" } else { "lock-dot" } }
                     }
@@ -96,18 +96,18 @@ pub fn PinLock(username: String, on_unlock: EventHandler<()>, on_forgot: EventHa
                     for d in ["1", "2", "3", "4", "5", "6", "7", "8", "9"] {
                         button { key: "{d}", r#type: "button", class: "lock-key", onclick: move |_| if pin().len() < 8 { pin.with_mut(|p| p.push_str(d)) }, "{d}" }
                     }
-                    button { r#type: "button", class: "lock-key ghost", aria_label: "Xóa một số", onclick: move |_| pin.with_mut(|p| { p.pop(); }), "Xóa" }
+                    button { r#type: "button", class: "lock-key ghost", aria_label: "Delete some", onclick: move |_| pin.with_mut(|p| { p.pop(); }), "Delete" }
                     button { r#type: "button", class: "lock-key", onclick: move |_| if pin().len() < 8 { pin.with_mut(|p| p.push('0')) }, "0" }
-                    button { r#type: "button", class: "lock-key ghost", disabled: checking() || pin().is_empty(), onclick: move |_| submit(), "Mở" }
+                    button { r#type: "button", class: "lock-key ghost", disabled: checking() || pin().is_empty(), onclick: move |_| submit(), "Open" }
                 }
                 if confirm_forgot() {
-                    p { class: "modal-sub", "Quên mã PIN thì đăng xuất và đăng nhập lại bằng tài khoản; mã PIN trên thiết bị này sẽ bị xóa." }
+                    p { class: "modal-sub", "If you forget your PIN, log out and log back in with your account; The PIN code on this device will be erased." }
                     div { class: "inline-form",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_forgot.set(false), "Hủy" }
-                        button { r#type: "button", class: "btn-danger", onclick: move |_| on_forgot.call(()), "Đăng xuất" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_forgot.set(false), "Cancel" }
+                        button { r#type: "button", class: "btn-danger", onclick: move |_| on_forgot.call(()), "Log out" }
                     }
                 } else {
-                    button { r#type: "button", class: "btn-ghost", onclick: move |_| confirm_forgot.set(true), "Quên mã PIN?" }
+                    button { r#type: "button", class: "btn-ghost", onclick: move |_| confirm_forgot.set(true), "Forgot your PIN?" }
                 }
             }
         }

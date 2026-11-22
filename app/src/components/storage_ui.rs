@@ -71,22 +71,22 @@ pub fn StorageSettingsPanel() -> Element {
             div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{msg}" }
         }
         if at_risk > 0 {
-            div { class: "status-badge error", "Cảnh báo: có {at_risk} tệp chat riêng sắp hết hạn mà chưa đủ thiết bị lưu bản sao." }
+            div { class: "status-badge error", "Warning: {at_risk} private chat files are about to expire and there are not enough devices to save a copy." }
         }
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Bộ nhớ máy" }
+                    div { class: "settings-group-title", "Device storage" }
                     div { class: "settings-list",
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Đã lưu" }
+                                span { class: "settings-label", "Saved" }
                             }
-                            span { class: "chip-privacy", "{q.local_object_count} tệp · {format_bytes_human(q.total_local_bytes)}" }
+                            span { class: "chip-privacy", "{q.local_object_count} files · {format_bytes_human(q.total_local_bytes)}" }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Bộ nhớ đệm" }
+                                span { class: "settings-label", "Cache" }
                             }
                             button {
                                 r#type: "button",
@@ -95,23 +95,23 @@ pub fn StorageSettingsPanel() -> Element {
                                     spawn(async move {
                                         match clear_safe_cache(false).await {
                                             Ok((freed, kept)) => {
-                                                notice.set(Some((false, format!("Đã giải phóng {}, giữ {kept} tệp riêng", format_bytes_human(freed)))));
+                                                notice.set(Some((false, format!("Freed {}, kept {kept} separate files", format_bytes_human(freed)))));
                                                 reload();
                                             }
-                                            Err(e) => notice.set(Some((true, format!("Không dọn được đệm: {e}")))),
+                                            Err(e) => notice.set(Some((true, format!("Unable to clear buffer: {e}")))),
                                         }
                                     });
                                 },
-                                "Xóa đệm"
+                                "Clear cache"
                             }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Tệp gốc trên máy" }
+                                span { class: "settings-label", "Original file on the device" }
                             }
                             if confirm_purge_unique() {
                                 div { class: "inline-form",
-                                    button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_purge_unique.set(false), "Hủy" }
+                                    button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_purge_unique.set(false), "Cancel" }
                                     button {
                                         r#type: "button",
                                         class: "btn-danger",
@@ -119,26 +119,26 @@ pub fn StorageSettingsPanel() -> Element {
                                             confirm_purge_unique.set(false);
                                             spawn(async move {
                                                 let _ = clear_safe_cache(true).await;
-                                                notice.set(Some((false, "Đã xóa bản lưu trên máy".into())));
+                                                notice.set(Some((false, "Deleted backup on device".into())));
                                                 reload();
                                             });
                                         },
-                                        "Xác nhận xóa"
+                                        "Confirm deletion"
                                     }
                                 }
                             } else if q.pinned_unique_bytes > 0 {
-                                button { r#type: "button", class: "btn-danger-outline", onclick: move |_| confirm_purge_unique.set(true), "Xóa bản lưu" }
+                                button { r#type: "button", class: "btn-danger-outline", onclick: move |_| confirm_purge_unique.set(true), "Delete save" }
                             } else {
                                 span { class: "chip-privacy", "{format_bytes_human(q.pinned_unique_bytes)}" }
                             }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Giới hạn đệm" }
+                                span { class: "settings-label", "Buffer limit" }
                             }
                             select {
                                 class: "settings-select",
-                                aria_label: "Giới hạn bộ nhớ đệm",
+                                aria_label: "Caching limit",
                                 value: "{p.cache_limit_mb}",
                                 onchange: move |e| {
                                     if let Ok(mb) = e.value().parse::<i32>() {
@@ -156,16 +156,16 @@ pub fn StorageSettingsPanel() -> Element {
                                 option { value: "2048", "2 GB" }
                                 option { value: "5120", "5 GB" }
                                 option { value: "10240", "10 GB" }
-                                option { value: "0", "Không giới hạn" }
+                                option { value: "0", "Unlimited" }
                             }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Tự động tải" }
+                                span { class: "settings-label", "Auto-download" }
                             }
                             select {
                                 class: "settings-select",
-                                aria_label: "Chế độ tự động tải",
+                                aria_label: "Auto download mode",
                                 value: "{p.auto_download_mode}",
                                 onchange: move |e| {
                                     let mut next = policy();
@@ -173,14 +173,14 @@ pub fn StorageSettingsPanel() -> Element {
                                     policy.set(next.clone());
                                     spawn(async move { let _ = storage_sync::update_policy(&next).await; });
                                 },
-                                option { value: "always", "Luôn tải" }
-                                option { value: "wifi", "Qua Wi-Fi" }
-                                option { value: "manual", "Thủ công" }
+                                option { value: "always", "Always" }
+                                option { value: "wifi", "Wi-Fi only" }
+                                option { value: "manual", "Manual" }
                             }
                         }
                         label { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Giữ ảnh gốc" }
+                                span { class: "settings-label", "Keep the original photo" }
                             }
                             input {
                                 r#type: "checkbox",
@@ -201,23 +201,23 @@ pub fn StorageSettingsPanel() -> Element {
 
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Dung lượng" }
+                    div { class: "settings-group-title", "Capacity" }
                     div { class: "settings-list",
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Trò chuyện" }
+                                span { class: "settings-label", "Chat" }
                             }
-                            span { class: "chip-privacy", "Riêng {format_bytes_human(dm_bytes)} · Nhóm {format_bytes_human(group_bytes)} · Kênh {format_bytes_human(channel_bytes)}" }
+                            span { class: "chip-privacy", "Individual {format_bytes_human(dm_bytes)} · Group {format_bytes_human(group_bytes)} · Channel {format_bytes_human(channel_bytes)}" }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Đã tiết kiệm" }
+                                span { class: "settings-label", "Saved" }
                             }
-                            span { class: "chip-privacy", "Lưu {format_bytes_human(server_physical)} · Giảm {format_bytes_human(dedup_saved + comp_saved)}" }
+                            span { class: "chip-privacy", "Save {format_bytes_human(server_physical)} · Reduce {format_bytes_human(dedup_saved + comp_saved)}" }
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", if s3_ready { "Kho lưu trữ mở rộng" } else { "Máy chủ lưu trữ" } }
+                                span { class: "settings-label", if s3_ready { "Expanded repository" } else { "Host server" } }
                             }
                             div { class: "inline-form",
                                 button {
@@ -230,7 +230,7 @@ pub fn StorageSettingsPanel() -> Element {
                                             }
                                         });
                                     },
-                                    "Kiểm tra"
+                                    "Check"
                                 }
                                 button {
                                     r#type: "button",
@@ -241,14 +241,14 @@ pub fn StorageSettingsPanel() -> Element {
                                             reload();
                                         });
                                     },
-                                    "Dọn tệp"
+                                    "Clean up files"
                                 }
                             }
                         }
                         if let Some(mr) = migration_res() {
                             div { class: "settings-row",
                                 span { class: "chip-privacy",
-                                    "Kiểm tra {mr[\"scanned_objects\"]} · Hợp lệ {mr[\"verified_objects\"]} · Lỗi {mr[\"failed_objects\"]}"
+                                    "Check {mr[\"scanned_objects\"]} · Valid {mr[\"verified_objects\"]} · Error {mr[\"failed_objects\"]}"
                                 }
                             }
                         }
@@ -297,18 +297,18 @@ pub fn SyncRecoverySettingsPanel(
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Đồng bộ thiết bị" }
+                    div { class: "settings-group-title", "Device sync" }
                     div { class: "settings-list",
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Trạng thái" }
+                                span { class: "settings-label", "Status" }
                             }
                             div { class: "inline-form",
                                 button {
                                     r#type: "button",
                                     class: "btn-secondary",
                                     onclick: move |_| sync_manager::toggle_phase_b_pause(),
-                                    if progress.phase_b_paused { "Tiếp tục" } else { "Tạm dừng" }
+                                    if progress.phase_b_paused { "Continue" } else { "Pause" }
                                 }
                                 button {
                                     r#type: "button",
@@ -318,19 +318,19 @@ pub fn SyncRecoverySettingsPanel(
                                             match sync_manager::run_incremental_delta_sync().await {
                                                 Ok(()) => {
                                                     let _ = sync_manager::report_cached_copies_to_server().await;
-                                                    status_msg.set(Some((false, "Đã đồng bộ xong".into())));
+                                                    status_msg.set(Some((false, "Synchronization completed".into())));
                                                 }
-                                                Err(e) => status_msg.set(Some((true, format!("Chưa đồng bộ được: {e}")))),
+                                                Err(e) => status_msg.set(Some((true, format!("Unable to synchronize: {e}")))),
                                             }
                                         });
                                     },
-                                    "Đồng bộ ngay"
+                                    "Sync now"
                                 }
                             }
                         }
                         label { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Xác nhận máy mới" }
+                                span { class: "settings-label", "Confirm new machine" }
                             }
                             input {
                                 r#type: "checkbox",
@@ -347,7 +347,7 @@ pub fn SyncRecoverySettingsPanel(
                         }
                         label { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Sao lưu tệp riêng" }
+                                span { class: "settings-label", "Back up private files" }
                             }
                             input {
                                 r#type: "checkbox",
@@ -364,11 +364,11 @@ pub fn SyncRecoverySettingsPanel(
                         }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Giữ tệp gửi tạm" }
+                                span { class: "settings-label", "Keep the sent file temporarily" }
                             }
                             select {
                                 class: "settings-select",
-                                aria_label: "Thời hạn trung chuyển",
+                                aria_label: "Transit time",
                                 value: "{p.dm_relay_ttl_hours}",
                                 onchange: move |e| {
                                     if let Ok(hrs) = e.value().parse::<i32>() {
@@ -378,10 +378,10 @@ pub fn SyncRecoverySettingsPanel(
                                         spawn(async move { let _ = storage_sync::update_policy(&next).await; });
                                     }
                                 },
-                                option { value: "24", "24 giờ" }
-                                option { value: "72", "3 ngày" }
-                                option { value: "168", "7 ngày" }
-                                option { value: "720", "30 ngày" }
+                                option { value: "24", "24 hours" }
+                                option { value: "72", "3 days" }
+                                option { value: "168", "7 days" }
+                                option { value: "720", "30 days" }
                             }
                         }
                     }
@@ -389,7 +389,7 @@ pub fn SyncRecoverySettingsPanel(
 
                 if !requests().requests.is_empty() {
                     div { class: "settings-group",
-                        div { class: "settings-group-title", "Khôi phục tệp" }
+                        div { class: "settings-group-title", "Restore files" }
                         div { class: "settings-list",
                             for rr in requests().requests {
                                 div { key: "{rr.id}", class: "settings-row",
@@ -415,7 +415,7 @@ pub fn SyncRecoverySettingsPanel(
                                                         });
                                                     }
                                                 },
-                                                "Gửi"
+                                                "Send"
                                             }
                                             button {
                                                 r#type: "button",
@@ -425,12 +425,12 @@ pub fn SyncRecoverySettingsPanel(
                                                     move |_| {
                                                         let rid = rid.clone();
                                                         spawn(async move {
-                                                            let _ = storage_sync::respond_recovery_request(&rid, "deny", None, None, Some("Người dùng từ chối")).await;
+                                                            let _ = storage_sync::respond_recovery_request(&rid, "deny", None, None, Some("User declines")).await;
                                                             reload();
                                                         });
                                                     }
                                                 },
-                                                "Từ chối"
+                                                "Refuse"
                                             }
                                         }
                                     }
@@ -443,18 +443,18 @@ pub fn SyncRecoverySettingsPanel(
 
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Khôi phục khóa" }
+                    div { class: "settings-group-title", "Key recovery" }
                     div { class: "settings-list",
                         if let Some(k) = user_keys.clone() {
                             div { class: "settings-row column-layout",
                                 div { class: "settings-label",
-                                    if has_backup() { "Đã lưu khóa" } else { "Lưu bản sao khóa" }
+                                    if has_backup() { "Key saved" } else { "Save a copy of the key" }
                                 }
                                 div { class: "inline-form",
                                     input {
                                         r#type: "password",
-                                        placeholder: "Từ 6 ký tự",
-                                        aria_label: "Mật khẩu khôi phục khóa",
+                                        placeholder: "From 6 characters",
+                                        aria_label: "Key recovery password",
                                         value: "{passphrase}",
                                         oninput: move |e| passphrase.set(e.value()),
                                     }
@@ -484,9 +484,9 @@ pub fn SyncRecoverySettingsPanel(
                                                                 Ok(_) => {
                                                                     passphrase.set(String::new());
                                                                     has_backup.set(true);
-                                                                    status_msg.set(Some((false, "Đã lưu bản sao khóa Argon2id".into())));
+                                                                    status_msg.set(Some((false, "Saved a copy of the Argon2id key".into())));
                                                                 }
-                                                                Err(e) => status_msg.set(Some((true, format!("Lỗi sao lưu: {}", e.code)))),
+                                                                Err(e) => status_msg.set(Some((true, format!("Backup error: {}", e.code)))),
                                                             }
                                                         }
                                                         Err(e) => status_msg.set(Some((true, e))),
@@ -494,16 +494,16 @@ pub fn SyncRecoverySettingsPanel(
                                                 });
                                             }
                                         },
-                                        "Lưu khóa"
+                                        "Save key"
                                     }
                                 }
                             }
                             div { class: "settings-row column-layout",
                                 div { class: "settings-label",
                                     if is_passphrase_vault_enabled(&current_user_id) {
-                                        "Kho khóa máy này đã bảo vệ bằng Argon2id"
+                                        "This lock vault is protected by Argon2id"
                                     } else {
-                                        "Bảo vệ kho khóa máy này bằng mật khẩu E2EE (Argon2id)"
+                                        "Protect this keystore with an E2EE password (Argon2id)"
                                     }
                                 }
                                 div { class: "inline-form",
@@ -516,37 +516,37 @@ pub fn SyncRecoverySettingsPanel(
                                             move |_| {
                                                 let pass = passphrase();
                                                 if pass.chars().count() < 8 {
-                                                    status_msg.set(Some((true, "Nhập mật khẩu ít nhất 8 ký tự ở ô trên trước khi khóa kho cục bộ".into())));
+                                                    status_msg.set(Some((true, "Enter a password of at least 8 characters in the box above before locking the local vault".into())));
                                                     return;
                                                 }
                                                 match enable_passphrase_vault(&uid, &keys_for_vault, &pass) {
                                                     Ok(()) => {
                                                         passphrase.set(String::new());
-                                                        status_msg.set(Some((false, "Đã mã hóa kho khóa cục bộ bằng Argon2id".into())));
+                                                        status_msg.set(Some((false, "Encrypted local keystore using Argon2id".into())));
                                                     }
                                                     Err(e) => status_msg.set(Some((true, e))),
                                                 }
                                             }
                                         },
-                                        "Khóa kho máy này"
+                                        "Lock this device"
                                     }
                                 }
                             }
                         }
                         div { class: "settings-row column-layout",
-                            div { class: "settings-label", "Mở khóa tin nhắn" }
+                            div { class: "settings-label", "Unlock messages" }
                             div { class: "inline-form",
                                 input {
                                     r#type: "text",
-                                    placeholder: "Mã 6 số",
-                                    aria_label: "Mã xác minh mất thiết bị",
+                                    placeholder: "6-digit code",
+                                    aria_label: "Lost device verification code",
                                     value: "{twofa_code}",
                                     oninput: move |e| twofa_code.set(e.value()),
                                 }
                                 input {
                                     r#type: "password",
-                                    placeholder: "Mật khẩu khóa",
-                                    aria_label: "Mật khẩu giải mã khóa sao lưu",
+                                    placeholder: "Lock password",
+                                    aria_label: "Password decrypts the backup key",
                                     value: "{restore_passphrase}",
                                     oninput: move |e| restore_passphrase.set(e.value()),
                                 }
@@ -602,7 +602,7 @@ pub fn SyncRecoverySettingsPanel(
                                                     if let Some(restored) = recovered_keys {
                                                         *E2EE_RECOVERY_REQUIRED.write() = None;
                                                         on_keys_imported.call(restored);
-                                                        status_msg.set(Some((false, "Đã mở khóa tin nhắn và xác thực thiết bị".into())));
+                                                        status_msg.set(Some((false, "Unlocked messages and authenticated device".into())));
                                                     } else if let Some(kb) = resp.get("key_backup").filter(|v| !v.is_null()) {
                                                         let wrapped = kb["wrapped_keys_b64"].as_str().unwrap_or("");
                                                         let salt = kb["kdf_salt_b64"].as_str().unwrap_or("");
@@ -617,20 +617,20 @@ pub fn SyncRecoverySettingsPanel(
                                                             Ok(restored) => {
                                                                 *E2EE_RECOVERY_REQUIRED.write() = None;
                                                                 on_keys_imported.call(restored);
-                                                                status_msg.set(Some((false, "Đã mở khóa tin nhắn".into())));
+                                                                status_msg.set(Some((false, "Message unlocked".into())));
                                                             }
-                                                            Err(e) => status_msg.set(Some((true, format!("Đã xác nhận máy nhưng {e}")))),
+                                                            Err(e) => status_msg.set(Some((true, format!("Machine confirmed but {e}")))),
                                                         }
                                                     } else {
-                                                        status_msg.set(Some((false, resp["honest_notice"].as_str().unwrap_or("Đã xác nhận máy khôi phục").into())));
+                                                        status_msg.set(Some((false, resp["honest_notice"].as_str().unwrap_or("Confirmed machine recovery").into())));
                                                     }
                                                     reload();
                                                 }
-                                                Err(e) => status_msg.set(Some((true, format!("Không khôi phục được: {}", e.code)))),
+                                                Err(e) => status_msg.set(Some((true, format!("Unable to restore: {}", e.code)))),
                                             }
                                         });
                                     },
-                                    "Khôi phục"
+                                    "Restore"
                                 }
                             }
                         }
@@ -661,25 +661,25 @@ pub fn DeviceTrustPanel() -> Element {
         if let Some(st) = current_trust {
             if st.trust_state == "pending" {
                 div { class: "status-badge error",
-                    "Thiết bị này đang chờ xác nhận từ thiết bị tin cậy khác. Mã xác nhận: {st.verification_code.clone().unwrap_or_default()}"
+                    "This device is waiting for confirmation from another trusted device. Confirmation code: {st.verification_code.clone().unwrap_or_default()}"
                 }
             }
         }
         if !list().pending_requests.is_empty() {
             div { class: "settings-group",
-                div { class: "settings-group-title", "Yêu cầu đăng nhập từ thiết bị mới" }
+                div { class: "settings-group-title", "Requires sign in from new device" }
                 div { class: "settings-list",
                     for req in list().pending_requests {
                         div { key: "{req.id}", class: "settings-row column-layout",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "{req.device_label.clone().unwrap_or_else(|| req.platform.clone())} · Mã xác nhận: {req.verification_code}" }
+                                span { class: "settings-label", "{req.device_label.clone().unwrap_or_else(|| req.platform.clone())} · Confirmation code: {req.verification_code}" }
                                 span { class: "settings-sublabel", "{req.user_agent.clone().unwrap_or_default()}" }
                             }
                             div { class: "inline-form",
                                 input {
                                     r#type: "text",
                                     maxlength: "6",
-                                    placeholder: "Nhập mã 6 số để xác nhận",
+                                    placeholder: "Enter the 6-digit code to confirm",
                                     value: "{code_input}",
                                     oninput: move |e| code_input.set(e.value()),
                                 }
@@ -712,15 +712,15 @@ pub fn DeviceTrustPanel() -> Element {
                                                 )
                                                 .await
                                                 {
-                                                    Ok(_) => notice.set(Some((false, "Đã phê duyệt và truyền khóa E2EE an toàn cho thiết bị mới".into()))),
-                                                    Err(e) => notice.set(Some((true, format!("Mã không khớp hoặc hết hạn: {}", e.code)))),
+                                                    Ok(_) => notice.set(Some((false, "Approved and securely transferred E2EE keys to new devices".into()))),
+                                                    Err(e) => notice.set(Some((true, format!("Code mismatch or expired: {}", e.code)))),
                                                 }
                                                 code_input.set(String::new());
                                                 reload();
                                             });
                                         }
                                     },
-                                    "Phê duyệt"
+                                    "Approval"
                                 }
                                 button {
                                     r#type: "button",
@@ -731,12 +731,12 @@ pub fn DeviceTrustPanel() -> Element {
                                             let id = id.clone();
                                             spawn(async move {
                                                 let _ = storage_sync::reject_device_request(&id).await;
-                                                notice.set(Some((false, "Đã từ chối thiết bị mới".into())));
+                                                notice.set(Some((false, "Rejected new device".into())));
                                                 reload();
                                             });
                                         }
                                     },
-                                    "Từ chối"
+                                    "Refuse"
                                 }
                             }
                         }
@@ -750,7 +750,7 @@ pub fn DeviceTrustPanel() -> Element {
         }
 
         div { class: "settings-group",
-            div { class: "settings-group-title", "Danh sách thiết bị đã đăng ký khóa" }
+            div { class: "settings-group-title", "List of devices with registered keys" }
             div { class: "settings-list",
                 for dev in list().devices {
                     {
@@ -769,16 +769,16 @@ pub fn DeviceTrustPanel() -> Element {
                                         if dev.is_current {
                                             span { class: "chip-current",
                                                 span { class: "cw-live-dot" }
-                                                "Thiết bị này"
+                                                "This device"
                                             }
                                         }
                                     }
                                     span { class: "settings-sublabel",
                                         "{dev.platform} · "
                                         match dev.trust_state.as_str() {
-                                            "trusted" => "Tin cậy",
-                                            "pending" => "Chờ xác nhận",
-                                            _ => "Đã thu hồi",
+                                            "trusted" => "Trust",
+                                            "pending" => "Wait for confirmation",
+                                            _ => "Revoked",
                                         }
                                     }
                                 }
@@ -792,12 +792,12 @@ pub fn DeviceTrustPanel() -> Element {
                                                 let id = id.clone();
                                                 spawn(async move {
                                                     let _ = storage_sync::revoke_device(&id).await;
-                                                    notice.set(Some((false, "Đã thu hồi thiết bị và chấm dứt quyền đồng bộ".into())));
+                                                    notice.set(Some((false, "Device revoked and sync permission terminated".into())));
                                                     reload();
                                                 });
                                             }
                                         },
-                                        "Thu hồi"
+                                        "Withdrawal"
                                     }
                                 }
                             }
@@ -819,13 +819,13 @@ pub fn IncomingDeviceApprovalModal() -> Element {
 
     rsx! {
         div { class: "modal-overlay",
-            div { class: "modal-dialog", role: "dialog", aria_modal: "true", aria_label: "Xác nhận đăng nhập thiết bị mới",
+            div { class: "modal-dialog", role: "dialog", aria_modal: "true", aria_label: "Confirm new device login",
                 div { class: "modal-header",
-                    h2 { class: "modal-title", "Thiết bị mới đang yêu cầu đăng nhập" }
+                    h2 { class: "modal-title", "The new device is asking to sign in" }
                 }
                 div { class: "modal-body",
-                    p { "Thiết bị: {req.device_name} · {req.platform}" }
-                    p { "Nếu đúng là bạn, đối chiếu mã xác nhận: ", strong { "{req.verification_code}" } }
+                    p { "Device: {req.device_name} · {req.platform}" }
+                    p { "If it's you, compare the confirmation code: ", strong { "{req.verification_code}" } }
                     if let Some(m) = msg() {
                         div { class: "status-badge error", "{m}" }
                     }
@@ -844,7 +844,7 @@ pub fn IncomingDeviceApprovalModal() -> Element {
                                 });
                             }
                         },
-                        "Từ chối"
+                        "Refuse"
                     }
                     button {
                         r#type: "button",
@@ -876,7 +876,7 @@ pub fn IncomingDeviceApprovalModal() -> Element {
                                 });
                             }
                         },
-                        "Chấp nhận đồng bộ"
+                        "Accept synchronization"
                     }
                 }
             }
@@ -952,32 +952,32 @@ pub fn E2eeUnlockRecoveryModal(
 
     rsx! {
         div { class: "modal-overlay",
-            div { class: "modal-dialog", role: "dialog", aria_modal: "true", aria_label: "Mở khóa mã hóa đầu cuối",
+            div { class: "modal-dialog", role: "dialog", aria_modal: "true", aria_label: "Unlock end-to-end encryption",
                 div { class: "modal-header",
                     h2 { class: "modal-title",
                         if is_locked_vault {
-                            "Mở khóa kho E2EE (Argon2id)"
+                            "Unlock E2EE repository (Argon2id)"
                         } else {
-                            "Đồng bộ hoặc khôi phục khóa E2EE"
+                            "Synchronize or restore E2EE keys"
                         }
                     }
                 }
                 div { class: "modal-body",
                     if is_locked_vault {
-                        p { "Khóa riêng E2EE trên thiết bị này được bảo vệ bằng mật khẩu Argon2id. Nhập mật khẩu để giải mã tin nhắn." }
+                        p { "The E2EE private key on this device is protected by the Argon2id password. Enter the password to decrypt the message." }
                     } else {
-                        p { "Tài khoản này đã kích hoạt mã hóa đầu cuối trên thiết bị khác. ChatW không tự ghi đè khóa để bảo vệ toàn bộ lịch sử tin nhắn." }
+                        p { "This account has end-to-end encryption enabled on another device. ChatW does not override the lock itself to protect the entire message history." }
                         if let Some(st) = trust_info.clone() {
                             if let Some(code) = st.verification_code {
-                                p { "Cách 1 — Phê duyệt trên thiết bị cũ đang đăng nhập với mã xác nhận: ", strong { "{code}" } }
+                                p { "Method 1 — Approve on old device logging in with confirmation code: ", strong { "{code}" } }
                             }
                         }
-                        p { "Cách 2 — Nhập mật khẩu sao lưu khóa E2EE (Argon2id) để giải mã trực tiếp trên máy này:" }
+                        p { "Method 2 — Enter the E2EE key backup password (Argon2id) to decrypt directly on this machine:" }
                     }
                     input {
                         r#type: "password",
-                        placeholder: if is_locked_vault { "Nhập mật khẩu mở khóa E2EE" } else { "Nhập mật khẩu sao lưu khóa E2EE" },
-                        aria_label: "Mật khẩu mở khóa E2EE",
+                        placeholder: if is_locked_vault { "Enter the E2EE unlock password" } else { "Enter the E2EE key backup password" },
+                        aria_label: "E2EE unlock password",
                         value: "{pass}",
                         oninput: move |e| {
                             pass.set(e.value());
@@ -989,7 +989,7 @@ pub fn E2eeUnlockRecoveryModal(
                     }
                     if !is_locked_vault && confirm_reset() {
                         div { class: "status-badge error",
-                            "Cảnh báo: Tạo khóa E2EE mới sẽ không thể giải mã lại các tin nhắn cũ nếu bạn không còn thiết bị cũ hoặc bản sao lưu."
+                            "Warning: Generating a new E2EE key will not be able to re-encrypt old messages if you no longer have the old device or a backup."
                         }
                     }
                 }
@@ -999,7 +999,7 @@ pub fn E2eeUnlockRecoveryModal(
                             r#type: "button",
                             class: "btn-ghost",
                             onclick: move |_| *E2EE_RECOVERY_REQUIRED.write() = None,
-                            "Để sau"
+                            "Later"
                         }
                         if confirm_reset() {
                             button {
@@ -1022,21 +1022,21 @@ pub fn E2eeUnlockRecoveryModal(
                                                         *E2EE_RECOVERY_REQUIRED.write() = None;
                                                         on_unlocked.call(new_keys);
                                                     }
-                                                    Err(e) => err.set(Some(format!("Máy chủ từ chối đặt lại khóa: {}", e.code))),
+                                                    Err(e) => err.set(Some(format!("Server refused to reset key: {}", e.code))),
                                                 }
                                             }
                                             Err(e) => err.set(Some(e)),
                                         }
                                     });
                                 },
-                                "Xác nhận tạo khóa mới"
+                                "Confirm creation of new key"
                             }
                         } else {
                             button {
                                 r#type: "button",
                                 class: "btn-danger-outline",
                                 onclick: move |_| confirm_reset.set(true),
-                                "Mất hết thiết bị · Tạo khóa mới"
+                                "Lost all devices · Create new key"
                             }
                         }
                     }
@@ -1088,15 +1088,15 @@ pub fn E2eeUnlockRecoveryModal(
                                                     Err(e) => err.set(Some(e)),
                                                 }
                                             } else {
-                                                err.set(Some("Tài khoản chưa lưu bản sao khóa trên máy chủ. Hãy phê duyệt từ thiết bị cũ.".into()));
+                                                err.set(Some("The account has not saved a copy of the key on the server. Get approval from the old device.".into()));
                                             }
                                         }
-                                        Err(e) => err.set(Some(format!("Không tải được bản sao khóa: {}", e.code))),
+                                        Err(e) => err.set(Some(format!("Failed to load key copy: {}", e.code))),
                                     }
                                 }
                             });
                         },
-                        "Mở khóa"
+                        "Unlock"
                     }
                 }
             }

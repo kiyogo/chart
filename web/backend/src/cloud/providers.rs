@@ -33,9 +33,9 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
             requires_https: true,
             max_file_bytes: 5 * 1024 * 1024 * 1024 * 1024,
             setup_requirements: vec![
-                "GOOGLE_DRIVE_CLIENT_ID (OAuth Client ID trên Google Cloud Console)",
+                "GOOGLE_DRIVE_CLIENT_ID (OAuth Client ID on Google Cloud Console)",
                 "Google Drive API enabled + OAuth Consent Screen + Privacy/ToS URL",
-                "Phạm vi tối thiểu: drive.file / drive.appdata",
+                "Minimum scope: drive.file / drive.appdata",
             ],
         },
         ProviderCapabilities {
@@ -52,7 +52,7 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
             max_file_bytes: 250 * 1024 * 1024 * 1024,
             setup_requirements: vec![
                 "ONEDRIVE_CLIENT_ID (Microsoft Entra App Registration)",
-                "Microsoft Graph scope tối thiểu: Files.ReadWrite.AppFolder offline_access",
+                "Microsoft Graph minimum scope: Files.ReadWrite.AppFolder offline_access",
             ],
         },
         ProviderCapabilities {
@@ -69,7 +69,7 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
             max_file_bytes: 350 * 1024 * 1024 * 1024,
             setup_requirements: vec![
                 "DROPBOX_APP_KEY (Dropbox Developer App - App Folder)",
-                "Trạng thái Production approval nếu phát hành cho nhiều người dùng ngoài nhóm test",
+                "Production approval status if released to multiple users outside the test group",
             ],
         },
         ProviderCapabilities {
@@ -84,7 +84,7 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
             supports_folder_isolation: true,
             requires_https: true,
             max_file_bytes: 50 * 1024 * 1024 * 1024,
-            setup_requirements: vec!["URL HTTPS Nextcloud + App Password (khuyến nghị thay vì mật khẩu chính)"],
+            setup_requirements: vec!["Nextcloud HTTPS URL + App Password (recommended instead of master password)"],
         },
         ProviderCapabilities {
             provider_id: "webdav",
@@ -98,7 +98,7 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
             supports_folder_isolation: true,
             requires_https: true,
             max_file_bytes: 50 * 1024 * 1024 * 1024,
-            setup_requirements: vec!["URL HTTPS WebDAV + tài khoản có quyền đọc/ghi/tạo thư mục"],
+            setup_requirements: vec!["HTTPS WebDAV URL + account with read/write/create directory permissions"],
         },
         ProviderCapabilities {
             provider_id: "s3",
@@ -130,7 +130,7 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
         },
         ProviderCapabilities {
             provider_id: "minio",
-            display_name: "MinIO / S3 tương thích",
+            display_name: "MinIO/S3 compatible",
             auth_kind: "credentials",
             oauth_configured: true,
             supports_resumable_upload: true,
@@ -144,7 +144,7 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
         },
         ProviderCapabilities {
             provider_id: "nas",
-            display_name: "NAS cá nhân",
+            display_name: "Personal NAS",
             auth_kind: "credentials",
             oauth_configured: true,
             supports_resumable_upload: false,
@@ -154,7 +154,7 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
             supports_folder_isolation: true,
             requires_https: true,
             max_file_bytes: 50 * 1024 * 1024 * 1024,
-            setup_requirements: vec!["Địa chỉ WebDAV/HTTPS của NAS và tài khoản App Password"],
+            setup_requirements: vec!["NAS WebDAV/HTTPS address and App Password account"],
         },
         ProviderCapabilities {
             provider_id: "icloud",
@@ -169,7 +169,7 @@ pub fn all_provider_catalog() -> Vec<ProviderCapabilities> {
             requires_https: true,
             max_file_bytes: 50 * 1024 * 1024 * 1024,
             setup_requirements: vec![
-                "Chỉ khả dụng qua Apple CloudKit / Ubiquity Container trên ứng dụng macOS & iOS đã ký Apple Developer",
+                "Only available via Apple CloudKit / Ubiquity Container on Apple Developer signed macOS & iOS apps",
             ],
         },
     ]
@@ -208,7 +208,7 @@ fn is_forbidden_ssrf_ip(ip: IpAddr, allow_lan_rfc1918: bool, allow_loopback_test
 /// Validates external cloud URLs against insecure plaintext HTTP and SSRF internal targets.
 pub fn validate_remote_endpoint(raw_url: &str, allow_lan_nas: bool) -> Result<reqwest::Url, CloudError> {
     let url = reqwest::Url::parse(raw_url.trim())
-        .map_err(|e| CloudError::InvalidConfig(format!("URL không hợp lệ: {e}")))?;
+        .map_err(|e| CloudError::InvalidConfig(format!("Invalid URL: {e}")))?;
 
     let allow_loopback_test = std::env::var("ALLOW_LOOPBACK_CLOUD_TEST")
         .ok()
@@ -217,7 +217,7 @@ pub fn validate_remote_endpoint(raw_url: &str, allow_lan_nas: bool) -> Result<re
     let scheme = url.scheme();
     let host = url
         .host_str()
-        .ok_or_else(|| CloudError::InvalidConfig("Thiếu host trong URL".into()))?;
+        .ok_or_else(|| CloudError::InvalidConfig("Missing host in URL".into()))?;
     let host_lower = host.to_ascii_lowercase();
 
     let is_lan_http_allowed = if allow_lan_nas && scheme == "http" {
@@ -273,12 +273,12 @@ async fn build_safe_cloud_http_client(
         .is_some_and(|v| v == "1" || v == "true");
     let host = url
         .host_str()
-        .ok_or_else(|| CloudError::InvalidConfig("Thiếu host trong URL".into()))?
+        .ok_or_else(|| CloudError::InvalidConfig("Missing host in URL".into()))?
         .trim_start_matches('[')
         .trim_end_matches(']');
     let port = url
         .port_or_known_default()
-        .ok_or_else(|| CloudError::InvalidConfig("Cổng URL không hợp lệ".into()))?;
+        .ok_or_else(|| CloudError::InvalidConfig("Invalid URL port".into()))?;
 
     let mut builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -308,7 +308,7 @@ async fn build_safe_cloud_http_client(
 fn sanitize_remote_key(key: &str) -> Result<String, CloudError> {
     let clean = key.trim().trim_start_matches('/');
     if clean.is_empty() || clean.contains("..") || clean.contains('\\') || clean.contains('\0') {
-        return Err(CloudError::InvalidConfig("remote_key không hợp lệ".into()));
+        return Err(CloudError::InvalidConfig("remote_key is invalid".into()));
     }
     Ok(clean.to_string())
 }
@@ -325,7 +325,7 @@ pub struct WebDavProvider {
 
 impl WebDavProvider {
     pub fn from_config(kind: &'static str, cfg: &Value) -> Result<Self, CloudError> {
-        let raw_url = cfg["endpoint"].as_str().ok_or_else(|| CloudError::InvalidConfig("Thiếu endpoint WebDAV".into()))?;
+        let raw_url = cfg["endpoint"].as_str().ok_or_else(|| CloudError::InvalidConfig("Missing WebDAV endpoint".into()))?;
         let allow_lan = kind == "nas" && cfg["allow_lan"].as_bool().unwrap_or(false);
         let parsed = validate_remote_endpoint(raw_url, allow_lan)?;
         let username = cfg["username"].as_str().unwrap_or("").trim().to_string();
@@ -617,12 +617,12 @@ pub struct S3UserCloudProvider {
 
 impl S3UserCloudProvider {
     pub fn from_config(kind: &'static str, cfg: &Value) -> Result<Self, CloudError> {
-        let raw_endpoint = cfg["endpoint"].as_str().ok_or_else(|| CloudError::InvalidConfig("Thiếu S3 endpoint".into()))?;
+        let raw_endpoint = cfg["endpoint"].as_str().ok_or_else(|| CloudError::InvalidConfig("Missing S3 endpoint".into()))?;
         let allow_lan = cfg["allow_lan"].as_bool().unwrap_or(false);
         let parsed = validate_remote_endpoint(raw_endpoint, allow_lan)?;
-        let bucket = cfg["bucket"].as_str().map(str::trim).filter(|s| !s.is_empty()).ok_or_else(|| CloudError::InvalidConfig("Thiếu S3 bucket".into()))?;
-        let access_key = cfg["access_key"].as_str().filter(|s| !s.is_empty()).ok_or_else(|| CloudError::InvalidConfig("Thiếu Access Key".into()))?;
-        let secret_key = cfg["secret_key"].as_str().filter(|s| !s.is_empty()).ok_or_else(|| CloudError::InvalidConfig("Thiếu Secret Key".into()))?;
+        let bucket = cfg["bucket"].as_str().map(str::trim).filter(|s| !s.is_empty()).ok_or_else(|| CloudError::InvalidConfig("Missing S3 bucket".into()))?;
+        let access_key = cfg["access_key"].as_str().filter(|s| !s.is_empty()).ok_or_else(|| CloudError::InvalidConfig("Missing Access Key".into()))?;
+        let secret_key = cfg["secret_key"].as_str().filter(|s| !s.is_empty()).ok_or_else(|| CloudError::InvalidConfig("Missing Secret Key".into()))?;
         let region = cfg["region"].as_str().filter(|s| !s.is_empty()).unwrap_or("us-east-1");
         let prefix = cfg["prefix"].as_str().unwrap_or("kiyo-backups").trim_matches('/');
 
@@ -1216,7 +1216,7 @@ pub fn instantiate_provider(provider_id: &str, cfg: &Value) -> Result<Box<dyn Cl
         "google_drive" => Ok(Box::new(OAuthCloudProvider::from_config("google_drive", cfg)?)),
         "onedrive" => Ok(Box::new(OAuthCloudProvider::from_config("onedrive", cfg)?)),
         "dropbox" => Ok(Box::new(OAuthCloudProvider::from_config("dropbox", cfg)?)),
-        "icloud" => Err(CloudError::Unsupported("iCloud sử dụng Apple CloudKit bản địa trên macOS/iOS")),
-        other => Err(CloudError::InvalidConfig(format!("Không hỗ trợ provider {other}"))),
+        "icloud" => Err(CloudError::Unsupported("iCloud uses native Apple CloudKit on macOS/iOS")),
+        other => Err(CloudError::InvalidConfig(format!("Provider {other} is not supported"))),
     }
 }

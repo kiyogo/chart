@@ -39,7 +39,7 @@ pub fn GroupInviteModal(group_id: String, on_close: EventHandler<()>) -> Element
                 style: "max-width: 440px;",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "settings-modal-header",
-                    h2 { "Liên kết mời vào nhóm" }
+                    h2 { "Group invitation link" }
                     button {
                         class: "settings-close-btn",
                         onclick: move |_| on_close.call(()),
@@ -49,14 +49,14 @@ pub fn GroupInviteModal(group_id: String, on_close: EventHandler<()>) -> Element
                 div { class: "settings-modal-content",
                     p {
                         style: "color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;",
-                        "Chia sẻ mã mời hoặc liên kết này với bất kỳ ai để họ có thể tham gia vào nhóm."
+                        "Share this invite code or link with anyone so they can join the group."
                     }
 
                     if is_loading() {
-                        div { style: "text-align: center; padding: 20px;", "Đang tạo liên kết..." }
+                        div { style: "text-align: center; padding: 20px;", "Creating link" }
                     } else {
                         div { class: "settings-section",
-                            label { class: "settings-label", "Mã mời" }
+                            label { class: "settings-label", "Invitation code" }
                             div { style: "display: flex; gap: 8px; margin-top: 6px;",
                                 input {
                                     class: "search-input",
@@ -68,7 +68,7 @@ pub fn GroupInviteModal(group_id: String, on_close: EventHandler<()>) -> Element
                                 button {
                                     class: "add-friend-submit-btn",
                                     onclick: handle_copy,
-                                    if copied() { "Đã chép!" } else { "Sao chép" }
+                                    if copied() { "Copied!" } else { "Copy" }
                                 }
                             }
                         }
@@ -78,7 +78,7 @@ pub fn GroupInviteModal(group_id: String, on_close: EventHandler<()>) -> Element
                         button {
                             class: "partner-action-btn",
                             onclick: move |_| on_close.call(()),
-                            "Đóng"
+                            "Close"
                         }
                     }
                 }
@@ -100,7 +100,7 @@ pub fn AddMemberModal(
     let handle_submit = move |_| {
         let uname = username();
         if uname.trim().is_empty() {
-            error_msg.set(Some("Vui lòng nhập tên người dùng".to_string()));
+            error_msg.set(Some("Please enter username".to_string()));
             return;
         }
 
@@ -116,7 +116,7 @@ pub fn AddMemberModal(
                 }
                 Err(err) => {
                     is_submitting.set(false);
-                    error_msg.set(Some(format!("Không tìm thấy hoặc không thể thêm: {err}")));
+                    error_msg.set(Some(format!("Not found or unable to add: {err}")));
                 }
             }
         });
@@ -129,7 +129,7 @@ pub fn AddMemberModal(
                 style: "max-width: 440px;",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "settings-modal-header",
-                    h2 { "Thêm thành viên" }
+                    h2 { "Add members" }
                     button {
                         class: "settings-close-btn",
                         onclick: move |_| on_close.call(()),
@@ -142,12 +142,12 @@ pub fn AddMemberModal(
                     }
 
                     div { class: "settings-section",
-                        label { class: "settings-label", "Tên người dùng" }
+                        label { class: "settings-label", "Username" }
                         input {
                             class: "search-input",
                             style: "width: 100%; box-sizing: border-box; margin-top: 6px;",
                             r#type: "text",
-                            placeholder: "Nhập tên tài khoản",
+                            placeholder: "Enter account name",
                             value: "{username}",
                             oninput: move |e| username.set(e.value()),
                         }
@@ -157,13 +157,13 @@ pub fn AddMemberModal(
                         button {
                             class: "partner-action-btn",
                             onclick: move |_| on_close.call(()),
-                            "Hủy"
+                            "Cancel"
                         }
                         button {
                             class: "add-friend-submit-btn",
                             disabled: is_submitting(),
                             onclick: handle_submit,
-                            if is_submitting() { "Đang thêm..." } else { "Thêm" }
+                            if is_submitting() { "Adding" } else { "Add" }
                         }
                     }
                 }

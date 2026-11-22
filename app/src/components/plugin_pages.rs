@@ -43,7 +43,7 @@ pub fn PluginCustomPageView(
             div { class: "chat-main-container",
                 div { class: "chat-column plugin-panel {wp_cls}", style: "{wp_style}",
                     header { class: "chat-header only-mobile",
-                        button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
+                        button { r#type: "button", class: "icon-btn back-btn", aria_label: "Back", onclick: move |_| on_close.call(()), BackIcon {} }
                     }
                     div { class: "plugin-custom-stage",
                         div { class: "settings-content", style: "max-width: 66rem; width: 100%; margin: 0 auto;",
@@ -68,7 +68,7 @@ pub fn PluginCustomPageView(
         return rsx! {
             div { class: "chat-main-container",
                 div { class: "chat-column plugin-panel {wp_cls}", style: "{wp_style}",
-                    div { class: "empty-state", "Plugin không tồn tại hoặc đã bị tắt." }
+                    div { class: "empty-state", "Plugin does not exist or has been disabled." }
                 }
             }
         };
@@ -83,7 +83,7 @@ pub fn PluginCustomPageView(
         div { class: "chat-main-container",
             div { class: "chat-column plugin-panel {wp_cls}", style: "{wp_style}",
                 header { class: "chat-header",
-                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại", onclick: move |_| on_close.call(()), BackIcon {} }
+                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Back", onclick: move |_| on_close.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
                         span { class: "bot-header-icon",
                             PluginGlyph { icon: String::new(), logo_url: inst.icon_url.clone(), size: 22 }
@@ -101,7 +101,7 @@ pub fn PluginCustomPageView(
                                 *EDITING_PLUGIN_ID.write() = None;
                                 *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
                             },
-                            SlidersIcon {} "Quản lý Plugin"
+                            SlidersIcon {} "Plugin Management"
                         }
                     }
                 }
@@ -132,7 +132,7 @@ pub fn PluginLeftAppView(
     let Some(inst) = inst else {
         return rsx! {
             aside { class: "left-plugin-panel",
-                div { class: "empty-state", "Plugin đã tắt hoặc chưa cài đặt." }
+                div { class: "empty-state", "Plugin is disabled or not installed." }
             }
         };
     };
@@ -149,7 +149,7 @@ pub fn PluginLeftAppView(
                     PluginGlyph { icon: String::new(), logo_url: inst.icon_url.clone(), size: 18 }
                     span { class: "left-plugin-title", "{inst.name}" }
                 }
-                button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon {} }
+                button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon {} }
             }
             div {
                 id: "plugin-sidebar-sandbox-stage",
@@ -262,13 +262,13 @@ pub fn PluginChatView(
         .description
         .clone()
         .filter(|d| !d.trim().is_empty())
-        .unwrap_or_else(|| "Gửi tin nhắn hoặc gõ / để tương tác với bot.".to_string());
+        .unwrap_or_else(|| "Send a message or type / to interact with the bot.".to_string());
 
     rsx! {
         div { class: "chat-main-container",
             div { class: "chat-column {wp_cls}", style: "{wp_style}",
                 header { class: "chat-header",
-                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại danh sách", onclick: move |_| on_back.call(()), BackIcon {} }
+                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Back to the list", onclick: move |_| on_back.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
                         div { class: "chat-item-avatar",
                             if bot.avatar_url.is_some() {
@@ -286,7 +286,7 @@ pub fn PluginChatView(
                         button {
                             r#type: "button",
                             class: "btn-ghost",
-                            title: "Quản lý Plugin",
+                            title: "Plugin Management",
                             onclick: move |_| {
                                 *EDITING_PLUGIN_ID.write() = None;
                                 *ACTIVE_PLUGIN_PAGE.write() = Some("studio".into());
@@ -294,16 +294,16 @@ pub fn PluginChatView(
                             SlidersIcon {} "Plugin"
                         }
                         if can_add && !admin_groups.is_empty() {
-                            button { r#type: "button", class: if add_open() { "icon-btn active" } else { "icon-btn" }, title: "Thêm bot vào nhóm", aria_label: "Thêm bot vào nhóm",
+                            button { r#type: "button", class: if add_open() { "icon-btn active" } else { "icon-btn" }, title: "Add bots to the group", aria_label: "Add bots to the group",
                                 onclick: move |e| { e.stop_propagation(); add_open.set(!add_open()); },
                                 GroupIcon {}
                             }
                         }
                     }
                     if add_open() {
-                        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| add_open.set(false) }
+                        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Close", onclick: move |_| add_open.set(false) }
                         div { class: "account-menu chat-more-menu", role: "menu",
-                            div { class: "menu-note", "Thêm bot vào nhóm bạn quản lý" }
+                            div { class: "menu-note", "Add bots to groups you manage" }
                             for g in admin_groups.iter().cloned() {
                                 {
                                     let bid = bot.id.clone();
@@ -316,7 +316,7 @@ pub fn PluginChatView(
                                                 let (b, gi, gn) = (bid.clone(), gid.clone(), gname.clone());
                                                 spawn(async move {
                                                     match social::bot_add_to_group(&b, &gi).await {
-                                                        Ok(_) => error.set(Some(format!("Đã thêm bot vào nhóm {gn}."))),
+                                                        Ok(_) => error.set(Some(format!("Added bot to group {gn}."))),
                                                         Err(e) => error.set(Some(plugin_error(&e.code).to_string())),
                                                     }
                                                 });
@@ -331,7 +331,7 @@ pub fn PluginChatView(
                     }
                 }
                 if let Some(e) = error() {
-                    div { class: "chat-banner", role: "status", span { "{e}" } button { r#type: "button", class: "btn-ghost", onclick: move |_| error.set(None), "Đóng" } }
+                    div { class: "chat-banner", role: "status", span { "{e}" } button { r#type: "button", class: "btn-ghost", onclick: move |_| error.set(None), "Close" } }
                 }
                 if view.is_empty() {
                     div { class: "chat-messages", id: "chat-messages-scroll",
@@ -355,7 +355,7 @@ pub fn PluginChatView(
                 Composer {
                     input_id: "bot-chat-input".to_string(),
                     value: input(),
-                    placeholder: format!("Nhắn tin hoặc gõ /lệnh tới @{}", bot.username),
+                    placeholder: format!("Text or type /command to @{}", bot.username),
                     sending: sending(),
                     on_input: move |v: String| input.set(v),
                     on_send: move |_| send_text(input()),

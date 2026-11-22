@@ -190,7 +190,7 @@ async fn handle_create_server(
     sqlx::query!(
         r#"
         INSERT INTO server_categories (id, server_id, name, position)
-        VALUES ($1, $2, 'Giọng nói', 1)
+        VALUES ($1, $2, 'Voice', 1)
         "#,
         voice_cat_id,
         server_id
@@ -202,7 +202,7 @@ async fn handle_create_server(
     sqlx::query!(
         r#"
         INSERT INTO channels (id, server_id, category_id, name, channel_type, position, is_private)
-        VALUES ($1, $2, $3, 'Tổng quát', 'voice', 0, FALSE)
+        VALUES ($1, $2, $3, 'General', 'voice', 0, FALSE)
         "#,
         voice_ch_id,
         server_id,

@@ -17,7 +17,7 @@ pub fn SetupUsername(on_complete: EventHandler<()>) -> Element {
         let trimmed = name().trim().to_string();
         let char_len = trimmed.chars().count();
         if !(2..=32).contains(&char_len) {
-            error.set("Tên phải từ 2 đến 32 ký tự".to_string());
+            error.set("Name must be between 2 and 32 characters".to_string());
             return;
         }
 
@@ -32,7 +32,7 @@ pub fn SetupUsername(on_complete: EventHandler<()>) -> Element {
                         None => create_and_store_user_keys(Some(&user_resp.id)),
                     };
                     let Ok(keys) = keys_res else {
-                        error.set("Không thể tạo kho khóa mã hóa an toàn trên thiết bị này".to_string());
+                        error.set("A secure encryption keystore cannot be created on this device".to_string());
                         loading.set(false);
                         return;
                     };
@@ -45,15 +45,15 @@ pub fn SetupUsername(on_complete: EventHandler<()>) -> Element {
                             on_complete.call(())
                         }
                         Err(_) => {
-                            error.set("Không thể lưu tên. Vui lòng thử lại".to_string());
+                            error.set("Cannot save name. Please try again".to_string());
                         }
                     }
                 }
                 Err(err) => {
                     if err.code == "username_taken" {
-                        error.set("Tên này đã được sử dụng".to_string());
+                        error.set("This name is already in use".to_string());
                     } else {
-                        error.set("Không thể lưu tên. Vui lòng thử lại".to_string());
+                        error.set("Cannot save name. Please try again".to_string());
                     }
                 }
             }
@@ -67,14 +67,14 @@ pub fn SetupUsername(on_complete: EventHandler<()>) -> Element {
                 div { class: "auth-logo",
                     LogoIcon { size: 44 }
                 }
-                h2 { class: "auth-title", "Đặt tên của bạn" }
+                h2 { class: "auth-title", "Give your name" }
                 input {
                     r#type: "text",
-                    placeholder: "Nhập tên người dùng",
+                    placeholder: "Enter username",
                     value: "{name}",
                     disabled: loading(),
                     autofocus: true,
-                    aria_label: "Tên người dùng",
+                    aria_label: "Username",
                     oninput: move |evt| {
                         name.set(evt.value());
                         error.set(String::new());
@@ -87,8 +87,8 @@ pub fn SetupUsername(on_complete: EventHandler<()>) -> Element {
                     r#type: "submit",
                     class: "auth-btn-primary",
                     disabled: loading(),
-                    aria_label: "Tiếp tục",
-                    if loading() { "Đang lưu" } else { "Tiếp tục" }
+                    aria_label: "Continue",
+                    if loading() { "Saving" } else { "Continue" }
                 }
             }
         }

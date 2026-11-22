@@ -64,9 +64,9 @@ pub const MOTIONS: [(&str, &str, MotionKind, f32); 40] = [
     ("morph", "Morph", Transform, 5.0),
 ];
 
-pub const TRIGGERS: [(&str, &str); 3] = [("always", "Luôn chạy"), ("hover", "Khi rê chuột"), ("click", "Khi nhấp")];
+pub const TRIGGERS: [(&str, &str); 3] = [("always", "Always"), ("hover", "On hover"), ("click", "On click")];
 pub const EASINGS: [(&str, &str); 5] =
-    [("linear", "Đều"), ("ease", "Mượt"), ("ease-in-out", "Êm hai đầu"), ("ease-out", "Chậm dần"), ("bounce", "Nảy")];
+    [("linear", "All"), ("ease", "Smooth"), ("ease-in-out", "Smooth both ends"), ("ease-out", "Slow down"), ("bounce", "Bouncing")];
 
 fn d_speed() -> f64 {
     1.0
@@ -227,15 +227,15 @@ pub fn AvatarStudio(
                     MotionAvatar { key: "{mm.effect}-{mm.trigger}", name: name.clone(), avatar_url: avatar_url.clone(), size: 112, motion: mm.clone() }
                     div { class: "studio-preview-name", "{mm.meta().map(|x| x.1).unwrap_or_default()}" }
                     if mm.trigger != "always" {
-                        div { class: "member-sub", if mm.trigger == "hover" { "Rê chuột lên ảnh để xem" } else { "Nhấp vào ảnh để bật / tắt" } }
+                        div { class: "member-sub", if mm.trigger == "hover" { "Hover over the photo to view" } else { "Click on the photo to turn it on/off" } }
                     }
                 } else {
                     Avatar { name: name.clone(), avatar_url: avatar_url.clone(), size: 112 }
-                    div { class: "studio-preview-name", "Không có hiệu ứng" }
+                    div { class: "studio-preview-name", "No effect" }
                 }
             }
             div { class: "studio-controls",
-                div { class: "settings-group-title", "Hiệu ứng" }
+                div { class: "settings-group-title", "Effects" }
                 div { class: "motion-grid", role: "radiogroup", aria_label: "Avatar effects",
                     button { r#type: "button", role: "radio", aria_checked: "{current.is_none()}",
                         class: if current.is_none() { "motion-tile active" } else { "motion-tile" },
@@ -264,35 +264,35 @@ pub fn AvatarStudio(
                 if current.is_some() {
                     div { class: "studio-params",
                         label { class: "range-row",
-                            span { "Tốc độ" }
-                            input { r#type: "range", min: "0.25", max: "4", step: "0.25", value: "{m.speed}", aria_label: "Tốc độ",
+                            span { "Speed" }
+                            input { r#type: "range", min: "0.25", max: "4", step: "0.25", value: "{m.speed}", aria_label: "Speed",
                                 oninput: move |e| { let v = e.value().parse::<f64>().unwrap_or(1.0); set1(&|x: &mut AvatarMotion| x.speed = v.clamp(0.25, 4.0)) } }
                             span { class: "range-value", "{m.speed:.2}×" }
                         }
                         label { class: "range-row",
-                            span { "Cường độ" }
-                            input { r#type: "range", min: "1", max: "100", value: "{m.intensity}", aria_label: "Cường độ",
+                            span { "Intensity" }
+                            input { r#type: "range", min: "1", max: "100", value: "{m.intensity}", aria_label: "Intensity",
                                 oninput: move |e| { let v = e.value().parse::<u8>().unwrap_or(60); set2(&|x: &mut AvatarMotion| x.intensity = v.clamp(1, 100)) } }
                             span { class: "range-value", "{m.intensity}%" }
                         }
                         div { class: "range-row",
-                            span { "Màu" }
-                            input { r#type: "color", aria_label: "Màu hiệu ứng", value: "{m.color.clone().unwrap_or_else(|| \"#2764E7\".into())}",
+                            span { "Color" }
+                            input { r#type: "color", aria_label: "Effect color", value: "{m.color.clone().unwrap_or_else(|| \"#2764E7\".into())}",
                                 oninput: move |e| { let v = e.value().to_uppercase(); set3(&|x: &mut AvatarMotion| x.color = Some(v.clone())) } }
-                            button { r#type: "button", class: "btn-small-secondary", onclick: move |_| set4(&|x: &mut AvatarMotion| x.color = None), "Theo màu hồ sơ" }
+                            button { r#type: "button", class: "btn-small-secondary", onclick: move |_| set4(&|x: &mut AvatarMotion| x.color = None), "According to profile color" }
                         }
                         div { class: "range-row",
-                            span { "Hướng" }
-                            div { class: "segmented", role: "radiogroup", aria_label: "Hướng",
+                            span { "Direction" }
+                            div { class: "segmented", role: "radiogroup", aria_label: "Direction",
                                 button { r#type: "button", role: "radio", aria_checked: "{!m.reverse}", class: if !m.reverse { "active" } else { "" },
-                                    onclick: { let s = set5.clone(); move |_| s(&|x: &mut AvatarMotion| x.reverse = false) }, "Thuận chiều kim đồng hồ" }
+                                    onclick: { let s = set5.clone(); move |_| s(&|x: &mut AvatarMotion| x.reverse = false) }, "Clockwise" }
                                 button { r#type: "button", role: "radio", aria_checked: "{m.reverse}", class: if m.reverse { "active" } else { "" },
-                                    onclick: move |_| set5(&|x: &mut AvatarMotion| x.reverse = true), "Ngược chiều" }
+                                    onclick: move |_| set5(&|x: &mut AvatarMotion| x.reverse = true), "Opposite direction" }
                             }
                         }
                         div { class: "range-row",
-                            span { "Kích hoạt" }
-                            div { class: "segmented", role: "radiogroup", aria_label: "Kích hoạt",
+                            span { "Activate" }
+                            div { class: "segmented", role: "radiogroup", aria_label: "Activate",
                                 for (tid, tl) in TRIGGERS {
                                     {
                                         let s = set6.clone();
@@ -305,17 +305,17 @@ pub fn AvatarStudio(
                             }
                         }
                         label { class: "range-row",
-                            span { "Kiểu chuyển động" }
-                            select { aria_label: "Kiểu chuyển động", value: "{m.easing}",
+                            span { "Movement type" }
+                            select { aria_label: "Movement type", value: "{m.easing}",
                                 onchange: move |e| { let v = e.value(); set7(&|x: &mut AvatarMotion| x.easing = v.clone()) },
                                 for (eid, el) in EASINGS { option { key: "{eid}", value: "{eid}", selected: m.easing == eid, "{el}" } }
                             }
                         }
                         label { class: "range-row",
-                            span { "Số lần lặp" }
-                            input { r#type: "range", min: "0", max: "10", value: "{m.repeat}", aria_label: "Số lần lặp",
+                            span { "Number of iterations" }
+                            input { r#type: "range", min: "0", max: "10", value: "{m.repeat}", aria_label: "Number of iterations",
                                 oninput: move |e| { let v = e.value().parse::<u8>().unwrap_or(0); set8(&|x: &mut AvatarMotion| x.repeat = v.min(10)) } }
-                            span { class: "range-value", if m.repeat == 0 { "Mãi mãi" } else { "{m.repeat} lần" } }
+                            span { class: "range-value", if m.repeat == 0 { "Forever" } else { "{m.repeat} times" } }
                         }
                     }
                 }

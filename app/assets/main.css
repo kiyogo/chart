@@ -9040,9 +9040,28 @@ html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .r
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lang-flag-badge svg {
+.lang-flag-badge svg,
+.lang-flag-badge img {
+  display: block;
+  object-fit: cover;
   border-radius: 4px;
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+.lang-search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.lang-search-field {
+  flex: 1 1 16rem;
+  max-width: 24rem;
+}
+.lang-count-badge {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 .lang-code-pill {
   display: inline-flex;

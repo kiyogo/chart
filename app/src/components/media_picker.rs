@@ -92,7 +92,7 @@ fn GifPane(on_select: EventHandler<String>) -> Element {
             if loading() {
                 div { class: "picker-empty", "Loading" }
             } else if mine_shown.is_empty() {
-                div { class: "sidebar-empty", "Add your own GIFs in Settings › Thư viện." }
+                div { class: "sidebar-empty", "Add your own GIFs in Settings › Library." }
             } else {
                 div { class: "gif-grid",
                     for g in mine_shown {

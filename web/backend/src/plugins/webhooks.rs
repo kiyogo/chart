@@ -698,14 +698,14 @@ pub async fn test_webhook(
         "webhook_id": wh_id,
         "username": wh_name,
         "avatar_url": wh_avatar,
-        "content": "Tin nhắn thử nghiệm từ Webhook ChatW",
+        "content": "Test messages from ChatW Webhook",
         "embeds": [{
-            "title": "Kết nối Webhook hoạt động",
-            "description": "Hỗ trợ đầy đủ Discord-style Embeds, xác thực token SHA-256, chống trùng lặp và nhật ký gửi.",
+            "title": "Webhook connection works",
+            "description": "Full support for Discord-style Embeds, SHA-256 token authentication, deduplication, and delivery logs.",
             "color": 2450411,
             "fields": [
-                { "name": "Trạng thái", "value": "Đang hoạt động", "inline": true },
-                { "name": "Phạm vi", "value": scope_type, "inline": true }
+                { "name": "Status", "value": "Online", "inline": true },
+                { "name": "Scope", "value": scope_type, "inline": true }
             ],
             "footer": { "text": "ChatW Webhook Engine" },
             "timestamp": Utc::now().to_rfc3339()

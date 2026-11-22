@@ -258,9 +258,9 @@ async fn handle_export_kdata(
     let total_files = dataset.entries.len() as i32;
     let missing_cnt = dataset.manifest.missing_media.len() as i32;
     let honest_notice = if missing_cnt > 0 {
-        format!("Có {missing_cnt} tệp chat riêng chưa có bản sao máy chủ khi xuất.")
+        format!("There are {missing_cnt} private chat files that do not have a server copy when exported.")
     } else {
-        "Bản sao lưu .kdata đã mã hóa đầy đủ.".to_string()
+        "Fully encrypted .kdata backup.".to_string()
     };
 
     sqlx::query(

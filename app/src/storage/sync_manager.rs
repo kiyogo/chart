@@ -54,7 +54,7 @@ pub fn encrypt_keys_for_backup(
     passphrase: &str,
 ) -> Result<(String, String, i32), String> {
     if passphrase.chars().count() < 6 {
-        return Err("Mật khẩu khôi phục cần ít nhất 6 ký tự".into());
+        return Err("The recovery password needs at least 6 characters".into());
     }
     let mut salt = [0u8; 16];
     let mut nonce = [0u8; 12];
@@ -136,7 +136,7 @@ pub fn decrypt_keys_from_backup_v2(
                     aad: BACKUP_AAD_V2,
                 },
             )
-            .map_err(|_| "Sai mật khẩu khôi phục".to_string())?;
+            .map_err(|_| "Wrong recovery password".to_string())?;
         let json_str = std::str::from_utf8(&plain)
             .map_err(|_| "invalid_utf8".to_string())?
             .to_string();
@@ -151,7 +151,7 @@ pub fn decrypt_keys_from_backup_v2(
     derived.zeroize();
     let mut plain = cipher_inst?
         .decrypt(Nonce::from_slice(nonce), cipher_bytes)
-        .map_err(|_| "Sai mật khẩu khôi phục".to_string())?;
+        .map_err(|_| "Wrong recovery password".to_string())?;
     let json_str = std::str::from_utf8(&plain)
         .map_err(|_| "invalid_utf8".to_string())?
         .to_string();
@@ -337,7 +337,7 @@ pub async fn run_incremental_delta_sync() -> Result<(), String> {
     SYNC_PROGRESS.with_mut(|st| {
         st.phase_a_done = true;
         st.completed_count += total_delta;
-        st.last_sync_label = format!("Đã đồng bộ delta (+{total_delta} mục)");
+        st.last_sync_label = format!("Delta synced (+{total_delta} items)");
     });
     Ok(())
 }

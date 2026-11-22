@@ -75,7 +75,7 @@ pub fn MeetView(
     let do_join = use_callback(move |raw: String| {
         let code = calls::extract_meet_code(&raw);
         if code.is_empty() {
-            error_msg.set(Some("Vui lòng nhập mã phòng hoặc dán đường dẫn hợp lệ".into()));
+            error_msg.set(Some("Please enter the room code or paste a valid link".into()));
             return;
         }
         joining.set(true);
@@ -89,7 +89,7 @@ pub fn MeetView(
                 Err(_) => {
                     joining.set(false);
                     error_msg.set(Some(
-                        "Không tìm thấy phòng họp với mã hoặc đường dẫn này".into(),
+                        "No meeting rooms found with this code or link".into(),
                     ));
                 }
             }
@@ -103,11 +103,11 @@ pub fn MeetView(
                     button {
                         r#type: "button",
                         class: "icon-btn back-btn",
-                        aria_label: "Quay lại",
+                        aria_label: "Back",
                         onclick: move |_| on_back.call(()),
                         BackIcon {}
                     }
-                    h2 { class: "chat-header-title", "Họp nhóm" }
+                    h2 { class: "chat-header-title", "Meetings" }
                 }
 
                 div { class: "feed-scroll",
@@ -118,9 +118,9 @@ pub fn MeetView(
                                 VideoIcon { size: 28 }
                             }
                             div { class: "meet-hero-text",
-                                h1 { class: "meet-hero-title", "Cuộc họp & Gọi nhóm trực tuyến" }
+                                h1 { class: "meet-hero-title", "Meetings & Group Calls" }
                                 p { class: "meet-hero-sub",
-                                    "Tạo đường dẫn phòng họp chỉ với 1 chạm như Google Meet & Zoom. Gửi link cho bất kỳ ai để tham gia gọi thoại, video và chia sẻ màn hình ngay lập tức."
+                                    "Create meeting room links with just 1 touch like Google Meet & Zoom. Send a link to anyone to join voice, video, and screen sharing instantly."
                                 }
                             }
                         }
@@ -136,19 +136,19 @@ pub fn MeetView(
                                 div { class: "meet-card-head",
                                     span { class: "meet-card-badge", PlusIcon { size: 16 } }
                                     div {
-                                        h2 { class: "meet-card-title", "Tạo cuộc họp mới" }
-                                        p { class: "meet-card-desc", "Tạo mã phòng và đường dẫn để mời mọi người tham gia" }
+                                        h2 { class: "meet-card-title", "Create new meeting" }
+                                        p { class: "meet-card-desc", "Create a room code and link to invite people to join" }
                                     }
                                 }
 
                                 div { class: "meet-form",
                                     label { class: "form-field",
-                                        span { class: "form-label", "Tên cuộc họp" }
+                                        span { class: "form-label", "Meeting name" }
                                         input {
                                             r#type: "text",
                                             maxlength: "110",
-                                            placeholder: "Cuộc họp của {my_username}",
-                                            aria_label: "Tên cuộc họp",
+                                            placeholder: "{my_username}'s meeting",
+                                            aria_label: "Meeting name",
                                             value: "{meet_title}",
                                             oninput: move |e| meet_title.set(e.value()),
                                         }
@@ -160,14 +160,14 @@ pub fn MeetView(
                                             class: if call_type() == "video" { "meet-mode-chip active" } else { "meet-mode-chip" },
                                             onclick: move |_| call_type.set("video".into()),
                                             VideoIcon { size: 16 }
-                                            "Gọi Video & Thoại"
+                                            "Video & Voice Calling"
                                         }
                                         button {
                                             r#type: "button",
                                             class: if call_type() == "audio" { "meet-mode-chip active" } else { "meet-mode-chip" },
                                             onclick: move |_| call_type.set("audio".into()),
                                             MicIcon { size: 16 }
-                                            "Chỉ âm thanh"
+                                            "Audio only"
                                         }
                                     }
 
@@ -193,13 +193,13 @@ pub fn MeetView(
                                                             created_session.set(Some(sess));
                                                             reload_meets.call(());
                                                         }
-                                                        Err(e) => error_msg.set(Some(format!("Không tạo được phòng họp: {}", e.code))),
+                                                        Err(e) => error_msg.set(Some(format!("Unable to create meeting room: {}", e.code))),
                                                     }
                                                     creating.set(false);
                                                 });
                                             },
                                             LinkIcon { size: 16 }
-                                            if creating() { "Đang tạo" } else { "Tạo link phòng họp" }
+                                            if creating() { "Creating" } else { "Create meeting room link" }
                                         }
 
                                         button {
@@ -219,13 +219,13 @@ pub fn MeetView(
                                                             reload_meets.call(());
                                                             on_join_session.call(sess);
                                                         }
-                                                        Err(e) => error_msg.set(Some(format!("Không tạo được phòng họp: {}", e.code))),
+                                                        Err(e) => error_msg.set(Some(format!("Unable to create meeting room: {}", e.code))),
                                                     }
                                                     creating.set(false);
                                                 });
                                             },
                                             VideoIcon { size: 16 }
-                                            "Bắt đầu họp ngay"
+                                            "Start meeting now"
                                         }
                                     }
                                 }
@@ -238,32 +238,32 @@ pub fn MeetView(
                                         let link_for_copy = link.clone();
                                         let code_for_copy = code.clone();
                                         let sess_join = sess.clone();
-                                        let title_disp = sess.meet_title.clone().unwrap_or_else(|| "Cuộc họp mới".into());
+                                        let title_disp = sess.meet_title.clone().unwrap_or_else(|| "New meeting".into());
                                         rsx! {
                                             div { class: "meet-created-box",
                                                 div { class: "meet-created-header",
                                                     span { class: "meet-created-title", "{title_disp}" }
-                                                    span { class: "meet-code-pill", "Mã: {code}" }
+                                                    span { class: "meet-code-pill", "Code: {code}" }
                                                 }
                                                 div { class: "meet-link-row",
                                                     input {
                                                         class: "meet-link-input",
                                                         r#type: "text",
                                                         readonly: true,
-                                                        aria_label: "Đường dẫn phòng họp",
+                                                        aria_label: "Meeting room path",
                                                         value: "{link}",
                                                     }
                                                     button {
                                                         r#type: "button",
                                                         class: "btn-secondary",
-                                                        aria_label: "Sao chép link phòng họp",
+                                                        aria_label: "Copy the meeting room link",
                                                         onclick: move |_| copy_text.call((link_for_copy.clone(), "created-link".into())),
                                                         if copied_key().as_deref() == Some("created-link") {
                                                             CheckIcon { size: 15 }
-                                                            "Đã chép link"
+                                                            "Copy the link"
                                                         } else {
                                                             CopyIcon { size: 15 }
-                                                            "Sao chép link"
+                                                            "Copy link"
                                                         }
                                                     }
                                                 }
@@ -274,10 +274,10 @@ pub fn MeetView(
                                                         onclick: move |_| copy_text.call((code_for_copy.clone(), "created-code".into())),
                                                         if copied_key().as_deref() == Some("created-code") {
                                                             CheckIcon { size: 14 }
-                                                            "Đã chép mã"
+                                                            "Code copied"
                                                         } else {
                                                             CopyIcon { size: 14 }
-                                                            "Chép mã phòng"
+                                                            "Copy the room code"
                                                         }
                                                     }
                                                     button {
@@ -285,7 +285,7 @@ pub fn MeetView(
                                                         class: "btn-primary",
                                                         onclick: move |_| on_join_session.call(sess_join.clone()),
                                                         VideoIcon { size: 16 }
-                                                        "Vào phòng ngay"
+                                                        "Join room now"
                                                     }
                                                 }
                                             }
@@ -299,8 +299,8 @@ pub fn MeetView(
                                 div { class: "meet-card-head",
                                     span { class: "meet-card-badge join", LinkIcon { size: 16 } }
                                     div {
-                                        h2 { class: "meet-card-title", "Tham gia cuộc họp" }
-                                        p { class: "meet-card-desc", "Dán đường dẫn phòng họp hoặc nhập mã phòng để kết nối ngay" }
+                                        h2 { class: "meet-card-title", "Join meeting" }
+                                        p { class: "meet-card-desc", "Paste the meeting room link or enter the room code to connect immediately" }
                                     }
                                 }
 
@@ -311,11 +311,11 @@ pub fn MeetView(
                                         do_join.call(join_input());
                                     },
                                     label { class: "form-field",
-                                        span { class: "form-label", "Đường dẫn hoặc mã phòng" }
+                                        span { class: "form-label", "Path or room code" }
                                         input {
                                             r#type: "text",
-                                            placeholder: "Ví dụ: abc-defg-hij hoặc http://.../?meet=abc-defg-hij",
-                                            aria_label: "Nhập mã hoặc link phòng họp",
+                                            placeholder: "For example: abc-defg-hij or http:///?meet=abc-defg-hij",
+                                            aria_label: "Enter the meeting room code or link",
                                             value: "{join_input}",
                                             oninput: move |e| join_input.set(e.value()),
                                         }
@@ -326,7 +326,7 @@ pub fn MeetView(
                                         style: "width: 100%; justify-content: center;",
                                         disabled: joining() || join_input().trim().is_empty(),
                                         VideoIcon { size: 16 }
-                                        if joining() { "Đang kết nối" } else { "Tham gia ngay" }
+                                        if joining() { "Connecting" } else { "Join now" }
                                     }
                                 }
                             }
@@ -336,29 +336,29 @@ pub fn MeetView(
                         div { class: "feed-card meet-list-card",
                             div { class: "meet-list-header",
                                 div { style: "display: flex; align-items: center; gap: 8px;",
-                                    h2 { class: "meet-card-title", "Phòng họp gần đây & đang hoạt động" }
+                                    h2 { class: "meet-card-title", "Meeting room recent & active" }
                                 }
                                 button {
                                     r#type: "button",
                                     class: "icon-btn",
-                                    title: "Làm mới danh sách",
-                                    aria_label: "Làm mới danh sách",
+                                    title: "Refresh the list",
+                                    aria_label: "Refresh the list",
                                     onclick: move |_| reload_meets.call(()),
                                     RefreshIcon { size: 16 }
                                 }
                             }
 
                             if loading_list() && recent_meets().is_empty() {
-                                div { class: "feed-empty", "Đang tải danh sách phòng họp" }
+                                div { class: "feed-empty", "Loading meeting room list" }
                             } else if recent_meets().is_empty() {
-                                div { class: "feed-empty", "Chưa có phòng họp nào. Hãy tạo cuộc họp đầu tiên ở trên." }
+                                div { class: "feed-empty", "There are no meeting rooms yet. Let's create the first meeting above." }
                             } else {
                                 div { class: "meet-room-list",
                                     for m in recent_meets() {
                                         {
                                             let code = m.meet_code.clone().unwrap_or_else(|| m.id.clone());
                                             let link = build_meet_link(&origin(), &code);
-                                            let title_str = m.meet_title.clone().unwrap_or_else(|| format!("Cuộc họp của {}", m.caller_name));
+                                            let title_str = m.meet_title.clone().unwrap_or_else(|| format!("{}'s meeting", m.caller_name));
                                             let active_count = m.participants.iter().filter(|p| p.left_at.is_none()).count();
                                             let is_active = m.status == "active" && active_count > 0;
                                             let copy_k = format!("list-{code}");
@@ -371,11 +371,11 @@ pub fn MeetView(
                                                             span { class: "meet-room-title", "{title_str}" }
                                                             span { class: "meet-code-pill", "{code}" }
                                                             if is_active {
-                                                                span { class: "meet-status-pill live", "Đang họp · {active_count} người" }
+                                                                span { class: "meet-status-pill live", "Meeting · {active_count} people" }
                                                             }
                                                         }
                                                         div { class: "meet-room-meta",
-                                                            "Chủ phòng: {m.caller_name} · Link: {link}"
+                                                            "Room owner: {m.caller_name} · Link: {link}"
                                                         }
                                                     }
                                                     div { class: "meet-room-actions",
@@ -385,10 +385,10 @@ pub fn MeetView(
                                                             onclick: move |_| copy_text.call((link.clone(), copy_k.clone())),
                                                             if copied_key().as_deref() == Some(copy_k2.as_str()) {
                                                                 CheckIcon { size: 14 }
-                                                                "Đã chép"
+                                                                "Copied"
                                                             } else {
                                                                 CopyIcon { size: 14 }
-                                                                "Chép link"
+                                                                "Copy link"
                                                             }
                                                         }
                                                         button {
@@ -396,7 +396,7 @@ pub fn MeetView(
                                                             class: "btn-primary",
                                                             onclick: move |_| do_join.call(code_join.clone()),
                                                             VideoIcon { size: 15 }
-                                                            "Tham gia"
+                                                            "Join"
                                                         }
                                                     }
                                                 }

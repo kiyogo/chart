@@ -39,7 +39,7 @@ pub fn VicoAiView(
                     messages.set(list);
                     err.set(None);
                 }
-                Err(e) => err.set(Some(format!("Không tải được lịch sử chat: {}", e.code))),
+                Err(e) => err.set(Some(format!("Unable to download chat history: {}", e.code))),
             }
         });
     });
@@ -89,7 +89,7 @@ pub fn VicoAiView(
                     }
                 }
                 Err(e) => {
-                    err.set(Some(format!("Không gửi được tin nhắn: {}", e.code)));
+                    err.set(Some(format!("Unable to send message: {}", e.code)));
                     input.set(text);
                 }
             }
@@ -107,7 +107,7 @@ pub fn VicoAiView(
                     button {
                         r#type: "button",
                         class: "icon-btn back-btn",
-                        aria_label: "Quay lại",
+                        aria_label: "Back",
                         onclick: move |_| on_back.call(()),
                         BackIcon {}
                     }
@@ -119,9 +119,9 @@ pub fn VicoAiView(
                             h2 { class: "chat-header-title", "Vico AI" }
                             span { class: "chat-header-meta",
                                 if cfg_has_key() && !cfg_endpoint().trim().is_empty() {
-                                    "Đang kết nối {cfg_model()}"
+                                    "Connecting {cfg_model()}"
                                 } else {
-                                    "Trò chuyện AI trực tiếp"
+                                    "Live AI chat"
                                 }
                             }
                         }
@@ -130,7 +130,7 @@ pub fn VicoAiView(
                         if !conversations().is_empty() {
                             select {
                                 class: "feed-vis-select",
-                                aria_label: "Chọn cuộc trò chuyện Vico AI",
+                                aria_label: "Select Vico AI conversation",
                                 value: "{active_conv_id().unwrap_or_default()}",
                                 onchange: move |e| {
                                     let cid = e.value();
@@ -145,7 +145,7 @@ pub fn VicoAiView(
                         button {
                             r#type: "button",
                             class: "btn-secondary",
-                            title: "Cuộc trò chuyện mới",
+                            title: "New chat",
                             onclick: move |_| {
                                 spawn(async move {
                                     if let Ok(nc) = vico::create_conversation(None).await {
@@ -156,14 +156,14 @@ pub fn VicoAiView(
                                     }
                                 });
                             },
-                            PlusIcon { size: 15 } " Mới"
+                            PlusIcon { size: 15 } " Feed"
                         }
                         if let Some(cid) = active_conv_id() {
                             button {
                                 r#type: "button",
                                 class: "icon-btn danger",
-                                title: "Xóa cuộc trò chuyện hiện tại",
-                                aria_label: "Xóa cuộc trò chuyện",
+                                title: "Delete the current conversation",
+                                aria_label: "Delete chat",
                                 onclick: move |_| {
                                     let id = cid.clone();
                                     spawn(async move {
@@ -187,8 +187,8 @@ pub fn VicoAiView(
                         button {
                             r#type: "button",
                             class: "icon-btn",
-                            title: "Cấu hình API mô hình AI",
-                            aria_label: "Cấu hình API",
+                            title: "Configure the AI model API",
+                            aria_label: "API configuration",
                             onclick: move |_| { cfg_msg.set(None); config_open.set(true); },
                             SlidersIcon { size: 17 }
                         }
@@ -206,13 +206,13 @@ pub fn VicoAiView(
                                 span { class: "vico-round-avatar", style: "width: 52px; height: 52px;",
                                     VicoAiIcon { size: 52, full: true }
                                 }
-                                p { "Hỏi bất cứ điều gì, tính toán, tóm tắt văn bản hoặc cấu hình API LLM của bạn." }
+                                p { "Ask anything, calculate, summarize text or configure your LLM API." }
                                 div { class: "vico-quick-chips",
                                     for suggestion in [
-                                        "Xin chào Vico AI",
+                                        "Hello Vico AI",
                                         "256 * 18 + 420",
-                                        "Mấy giờ rồi?",
-                                        "Mã hóa E2EE hoạt động thế nào?",
+                                        "What time is it?",
+                                        "How does E2EE encryption work?",
                                     ] {
                                         {
                                             let s_txt = suggestion.to_string();
@@ -249,7 +249,7 @@ pub fn VicoAiView(
                         if sending() {
                             div { class: "vico-msg-row assistant",
                                 div { class: "vico-msg-avatar", VicoAiIcon { size: 30, full: true } }
-                                div { class: "vico-msg-bubble assistant muted", "Đang suy nghĩ" }
+                                div { class: "vico-msg-bubble assistant muted", "Thinking" }
                             }
                         }
                     }
@@ -262,8 +262,8 @@ pub fn VicoAiView(
                                 id: "vico-ai-input",
                                 class: "composer-input",
                                 rows: "1",
-                                placeholder: "Nhắn tin cho Vico AI",
-                                aria_label: "Nhắn tin cho Vico AI",
+                                placeholder: "Message Vico AI",
+                                aria_label: "Message Vico AI",
                                 value: "{input}",
                                 oninput: move |e| input.set(e.value()),
                                 onkeydown: move |e| {
@@ -276,8 +276,8 @@ pub fn VicoAiView(
                             button {
                                 r#type: "button",
                                 class: "send-btn",
-                                title: "Gửi",
-                                aria_label: "Gửi cho Vico AI",
+                                title: "Send",
+                                aria_label: "Send to Vico AI",
                                 disabled: sending() || input().trim().is_empty(),
                                 onclick: move |_| send_btn.call(input()),
                                 SendIcon {}
@@ -290,10 +290,10 @@ pub fn VicoAiView(
 
         if config_open() {
             div { class: "modal-overlay", onclick: move |_| config_open.set(false),
-                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Cấu hình Vico AI", onclick: move |e| e.stop_propagation(),
+                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Vico AI configuration", onclick: move |e| e.stop_propagation(),
                     div { class: "modal-header",
-                        h2 { class: "modal-title", "Kết nối API cho Vico AI" }
-                        button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| config_open.set(false), CloseIcon { size: 18 } }
+                        h2 { class: "modal-title", "API connection for Vico AI" }
+                        button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| config_open.set(false), CloseIcon { size: 18 } }
                     }
                     label { class: "form-field",
                         span { class: "form-label", "OpenAI-compatible Endpoint" }
@@ -305,7 +305,7 @@ pub fn VicoAiView(
                         }
                     }
                     label { class: "form-field",
-                        span { class: "form-label", "Tên Model" }
+                        span { class: "form-label", "Model name" }
                         input {
                             r#type: "text",
                             placeholder: "gpt-4o-mini",
@@ -314,7 +314,7 @@ pub fn VicoAiView(
                         }
                     }
                     label { class: "form-field",
-                        span { class: "form-label", if cfg_has_key() { "API Key (để trống nếu giữ nguyên)" } else { "API Key" } }
+                        span { class: "form-label", if cfg_has_key() { "API Key (leave blank if kept)" } else { "API Key" } }
                         input {
                             r#type: "password",
                             placeholder: "sk-",
@@ -326,7 +326,7 @@ pub fn VicoAiView(
                         div { class: if is_err { "status-badge error" } else { "status-badge success" }, "{txt}" }
                     }
                     div { class: "modal-actions",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| config_open.set(false), "Đóng" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| config_open.set(false), "Close" }
                         button {
                             r#type: "button",
                             class: "btn-primary",
@@ -340,13 +340,13 @@ pub fn VicoAiView(
                                         Ok(_) => {
                                             if key_opt.is_some() { cfg_has_key.set(true); }
                                             cfg_key.set(String::new());
-                                            cfg_msg.set(Some((false, "Đã lưu cấu hình Vico AI".into())));
+                                            cfg_msg.set(Some((false, "Vico AI configuration saved".into())));
                                         }
-                                        Err(e) => cfg_msg.set(Some((true, format!("Lưu thất bại: {}", e.code)))),
+                                        Err(e) => cfg_msg.set(Some((true, format!("Save failed: {}", e.code)))),
                                     }
                                 });
                             },
-                            "Lưu cấu hình"
+                            "Save configuration"
                         }
                     }
                 }

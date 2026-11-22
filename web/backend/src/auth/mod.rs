@@ -309,10 +309,10 @@ async fn handle_google_callback(
     );
 
     let html = r#"<!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>chatw - Đăng nhập Google thành công</title>
+    <title>ChatW - Google Sign-In Successful</title>
     <style>
         body { background: #09090b; color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
         .box { background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 36px; text-align: center; max-width: 420px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); }

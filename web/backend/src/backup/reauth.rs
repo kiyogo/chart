@@ -269,7 +269,7 @@ pub async fn register_device_passkey(
     .bind(user_id)
     .bind(credential_id)
     .bind(spki)
-    .bind(if clean_label.is_empty() { "Khóa bảo mật" } else { &clean_label })
+    .bind(if clean_label.is_empty() { "Security lock" } else { &clean_label })
     .execute(&state.db)
     .await
     .map_err(|_| AppError::Conflict("passkey_exists"))?;

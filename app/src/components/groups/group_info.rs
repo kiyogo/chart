@@ -97,7 +97,7 @@ pub fn GroupInfoPanel(
     rsx! {
         aside { class: "partner-info-sidebar",
             div { class: "partner-info-header",
-                h3 { "Thông tin nhóm" }
+                h3 { "Group information" }
                 button {
                     class: "partner-info-close-btn",
                     onclick: move |_| on_close.call(()),
@@ -122,7 +122,7 @@ pub fn GroupInfoPanel(
                     }
                     div {
                         style: "margin-top: 6px; font-size: 12px; color: var(--text-secondary);",
-                        "Vai trò của bạn: ",
+                        "Your role: ",
                         strong { style: "color: var(--primary-color);", "{current_role.to_uppercase()}" }
                     }
                 }
@@ -133,19 +133,19 @@ pub fn GroupInfoPanel(
                             class: "partner-action-btn",
                             style: "flex: 1; font-size: 13px;",
                             onclick: move |_| on_open_invite.call(()),
-                            "Mời liên kết"
+                            "Please link"
                         }
                         button {
                             class: "partner-action-btn",
                             style: "flex: 1; font-size: 13px;",
                             onclick: move |_| on_open_add_member.call(()),
-                            "+ Thêm người"
+                            "+ Add people"
                         }
                     }
                 }
 
                 div { class: "partner-info-section",
-                    h5 { class: "partner-info-section-title", "Thành viên" }
+                    h5 { class: "partner-info-section-title", "Member" }
                     div { class: "partner-info-card", style: "padding: 0;",
                         for m in members().iter() {
                             {
@@ -167,14 +167,14 @@ pub fn GroupInfoPanel(
                                                 div { style: "font-size: 13px; font-weight: 500;",
                                                     "{m.username}"
                                                     if is_self {
-                                                        span { style: "color: var(--text-secondary); font-size: 11px; margin-left: 4px;", "· bạn" }
+                                                        span { style: "color: var(--text-secondary); font-size: 11px; margin-left: 4px;", "· you" }
                                                     }
                                                 }
                                                 div { style: "font-size: 11px; color: var(--text-secondary);",
                                                     match m.role.as_str() {
-                                                        "owner" => "Trưởng nhóm",
-                                                        "admin" => "Quản trị viên",
-                                                        _ => "Thành viên",
+                                                        "owner" => "Group leader",
+                                                        "admin" => "Administrator",
+                                                        _ => "Member",
                                                     }
                                                 }
                                             }
@@ -210,7 +210,7 @@ pub fn GroupInfoPanel(
                                                         let m_id = m_id.clone();
                                                         move |_| handle_kick.call(m_id.clone())
                                                     },
-                                                    "Xóa"
+                                                    "Delete"
                                                 }
                                             }
                                         } else if is_admin && !is_self && m_role == "member" {
@@ -221,7 +221,7 @@ pub fn GroupInfoPanel(
                                                     let m_id = m_id.clone();
                                                     move |_| handle_kick.call(m_id.clone())
                                                 },
-                                                "Xóa"
+                                                "Delete"
                                             }
                                         }
                                     }
@@ -237,14 +237,14 @@ pub fn GroupInfoPanel(
                             class: "partner-action-btn",
                             style: "width: 100%; color: #EF4444; background: var(--bg-error);",
                             onclick: handle_leave,
-                            "Rời khỏi nhóm"
+                            "Leave the group"
                         }
                     } else {
                         button {
                             class: "partner-action-btn",
                             style: "width: 100%; color: #EF4444; background: var(--bg-error);",
                             onclick: handle_delete,
-                            "Giải tán nhóm"
+                            "Disband the group"
                         }
                     }
                 }

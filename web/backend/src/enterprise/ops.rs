@@ -114,7 +114,7 @@ pub async fn create_form_template(
         return Err(AppError::BadRequest("invalid_category"));
     }
     let desc = clean_opt(p.description.as_deref(), 300, "invalid_description")?;
-    let steps = p.workflow_steps.unwrap_or_else(|| json!([{ "label": "Quản lý duyệt", "mode": "sequential" }]));
+    let steps = p.workflow_steps.unwrap_or_else(|| json!([{ "label": "Manage browsing", "mode": "sequential" }]));
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO enterprise_form_templates (server_id, name, category, description, fields, workflow_steps, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
     )
@@ -976,7 +976,7 @@ pub async fn ai_summarize(
     audit(&state, server_id, uid, "ent_ai_summary", &p.scope).await;
     Ok(Json(json!({
         "provider": provider,
-        "e2ee_note": "Chỉ tổng hợp dữ liệu nghiệp vụ máy chủ được cấp quyền; tin nhắn E2EE riêng tư không bị giải mã.",
-        "summary": format!("Tổng hợp ({provider}): Hiện có {open_tasks} công việc đang mở, {done_tasks} công việc đã hoàn thành và {pending_approvals} đơn đang chờ duyệt.")
+        "e2ee_note": "Only aggregate business data on authorized servers; Private E2EE messages are not decrypted.",
+        "summary": format!("Summary ({provider}): There are currently {open_tasks} open jobs, {done_tasks} completed jobs and {pending_approvals} pending applications.")
     })))
 }

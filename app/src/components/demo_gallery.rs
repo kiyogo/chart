@@ -65,9 +65,9 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                         p.details = old.details.clone();
                     }
                     profile.set(Some(p));
-                    status.set(Some((false, format!("Đã áp dụng {label} cho hồ sơ"))));
+                    status.set(Some((false, format!("{label} applied to profile"))));
                 }
-                Err(_) => status.set(Some((true, "Không áp dụng được".into()))),
+                Err(_) => status.set(Some((true, "Not applicable".into()))),
             }
             busy.set(false);
         });
@@ -88,9 +88,9 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                             p.avatar_motion = m.clone();
                         }
                     });
-                    status.set(Some((false, "Đã áp dụng hiệu ứng avatar cho hồ sơ".into())));
+                    status.set(Some((false, "Avatar effect applied to profile".into())));
                 }
-                Err(_) => status.set(Some((true, "Không áp dụng được".into()))),
+                Err(_) => status.set(Some((true, "Not applicable".into()))),
             }
             busy.set(false);
         });
@@ -115,15 +115,15 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
             }
             div { class: "{stage_cls}", style: "--pc-1: {c1}; --pc-2: {c2}; display: flex; flex-direction: column; gap: var(--space-5);",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Hiệu ứng chuyển động Avatar" }
+                    div { class: "settings-group-title", "Avatar motion effects" }
                     AvatarStudio { name: my_name.clone(), avatar_url: my_avatar.clone(), value: trial(), on_change: move |m| trial.set(m) }
                     div { class: "demo-actions",
-                        button { r#type: "button", class: "btn-primary", disabled: busy() || trial() == saved_motion, onclick: apply_motion, "Áp dụng cho hồ sơ" }
-                        button { r#type: "button", class: "btn-secondary", disabled: trial() == saved_motion, onclick: move |_| trial.set(saved_motion.clone()), "Khôi phục hiệu ứng đang dùng" }
+                        button { r#type: "button", class: "btn-primary", disabled: busy() || trial() == saved_motion, onclick: apply_motion, "Apply for profile" }
+                        button { r#type: "button", class: "btn-secondary", disabled: trial() == saved_motion, onclick: move |_| trial.set(saved_motion.clone()), "Restore current effects" }
                     }
                     label { class: "demo-check",
                         input { r#type: "checkbox", checked: run_all(), onchange: move |e| run_all.set(e.checked()) }
-                        "Chạy cả 40 hiệu ứng cùng lúc"
+                        "Run all 40 effects at the same time"
                     }
                     div { class: "demo-motion-wall",
                         for (id, label, _, _) in MOTIONS {
@@ -132,7 +132,7 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                                 m.trigger = if run_all() { "always".into() } else { "hover".into() };
                                 let pick = AvatarMotion::of(id);
                                 rsx! {
-                                    button { key: "{id}-{run_all()}", r#type: "button", class: "demo-motion-cell", title: "Thử {label}",
+                                    button { key: "{id}-{run_all()}", r#type: "button", class: "demo-motion-cell", title: "Try {label}",
                                         onclick: move |_| trial.set(Some(pick.clone())),
                                         MotionAvatar { name: my_name.clone(), avatar_url: my_avatar.clone(), size: 56, motion: m }
                                         span { "{label}" }
@@ -143,7 +143,7 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                     }
                 }
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Hiệu ứng tên" }
+                    div { class: "settings-group-title", "Name effect" }
                     div { class: "demo-list",
                         for (id, label) in NAME_EFFECTS {
                             {
@@ -153,9 +153,9 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                                         span { class: "demo-name {name_effect_class(Some(id))}", "{n}" }
                                         span { class: "member-sub grow", "{label}" }
                                         if cur_name_fx == id {
-                                            span { class: "demo-badge", "Đang dùng" }
+                                            span { class: "demo-badge", "In use" }
                                         } else {
-                                            button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("name_effect", id.to_string(), format!("hiệu ứng tên {label}")), "Áp dụng" }
+                                            button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("name_effect", id.to_string(), format!("name effect {label}")), "Apply" }
                                         }
                                     }
                                 }
@@ -164,7 +164,7 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                     }
                 }
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Bảng tên" }
+                    div { class: "settings-group-title", "Name plate" }
                     div { class: "demo-list",
                         for (id, label) in NAMEPLATES {
                             {
@@ -177,9 +177,9 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                                         }
                                         span { class: "member-sub grow", "{label}" }
                                         if cur_plate == id {
-                                            span { class: "demo-badge", "Đang dùng" }
+                                            span { class: "demo-badge", "In use" }
                                         } else {
-                                            button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("nameplate", id.to_string(), format!("bảng tên {label}")), "Áp dụng" }
+                                            button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("nameplate", id.to_string(), format!("nameplate {label}")), "Apply" }
                                         }
                                     }
                                 }
@@ -188,7 +188,7 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                     }
                 }
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Hiệu ứng hồ sơ" }
+                    div { class: "settings-group-title", "Profile effects" }
                     div { class: "demo-effect-grid",
                         for (id, label) in EFFECTS {
                             div { key: "{id}", class: if cur_effect == id { "demo-effect current" } else { "demo-effect" },
@@ -202,9 +202,9 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                                 div { class: "demo-effect-foot",
                                     span { "{label}" }
                                     if cur_effect == id {
-                                        span { class: "demo-badge", "Đang dùng" }
+                                        span { class: "demo-badge", "In use" }
                                     } else {
-                                        button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("profile_effect", id.to_string(), format!("hiệu ứng {label}")), "Áp dụng" }
+                                        button { r#type: "button", class: "btn-small-secondary", disabled: busy(), onclick: move |_| apply_field("profile_effect", id.to_string(), format!("effect {label}")), "Apply" }
                                     }
                                 }
                             }
@@ -212,21 +212,21 @@ pub fn DemoGallery(my_id: String, my_name: String, my_avatar: Option<String>) ->
                     }
                 }
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Hình nền chat" }
+                    div { class: "settings-group-title", "Chat wallpaper" }
                     div { class: "demo-effect-grid",
                         for (id, label) in WALLPAPER_NAMES {
                             div { key: "{id}", class: if cur_wp == id { "demo-effect current" } else { "demo-effect" },
                                 div { class: "demo-wallpaper wallpaper-sample wp-{id}",
-                                    div { class: "demo-bubble other", "Chào bạn!" }
-                                    div { class: "demo-bubble mine", "Hình nền này đẹp đó" }
+                                    div { class: "demo-bubble other", "Hello!" }
+                                    div { class: "demo-bubble mine", "This wallpaper is beautiful" }
                                 }
                                 div { class: "demo-effect-foot",
                                     span { "{label}" }
                                     if cur_wp == id {
-                                        span { class: "demo-badge", "Đang dùng" }
+                                        span { class: "demo-badge", "In use" }
                                     } else {
                                         button { r#type: "button", class: "btn-small-secondary",
-                                            onclick: move |_| { prefs_ctx.update(move |p| p.wallpaper = id.to_string()); status.set(Some((false, format!("Đã đặt hình nền {label}")))); }, "Áp dụng" }
+                                            onclick: move |_| { prefs_ctx.update(move |p| p.wallpaper = id.to_string()); status.set(Some((false, format!("Wallpaper {label} set")))); }, "Apply" }
                                     }
                                 }
                             }

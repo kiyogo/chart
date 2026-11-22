@@ -65,7 +65,7 @@ pub fn EnterpriseWorkspace(
         div { class: "chat-main-container",
             div { class: "chat-column ent-workspace",
                 header { class: "chat-header ent-header",
-                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Quay lại thanh bên", onclick: move |_| on_close.call(()), BackIcon {} }
+                    button { r#type: "button", class: "icon-btn back-btn", aria_label: "Return to the sidebar", onclick: move |_| on_close.call(()), BackIcon {} }
                     div { class: "chat-header-identity",
                         span { style: "color: var(--accent); display: flex;", {module_icon(&module)} }
                         div { class: "chat-header-info",
@@ -112,7 +112,7 @@ pub fn EnterpriseWorkspace(
                 div {
                     class: "panel-resizer resizer-right",
                     "data-resizer": "details",
-                    title: "Kéo để thay đổi kích thước danh sách thành viên",
+                    title: "Drag to resize the member list",
                 }
                 ServerMembersPanel {
                     owner_id: owner_id,

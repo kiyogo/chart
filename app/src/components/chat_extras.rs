@@ -11,15 +11,15 @@ use crate::{
 };
 
 pub const WALLPAPER_NAMES: [(&str, &str); 9] = [
-    ("none", "Không"),
-    ("dots", "Chấm bi"),
-    ("bubbles", "Bong bóng"),
-    ("aurora", "Cực quang"),
-    ("paper", "Giấy"),
-    ("sunset", "Hoàng hôn"),
-    ("ocean", "Đại dương"),
-    ("mint", "Bạc hà"),
-    ("night", "Đêm sao"),
+    ("none", "None"),
+    ("dots", "Dots"),
+    ("bubbles", "Bubble"),
+    ("aurora", "Aurora"),
+    ("paper", "Paper"),
+    ("sunset", "Sunset"),
+    ("ocean", "Ocean"),
+    ("mint", "Mint"),
+    ("night", "Starry night"),
 ];
 
 fn safe_path(p: &str) -> bool {
@@ -55,13 +55,13 @@ pub fn PinnedBar(items: Vec<(String, String, String)>, on_jump: EventHandler<Str
         div { class: if expanded() { "pinned-bar expanded" } else { "pinned-bar" },
             div { class: "pinned-bar-main",
                 span { class: "pinned-bar-icon", PinIcon { size: 16 } }
-                button { r#type: "button", class: "pinned-bar-text", title: "Đi tới tin nhắn đã ghim",
+                button { r#type: "button", class: "pinned-bar-text", title: "Go to the pinned message",
                     onclick: move |_| on_jump.call(first_id.clone()),
-                    span { class: "pinned-bar-label", if count > 1 { "Tin nhắn đã ghim · {count}" } else { "Tin nhắn đã ghim" } }
+                    span { class: "pinned-bar-label", if count > 1 { "Pinned messages · {count}" } else { "Pinned message" } }
                     span { class: "pinned-bar-preview", "{first_sender}: {first_text}" }
                 }
                 if count > 1 {
-                    button { r#type: "button", class: "icon-btn", aria_expanded: "{expanded()}", aria_label: "Xem tất cả tin nhắn đã ghim",
+                    button { r#type: "button", class: "icon-btn", aria_expanded: "{expanded()}", aria_label: "View all pinned messages",
                         onclick: move |_| expanded.set(!expanded()),
                         ChevronDownIcon { size: 16 }
                     }
@@ -80,7 +80,7 @@ pub fn PinnedBar(items: Vec<(String, String, String)>, on_jump: EventHandler<Str
                                         span { "{text}" }
                                     }
                                     if let Some(h) = on_unpin {
-                                        button { r#type: "button", class: "icon-btn", title: "Bỏ ghim", aria_label: "Bỏ ghim", onclick: move |_| h.call(unpin.clone()), CloseIcon { size: 14 } }
+                                        button { r#type: "button", class: "icon-btn", title: "Unpin", aria_label: "Unpin", onclick: move |_| h.call(unpin.clone()), CloseIcon { size: 14 } }
                                     }
                                 }
                             }
@@ -104,9 +104,9 @@ pub fn WallpaperPicker(current: Option<String>, shared: bool, on_pick: EventHand
         div { class: "modal-overlay", onclick: move |_| on_close.call(()),
             div { class: "modal-content", role: "dialog", aria_modal: "true", aria_labelledby: "wp-title", onclick: move |e| e.stop_propagation(),
                 onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
-                div { class: "modal-header", h3 { id: "wp-title", class: "modal-title", "Hình nền đoạn chat" } }
+                div { class: "modal-header", h3 { id: "wp-title", class: "modal-title", "Chat wallpaper" } }
                 p { class: "modal-sub",
-                    if shared { "Hình nền này áp dụng cho cả bạn và những người trong cuộc trò chuyện." } else { "Hình nền này chỉ áp dụng trên các thiết bị của bạn." }
+                    if shared { "This background image applies to both you and the people in the chat." } else { "This wallpaper applies only on your devices." }
                 }
                 div { class: "wallpaper-grid",
                     for (id, name) in WALLPAPER_NAMES {
@@ -118,12 +118,12 @@ pub fn WallpaperPicker(current: Option<String>, shared: bool, on_pick: EventHand
                         }
                     }
                 }
-                div { class: "settings-group-title", "Màu riêng" }
+                div { class: "settings-group-title", "Own color" }
                 div { class: "inline-form",
-                    input { r#type: "color", aria_label: "Chọn màu nền", value: "{color}", oninput: move |e| color.set(e.value()) }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| on_pick.call(format!("color:{}", color().to_uppercase())), "Dùng màu này" }
+                    input { r#type: "color", aria_label: "Choose background color", value: "{color}", oninput: move |e| color.set(e.value()) }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| on_pick.call(format!("color:{}", color().to_uppercase())), "Use this color" }
                 }
-                div { class: "settings-group-title", "Ảnh của bạn" }
+                div { class: "settings-group-title", "Your photo" }
                 div { class: "inline-form",
                     input { id: "chat-wp-file", r#type: "file", accept: "image/png,image/jpeg,image/webp,image/avif", style: "display: none;",
                         onchange: move |_| {
@@ -133,10 +133,10 @@ pub fn WallpaperPicker(current: Option<String>, shared: bool, on_pick: EventHand
                                 match platform::process_selected_wallpaper_webp("chat-wp-file").await {
                                     Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                         Ok(url) => on_pick.call(url),
-                                        Err(_) => error.set(Some("Không tải ảnh lên được".into())),
+                                        Err(_) => error.set(Some("Unable to upload photo".into())),
                                     },
-                                    Err(e) if e == "too_large" => error.set(Some("Ảnh lớn hơn 2 MB".into())),
-                                    Err(e) if e == "unsupported" => error.set(Some("Định dạng ảnh không được hỗ trợ".into())),
+                                    Err(e) if e == "too_large" => error.set(Some("Photo larger than 2 MB".into())),
+                                    Err(e) if e == "unsupported" => error.set(Some("Image format not supported".into())),
                                     Err(_) => {}
                                 }
                                 uploading.set(false);
@@ -145,12 +145,12 @@ pub fn WallpaperPicker(current: Option<String>, shared: bool, on_pick: EventHand
                     }
                     label { r#for: "chat-wp-file", class: "btn-secondary", role: "button", tabindex: "0",
                         ImageIcon { size: 16 }
-                        if uploading() { "Đang tải lên" } else { "Tải ảnh lên" }
+                        if uploading() { "Uploading" } else { "Upload image" }
                     }
                 }
                 if let Some(e) = error() { div { class: "status-badge error", "{e}" } }
                 div { class: "modal-actions",
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Đóng" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Close" }
                 }
             }
         }
@@ -164,13 +164,13 @@ pub fn RenameDeviceDialog(current: String, on_save: EventHandler<String>, on_clo
     rsx! {
         div { class: "modal-overlay", onclick: move |_| on_close.call(()),
             div { class: "modal-content compact", role: "dialog", aria_modal: "true", aria_labelledby: "rename-dev-title", onclick: move |e| e.stop_propagation(),
-                h3 { id: "rename-dev-title", class: "modal-title", "Đổi tên thiết bị" }
-                p { class: "modal-sub", "Tên này hiển thị trong \"Chính mình\" và danh sách thiết bị đăng nhập." }
+                h3 { id: "rename-dev-title", class: "modal-title", "Rename the device" }
+                p { class: "modal-sub", "This name displays in \"Yourself\" and the list of logged in devices." }
                 form { onsubmit: move |e| { e.prevent_default(); let n = name().trim().to_string(); if !n.is_empty() { on_save.call(n); } },
-                    input { r#type: "text", maxlength: "40", aria_label: "Tên thiết bị", value: "{name}", autofocus: true, oninput: move |e| name.set(e.value()) }
+                    input { r#type: "text", maxlength: "40", aria_label: "Device name", value: "{name}", autofocus: true, oninput: move |e| name.set(e.value()) }
                     div { class: "modal-actions",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Hủy" }
-                        button { r#type: "submit", class: "btn-primary", disabled: name().trim().is_empty(), "Lưu" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Cancel" }
+                        button { r#type: "submit", class: "btn-primary", disabled: name().trim().is_empty(), "Save" }
                     }
                 }
             }
@@ -194,7 +194,7 @@ pub enum ChatAction {
 #[component]
 pub fn ChatMoreMenu(actions: Vec<ChatAction>, on_action: EventHandler<ChatAction>, on_close: EventHandler<()>) -> Element {
     rsx! {
-        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| on_close.call(()) }
+        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Close", onclick: move |_| on_close.call(()) }
         div { class: "account-menu chat-more-menu", role: "menu",
             onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
             for a in actions {
@@ -202,14 +202,14 @@ pub fn ChatMoreMenu(actions: Vec<ChatAction>, on_action: EventHandler<ChatAction
                     class: if matches!(a, ChatAction::Block | ChatAction::ClearSelf) { "account-menu-item danger" } else { "account-menu-item" },
                     onclick: move |_| { on_close.call(()); on_action.call(a) },
                     match a {
-                        ChatAction::Wallpaper => rsx! { ImageIcon { size: 16 } "Đổi hình nền đoạn chat" },
-                        ChatAction::Labels => rsx! { TagIcon { size: 16 } "Thẻ phân loại" },
-                        ChatAction::Block => rsx! { BlockIcon { size: 16 } "Chặn người này" },
-                        ChatAction::Unblock => rsx! { BlockIcon { size: 16 } "Bỏ chặn" },
-                        ChatAction::InviteFriends => rsx! { UserPlusIcon { size: 16 } "Mời bạn bè" },
-                        ChatAction::CopyLink => rsx! { LinkIcon { size: 16 } "Sao chép liên kết mời" },
-                        ChatAction::ManageGroup => rsx! { crate::components::icons::SettingsIcon {} "Quản lý nhóm" },
-                        ChatAction::ClearSelf => rsx! { TrashIcon { size: 16 } "Xóa \"Chính mình\"" },
+                        ChatAction::Wallpaper => rsx! { ImageIcon { size: 16 } "Change chat wallpaper" },
+                        ChatAction::Labels => rsx! { TagIcon { size: 16 } "Classification card" },
+                        ChatAction::Block => rsx! { BlockIcon { size: 16 } "Block user" },
+                        ChatAction::Unblock => rsx! { BlockIcon { size: 16 } "Unblock" },
+                        ChatAction::InviteFriends => rsx! { UserPlusIcon { size: 16 } "Invite friends" },
+                        ChatAction::CopyLink => rsx! { LinkIcon { size: 16 } "Copy invite link" },
+                        ChatAction::ManageGroup => rsx! { crate::components::icons::SettingsIcon {} "Manage group" },
+                        ChatAction::ClearSelf => rsx! { TrashIcon { size: 16 } "Delete \"Yourself\"" },
                     }
                 }
             }

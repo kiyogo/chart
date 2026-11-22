@@ -209,7 +209,7 @@ async fn handle_oauth_start(
                     Json(json!({
                         "error": "provider_not_configured_by_admin",
                         "provider": "google_drive",
-                        "message": "Máy chủ chưa được cấu hình GOOGLE_DRIVE_CLIENT_ID cho Google Drive API.",
+                        "message": "The server does not have GOOGLE_DRIVE_CLIENT_ID configured for the Google Drive API.",
                         "requirements": all_provider_catalog().into_iter().find(|p| p.provider_id == "google_drive")
                     })),
                 )
@@ -237,7 +237,7 @@ async fn handle_oauth_start(
                     Json(json!({
                         "error": "provider_not_configured_by_admin",
                         "provider": "onedrive",
-                        "message": "Máy chủ chưa được cấu hình ONEDRIVE_CLIENT_ID trên Microsoft Entra.",
+                        "message": "The server has not configured ONEDRIVE_CLIENT_ID on Microsoft Entra.",
                         "requirements": all_provider_catalog().into_iter().find(|p| p.provider_id == "onedrive")
                     })),
                 )
@@ -261,7 +261,7 @@ async fn handle_oauth_start(
                     Json(json!({
                         "error": "provider_not_configured_by_admin",
                         "provider": "dropbox",
-                        "message": "Máy chủ chưa được cấu hình DROPBOX_APP_KEY (Dropbox App Folder).",
+                        "message": "The server has not configured DROPBOX_APP_KEY (Dropbox App Folder).",
                         "requirements": all_provider_catalog().into_iter().find(|p| p.provider_id == "dropbox")
                     })),
                 )

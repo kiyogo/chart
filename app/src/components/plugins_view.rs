@@ -267,15 +267,15 @@ pub fn PluginGlyph(
 
 pub(crate) fn plugin_error(code: &str) -> &'static str {
     match code {
-        "invalid_bot_username" => "Tên định danh bot chỉ gồm chữ cái không dấu, số hoặc gạch dưới từ 2 đến 32 ký tự",
-        "username_taken_by_user" => "Tên này đang là tên tài khoản của người khác",
-        "bot_username_taken" => "Đã có bot dùng tên này",
-        "invalid_display_name" => "Tên hiển thị không hợp lệ",
-        "bot_limit_reached" => "Bạn đã đạt số bot máy chủ tối đa",
-        "description_too_long" => "Mô tả quá dài",
-        "bot_not_public" => "Bot này chưa công khai hoặc chưa được xác minh",
-        "insufficient_permissions" => "Chỉ trưởng hoặc phó nhóm được thêm bot",
-        _ => "Không thực hiện được, vui lòng thử lại",
+        "invalid_bot_username" => "The bot identifier must consist of only unsigned letters, numbers or underscores from 2 to 32 characters",
+        "username_taken_by_user" => "This name is someone else's account name",
+        "bot_username_taken" => "There are already bots using this name",
+        "invalid_display_name" => "Invalid display name",
+        "bot_limit_reached" => "You have reached the maximum number of server bots",
+        "description_too_long" => "Description is too long",
+        "bot_not_public" => "This bot is not public or has not been verified",
+        "insufficient_permissions" => "Only the team leader or deputy team leader can add bots",
+        _ => "Failed, please try again",
     }
 }
 
@@ -302,16 +302,16 @@ mod tests {
     #[test]
     fn legacy_plugin_user_data_is_archived_idempotently_without_data_loss() {
         let uid = format!("mig_u_{}", uuid::Uuid::new_v4());
-        platform::storage_set(&format!("chatw_plugin_notes_v1_{uid}"), "Ghi chú quan trọng của tôi");
+        platform::storage_set(&format!("chatw_plugin_notes_v1_{uid}"), "My important notes");
         platform::storage_set(
             &format!("chatw_plugin_todos_v1_{uid}"),
-            r#"[{"id":"1","text":"Hoàn thành báo cáo","done":false}]"#,
+            r#"[{"id":"1","text":"Complete report","done":false}]"#,
         );
 
         migrate_legacy_plugin_data_once(&uid);
         let archived = get_legacy_plugin_archive_json(&uid).expect("archive created");
-        assert!(archived.contains("Ghi chú quan trọng của tôi"));
-        assert!(archived.contains("Hoàn thành báo cáo"));
+        assert!(archived.contains("My important notes"));
+        assert!(archived.contains("Complete report"));
 
         // Running again is a no-op and preserves the archive
         migrate_legacy_plugin_data_once(&uid);

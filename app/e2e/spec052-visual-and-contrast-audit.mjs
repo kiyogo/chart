@@ -39,7 +39,7 @@ async function dismissModals(page) {
     if (!(await ov.isVisible().catch(() => false))) break;
     const btn = ov
       .locator(
-        'button[aria-label="Bỏ qua giới thiệu"], button[aria-label="Đóng"], button:has-text("Để sau"), button:has-text("Bỏ qua"), button:has-text("Đóng"), button.btn-secondary'
+        'button[aria-label="Skip tour"], button[aria-label="Close"], button:has-text("Later"), button:has-text("Skip"), button:has-text("Close"), button.btn-secondary'
       )
       .first();
     if (await btn.isVisible().catch(() => false)) {
@@ -61,7 +61,7 @@ try {
 
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   await page.waitForSelector('.auth-card', { timeout: 25000 });
-  await page.locator('input[aria-label="Tên tài khoản thử nghiệm"]').fill(uname);
+  await page.locator('input[aria-label="Test username"]').fill(uname);
   await page.locator('.auth-dev-form button[type="submit"]').click();
   await page.waitForSelector('.app-rail', { timeout: 25000 });
   await page.waitForTimeout(800);
@@ -127,7 +127,7 @@ try {
     const idEl = hdr.querySelector('.chat-header-identity');
     const actEl = hdr.querySelector('.chat-header-actions');
     const devStrip = hdr.querySelector('.header-inline-devices');
-    const hasThietBiLabel = document.body.innerText.includes('Thiết bị:');
+    const hasThietBiLabel = document.body.innerText.includes('Devices:');
     const dateSep = document.querySelector('.date-separator');
     const dateSepCS = dateSep ? getComputedStyle(dateSep) : null;
     const dateText = dateSep ? dateSep.textContent.trim() : '';
@@ -179,12 +179,12 @@ try {
       !selfChatAudit.hasThietBiLabel &&
       selfChatAudit.devicesRightOfTitle &&
       selfChatAudit.datePos === 'relative' &&
-      /^\d{1,2} tháng \d{1,2}$/.test(selfChatAudit.dateText),
+      /^(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}$/.test(selfChatAudit.dateText),
     JSON.stringify(selfChatAudit)
   );
 
   // 2b. Feed View ("Mới"): verify centered .feed-inner layout (max-width <= 740px, centered horizontally)
-  await page.locator('.app-rail button[aria-label="Mới"]').click();
+  await page.locator('.app-rail button[aria-label="Feed"]').click();
   await page.waitForSelector('.feed-column .feed-inner', { timeout: 10000 });
   const feedAudit = await page.evaluate(() => {
     const col = document.querySelector('.feed-column');
@@ -208,7 +208,7 @@ try {
   );
 
   // 3. Meet View (.meet-column): rounded bottom corners and bottom gap matching .app-rail (never touching bottom of viewport)
-  await page.locator('.app-rail button[aria-label="Họp nhóm"]').click();
+  await page.locator('.app-rail button[aria-label="Meetings"]').click();
   await page.waitForSelector('.meet-column', { timeout: 10000 });
   const meetAudit = await page.evaluate(() => {
     const rail = document.querySelector('.app-rail');
@@ -233,9 +233,9 @@ try {
   );
 
   // 4. Settings: unified 8px left/right/top insets, large bold .settings-group-title matching "Tin nhắn", full-bleed color inputs, left "Mặc định" button, and .app-rail opacity sync + adaptive halo
-  await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
+  await page.locator('.app-rail button[aria-label="Settings"]').click();
   await page.waitForSelector('.settings-nav', { timeout: 10000 });
-  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Appearance' }).click();
   await page.waitForTimeout(300);
 
   const appearanceAudit = await page.evaluate(() => {
@@ -275,7 +275,7 @@ try {
 
   // Trigger custom bubble color change and verify "Mặc định" button appears to the LEFT of <input type="color"> and has a button frame
   await page.evaluate(() => {
-    const colorInput = document.querySelector('.settings-body input[aria-label="Màu bong bóng của bạn"]');
+    const colorInput = document.querySelector('.settings-body input[aria-label="Your bubble color"]');
     const proto = window.HTMLInputElement.prototype;
     const desc = Object.getOwnPropertyDescriptor(proto, 'value');
     desc.set.call(colorInput, '#E11D48');
@@ -284,9 +284,9 @@ try {
   });
   await page.waitForTimeout(250);
   const macDinhAudit = await page.evaluate(() => {
-    const colorInput = document.querySelector('.settings-body input[aria-label="Màu bong bóng của bạn"]');
+    const colorInput = document.querySelector('.settings-body input[aria-label="Your bubble color"]');
     const row = colorInput.closest('.settings-row');
-    const resetBtn = Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Mặc định'));
+    const resetBtn = Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Default'));
     if (!resetBtn) return null;
     const cR = colorInput.getBoundingClientRect();
     const bR = resetBtn.getBoundingClientRect();
@@ -304,17 +304,17 @@ try {
   );
   // Reset bubble_self back to default
   await page.evaluate(() => {
-    const colorInput = document.querySelector('.settings-body input[aria-label="Màu bong bóng của bạn"]');
+    const colorInput = document.querySelector('.settings-body input[aria-label="Your bubble color"]');
     const row = colorInput?.closest('.settings-row');
-    const resetBtn = row && Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Mặc định'));
+    const resetBtn = row && Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Default'));
     if (resetBtn) resetBtn.click();
   });
   await page.waitForTimeout(150);
 
   // Set panel transparency to 25% over Ocean wallpaper -> verify that when panel is ALREADY easy to read (75% opaque), NO text-shadow is applied!
-  await page.locator('.wallpaper-tile', { hasText: 'Đại dương' }).last().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Ocean' }).last().click();
   await page.evaluate(() => {
-    const slider = document.querySelector('input[aria-label="Độ trong suốt khung trắng"]');
+    const slider = document.querySelector('input[aria-label="Panel transparency"]');
     const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
     desc.set.call(slider, '25');
     slider.dispatchEvent(new Event('input', { bubbles: true }));
@@ -332,7 +332,7 @@ try {
   // text darkens to crisp #000000, smooth Ocean stays text-shadow: none (NO ugly blurry shadow!), while a genuinely busy
   // high-contrast uploaded image activates data-text-halo="true" and buttons/inputs stay text-shadow: none!
   await page.evaluate(() => {
-    const slider = document.querySelector('input[aria-label="Độ trong suốt khung trắng"]');
+    const slider = document.querySelector('input[aria-label="Panel transparency"]');
     const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
     desc.set.call(slider, '80');
     slider.dispatchEvent(new Event('input', { bubbles: true }));
@@ -430,14 +430,14 @@ try {
   await page.evaluate(() => {
     const colorInput = document.querySelector('.settings-body input[type="color"]');
     const row = colorInput?.closest('.settings-row');
-    const resetBtn = row && Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Mặc định'));
+    const resetBtn = row && Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Default'));
     if (resetBtn) resetBtn.click();
   });
   await page.waitForTimeout(200);
 
   const setTransparency = async (pct) => {
     await page.evaluate((val) => {
-      const slider = document.querySelector('input[aria-label="Độ trong suốt khung trắng"]');
+      const slider = document.querySelector('input[aria-label="Panel transparency"]');
       const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
       desc.set.call(slider, String(val));
       slider.dispatchEvent(new Event('input', { bubbles: true }));
@@ -461,11 +461,11 @@ try {
       });
       const sec = document.querySelector('.settings-body .btn-secondary');
       const secR = sec ? sec.getBoundingClientRect() : null;
-      const wpColorInput = document.querySelector('input[aria-label="Màu nền ứng dụng"]');
+      const wpColorInput = document.querySelector('input[aria-label="App background color"]');
       const wpColorR = wpColorInput ? wpColorInput.getBoundingClientRect() : null;
       const navActive = document.querySelector('.settings-nav-item.active');
       const labelG = Array.from(document.querySelectorAll('.settings-label')).find((el) =>
-        el.textContent.includes('Bong bóng người khác')
+        el.textContent.includes('Other bubble')
       );
       const labelCS = labelG ? getComputedStyle(labelG) : null;
       const hoverToken = getComputedStyle(document.documentElement).getPropertyValue('--bg-hover').trim();
@@ -502,19 +502,19 @@ try {
 
   // Verify Spec 060: Wallpapers NEVER recolor the web app at ANY transparency (0%, 52%, 72%, 100%) —
   // --accent, active pills, neutral hover/buttons, and user's chosen Màu nhấn stay 100% locked!
-  await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Sunset' }).last().click();
   await setTransparency(0);
   const mSunset0 = await measureButtons();
 
-  await page.locator('.wallpaper-tile', { hasText: 'Cực quang' }).last().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Aurora' }).last().click();
   await setTransparency(100);
   const mAurora100 = await measureButtons();
 
-  await page.locator('.wallpaper-tile', { hasText: 'Bạc hà' }).last().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Mint' }).last().click();
   await setTransparency(72);
   const mMint72 = await measureButtons();
 
-  await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Sunset' }).last().click();
   await setTransparency(52);
   const m52 = await measureButtons();
 
@@ -551,11 +551,11 @@ try {
     }
   });
   await page.waitForTimeout(200);
-  await page.locator('.wallpaper-tile', { hasText: 'Bạc hà' }).last().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Mint' }).last().click();
   await page.waitForTimeout(200);
   const customPersistAccent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
   // Reset back to preset Blue swatch
-  await page.locator('.accent-swatches button[aria-label="Xanh dương"]').click();
+  await page.locator('.accent-swatches button[aria-label="Blue"]').click();
   await page.waitForTimeout(150);
 
   const parseRgba = (s) => {
@@ -651,7 +651,7 @@ try {
   );
 
   // 5. Cloud Settings: 3-step guide banner removed, verbose descriptions removed, concise labels, official SVG brand logos present
-  await page.locator('.settings-nav-item', { hasText: 'Đám mây' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Cloud' }).click();
   await page.waitForTimeout(300);
   const cloudAudit = await page.evaluate(() => {
     const guide = document.querySelector('.cw-cloud-guide');
@@ -671,38 +671,38 @@ try {
   );
 
   // 6. Language Settings: all 33/33 language tiles render official 4x3 SVG flags (zero grey text code fallbacks)
-  await page.locator('.settings-nav-item', { hasText: 'Ngôn ngữ' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Language' }).click();
   await page.waitForTimeout(300);
   const langAudit = await page.evaluate(() => {
     const tiles = document.querySelectorAll('.lang-tile');
-    const flagSvgs = document.querySelectorAll('.lang-tile .lang-flag-badge svg');
+    const flagImgs = document.querySelectorAll('.lang-tile .lang-flag-badge img[src$=".svg"], .lang-tile .lang-flag-badge svg');
     const textPills = document.querySelectorAll('.lang-tile .lang-code-pill');
     return {
       tiles: tiles.length,
-      flagSvgs: flagSvgs.length,
+      flagSvgs: flagImgs.length,
       textPills: textPills.length,
     };
   });
   record(
-    'All 33/33 language tiles render official SVG national flags with zero grey text code fallbacks',
-    langAudit.tiles === 33 && langAudit.flagSvgs === 33 && langAudit.textPills === 0,
+    'All 197/197 global language tiles render official 4x3 vector SVG flags with zero grey text code fallbacks',
+    langAudit.tiles >= 190 && langAudit.flagSvgs === langAudit.tiles && langAudit.textPills === 0,
     JSON.stringify(langAudit)
   );
 
   // 7. Light/Dark & Chat Wallpaper Contrast Audit:
   //    a) Light Theme + Translucent Panel + "Đêm sao" (.wp-night): floating header pills & ChatMoreMenu stay dark with bright text, top fade matches #101833
   //    b) "Đại dương" (.wp-ocean): top fade matches sky-blue gradient (never plain white stripe)
-  await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
+  await page.locator('.app-rail button[aria-label="Settings"]').click();
   await page.waitForSelector('.settings-nav', { timeout: 10000 });
-  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Appearance' }).click();
   await page.waitForTimeout(250);
   // First wallpaper grid is "Hình nền trò chuyện"
-  await page.locator('.wallpaper-tile', { hasText: 'Đêm sao' }).first().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Starry night' }).first().click();
   await page.waitForTimeout(250);
-  await page.locator('.app-rail button[aria-label="Tin nhắn"]').click();
+  await page.locator('.app-rail button[aria-label="Messages"]').click();
   await page.waitForSelector('.chat-column.wp-night', { timeout: 10000 });
   await page.waitForTimeout(300);
-  await page.locator('.chat-header button[aria-label="Tùy chọn khác"]').click();
+  await page.locator('.chat-header button[aria-label="More options"]').click();
   await page.waitForSelector('.chat-more-menu', { timeout: 5000 });
   await page.waitForTimeout(200);
   if (process.env.SPEC052_SHOT_DIR) {
@@ -739,13 +739,13 @@ try {
   await page.waitForTimeout(150);
 
   // Switch chat wallpaper to Ocean ("Đại dương") and verify top fade uses Ocean gradient (not solid white)
-  await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
+  await page.locator('.app-rail button[aria-label="Settings"]').click();
   await page.waitForSelector('.settings-nav', { timeout: 10000 });
-  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Appearance' }).click();
   await page.waitForTimeout(250);
-  await page.locator('.wallpaper-tile', { hasText: 'Đại dương' }).first().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Ocean' }).first().click();
   await page.waitForTimeout(250);
-  await page.locator('.app-rail button[aria-label="Tin nhắn"]').click();
+  await page.locator('.app-rail button[aria-label="Messages"]').click();
   await page.waitForSelector('.chat-column.wp-ocean', { timeout: 10000 });
   await page.waitForTimeout(300);
   if (process.env.SPEC052_SHOT_DIR) {

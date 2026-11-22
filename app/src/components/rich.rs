@@ -306,16 +306,16 @@ fn valid_image_url(u: &str) -> bool {
 /// Short preview text for lists / notifications.
 pub fn rich_preview(r: &Rich) -> String {
     match r {
-        Rich::Poll(p) => format!("Bình chọn: {}", p.q),
-        Rich::Vote { .. } => "Đã bình chọn".into(),
-        Rich::Note(n) => format!("Ghi chú: {}", n.t),
-        Rich::Reminder(r) => format!("Nhắc hẹn: {}", r.t),
-        Rich::Table(_) => "Bảng tính".into(),
-        Rich::Image(_) => "Hình ảnh".into(),
-        Rich::File(f) => format!("Tệp: {}", if f.name.is_empty() { "Đính kèm" } else { &f.name }),
-        Rich::Audio(_) => "Tin nhắn thoại".into(),
+        Rich::Poll(p) => format!("Votes: {}", p.q),
+        Rich::Vote { .. } => "Voted".into(),
+        Rich::Note(n) => format!("Note: {}", n.t),
+        Rich::Reminder(r) => format!("Appointment reminder: {}", r.t),
+        Rich::Table(_) => "Spreadsheet".into(),
+        Rich::Image(_) => "Image".into(),
+        Rich::File(f) => format!("File: {}", if f.name.is_empty() { "Attached" } else { &f.name }),
+        Rich::Audio(_) => "Voice messages".into(),
         Rich::Video(_) => "Video".into(),
-        Rich::Invite(i) => format!("Lời mời tham gia {}", i.name),
+        Rich::Invite(i) => format!("Invitation to join {}", i.name),
         Rich::Embed(w) => {
             if !w.content.trim().is_empty() {
                 w.content.clone()
@@ -379,15 +379,15 @@ pub fn RichImage(data: ImageData) -> Element {
     rsx! {
         div { class: "rich-image",
             if let Some(s) = src() {
-                button { r#type: "button", class: "rich-image-btn", aria_label: "Xem ảnh", onclick: move |_| open.set(true),
-                    img { src: "{s}", alt: "Hình ảnh", decoding: "async" }
+                button { r#type: "button", class: "rich-image-btn", aria_label: "See photos", onclick: move |_| open.set(true),
+                    img { src: "{s}", alt: "Image", decoding: "async" }
                 }
                 if open() {
-                    div { class: "lightbox", role: "dialog", aria_label: "Ảnh", onclick: move |_| open.set(false),
-                        img { src: "{s}", alt: "Hình ảnh" }
+                    div { class: "lightbox", role: "dialog", aria_label: "Photo", onclick: move |_| open.set(false),
+                        img { src: "{s}", alt: "Image" }
                         div { class: "lightbox-actions", onclick: move |e| e.stop_propagation(),
-                            a { href: "{s}", download: if data.name.is_empty() { "chatw-image" } else { data.name.as_str() }, class: "btn-secondary", DownloadIcon { size: 15 } "Tải bản gốc" }
-                            button { r#type: "button", class: "icon-btn lightbox-close", aria_label: "Đóng", onclick: move |_| open.set(false), CloseIcon {} }
+                            a { href: "{s}", download: if data.name.is_empty() { "chatw-image" } else { data.name.as_str() }, class: "btn-secondary", DownloadIcon { size: 15 } "Download the original" }
+                            button { r#type: "button", class: "icon-btn lightbox-close", aria_label: "Close", onclick: move |_| open.set(false), CloseIcon {} }
                         }
                     }
                 }
@@ -405,7 +405,7 @@ pub fn RichImage(data: ImageData) -> Element {
                             onclick: move |_| {
                                 let id = rid.clone();
                                 spawn(async move {
-                                    rec_status.set(Some("Đang gửi yêu cầu khôi phục".into()));
+                                    rec_status.set(Some("Sending restore request".into()));
                                     if let Ok(res) = storage_sync::create_recovery_request(&id, Some("webrtc_p2p")).await {
                                         let st = res.get("status").and_then(|s| s.as_str()).unwrap_or("pending");
                                         if let Some(req_id) = res.get("request_id").and_then(|s| s.as_str()) {
@@ -417,12 +417,12 @@ pub fn RichImage(data: ImageData) -> Element {
                                     }
                                 });
                             },
-                            RefreshIcon { size: 14 } "Khôi phục từ bạn bè"
+                            RefreshIcon { size: 14 } "Recover from friends"
                         }
                     }
                 }
             } else if failed() {
-                div { class: "rich-image-error", "Không tải hoặc giải mã được ảnh" }
+                div { class: "rich-image-error", "Unable to download or decode images" }
             } else {
                 div { class: "rich-image-loading", span { class: "spinner" } }
             }
@@ -494,9 +494,9 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
 
     let fname = if data.name.is_empty() {
         match kind.as_str() {
-            "audio" => "Tin nhắn thoại".to_string(),
+            "audio" => "Voice messages".to_string(),
             "video" => "Video".to_string(),
-            _ => "Tệp đính kèm".to_string(),
+            _ => "Attachments".to_string(),
         }
     } else {
         data.name.clone()
@@ -507,7 +507,7 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
     rsx! {
         div { class: "rich-card media-attachment-card",
             div { class: "rich-kind",
-                if kind == "audio" { "Tin nhắn thoại" } else if kind == "video" { "Video" } else { "Tệp đính kèm" }
+                if kind == "audio" { "Voice messages" } else if kind == "video" { "Video" } else { "Attachments" }
                 if !data.k.is_empty() { " · E2EE" }
                 if data.size > 0 { " · {format_bytes_human(data.size)}" }
             }
@@ -533,12 +533,12 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
                 }
                 div { style: "margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;",
                     a { href: "{u}", download: "{fname}", class: "btn-secondary", style: "display: inline-flex; gap: 6px;",
-                        DownloadIcon { size: 14 } "Tải xuống bản gốc"
+                        DownloadIcon { size: 14 } "Download the original"
                     }
                     if kind == "video" || kind == "audio" {
                         select {
                             class: "settings-select",
-                            aria_label: "Tốc độ phát",
+                            aria_label: "Playback speed",
                             style: "width: auto; min-width: 66px; padding: 4px 8px; font-size: 12px;",
                             value: "{playback_rate}",
                             onchange: {
@@ -585,7 +585,7 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
                                 }
                             });
                         },
-                        RefreshIcon { size: 14 } "Khôi phục tệp"
+                        RefreshIcon { size: 14 } "Restore files"
                     }
                 }
             } else {
@@ -611,13 +611,13 @@ pub fn RichContent(
             let total_denom = total_votes.max(1);
             let mine = votes.get(&my_id).copied();
             let foot = if total_votes == 0 {
-                "Chưa có lượt bình chọn".to_string()
+                "There are no votes yet".to_string()
             } else {
-                format!("{total_votes} lượt bình chọn")
+                format!("{total_votes} votes")
             };
             rsx! {
                 div { class: "rich-card poll-card",
-                    div { class: "rich-kind", BarChartIcon { size: 14 } "Bình chọn" }
+                    div { class: "rich-kind", BarChartIcon { size: 14 } "Poll" }
                     div { class: "rich-title", "{p.q}" }
                     div { class: "poll-options",
                         for (i, opt) in p.o.iter().enumerate() {
@@ -656,7 +656,7 @@ pub fn RichContent(
         }
         Rich::Note(n) => rsx! {
             div { class: "rich-card note-card",
-                div { class: "rich-kind", FileTextIcon { size: 14 } "Ghi chú" }
+                div { class: "rich-kind", FileTextIcon { size: 14 } "Notes" }
                 div { class: "rich-title", "{n.t}" }
                 if !n.b.is_empty() { div { class: "rich-body", "{n.b}" } }
             }
@@ -666,15 +666,15 @@ pub fn RichContent(
             let past = reminder_due(&r).map(|d| d < Local::now()).unwrap_or(false);
             rsx! {
                 div { class: "rich-card reminder-card",
-                    div { class: "rich-kind", BellIcon { size: 14 } "Nhắc hẹn" }
+                    div { class: "rich-kind", BellIcon { size: 14 } "Appointment reminder" }
                     div { class: "rich-title", "{r.t}" }
-                    div { class: if past { "rich-body muted" } else { "rich-body" }, "{when}" if past { " · đã qua" } }
+                    div { class: if past { "rich-body muted" } else { "rich-body" }, "{when}" if past { " · has passed" } }
                 }
             }
         }
         Rich::Table(rows) => rsx! {
             div { class: "rich-card table-card",
-                div { class: "rich-kind", "Bảng tính · {rows.len()} hàng" }
+                div { class: "rich-kind", "Spreadsheet · {rows.len()} rows" }
                 div { class: "table-scroll",
                     table {
                         for (ri, row) in rows.iter().enumerate() {
@@ -693,7 +693,7 @@ pub fn RichContent(
         Rich::Audio(a) => rsx! { RichMediaAttachment { data: a, kind: "audio".to_string() } },
         Rich::Video(v) => rsx! { RichMediaAttachment { data: v, kind: "video".to_string() } },
         Rich::Invite(i) => {
-            let kind_label = if i.kind == "server" { "Cộng đồng" } else { "Nhóm" };
+            let kind_label = if i.kind == "server" { "Communities" } else { "Groups" };
             // Card fields come from another user: only same-origin asset paths are rendered.
             let banner = i.banner.as_ref().filter(|b| platform::safe_asset_path(b)).map(|b| format!("background-image: url('{}');", platform::resolve_asset_url(b))).unwrap_or_default();
             let avatar = i.avatar.clone().filter(|a| platform::safe_asset_path(a));
@@ -704,14 +704,14 @@ pub fn RichContent(
                     div { class: "invite-body",
                         Avatar { name: i.name.clone(), avatar_url: avatar, size: 48 }
                         div { class: "invite-text",
-                            div { class: "rich-kind", "Lời mời vào {kind_label}" }
+                            div { class: "rich-kind", "Invitation to {kind_label}" }
                             div { class: "rich-title", "{i.name}" }
-                            div { class: "rich-body muted", "{i.members} thành viên" if !i.from.is_empty() { " · mời bởi {i.from}" } }
+                            div { class: "rich-body muted", "{i.members} members" if !i.from.is_empty() { " · invited by {i.from}" } }
                         }
                     }
                     button { r#type: "button", class: "btn-primary btn-block", disabled: on_open_invite.is_none(),
                         onclick: move |_| if let Some(h) = on_open_invite { h.call((k.clone(), c.clone())) },
-                        "Xem và tham gia"
+                        "Watch and participate"
                     }
                 }
             }
@@ -846,8 +846,8 @@ pub fn ComposerTools(
                 button {
                     r#type: "button",
                     class: "icon-btn active",
-                    title: "Dừng và gửi ghi âm thoại",
-                    aria_label: "Dừng ghi âm",
+                    title: "Stop and send voice recording",
+                    aria_label: "Stop recording",
                     onclick: move |_| {
                         recording.set(false);
                         spawn(async move {
@@ -864,14 +864,14 @@ pub fn ComposerTools(
             button {
                 r#type: "button",
                 class: if open() { "icon-btn active" } else { "icon-btn" },
-                title: "Thêm",
-                aria_label: "Thêm ảnh, video, tệp, ghi âm, bình chọn",
+                title: "Add",
+                aria_label: "Add photos, videos, files, record audio, vote",
                 aria_expanded: "{open()}",
                 onclick: move |e| { e.stop_propagation(); open.set(!open()); },
                 PlusIcon { size: 24 }
             }
             if open() {
-                button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| open.set(false) }
+                button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Close", onclick: move |_| open.set(false) }
                 div { class: "account-menu tools-menu", role: "menu",
                     label { class: "menu-item", role: "menuitem",
                         input {
@@ -896,7 +896,7 @@ pub fn ComposerTools(
                                 });
                             },
                         }
-                        "Ảnh và video"
+                        "Photos and videos"
                     }
                     if on_media.is_some() {
                         label { class: "menu-item", role: "menuitem",
@@ -916,7 +916,7 @@ pub fn ComposerTools(
                                     });
                                 },
                             }
-                            "Tệp đính kèm"
+                            "Attachments"
                         }
                         button {
                             r#type: "button",
@@ -930,7 +930,7 @@ pub fn ComposerTools(
                                     }
                                 });
                             },
-                            "Ghi âm thoại"
+                            "Voice recording"
                         }
                     }
                     label { class: "menu-item", role: "menuitemcheckbox",
@@ -940,11 +940,11 @@ pub fn ComposerTools(
                             checked: preserve_original(),
                             onchange: move |e| preserve_original.set(e.checked()),
                         }
-                        "Giữ nguyên bản gốc"
+                        "Keep the original"
                     }
-                    if allow_poll { button { r#type: "button", class: "menu-item", role: "menuitem", onclick: move |_| { open.set(false); dialog.set(Some("poll")); }, "Bình chọn" } }
-                    if allow_note { button { r#type: "button", class: "menu-item", role: "menuitem", onclick: move |_| { open.set(false); dialog.set(Some("note")); }, "Ghi chú" } }
-                    if allow_reminder { button { r#type: "button", class: "menu-item", role: "menuitem", onclick: move |_| { open.set(false); dialog.set(Some("reminder")); }, "Nhắc hẹn" } }
+                    if allow_poll { button { r#type: "button", class: "menu-item", role: "menuitem", onclick: move |_| { open.set(false); dialog.set(Some("poll")); }, "Poll" } }
+                    if allow_note { button { r#type: "button", class: "menu-item", role: "menuitem", onclick: move |_| { open.set(false); dialog.set(Some("note")); }, "Notes" } }
+                    if allow_reminder { button { r#type: "button", class: "menu-item", role: "menuitem", onclick: move |_| { open.set(false); dialog.set(Some("reminder")); }, "Appointment reminder" } }
                 }
             }
             if let Some(kind) = dialog() {
@@ -953,41 +953,41 @@ pub fn ComposerTools(
                         onkeydown: move |e| if e.key() == Key::Escape { dialog.set(None) },
                         div { class: "modal-header",
                             h2 { class: "modal-title",
-                                match kind { "poll" => "Tạo bình chọn", "note" => "Tạo ghi chú", _ => "Tạo nhắc hẹn" }
+                                match kind { "poll" => "Create poll", "note" => "Create note", _ => "Create reminder" }
                             }
-                            button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| dialog.set(None), CloseIcon {} }
+                            button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| dialog.set(None), CloseIcon {} }
                         }
                         div { class: "modal-body",
                             if kind == "poll" {
-                                label { class: "form-field", span { class: "form-label", "Câu hỏi" }
-                                    input { maxlength: "200", value: "{q}", oninput: move |e| q.set(e.value()), placeholder: "Đi ăn trưa ở đâu?" }
+                                label { class: "form-field", span { class: "form-label", "Question" }
+                                    input { maxlength: "200", value: "{q}", oninput: move |e| q.set(e.value()), placeholder: "Where to go for lunch?" }
                                 }
                                 div { class: "form-field",
-                                    span { class: "form-label", "Lựa chọn" }
+                                    span { class: "form-label", "Choose" }
                                     for (i, o) in opts().iter().enumerate() {
                                         div { key: "{i}", class: "poll-edit-row",
-                                            input { maxlength: "80", value: "{o}", placeholder: "Lựa chọn {i + 1}",
+                                            input { maxlength: "80", value: "{o}", placeholder: "Option {i + 1}",
                                                 oninput: move |e| { let v = e.value(); opts.with_mut(|l| l[i] = v); } }
                                             if opts.read().len() > 2 {
-                                                button { r#type: "button", class: "icon-btn", aria_label: "Xóa lựa chọn", onclick: move |_| { opts.with_mut(|l| { l.remove(i); }); }, CloseIcon { size: 16 } }
+                                                button { r#type: "button", class: "icon-btn", aria_label: "Delete selection", onclick: move |_| { opts.with_mut(|l| { l.remove(i); }); }, CloseIcon { size: 16 } }
                                             }
                                         }
                                     }
                                     if opts.read().len() < 10 {
-                                        button { r#type: "button", class: "btn-ghost", style: "align-self: flex-start;", onclick: move |_| opts.with_mut(|l| l.push(String::new())), PlusIcon { size: 16 } "Thêm lựa chọn" }
+                                        button { r#type: "button", class: "btn-ghost", style: "align-self: flex-start;", onclick: move |_| opts.with_mut(|l| l.push(String::new())), PlusIcon { size: 16 } "More options" }
                                     }
                                 }
                             } else if kind == "note" {
-                                label { class: "form-field", span { class: "form-label", "Tiêu đề" } input { maxlength: "120", value: "{title}", oninput: move |e| title.set(e.value()) } }
-                                label { class: "form-field", span { class: "form-label", "Nội dung" } textarea { rows: "5", maxlength: "2000", value: "{body}", oninput: move |e| body.set(e.value()) } }
+                                label { class: "form-field", span { class: "form-label", "Title" } input { maxlength: "120", value: "{title}", oninput: move |e| title.set(e.value()) } }
+                                label { class: "form-field", span { class: "form-label", "Content" } textarea { rows: "5", maxlength: "2000", value: "{body}", oninput: move |e| body.set(e.value()) } }
                             } else {
-                                label { class: "form-field", span { class: "form-label", "Nội dung nhắc" } input { maxlength: "120", value: "{title}", oninput: move |e| title.set(e.value()), placeholder: "Họp nhóm" } }
-                                label { class: "form-field", span { class: "form-label", "Thời gian" } input { r#type: "datetime-local", value: "{at}", oninput: move |e| at.set(e.value()) } }
-                                div { class: "form-hint", "ChatW sẽ thông báo cho mọi người trong cuộc trò chuyện khi đến giờ." }
+                                label { class: "form-field", span { class: "form-label", "Prompt content" } input { maxlength: "120", value: "{title}", oninput: move |e| title.set(e.value()), placeholder: "Meetings" } }
+                                label { class: "form-field", span { class: "form-label", "Time" } input { r#type: "datetime-local", value: "{at}", oninput: move |e| at.set(e.value()) } }
+                                div { class: "form-hint", "ChatW will notify everyone in the chat when it's time." }
                             }
                         }
                         div { class: "modal-footer",
-                            button { r#type: "button", class: "btn-secondary", onclick: move |_| dialog.set(None), "Hủy" }
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| dialog.set(None), "Cancel" }
                             button { r#type: "button", class: "btn-primary",
                                 onclick: move |_| {
                                     let payload = match kind {
@@ -1015,7 +1015,7 @@ pub fn ComposerTools(
                                     at.set(now_local_input());
                                     dialog.set(None);
                                 },
-                                "Gửi"
+                                "Send"
                             }
                         }
                     }

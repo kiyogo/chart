@@ -21,15 +21,15 @@ impl Target {
             Target::Friend(f) => f.username.clone(),
             Target::Group(g) => g.name.clone(),
             Target::Server(s) => s.name.clone(),
-            Target::Settings => "Cài đặt".to_string(),
+            Target::Settings => "Settings".to_string(),
         }
     }
     fn kind(&self) -> &'static str {
         match self {
-            Target::Friend(_) => "Tin nhắn trực tiếp",
-            Target::Group(_) => "Nhóm",
-            Target::Server(_) => "Cộng đồng",
-            Target::Settings => "Ứng dụng",
+            Target::Friend(_) => "Direct messages",
+            Target::Group(_) => "Groups",
+            Target::Server(_) => "Communities",
+            Target::Settings => "Application",
         }
     }
 }
@@ -81,15 +81,15 @@ pub fn QuickSwitcher(
             div {
                 class: "quick-switcher",
                 role: "dialog",
-                aria_label: "Tìm nhanh",
+                aria_label: "Quick switch",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "quick-input",
                     SearchIcon { size: 18 }
                     input {
                         id: "quick-switch-input",
                         r#type: "search",
-                        placeholder: "Đi tới cuộc trò chuyện, nhóm hoặc cộng đồng",
-                        aria_label: "Tìm nhanh",
+                        placeholder: "Go to a chat, group, or community",
+                        aria_label: "Quick switch",
                         autocomplete: "off",
                         value: "{query}",
                         oninput: move |e| { query.set(e.value()); cursor.set(0); },
@@ -105,7 +105,7 @@ pub fn QuickSwitcher(
                 }
                 div { class: "quick-results", role: "listbox",
                     if results.is_empty() {
-                        div { class: "picker-empty", "Không có kết quả" }
+                        div { class: "picker-empty", "No results" }
                     }
                     for (i, t) in results.into_iter().enumerate() {
                         {
@@ -135,9 +135,9 @@ pub fn QuickSwitcher(
                     }
                 }
                 div { class: "quick-footer",
-                    span { span { class: "kbd", "↑" } " " span { class: "kbd", "↓" } " di chuyển" }
-                    span { span { class: "kbd", "Enter" } " mở" }
-                    span { span { class: "kbd", "Ctrl K" } " mở bảng này" }
+                    span { span { class: "kbd", "↑" } " " span { class: "kbd", "↓" } " move" }
+                    span { span { class: "kbd", "Enter" } " open" }
+                    span { span { class: "kbd", "Ctrl K" } " Open this table" }
                 }
             }
         }

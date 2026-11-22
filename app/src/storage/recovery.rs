@@ -170,11 +170,11 @@ pub async fn load_or_fetch_media(
                     let avail = meta.get("availability_state").and_then(|s| s.as_str()).unwrap_or("local_only").to_string();
                     let deleted = meta.get("deleted_for_all").and_then(|b| b.as_bool()).unwrap_or(false);
                     let reason = if deleted {
-                        "Tệp đã bị người gửi xóa với mọi người".to_string()
+                        "The file has been deleted by the sender for everyone".to_string()
                     } else if avail == "no_remaining_copies" {
-                        "Không còn bản sao nào tồn tại trên máy bạn hoặc đối phương".to_string()
+                        "No more copies exist on your or your opponent's computer".to_string()
                     } else {
-                        "Chưa có bản sao cục bộ; có thể yêu cầu khôi phục từ thiết bị khác".to_string()
+                        "There is no local copy yet; may require recovery from another device".to_string()
                     };
                     return MediaFetchOutcome::MissingNeedsRecovery {
                         ref_id: rid.clone(),
@@ -198,7 +198,7 @@ pub async fn respond_to_incoming_recovery(request_id: &str, ref_id: &str, transp
             "no_copy",
             None,
             None,
-            Some("Thiết bị này cũng không còn bản lưu cục bộ"),
+            Some("This device also no longer has a local backup"),
         )
         .await;
         return;

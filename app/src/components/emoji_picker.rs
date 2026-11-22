@@ -119,7 +119,7 @@ pub fn EmojiPicker(
         div {
             class: "{cls}",
             role: "dialog",
-            aria_label: "Chọn emoji",
+            aria_label: "Choose emoji",
             onclick: move |evt| evt.stop_propagation(),
             onkeydown: move |evt| {
                 match evt.key() {
@@ -163,8 +163,8 @@ pub fn EmojiPicker(
                     input {
                         id: "emoji-search",
                         r#type: "search",
-                        placeholder: "Tìm emoji",
-                        aria_label: "Tìm emoji",
+                        placeholder: "Find emojis",
+                        aria_label: "Find emojis",
                         autocomplete: "off",
                         value: "{query}",
                         oninput: move |e| query.set(e.value()),
@@ -368,13 +368,13 @@ pub fn EmojiPicker(
                 } else {
                     span { class: "muted", "Arrow keys to move, Enter to pick" }
                 }
-                div { class: "skin-tones", role: "radiogroup", aria_label: "Màu da",
+                div { class: "skin-tones", role: "radiogroup", aria_label: "Skin color",
                     for (modifier, sample) in SKIN_TONES {
                         button {
                             key: "{sample}",
                             r#type: "button",
                             class: if tone() == modifier { "skin-tone-btn active" } else { "skin-tone-btn" },
-                            aria_label: "Màu da {sample}",
+                            aria_label: "Skin color {sample}",
                             onclick: move |_| {
                                 tone.set(modifier.to_string());
                                 platform::storage_set(TONE_KEY, modifier);

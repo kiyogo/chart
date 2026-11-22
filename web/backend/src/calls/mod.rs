@@ -101,14 +101,14 @@ async fn create_meet(
         "audio" => "audio".to_string(),
         _ => "video".to_string(),
     };
-    let uname = user.username.clone().unwrap_or_else(|| "Bạn".to_string());
+    let uname = user.username.clone().unwrap_or_else(|| "You".to_string());
     let title = payload
         .title
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.chars().take(110).collect::<String>())
-        .unwrap_or_else(|| format!("Cuộc họp của {uname}"));
+        .unwrap_or_else(|| format!("{uname}'s meeting"));
 
     let cid = Uuid::new_v4();
     let code = generate_meet_code();

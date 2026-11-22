@@ -68,12 +68,18 @@ fn parse_local(iso: &str) -> Option<DateTime<Local>> {
     DateTime::parse_from_rfc3339(iso).ok().map(|d| d.with_timezone(&Local))
 }
 
+const ENGLISH_MONTHS: [&str; 12] = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+];
+
 fn day_label(date: NaiveDate) -> String {
     let today = Local::now().date_naive();
+    let month_name = ENGLISH_MONTHS[(date.month().saturating_sub(1) as usize).min(11)];
     if date.year() == today.year() {
-        format!("{} tháng {}", date.day(), date.month())
+        format!("{month_name} {}", date.day())
     } else {
-        format!("{} tháng {} năm {}", date.day(), date.month(), date.year())
+        format!("{month_name} {}, {}", date.day(), date.year())
     }
 }
 
@@ -130,10 +136,10 @@ pub fn preview_text(text: &str) -> String {
         return rich_preview(&r);
     }
     if gif_url_of(text).is_some() {
-        return "Đã gửi một GIF".to_string();
+        return "Sent a GIF".to_string();
     }
     if sticker_url_of(text).is_some() {
-        return "Đã gửi một sticker".to_string();
+        return "Sent a sticker".to_string();
     }
     segments(text)
         .into_iter()
@@ -356,7 +362,7 @@ pub fn MessageList(
             div { class: "message-stream",
                 div { class: "message-stream-start" }
                 if loading_initial && messages.is_empty() {
-                    div { class: "chat-loading-initial", role: "status", aria_label: "Đang tải tin nhắn",
+                    div { class: "chat-loading-initial", role: "status", aria_label: "Loading messages",
                         span { class: "spinner" }
                     }
                 } else if hidden_older_in_memory > 0 {
@@ -368,13 +374,13 @@ pub fn MessageList(
                                 let cur = *dom_render_limit.peek();
                                 dom_render_limit.set(cur.saturating_add(MESSAGE_DOM_WINDOW_STEP));
                             },
-                            "Hiển thị thêm tin nhắn trước đó ({hidden_older_in_memory})"
+                            "Show more previous messages ({hidden_older_in_memory})"
                         }
                     }
                 } else if loading_more {
                     div { class: "load-older-bar",
                         span { class: "spinner" }
-                        span { "Đang tải tin nhắn cũ hơn" }
+                        span { "Loading older messages" }
                     }
                 } else if has_more {
                     if let Some(h) = on_load_more {
@@ -383,7 +389,7 @@ pub fn MessageList(
                                 r#type: "button",
                                 class: "btn-ghost load-older-btn",
                                 onclick: move |_| h.call(()),
-                                "Tải thêm tin nhắn cũ hơn"
+                                "Load older messages"
                             }
                         }
                     }
@@ -399,7 +405,7 @@ pub fn MessageList(
                     if e2ee {
                         div { class: "e2ee-notice",
                             ShieldIcon { size: 16 }
-                            span { "Tin nhắn được mã hóa đầu cuối trên thiết bị. Máy chủ chỉ chuyển tiếp bản mã và không thể đọc nội dung." }
+                            span { "Messages are end-to-end encrypted on your device. The server only relays ciphertext and cannot read your content." }
                         }
                     }
                 }
@@ -457,7 +463,7 @@ pub fn MessageList(
                                     if show_avatar {
                                         button {
                                             r#type: "button",
-                                            aria_label: "Xem hồ sơ {msg.sender_name}",
+                                            aria_label: "View profile {msg.sender_name}",
                                             onclick: move |evt: MouseEvent| {
                                                 let c = evt.client_coordinates();
                                                 if let Some(h) = on_profile_click { h.call((sender_for_avatar.clone(), c.x, c.y)) }
@@ -493,7 +499,7 @@ pub fn MessageList(
                                             }
                                         }
                                         span { class: "message-time-standalone",
-                                            if msg.is_pinned { span { class: "pin-mark", aria_label: "Đã ghim", "📌" } }
+                                            if msg.is_pinned { span { class: "pin-mark", aria_label: "Pinned", "📌" } }
                                             "{time_str}"
                                         }
                                     } else if let Some(url) = gif {
@@ -509,30 +515,30 @@ pub fn MessageList(
                                             let (u1, u2, u3) = (url.clone(), url.clone(), url.clone());
                                             rsx! {
                                                 div { class: "message-media sticker-media", title: "{full_time}",
-                                                    button { r#type: "button", class: "sticker-open", aria_label: "Tùy chọn Sticker", aria_haspopup: "menu", aria_expanded: "{menu_open}",
+                                                    button { r#type: "button", class: "sticker-open", aria_label: "Sticker options", aria_haspopup: "menu", aria_expanded: "{menu_open}",
                                                         onclick: move |_| sticker_menu_for.set(if menu_open { None } else { Some(mid.clone()) }),
                                                         img { class: "sticker-img", src: "{platform::resolve_asset_url(&url)}", alt: "Sticker", loading: "lazy" }
                                                     }
                                                     if menu_open {
-                                                        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| sticker_menu_for.set(None) }
+                                                        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Close", onclick: move |_| sticker_menu_for.set(None) }
                                                         div { class: "account-menu sticker-menu", role: "menu",
                                                             onkeydown: move |e| if e.key() == Key::Escape { sticker_menu_for.set(None) },
                                                             if let Some(ctx) = prefs_ctx {
                                                                 button { r#type: "button", role: "menuitem", class: "account-menu-item",
                                                                     onclick: move |_| { sticker_menu_for.set(None); crate::components::sticker_picker::toggle_favorite(ctx, &u1) },
-                                                                    if is_fav { "★ Bỏ khỏi Sticker yêu thích" } else { "☆ Thêm vào Sticker yêu thích" }
+                                                                    if is_fav { "★ Remove from favorite Stickers" } else { "☆ Add to favorite Sticker" }
                                                                 }
                                                             }
                                                             if let Some(h) = on_send_raw {
                                                                 button { r#type: "button", role: "menuitem", class: "account-menu-item",
-                                                                    onclick: move |_| { sticker_menu_for.set(None); h.call(u2.clone()) }, "Gửi lại" }
+                                                                    onclick: move |_| { sticker_menu_for.set(None); h.call(u2.clone()) }, "Resend" }
                                                             }
                                                             button { r#type: "button", role: "menuitem", class: "account-menu-item",
                                                                 onclick: move |_| {
                                                                     sticker_menu_for.set(None);
                                                                     let name = sticker_search_term(&u3);
                                                                     *crate::components::sticker_picker::PICKER_REQUEST.write() = Some(name);
-                                                                }, "Tìm Sticker tương tự" }
+                                                                }, "Find similar Stickers" }
                                                         }
                                                     }
                                                 }
@@ -561,10 +567,10 @@ pub fn MessageList(
                                             }
                                             if !time_str.is_empty() {
                                                 span { class: "bubble-meta",
-                                                    if msg.is_pinned { span { class: "pin-mark", aria_label: "Đã ghim", "📌" } }
+                                                    if msg.is_pinned { span { class: "pin-mark", aria_label: "Pinned", "📌" } }
                                                     "{time_str}"
                                                     if msg.is_self && msg.is_pending {
-                                                        span { aria_label: "Đang gửi", "·" }
+                                                        span { aria_label: "Sending", "·" }
                                                     }
                                                 }
                                             }
@@ -581,7 +587,7 @@ pub fn MessageList(
                                                             key: "{emoji}",
                                                             r#type: "button",
                                                             class: if mine { "reaction-pill mine" } else { "reaction-pill" },
-                                                            aria_label: "Biểu cảm {emoji}, {n} người",
+                                                            aria_label: "Expressions of {emoji}, {n} people",
                                                             disabled: on_react.is_none(),
                                                             onclick: move |_| if let Some(h) = on_react { h.call((mid_r.clone(), em.clone())) },
                                                             span { "{emoji}" }
@@ -594,18 +600,18 @@ pub fn MessageList(
                                     }
                                 }
                                 if !msg.is_error {
-                                    div { class: "message-actions", role: "toolbar", aria_label: "Thao tác tin nhắn",
+                                    div { class: "message-actions", role: "toolbar", aria_label: "Message manipulation",
                                         if on_react.is_some() {
                                             div { class: "react-trigger",
                                                 button {
                                                     r#type: "button",
                                                     class: "message-action-btn",
-                                                    title: "Thả biểu cảm",
-                                                    aria_label: "Thả biểu cảm",
+                                                    title: "Drop expressions",
+                                                    aria_label: "Drop expressions",
                                                     aria_haspopup: "true",
                                                     SmilePlusIcon {}
                                                 }
-                                                div { class: "react-tray", role: "group", aria_label: "Biểu cảm nhanh",
+                                                div { class: "react-tray", role: "group", aria_label: "Quick expressions",
                                                     for em in QUICK_REACTIONS {
                                                         {
                                                             let mid_q = mid.clone();
@@ -615,7 +621,7 @@ pub fn MessageList(
                                                                     r#type: "button",
                                                                     class: "react-option",
                                                                     title: "{em}",
-                                                                    aria_label: "Thả biểu cảm {em}",
+                                                                    aria_label: "Drop emote {em}",
                                                                     onclick: move |_| if let Some(h) = on_react { h.call((mid_q.clone(), em.to_string())) },
                                                                     "{em}"
                                                                 }
@@ -625,8 +631,8 @@ pub fn MessageList(
                                                     button {
                                                         r#type: "button",
                                                         class: "react-option more",
-                                                        title: "Thêm biểu cảm",
-                                                        aria_label: "Thêm biểu cảm",
+                                                        title: "Add expressions",
+                                                        aria_label: "Add expressions",
                                                         onclick: { let m = mid.clone(); move |_| full_picker_for.set(Some(m.clone())) },
                                                         SmilePlusIcon { size: 16 }
                                                     }
@@ -649,8 +655,8 @@ pub fn MessageList(
                                             button {
                                                 r#type: "button",
                                                 class: "message-action-btn",
-                                                title: if pinned_now { "Bỏ ghim" } else { "Ghim tin nhắn" },
-                                                aria_label: if pinned_now { "Bỏ ghim" } else { "Ghim tin nhắn" },
+                                                title: if pinned_now { "Unpin" } else { "Pin message" },
+                                                aria_label: if pinned_now { "Unpin" } else { "Pin message" },
                                                 onclick: move |_| if let Some(h) = on_pin { h.call((pin_id.clone(), !pinned_now)) },
                                                 PinIcon {}
                                             }
@@ -659,8 +665,8 @@ pub fn MessageList(
                                             button {
                                                 r#type: "button",
                                                 class: "message-action-btn",
-                                                title: "Trả lời",
-                                                aria_label: "Trả lời",
+                                                title: "Reply",
+                                                aria_label: "Reply",
                                                 onclick: move |_| if let Some(h) = on_reply { h.call(m_reply.clone()) },
                                                 ReplyIcon {}
                                             }
@@ -669,8 +675,8 @@ pub fn MessageList(
                                             button {
                                                 r#type: "button",
                                                 class: "message-action-btn",
-                                                title: "Tạo công việc",
-                                                aria_label: "Tạo công việc",
+                                                title: "Create jobs",
+                                                aria_label: "Create jobs",
                                                 onclick: { let id = mid.clone(); let t = m_copy.clone(); move |_| h.call((id.clone(), t.clone())) },
                                                 crate::components::icons::ListChecksIcon { size: 16 }
                                             }
@@ -679,8 +685,8 @@ pub fn MessageList(
                                             button {
                                                 r#type: "button",
                                                 class: "message-action-btn",
-                                                title: "Lưu vào Chính mình",
-                                                aria_label: "Lưu vào Chính mình",
+                                                title: "Saved to Self",
+                                                aria_label: "Saved to Self",
                                                 onclick: { let t = m_copy.clone(); move |_| h.call(t.clone()) },
                                                 crate::components::icons::DevicesIcon { size: 16 }
                                             }
@@ -721,8 +727,8 @@ pub fn MessageList(
                                         button {
                                             r#type: "button",
                                             class: "message-action-btn",
-                                            title: "Sao chép",
-                                            aria_label: "Sao chép nội dung",
+                                            title: "Copy",
+                                            aria_label: "Copy content",
                                             onclick: move |_| platform::copy_to_clipboard(&m_copy),
                                             CopyIcon {}
                                         }
@@ -731,20 +737,20 @@ pub fn MessageList(
                                 if double_click_reply && on_reply.is_some() {
                                     div {
                                         class: "message-gutter",
-                                        title: "Bấm đúp để trả lời",
+                                        title: "Double click to reply",
                                         ondoubleclick: move |_| if let Some(h) = on_reply { h.call(m_reply2.clone()) },
                                     }
                                 }
                             }
                             if is_seen {
-                                div { class: "seen-indicator", "Đã xem" }
+                                div { class: "seen-indicator", "Seen" }
                             }
                           }
                         }
                     }
                 }
                 if count == 0 && intro_title.is_empty() {
-                    div { class: "empty-chat-inner", "Chưa có tin nhắn" }
+                    div { class: "empty-chat-inner", "No messages yet" }
                 }
             }
         }
@@ -776,10 +782,10 @@ mod tests {
     fn test_day_label_current_year_and_previous_year() {
         let cur_year = Local::now().date_naive().year();
         let d_cur = NaiveDate::from_ymd_opt(cur_year, 11, 20).unwrap();
-        assert_eq!(day_label(d_cur), "20 tháng 11");
+        assert_eq!(day_label(d_cur), "November 20");
         let d_old = NaiveDate::from_ymd_opt(2025, 11, 22).unwrap();
         if cur_year != 2025 {
-            assert_eq!(day_label(d_old), "22 tháng 11 năm 2025");
+            assert_eq!(day_label(d_old), "November 22, 2025");
         }
     }
 }

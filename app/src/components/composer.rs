@@ -312,7 +312,7 @@ pub fn Composer(
                                 h.call((bytes, p.mime.clone()));
                             }
                         } else {
-                            notice.set(Some("Cuộc trò chuyện này chưa hỗ trợ gửi ảnh".into()));
+                            notice.set(Some("This chat does not yet support sending photos".into()));
                         }
                     }
                     "table" => {
@@ -336,7 +336,7 @@ pub fn Composer(
                             _ => pending_table.set(Some(p.text.clone())),
                         }
                     }
-                    "error" => notice.set(Some("Ảnh lớn hơn 8 MB nên không dán được".into())),
+                    "error" => notice.set(Some("The photo is larger than 8 MB so it cannot be pasted".into())),
                     _ => {}
                 }
             }
@@ -421,7 +421,7 @@ pub fn Composer(
                 if let Some(msg) = notice() {
                     div { class: "composer-context composer-notice", role: "status",
                         span { class: "composer-context-text", "{msg}" }
-                        button { r#type: "button", class: "icon-btn", aria_label: "Đóng thông báo", onclick: move |_| notice.set(None), CloseIcon { size: 16 } }
+                        button { r#type: "button", class: "icon-btn", aria_label: "Close notification", onclick: move |_| notice.set(None), CloseIcon { size: 16 } }
                     }
                 }
                 if let Some(tsv) = pending_table() {
@@ -442,20 +442,20 @@ pub fn Composer(
                             }
                         };
                         rsx! {
-                            div { class: "paste-choice", role: "dialog", aria_label: "Dán bảng tính",
-                                div { class: "paste-choice-title", "Dán bảng tính {rows} dòng × {cols} cột" }
-                                div { class: "paste-choice-sub", "Chọn cách gửi nội dung vừa dán" }
+                            div { class: "paste-choice", role: "dialog", aria_label: "Spreadsheet paste",
+                                div { class: "paste-choice-title", "Paste the spreadsheet {rows} rows × {cols} columns" }
+                                div { class: "paste-choice-sub", "Choose how to send the pasted content" }
                                 div { class: "paste-choice-actions",
                                     if on_image.is_some() {
                                         button { r#type: "button", class: "btn-secondary",
                                             onclick: move |_| { remember("image"); pending_table.set(None); send_table_image(t_img.clone(), on_image, notice); },
-                                            "Dạng ảnh"
+                                            "As image"
                                         }
                                     }
                                     if on_raw.is_some() {
                                         button { r#type: "button", class: "btn-secondary",
                                             onclick: move |_| { remember("table"); pending_table.set(None); if let Some(h) = on_raw { h.call(format!("table:{t_tab}")); } },
-                                            "Dạng bảng"
+                                            "As table"
                                         }
                                     }
                                     button { r#type: "button", class: "btn-secondary",
@@ -470,20 +470,20 @@ pub fn Composer(
                                                 on_input.call(updated);
                                             });
                                         },
-                                        "Dạng chữ"
+                                        "As text"
                                     }
-                                    button { r#type: "button", class: "btn-ghost", onclick: move |_| pending_table.set(None), "Hủy" }
+                                    button { r#type: "button", class: "btn-ghost", onclick: move |_| pending_table.set(None), "Cancel" }
                                 }
                                 label { class: "paste-choice-remember",
                                     input { r#type: "checkbox", checked: remember_choice(), onchange: move |e| remember_choice.set(e.checked()) }
-                                    span { "Ghi nhớ lựa chọn" }
+                                    span { "Remember the choice" }
                                 }
                             }
                         }
                     }
                 }
                 if !suggestions.is_empty() {
-                    div { class: "suggest-list", role: "listbox", aria_label: "Gợi ý",
+                    div { class: "suggest-list", role: "listbox", aria_label: "Suggestion",
                         for (i, sg) in suggestions.iter().cloned().enumerate() {
                             {
                                 let v = value.clone();
@@ -537,11 +537,11 @@ pub fn Composer(
                                 }
                             }
                         }
-                        div { class: "suggest-hint", "↑ ↓ chọn · Enter hoặc Tab để chèn · Esc để ẩn" }
+                        div { class: "suggest-hint", "↑ ↓ select · Enter or Tab to insert · Esc to hide" }
                     }
                 }
                 if !sticker_hits.is_empty() {
-                    div { class: "sticker-suggest", aria_label: "Sticker gợi ý",
+                    div { class: "sticker-suggest", aria_label: "Suggested stickers",
                         for st in sticker_hits {
                             {
                                 let url = st.file_url.clone();
@@ -551,7 +551,7 @@ pub fn Composer(
                                         r#type: "button",
                                         class: "sticker-suggest-cell",
                                         title: "{st.name}",
-                                        aria_label: "Gửi sticker {st.name}",
+                                        aria_label: "Send sticker {st.name}",
                                         onclick: move |_| {
                                             if let Some(h) = on_sticker {
                                                 on_input.call(String::new());
@@ -563,7 +563,7 @@ pub fn Composer(
                                 }
                             }
                         }
-                        button { r#type: "button", class: "icon-btn sticker-suggest-close", aria_label: "Ẩn gợi ý sticker", title: "Ẩn gợi ý",
+                        button { r#type: "button", class: "icon-btn sticker-suggest-close", aria_label: "Hide sticker suggestions", title: "Hide hints",
                             onclick: { let v = value.clone(); move |_| dismissed_for.set(v.clone()) },
                             CloseIcon { size: 14 }
                         }
@@ -571,11 +571,11 @@ pub fn Composer(
                 }
                 if let Some(rt) = reply_to.as_ref() {
                     div { class: "composer-context",
-                        span { class: "composer-context-text", "Trả lời: {rt}" }
+                        span { class: "composer-context-text", "Answer: {rt}" }
                         button {
                             r#type: "button",
                             class: "icon-btn",
-                            aria_label: "Hủy trả lời",
+                            aria_label: "Cancel reply",
                             onclick: move |_| if let Some(h) = on_cancel_reply { h.call(()) },
                             CloseIcon { size: 16 }
                         }
@@ -590,7 +590,7 @@ pub fn Composer(
                                 input_id: input_id.clone(),
                                 on_raw: move |raw: String| if let Some(h) = on_raw { h.call(raw) },
                                 on_image: move |img: (Vec<u8>, String)| {
-                                    if let Some(h) = on_image { h.call(img) } else { notice.set(Some("Cuộc trò chuyện này chưa hỗ trợ gửi ảnh".into())) }
+                                    if let Some(h) = on_image { h.call(img) } else { notice.set(Some("This chat does not yet support sending photos".into())) }
                                 },
                                 on_media: on_media,
                                 allow_poll: allow_poll && on_raw.is_some(),
@@ -602,7 +602,7 @@ pub fn Composer(
                             r#type: "button",
                             class: if picker() == Some(MediaTab::Emoji) { "icon-btn active" } else { "icon-btn" },
                             title: "Emoji",
-                            aria_label: "Chọn emoji",
+                            aria_label: "Choose emoji",
                             aria_expanded: "{picker().is_some()}",
                             onclick: move |evt| {
                                 evt.stop_propagation();
@@ -651,7 +651,7 @@ pub fn Composer(
                                 r#type: "button",
                                 class: if picker() == Some(MediaTab::Gif) { "icon-btn active" } else { "icon-btn" },
                                 title: "GIF",
-                                aria_label: "Chọn GIF",
+                                aria_label: "Choose GIF",
                                 onclick: move |evt| {
                                     evt.stop_propagation();
                                     picker.set(if picker() == Some(MediaTab::Gif) { None } else { Some(MediaTab::Gif) });
@@ -662,7 +662,7 @@ pub fn Composer(
                                 r#type: "button",
                                 class: if picker() == Some(MediaTab::Sticker) { "icon-btn active" } else { "icon-btn" },
                                 title: "Sticker",
-                                aria_label: "Chọn sticker",
+                                aria_label: "Choose sticker",
                                 onclick: move |evt| {
                                     evt.stop_propagation();
                                     picker.set(if picker() == Some(MediaTab::Sticker) { None } else { Some(MediaTab::Sticker) });
@@ -673,8 +673,8 @@ pub fn Composer(
                         button {
                             r#type: "button",
                             class: "send-btn",
-                            title: "Gửi",
-                            aria_label: "Gửi",
+                            title: "Send",
+                            aria_label: "Send",
                             disabled: !can_send,
                             onclick: move |_| on_send.call(()),
                             SendIcon {}
@@ -693,7 +693,7 @@ fn send_table_image(tsv: String, on_image: Option<EventHandler<(Vec<u8>, String)
     spawn(async move {
         match platform::render_table_png(&tsv).await {
             Ok(bytes) => h.call((bytes, "image/png".to_string())),
-            Err(_) => notice.set(Some("Không tạo được ảnh từ bảng tính".into())),
+            Err(_) => notice.set(Some("Unable to create image from spreadsheet".into())),
         }
     });
 }
@@ -708,30 +708,30 @@ mod tests {
 
     #[test]
     fn folds_vietnamese() {
-        assert_eq!(fold("Cảm Ơn Nhé"), "cam on nhe");
+        assert_eq!(fold("Cảm ơn nhé"), "cam on nhe");
         assert_eq!(fold("Đẹp"), "dep");
     }
 
     #[test]
     fn sticker_suggestions_match_triggers() {
         let all = vec![st("Thank you"), st("Hello"), st("Sad")];
-        let hits = suggest_stickers("Cảm ơn", &all);
+        let hits = suggest_stickers("Thank you", &all);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].name, "Thank you");
-        assert!(suggest_stickers("một câu rất dài không liên quan gì đến sticker cả đâu nhé bạn ơi", &all).is_empty());
+        assert!(suggest_stickers("A very long sentence that has nothing to do with stickers", &all).is_empty());
         assert_eq!(suggest_stickers("hello!", &all)[0].name, "Hello");
     }
 
     #[test]
     fn mention_and_quick_suggestions() {
-        let m = vec![MentionCandidate { username: "ngson".into(), display: "Sơn".into(), avatar_url: None }];
-        let s = build_suggestions("chào @ng", &m, &[], &[], true);
+        let m = vec![MentionCandidate { username: "ngson".into(), display: "Son".into(), avatar_url: None }];
+        let s = build_suggestions("hello @ng", &m, &[], &[], true);
         assert_eq!(s.len(), 1);
-        assert_eq!(apply_suggestion("chào @ng", &s[0]), "chào @ngson ");
-        let q = vec![("gia".to_string(), "Giá sản phẩm là 100k".to_string())];
+        assert_eq!(apply_suggestion("hello @ng", &s[0]), "hello @ngson ");
+        let q = vec![("gia".to_string(), "Product price is 100k".to_string())];
         let s = build_suggestions("/gi", &[], &q, &[], true);
-        assert_eq!(apply_suggestion("/gi", &s[0]), "Giá sản phẩm là 100k");
-        let cmds = vec![("🎲".to_string(), "svg:bot".to_string(), "/roll".to_string(), "Tung xúc xắc".to_string())];
+        assert_eq!(apply_suggestion("/gi", &s[0]), "Product price is 100k");
+        let cmds = vec![("🎲".to_string(), "svg:bot".to_string(), "/roll".to_string(), "Roll the dice".to_string())];
         let s2 = build_suggestions("/", &[], &[], &cmds, true);
         assert_eq!(s2.len(), 1);
         assert_eq!(apply_suggestion("/", &s2[0]), "/roll ");

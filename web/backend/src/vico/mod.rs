@@ -92,7 +92,7 @@ async fn list_conversations(
         sqlx::query("INSERT INTO vico_conversations (id, user_id, title) VALUES ($1, $2, $3)")
             .bind(new_id)
             .bind(uid)
-            .bind("Cuộc trò chuyện mới")
+            .bind("New chat")
             .execute(&state.db)
             .await?;
         rows = sqlx::query(
@@ -130,7 +130,7 @@ async fn create_conversation(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.chars().take(80).collect::<String>())
-        .unwrap_or_else(|| "Cuộc trò chuyện mới".to_string());
+        .unwrap_or_else(|| "New chat".to_string());
     let id = Uuid::new_v4();
     let r = sqlx::query(
         "INSERT INTO vico_conversations (id, user_id, title) VALUES ($1, $2, $3) RETURNING id, title, updated_at",
@@ -272,26 +272,26 @@ async fn builtin_vico_reply(state: &AppState, uid: Uuid, prompt: &str) -> String
         } else {
             format!("{res:.4}")
         };
-        return format!("Kết quả phép tính `{trimmed}` là **{fmt}**.");
+        return format!("The result of calculation `{trimmed}` is **{fmt}**.");
     }
 
-    if low.contains("e2ee") || low.contains("mã hóa") || low.contains("bảo mật") {
-        return "ChatW sử dụng mã hóa đầu cuối (E2EE) với cặp khóa ECDH P-256 để trao đổi khóa phiên, ECDSA P-256 để ký xác thực danh tính và AES-256-GCM cho từng tin nhắn trên thiết bị của bạn. Máy chủ chỉ chuyển tiếp gói tin đã mã hóa và không giữ khóa riêng tư.".to_string();
+    if low.contains("e2ee") || low.contains("encryption") || low.contains("security") {
+        return "ChatW uses end-to-end encryption (E2EE) with ECDH P-256 key pairs for session key exchange, ECDSA P-256 for identity signing, and AES-256-GCM for each message on your device. The server only forwards the encrypted packet and does not keep the private key.".to_string();
     }
 
-    if low.contains("mấy giờ") || low.contains("hôm nay") || low.contains("ngày") || low.contains("time") {
+    if low.contains("What time?") || low.contains("today") || low.contains("day") || low.contains("time") {
         let vn_now = Utc::now() + chrono::Duration::hours(7);
         return format!(
-            "Hiện tại theo giờ Việt Nam (UTC+7) là **{}** ngày **{}**.",
+            "Currently according to Vietnam time (UTC+7) it is **{}** on **{}**.",
             vn_now.format("%H:%M:%S"),
             vn_now.format("%d/%m/%Y")
         );
     }
 
-    if low.contains("tóm tắt") && trimmed.chars().count() > 40 {
+    if low.contains("summary") && trimmed.chars().count() > 40 {
         let body = trimmed
-            .trim_start_matches("tóm tắt")
-            .trim_start_matches("Tóm tắt")
+            .trim_start_matches("summary")
+            .trim_start_matches("Summary")
             .trim_start_matches(':')
             .trim();
         let sentences: Vec<&str> = body
@@ -301,7 +301,7 @@ async fn builtin_vico_reply(state: &AppState, uid: Uuid, prompt: &str) -> String
             .collect();
         let take_n = sentences.len().min(3);
         let summary = sentences[..take_n].join(". ");
-        return format!("Ý chính ({take_n}/{} câu):\n• {summary}", sentences.len());
+        return format!("Main idea ({take_n}/{} sentences):\n• {summary}", sentences.len());
     }
 
     let friends_count: i64 = sqlx::query_scalar(
@@ -312,14 +312,14 @@ async fn builtin_vico_reply(state: &AppState, uid: Uuid, prompt: &str) -> String
     .await
     .unwrap_or(0);
 
-    if low.contains("xin chào") || low == "hi" || low == "hello" || low.contains("chào") {
+    if low.contains("Hello") || low == "hi" || low == "hello" || low.contains("hello") {
         return format!(
-            "Chào bạn! Mình là **Vico AI**.\nBạn có thể hỏi mình tính toán nhanh (vd: `125 * 24`), xem ngày giờ, tìm hiểu bảo mật E2EE, tóm tắt đoạn văn bản dài (`tóm tắt: ...`), hoặc bấm biểu tượng cài đặt ở góc trên để kết nối API LLM (OpenAI / Groq / Ollama / OpenRouter) của riêng bạn. Hiện tại bạn đang kết nối với {friends_count} bạn bè trên ChatW."
+            "Hello! I am **Vico AI**.\nYou can ask yourself to quickly calculate (e.g. `125 * 24`), see the date and time, learn about E2EE security, summarize long text (`summary: `), or click the settings icon in the upper corner to connect your own LLM API (OpenAI / Groq / Ollama / OpenRouter). You are currently connected to {friends_count} friends on ChatW."
         );
     }
 
     format!(
-        "Mình đã ghi nhận câu hỏi: \"{trimmed}\".\nHiện Vico AI đang chạy ở chế độ cục bộ (hỗ trợ tính toán nhanh, xem ngày giờ, tóm tắt văn bản và giải đáp tính năng ChatW). Để dùng mô hình ngôn ngữ AI đầy đủ (GPT / Gemini / Llama / DeepSeek...), hãy bấm nút Cài đặt (bánh răng) ở góc trên màn hình chat này để nhập Endpoint & API Key của bạn."
+        "I have recorded the question: \"{trimmed}\".\nVico AI is currently running in local mode (supports quick calculations, viewing date and time, summarizing text and answering ChatW features). To use the full AI language model (GPT / Gemini / Llama / DeepSeek), click the Settings button (gear) in the upper corner of this chat screen to enter your Endpoint & API Key."
     )
 }
 
@@ -337,7 +337,7 @@ async fn call_external_llm(
     };
     let mut msgs = vec![json!({
         "role": "system",
-        "content": "Bạn là Vico AI, trợ lý AI thông minh, súc tích và lịch sự bên trong ứng dụng nhắn tin ChatW. Trả lời bằng tiếng Việt trừ khi người dùng dùng ngôn ngữ khác."
+        "content": "You are Vico AI, the smart, concise and polite AI assistant inside the ChatW messaging app. Reply in Vietnamese unless the user uses another language."
     })];
     for (r, c) in history.iter().rev().take(16).collect::<Vec<_>>().into_iter().rev() {
         msgs.push(json!({ "role": r, "content": c }));

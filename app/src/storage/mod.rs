@@ -116,19 +116,19 @@ pub fn format_bytes_human(bytes: u64) -> String {
 
 pub fn availability_badge_label(state: &str) -> &'static str {
     match state {
-        "local_only" => "Chỉ có trên thiết bị này",
-        "pending_delivery" => "Chờ thiết bị nhận",
-        "available_on_peer" => "Có trên thiết bị đối phương",
-        "replicated_multi_device" => "Đã đồng bộ nhiều thiết bị",
-        "backed_up_encrypted" => "Đã sao lưu mã hóa",
-        "server_durable" => "Lưu bền vững máy chủ",
-        "restored_from_peer" => "Đã khôi phục từ bạn bè",
-        "recovery_pending" => "Đang khôi phục",
-        "queued_offline_peer" => "Chờ thiết bị kia trực tuyến",
-        "denied_by_peer" => "Đối phương tắt khôi phục",
-        "no_remaining_copies" => "Không còn bản sao nào",
-        "deleted_for_everyone" => "Đã xóa với mọi người",
-        _ => "Không rõ trạng thái",
+        "local_only" => "Only available on this device",
+        "pending_delivery" => "Wait for the device to receive",
+        "available_on_peer" => "Available on enemy devices",
+        "replicated_multi_device" => "Synchronized many devices",
+        "backed_up_encrypted" => "Backed up encrypted",
+        "server_durable" => "Persistently saved server",
+        "restored_from_peer" => "Recovered from friends",
+        "recovery_pending" => "Restoring",
+        "queued_offline_peer" => "Wait for the other device to come online",
+        "denied_by_peer" => "The opponent turns off recovery",
+        "no_remaining_copies" => "There are no copies left",
+        "deleted_for_everyone" => "Deleted for everyone",
+        _ => "Status unknown",
     }
 }
 
@@ -146,7 +146,7 @@ mod tests {
     fn formats_bytes_and_badges_human_readably() {
         assert_eq!(format_bytes_human(512), "512 B");
         assert_eq!(format_bytes_human(2 * 1024 * 1024), "2.0 MB");
-        assert_eq!(availability_badge_label("local_only"), "Chỉ có trên thiết bị này");
-        assert_eq!(availability_badge_label("restored_from_peer"), "Đã khôi phục từ bạn bè");
+        assert_eq!(availability_badge_label("local_only"), "Only available on this device");
+        assert_eq!(availability_badge_label("restored_from_peer"), "Recovered from friends");
     }
 }

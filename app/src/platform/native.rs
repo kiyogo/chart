@@ -365,7 +365,7 @@ pub async fn start_google_oauth() -> Result<bool, String> {
                         return Ok(true);
                     }
     }
-    Err("Hết thời gian chờ đăng nhập Google".into())
+    Err("Google sign-in timed out".into())
 }
 
 fn open_external_url(url: &str) {

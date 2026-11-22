@@ -58,7 +58,7 @@ footer{text-align:center;color:#868E9C;font-size:13px;padding:16px}
 fn page(title: &str, description: &str, canonical: &str, image: Option<&str>, json_ld: &str, robots: &str, body: &str) -> Html<String> {
     let img = image.map(esc).unwrap_or_else(|| "/og-image.svg".into());
     Html(format!(
-        r#"<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+        r#"<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{t}</title><meta name="description" content="{d}"><meta name="robots" content="{robots}"><link rel="canonical" href="{c}">
 <meta property="og:type" content="website"><meta property="og:title" content="{t}"><meta property="og:description" content="{d}"><meta property="og:url" content="{c}"><meta property="og:image" content="{img}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{t}"><meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{img}">
@@ -73,14 +73,14 @@ fn page(title: &str, description: &str, canonical: &str, image: Option<&str>, js
 }
 
 fn not_found() -> Response {
-    (StatusCode::NOT_FOUND, Html("<!DOCTYPE html><meta charset=utf-8><title>Không tìm thấy</title><p style='font-family:sans-serif;padding:24px'>Không tìm thấy trang này.</p>")).into_response()
+    (StatusCode::NOT_FOUND, Html("<!DOCTYPE html><meta charset=utf-8><title>Not found</title><p style='font-family:sans-serif;padding:24px'>This page was not found.</p>")).into_response()
 }
 
 async fn business_page(State(state): State<AppState>, Path(handle): Path<String>) -> Response {
     let Ok(Some((_uid, username, p, products))) = crate::business::public_profile(&state.db, &handle).await else { return not_found() };
     let origin = &state.config.public_origin;
     let canonical = format!("{origin}/k/{}", p.handle);
-    let desc = p.description.clone().unwrap_or_else(|| format!("{} trên ChatW", p.name));
+    let desc = p.description.clone().unwrap_or_else(|| format!("{} on ChatW", p.name));
     let short: String = desc.chars().take(160).collect();
     let cover = p.cover_url.as_deref().map(|c| format!("{origin}{c}"));
     let ld = serde_json::json!({
@@ -105,26 +105,26 @@ async fn business_page(State(state): State<AppState>, Path(handle): Path<String>
     ));
     body.push_str(r#"<div class="section">"#);
     if p.verification_status == "verified" {
-        body.push_str(r#"<span class="chip ok">Đã xác minh</span>"#);
+        body.push_str(r#"<span class="chip ok">Verified</span>"#);
     }
-    body.push_str(r#"<span class="chip">Kinh doanh trên ChatW</span>"#);
+    body.push_str(r#"<span class="chip">Business on ChatW</span>"#);
     if let Some(d) = &p.description {
         body.push_str(&format!(r#"<p style="margin-top:12px;white-space:pre-wrap">{}</p>"#, esc(d)));
     }
     body.push_str(r#"<div class="row" style="margin-top:16px">"#);
-    body.push_str(&format!(r#"<a class="btn" href="/?dm={}">Nhắn tin trên ChatW</a>"#, esc(&username)));
+    body.push_str(&format!(r#"<a class="btn" href="/?dm={}">Message on ChatW</a>"#, esc(&username)));
     if let Some(w) = &p.website {
         body.push_str(&format!(r#"<a class="btn" style="background:#334155" href="{}" rel="nofollow noopener" target="_blank">Website</a>"#, esc(w)));
     }
     body.push_str("</div>");
-    for (label, v) in [("Địa chỉ", &p.address), ("Giờ mở cửa", &p.hours), ("Liên hệ", &p.contact)] {
+    for (label, v) in [("Address", &p.address), ("Opening hours", &p.hours), ("Contact", &p.contact)] {
         if let Some(v) = v {
             body.push_str(&format!(r#"<p class="muted" style="margin-top:8px"><b>{label}:</b> {}</p>"#, esc(v)));
         }
     }
     body.push_str("</div></div>");
     if !products.is_empty() {
-        body.push_str(r#"<div class="card"><div class="section"><h2>Sản phẩm và dịch vụ</h2><div class="grid">"#);
+        body.push_str(r#"<div class="card"><div class="section"><h2>Products and services</h2><div class="grid">"#);
         for x in &products {
             body.push_str(r#"<div class="product">"#);
             if let Some(img) = &x.image_url {
@@ -161,14 +161,14 @@ async fn community_page(State(state): State<AppState>, Path(server_id): Path<Uui
     .unwrap_or_default();
     let origin = &state.config.public_origin;
     let canonical = format!("{origin}/c/{server_id}");
-    let desc = s.description.clone().unwrap_or_else(|| format!("Cộng đồng {} trên ChatW", s.name));
+    let desc = s.description.clone().unwrap_or_else(|| format!("Community {} on ChatW", s.name));
     let short: String = desc.chars().take(160).collect();
     let ld = serde_json::json!({ "@context": "https://schema.org", "@type": "DiscussionForumPosting", "headline": s.name, "url": canonical, "text": short }).to_string();
     let mut body = String::new();
     body.push_str(r#"<div class="card"><div class="cover"></div>"#);
     let initial = s.name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default();
     body.push_str(&format!(r#"<div class="head"><div class="avatar">{}</div><div><h1>{}</h1><div class="muted">{}</div></div></div>"#, esc(&initial), esc(&s.name), esc(&short)));
-    body.push_str(r#"<div class="section"><span class="chip ok">Cộng đồng công khai đã xác minh</span></div></div>"#);
+    body.push_str(r#"<div class="section"><span class="chip ok">Verified public community</span></div></div>"#);
     for ch in channels {
         // Pinned ("good") messages first, then the latest ones, oldest at the top.
         let mut msgs = sqlx::query!(
@@ -191,14 +191,14 @@ async fn community_page(State(state): State<AppState>, Path(server_id): Path<Uui
                 esc(&m.username.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default()),
                 esc(&m.username),
                 m.created_at.format("%d/%m/%Y"),
-                if m.is_pinned { r#" <span class="chip ok">Nổi bật</span>"# } else { "" },
+                if m.is_pinned { r#" <span class="chip ok">Featured</span>"# } else { "" },
                 esc(&m.content)
             ));
         }
         body.push_str("</div></div>");
     }
     let _ = (&s.icon_url, &s.banner_url);
-    page(&format!("{} · Cộng đồng ChatW", s.name), &short, &canonical, None, &ld, "index, follow", &body).into_response()
+    page(&format!("{} · ChatW Community", s.name), &short, &canonical, None, &ld, "index, follow", &body).into_response()
 }
 
 async fn sitemap(State(state): State<AppState>) -> Response {

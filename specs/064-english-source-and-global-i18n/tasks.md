@@ -1,0 +1,8 @@
+# Tasks 064
+
+- [x] T001 Extract 100% of Vietnamese and English UI strings (plain + interpolated templates) across `app/src/`, `app/web/`, and user-facing `web/backend/src/`; build verified canonical English <-> authentic Vietnamese master catalog (`scripts/i18n_extract_and_en.py`).
+- [x] T002 Migrate all source files (`app/src/**/*.rs`, `app/web/index.html`, `app/web/custom_pickers.js`, `app/web/plugin_runtime.js`, user-facing `web/backend/src/**/*.rs`) to 100% canonical English with `<meta name="google" content="notranslate">` and `translate="no" class="notranslate"`; verify zero Vietnamese UI literals remain and `cargo check` passes for both frontend WASM and backend.
+- [x] T003 Download official 4×3 SVG flags (`app/public/flags/{cc}.svg` + `globe.svg`), refactor `app/src/i18n.rs`, `app/src/prefs.rs`, `app/src/components/brand_logos.rs`, and `app/src/components/settings_more.rs` to support all 197 world languages with live language search and crisp SVG flags.
+- [x] T004 Generate and validate `_keys.json` and all 197 world `/locales/{code}.json` packs from canonical English (100% key parity, placeholder integrity, authentic `vi.json`, preserved hand-curated core terms, zero empty strings, zero `...`).
+- [x] T005 Upgrade `app/web/i18n_runtime.js` to English-canonical indexed loader with complete dynamic template patterns, `document.title` translation, `notranslate` enforcement, and 197-language RTL/LTR switching.
+- [x] T006 Rebuild backend and release WASM (`./app/build-web.sh release`), update and run all Playwright E2E suites (including comprehensive Spec 064 global i18n verification across all 197 packs + 15+ live languages), visually inspect screenshots via `read_file`, and commit + push to `origin main`.

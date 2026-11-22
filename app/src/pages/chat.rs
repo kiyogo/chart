@@ -58,7 +58,7 @@ use crate::{
 };
 
 /// Marks automatic replies so two auto-replying accounts never loop.
-const AUTO_PREFIX: &str = "\u{2063}[Tự động] ";
+const AUTO_PREFIX: &str = "\u{2063}[Auto] ";
 
 fn in_hours(from: &str, to: &str) -> bool {
     let parse = |s: &str| -> Option<u32> {
@@ -459,7 +459,7 @@ pub fn Chat(
                 platform::play_sound(&pr.sound_name);
             }
             if pr.notify && !visible {
-                let shown = if pr.notify_preview { body } else { "Tin nhắn mới".to_string() };
+                let shown = if pr.notify_preview { body } else { "New message".to_string() };
                 platform::show_notification(&title, &shown, &format!("{conv_type}:{conv_id}"));
             }
         });
@@ -538,8 +538,8 @@ pub fn Chat(
                         if pr.sound {
                             platform::play_sound("chime");
                         }
-                        platform::show_notification("Nhắc hẹn", &format!("{title} · {place}"), &format!("reminder:{id}"));
-                        toast.set(Some(format!("Nhắc hẹn: {title} · {place}")));
+                        platform::show_notification("Appointment reminder", &format!("{title} · {place}"), &format!("reminder:{id}"));
+                        toast.set(Some(format!("Appointment reminder: {title} · {place}")));
                         fired.push(id);
                         changed = true;
                     }
@@ -667,7 +667,7 @@ pub fn Chat(
                                     ) {
                                         Ok(peer_k) => {
                                             if peer_k.key_changed_warning.is_some() {
-                                                toast.set(Some("Cảnh báo bảo mật: khóa mã hóa của đối tác vừa thay đổi. Mở Thông tin để xác minh mã an toàn.".into()));
+                                                toast.set(Some("Security alert: partner's encryption key just changed. Open Info to verify the security code.".into()));
                                             }
                                             let raw = peer_k.ecdsa_raw;
                                             peer_keys_cache
@@ -751,7 +751,7 @@ pub fn Chat(
                                             seq,
                                             sender_id: sender_id.clone(),
                                             recipient_id: recipient_id.clone(),
-                                            text: "Không đọc được trên máy này".to_string(),
+                                            text: "Cannot read on this device".to_string(),
                                             created_at: created_at.clone(),
                                             is_self: false,
                                             status: MessageStatus::Error,
@@ -793,7 +793,7 @@ pub fn Chat(
                         messages.with_mut(|list| {
                             for m in list.iter_mut() {
                                 if m.id == message_id {
-                                    m.text = "[Tin nhắn đã bị thu hồi]".to_string();
+                                    m.text = "[Message has been revoked]".to_string();
                                 }
                             }
                         });
@@ -835,7 +835,7 @@ pub fn Chat(
                         }
                         let pr = prefs.peek().clone();
                         if pr.sound { platform::play_sound(&pr.sound_name); }
-                        if pr.notify { platform::show_notification("ChatW", "Bạn có lời mời kết bạn mới", "friend-request"); }
+                        if pr.notify { platform::show_notification("ChatW", "You have a new friend request", "friend-request"); }
                     }
                     WsEvent::FriendAccepted { .. } => {
                         if let Ok(list) = api::friends_list().await {
@@ -973,7 +973,7 @@ pub fn Chat(
                         incoming_call_session.set(Some(sess));
                         let pr = prefs.peek().clone();
                         if pr.sound { platform::play_sound("chime"); }
-                        if pr.notify_calls { platform::show_notification("ChatW", "Cuộc gọi đến", "call"); }
+                        if pr.notify_calls { platform::show_notification("ChatW", "Incoming call", "call"); }
                     }
                     WsEvent::CallAccepted(val) => {
                         if let Ok(sess) = serde_json::from_value::<CallSessionItem>(val) {
@@ -1124,11 +1124,11 @@ pub fn Chat(
                     }
                     WsEvent::GroupJoinRequest(v) => {
                         let gid = v.get("group_id").and_then(|x| x.as_str()).unwrap_or_default().to_string();
-                        let who = v.get("username").and_then(|x| x.as_str()).unwrap_or("Một người").to_string();
+                        let who = v.get("username").and_then(|x| x.as_str()).unwrap_or("One person").to_string();
                         let gname = groups.peek().iter().find(|g| g.id == gid).map(|g| g.name.clone()).unwrap_or_default();
-                        toast.set(Some(format!("{who} muốn tham gia nhóm {gname}")));
+                        toast.set(Some(format!("{who} wants to join group {gname}")));
                         if prefs.peek().notify {
-                            platform::show_notification("Yêu cầu tham gia nhóm", &format!("{who} muốn tham gia {gname}"), &format!("join:{gid}"));
+                            platform::show_notification("Request to join the group", &format!("{who} wants to join {gname}"), &format!("join:{gid}"));
                         }
                         if active_group().as_ref().is_some_and(|g| g.id == gid) {
                             if let Ok(st) = social::group_settings(&gid).await {
@@ -1163,11 +1163,11 @@ pub fn Chat(
                         let _ = crate::services::profile_ext::load_contacts().await;
                     }
                     WsEvent::SecurityAlert(v) => {
-                        let device = v.get("device").and_then(|x| x.as_str()).unwrap_or("thiết bị mới").to_string();
+                        let device = v.get("device").and_then(|x| x.as_str()).unwrap_or("new device").to_string();
                         let ip = v.get("ip").and_then(|x| x.as_str()).unwrap_or_default().to_string();
-                        let text = format!("Tài khoản vừa đăng nhập từ {device} · {ip}. Không phải bạn? Vào Cài đặt › Thiết bị để đăng xuất thiết bị đó.");
+                        let text = format!("The account just logged in from {device} · {ip}. Not you? Go to Settings › Devices to sign out of that device.");
                         toast.set(Some(text.clone()));
-                        platform::show_notification("ChatW: đăng nhập mới", &text, "security-alert");
+                        platform::show_notification("ChatW: new login", &text, "security-alert");
                     }
                     WsEvent::ProfileUpdated(_) => {
                         if let Ok(list) = api::friends_list().await {
@@ -1256,7 +1256,7 @@ pub fn Chat(
                         let req_id = v.get("request_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
                         let req_did = v.get("requesting_device_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
                         let req_cid = v.get("client_device_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
-                        let dname = v.get("device_name").and_then(|s| s.as_str()).unwrap_or("Thiết bị mới").to_string();
+                        let dname = v.get("device_name").and_then(|s| s.as_str()).unwrap_or("New equipment").to_string();
                         let plat = v.get("platform").and_then(|s| s.as_str()).unwrap_or("web").to_string();
                         let code = v.get("verification_code").and_then(|s| s.as_str()).unwrap_or("000000").to_string();
                         let ecdh_pub = v.get("ecdh_public_b64").and_then(|s| s.as_str()).map(str::to_string);
@@ -1273,7 +1273,7 @@ pub fn Chat(
                                 verification_code: code.clone(),
                                 ecdh_public_b64: ecdh_pub,
                             });
-                            toast.set(Some(format!("Thiết bị mới {dname} đang chờ duyệt (mã {code})")));
+                            toast.set(Some(format!("New device {dname} is pending approval (code {code})")));
                         }
                     }
                     WsEvent::DeviceApprovalResolved(v) => {
@@ -1310,7 +1310,7 @@ pub fn Chat(
                                     }
                                     let _ = crate::storage::sync_manager::run_incremental_delta_sync().await;
                                 });
-                                toast.set(Some("Thiết bị đã được phê duyệt và đồng bộ khóa E2EE".into()));
+                                toast.set(Some("The device is E2EE approved and key synced".into()));
                             } else {
                                 crate::crypto::e2ee::lock_and_wipe_session_keys(Some(&uid));
                                 on_logout.call(());
@@ -1329,7 +1329,7 @@ pub fn Chat(
                         let ref_id = v.get("ref_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
                         let mode = v.get("transport_mode").and_then(|s| s.as_str()).unwrap_or("webrtc_p2p").to_string();
                         if !rid.is_empty() && !ref_id.is_empty() {
-                            toast.set(Some("Có yêu cầu khôi phục tệp chat riêng từ bạn bè".into()));
+                            toast.set(Some("There is a request to restore private chat files from friends".into()));
                             spawn(async move {
                                 crate::storage::recovery::respond_to_incoming_recovery(&rid, &ref_id, &mode).await;
                             });
@@ -1829,7 +1829,7 @@ pub fn Chat(
                         return;
                     };
                     if pk.key_changed_warning.is_some() {
-                        toast.set(Some("Cảnh báo bảo mật: khóa mã hóa của người này đã thay đổi. Kiểm tra mã an toàn trong Thông tin.".into()));
+                        toast.set(Some("Security alert: this person's encryption key has changed. Check the security code in Information.".into()));
                     }
                     peer_keys_cache.write().insert(friend.id.clone(), pk.clone());
                     pk
@@ -1883,7 +1883,7 @@ pub fn Chat(
                             seq: wire.seq,
                             sender_id: wire.sender_id,
                             recipient_id: wire.recipient_id,
-                            text: "Không đọc được trên máy này".to_string(),
+                            text: "Cannot read on this device".to_string(),
                             created_at: wire.created_at,
                             is_self,
                             status: MessageStatus::Error,
@@ -2016,7 +2016,7 @@ pub fn Chat(
                             seq: wire.seq,
                             sender_id: wire.sender_id,
                             recipient_id: wire.recipient_id,
-                            text: "Không đọc được trên máy này".to_string(),
+                            text: "Cannot read on this device".to_string(),
                             created_at: wire.created_at,
                             is_self,
                             status: MessageStatus::Error,
@@ -2180,7 +2180,7 @@ pub fn Chat(
             let current = my_sessions.peek().iter().find(|x| x.is_current).cloned();
             match current {
                 Some(sess) => {
-                    let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Thiết bị".into());
+                    let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Devices".into());
                     format!("\u{2060}{}|{}\u{2060}{}", sess.id, label.replace(['|', '\u{2060}'], " "), raw_text)
                 }
                 None => raw_text.clone(),
@@ -2218,11 +2218,11 @@ pub fn Chat(
                 }
                 Err(code) => {
                     let msg = match code.as_str() {
-                        "blocked" => "Không gửi được: một trong hai người đã chặn người kia",
-                        "not_friends" => "Không gửi được: hai bạn chưa là bạn bè",
-                        "self_chat_disabled" => "\"Chính mình\" đã bị xóa. Tạo lại để tiếp tục ghi chú",
-                        "missing_local_keys" => "Thiết bị này chưa có khóa mã hóa",
-                        _ => "Không gửi được",
+                        "blocked" => "Unable to send: one of you has blocked the other",
+                        "not_friends" => "Unable to send: you two are not friends yet",
+                        "self_chat_disabled" => "\"Myself\" has been deleted. Create again to continue taking notes",
+                        "missing_local_keys" => "This device does not yet have an encryption key",
+                        _ => "Unable to send",
                     };
                     messages.with_mut(|list| {
                         list.push(DisplayMessage {
@@ -2297,15 +2297,15 @@ pub fn Chat(
         let current = my_sessions.peek().iter().find(|x| x.is_current).cloned();
         let wire = match current {
             Some(sess) => {
-                let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Thiết bị".into());
+                let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Devices".into());
                 format!("\u{2060}{}|{}\u{2060}{}", sess.id, label.replace(['|', '\u{2060}'], " "), text)
             }
             None => text,
         };
         spawn(async move {
             match dm::send_encrypted_dm(&uid, &uid, &wire, None).await {
-                Ok(_) => toast.set(Some("Đã lưu vào \"Chính mình\"".into())),
-                Err(_) => toast.set(Some("Không lưu được vào \"Chính mình\"".into())),
+                Ok(_) => toast.set(Some("Saved to \"Myself\"".into())),
+                Err(_) => toast.set(Some("Can't save to \"Myself\"".into())),
             }
         });
     });
@@ -2314,7 +2314,7 @@ pub fn Chat(
     // ciphertext uploaded to server Temp Relay / Encrypted Backup with scope authorization.
     let send_dm_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
         if payload.bytes.len() > 25 * 1024 * 1024 {
-            toast.set(Some("Tệp lớn hơn 25 MB".into()));
+            toast.set(Some("File larger than 25 MB".into()));
             return;
         }
         let peer_id = active_friend().map(|f| f.id);
@@ -2322,7 +2322,7 @@ pub fn Chat(
             let sealed = match crate::crypto::blob::seal(&payload.bytes) {
                 Ok(s) => s,
                 Err(_) => {
-                    toast.set(Some("Không mã hóa được tệp".into()));
+                    toast.set(Some("File encryption failed".into()));
                     return;
                 }
             };
@@ -2361,7 +2361,7 @@ pub fn Chat(
                     );
                     send_dm_text.call((msg_str, None));
                 }
-                Err(_) => toast.set(Some("Không tải tệp lên được".into())),
+                Err(_) => toast.set(Some("Unable to upload file".into())),
             }
         });
     });
@@ -2417,7 +2417,7 @@ pub fn Chat(
                     spawn(async move {
                         let msg_opt: Option<String> = match cmd.as_str() {
                             "/task" => {
-                                let title = if arg.is_empty() { "Công việc mới từ kênh chat".to_string() } else { arg };
+                                let title = if arg.is_empty() { "New job from chat channel".to_string() } else { arg };
                                 let body = serde_json::json!({
                                     "title": title,
                                     "priority": "medium",
@@ -2426,11 +2426,11 @@ pub fn Chat(
                                 match enterprise::create_task(&sid_cl, body).await {
                                     Ok(_) => {
                                         ent_refresh_tick.set(ent_refresh_tick() + 1);
-                                        toast.set(Some("Đã tạo công việc doanh nghiệp".into()));
-                                        Some(format!("[Công việc mới] {title}"))
+                                        toast.set(Some("Created enterprise job".into()));
+                                        Some(format!("[New job] {title}"))
                                     }
                                     Err(e) => {
-                                        toast.set(Some(format!("Không tạo được công việc: {}", e.code)));
+                                        toast.set(Some(format!("Unable to create job: {}", e.code)));
                                         None
                                     }
                                 }
@@ -2439,15 +2439,15 @@ pub fn Chat(
                                 match enterprise::check_in(&sid_cl, "onsite", &arg).await {
                                     Ok(_) => {
                                         ent_refresh_tick.set(ent_refresh_tick() + 1);
-                                        toast.set(Some("Đã chấm công vào ca".into()));
+                                        toast.set(Some("Time clocked on shift".into()));
                                         Some(if arg.is_empty() {
-                                            "[Chấm công] Đã chấm công vào ca làm việc".to_string()
+                                            "[Timekeeping] The shift has been timed".to_string()
                                         } else {
-                                            format!("[Chấm công] Đã chấm công vào ca ({arg})")
+                                            format!("[Timekeeping] Time clocked on shift ({arg})")
                                         })
                                     }
                                     Err(e) => {
-                                        toast.set(Some(format!("Không chấm công được: {}", e.code)));
+                                        toast.set(Some(format!("Unable to clock time: {}", e.code)));
                                         None
                                     }
                                 }
@@ -2456,21 +2456,21 @@ pub fn Chat(
                                 match enterprise::check_out(&sid_cl, &arg).await {
                                     Ok(_) => {
                                         ent_refresh_tick.set(ent_refresh_tick() + 1);
-                                        toast.set(Some("Đã chấm công tan ca".into()));
+                                        toast.set(Some("Time clocked after shift".into()));
                                         Some(if arg.is_empty() {
-                                            "[Chấm công] Đã chấm công kết thúc ca làm việc".to_string()
+                                            "[Timekeeping] The end of the shift has been timed".to_string()
                                         } else {
-                                            format!("[Chấm công] Đã chấm công tan ca ({arg})")
+                                            format!("[Timekeeping] Time clocked after shift ({arg})")
                                         })
                                     }
                                     Err(e) => {
-                                        toast.set(Some(format!("Không chấm công tan ca được: {}", e.code)));
+                                        toast.set(Some(format!("Unable to clock in after shift: {}", e.code)));
                                         None
                                     }
                                 }
                             }
                             "/leave" => {
-                                let reason = if arg.is_empty() { "Nghỉ phép cá nhân".to_string() } else { arg };
+                                let reason = if arg.is_empty() { "Personal leave".to_string() } else { arg };
                                 let body = serde_json::json!({
                                     "leave_type": "annual",
                                     "start_date": "2026-11-20",
@@ -2481,17 +2481,17 @@ pub fn Chat(
                                 match enterprise::create_leave(&sid_cl, body).await {
                                     Ok(_) => {
                                         ent_refresh_tick.set(ent_refresh_tick() + 1);
-                                        toast.set(Some("Đã gửi đơn xin nghỉ phép".into()));
-                                        Some(format!("[Nghỉ phép] Đã gửi đơn xin nghỉ phép: {reason}"))
+                                        toast.set(Some("Leave application has been sent".into()));
+                                        Some(format!("[Leave] Leave application sent: {reason}"))
                                     }
                                     Err(e) => {
-                                        toast.set(Some(format!("Không gửi được đơn nghỉ phép: {}", e.code)));
+                                        toast.set(Some(format!("Unable to send leave application: {}", e.code)));
                                         None
                                     }
                                 }
                             }
                             "/meet" => {
-                                let title = if arg.is_empty() { "Họp đồng bộ nhanh".to_string() } else { arg };
+                                let title = if arg.is_empty() { "Quick synchronization meetings".to_string() } else { arg };
                                 let body = serde_json::json!({
                                     "title": title,
                                     "meeting_type": "video",
@@ -2502,17 +2502,17 @@ pub fn Chat(
                                 match enterprise::create_meeting(&sid_cl, body).await {
                                     Ok(_) => {
                                         ent_refresh_tick.set(ent_refresh_tick() + 1);
-                                        toast.set(Some("Đã đặt lịch cuộc họp".into()));
-                                        Some(format!("[Cuộc họp] Đã đặt lịch họp: {title}"))
+                                        toast.set(Some("Meeting scheduled".into()));
+                                        Some(format!("[Meeting] Meeting scheduled: {title}"))
                                     }
                                     Err(e) => {
-                                        toast.set(Some(format!("Không đặt được lịch họp: {}", e.code)));
+                                        toast.set(Some(format!("Unable to schedule a meeting: {}", e.code)));
                                         None
                                     }
                                 }
                             }
                             "/approve" => {
-                                let title = if arg.is_empty() { "Đề xuất phê duyệt nội bộ".to_string() } else { arg };
+                                let title = if arg.is_empty() { "Recommended for internal approval".to_string() } else { arg };
                                 let body = serde_json::json!({
                                     "title": title,
                                     "category": "custom",
@@ -2521,17 +2521,17 @@ pub fn Chat(
                                 match enterprise::submit_approval(&sid_cl, body).await {
                                     Ok(_) => {
                                         ent_refresh_tick.set(ent_refresh_tick() + 1);
-                                        toast.set(Some("Đã gửi đề xuất phê duyệt".into()));
-                                        Some(format!("[Phê duyệt] Đã gửi đề xuất: {title}"))
+                                        toast.set(Some("Proposal for approval has been sent".into()));
+                                        Some(format!("[Approval] Proposal sent: {title}"))
                                     }
                                     Err(e) => {
-                                        toast.set(Some(format!("Không gửi được đề xuất: {}", e.code)));
+                                        toast.set(Some(format!("Suggestion failed to send: {}", e.code)));
                                         None
                                     }
                                 }
                             }
                             "/announce" => {
-                                let text = if arg.is_empty() { "Thông báo vận hành nội bộ".to_string() } else { arg };
+                                let text = if arg.is_empty() { "Internal operation notice".to_string() } else { arg };
                                 let body = serde_json::json!({
                                     "title": text,
                                     "content": text,
@@ -2542,11 +2542,11 @@ pub fn Chat(
                                 match enterprise::create_announcement(&sid_cl, body).await {
                                     Ok(_) => {
                                         ent_refresh_tick.set(ent_refresh_tick() + 1);
-                                        toast.set(Some("Đã đăng thông báo nội bộ".into()));
-                                        Some(format!("[Thông báo nội bộ] {text}"))
+                                        toast.set(Some("Posted internal announcement".into()));
+                                        Some(format!("[Internal announcement] {text}"))
                                     }
                                     Err(e) => {
-                                        toast.set(Some(format!("Không đăng được thông báo: {}", e.code)));
+                                        toast.set(Some(format!("Unable to post notification: {}", e.code)));
                                         None
                                     }
                                 }
@@ -2652,8 +2652,8 @@ pub fn Chat(
                     platform::scroll_chat_to_bottom(false);
                 }
                 Err(e) => toast.set(Some(match e.code.as_str() {
-                    "insufficient_permissions" | "forbidden" => "Bạn không có quyền thực hiện việc này trong nhóm".to_string(),
-                    _ => "Không gửi được".to_string(),
+                    "insufficient_permissions" | "forbidden" => "You don't have permission to do this in the group".to_string(),
+                    _ => "Unable to send".to_string(),
                 })),
             }
         });
@@ -2663,7 +2663,7 @@ pub fn Chat(
         let bytes_for_cache = payload.bytes.clone();
         spawn(async move {
             let Some(group_id) = gid else {
-                toast.set(Some("Chưa chọn nhóm".into()));
+                toast.set(Some("No group selected".into()));
                 return;
             };
             match crate::services::storage_sync::upload_attachment_scoped(
@@ -2701,7 +2701,7 @@ pub fn Chat(
                     );
                     send_group_raw.call(msg_str);
                 }
-                Err(_) => toast.set(Some("Không tải tệp lên được".into())),
+                Err(_) => toast.set(Some("Unable to upload file".into())),
             }
         });
     });
@@ -2730,7 +2730,7 @@ pub fn Chat(
         let bytes_for_cache = payload.bytes.clone();
         spawn(async move {
             let Some(channel_id) = cid else {
-                toast.set(Some("Chưa chọn kênh".into()));
+                toast.set(Some("Channel not selected".into()));
                 return;
             };
             match crate::services::storage_sync::upload_attachment_scoped(
@@ -2775,7 +2775,7 @@ pub fn Chat(
                         platform::scroll_chat_to_bottom(false);
                     }
                 }
-                Err(_) => toast.set(Some("Không tải tệp lên kênh được".into())),
+                Err(_) => toast.set(Some("Unable to upload files to channel".into())),
             }
         });
     });
@@ -2837,7 +2837,7 @@ pub fn Chat(
             return;
         }
         if target.to_lowercase() == username_for_add.to_lowercase() {
-            add_friend_status.set(Some(AddFriendStatus { is_error: true, message: "Không thể tự kết bạn với chính mình".to_string() }));
+            add_friend_status.set(Some(AddFriendStatus { is_error: true, message: "Can't make friends with myself".to_string() }));
             return;
         }
         is_adding_friend.set(true);
@@ -2846,15 +2846,15 @@ pub fn Chat(
             match api::friends_send_request_by_username(&target).await {
                 Ok(_) => {
                     friend_input.set(String::new());
-                    add_friend_status.set(Some(AddFriendStatus { is_error: false, message: "Đã gửi lời mời kết bạn".to_string() }));
+                    add_friend_status.set(Some(AddFriendStatus { is_error: false, message: "Friend request sent".to_string() }));
                     refresh_friend_state();
                 }
                 Err(err) => {
                     let msg = match err.code.as_str() {
-                        "receiver_not_found" => "Không tìm thấy người dùng",
-                        "already_friends" => "Hai người đã là bạn bè",
-                        "request_already_pending" => "Đã gửi lời mời trước đó",
-                        _ => "Không thể gửi lời mời",
+                        "receiver_not_found" => "User not found",
+                        "already_friends" => "The two were friends",
+                        "request_already_pending" => "Invitations have been sent before",
+                        _ => "Unable to send invitation",
                     };
                     add_friend_status.set(Some(AddFriendStatus { is_error: true, message: msg.to_string() }));
                 }
@@ -2881,7 +2881,7 @@ pub fn Chat(
                         .as_ref()
                         .and_then(|sid| sessions_now.iter().find(|x| &x.id == sid))
                         .and_then(|x| x.device_label.clone().or(x.device_name.clone()));
-                    let label = live.unwrap_or_else(|| if dev_label.is_empty() { "Thiết bị này".to_string() } else { dev_label.clone() });
+                    let label = live.unwrap_or_else(|| if dev_label.is_empty() { "This device".to_string() } else { dev_label.clone() });
                     let _ = &current_sid;
                     let mine = if self_mode { true } else { m.is_self };
                     ViewMessage {
@@ -2898,7 +2898,7 @@ pub fn Chat(
                             list.iter()
                                 .find(|x| &x.id == rid)
                                 .map(|x| preview_text(&split_device_prefix(&x.text).1))
-                                .unwrap_or_else(|| "Tin nhắn gốc không còn".to_string())
+                                .unwrap_or_else(|| "The original message is no longer available".to_string())
                         }),
                         reactions: m
                             .reactions
@@ -2961,7 +2961,7 @@ pub fn Chat(
             .map(|m| MentionCandidate { username: m.username.clone(), display: m.username.clone(), avatar_url: m.avatar_url.clone() })
             .collect();
         if !v.is_empty() {
-            v.insert(0, MentionCandidate { username: "all".into(), display: "Tất cả thành viên".into(), avatar_url: None });
+            v.insert(0, MentionCandidate { username: "all".into(), display: "All members".into(), avatar_url: None });
         }
         v
     };
@@ -3019,7 +3019,7 @@ pub fn Chat(
         });
         spawn(async move {
             if social::pref_set(&ct, &cid, fields).await.is_err() {
-                toast.set(Some("Không lưu được thay đổi".into()));
+                toast.set(Some("Changes cannot be saved".into()));
                 if let Ok(p) = social::prefs_list().await {
                     conv_prefs.set(p);
                 }
@@ -3037,9 +3037,9 @@ pub fn Chat(
                             l.push(uid.clone());
                         }
                     });
-                    toast.set(Some(if block { "Đã chặn. Hai bạn không thể nhắn tin hay gọi cho nhau.".into() } else { "Đã bỏ chặn".into() }));
+                    toast.set(Some(if block { "Blocked. You two cannot text or call each other.".into() } else { "Unblocked".into() }));
                 }
-                Err(_) => toast.set(Some("Không thực hiện được".into())),
+                Err(_) => toast.set(Some("Cannot be done".into())),
             }
         });
     };
@@ -3074,7 +3074,7 @@ pub fn Chat(
                         list.iter()
                             .find(|x| &x.id == rid)
                             .map(|x| format!("{}: {}", x.sender_username, x.content))
-                            .unwrap_or_else(|| "Tin nhắn gốc không còn".to_string())
+                            .unwrap_or_else(|| "The original message is no longer available".to_string())
                     }),
                     reactions: agg,
                     is_pinned: m.is_pinned,
@@ -3234,7 +3234,7 @@ pub fn Chat(
                                         privacy.with_mut(|p| p.self_chat = true);
                                         open_self_chat.call(());
                                     } else {
-                                        toast.set(Some("Không tạo được \"Chính mình\"".into()));
+                                        toast.set(Some("Unable to create \"Yourself\"".into()));
                                     }
                                 });
                             },
@@ -3276,7 +3276,7 @@ pub fn Chat(
                                 privacy.with_mut(|p| p.self_chat = true);
                                 open_self_chat.call(());
                             } else {
-                                toast.set(Some("Không tạo được \"Chính mình\"".into()));
+                                toast.set(Some("Unable to create \"Yourself\"".into()));
                             }
                         });
                     },
@@ -3374,7 +3374,7 @@ pub fn Chat(
                 div {
                     class: "panel-resizer resizer-left",
                     "data-resizer": "sidebar",
-                    title: "Kéo để thay đổi kích thước danh sách",
+                    title: "Drag to resize the list",
                 }
             }
 
@@ -3489,7 +3489,7 @@ pub fn Chat(
                         on_add_friend: move |rid: String| {
                             spawn(async move {
                                 if api::friends_send_request_by_id(&rid).await.is_ok() {
-                                    toast.set(Some("Đã gửi lời mời kết bạn".into()));
+                                    toast.set(Some("Friend request sent".into()));
                                 }
                             });
                         },
@@ -3573,7 +3573,7 @@ pub fn Chat(
                                 button {
                                     r#type: "button",
                                     class: "icon-btn back-btn",
-                                    aria_label: "Quay lại danh sách",
+                                    aria_label: "Back to the list",
                                     onclick: move |_| active_friend.set(None),
                                     BackIcon {}
                                 }
@@ -3582,22 +3582,22 @@ pub fn Chat(
                                         span { class: "self-chat-avatar", aria_hidden: "true", DevicesIcon { size: 20 } }
                                         div { class: "chat-header-info",
                                             h2 { class: "chat-header-title", "{t(\"chat.self\")}" }
-                                            span { class: "chat-header-meta secure", ShieldIcon { size: 12 } "Chỉ mình bạn · {sessions_now.len()} thiết bị" }
+                                            span { class: "chat-header-meta secure", ShieldIcon { size: 12 } "Only you · {sessions_now.len()} devices" }
                                         }
                                     }
-                                    div { class: "device-strip header-inline-devices", aria_label: "Thiết bị của bạn",
+                                    div { class: "device-strip header-inline-devices", aria_label: "Your device",
                                         for sess in sessions_now.iter().cloned() {
                                             {
-                                                let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Thiết bị".into());
+                                                let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Devices".into());
                                                 let sid = sess.id.clone();
                                                 let l2 = label.clone();
                                                 rsx! {
                                                     button { key: "{sess.id}", r#type: "button", class: if sess.is_current { "device-chip current" } else { "device-chip" },
-                                                        title: "Bấm để đổi tên thiết bị",
+                                                        title: "Click to rename the device",
                                                         onclick: move |_| rename_device.set(Some((sid.clone(), l2.clone()))),
                                                         DevicesIcon { size: 14 }
                                                         "{label}"
-                                                        if sess.is_current { span { class: "device-chip-tag", "thiết bị này" } }
+                                                        if sess.is_current { span { class: "device-chip-tag", "this device" } }
                                                     }
                                                 }
                                             }
@@ -3607,7 +3607,7 @@ pub fn Chat(
                                     button {
                                         r#type: "button",
                                         class: "chat-header-identity",
-                                        title: "Xem hồ sơ",
+                                        title: "View profile",
                                         onclick: {
                                             let id = active.id.clone();
                                             move |_| viewing_profile_user_id.set(Some(id.clone()))
@@ -3616,7 +3616,7 @@ pub fn Chat(
                                         div { class: "chat-header-info",
                                             h2 { class: "chat-header-title", "{active.username}" }
                                             if active_blocked {
-                                                span { class: "chat-header-meta", BlockIcon { size: 12 } " Đã chặn" }
+                                                span { class: "chat-header-meta", BlockIcon { size: 12 } " Blocked" }
                                             } else if is_friend_typing() && privacy.read().typing {
                                                 span { class: "chat-header-meta", style: "color: var(--accent-text);", "{tn(\"chat.typing\", &active.username)}" }
                                             } else {
@@ -3630,8 +3630,8 @@ pub fn Chat(
                                         button {
                                             r#type: "button",
                                             class: "icon-btn",
-                                            title: "Gọi thoại",
-                                            aria_label: "Gọi thoại",
+                                            title: "Voice call",
+                                            aria_label: "Voice call",
                                             onclick: {
                                                 let id = active.id.clone();
                                                 move |_| start_call("audio", Some(id.clone()), None)
@@ -3641,8 +3641,8 @@ pub fn Chat(
                                         button {
                                             r#type: "button",
                                             class: "icon-btn",
-                                            title: "Gọi video",
-                                            aria_label: "Gọi video",
+                                            title: "Video call",
+                                            aria_label: "Video call",
                                             onclick: {
                                                 let id = active.id.clone();
                                                 move |_| start_call("video", Some(id.clone()), None)
@@ -3655,8 +3655,8 @@ pub fn Chat(
                                             r#type: "button",
                                             "data-testid": "toggle-details",
                                             class: if is_partner_info_open() { "icon-btn active" } else { "icon-btn" },
-                                            title: "Thông tin cuộc trò chuyện",
-                                            aria_label: "Thông tin tài khoản",
+                                            title: "Conversation info",
+                                            aria_label: "Account information",
                                             aria_pressed: "{is_partner_info_open()}",
                                             onclick: move |_| is_partner_info_open.set(!is_partner_info_open()),
                                             PanelRightIcon { size: 22 }
@@ -3665,8 +3665,8 @@ pub fn Chat(
                                     button {
                                         r#type: "button",
                                         class: if chat_menu_open() { "icon-btn active" } else { "icon-btn" },
-                                        title: "Tùy chọn khác",
-                                        aria_label: "Tùy chọn khác",
+                                        title: "More options",
+                                        aria_label: "More options",
                                         aria_haspopup: "menu",
                                         aria_expanded: "{chat_menu_open()}",
                                         onclick: move |e| { e.stop_propagation(); chat_menu_open.set(!chat_menu_open()); },
@@ -3706,8 +3706,8 @@ pub fn Chat(
                             if active_blocked {
                                 div { class: "chat-banner danger", role: "status",
                                     BlockIcon { size: 16 }
-                                    span { "Bạn đã chặn {active.username}. Hai bạn không thể nhắn tin hoặc gọi cho nhau." }
-                                    button { r#type: "button", class: "btn-secondary", onclick: { let pid = active.id.clone(); move |_| do_block((pid.clone(), false)) }, "Bỏ chặn" }
+                                    span { "You have blocked {active.username}. You two can't text or call each other." }
+                                    button { r#type: "button", class: "btn-secondary", onclick: { let pid = active.id.clone(); move |_| do_block((pid.clone(), false)) }, "Unblock" }
                                 }
                             }
 
@@ -3717,9 +3717,9 @@ pub fn Chat(
                                 show_sender_names: self_mode,
                                 intro_title: if self_mode { t("chat.self").to_string() } else { active.username.clone() },
                                 intro_sub: if self_mode {
-                                    "Ghi chú, liên kết, ảnh và nhắc hẹn chỉ mình bạn thấy, đồng bộ giữa các thiết bị đã đăng nhập. Mỗi tin nhắn ghi rõ thiết bị đã gửi; bấm vào tên thiết bị để đổi tên.".to_string()
+                                    "Notes, links, photos, and reminders only you can see, synced across your signed-in devices. Click any device name to rename it.".to_string()
                                 } else {
-                                    format!("Đây là khởi đầu cuộc trò chuyện trực tiếp giữa bạn và {}.", active.username)
+                                    format!("This is the start of a one-on-one conversation between you and {}.", active.username)
                                 },
                                 highlight_id: highlight_msg(),
                                 my_id: current_user_id.clone(),
@@ -3757,7 +3757,7 @@ pub fn Chat(
                                     spawn(async move {
                                         match api::messages_pin(&mid, pin).await {
                                             Ok(_) => messages.with_mut(|l| for m in l.iter_mut() { if m.id == mid { m.is_pinned = pin; } }),
-                                            Err(_) => toast.set(Some("Không ghim được tin nhắn".into())),
+                                            Err(_) => toast.set(Some("Messages cannot be pinned".into())),
                                         }
                                     });
                                 },
@@ -3780,13 +3780,13 @@ pub fn Chat(
                             Composer {
                                 input_id: "dm-chat-input".to_string(),
                                 value: input_text(),
-                                placeholder: if self_mode { "Ghi chú cho chính mình".to_string() } else { tn("chat.message_to", &active.username) },
+                                placeholder: if self_mode { "Note to self".to_string() } else { tn("chat.message_to", &active.username) },
                                 sending: is_sending(),
                                 disabled: user_keys().is_none() || active_blocked,
                                 disabled_reason: if active_blocked {
-                                    Some(format!("Bạn đã chặn {}. Bỏ chặn để tiếp tục nhắn tin.", active.username))
+                                    Some(format!("You have blocked {}. Unblock to continue texting.", active.username))
                                 } else if user_keys().is_none() {
-                                    Some("Thiết bị này chưa có khóa mã hóa. Nhập khóa trong Cài đặt › Bảo mật để nhắn tin.".to_string())
+                                    Some("This device does not yet have an encryption key. Enter the key in Settings › Security for messaging.".to_string())
                                 } else {
                                     None
                                 },
@@ -3834,7 +3834,7 @@ pub fn Chat(
                             div {
                                 class: "panel-resizer resizer-right",
                                 "data-resizer": "details",
-                                title: "Kéo để thay đổi kích thước chi tiết",
+                                title: "Drag to resize the detail",
                             }
                             DmDetailsPanel {
                                 user_id: active.id.clone(),
@@ -3868,27 +3868,27 @@ pub fn Chat(
                                 button {
                                     r#type: "button",
                                     class: "icon-btn back-btn",
-                                    aria_label: "Quay lại danh sách",
+                                    aria_label: "Back to the list",
                                     onclick: move |_| active_group.set(None),
                                     BackIcon {}
                                 }
                                 button {
                                     r#type: "button",
                                     class: "chat-header-identity",
-                                    title: "Thông tin nhóm",
+                                    title: "Group information",
                                     onclick: move |_| is_group_info_open.set(true),
                                     Avatar { name: grp.name.clone(), avatar_url: grp.avatar_url.clone(), size: 38 }
                                     div { class: "chat-header-info",
                                         h2 { class: "chat-header-title", "{grp.name}" }
-                                        span { class: "chat-header-meta", "{grp.member_count} thành viên" }
+                                        span { class: "chat-header-meta", "{grp.member_count} members" }
                                     }
                                 }
                                 div { class: "chat-header-actions",
                                     button {
                                         r#type: "button",
                                         class: "icon-btn",
-                                        title: "Gọi thoại nhóm",
-                                        aria_label: "Gọi thoại nhóm",
+                                        title: "Group voice call",
+                                        aria_label: "Group voice call",
                                         onclick: {
                                             let gid = grp.id.clone();
                                             move |_| start_call("audio", None, Some(gid.clone()))
@@ -3898,8 +3898,8 @@ pub fn Chat(
                                     button {
                                         r#type: "button",
                                         class: "icon-btn",
-                                        title: "Gọi video nhóm",
-                                        aria_label: "Gọi video nhóm",
+                                        title: "Group video calling",
+                                        aria_label: "Group video calling",
                                         onclick: {
                                             let gid = grp.id.clone();
                                             move |_| start_call("video", None, Some(gid.clone()))
@@ -3909,8 +3909,8 @@ pub fn Chat(
                                     button {
                                         r#type: "button",
                                         class: if is_group_info_open() { "icon-btn active" } else { "icon-btn" },
-                                        title: "Thông tin nhóm",
-                                        aria_label: "Thông tin nhóm",
+                                        title: "Group information",
+                                        aria_label: "Group information",
                                         aria_pressed: "{is_group_info_open()}",
                                         onclick: move |_| is_group_info_open.set(!is_group_info_open()),
                                         PanelRightIcon { size: 22 }
@@ -3918,14 +3918,14 @@ pub fn Chat(
                                     button {
                                         r#type: "button",
                                         class: if chat_menu_open() { "icon-btn active" } else { "icon-btn" },
-                                        title: "Tùy chọn khác",
-                                        aria_label: "Tùy chọn khác",
+                                        title: "More options",
+                                        aria_label: "More options",
                                         aria_haspopup: "menu",
                                         aria_expanded: "{chat_menu_open()}",
                                         onclick: move |e| { e.stop_propagation(); chat_menu_open.set(!chat_menu_open()); },
                                         MoreIcon { size: 20 }
                                         if is_group_admin && gs_now.as_ref().is_some_and(|s| s.pending_requests > 0) {
-                                            span { class: "dot-badge", aria_label: "Có yêu cầu tham gia" }
+                                            span { class: "dot-badge", aria_label: "Participation is required" }
                                         }
                                     }
                                 }
@@ -3946,9 +3946,9 @@ pub fn Chat(
                                                             Ok(code) => {
                                                                 let url = format!("{}/invite/g/{}", platform::app_origin().await, code);
                                                                 platform::copy_to_clipboard(&url);
-                                                                toast.set(Some("Đã sao chép liên kết mời".into()));
+                                                                toast.set(Some("Invite link copied".into()));
                                                             }
-                                                            Err(e) => toast.set(Some(if e.code == "link_join_disabled" { "Nhóm đang tắt tham gia bằng liên kết".into() } else { "Không lấy được liên kết mời".into() })),
+                                                            Err(e) => toast.set(Some(if e.code == "link_join_disabled" { "The group is turning off join by link".into() } else { "Could not get invite link".into() })),
                                                         }
                                                     });
                                                 }
@@ -3976,7 +3976,7 @@ pub fn Chat(
                             }
 
                             if group_channels.read().len() > 1 {
-                                div { class: "sidebar-filters", style: "padding: var(--space-2) var(--space-4);", role: "tablist", aria_label: "Kênh của nhóm",
+                                div { class: "sidebar-filters", style: "padding: var(--space-2) var(--space-4);", role: "tablist", aria_label: "Group channel",
                                     for ch in group_channels() {
                                         {
                                             let is_cur = active_group_channel().as_ref().map(|c| c.id == ch.id).unwrap_or(false);
@@ -4017,7 +4017,7 @@ pub fn Chat(
                                 messages: group_view.clone(),
                                 show_sender_names: true,
                                 intro_title: grp.name.clone(),
-                                intro_sub: format!("Nhóm trò chuyện với {} thành viên. Tin nhắn nhóm hiện được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.", grp.member_count),
+                                intro_sub: format!("Group chat with {} members. Group messages are currently stored by the server in plain form, without end-to-end encryption.", grp.member_count),
                                 highlight_id: highlight_msg(),
                                 on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
                                 on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
@@ -4044,7 +4044,7 @@ pub fn Chat(
                                         spawn(async move {
                                             match groups::groups_pin_message(&g, &mid).await {
                                                 Ok(pinned) => group_messages.with_mut(|l| for m in l.iter_mut() { if m.id == mid { m.is_pinned = pinned; } }),
-                                                Err(_) => toast.set(Some("Bạn không có quyền ghim tin nhắn trong nhóm này".into())),
+                                                Err(_) => toast.set(Some("You do not have permission to pin messages in this group".into())),
                                             }
                                         });
                                     }
@@ -4063,7 +4063,7 @@ pub fn Chat(
                                 value: group_input(),
                                 placeholder: tn("chat.message_to", &grp.name),
                                 disabled: !g_send,
-                                disabled_reason: if g_send { None } else { Some("Chỉ trưởng nhóm và phó nhóm được gửi tin nhắn trong nhóm này".to_string()) },
+                                disabled_reason: if g_send { None } else { Some("Only the group leader and deputy group leader can send messages in this group".to_string()) },
                                 mentions: group_mentions.clone(),
                                 quick_replies: quick_replies.clone(),
                                 allow_poll: g_poll,
@@ -4100,7 +4100,7 @@ pub fn Chat(
                             button {
                                 r#type: "button",
                                 class: "drawer-backdrop",
-                                aria_label: "Đóng thông tin nhóm",
+                                aria_label: "Close group information",
                                 tabindex: "-1",
                                 onclick: move |_| is_group_info_open.set(false),
                             }
@@ -4160,7 +4160,7 @@ pub fn Chat(
                             on_close: move |_| active_ent_module.set(None),
                         }
                     } else {
-                        div { class: "empty-state", div { class: "empty-state-title", "Chế độ doanh nghiệp hiện đang tắt" } }
+                        div { class: "empty-state", div { class: "empty-state-title", "Enterprise mode is currently off" } }
                     }
                 } else if let Some(ch) = selected_channel() {
                     div { class: "chat-main-container",
@@ -4169,7 +4169,7 @@ pub fn Chat(
                                 button {
                                     r#type: "button",
                                     class: "icon-btn back-btn",
-                                    aria_label: "Quay lại danh sách kênh",
+                                    aria_label: "Return to the channel list",
                                     onclick: move |_| selected_channel.set(None),
                                     BackIcon {}
                                 }
@@ -4186,23 +4186,23 @@ pub fn Chat(
                                 }
                                 div { class: "chat-header-actions",
                                     if ch.channel_type != "voice" {
-                                        button { r#type: "button", class: "btn-ghost", title: "Sự kiện của cộng đồng", onclick: move |_| events_open.set(true),
-                                            span { "📅" } span { class: "hide-mobile", "Sự kiện" } }
-                                        button { r#type: "button", class: "btn-ghost", title: "Biệt danh, ảnh và giới thiệu riêng trong cộng đồng này", onclick: move |_| community_profile_open.set(true),
-                                            crate::components::icons::UserIcon {} span { class: "hide-mobile", "Hồ sơ ở đây" } }
+                                        button { r#type: "button", class: "btn-ghost", title: "Community events", onclick: move |_| events_open.set(true),
+                                            span { "📅" } span { class: "hide-mobile", "Events" } }
+                                        button { r#type: "button", class: "btn-ghost", title: "Nickname, photo and profile in this community", onclick: move |_| community_profile_open.set(true),
+                                            crate::components::icons::UserIcon {} span { class: "hide-mobile", "Profile here" } }
                                         button {
                                             r#type: "button",
                                             class: if popped_now { "btn-ghost active" } else { "btn-ghost" },
-                                            title: if popped_now { "Bỏ kênh này khỏi mục Tin nhắn" } else { "Hiện kênh này trong mục Tin nhắn để đọc nhanh" },
+                                            title: if popped_now { "Remove this channel from the Messages section" } else { "Show this channel in the Messages section for quick reading" },
                                             onclick: {
                                                 let cid = ch.id.clone();
                                                 move |_| {
                                                     apply_pref(("channel".to_string(), cid.clone(), serde_json::json!({ "in_messages": !popped_now })));
-                                                    toast.set(Some(if popped_now { "Đã bỏ kênh khỏi Tin nhắn".into() } else { "Kênh đã xuất hiện trong mục Tin nhắn".into() }));
+                                                    toast.set(Some(if popped_now { "Removed channel from Messages".into() } else { "The channel appears in the Messages section".into() }));
                                                 }
                                             },
                                             MessageIcon { size: 16 }
-                                            span { class: "hide-mobile", if popped_now { "Bỏ khỏi Tin nhắn" } else { "Đưa ra Tin nhắn" } }
+                                            span { class: "hide-mobile", if popped_now { "Remove from Messages" } else { "Give Message" } }
                                         }
                                     }
                                     if let Some(srv) = selected_server() {
@@ -4258,8 +4258,8 @@ pub fn Chat(
                                         MessageList {
                                             messages: channel_view.clone(),
                                             show_sender_names: true,
-                                            intro_title: format!("Chào mừng đến #{}", crate::components::navigation::sidebar::format_display_label(&ch.name)),
-                                            intro_sub: "Đây là khởi đầu của kênh. Tin nhắn kênh cộng đồng được máy chủ lưu ở dạng thường, chưa mã hóa đầu cuối.".to_string(),
+                                            intro_title: format!("Welcome to #{}", crate::components::navigation::sidebar::format_display_label(&ch.name)),
+                                            intro_sub: "This is the beginning of the channel. Community channel messages are stored by the server in plain form, without end-to-end encryption.".to_string(),
                                             highlight_id: highlight_msg(),
                                             on_open_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
                                             on_profile_click: move |(uid, x, y): (String, f64, f64)| profile_popover.set(Some((uid, x, y))),
@@ -4275,20 +4275,20 @@ pub fn Chat(
                                     input_id: "channel-chat-input".to_string(),
                                     value: channel_input(),
                                     placeholder: if selected_server().is_some_and(|s| s.is_enterprise) {
-                                        format!("Nhắn tin tới #{} (gõ / để dùng lệnh doanh nghiệp)", crate::components::navigation::sidebar::format_display_label(&ch.name))
+                                        format!("Text #{} (type / to use business command)", crate::components::navigation::sidebar::format_display_label(&ch.name))
                                     } else {
-                                        format!("Nhắn tin tới #{}", crate::components::navigation::sidebar::format_display_label(&ch.name))
+                                        format!("Text #{}", crate::components::navigation::sidebar::format_display_label(&ch.name))
                                     },
                                     extra_commands: if selected_server().is_some_and(|s| s.is_enterprise) {
                                         vec![
-                                            ("".into(), "svg:workspace".into(), "/workspace".into(), "Mở tổng quan không gian doanh nghiệp".into()),
-                                            ("".into(), "svg:task".into(), "/task".into(), "Tạo công việc mới: /task <tiêu đề công việc>".into()),
-                                            ("".into(), "svg:checkin".into(), "/checkin".into(), "Chấm công vào ca làm việc: /checkin [ghi chú]".into()),
-                                            ("".into(), "svg:checkout".into(), "/checkout".into(), "Chấm công tan ca làm việc: /checkout [ghi chú]".into()),
-                                            ("".into(), "svg:leave".into(), "/leave".into(), "Gửi đơn xin nghỉ phép: /leave <lý do>".into()),
-                                            ("".into(), "svg:meet".into(), "/meet".into(), "Đặt lịch họp nhanh: /meet <tiêu đề cuộc họp>".into()),
-                                            ("".into(), "svg:approve".into(), "/approve".into(), "Gửi đề xuất phê duyệt: /approve <tiêu đề đề xuất>".into()),
-                                            ("".into(), "svg:announce".into(), "/announce".into(), "Đăng thông báo nội bộ: /announce <nội dung>".into()),
+                                            ("".into(), "svg:workspace".into(), "/workspace".into(), "Open the enterprise space overview".into()),
+                                            ("".into(), "svg:task".into(), "/task".into(), "Create new task: /task <job title>".into()),
+                                            ("".into(), "svg:checkin".into(), "/checkin".into(), "Check in for work shift: /checkin [note]".into()),
+                                            ("".into(), "svg:checkout".into(), "/checkout".into(), "Check-in after shift: /checkout [notes]".into()),
+                                            ("".into(), "svg:leave".into(), "/leave".into(), "Submit leave application: /leave <reason>".into()),
+                                            ("".into(), "svg:meet".into(), "/meet".into(), "Schedule a quick meeting: /meet <meeting title>".into()),
+                                            ("".into(), "svg:approve".into(), "/approve".into(), "Send proposal for approval: /approve <proposal title>".into()),
+                                            ("".into(), "svg:announce".into(), "/announce".into(), "Post an internal announcement: /announce <content>".into()),
                                         ]
                                     } else {
                                         Vec::new()
@@ -4312,7 +4312,7 @@ pub fn Chat(
                                             div {
                                                 div { class: "voice-room-title", "{crate::components::navigation::sidebar::format_display_label(&ch.name)}" }
                                                 div { class: "voice-room-sub",
-                                                    if connected { "Bạn đang ở trong kênh thoại" } else { "Bạn chưa tham gia kênh thoại này" }
+                                                    if connected { "You are in the voice channel" } else { "You have not joined this voice channel yet" }
                                                 }
                                             }
                                             if !parts.is_empty() {
@@ -4322,7 +4322,7 @@ pub fn Chat(
                                                             Avatar { name: p.username.clone(), avatar_url: p.avatar_url.clone(), size: 64 }
                                                             span { class: "voice-participant-name", "{p.username}" }
                                                             if p.self_mute {
-                                                                span { class: "chat-item-tag", "Đã tắt mic" }
+                                                                span { class: "chat-item-tag", "Mic turned off" }
                                                             }
                                                         }
                                                     }
@@ -4333,8 +4333,8 @@ pub fn Chat(
                                                     button {
                                                         r#type: "button",
                                                         class: if is_voice_muted() { "call-btn call-btn-danger" } else { "call-btn" },
-                                                        title: if is_voice_muted() { "Bật micro" } else { "Tắt micro" },
-                                                        aria_label: if is_voice_muted() { "Bật micro" } else { "Tắt micro" },
+                                                        title: if is_voice_muted() { "Turn on the microphone" } else { "Turn off the microphone" },
+                                                        aria_label: if is_voice_muted() { "Turn on the microphone" } else { "Turn off the microphone" },
                                                         onclick: move |_| {
                                                             if let Some(vc) = active_voice_channel() {
                                                                 let next = !is_voice_muted();
@@ -4349,8 +4349,8 @@ pub fn Chat(
                                                     button {
                                                         r#type: "button",
                                                         class: "call-btn call-btn-danger",
-                                                        title: "Rời kênh thoại",
-                                                        aria_label: "Rời kênh thoại",
+                                                        title: "Leave the voice channel",
+                                                        aria_label: "Leave the voice channel",
                                                         onclick: move |_| {
                                                             if let Some(vc) = active_voice_channel() {
                                                                 spawn(async move {
@@ -4368,7 +4368,7 @@ pub fn Chat(
                                                         class: "btn-primary",
                                                         onclick: move |_| select_channel(ch_join.clone()),
                                                         VolumeIcon { size: 18 }
-                                                        span { "Tham gia kênh thoại" }
+                                                        span { "Join voice channel" }
                                                     }
                                                 }
                                             }
@@ -4383,7 +4383,7 @@ pub fn Chat(
                                 div {
                                     class: "panel-resizer resizer-right",
                                     "data-resizer": "details",
-                                    title: "Kéo để thay đổi kích thước danh sách thành viên",
+                                    title: "Drag to resize the member list",
                                 }
                                 ServerMembersPanel {
                                     owner_id: srv.owner_id.clone(),
@@ -4412,20 +4412,20 @@ pub fn Chat(
                             span { class: "cw-orb-sat s3", ShieldIcon { size: 13 } }
                         }
                         if matches!(section, NavSection::Communities) {
-                            div { class: "empty-state-title", "Chọn một cộng đồng" }
-                            div { class: "empty-state-sub", "Mỗi cộng đồng có nhiều kênh văn bản và kênh thoại theo danh mục. Tạo mới hoặc tham gia bằng mã mời." }
+                            div { class: "empty-state-title", "Choose a community" }
+                            div { class: "empty-state-sub", "Each community has multiple text channels and voice channels by category. Create new or join with invitation code." }
                             button {
                                 r#type: "button",
                                 class: "btn-primary",
                                 onclick: move |_| is_community_modal_open.set(true),
-                                span { "Tạo hoặc tham gia cộng đồng" }
+                                span { "Create or join community" }
                             }
                         } else if matches!(section, NavSection::Server(_)) {
-                            div { class: "empty-state-title", "Chọn một kênh" }
-                            div { class: "empty-state-sub", "Chọn kênh văn bản để đọc tin nhắn, hoặc kênh thoại để tham gia trò chuyện." }
+                            div { class: "empty-state-title", "Select a channel" }
+                            div { class: "empty-state-sub", "Select the text channel to read messages, or the voice channel to join the chat." }
                         } else {
-                            div { class: "empty-state-title", "Sẵn sàng trò chuyện riêng tư" }
-                            div { class: "empty-state-sub", "Mọi tin nhắn trực tiếp đều được mã hóa đầu cuối trên thiết bị của bạn." }
+                            div { class: "empty-state-title", "Ready to chat privately" }
+                            div { class: "empty-state-sub", "All direct messages are end-to-end encrypted on your device." }
                             div { class: "cw-quickstart-grid",
                                 button {
                                     r#type: "button",
@@ -4433,8 +4433,8 @@ pub fn Chat(
                                     onclick: move |_| nav_section.set(NavSection::Friends),
                                     span { class: "cw-qs-icon qs-blue", UserPlusIcon { size: 20 } }
                                     span { class: "cw-qs-body",
-                                        span { class: "cw-qs-title", "Thêm bạn bè" }
-                                        span { class: "cw-qs-desc", "Tìm theo tên tài khoản để nhắn tin ngay" }
+                                        span { class: "cw-qs-title", "Add friends" }
+                                        span { class: "cw-qs-desc", "Find by username to message right away" }
                                     }
                                 }
                                 button {
@@ -4443,8 +4443,8 @@ pub fn Chat(
                                     onclick: move |_| is_create_group_open.set(true),
                                     span { class: "cw-qs-icon qs-violet", GroupIcon { size: 20 } }
                                     span { class: "cw-qs-body",
-                                        span { class: "cw-qs-title", "Tạo nhóm trò chuyện" }
-                                        span { class: "cw-qs-desc", "Trò chuyện và gọi nhóm nhiều người" }
+                                        span { class: "cw-qs-title", "Create group chat" }
+                                        span { class: "cw-qs-desc", "Chat and group call with multiple people" }
                                     }
                                 }
                                 button {
@@ -4453,8 +4453,8 @@ pub fn Chat(
                                     onclick: move |_| { server_settings_open.set(false); is_settings_open.set(true); },
                                     span { class: "cw-qs-icon qs-emerald", PaletteIcon { size: 20 } }
                                     span { class: "cw-qs-body",
-                                        span { class: "cw-qs-title", "Tùy biến giao diện" }
-                                        span { class: "cw-qs-desc", "Đổi màu chủ đề, ảnh nền và hiệu ứng" }
+                                        span { class: "cw-qs-title", "Customize appearance" }
+                                        span { class: "cw-qs-desc", "Change theme color, background image and effects" }
                                     }
                                 }
                                 button {
@@ -4463,8 +4463,8 @@ pub fn Chat(
                                     onclick: move |_| tour_open.set(true),
                                     span { class: "cw-qs-icon qs-amber", SparkleIcon { size: 20 } }
                                     span { class: "cw-qs-body",
-                                        span { class: "cw-qs-title", "Hướng dẫn người mới" }
-                                        span { class: "cw-qs-desc", "Xem giới thiệu nhanh các tính năng nổi bật" }
+                                        span { class: "cw-qs-title", "Getting started guide" }
+                                        span { class: "cw-qs-desc", "Take a quick tour of key features" }
                                     }
                                 }
                             }
@@ -4630,7 +4630,7 @@ pub fn Chat(
                     on_created: move |_| {
                         create_task_from.set(None);
                         ent_refresh_tick.set(ent_refresh_tick() + 1);
-                        toast.set(Some("Đã tạo công việc từ tin nhắn".into()));
+                        toast.set(Some("Created job from message".into()));
                     },
                 }
             }
@@ -4664,7 +4664,7 @@ pub fn Chat(
                     on_blocked: move |_| {
                         group_manage_open.set(false);
                         active_group.set(None);
-                        toast.set(Some("Đã chặn và rời nhóm".into()));
+                        toast.set(Some("Blocked and left the group".into()));
                         spawn(async move {
                             if let Ok(grps) = groups::groups_list().await {
                                 groups.set(grps);
@@ -4689,7 +4689,7 @@ pub fn Chat(
                             spawn(async move {
                                 match social::wallpaper_set("dm", &f.id, &v).await {
                                     Ok(_) => chat_wallpaper.set(Some(v)),
-                                    Err(_) => toast.set(Some("Không đổi được hình nền".into())),
+                                    Err(_) => toast.set(Some("Cannot change wallpaper".into())),
                                 }
                             });
                         }
@@ -4697,7 +4697,7 @@ pub fn Chat(
                         spawn(async move {
                             match social::wallpaper_set("group", &g.id, &v).await {
                                 Ok(_) => chat_wallpaper.set(Some(v)),
-                                Err(_) => toast.set(Some("Không đổi được hình nền".into())),
+                                Err(_) => toast.set(Some("Cannot change wallpaper".into())),
                             }
                         });
                     }
@@ -4718,7 +4718,7 @@ pub fn Chat(
                                     my_sessions.set(list);
                                 }
                             }
-                            Err(_) => toast.set(Some("Không đổi được tên thiết bị".into())),
+                            Err(_) => toast.set(Some("Cannot change device name".into())),
                         }
                     });
                 },
@@ -4727,8 +4727,8 @@ pub fn Chat(
         if confirm_clear_self() {
             div { class: "modal-overlay", onclick: move |_| confirm_clear_self.set(false),
                 div { class: "modal-content compact", role: "alertdialog", aria_modal: "true", onclick: move |e| e.stop_propagation(),
-                    h3 { class: "modal-title", "Xóa \"{t(\"chat.self\")}\"?" }
-                    p { class: "modal-sub", "Toàn bộ ghi chú trong cuộc trò chuyện với chính mình bị xóa vĩnh viễn trên mọi thiết bị. Bạn có thể tạo lại sau, nhưng không khôi phục được nội dung cũ." }
+                    h3 { class: "modal-title", "Delete \"{t(\"chat.self\")}\"?" }
+                    p { class: "modal-sub", "All notes in a conversation with yourself are permanently deleted on all devices. You can recreate it later, but you can't restore the old content." }
                     div { class: "modal-actions",
                         button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_clear_self.set(false), "{t(\"act.cancel\")}" }
                         button { r#type: "button", class: "btn-danger",
@@ -4743,13 +4743,13 @@ pub fn Chat(
                                                 active_friend.set(None);
                                             }
                                             last_previews.with_mut(|m| { m.remove(&me); });
-                                            toast.set(Some("Đã xóa \"Chính mình\". Bạn có thể bấm dấu + ở trên để tạo lại.".into()));
+                                            toast.set(Some("Deleted \"Yourself\". You can click the + sign above to recreate.".into()));
                                         }
-                                        Err(_) => toast.set(Some("Không xóa được".into())),
+                                        Err(_) => toast.set(Some("Cannot be deleted".into())),
                                     }
                                 });
                             },
-                            "Xóa vĩnh viễn"
+                            "Delete permanently"
                         }
                     }
                 }
@@ -4772,7 +4772,7 @@ pub fn Chat(
         if events_open() {
             if let Some(srv) = selected_server() {
                 div { class: "modal-overlay", onclick: move |_| events_open.set(false),
-                    div { class: "modal-content events-modal", role: "dialog", aria_modal: "true", aria_label: "Sự kiện", onclick: move |e| e.stop_propagation(),
+                    div { class: "modal-content events-modal", role: "dialog", aria_modal: "true", aria_label: "Events", onclick: move |e| e.stop_propagation(),
                         onkeydown: move |e| if e.key() == Key::Escape { events_open.set(false) },
                         crate::components::community_ui::EventsPanel { server_id: srv.id.clone(), can_manage: can_manage_channels(), on_close: move |_| events_open.set(false) }
                     }
@@ -4782,7 +4782,7 @@ pub fn Chat(
         if let Some(msg) = toast() {
             div { class: "app-toast", role: "status", aria_live: "polite",
                 span { "{msg}" }
-                button { r#type: "button", class: "icon-btn", aria_label: "Đóng thông báo", onclick: move |_| toast.set(None), crate::components::icons::CloseIcon { size: 14 } }
+                button { r#type: "button", class: "icon-btn", aria_label: "Close notification", onclick: move |_| toast.set(None), crate::components::icons::CloseIcon { size: 14 } }
             }
         }
 
@@ -4904,7 +4904,7 @@ pub fn Chat(
             current_user_id: current_user_id.clone(),
             on_unlocked: move |keys| {
                 user_keys.set(Some(keys));
-                toast.set(Some("Đã mở khóa mã hóa đầu cuối".into()));
+                toast.set(Some("End-to-end encryption unlocked".into()));
             },
         }
 

@@ -113,7 +113,7 @@ async fn load_provider_with_refresh(
             let refreshed = instantiate_provider(&provider_id, &cfg).map_err(AppError::from)?;
             return Ok((refreshed, provider_id, cfg));
         } else {
-            sqlx::query("UPDATE cloud_connections SET status = 'auth_error', last_error = 'Phiên cloud hết hạn, cần kết nối lại', updated_at = now() WHERE id = $1")
+            sqlx::query("UPDATE cloud_connections SET status = 'auth_error', last_error = 'Cloud session expired, please reconnect', updated_at = now() WHERE id = $1")
                 .bind(connection_id)
                 .execute(pool)
                 .await?;

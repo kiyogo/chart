@@ -36,29 +36,29 @@ pub const CONNECT_VOICE: i64 = 1 << 9;
 pub const MANAGE_EXPRESSIONS: i64 = 1 << 10;
 
 pub const PERMS: [(i64, &str, &str); 11] = [
-    (VIEW_CHANNELS, "Xem kênh", "Thấy các kênh và đọc tin nhắn"),
-    (SEND_MESSAGES, "Gửi tin nhắn", "Nhắn tin trong các kênh văn bản"),
-    (MENTION_EVERYONE, "Nhắc mọi người", "Gửi tin nhắn có nhắc hàng loạt"),
-    (CONNECT_VOICE, "Vào kênh thoại", "Tham gia kênh thoại và gọi trong cộng đồng"),
-    (CREATE_INVITES, "Tạo lời mời", "Tạo liên kết và thẻ mời bạn bè"),
-    (MANAGE_CHANNELS, "Quản lý kênh", "Tạo, sửa, xóa kênh và danh mục"),
-    (KICK_MEMBERS, "Mời thành viên ra", "Xóa thành viên khỏi cộng đồng"),
-    (MANAGE_ROLES, "Quản lý vai trò", "Tạo vai trò và gán vai trò thấp hơn quyền của mình"),
-    (MANAGE_SERVER, "Quản lý cộng đồng", "Đổi cài đặt chung của cộng đồng"),
-    (MANAGE_EXPRESSIONS, "Quản lý biểu cảm", "Thêm, xóa emoji và sticker của cộng đồng"),
-    (ADMINISTRATOR, "Quản trị viên", "Toàn quyền trong cộng đồng"),
+    (VIEW_CHANNELS, "Watch channel", "See channels and read messages"),
+    (SEND_MESSAGES, "Send a message", "Messaging in text channels"),
+    (MENTION_EVERYONE, "Remind everyone", "Send messages with reminders in bulk"),
+    (CONNECT_VOICE, "Go to the voice channel", "Join the voice channel and call in the community"),
+    (CREATE_INVITES, "Create invitations", "Create links and cards to invite friends"),
+    (MANAGE_CHANNELS, "Channel management", "Create, edit, delete channels and categories"),
+    (KICK_MEMBERS, "Invite members out", "Remove members from the community"),
+    (MANAGE_ROLES, "Role management", "Create a role and assign a lower role to your permissions"),
+    (MANAGE_SERVER, "Community management", "Change general community settings"),
+    (MANAGE_EXPRESSIONS, "Managing expressions", "Add, remove community emojis and stickers"),
+    (ADMINISTRATOR, "Administrator", "Full power in the community"),
 ];
 
 fn role_error(code: &str) -> &'static str {
     match code {
-        "cannot_grant_missing_permissions" => "Bạn không thể cấp hoặc thu hồi quyền mà chính bạn không có",
-        "insufficient_permissions" => "Bạn không có quyền làm việc này",
-        "cannot_delete_everyone" => "Không thể xóa vai trò này",
-        "cannot_rename_everyone" => "Không thể đổi tên vai trò này",
-        "invalid_role_name" => "Tên vai trò từ 1 đến 32 ký tự",
-        "cannot_kick_owner" => "Không thể mời chủ sở hữu ra",
-        "cannot_kick_administrator" => "Chỉ chủ sở hữu mới mời được quản trị viên ra",
-        _ => "Không thực hiện được",
+        "cannot_grant_missing_permissions" => "You cannot grant or revoke permissions that you do not have yourself",
+        "insufficient_permissions" => "You do not have permission to do this",
+        "cannot_delete_everyone" => "This role cannot be deleted",
+        "cannot_rename_everyone" => "This role cannot be renamed",
+        "invalid_role_name" => "Role name from 1 to 32 characters",
+        "cannot_kick_owner" => "Unable to invite the owner out",
+        "cannot_kick_administrator" => "Only owners can invite administrators out",
+        _ => "Cannot be done",
     }
 }
 
@@ -109,24 +109,24 @@ impl Tab {
 }
 
 const NAV: [(&str, Tab, &str); 14] = [
-    ("Cộng đồng", Tab::Overview, "Tổng quan"),
-    ("Cộng đồng", Tab::Welcome, "Chào mừng"),
-    ("Cộng đồng", Tab::Expressions, "Biểu cảm"),
-    ("Quản lý", Tab::Roles, "Vai trò"),
-    ("Quản lý", Tab::Members, "Thành viên"),
-    ("Quản lý", Tab::Audit, "Kiểm duyệt"),
-    ("Quản lý", Tab::Plugins, "Plugin & Webhook"),
-    ("Doanh nghiệp", Tab::EntGeneral, "Thiết lập"),
-    ("Doanh nghiệp", Tab::EntHr, "Nhân sự"),
-    ("Doanh nghiệp", Tab::EntWork, "Công việc"),
-    ("Doanh nghiệp", Tab::EntTime, "Chấm công"),
-    ("Doanh nghiệp", Tab::EntDocs, "Phê duyệt"),
-    ("Doanh nghiệp", Tab::EntSecurity, "Bảo mật"),
-    ("Doanh nghiệp", Tab::EntAudit, "Kiểm toán"),
+    ("Communities", Tab::Overview, "Overview"),
+    ("Communities", Tab::Welcome, "Welcome"),
+    ("Communities", Tab::Expressions, "Expression"),
+    ("Management", Tab::Roles, "Role"),
+    ("Management", Tab::Members, "Member"),
+    ("Management", Tab::Audit, "Censorship"),
+    ("Management", Tab::Plugins, "Plugin & Webhook"),
+    ("Enterprise", Tab::EntGeneral, "Setup"),
+    ("Enterprise", Tab::EntHr, "Human resources"),
+    ("Enterprise", Tab::EntWork, "Work"),
+    ("Enterprise", Tab::EntTime, "Timekeeping"),
+    ("Enterprise", Tab::EntDocs, "Approval"),
+    ("Enterprise", Tab::EntSecurity, "Security"),
+    ("Enterprise", Tab::EntAudit, "Auditing"),
 ];
 
 fn tab_label(t: Tab) -> &'static str {
-    NAV.iter().find(|x| x.1 == t).map(|x| x.2).unwrap_or("Tổng quan")
+    NAV.iter().find(|x| x.1 == t).map(|x| x.2).unwrap_or("Overview")
 }
 
 fn tab_keywords(t: Tab) -> &'static str {
@@ -259,20 +259,20 @@ pub fn ServerSettingsView(
             onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()); },
             div { class: if has_detail() { "settings-page has-detail" } else { "settings-page" },
                 // Left Settings Nav
-                nav { class: "settings-nav", aria_label: "Danh mục cài đặt",
+                nav { class: "settings-nav", aria_label: "Settings categories",
                     button {
                         r#type: "button",
                         class: "settings-nav-item only-mobile",
                         onclick: move |_| on_close.call(()),
                         BackIcon { size: 18 }
-                        span { "Quay lại" }
+                        span { "Back" }
                     }
                     div { class: "settings-search search-field",
                         SearchIcon { size: 16 }
                         input {
                             r#type: "search",
-                            placeholder: "Tìm cài đặt",
-                            aria_label: "Tìm cài đặt",
+                            placeholder: "Search settings",
+                            aria_label: "Search settings",
                             value: "{nav_query}",
                             oninput: move |e| nav_query.set(e.value()),
                             onkeydown: {
@@ -288,7 +288,7 @@ pub fn ServerSettingsView(
                     }
 
                     if !nav_query().trim().is_empty() && filtered_nav.is_empty() {
-                        div { class: "sidebar-empty", "Không tìm thấy cài đặt phù hợp" }
+                        div { class: "sidebar-empty", "No matching settings found" }
                     }
 
                     for (i, (group, t, label)) in filtered_nav.iter().copied().enumerate() {
@@ -313,7 +313,7 @@ pub fn ServerSettingsView(
                             class: "settings-nav-item",
                             onclick: move |_| on_close.call(()),
                             BackIcon { size: 18 }
-                            span { "Quay lại" }
+                            span { "Back" }
                         }
                     }
                 }
@@ -321,7 +321,7 @@ pub fn ServerSettingsView(
                 div {
                     class: "panel-resizer",
                     "data-resizer": "settings-nav",
-                    title: "Kéo để thay đổi kích thước",
+                    title: "Drag to resize",
                 }
 
                 // Right Settings Body
@@ -331,7 +331,7 @@ pub fn ServerSettingsView(
                             button {
                                 r#type: "button",
                                 class: "icon-btn only-mobile",
-                                aria_label: "Quay lại danh mục",
+                                aria_label: "Back to category",
                                 onclick: move |_| has_detail.set(false),
                                 BackIcon {}
                             }
@@ -364,11 +364,11 @@ pub fn ServerSettingsView(
                                         {
                                             let (s1, s2, s3, s4, s5) = (sid.clone(), sid.clone(), sid.clone(), sid.clone(), sid.clone());
                                             let mode_sub = if st.is_enterprise {
-                                                if st.is_public { "Doanh nghiệp công khai" } else { "Doanh nghiệp" }
+                                                if st.is_public { "Public enterprise" } else { "Enterprise" }
                                             } else if st.is_public {
-                                                "Cộng đồng công khai"
+                                                "Public community"
                                             } else {
-                                                "Cộng đồng riêng tư"
+                                                "Private community"
                                             };
                                             rsx! {
                                                 div { class: "settings-profile-card",
@@ -400,11 +400,11 @@ pub fn ServerSettingsView(
                                                                                     Ok(url) => match social::server_settings_set(&s, json!({ "banner_url": url })).await {
                                                                                         Ok(n) => {
                                                                                             settings.set(Some(n));
-                                                                                            msg.set(Some((false, "Đã cập nhật ảnh bìa".into())));
+                                                                                            msg.set(Some((false, "Updated cover photo".into())));
                                                                                         }
-                                                                                        Err(_) => msg.set(Some((true, "Không lưu được ảnh bìa".into()))),
+                                                                                        Err(_) => msg.set(Some((true, "Cover image could not be saved".into()))),
                                                                                     },
-                                                                                    Err(_) => msg.set(Some((true, "Không tải ảnh bìa lên được".into()))),
+                                                                                    Err(_) => msg.set(Some((true, "Unable to upload cover photo".into()))),
                                                                                 }
                                                                             }
                                                                         });
@@ -415,7 +415,7 @@ pub fn ServerSettingsView(
                                                                     class: "btn-avatar-upload",
                                                                     role: "button",
                                                                     tabindex: "0",
-                                                                    "Đổi ảnh bìa"
+                                                                    "Change banner"
                                                                 }
                                                             }
                                                         }
@@ -423,10 +423,10 @@ pub fn ServerSettingsView(
                                                 }
 
                                                 div { class: "settings-group",
-                                                    h2 { class: "settings-group-title", "Thiết lập cộng đồng" }
+                                                    h2 { class: "settings-group-title", "Establish a community" }
                                                     div { class: "settings-list",
                                                         label { class: "settings-row toggle-row",
-                                                            span { class: "grow", span { class: "settings-label", "Cộng đồng công khai" } }
+                                                            span { class: "grow", span { class: "settings-label", "Public community" } }
                                                             input {
                                                                 r#type: "checkbox",
                                                                 class: "switch",
@@ -438,14 +438,14 @@ pub fn ServerSettingsView(
                                                                     spawn(async move {
                                                                         match social::server_settings_set(&s, json!({ "is_public": v })).await {
                                                                             Ok(n) => settings.set(Some(n)),
-                                                                            Err(_) => msg.set(Some((true, "Không lưu được".into()))),
+                                                                            Err(_) => msg.set(Some((true, "Unable to save".into()))),
                                                                         }
                                                                     });
                                                                 },
                                                             }
                                                         }
                                                         label { class: "settings-row toggle-row",
-                                                            span { class: "grow", span { class: "settings-label", "Hiển thị trên tìm kiếm" } }
+                                                            span { class: "grow", span { class: "settings-label", "Show up on search" } }
                                                             input {
                                                                 r#type: "checkbox",
                                                                 class: "switch",
@@ -457,14 +457,14 @@ pub fn ServerSettingsView(
                                                                     spawn(async move {
                                                                         match social::server_settings_set(&s, json!({ "public_index": v })).await {
                                                                             Ok(n) => settings.set(Some(n)),
-                                                                            Err(_) => msg.set(Some((true, "Không lưu được".into()))),
+                                                                            Err(_) => msg.set(Some((true, "Unable to save".into()))),
                                                                         }
                                                                     });
                                                                 },
                                                             }
                                                         }
                                                         label { class: "settings-row toggle-row",
-                                                            span { class: "grow", span { class: "settings-label", "Chế độ doanh nghiệp" } }
+                                                            span { class: "grow", span { class: "settings-label", "Enterprise mode" } }
                                                             input {
                                                                 r#type: "checkbox",
                                                                 class: "switch",
@@ -481,10 +481,10 @@ pub fn ServerSettingsView(
                                                                         match social::server_settings_set(&s, json!({ "is_enterprise": true })).await {
                                                                             Ok(n) => {
                                                                                 settings.set(Some(n));
-                                                                                msg.set(Some((false, "Đã bật chế độ doanh nghiệp".into())));
+                                                                                msg.set(Some((false, "Enterprise mode enabled".into())));
                                                                                 if let Some(h) = on_enterprise_changed { h.call(()); }
                                                                             }
-                                                                            Err(err) => msg.set(Some((true, format!("Không bật được: {}", err.code)))),
+                                                                            Err(err) => msg.set(Some((true, format!("Unable to turn on: {}", err.code)))),
                                                                         }
                                                                     });
                                                                 },
@@ -495,10 +495,10 @@ pub fn ServerSettingsView(
 
                                                 if confirm_disable_ent() && st.is_enterprise {
                                                     div { class: "ent-card",
-                                                        p { class: "settings-row-desc", "Xác nhận tắt chế độ doanh nghiệp? Dữ liệu vẫn được giữ nguyên an toàn." }
+                                                        p { class: "settings-row-desc", "Confirm enterprise mode off? Data remains secure." }
                                                         div { class: "inline-form",
-                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_disable_ent.set(false), "Giữ lại" }
-                                                            a { class: "btn-secondary", href: "{export_all_json_url(&s5)}", download: "enterprise-export.json", DownloadIcon { size: 14 } " Xuất dữ liệu JSON" }
+                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_disable_ent.set(false), "Keep it" }
+                                                            a { class: "btn-secondary", href: "{export_all_json_url(&s5)}", download: "enterprise-export.json", DownloadIcon { size: 14 } " Export JSON data" }
                                                             button {
                                                                 r#type: "button",
                                                                 class: "btn-danger-outline",
@@ -511,18 +511,18 @@ pub fn ServerSettingsView(
                                                                                 Ok(n) => {
                                                                                     confirm_disable_ent.set(false);
                                                                                     settings.set(Some(n));
-                                                                                    msg.set(Some((false, "Đã tắt chế độ doanh nghiệp".into())));
+                                                                                    msg.set(Some((false, "Enterprise mode disabled".into())));
                                                                                     if let Some(h) = on_enterprise_changed { h.call(()); }
                                                                                 }
                                                                                 Err(err) => {
                                                                                     confirm_disable_ent.set(false);
-                                                                                    msg.set(Some((true, if err.code == "retention_locked" { "Đang khóa bảo toàn dữ liệu".into() } else { format!("Lỗi: {}", err.code) })));
+                                                                                    msg.set(Some((true, if err.code == "retention_locked" { "Locking data protection".into() } else { format!("Error: {}", err.code) })));
                                                                                 }
                                                                             }
                                                                         });
                                                                     }
                                                                 },
-                                                                "Xác nhận tắt"
+                                                                "Confirm off"
                                                             }
                                                         }
                                                     }
@@ -559,7 +559,7 @@ pub fn ServerSettingsView(
                                                             let s = s.clone();
                                                             spawn(async move {
                                                                 let n = roles.read().len();
-                                                                match social::server_role_create(&s, &format!("Vai trò {n}"), LABEL_COLORS[n % LABEL_COLORS.len()], VIEW_CHANNELS | SEND_MESSAGES).await {
+                                                                match social::server_role_create(&s, &format!("Role {n}"), LABEL_COLORS[n % LABEL_COLORS.len()], VIEW_CHANNELS | SEND_MESSAGES).await {
                                                                     Ok(r) => {
                                                                         editing.set(Some(r.id.clone()));
                                                                         roles.with_mut(|l| l.push(r));
@@ -570,7 +570,7 @@ pub fn ServerSettingsView(
                                                         }
                                                     },
                                                     PlusIcon { size: 16 }
-                                                    " Tạo vai trò"
+                                                    " Create roles"
                                                 }
                                             }
                                         }
@@ -585,7 +585,7 @@ pub fn ServerSettingsView(
                                                 can_edit: can_roles,
                                                 on_saved: move |nr: ServerRole| {
                                                     roles.with_mut(|l| if let Some(x) = l.iter_mut().find(|x| x.id == nr.id) { *x = nr.clone(); });
-                                                    msg.set(Some((false, "Đã lưu vai trò".into())));
+                                                    msg.set(Some((false, "Role saved".into())));
                                                 },
                                                 on_deleted: move |id: String| {
                                                     roles.with_mut(|l| l.retain(|x| x.id != id));
@@ -596,7 +596,7 @@ pub fn ServerSettingsView(
                                         } else {
                                             div { class: "settings-list",
                                                 div { class: "settings-row",
-                                                    span { class: "settings-label", "Chọn một vai trò bên trái để chỉnh sửa" }
+                                                    span { class: "settings-label", "Select a role on the left to edit" }
                                                 }
                                             }
                                         }
@@ -629,7 +629,7 @@ pub fn ServerSettingsView(
                                 },
                                 Tab::Members => rsx! {
                                     div { class: "settings-group",
-                                        h2 { class: "settings-group-title", "Thành viên ({members.read().len()})" }
+                                        h2 { class: "settings-group-title", "Member ({members.read().len()})" }
                                         div { class: "settings-list",
                                             for m in members() {
                                                 {
@@ -645,8 +645,8 @@ pub fn ServerSettingsView(
                                                             div { class: "grow",
                                                                 div { class: "member-name",
                                                                     "{m.username}"
-                                                                    if is_srv_owner { span { class: "member-sub", " · chủ sở hữu" } }
-                                                                    if is_me { span { class: "member-sub", " · bạn" } }
+                                                                    if is_srv_owner { span { class: "member-sub", " · owner" } }
+                                                                    if is_me { span { class: "member-sub", " · you" } }
                                                                 }
                                                                 div { class: "role-chips",
                                                                     for r in my_roles {
@@ -659,7 +659,7 @@ pub fn ServerSettingsView(
                                                                                         button {
                                                                                             r#type: "button",
                                                                                             class: "chip-x",
-                                                                                            aria_label: "Gỡ vai trò {r.name}",
+                                                                                            aria_label: "Remove role {r.name}",
                                                                                             onclick: move |_| {
                                                                                                 let (s, u, rid) = (s.clone(), u.clone(), rid.clone());
                                                                                                 spawn(async move {
@@ -680,7 +680,7 @@ pub fn ServerSettingsView(
                                                             }
                                                             if can_roles && !assignable.is_empty() {
                                                                 select {
-                                                                    aria_label: "Thêm vai trò cho {m.username}",
+                                                                    aria_label: "Add role for {m.username}",
                                                                     class: "role-select",
                                                                     onchange: move |e| {
                                                                         let rid = e.value();
@@ -693,7 +693,7 @@ pub fn ServerSettingsView(
                                                                             }
                                                                         });
                                                                     },
-                                                                    option { value: "", "+ Vai trò" }
+                                                                    option { value: "", "+ Role" }
                                                                     for r in assignable { option { key: "{r.id}", value: "{r.id}", "{r.name}" } }
                                                                 }
                                                             }
@@ -701,8 +701,8 @@ pub fn ServerSettingsView(
                                                                 button {
                                                                     r#type: "button",
                                                                     class: "icon-btn danger",
-                                                                    title: "Mời ra khỏi cộng đồng",
-                                                                    aria_label: "Mời {m.username} ra khỏi cộng đồng",
+                                                                    title: "Please leave the community",
+                                                                    aria_label: "Invite {m.username} out of the community",
                                                                     onclick: move |_| {
                                                                         let (s, u) = (s_kick.clone(), u_kick.clone());
                                                                         spawn(async move {
@@ -771,7 +771,7 @@ fn RoleEditor(
             div { class: "settings-group",
                 div { class: "settings-list",
                     div { class: "settings-row",
-                        span { class: "settings-label", "Tên vai trò" }
+                        span { class: "settings-label", "Role name" }
                         input {
                             r#type: "text",
                             maxlength: "32",
@@ -781,7 +781,7 @@ fn RoleEditor(
                         }
                     }
                     div { class: "settings-row",
-                        span { class: "settings-label", "Màu hiển thị" }
+                        span { class: "settings-label", "Display color" }
                         input {
                             r#type: "color",
                             value: "{color}",
@@ -793,7 +793,7 @@ fn RoleEditor(
             }
 
             div { class: "settings-group",
-                h3 { class: "settings-group-title", ShieldIcon { size: 16 } " Quyền máy chủ" }
+                h3 { class: "settings-group-title", ShieldIcon { size: 16 } " Server permissions" }
                 div { class: "settings-list",
                     for (bit, label, desc) in PERMS {
                         {
@@ -821,7 +821,7 @@ fn RoleEditor(
 
             if is_enterprise {
                 div { class: "settings-group",
-                    h3 { class: "settings-group-title", BuildingIcon { size: 16 } " Quyền doanh nghiệp" }
+                    h3 { class: "settings-group-title", BuildingIcon { size: 16 } " Enterprise rights" }
                     div { class: "settings-list",
                         for (bit, label, desc) in ENT_PERMS_META {
                             {
@@ -850,7 +850,7 @@ fn RoleEditor(
 
             if can_edit {
                 div { class: "inline-form",
-                    button { r#type: "button", class: "btn-primary", onclick: save, "Lưu vai trò" }
+                    button { r#type: "button", class: "btn-primary", onclick: save, "Save role" }
                     if !is_everyone {
                         button {
                             r#type: "button",
@@ -865,7 +865,7 @@ fn RoleEditor(
                                 });
                             },
                             TrashIcon { size: 16 }
-                            " Xóa vai trò"
+                            " Delete role"
                         }
                     }
                 }

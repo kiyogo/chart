@@ -112,7 +112,7 @@ pub fn ConversationList(
             conv_id: my_id.clone(),
             name: t("chat.self").to_string(),
             avatar: None,
-            preview: last_previews.get(&my_id).map(|s| preview_text(&strip_device_prefix(s))).unwrap_or_else(|| "Ghi chú, tệp và liên kết giữa các thiết bị của bạn".to_string()),
+            preview: last_previews.get(&my_id).map(|s| preview_text(&strip_device_prefix(s))).unwrap_or_else(|| "Notes, files, and links synced across your devices".to_string()),
             unread: 0,
             pinned_at: p.as_ref().and_then(|p| p.pinned_at.clone()),
             labels: p.as_ref().map(|p| label_of(&p.label_ids)).unwrap_or_default(),
@@ -135,7 +135,7 @@ pub fn ConversationList(
                 .or_else(|| f.display_name.clone().filter(|n| !n.trim().is_empty()))
                 .unwrap_or_else(|| f.username.clone()),
             avatar: f.avatar_url.clone(),
-            preview: last_previews.get(&f.id).map(|s| preview_text(s)).unwrap_or_else(|| "Bắt đầu trò chuyện".to_string()),
+            preview: last_previews.get(&f.id).map(|s| preview_text(s)).unwrap_or_else(|| "Start conversation".to_string()),
             unread: unread_counts.get(&f.id).copied().unwrap_or(0),
             pinned_at: p.as_ref().and_then(|p| p.pinned_at.clone()),
             labels: p.as_ref().map(|p| label_of(&p.label_ids)).unwrap_or_default(),
@@ -160,7 +160,7 @@ pub fn ConversationList(
             conv_id: g.id.clone(),
             name: g.name.clone(),
             avatar: g.avatar_url.clone(),
-            preview: last_previews.get(&g.id).map(|s| preview_text(s)).unwrap_or_else(|| format!("{} thành viên", g.member_count)),
+            preview: last_previews.get(&g.id).map(|s| preview_text(s)).unwrap_or_else(|| format!("{} members", g.member_count)),
             unread: unread_counts.get(&g.id).copied().unwrap_or(0),
             pinned_at: p.as_ref().and_then(|p| p.pinned_at.clone()),
             labels: p.as_ref().map(|p| label_of(&p.label_ids)).unwrap_or_default(),
@@ -274,14 +274,14 @@ pub fn ConversationList(
                     div { class: "chat-item-info",
                         div { class: "chat-item-header",
                             span { class: if r.unread > 0 { "chat-item-name unread {r.name_fx}" } else { "chat-item-name {r.name_fx}" }, "{r.name}" }
-                            if r.muted { span { class: "chat-item-icon", title: "Đã tắt thông báo", BellOffIcon { size: 13 } } }
-                            if r.pinned_at.is_some() { span { class: "chat-item-icon", title: "Đã ghim", PinIcon { size: 13 } } }
+                            if r.muted { span { class: "chat-item-icon", title: "Notifications turned off", BellOffIcon { size: 13 } } }
+                            if r.pinned_at.is_some() { span { class: "chat-item-icon", title: "Pinned", PinIcon { size: 13 } } }
                             if r.unread > 0 {
                                 span { class: if r.muted { "chat-item-badge muted" } else { "chat-item-badge" }, "{badge(r.unread)}" }
                             }
                         }
                         div { class: if r.unread > 0 { "chat-item-preview unread" } else { "chat-item-preview" },
-                            if r.blocked { "Đã chặn" } else { "{r.preview}" }
+                            if r.blocked { "Blocked" } else { "{r.preview}" }
                         }
                         if !r.labels.is_empty() {
                             div { class: "chat-item-labels",
@@ -295,8 +295,8 @@ pub fn ConversationList(
                 button {
                     r#type: "button",
                     class: if menu_open { "conv-more active" } else { "conv-more" },
-                    title: "Tùy chọn",
-                    aria_label: "Tùy chọn cho {r.name}",
+                    title: "Options",
+                    aria_label: "Options for {r.name}",
                     aria_expanded: "{menu_open}",
                     onclick: move |e| { e.stop_propagation(); menu_for.set(if menu_for().as_deref() == Some(key_menu.as_str()) { None } else { Some(key_menu.clone()) }); },
                     MoreIcon { size: 16 }
@@ -362,7 +362,7 @@ pub fn ConversationList(
             }
             if rest.is_empty() && rows.is_empty() {
                 div { class: "sidebar-empty",
-                    if friends.is_empty() && groups.is_empty() { "Chưa có cuộc trò chuyện. Mở mục Bạn bè để kết bạn." } else { "Không có cuộc trò chuyện phù hợp" }
+                    if friends.is_empty() && groups.is_empty() { "No conversation yet. Open the Friends section to make friends." } else { "No appropriate conversation" }
                 }
             }
             for r in rest { {render_row(r)} }
@@ -377,11 +377,11 @@ pub fn ConversationList(
         if confirm_delete_self() {
             div { class: "modal-overlay", onclick: move |_| confirm_delete_self.set(false),
                 div { class: "modal-content compact", role: "alertdialog", aria_modal: "true", aria_labelledby: "del-self-title", onclick: move |e| e.stop_propagation(),
-                    h3 { id: "del-self-title", class: "modal-title", "Xóa \"{t(\"chat.self\")}\"?" }
-                    p { class: "modal-sub", "Toàn bộ ghi chú trong cuộc trò chuyện với chính mình sẽ bị xóa vĩnh viễn trên mọi thiết bị. Bạn có thể tạo lại sau, nhưng nội dung cũ không khôi phục được." }
+                    h3 { id: "del-self-title", class: "modal-title", "Delete \"{t(\"chat.self\")}\"?" }
+                    p { class: "modal-sub", "All notes in a conversation with yourself will be permanently deleted on all devices. You can recreate it later, but old content cannot be restored." }
                     div { class: "modal-actions",
                         button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_delete_self.set(false), "{t(\"act.cancel\")}" }
-                        button { r#type: "button", class: "btn-danger", onclick: move |_| { confirm_delete_self.set(false); on_delete_self.call(()); }, TrashIcon { size: 16 } "Xóa vĩnh viễn" }
+                        button { r#type: "button", class: "btn-danger", onclick: move |_| { confirm_delete_self.set(false); on_delete_self.call(()); }, TrashIcon { size: 16 } "Delete permanently" }
                     }
                 }
             }
@@ -513,7 +513,7 @@ pub fn StoriesNotesBar(
     let my_bubble_label = if my_has_note {
         format!("{cur_em} {cur_tx}").trim().to_string()
     } else {
-        "Chia sẻ suy nghĩ".to_string()
+        "Share a thought".to_string()
     };
 
     let stories_snapshot = active_stories();
@@ -533,7 +533,7 @@ pub fn StoriesNotesBar(
 
     rsx! {
         div { class: "notes-strip-wrap",
-            div { id: "{strip_id}", class: "notes-strip", role: "list", aria_label: "Tin và ghi chú",
+            div { id: "{strip_id}", class: "notes-strip", role: "list", aria_label: "Stories & notes",
                 // Current user tile ("Tạo tin")
                 div {
                     class: "note-item my-note-tile",
@@ -541,8 +541,8 @@ pub fn StoriesNotesBar(
                     button {
                         r#type: "button",
                         class: "note-bubble-btn",
-                        aria_label: "Chia sẻ suy nghĩ",
-                        title: "Chia sẻ suy nghĩ",
+                        aria_label: "Share a thought",
+                        title: "Share a thought",
                         onclick: move |e| {
                             e.stop_propagation();
                             note_emoji.set(init_em.clone());
@@ -557,9 +557,9 @@ pub fn StoriesNotesBar(
                             if my_has_note {
                                 "{my_bubble_label}"
                             } else {
-                                "Chia sẻ"
+                                "Share"
                                 br {}
-                                "suy nghĩ"
+                                "a thought"
                             }
                         }
                     }
@@ -568,8 +568,8 @@ pub fn StoriesNotesBar(
                             button {
                                 r#type: "button",
                                 class: "note-avatar-circle-btn",
-                                aria_label: if my_has_story { "Xem tin của bạn" } else { "Tạo tin mới" },
-                                title: if my_has_story { "Xem tin của bạn" } else { "Tạo tin" },
+                                aria_label: if my_has_story { "View your news" } else { "Create story" },
+                                title: if my_has_story { "View your news" } else { "Add story" },
                                 onclick: move |e| {
                                     e.stop_propagation();
                                     if let Some(st) = my_story_open.clone() {
@@ -584,7 +584,7 @@ pub fn StoriesNotesBar(
                                     }
                                 },
                                 Avatar {
-                                    name: if my_username.is_empty() { "Tôi".to_string() } else { my_username.clone() },
+                                    name: if my_username.is_empty() { "Me".to_string() } else { my_username.clone() },
                                     avatar_url: my_avatar_url.clone(),
                                     size: 52,
                                 }
@@ -592,8 +592,8 @@ pub fn StoriesNotesBar(
                             button {
                                 r#type: "button",
                                 class: "note-plus-badge",
-                                aria_label: "Tạo tin mới",
-                                title: "Tạo tin",
+                                aria_label: "Create story",
+                                title: "Add story",
                                 onclick: move |e| {
                                     e.stop_propagation();
                                     note_emoji.set(init_em2.clone());
@@ -606,7 +606,7 @@ pub fn StoriesNotesBar(
                                 PlusIcon { size: 12 }
                             }
                         }
-                        span { class: "note-name", "Tạo tin" }
+                        span { class: "note-name", "Add story" }
                     }
                 }
 
@@ -658,7 +658,7 @@ pub fn StoriesNotesBar(
                                         in_list: true,
                                     }
                                     if online {
-                                        span { class: "note-online-dot", title: "Đang hoạt động" }
+                                        span { class: "note-online-dot", title: "Online" }
                                     }
                                 }
                                 span { class: "note-name", "{shown}" }
@@ -671,12 +671,12 @@ pub fn StoriesNotesBar(
 
         if edit_my_note() {
             div { class: "modal-overlay", onclick: move |_| edit_my_note.set(false),
-                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú và tin của bạn", onclick: move |e| e.stop_propagation(),
+                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Your notes and news", onclick: move |e| e.stop_propagation(),
                     div { class: "modal-header",
                         h3 { class: "modal-title",
-                            if active_tab() == "thought" { "Chia sẻ suy nghĩ" } else { "Tạo tin ảnh" }
+                            if active_tab() == "thought" { "Share a thought" } else { "Create photo news" }
                         }
-                        button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| edit_my_note.set(false), CloseIcon { size: 18 } }
+                        button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| edit_my_note.set(false), CloseIcon { size: 18 } }
                     }
                     if active_tab() == "thought" {
                         div { class: "note-emoji-row",
@@ -708,21 +708,21 @@ pub fn StoriesNotesBar(
                             input {
                                 r#type: "text",
                                 maxlength: "120",
-                                placeholder: "Chia sẻ suy nghĩ với bạn bè",
-                                aria_label: "Nội dung ghi chú",
+                                placeholder: "Share thoughts with friends",
+                                aria_label: "Note content",
                                 value: "{note_text}",
                                 oninput: move |e| note_text.set(e.value()),
                             }
                         }
                         div { class: "inline-form",
-                            span { class: "member-sub", "Hiển thị trong" }
+                            span { class: "member-sub", "Shown in" }
                             select {
                                 value: "{note_expiry}",
                                 onchange: move |e| note_expiry.set(e.value().parse().unwrap_or(1440)),
-                                option { value: "1440", "24 giờ" }
-                                option { value: "240", "4 giờ" }
-                                option { value: "60", "1 giờ" }
-                                option { value: "0", "Không tự xóa" }
+                                option { value: "1440", "24 hours" }
+                                option { value: "240", "4 hours" }
+                                option { value: "60", "1 hour" }
+                                option { value: "0", "Do not delete yourself" }
                             }
                         }
                         if let Some(e) = note_err() {
@@ -747,14 +747,14 @@ pub fn StoriesNotesBar(
                                                 if let Some(h) = on_my_status_updated { h.call((None, None)); }
                                                 edit_my_note.set(false);
                                             } else {
-                                                note_err.set(Some("Không xóa được ghi chú".into()));
+                                                note_err.set(Some("Cannot delete notes".into()));
                                             }
                                         });
                                     },
-                                    "Xóa tin"
+                                    "Delete news"
                                 }
                             }
-                            button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Hủy" }
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Cancel" }
                             button {
                                 r#type: "button",
                                 class: "btn-primary",
@@ -779,11 +779,11 @@ pub fn StoriesNotesBar(
                                             }
                                             edit_my_note.set(false);
                                         } else {
-                                            note_err.set(Some("Không lưu được ghi chú".into()));
+                                            note_err.set(Some("Notes cannot be saved".into()));
                                         }
                                     });
                                 },
-                                "Chia sẻ"
+                                "Share"
                             }
                         }
                     } else {
@@ -791,12 +791,12 @@ pub fn StoriesNotesBar(
                         div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
                             if let Some(murl) = story_media_url() {
                                 div { style: "position: relative; max-height: 180px; overflow: hidden; border-radius: var(--radius-lg);",
-                                    img { src: "{crate::platform::resolve_asset_url(&murl)}", alt: "Ảnh tin", style: "width: 100%; object-fit: cover;" }
+                                    img { src: "{crate::platform::resolve_asset_url(&murl)}", alt: "News photo", style: "width: 100%; object-fit: cover;" }
                                     button {
                                         r#type: "button",
                                         class: "icon-btn",
                                         style: "position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff;",
-                                        aria_label: "Xóa ảnh",
+                                        aria_label: "Delete photos",
                                         onclick: move |_| story_media_url.set(None),
                                         CloseIcon { size: 14 }
                                     }
@@ -814,7 +814,7 @@ pub fn StoriesNotesBar(
                                                 if let Ok((bytes, mime)) = crate::platform::read_selected_file_raw("story-media-upload").await {
                                                     match library::upload_media(bytes, &mime).await {
                                                         Ok(url) => { story_media_url.set(Some(url)); note_err.set(None); }
-                                                        Err(_) => note_err.set(Some("Không tải ảnh lên được".into())),
+                                                        Err(_) => note_err.set(Some("Unable to upload photo".into())),
                                                     }
                                                 }
                                                 story_uploading.set(false);
@@ -826,20 +826,20 @@ pub fn StoriesNotesBar(
                                         class: "btn-secondary",
                                         style: "display: inline-flex; align-items: center; gap: 6px; cursor: pointer; width: 100%; justify-content: center;",
                                         ImageIcon { size: 18 }
-                                        if story_uploading() { "Đang tải ảnh lên" } else { "Chọn ảnh cho tin mới" }
+                                        if story_uploading() { "Uploading photos" } else { "Select photo for new news" }
                                     }
                                 }
                             }
                             input {
                                 r#type: "text",
                                 maxlength: "200",
-                                placeholder: "Thêm chú thích cho tin",
-                                aria_label: "Chú thích tin",
+                                placeholder: "Add captions to stories",
+                                aria_label: "News caption",
                                 value: "{story_draft}",
                                 oninput: move |e| story_draft.set(e.value()),
                             }
                             if story_success() {
-                                div { class: "status-badge success", "Tin của bạn đã được đăng thành công" }
+                                div { class: "status-badge success", "Your news has been posted successfully" }
                             }
                             if let Some(e) = note_err() {
                                 div { class: "status-badge error", "{e}" }
@@ -854,10 +854,10 @@ pub fn StoriesNotesBar(
                                             reply_draft.set(String::new());
                                             viewing_story.set(Some(my_st.clone()));
                                         },
-                                        "Xem tin của bạn"
+                                        "View your news"
                                     }
                                 }
-                                button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Hủy" }
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| edit_my_note.set(false), "Cancel" }
                                 button {
                                     r#type: "button",
                                     class: "btn-primary",
@@ -876,12 +876,12 @@ pub fn StoriesNotesBar(
                                                     reload_stories.call(());
                                                     edit_my_note.set(false);
                                                 }
-                                                Err(e) => note_err.set(Some(format!("Đăng tin thất bại: {}", e.code))),
+                                                Err(e) => note_err.set(Some(format!("Posting failed: {}", e.code))),
                                             }
                                             story_posting.set(false);
                                         });
                                     },
-                                    if story_posting() { "Đang đăng" } else { "Đăng tin" }
+                                    if story_posting() { "Posting" } else { "Post story" }
                                 }
                             }
                         }
@@ -909,7 +909,7 @@ pub fn StoriesNotesBar(
                     .find(|p| p.author_id == vf.id || p.author_username == vf.username);
                 rsx! {
                     div { class: "modal-overlay", onclick: move |_| viewing_friend.set(None),
-                        div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú của {shown}", onclick: move |e| e.stop_propagation(),
+                        div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "{shown}'s note", onclick: move |e| e.stop_propagation(),
                             div { class: "modal-header",
                                 div { style: "display: flex; align-items: center; gap: 10px;",
                                     Avatar { name: vf.username.clone(), avatar_url: vf.avatar_url.clone(), size: 36 }
@@ -918,13 +918,13 @@ pub fn StoriesNotesBar(
                                         div { class: "member-sub", "@{vf.username}" }
                                     }
                                 }
-                                button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| viewing_friend.set(None), CloseIcon { size: 18 } }
+                                button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| viewing_friend.set(None), CloseIcon { size: 18 } }
                             }
                             div { class: "note-view-card", "{full_note}" }
                             div { class: "note-input-row",
                                 input {
                                     r#type: "text",
-                                    placeholder: "Trả lời ghi chú của {shown}",
+                                    placeholder: "Reply to {shown}'s note",
                                     value: "{reply_draft}",
                                     oninput: move |e| reply_draft.set(e.value()),
                                 }
@@ -933,7 +933,7 @@ pub fn StoriesNotesBar(
                                     class: "btn-primary",
                                     disabled: reply_draft().trim().is_empty(),
                                     onclick: move |_| {
-                                        let txt = format!("Ghi chú \"{full_note}\": {}", reply_draft().trim());
+                                        let txt = format!("Note \"{full_note}\": {}", reply_draft().trim());
                                         viewing_friend.set(None);
                                         if let Some(h) = on_note_reply {
                                             h.call((vf_reply.clone(), txt));
@@ -954,7 +954,7 @@ pub fn StoriesNotesBar(
                                             reply_draft.set(String::new());
                                             viewing_story.set(Some(fst.clone()));
                                         },
-                                        "Xem tin ảnh"
+                                        "View photo news"
                                     }
                                 }
                                 button {
@@ -964,7 +964,7 @@ pub fn StoriesNotesBar(
                                         viewing_friend.set(None);
                                         on_open_friend.call(vf_open.clone());
                                     },
-                                    "Mở cuộc trò chuyện"
+                                    "Open a chat"
                                 }
                             }
                         }
@@ -981,7 +981,7 @@ pub fn StoriesNotesBar(
                 let st_friend = friends.iter().find(|f| f.id == st.author_id || f.username == st.author_username).cloned();
                 rsx! {
                     div { class: "modal-overlay", onclick: move |_| viewing_story.set(None),
-                        div { class: "modal-dialog story-viewer-modal", role: "dialog", aria_modal: "true", aria_label: "Tin của {st_author_name}", onclick: move |e| e.stop_propagation(),
+                        div { class: "modal-dialog story-viewer-modal", role: "dialog", aria_modal: "true", aria_label: "News from {st_author_name}", onclick: move |e| e.stop_propagation(),
                             div { class: "modal-header",
                                 div { style: "display: flex; align-items: center; gap: 10px;",
                                     Avatar { name: st.author_username.clone(), avatar_url: st.author_avatar_url.clone(), size: 36 }
@@ -990,11 +990,11 @@ pub fn StoriesNotesBar(
                                         div { class: "member-sub", "@{st.author_username}" }
                                     }
                                 }
-                                button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| viewing_story.set(None), CloseIcon { size: 18 } }
+                                button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| viewing_story.set(None), CloseIcon { size: 18 } }
                             }
                             if let Some(murl) = st.media_url.as_ref().filter(|s| !s.trim().is_empty()) {
                                 div { class: "story-viewer-media",
-                                    img { src: "{crate::platform::resolve_asset_url(murl)}", alt: "Ảnh tin" }
+                                    img { src: "{crate::platform::resolve_asset_url(murl)}", alt: "News photo" }
                                 }
                             }
                             if !st.content.trim().is_empty() {
@@ -1005,7 +1005,7 @@ pub fn StoriesNotesBar(
                                     div { class: "note-input-row",
                                         input {
                                             r#type: "text",
-                                            placeholder: "Trả lời tin của {st_author_name}",
+                                            placeholder: "Reply to {st_author_name}'s message",
                                             value: "{reply_draft}",
                                             oninput: move |e| reply_draft.set(e.value()),
                                         }
@@ -1014,7 +1014,7 @@ pub fn StoriesNotesBar(
                                             class: "btn-primary",
                                             disabled: reply_draft().trim().is_empty(),
                                             onclick: move |_| {
-                                                let txt = format!("Trả lời tin: {}", reply_draft().trim());
+                                                let txt = format!("Reply to message: {}", reply_draft().trim());
                                                 viewing_story.set(None);
                                                 if let Some(h) = on_note_reply {
                                                     h.call((fr_target.clone(), txt));
@@ -1041,10 +1041,10 @@ pub fn StoriesNotesBar(
                                                 }
                                             });
                                         },
-                                        "Xóa tin này"
+                                        "Delete this message"
                                     }
                                 }
-                                button { r#type: "button", class: "btn-secondary", onclick: move |_| viewing_story.set(None), "Đóng" }
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| viewing_story.set(None), "Close" }
                             }
                         }
                     }
@@ -1108,23 +1108,23 @@ fn ConvMenu(
     let id_block = conv_id.clone();
     let _ = row_key;
     rsx! {
-        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Đóng", onclick: move |_| on_close.call(()) }
+        button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Close", onclick: move |_| on_close.call(()) }
         div { class: "account-menu conv-menu", role: "menu",
             onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
             button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| pref_pin(json!({ "pinned": !pinned })),
-                PinIcon { size: 16 } if pinned { "Bỏ ghim" } else { "Ghim lên đầu" }
+                PinIcon { size: 16 } if pinned { "Unpin" } else { "Pin to top" }
             }
             if unread > 0 {
                 button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| on_mark_read.call(id_read.clone()),
-                    CheckIcon { size: 16 } "Đánh dấu đã đọc"
+                    CheckIcon { size: 16 } "Mark as read"
                 }
             }
             button { r#type: "button", role: "menuitem", class: "account-menu-item", aria_expanded: "{show_labels()}", onclick: move |_| show_labels.set(!show_labels()),
-                TagIcon { size: 16 } span { class: "grow", "Thẻ phân loại" } ChevronDownIcon { size: 14 }
+                TagIcon { size: 16 } span { class: "grow", "Classification card" } ChevronDownIcon { size: 14 }
             }
             if show_labels() {
                 div { class: "menu-sub",
-                    if labels.is_empty() { div { class: "menu-note", "Chưa có thẻ nào" } }
+                    if labels.is_empty() { div { class: "menu-note", "No cards yet" } }
                     for l in labels.iter().cloned() {
                         {
                             let on = current_label_ids.read().contains(&l.id);
@@ -1145,36 +1145,36 @@ fn ConvMenu(
                             }
                         }
                     }
-                    button { r#type: "button", class: "account-menu-item", onclick: move |_| on_manage_labels.call(()), PlusIcon { size: 14 } "Tạo / sửa thẻ" }
+                    button { r#type: "button", class: "account-menu-item", onclick: move |_| on_manage_labels.call(()), PlusIcon { size: 14 } "Create/edit tags" }
                 }
             }
             if conv_type != "self" {
                 button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| pref_mute(json!({ "muted": !muted })),
-                    BellOffIcon { size: 16 } if muted { "Bật lại thông báo" } else { "Tắt thông báo" }
+                    BellOffIcon { size: 16 } if muted { "Turn notifications back on" } else { "Turn off notifications" }
                 }
             }
             if conv_type == "group" {
                 button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| pref_comm(json!({ "in_communities": !in_communities })),
-                    HashIcon { size: 16 } if in_communities { "Đưa về Tin nhắn" } else { "Chuyển sang Cộng đồng" }
+                    HashIcon { size: 16 } if in_communities { "Bring back Messages" } else { "Go to Community" }
                 }
             }
             if conv_type == "channel" {
                 button { r#type: "button", role: "menuitem", class: "account-menu-item", onclick: move |_| pref_out(json!({ "in_messages": false })),
-                    HashIcon { size: 16 } "Bỏ khỏi Tin nhắn"
+                    HashIcon { size: 16 } "Remove from Messages"
                 }
             }
             if conv_type == "dm" {
                 button { r#type: "button", role: "menuitem", class: "account-menu-item danger", onclick: move |_| on_block.call((id_block.clone(), !blocked)),
-                    crate::components::icons::BlockIcon { size: 16 } if blocked { "Bỏ chặn" } else { "Chặn" }
+                    crate::components::icons::BlockIcon { size: 16 } if blocked { "Unblock" } else { "Block" }
                 }
             }
             if conv_type == "self" {
                 button { r#type: "button", role: "menuitem", class: "account-menu-item danger", onclick: move |_| on_delete_self.call(()),
-                    TrashIcon { size: 16 } "Xóa cuộc trò chuyện này"
+                    TrashIcon { size: 16 } "Delete this conversation"
                 }
             }
             if conv_type == "bot" {
-                div { class: "menu-note", PluginIcon { size: 14 } " Trò chuyện với plugin" }
+                div { class: "menu-note", PluginIcon { size: 14 } " Chat with plugins" }
             }
         }
     }
@@ -1205,9 +1205,9 @@ pub fn LabelManager(labels: Vec<ChatLabel>, on_close: EventHandler<()>, on_chang
                     on_changed.call(list());
                 }
                 Err(e) => error.set(Some(match e.code.as_str() {
-                    "label_limit_reached" => "Đã đạt số thẻ tối đa".into(),
-                    "invalid_label" => "Tên hoặc màu thẻ không hợp lệ".into(),
-                    _ => "Không tạo được thẻ".into(),
+                    "label_limit_reached" => "Maximum number of cards reached".into(),
+                    "invalid_label" => "Invalid tag name or color".into(),
+                    _ => "Cannot create card".into(),
                 })),
             }
             busy.set(false);
@@ -1218,25 +1218,25 @@ pub fn LabelManager(labels: Vec<ChatLabel>, on_close: EventHandler<()>, on_chang
             div { class: "modal-content", role: "dialog", aria_modal: "true", aria_labelledby: "labels-title", onclick: move |e| e.stop_propagation(),
                 onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
                 div { class: "modal-header",
-                    h3 { id: "labels-title", class: "modal-title", "Thẻ phân loại" }
+                    h3 { id: "labels-title", class: "modal-title", "Classification card" }
                 }
-                p { class: "modal-sub", "Gắn thẻ cho cuộc trò chuyện, nhóm và kênh để lọc nhanh. Thẻ chỉ mình bạn thấy và đồng bộ giữa các thiết bị." }
+                p { class: "modal-sub", "Tag conversations, groups, and channels for quick filtering. Tags are visible only to you and synced across devices." }
                 form { class: "label-create",
                     onsubmit: move |e| { e.prevent_default(); add(); },
-                    input { r#type: "text", maxlength: "24", placeholder: "Tên thẻ, ví dụ: Khách hàng", aria_label: "Tên thẻ", value: "{name}", oninput: move |e| name.set(e.value()) }
-                    div { class: "color-swatches", role: "radiogroup", aria_label: "Màu thẻ",
+                    input { r#type: "text", maxlength: "24", placeholder: "Tag name, for example: Customer", aria_label: "Card name", value: "{name}", oninput: move |e| name.set(e.value()) }
+                    div { class: "color-swatches", role: "radiogroup", aria_label: "Card color",
                         for c in LABEL_COLORS {
-                            button { key: "{c}", r#type: "button", role: "radio", aria_checked: "{color() == c}", aria_label: "Màu {c}",
+                            button { key: "{c}", r#type: "button", role: "radio", aria_checked: "{color() == c}", aria_label: "Color {c}",
                                 class: if color() == c { "swatch active" } else { "swatch" }, style: "--swatch: {c};",
                                 onclick: move |_| color.set(c.to_string()),
                             }
                         }
                     }
-                    button { r#type: "submit", class: "btn-primary", disabled: name().trim().is_empty() || busy(), PlusIcon { size: 16 } "Thêm" }
+                    button { r#type: "submit", class: "btn-primary", disabled: name().trim().is_empty() || busy(), PlusIcon { size: 16 } "Add" }
                 }
                 if let Some(err) = error() { div { class: "status-badge error", "{err}" } }
                 div { class: "label-list",
-                    if list.read().is_empty() { div { class: "sidebar-empty", "Chưa có thẻ nào" } }
+                    if list.read().is_empty() { div { class: "sidebar-empty", "No cards yet" } }
                     for l in list() {
                         LabelRow { key: "{l.id}", label: l.clone(),
                             on_saved: move |nl: ChatLabel| { list.with_mut(|v| if let Some(x) = v.iter_mut().find(|x| x.id == nl.id) { *x = nl.clone(); }); on_changed.call(list()); },
@@ -1245,7 +1245,7 @@ pub fn LabelManager(labels: Vec<ChatLabel>, on_close: EventHandler<()>, on_chang
                     }
                 }
                 div { class: "modal-actions",
-                    button { r#type: "button", class: "btn-primary", onclick: move |_| on_close.call(()), "Xong" }
+                    button { r#type: "button", class: "btn-primary", onclick: move |_| on_close.call(()), "Done" }
                 }
             }
         }
@@ -1274,20 +1274,20 @@ fn LabelRow(label: ChatLabel, on_saved: EventHandler<ChatLabel>, on_deleted: Eve
     rsx! {
         div { class: "label-row",
             span { class: "label-dot big", style: "--label: {color};" }
-            input { r#type: "text", maxlength: "24", aria_label: "Tên thẻ", value: "{name}", oninput: move |e| name.set(e.value()), onchange: move |_| save_blur(color()) }
+            input { r#type: "text", maxlength: "24", aria_label: "Card name", value: "{name}", oninput: move |e| name.set(e.value()), onchange: move |_| save_blur(color()) }
             div { class: "color-swatches small",
                 for c in LABEL_COLORS {
                     {
                         let s = save.clone();
                         rsx! {
-                            button { key: "{c}", r#type: "button", aria_label: "Màu {c}", class: if color() == c { "swatch active" } else { "swatch" }, style: "--swatch: {c};",
+                            button { key: "{c}", r#type: "button", aria_label: "Color {c}", class: if color() == c { "swatch active" } else { "swatch" }, style: "--swatch: {c};",
                                 onclick: move |_| { color.set(c.to_string()); s(c.to_string()); },
                             }
                         }
                     }
                 }
             }
-            button { r#type: "button", class: "icon-btn", title: "Xóa thẻ", aria_label: "Xóa thẻ {label.name}",
+            button { r#type: "button", class: "icon-btn", title: "Delete card", aria_label: "Delete tag {label.name}",
                 onclick: move |_| {
                     let id = id_del.clone();
                     spawn(async move {
@@ -1313,7 +1313,7 @@ mod tests {
         assert_eq!(text, "hello");
         assert_eq!(split_device_prefix("plain").0, None);
         assert_eq!(strip_device_prefix("\u{2060}Windows 2\u{2060}poll:{}"), "poll:{}");
-        let long = "\u{2060}9ab7036d-cc5a-4770-b402-99aa00bb11cc|Laptop làm việc của tôi\u{2060}note";
+        let long = "\u{2060}9ab7036d-cc5a-4770-b402-99aa00bb11cc|My work laptop\u{2060}note";
         assert_eq!(split_device_prefix(long).1, "note");
     }
 }

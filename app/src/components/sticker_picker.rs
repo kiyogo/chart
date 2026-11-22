@@ -245,7 +245,7 @@ pub fn StickerPicker(
                             div { class: "picker-section-title", if is_fav { "Favorite Stickers" } else { "Recently Used" } }
                             if list.is_empty() {
                                 div { class: "picker-empty",
-                                    if is_fav { "Chưa có sticker yêu thích. Bấm ☆ trên một sticker để thêm." } else { "Sticker bạn gửi sẽ hiện ở đây." }
+                                    if is_fav { "No favorite stickers yet. Press ☆ on a sticker to add it." } else { "The sticker you sent will appear here." }
                                 }
                             } else {
                                 div { class: "sticker-grid",
@@ -278,15 +278,15 @@ pub fn StickerPicker(
                             }
                         }
                     } else {
-                        div { class: "picker-empty", "Đang tải sticker" }
+                        div { class: "picker-empty", "Loading stickers" }
                     }
                 } else if is_loading() {
-                    div { class: "picker-empty", "Đang tải sticker" }
+                    div { class: "picker-empty", "Loading stickers" }
                 } else if load_error() {
-                    div { class: "picker-empty", "Không tải được danh sách sticker" }
+                    div { class: "picker-empty", "Unable to load sticker list" }
                 } else if let Some(pack) = active_pack {
                     if pack.stickers.is_empty() {
-                        div { class: "picker-empty", "Bộ sticker này chưa có sticker nào" }
+                        div { class: "picker-empty", "This sticker set does not have any stickers yet" }
                     } else {
                         div { class: "sticker-grid",
                             for st in pack.stickers {
@@ -295,7 +295,7 @@ pub fn StickerPicker(
                         }
                     }
                 } else {
-                    div { class: "picker-empty", "Bạn chưa có bộ sticker nào" }
+                    div { class: "picker-empty", "You don't have any sticker sets yet" }
                 }
             }
         }

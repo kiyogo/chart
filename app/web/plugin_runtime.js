@@ -531,7 +531,7 @@ ${wasmLoader}
         });
         // Mark sandbox instance as E2EE-tainted so outbound network calls require explicit e2ee.egress_external!
         inst.e2eeTainted = true;
-        addLog(inst, 'audit', `Đã đọc tin nhắn giải mã cho cuộc trò chuyện ${cid}`);
+        addLog(inst, 'audit', `Read decrypted messages for conversation ${cid}`);
         if (typeof decryptedMessagesProvider === 'function') {
           return decryptedMessagesProvider(cid) || [];
         }
@@ -569,7 +569,7 @@ ${wasmLoader}
       case 'network.fetch': {
         if (!hasPermission(inst, 'network.outbound')) throw new Error('PERMISSION_DENIED: network.outbound');
         if (inst.e2eeTainted && !hasPermission(inst, 'e2ee.egress_external')) {
-          throw new Error('E2EE_EGRESS_DENIED: plugin chỉ được xử lý E2EE cục bộ');
+          throw new Error('E2EE_EGRESS_DENIED: plugin may only process E2EE locally');
         }
         return await apiJson('POST', `/api/plugins/installations/${inst.id}/net/fetch`, {
           url: a.url,
@@ -664,7 +664,7 @@ ${wasmLoader}
       if (data.__cwWorkerBooted) {
         if (inst.bootTimer) { clearTimeout(inst.bootTimer); inst.bootTimer = null; }
         inst.status = 'running';
-        addLog(inst, 'info', `Khởi chạy sandbox (${inst.runtime}, origin=null) thành công`);
+        addLog(inst, 'info', `Started sandbox (${inst.runtime}, origin=null) successfully`);
         try {
           inst.worker.postMessage({
             __cwReady: true,
@@ -683,7 +683,7 @@ ${wasmLoader}
         if (inst.bootTimer) { clearTimeout(inst.bootTimer); inst.bootTimer = null; }
         inst.status = 'crashed';
         inst.lastError = data.error;
-        addLog(inst, 'error', 'Lỗi khởi chạy Plugin', data.error);
+        addLog(inst, 'error', 'Plugin startup error', data.error);
         if (Array.isArray(inst.bootWaiters)) {
           while (inst.bootWaiters.length) {
             try { inst.bootWaiters.shift()(false); } catch (_) {}
@@ -837,8 +837,8 @@ ${wasmLoader}
     inst.bootTimer = setTimeout(() => {
       if (inst.status === 'starting') {
         inst.status = 'timeout_killed';
-        inst.lastError = `Quá thời gian khởi động sandbox (${WORKER_BOOT_TIMEOUT_MS}ms)`;
-        addLog(inst, 'error', 'Đã dừng Plugin do treo khi khởi động', inst.lastError);
+        inst.lastError = `Sandbox startup timed out (${WORKER_BOOT_TIMEOUT_MS}ms)`;
+        addLog(inst, 'error', 'Stopped plugin after startup hang', inst.lastError);
         try { workerProxy.terminate(); } catch (_) {}
         inst.worker = null;
       }
@@ -859,8 +859,8 @@ ${wasmLoader}
           inst.pendingInvokes.delete(invId);
           // Kill runaway/infinite-loop plugin immediately!
           inst.status = 'timeout_killed';
-          inst.lastError = `Vượt quá giới hạn thực thi (${timeoutMs}ms)`;
-          addLog(inst, 'error', 'Đã dừng Plugin do treo hoặc quá thời gian xử lý', inst.lastError);
+          inst.lastError = `Execution limit exceeded (${timeoutMs}ms)`;
+          addLog(inst, 'error', 'Stopped plugin due to hang or execution timeout', inst.lastError);
           try { inst.worker.terminate(); } catch (_) {}
           inst.worker = null;
           reject(new Error('PLUGIN_EXECUTION_TIMEOUT'));
@@ -939,7 +939,7 @@ ${wasmLoader}
     const tokens = getThemeTokens();
     const nonce = randNonce();
     const cssVars = `:root{--cw-font:${tokens.font};--cw-bg:${tokens.bg};--cw-surface:${tokens.surface};--cw-input:${tokens.input};--cw-text:${tokens.text};--cw-text-secondary:${tokens.textSecondary};--cw-accent:${tokens.accent};--cw-danger:${tokens.danger};--cw-radius:${tokens.radius};}`;
-    const rawHtml = customHtmlOverride || inst.ui_html || `<div style="padding:16px;font-family:var(--cw-font)"><h3>${inst.name}</h3><p>Plugin chạy nền (${inst.runtime}).</p></div>`;
+    const rawHtml = customHtmlOverride || inst.ui_html || `<div style="padding:16px;font-family:var(--cw-font)"><h3>${inst.name}</h3><p>Background plugin (${inst.runtime}).</p></div>`;
     const sdkCode = buildSdkShim(nonce, 'iframe');
     const readyContext = { installationId: inst.id, pluginKey: inst.plugin_key, theme: tokens };
 
@@ -1025,7 +1025,7 @@ ${wasmLoader}
       const inst = instances.get(instId);
       if (!inst) return;
       inst.grants = (inst.grants || []).filter((g) => String(g.id) !== String(grantId));
-      addLog(inst, 'audit', `Đã thu hồi quyền ngay lập tức (${grantId})`);
+      addLog(inst, 'audit', `Permission revoked immediately (${grantId})`);
       invokeWorker(inst, { kind: 'event', eventName: 'onPermissionRevoked', payload: { grantId } }).catch(() => {});
       notifyExtensionsChanged();
     },
@@ -1135,7 +1135,7 @@ ${wasmLoader}
         if (eventName.startsWith('onGroup') && !hasPermission(inst, 'groups.read')) continue;
         if (eventName.startsWith('onCall') && !hasPermission(inst, 'calls.observe')) continue;
         invokeWorker(inst, { kind: 'event', eventName, payload, meta: { ...meta, deliveryId } }).catch((err) => {
-          addLog(inst, 'error', `Lỗi xử lý sự kiện ${eventName}`, err.message);
+          addLog(inst, 'error', `Error handling event ${eventName}`, err.message);
         });
       }
     },

@@ -32,11 +32,11 @@ try {
   const suffix = `${Date.now().toString(36).slice(-5)}${Math.floor(Math.random() * 90 + 10)}`;
   await page.goto(`${BASE}/`);
   await page.waitForSelector('.auth-card', { timeout: 30000 });
-  await page.locator('input[aria-label="Tên tài khoản thử nghiệm"]').fill(`modal_${suffix}`);
+  await page.locator('input[aria-label="Test username"]').fill(`modal_${suffix}`);
   await page.locator('.auth-dev-form button[type="submit"]').click();
   await page.waitForSelector('.workspace-shell, .app-shell', { timeout: 30000 });
   await page.waitForTimeout(800);
-  const skip = page.locator('button[aria-label="Bỏ qua giới thiệu"]');
+  const skip = page.locator('button[aria-label="Skip tour"]');
   if (await skip.isVisible().catch(() => false)) await skip.click();
 
   // Open self chat or first conversation with composer
@@ -61,8 +61,8 @@ try {
     JSON.stringify(composerBoxInfo),
   );
 
-  // 2. Open AttachMenu ("Thêm") -> verify menu-dismiss covers 1440x900 and tools-menu is visible
-  await page.locator('.composer-tools button[aria-label*="Thêm"]').click();
+  // 2. Open AttachMenu ("Add") -> verify menu-dismiss covers 1440x900 and tools-menu is visible
+  await page.locator('.composer-tools button[aria-label*="Add"]').click();
   await page.waitForSelector('.tools-menu', { timeout: 5000 });
   await page.waitForTimeout(200);
   const dismissBox = await page.locator('.composer .menu-dismiss').boundingBox();
@@ -73,14 +73,14 @@ try {
   );
   await page.screenshot({ path: path.join(OUT, '01_attach_menu.png') });
 
-  // 3. Test "Tạo bình chọn", "Tạo ghi chú", "Tạo nhắc hẹn"
+  // 3. Test "Create poll", "Create note", "Create reminder"
   for (const [label, expectedTitle, fileName] of [
-    ['Bình chọn', 'Tạo bình chọn', '02_poll_dialog'],
-    ['Ghi chú', 'Tạo ghi chú', '03_note_dialog'],
-    ['Nhắc hẹn', 'Tạo nhắc hẹn', '04_reminder_dialog'],
+    ['Poll', 'Create poll', '02_poll_dialog'],
+    ['Notes', 'Create note', '03_note_dialog'],
+    ['Appointment reminder', 'Create reminder', '04_reminder_dialog'],
   ]) {
     if (!(await page.locator('.tools-menu').isVisible().catch(() => false))) {
-      await page.locator('.composer-tools button[aria-label*="Thêm"]').click();
+      await page.locator('.composer-tools button[aria-label*="Add"]').click();
       await page.waitForSelector('.tools-menu', { timeout: 5000 });
     }
     await page.locator('.tools-menu button', { hasText: label }).click();
@@ -108,14 +108,14 @@ try {
       `overlay=${JSON.stringify(overlayBox)}, dialog=${JSON.stringify(dialogBox)}`,
     );
     await page.screenshot({ path: path.join(OUT, `${fileName}.png`) });
-    await page.locator('.modal-dialog button[aria-label="Đóng"]').click();
+    await page.locator('.modal-dialog button[aria-label="Close"]').click();
     await page.waitForTimeout(200);
   }
 
   // 4. Test Mobile viewport (390x844) Emoji picker-popover (uses position: fixed on <=767px)
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
-  await page.locator('.composer-box button[aria-label="Chọn emoji"]').click();
+  await page.locator('.composer-box button[aria-label="Choose emoji"]').click();
   await page.waitForSelector('.picker-popover', { timeout: 5000 });
   await page.waitForTimeout(300);
   const mobilePickerBox = await page.locator('.picker-popover').boundingBox();

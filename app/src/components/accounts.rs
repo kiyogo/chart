@@ -62,14 +62,14 @@ pub fn TwoFactorPrompt(on_done: EventHandler<()>, on_cancel: EventHandler<()>) -
     };
     rsx! {
         form { class: "twofa-card", onsubmit: submit,
-            h1 { class: "auth-title", "Xác minh hai bước" }
-            p { class: "auth-subtitle", "Nhập mã 6 số trong ứng dụng xác thực hoặc một mã dự phòng dạng xxxx-xxxx." }
+            h1 { class: "auth-title", "Two-factor authentication" }
+            p { class: "auth-subtitle", "Enter the 6-digit code in the authentication application or a backup code of the form xxxx-xxxx." }
             input { id: "twofa-code", class: "auth-input twofa-input", r#type: "text", inputmode: "text", autocomplete: "one-time-code", maxlength: "12",
-                aria_label: "Mã xác minh", placeholder: "123456", value: "{code}", oninput: move |e| code.set(e.value()) }
+                aria_label: "Verification code", placeholder: "123456", value: "{code}", oninput: move |e| code.set(e.value()) }
             if let Some(e) = error() { div { class: "auth-error", role: "alert", "{e}" } }
             div { class: "inline-form",
-                button { r#type: "submit", class: "btn-primary", disabled: busy() || code().trim().len() < 6, if busy() { "Đang kiểm tra" } else { "Xác minh" } }
-                button { r#type: "button", class: "btn-secondary", onclick: move |_| on_cancel.call(()), "Quay lại" }
+                button { r#type: "submit", class: "btn-primary", disabled: busy() || code().trim().len() < 6, if busy() { "Checking" } else { "Verify" } }
+                button { r#type: "button", class: "btn-secondary", onclick: move |_| on_cancel.call(()), "Back" }
             }
         }
     }
@@ -92,7 +92,7 @@ pub fn SignedInAccounts() -> Element {
     }
     rsx! {
         div { class: "signed-in-accounts",
-            div { class: "auth-dev-title", "Tài khoản đã đăng nhập trên thiết bị này" }
+            div { class: "auth-dev-title", "Account is logged in on this device" }
             for a in list() {
                 {
                     let id = a.user_id.clone();
@@ -110,7 +110,7 @@ pub fn SignedInAccounts() -> Element {
                             Avatar { name: a.name(), avatar_url: a.avatar_url.clone(), size: 36 }
                             span { class: "grow", "{a.name()}" }
                             if a.unread > 0 { span { class: "unread-badge", "{a.unread}" } }
-                            span { class: "member-sub", "Tiếp tục" }
+                            span { class: "member-sub", "Continue" }
                         }
                     }
                 }
@@ -140,7 +140,7 @@ pub fn AccountSwitcher(on_close: EventHandler<()>) -> Element {
             {
                 let id = a.user_id.clone();
                 rsx! {
-                    button { key: "{a.user_id}", r#type: "button", class: "menu-item account-switch", role: "menuitem", title: "Chuyển sang {a.name()}",
+                    button { key: "{a.user_id}", r#type: "button", class: "menu-item account-switch", role: "menuitem", title: "Switch to {a.name()}",
                         onclick: move |_| {
                             let id = id.clone();
                             spawn(async move {
@@ -169,7 +169,7 @@ pub fn AccountSwitcher(on_close: EventHandler<()>) -> Element {
                     });
                     on_close.call(());
                 },
-                crate::components::icons::PlusIcon { size: 18 } span { "Thêm tài khoản" }
+                crate::components::icons::PlusIcon { size: 18 } span { "Add account" }
             }
         }
         if count > 1 {
@@ -180,7 +180,7 @@ pub fn AccountSwitcher(on_close: EventHandler<()>) -> Element {
                         security::reload_app();
                     });
                 },
-                crate::components::icons::LogoutIcon {} span { "Đăng xuất tất cả tài khoản" }
+                crate::components::icons::LogoutIcon {} span { "Sign out of all accounts" }
             }
         }
         if let Some(e) = error() { div { class: "status-badge error", "{e}" } }
@@ -237,15 +237,15 @@ pub fn SecuritySettings() -> Element {
                 "enable" => security::totp_enable(&c).await.map(|cs| {
                     codes.set(cs);
                     setup.set(None);
-                    "Đã bật xác minh hai bước. Hãy cất 10 mã dự phòng ở nơi an toàn."
+                    "Two-step verification enabled. Keep the 10 backup codes in a safe place."
                 }),
                 "disable" => security::totp_disable(&c).await.map(|_| {
                     codes.set(Vec::new());
-                    "Đã tắt xác minh hai bước"
+                    "Two-step verification turned off"
                 }),
                 _ => security::regenerate_codes(&c).await.map(|cs| {
                     codes.set(cs);
-                    "Đã tạo 10 mã dự phòng mới; các mã cũ không dùng được nữa"
+                    "Created 10 new backup codes; Old codes cannot be used anymore"
                 }),
             };
             match r {
@@ -264,7 +264,7 @@ pub fn SecuritySettings() -> Element {
     let enabled = s.as_ref().is_some_and(|s| s.totp_enabled);
     rsx! {
         div { class: "settings-section security-settings",
-            p { class: "settings-row-desc", "Tối đa 5 tài khoản. Mỗi tài khoản có khóa mã hóa, cài đặt, chủ đề, thông báo và mã PIN riêng; chuyển nhanh trong menu ảnh đại diện ở góc dưới." }
+            p { class: "settings-row-desc", "Maximum 5 accounts. Each account has its own encryption key, settings, theme, notifications, and PIN; Quickly switch in the avatar menu in the bottom corner." }
             div { class: "account-list", "data-drag-group": "account-order",
                 for (i, a) in accounts().into_iter().enumerate() {
                     {
@@ -319,7 +319,7 @@ pub fn SecuritySettings() -> Element {
                                     acc_drag_over.set(None);
                                 },
                                 Avatar { name: a.name(), avatar_url: a.avatar_url.clone(), size: 32 }
-                                span { class: "grow", "{a.name()}" if a.active { span { class: "member-sub", " · đang dùng" } } }
+                                span { class: "grow", "{a.name()}" if a.active { span { class: "member-sub", " · in use" } } }
                                 if a.unread > 0 { span { class: "unread-badge", "{a.unread}" } }
                                 if !a.active {
                                     button { r#type: "button", class: "btn-small-secondary",
@@ -329,7 +329,7 @@ pub fn SecuritySettings() -> Element {
                                             save_list(HIDDEN_KEY, &h);
                                             hidden.set(h);
                                         },
-                                        if is_hidden { "Hiện trong menu" } else { "Ẩn khỏi menu" }
+                                        if is_hidden { "Shown in menu" } else { "Hide from menu" }
                                     }
                                     button { r#type: "button", class: "btn-small-secondary danger",
                                         onclick: move |_| {
@@ -340,7 +340,7 @@ pub fn SecuritySettings() -> Element {
                                                     Err(e) => msg.set(Some((true, security::error_text(&e.code)))),
                                                 }
                                             });
-                                        }, "Đăng xuất" }
+                                        }, "Log out" }
                                 }
                             }
                         }
@@ -353,29 +353,29 @@ pub fn SecuritySettings() -> Element {
                 div { class: "settings-row cw-brand-row",
                     crate::components::brand_logos::TwoFactorLogo { size: 30 }
                     span { class: "grow",
-                        span { class: "settings-label", "Xác minh hai bước" }
-                        span { class: "settings-sublabel", "Đang bật · Còn {s.as_ref().map(|x| x.backup_codes_left).unwrap_or(0)} mã dự phòng" }
+                        span { class: "settings-label", "Two-factor authentication" }
+                        span { class: "settings-sublabel", "On · There are {s.as_ref().map(|x| x.backup_codes_left).unwrap_or(0)} backup codes" }
                     }
-                    span { class: "chip-privacy", span { class: "cw-live-dot" } "Đang bật" }
+                    span { class: "chip-privacy", span { class: "cw-live-dot" } "On" }
                 }
                 div { class: "inline-form",
-                    input { r#type: "text", maxlength: "12", aria_label: "Mã hiện tại hoặc mã dự phòng", placeholder: "Mã 6 số hoặc mã dự phòng", value: "{code}", oninput: move |e| code.set(e.value()) }
-                    button { r#type: "button", class: "btn-secondary", disabled: busy() || code().trim().is_empty(), onclick: move |_| act("regen"), "Tạo lại mã dự phòng" }
-                    button { r#type: "button", class: "btn-secondary danger", disabled: busy() || code().trim().is_empty(), onclick: move |_| act("disable"), "Tắt xác minh hai bước" }
+                    input { r#type: "text", maxlength: "12", aria_label: "Current code or backup code", placeholder: "6-digit code or backup code", value: "{code}", oninput: move |e| code.set(e.value()) }
+                    button { r#type: "button", class: "btn-secondary", disabled: busy() || code().trim().is_empty(), onclick: move |_| act("regen"), "Regenerate backup code" }
+                    button { r#type: "button", class: "btn-secondary danger", disabled: busy() || code().trim().is_empty(), onclick: move |_| act("disable"), "Turn off two-step verification" }
                 }
             } else if let Some((secret, uri)) = setup() {
                 div { class: "totp-setup",
-                    div { class: "totp-qr", aria_label: "Mã QR để quét bằng ứng dụng xác thực", role: "img", dangerous_inner_html: "{qr_svg(&uri)}" }
+                    div { class: "totp-qr", aria_label: "QR code to scan with authenticator app", role: "img", dangerous_inner_html: "{qr_svg(&uri)}" }
                     div { class: "totp-steps",
                         ol { class: "guide-steps",
-                            li { "Mở ứng dụng xác thực và quét mã QR." }
-                            li { "Không quét được? Nhập khóa: " code { class: "totp-secret", "{secret}" } }
-                            li { "Nhập mã 6 số ứng dụng hiển thị để bật." }
+                            li { "Open the authenticator app and scan the QR code." }
+                            li { "Can't scan? Enter key: " code { class: "totp-secret", "{secret}" } }
+                            li { "Enter the 6-digit application code displayed to turn it on." }
                         }
                         div { class: "inline-form",
-                            input { r#type: "text", inputmode: "numeric", maxlength: "6", aria_label: "Mã 6 số để bật xác minh hai bước", placeholder: "123456", value: "{code}", oninput: move |e| code.set(e.value()) }
-                            button { r#type: "button", class: "btn-primary", disabled: busy() || code().trim().len() != 6, onclick: move |_| act("enable"), "Bật" }
-                            button { r#type: "button", class: "btn-secondary", onclick: move |_| setup.set(None), "Hủy" }
+                            input { r#type: "text", inputmode: "numeric", maxlength: "6", aria_label: "6-digit code to enable two-step verification", placeholder: "123456", value: "{code}", oninput: move |e| code.set(e.value()) }
+                            button { r#type: "button", class: "btn-primary", disabled: busy() || code().trim().len() != 6, onclick: move |_| act("enable"), "On" }
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| setup.set(None), "Cancel" }
                         }
                     }
                 }
@@ -383,27 +383,27 @@ pub fn SecuritySettings() -> Element {
                 div { class: "settings-row cw-brand-row",
                     crate::components::brand_logos::TwoFactorLogo { size: 30 }
                     span { class: "grow",
-                        span { class: "settings-label", "Xác minh hai bước" }
-                        span { class: "settings-sublabel", "Chưa bật" }
+                        span { class: "settings-label", "Two-factor authentication" }
+                        span { class: "settings-sublabel", "Off" }
                     }
-                    button { r#type: "button", class: "btn-primary", onclick: start_setup, "Thiết lập" }
+                    button { r#type: "button", class: "btn-primary", onclick: start_setup, "Setup" }
                 }
             }
             if !codes.read().is_empty() {
                 div { class: "backup-codes",
-                    div { class: "settings-label", "Mã dự phòng" }
+                    div { class: "settings-label", "Backup code" }
                     div { class: "backup-grid", for c in codes() { code { key: "{c}", "{c}" } } }
                     div { class: "inline-form",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&codes().join("\n")), "Sao chép" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| codes.set(Vec::new()), "Tôi đã cất mã" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&codes().join("\n")), "Copy" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| codes.set(Vec::new()), "I have saved the code" }
                     }
                 }
             }
 
-            div { class: "settings-group-title", "Nhật ký bảo mật" }
-            p { class: "settings-row-desc", "100 hoạt động gần nhất. Địa chỉ IP chỉ giữ phần mạng." }
+            div { class: "settings-group-title", "Security log" }
+            p { class: "settings-row-desc", "100 most recent activities. The IP address only holds the network part." }
             if events.read().is_empty() {
-                div { class: "sidebar-empty", "Trống" }
+                div { class: "sidebar-empty", "Blank" }
             } else {
                 div { class: "security-log",
                     for (i, ev) in events().into_iter().enumerate() {

@@ -13,69 +13,69 @@ use crate::{
 };
 
 pub const DECORATIONS: [(&str, &str); 6] = [
-    ("none", "Không"),
-    ("halo", "Vầng sáng"),
-    ("crown", "Vương miện"),
-    ("sprout", "Mầm xanh"),
-    ("stars", "Chòm sao"),
-    ("cat", "Tai mèo"),
+    ("none", "None"),
+    ("halo", "The halo"),
+    ("crown", "Crown"),
+    ("sprout", "Green sprouts"),
+    ("stars", "Constellation"),
+    ("cat", "Cat ears"),
 ];
 
 pub const EFFECTS: [(&str, &str); 7] = [
-    ("none", "Không"),
-    ("sparkle", "Lấp lánh"),
-    ("snow", "Tuyết rơi"),
-    ("aurora", "Cực quang"),
-    ("bubbles", "Bong bóng"),
-    ("confetti", "Pháo giấy"),
-    ("hearts", "Trái tim"),
+    ("none", "None"),
+    ("sparkle", "Sparkling"),
+    ("snow", "Snow falls"),
+    ("aurora", "Aurora"),
+    ("bubbles", "Bubble"),
+    ("confetti", "Paper fireworks"),
+    ("hearts", "Heart"),
 ];
 
 pub const AVATAR_EFFECTS: [(&str, &str); 6] = [
-    ("none", "Không"),
-    ("spin", "Xoay tròn"),
-    ("pulse", "Nhịp đập"),
-    ("float", "Lơ lửng"),
-    ("wobble", "Lắc lư"),
-    ("rainbow", "Viền cầu vồng"),
+    ("none", "None"),
+    ("spin", "Spin around"),
+    ("pulse", "Pulse"),
+    ("float", "Floating"),
+    ("wobble", "Shake"),
+    ("rainbow", "Rainbow border"),
 ];
 
 pub const NAME_EFFECTS: [(&str, &str); 16] = [
-    ("none", "Không"),
-    ("gradient", "Chuyển màu"),
-    ("shimmer", "Ánh kim"),
-    ("rainbow", "Cầu vồng"),
+    ("none", "None"),
+    ("gradient", "Color change"),
+    ("shimmer", "Metallic luster"),
+    ("rainbow", "Rainbow"),
     ("neon", "Neon"),
-    ("wave", "Gợn sóng"),
-    ("glow", "Phát sáng"),
-    ("sparkle", "Lấp lánh"),
-    ("glitch", "Nhiễu sóng"),
-    ("pulse", "Nhịp đập"),
-    ("typing", "Gõ chữ"),
-    ("reveal", "Hiện dần"),
-    ("cycle", "Đổi màu"),
-    ("outline", "Viền chữ"),
+    ("wave", "Ripples"),
+    ("glow", "Glow"),
+    ("sparkle", "Sparkling"),
+    ("glitch", "Wave interference"),
+    ("pulse", "Pulse"),
+    ("typing", "Type letters"),
+    ("reveal", "Gradually appear"),
+    ("cycle", "Change color"),
+    ("outline", "Letter border"),
     ("holo", "Hologram"),
-    ("breathe", "Hơi thở"),
+    ("breathe", "Breath"),
 ];
 
 pub const NAMEPLATES: [(&str, &str); 7] = [
-    ("none", "Không"),
-    ("aurora", "Cực quang"),
-    ("sunset", "Hoàng hôn"),
-    ("ocean", "Đại dương"),
-    ("galaxy", "Thiên hà"),
-    ("sakura", "Hoa anh đào"),
-    ("forest", "Rừng xanh"),
+    ("none", "None"),
+    ("aurora", "Aurora"),
+    ("sunset", "Sunset"),
+    ("ocean", "Ocean"),
+    ("galaxy", "Galaxy"),
+    ("sakura", "Cherry blossoms"),
+    ("forest", "Green forest"),
 ];
 
 pub const EFFECT_ANIMS: [(&str, &str); 6] = [
-    ("none", "Đứng yên"),
-    ("float", "Bồng bềnh"),
-    ("spin", "Xoay"),
-    ("pulse", "Phập phồng"),
-    ("drift", "Trôi ngang"),
-    ("sway", "Đung đưa"),
+    ("none", "Stand still"),
+    ("float", "Floating"),
+    ("spin", "Rotate"),
+    ("pulse", "Heaving"),
+    ("drift", "Horizontal drift"),
+    ("sway", "Swing"),
 ];
 
 /// CSS class + inline style for a nameplate background (lists, cards).
@@ -99,23 +99,23 @@ pub fn name_effect_class(effect: Option<&str>) -> String {
 
 /// Preset (primary, accent) pairs for the profile theme.
 pub const THEME_PRESETS: [(&str, &str, &str); 8] = [
-    ("#2764E7", "#7C3AED", "Đại dương"),
-    ("#0EA5A4", "#22C55E", "Rừng nhiệt đới"),
-    ("#F97316", "#EF4444", "Hoàng hôn"),
-    ("#DB2777", "#F59E0B", "Hoa anh đào"),
-    ("#6D28D9", "#0EA5E9", "Thiên hà"),
-    ("#334155", "#64748B", "Đá xám"),
-    ("#B45309", "#65A30D", "Mùa thu"),
-    ("#0F766E", "#1D4ED8", "Biển sâu"),
+    ("#2764E7", "#7C3AED", "Ocean"),
+    ("#0EA5A4", "#22C55E", "Tropical forest"),
+    ("#F97316", "#EF4444", "Sunset"),
+    ("#DB2777", "#F59E0B", "Cherry blossoms"),
+    ("#6D28D9", "#0EA5E9", "Galaxy"),
+    ("#334155", "#64748B", "Gray stone"),
+    ("#B45309", "#65A30D", "Autumn"),
+    ("#0F766E", "#1D4ED8", "Deep sea"),
 ];
 
 pub fn badge_label(code: &str) -> &str {
     match code {
-        "staff" => "Đội ngũ ChatW",
-        "early" => "Người dùng sớm",
-        "verified" => "Đã xác minh",
-        "developer" => "Nhà phát triển",
-        "moderator" => "Điều phối viên",
+        "staff" => "ChatW team",
+        "early" => "Early adopter",
+        "verified" => "Verified",
+        "developer" => "Developer",
+        "moderator" => "Coordinator",
         other => other,
     }
 }
@@ -124,13 +124,13 @@ fn member_since_label(iso: &str) -> Option<String> {
     let dt = chrono::DateTime::parse_from_rfc3339(iso).ok()?;
     let local: chrono::DateTime<chrono::Local> = dt.into();
     use chrono::Datelike;
-    Some(format!("Tháng {}, {}", local.month(), local.year()))
+    Some(format!("{}/{}", local.month(), local.year()))
 }
 
 fn presence_text(p: &str) -> Option<&'static str> {
     match p {
-        "idle" => Some("Đang vắng"),
-        "dnd" => Some("Không làm phiền"),
+        "idle" => Some("Away"),
+        "dnd" => Some("Do not disturb"),
         _ => None,
     }
 }
@@ -264,22 +264,22 @@ pub fn ProfileCard(
                         user_id: p.id.clone(), profile: p.clone(), plus: pl, is_self, view_as: view_as.clone(), on_changed: on_plus_changed,
                     }
                     if let Some(s) = since.clone() {
-                        div { class: "profile-card-section", div { class: "profile-card-label", "Thành viên ChatW từ" } div { class: "profile-card-value", "{s}" } }
+                        div { class: "profile-card-section", div { class: "profile-card-label", "ChatW member from" } div { class: "profile-card-value", "{s}" } }
                     }
                 } else {
                     div { class: "profile-card-sections",
                         if let Some(bio) = p.bio.as_ref().filter(|b| !b.trim().is_empty()) {
                             div { class: "profile-card-section",
-                                div { class: "profile-card-label", "Giới thiệu" }
+                                div { class: "profile-card-label", "Introduction" }
                                 div { class: "profile-card-bio", "{bio}" }
                             }
                         }
                         if p.details.has_any() {
                             div { class: "profile-card-section",
-                                div { class: "profile-card-label", "Thông tin" }
+                                div { class: "profile-card-label", "Information" }
                                 div { class: "profile-details",
-                                    if let Some(v) = p.details.occupation.as_ref().filter(|x| !x.is_empty()) { div { class: "profile-detail", span { class: "pd-k", "Công việc" } span { "{v}" } } }
-                                    if let Some(v) = p.details.location.as_ref().filter(|x| !x.is_empty()) { div { class: "profile-detail", span { class: "pd-k", "Nơi sống" } span { "{v}" } } }
+                                    if let Some(v) = p.details.occupation.as_ref().filter(|x| !x.is_empty()) { div { class: "profile-detail", span { class: "pd-k", "Work" } span { "{v}" } } }
+                                    if let Some(v) = p.details.location.as_ref().filter(|x| !x.is_empty()) { div { class: "profile-detail", span { class: "pd-k", "Place to live" } span { "{v}" } } }
                                     if let Some(v) = p.details.website.as_ref().filter(|x| x.starts_with("https://") || x.starts_with("http://")) {
                                         div { class: "profile-detail", span { class: "pd-k", "Website" }
                                             button { r#type: "button", class: "link-btn", onclick: { let v = v.clone(); move |_| platform::open_external_url(&v) }, "{v}" }
@@ -295,13 +295,13 @@ pub fn ProfileCard(
                         }
                         if let Some(note) = p.note.as_ref().filter(|n| !n.trim().is_empty()) {
                             div { class: "profile-card-section private-note",
-                                div { class: "profile-card-label", "Ghi chú riêng của bạn" }
+                                div { class: "profile-card-label", "Take your own notes" }
                                 div { class: "profile-card-bio", "{note}" }
                             }
                         }
                         if let Some(s) = since {
                             div { class: "profile-card-section",
-                                div { class: "profile-card-label", "Thành viên ChatW từ" }
+                                div { class: "profile-card-label", "ChatW member from" }
                                 div { class: "profile-card-value", "{s}" }
                             }
                         }

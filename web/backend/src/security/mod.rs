@@ -174,7 +174,7 @@ pub fn ip_masked(headers: &HeaderMap) -> String {
     if raw.contains(':') {
         return raw.split(':').take(3).collect::<Vec<_>>().join(":") + "::";
     }
-    "Không xác định".into()
+    "Unknown".into()
 }
 
 fn ua(headers: &HeaderMap) -> Option<String> {
@@ -194,7 +194,7 @@ fn device_of(ua: Option<&str>) -> String {
     } else if u.contains("Linux") {
         "Linux"
     } else {
-        "Thiết bị"
+        "Devices"
     };
     let browser = if u.contains("Edg/") {
         "Edge"
@@ -205,9 +205,9 @@ fn device_of(ua: Option<&str>) -> String {
     } else if u.contains("Safari/") {
         "Safari"
     } else {
-        "ứng dụng"
+        "application"
     };
-    format!("{browser} trên {os}")
+    format!("{browser} on {os}")
 }
 
 pub async fn log_event(state: &AppState, user_id: Uuid, kind: &str, headers: &HeaderMap) {
@@ -699,6 +699,6 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert("x-forwarded-for", "203.0.113.45, 10.0.0.1".parse().unwrap());
         assert_eq!(ip_masked(&h), "203.0.x.x");
-        assert_eq!(ip_masked(&HeaderMap::new()), "Không xác định");
+        assert_eq!(ip_masked(&HeaderMap::new()), "Unknown");
     }
 }

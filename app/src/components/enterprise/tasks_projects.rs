@@ -120,10 +120,10 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                         due_date.set(String::new());
                         checklist_raw.set(String::new());
                         show_create.set(false);
-                        msg.set(Some((false, "Đã giao công việc mới".into())));
+                        msg.set(Some((false, "New job assigned".into())));
                         reload.call(());
                     }
-                    Err(e) => msg.set(Some((true, format!("Không tạo được việc: {}", e.code)))),
+                    Err(e) => msg.set(Some((true, format!("Unable to create job: {}", e.code)))),
                 }
             });
         }
@@ -136,7 +136,7 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
             spawn(async move {
                 match enterprise::update_task(&sid, &tid, json!({ "status": st })).await {
                     Ok(_) => reload.call(()),
-                    Err(e) => msg.set(Some((true, format!("Không cập nhật được: {}", e.code)))),
+                    Err(e) => msg.set(Some((true, format!("Unable to update: {}", e.code)))),
                 }
             });
         }
@@ -161,32 +161,32 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                 div { class: "ent-inline-bar",
                     div { class: "ent-segmented",
                         button { r#type: "button", class: if mode() == "kanban" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("kanban".into()), "Kanban" }
-                        button { r#type: "button", class: if mode() == "list" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("list".into()), "Danh sách" }
-                        button { r#type: "button", class: if mode() == "calendar" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("calendar".into()), "Theo hạn" }
+                        button { r#type: "button", class: if mode() == "list" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("list".into()), "List" }
+                        button { r#type: "button", class: if mode() == "calendar" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("calendar".into()), "By term" }
                     }
                     select { value: "{view}", onchange: move |e| { view.set(e.value()); reload.call(()); },
-                        option { value: "all", "Tất cả việc" }
-                        option { value: "mine", "Việc của tôi" }
-                        option { value: "assigned", "Tôi đã giao" }
-                        option { value: "overdue", "Quá hạn" }
+                        option { value: "all", "All work" }
+                        option { value: "mine", "My job" }
+                        option { value: "assigned", "I delivered" }
+                        option { value: "overdue", "Overdue" }
                     }
                     select { value: "{dept_filter}", onchange: move |e| { dept_filter.set(e.value()); reload.call(()); },
-                        option { value: "", "Mọi phòng ban" }
+                        option { value: "", "Every department" }
                         for d in depts() { option { key: "{d.id}", value: "{d.id}", "{d.name}" } }
                     }
                     select { value: "{proj_filter}", onchange: move |e| { proj_filter.set(e.value()); reload.call(()); },
-                        option { value: "", "Mọi dự án" }
+                        option { value: "", "Every project" }
                         for p in projects() { option { key: "{p.id}", value: "{p.id}", "{p.name}" } }
                     }
-                    input { r#type: "text", placeholder: "Tìm công việc", value: "{q}", oninput: move |e| q.set(e.value()) }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| reload.call(()), "Lọc" }
+                    input { r#type: "text", placeholder: "Find work", value: "{q}", oninput: move |e| q.set(e.value()) }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| reload.call(()), "Filter" }
                 }
                 if can_create {
                     button {
                         r#type: "button",
                         class: "btn-primary",
                         onclick: move |_| show_create.set(!show_create()),
-                        PlusIcon { size: 15 } " Giao việc mới"
+                        PlusIcon { size: 15 } " New job assignment"
                     }
                 }
             }
@@ -198,11 +198,11 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
             if can_create && show_create() {
                 div { class: "ent-card",
                     div { class: "ent-chips", style: "margin-bottom: 8px;",
-                        span { class: "ent-muted", "Mẫu nhanh:" }
+                        span { class: "ent-muted", "Quick sample:" }
                         for (tpl_title, tpl_prio, tpl_check) in [
-                            ("Báo cáo tiến độ tuần", "medium", "Tổng hợp số liệu, Đánh giá rủi ro, Gửi trưởng bộ phận"),
-                            ("Xử lý sự cố kỹ thuật", "urgent", "Xác định nguyên nhân, Khắc phục tạm thời, Kiểm thử nghiệm thu"),
-                            ("Kiểm duyệt tài liệu quy trình", "high", "Soát nội dung, Kiểm tra phân quyền, Phát hành"),
+                            ("Weekly progress report", "medium", "Compile data, assess risks, send to department head"),
+                            ("Handling technical problems", "urgent", "Determine the cause, Temporarily fix, Test and accept"),
+                            ("Review process documents", "high", "Content review, Authorization check, Release"),
                         ] {
                             button {
                                 key: "{tpl_title}",
@@ -218,51 +218,51 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                         }
                     }
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Tiêu đề công việc" }
-                            input { r#type: "text", placeholder: "Nhập tiêu đề công việc", value: "{title}", oninput: move |e| title.set(e.value()) }
+                        label { class: "form-field", span { "Job title" }
+                            input { r#type: "text", placeholder: "Enter the job title", value: "{title}", oninput: move |e| title.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Dự án liên kết" }
+                        label { class: "form-field", span { "Affiliate project" }
                             select { value: "{project_id}", onchange: move |e| project_id.set(e.value()),
-                                option { value: "", "Chưa chọn dự án" }
+                                option { value: "", "Haven't selected a project yet" }
                                 for p in projects() { option { key: "{p.id}", value: "{p.id}", "{p.name}" } }
                             }
                         }
                         if can_assign {
-                            label { class: "form-field", span { "Người thực hiện" }
+                            label { class: "form-field", span { "Implementer" }
                                 select { value: "{assignee}", onchange: move |e| assignee.set(e.value()),
-                                    option { value: "", "Chưa phân công" }
+                                    option { value: "", "Not assigned yet" }
                                     for m in members() { option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" } }
                                 }
                             }
                         }
-                        label { class: "form-field", span { "Mức ưu tiên" }
+                        label { class: "form-field", span { "Priority level" }
                             select { value: "{priority}", onchange: move |e| priority.set(e.value()),
-                                option { value: "low", "Thấp" }
-                                option { value: "medium", "Trung bình" }
-                                option { value: "high", "Cao" }
-                                option { value: "urgent", "Khẩn cấp" }
+                                option { value: "low", "Low" }
+                                option { value: "medium", "Average" }
+                                option { value: "high", "High" }
+                                option { value: "urgent", "Urgent" }
                             }
                         }
-                        label { class: "form-field", span { "Hạn hoàn thành" }
+                        label { class: "form-field", span { "Completion deadline" }
                             input { r#type: "date", value: "{due_date}", oninput: move |e| due_date.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Các bước kiểm tra (ngăn cách bằng dấu phẩy)" }
-                            input { r#type: "text", placeholder: "Bước 1, Bước 2, Nghiệm thu", value: "{checklist_raw}", oninput: move |e| checklist_raw.set(e.value()) }
+                        label { class: "form-field", span { "Test steps (separated by commas)" }
+                            input { r#type: "text", placeholder: "Step 1, Step 2, Acceptance", value: "{checklist_raw}", oninput: move |e| checklist_raw.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Mô tả chi tiết" }
-                            input { r#type: "text", placeholder: "Yêu cầu đầu ra hoặc tiêu chí hoàn thành", value: "{desc}", oninput: move |e| desc.set(e.value()) }
+                        label { class: "form-field", span { "Detailed description" }
+                            input { r#type: "text", placeholder: "Output requirements or completion criteria", value: "{desc}", oninput: move |e| desc.set(e.value()) }
                         }
                     }
                     div { class: "ent-btn-group",
-                        button { r#type: "button", class: "btn-primary", onclick: create_task, "Lưu công việc" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                        button { r#type: "button", class: "btn-primary", onclick: create_task, "Save work" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Close" }
                     }
                 }
             }
 
             if mode() == "kanban" {
                 div { class: "ent-kanban",
-                    for (st, st_label) in [("todo", "Cần làm"), ("in_progress", "Đang làm"), ("review", "Chờ duyệt"), ("done", "Hoàn thành")] {
+                    for (st, st_label) in [("todo", "Need to do"), ("in_progress", "Working"), ("review", "Waiting for approval"), ("done", "Completed")] {
                         {
                             let col_tasks: Vec<TaskItem> = tasks().into_iter().filter(|t| t.status == st).collect();
                             rsx! {
@@ -323,17 +323,17 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                                                     div { class: "ent-chips", style: "margin-top: 6px;",
                                                         if let Some(pn) = &t.project_name { span { class: "ent-pill", "{pn}" } }
                                                         if let Some(an) = &t.assignee_name { span { class: "ent-pill", "@{an}" } }
-                                                        if let Some(d) = &t.due_date { span { class: "ent-pill", "Hạn {d}" } }
+                                                        if let Some(d) = &t.due_date { span { class: "ent-pill", "Term {d}" } }
                                                     }
                                                     div { class: "ent-btn-group", style: "margin-top: 8px;",
                                                         if st == "todo" {
-                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| set_status.call((tid2.clone(), "in_progress")), "Nhận việc" }
+                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| set_status.call((tid2.clone(), "in_progress")), "Get the job" }
                                                         }
                                                         if st == "in_progress" {
-                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| set_status.call((tid3.clone(), "review")), "Gửi duyệt" }
+                                                            button { r#type: "button", class: "btn-secondary", onclick: move |_| set_status.call((tid3.clone(), "review")), "Send for approval" }
                                                         }
                                                         if st != "done" {
-                                                            button { r#type: "button", class: "btn-primary", onclick: move |_| set_status.call((tid1.clone(), "done")), "Hoàn tất" }
+                                                            button { r#type: "button", class: "btn-primary", onclick: move |_| set_status.call((tid1.clone(), "done")), "Completed" }
                                                         }
                                                     }
                                                 }
@@ -362,15 +362,15 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                                                 span { class: "ent-pill", "{enterprise::vn_priority(&t.priority)}" }
                                                 span { class: "ent-pill ok", "{enterprise::vn_task_status(&t.status)}" }
                                                 if let Some(pn) = &t.project_name { span { class: "ent-pill", "{pn}" } }
-                                                if let Some(ch) = &t.source_channel_name { span { class: "ent-pill", "Từ #{ch}" } }
+                                                if let Some(ch) = &t.source_channel_name { span { class: "ent-pill", "From #{ch}" } }
                                             }
                                             if let Some(prev) = &t.source_message_preview {
                                                 div { class: "ent-quote", "{prev}" }
                                             }
                                             div { class: "ent-muted",
-                                                if let Some(an) = &t.assignee_name { "Phụ trách: {an}" } else { "Chưa gán" }
-                                                if let Some(d) = &t.due_date { " · Hạn: {d}" }
-                                                " · {t.comment_count} bình luận"
+                                                if let Some(an) = &t.assignee_name { "In charge: {an}" } else { "Not assigned yet" }
+                                                if let Some(d) = &t.due_date { " · Term: {d}" }
+                                                " · {t.comment_count} comments"
                                             }
                                         }
                                         div { class: "ent-btn-group",
@@ -379,15 +379,15 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                                                 let st = match s.as_str() { "in_progress" => "in_progress", "review" => "review", "done" => "done", "archived" => "archived", _ => "todo" };
                                                 set_status.call((tid_s.clone(), st));
                                             },
-                                                option { value: "todo", "Cần làm" }
-                                                option { value: "in_progress", "Đang làm" }
-                                                option { value: "review", "Chờ duyệt" }
-                                                option { value: "done", "Hoàn thành" }
-                                                option { value: "archived", "Lưu trữ" }
+                                                option { value: "todo", "Need to do" }
+                                                option { value: "in_progress", "Working" }
+                                                option { value: "review", "Waiting for approval" }
+                                                option { value: "done", "Completed" }
+                                                option { value: "archived", "Storage" }
                                             }
                                             button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                                 if is_open { open_task.set(None); } else { load_comments.call(tid_c.clone()); }
-                                            }, "Thảo luận" }
+                                            }, "Discussion" }
                                         }
                                     }
                                     if is_open {
@@ -399,7 +399,7 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                                                 }
                                             }
                                             div { class: "ent-inline-bar", style: "margin-top: 6px;",
-                                                input { r#type: "text", placeholder: "Viết trao đổi công việc", value: "{comment_input}", oninput: move |e| comment_input.set(e.value()) }
+                                                input { r#type: "text", placeholder: "Write a work exchange", value: "{comment_input}", oninput: move |e| comment_input.set(e.value()) }
                                                 button { r#type: "button", class: "btn-primary", onclick: {
                                                     let sid = sid_c.clone();
                                                     let tid = t.id.clone();
@@ -416,7 +416,7 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
                                                             }
                                                         });
                                                     }
-                                                }, "Gửi" }
+                                                }, "Send" }
                                             }
                                         }
                                     }
@@ -516,10 +516,10 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                         desc.set(String::new());
                         milestones_raw.set(String::new());
                         show_create.set(false);
-                        msg.set(Some((false, "Đã khởi tạo dự án".into())));
+                        msg.set(Some((false, "Project initialized".into())));
                         r();
                     }
-                    Err(e) => msg.set(Some((true, format!("Không tạo được dự án: {}", e.code)))),
+                    Err(e) => msg.set(Some((true, format!("Unable to create project: {}", e.code)))),
                 }
             });
         }
@@ -529,14 +529,14 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-chips",
-                    span { class: "ent-pill ok", "{projects().len()} dự án doanh nghiệp" }
+                    span { class: "ent-pill ok", "{projects().len()} enterprise project" }
                 }
                 if can_manage {
                     button {
                         r#type: "button",
                         class: "btn-primary",
                         onclick: move |_| show_create.set(!show_create()),
-                        PlusIcon { size: 15 } " Tạo dự án"
+                        PlusIcon { size: 15 } " Create project"
                     }
                 }
             }
@@ -546,10 +546,10 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
             if can_manage && show_create() {
                 div { class: "ent-card",
                     div { class: "ent-chips", style: "margin-bottom: 8px;",
-                        span { class: "ent-muted", "Mẫu dự án:" }
+                        span { class: "ent-muted", "Project sample:" }
                         for (t_name, t_desc, t_ms) in [
-                            ("Phát hành sản phẩm mới", "Chuẩn bị phát triển, kiểm thử và triển khai sản phẩm", "Khảo sát yêu cầu, Phát triển cốt lõi, Kiểm thử bảo mật, Ra mắt"),
-                            ("Chuyển đổi số phòng ban", "Số hóa quy trình biểu mẫu và kho tài liệu", "Chuẩn hóa quy trình, Đào tạo nhân sự, Vận hành chính thức"),
+                            ("New product release", "Prepare for product development, testing, and deployment", "Requirements Survey, Core Development, Security Testing, Launch"),
+                            ("Convert department numbers", "Digitize forms processes and document warehouses", "Process standardization, Personnel training, Official operation"),
                         ] {
                             button {
                                 key: "{t_name}",
@@ -565,18 +565,18 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                         }
                     }
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Tên dự án" }
-                            input { r#type: "text", placeholder: "Nhập tên dự án", value: "{name}", oninput: move |e| name.set(e.value()) }
+                        label { class: "form-field", span { "Project name" }
+                            input { r#type: "text", placeholder: "Enter project name", value: "{name}", oninput: move |e| name.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Phòng ban phụ trách" }
+                        label { class: "form-field", span { "Department in charge" }
                             select { value: "{dept_id}", onchange: move |e| dept_id.set(e.value()),
-                                option { value: "", "Toàn doanh nghiệp" }
+                                option { value: "", "Whole enterprise" }
                                 for d in depts() { option { key: "{d.id}", value: "{d.id}", "{d.name}" } }
                             }
                         }
-                        label { class: "form-field", span { "Kênh phối hợp" }
+                        label { class: "form-field", span { "Coordination channel" }
                             select { value: "{linked_ch_id}", onchange: move |e| linked_ch_id.set(e.value()),
-                                option { value: "", "Chưa gắn kênh" }
+                                option { value: "", "Channel not attached yet" }
                                 for ch in channels() {
                                     if ch.channel_type == "text" {
                                         option { key: "{ch.id}", value: "{ch.id}", "#{ch.name}" }
@@ -584,27 +584,27 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                                 }
                             }
                         }
-                        label { class: "form-field", span { "Mức ưu tiên" }
+                        label { class: "form-field", span { "Priority level" }
                             select { value: "{priority}", onchange: move |e| priority.set(e.value()),
-                                option { value: "low", "Thấp" }
-                                option { value: "medium", "Trung bình" }
-                                option { value: "high", "Cao" }
-                                option { value: "urgent", "Khẩn cấp" }
+                                option { value: "low", "Low" }
+                                option { value: "medium", "Average" }
+                                option { value: "high", "High" }
+                                option { value: "urgent", "Urgent" }
                             }
                         }
-                        label { class: "form-field", span { "Thời hạn dự kiến" }
+                        label { class: "form-field", span { "Expected deadline" }
                             input { r#type: "date", value: "{due_date}", oninput: move |e| due_date.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Mốc tiến độ (phân cách bằng dấu phẩy)" }
-                            input { r#type: "text", placeholder: "Giai đoạn 1, Giai đoạn 2, Nghiệm thu", value: "{milestones_raw}", oninput: move |e| milestones_raw.set(e.value()) }
+                        label { class: "form-field", span { "Progress milestones (separated by commas)" }
+                            input { r#type: "text", placeholder: "Phase 1, Phase 2, Acceptance", value: "{milestones_raw}", oninput: move |e| milestones_raw.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Mô tả mục tiêu" }
-                            input { r#type: "text", placeholder: "Mô tả ngắn gọn mục tiêu dự án", value: "{desc}", oninput: move |e| desc.set(e.value()) }
+                        label { class: "form-field", span { "Description of goal" }
+                            input { r#type: "text", placeholder: "Briefly describe the project goals", value: "{desc}", oninput: move |e| desc.set(e.value()) }
                         }
                     }
                     div { class: "ent-btn-group",
-                        button { r#type: "button", class: "btn-primary", onclick: create, "Lưu dự án" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                        button { r#type: "button", class: "btn-primary", onclick: create, "Save the project" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Close" }
                     }
                 }
             }
@@ -630,11 +630,11 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                                                 if enterprise::update_project(&sid, &pid, json!({ "status": v })).await.is_ok() { r(); }
                                             });
                                         },
-                                            option { value: "planning", "Lập kế hoạch" }
-                                            option { value: "active", "Đang chạy" }
-                                            option { value: "on_hold", "Tạm dừng" }
-                                            option { value: "completed", "Hoàn thành" }
-                                            option { value: "archived", "Lưu trữ" }
+                                            option { value: "planning", "Make a plan" }
+                                            option { value: "active", "Running" }
+                                            option { value: "on_hold", "Pause" }
+                                            option { value: "completed", "Completed" }
+                                            option { value: "archived", "Storage" }
                                         }
                                     }
                                 }
@@ -646,7 +646,7 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                                         div { class: "ent-chips", style: "margin-top: 6px;",
                                             for (mi, m_item) in ms_arr.iter().enumerate() {
                                                 {
-                                                    let mt = m_item.get("title").and_then(|v| v.as_str()).unwrap_or("Mốc").to_string();
+                                                    let mt = m_item.get("title").and_then(|v| v.as_str()).unwrap_or("Mold").to_string();
                                                     let md = m_item.get("done").and_then(|v| v.as_bool()).unwrap_or(false);
                                                     let all_ms = ms_arr.clone();
                                                     let pid_ms = p.id.clone();
@@ -679,9 +679,9 @@ pub fn ProjectsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64
                                     }
                                 }
                                 div { class: "ent-chips",
-                                    span { class: "ent-pill", "{p.task_done}/{p.task_total} công việc ({pct}%)" }
-                                    if let Some(due) = &p.due_date { span { class: "ent-pill", "Hạn {due}" } }
-                                    if let Some(ch) = &p.linked_channel_name { span { class: "ent-pill ok", "Kênh #{ch}" } }
+                                    span { class: "ent-pill", "{p.task_done}/{p.task_total} jobs ({pct}%)" }
+                                    if let Some(due) = &p.due_date { span { class: "ent-pill", "Term {due}" } }
+                                    if let Some(ch) = &p.linked_channel_name { span { class: "ent-pill ok", "Channel #{ch}" } }
                                 }
                                 div { class: "ent-progress", div { class: "ent-progress-fill", style: "width: {pct}%;" } }
                             }
@@ -704,7 +704,7 @@ pub fn CreateTaskFromMsgDialog(
 ) -> Element {
     let default_title: String = preview.chars().take(72).collect();
     let mut action_kind = use_signal(|| "task".to_string()); // "task" | "document" | "announcement"
-    let mut title = use_signal(move || if default_title.is_empty() { "Công việc từ tin nhắn".to_string() } else { default_title });
+    let mut title = use_signal(move || if default_title.is_empty() { "Work from messages".to_string() } else { default_title });
     let mut description = use_signal(|| preview.clone());
     let mut priority = use_signal(|| "medium".to_string());
     let mut due_date = use_signal(String::new);
@@ -730,51 +730,51 @@ pub fn CreateTaskFromMsgDialog(
         div { class: "modal-overlay", role: "dialog", aria_modal: "true", onclick: move |_| on_close.call(()),
             div { class: "modal-dialog", onclick: move |e| e.stop_propagation(),
                 div { class: "modal-header",
-                    h3 { class: "modal-title", "Thao tác doanh nghiệp từ tin nhắn" }
-                    button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon {} }
+                    h3 { class: "modal-title", "Business operations from messages" }
+                    button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon {} }
                 }
                 div { class: "modal-body",
                     div { class: "ent-segmented",
-                        button { r#type: "button", class: if action_kind() == "task" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("task".into()), "Tạo công việc" }
-                        button { r#type: "button", class: if action_kind() == "document" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("document".into()), "Lưu vào tài liệu" }
-                        button { r#type: "button", class: if action_kind() == "announcement" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("announcement".into()), "Chia sẻ thông báo" }
+                        button { r#type: "button", class: if action_kind() == "task" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("task".into()), "Create jobs" }
+                        button { r#type: "button", class: if action_kind() == "document" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("document".into()), "Save to document" }
+                        button { r#type: "button", class: if action_kind() == "announcement" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("announcement".into()), "Share announcements" }
                     }
-                    label { class: "form-field", span { class: "form-label", "Tiêu đề" }
+                    label { class: "form-field", span { class: "form-label", "Title" }
                         input { r#type: "text", value: "{title}", oninput: move |e| title.set(e.value()) }
                     }
-                    label { class: "form-field", span { class: "form-label", "Nội dung chi tiết" }
+                    label { class: "form-field", span { class: "form-label", "Detailed content" }
                         textarea { rows: 3, value: "{description}", oninput: move |e| description.set(e.value()) }
                     }
                     if action_kind() == "task" {
                         div { class: "ent-form-grid",
-                            label { class: "form-field", span { class: "form-label", "Người thực hiện" }
+                            label { class: "form-field", span { class: "form-label", "Implementer" }
                                 select { value: "{assignee}", onchange: move |e| assignee.set(e.value()),
-                                    option { value: "", "Chưa phân công" }
+                                    option { value: "", "Not assigned yet" }
                                     for m in members() { option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" } }
                                 }
                             }
-                            label { class: "form-field", span { class: "form-label", "Dự án" }
+                            label { class: "form-field", span { class: "form-label", "Project" }
                                 select { value: "{project_id}", onchange: move |e| project_id.set(e.value()),
-                                    option { value: "", "Không gắn dự án" }
+                                    option { value: "", "Do not attach the project" }
                                     for p in projects() { option { key: "{p.id}", value: "{p.id}", "{p.name}" } }
                                 }
                             }
-                            label { class: "form-field", span { class: "form-label", "Mức ưu tiên" }
+                            label { class: "form-field", span { class: "form-label", "Priority level" }
                                 select { value: "{priority}", onchange: move |e| priority.set(e.value()),
-                                    option { value: "low", "Thấp" }
-                                    option { value: "medium", "Trung bình" }
-                                    option { value: "high", "Cao" }
-                                    option { value: "urgent", "Khẩn cấp" }
+                                    option { value: "low", "Low" }
+                                    option { value: "medium", "Average" }
+                                    option { value: "high", "High" }
+                                    option { value: "urgent", "Urgent" }
                                 }
                             }
-                            label { class: "form-field", span { class: "form-label", "Hạn hoàn thành" }
+                            label { class: "form-field", span { class: "form-label", "Completion deadline" }
                                 input { r#type: "date", value: "{due_date}", oninput: move |e| due_date.set(e.value()) }
                             }
                         }
                     }
                     if let Some(e) = err() { div { class: "status-badge error", "{e}" } }
                     div { style: "display: flex; justify-content: flex-end; gap: 8px;",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Hủy" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Cancel" }
                         button {
                             r#type: "button",
                             class: "btn-primary",
@@ -824,13 +824,13 @@ pub fn CreateTaskFromMsgDialog(
                                     match res {
                                         Ok(_) => on_created.call(()),
                                         Err(e) => {
-                                            err.set(Some(format!("Không thực hiện được: {}", e.code)));
+                                            err.set(Some(format!("Failed: {}", e.code)));
                                             saving.set(false);
                                         }
                                     }
                                 });
                             },
-                            if saving() { "Đang lưu" } else { "Lưu" }
+                            if saving() { "Saving" } else { "Save" }
                         }
                     }
                 }

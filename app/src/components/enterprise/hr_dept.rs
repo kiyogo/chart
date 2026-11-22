@@ -116,7 +116,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
             let sid = sid.clone();
             let uid = f_uid();
             if uid.is_empty() || f_name().trim().is_empty() {
-                msg.set(Some((true, "Vui lòng chọn thành viên và nhập họ tên".into())));
+                msg.set(Some((true, "Please select a member and enter your full name".into())));
                 return;
             }
             let body = json!({
@@ -136,11 +136,11 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
             spawn(async move {
                 match enterprise::upsert_employee(&sid, body).await {
                     Ok(_) => {
-                        msg.set(Some((false, "Đã lưu hồ sơ nhân sự".into())));
+                        msg.set(Some((false, "Personnel records saved".into())));
                         editing_uid.set(None);
                         load.call(());
                     }
-                    Err(e) => msg.set(Some((true, format!("Lỗi lưu hồ sơ: {}", e.code)))),
+                    Err(e) => msg.set(Some((true, format!("Error saving record: {}", e.code)))),
                 }
             });
         }
@@ -157,7 +157,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
             spawn(async move {
                 if enterprise::bulk_employees(&sid, json!({ "user_ids": ids, "employment_status": st })).await.is_ok() {
                     selected.set(HashSet::new());
-                    msg.set(Some((false, "Đã cập nhật trạng thái hàng loạt".into())));
+                    msg.set(Some((false, "Bulk status updated".into())));
                     load.call(());
                 }
             });
@@ -168,26 +168,26 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-inline-bar",
-                    input { r#type: "text", placeholder: "Tìm tên, mã NV, chức danh", value: "{q}", oninput: move |e| q.set(e.value()) }
+                    input { r#type: "text", placeholder: "Find name, employee code, title", value: "{q}", oninput: move |e| q.set(e.value()) }
                     select { value: "{status_filter}", onchange: move |e| { status_filter.set(e.value()); load.call(()); },
-                        option { value: "", "Mọi trạng thái" }
-                        option { value: "active", "Đang làm việc" }
-                        option { value: "onboarding", "Đang thử việc" }
-                        option { value: "suspended", "Tạm khóa" }
-                        option { value: "offboarded", "Đã nghỉ việc" }
+                        option { value: "", "Every state" }
+                        option { value: "active", "Working" }
+                        option { value: "onboarding", "On probation" }
+                        option { value: "suspended", "Temporarily locked" }
+                        option { value: "offboarded", "Retired" }
                     }
                     select { value: "{dept_filter}", onchange: move |e| { dept_filter.set(e.value()); load.call(()); },
-                        option { value: "", "Mọi phòng ban" }
+                        option { value: "", "Every department" }
                         for d in depts() {
                             option { key: "{d.id}", value: "{d.id}", "{d.name}" }
                         }
                     }
                     select { value: "{sort_by}", onchange: move |e| { sort_by.set(e.value()); load.call(()); },
-                        option { value: "name", "Sắp xếp: Họ tên" }
-                        option { value: "code", "Sắp xếp: Mã NV" }
-                        option { value: "recent", "Sắp xếp: Mới nhất" }
+                        option { value: "name", "Sort: Full name" }
+                        option { value: "code", "Sort: Code NV" }
+                        option { value: "recent", "Sort: Newest" }
                     }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| load.call(()), "Lọc" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| load.call(()), "Filter" }
                 }
                 if can_manage {
                     div { class: "ent-btn-group",
@@ -195,7 +195,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                             r#type: "button",
                             class: "btn-secondary",
                             onclick: move |_| show_import.set(!show_import()),
-                            "Nhập danh sách"
+                            "Import list"
                         }
                         button {
                             r#type: "button",
@@ -211,7 +211,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                     editing_uid.set(Some("new".into()));
                                 }
                             },
-                            PlusIcon { size: 15 } " Thêm hồ sơ"
+                            PlusIcon { size: 15 } " Add profile"
                         }
                     }
                 }
@@ -224,10 +224,10 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
             if can_manage && show_import() {
                 div { class: "ent-card",
                     label { class: "form-field",
-                        span { "Nhập danh sách nhân sự (mỗi dòng: tài_khoản, Họ tên, Chức danh, Mã phòng ban)" }
+                        span { "Enter the list of personnel (each line: account, full name, title, department code)" }
                         textarea {
                             rows: 3,
-                            placeholder: "alice, Nguyễn Văn A, Kỹ sư hệ thống, ENG",
+                            placeholder: "alice, Nguyen Van A, System Engineer, ENG",
                             value: "{import_text}",
                             oninput: move |e| import_text.set(e.value()),
                         }
@@ -256,7 +256,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                         })
                                         .collect();
                                     if rows.is_empty() {
-                                        msg.set(Some((true, "Nhập ít nhất 1 dòng tài khoản hợp lệ".into())));
+                                        msg.set(Some((true, "Enter at least 1 valid account line".into())));
                                         return;
                                     }
                                     let sid = sid.clone();
@@ -266,27 +266,27 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                                 let imp = v.get("imported").and_then(|x| x.as_i64()).unwrap_or(0);
                                                 import_text.set(String::new());
                                                 show_import.set(false);
-                                                msg.set(Some((false, format!("Đã nhập {imp} hồ sơ nhân sự"))));
+                                                msg.set(Some((false, format!("Imported {imp} personnel records"))));
                                                 load.call(());
                                             }
-                                            Err(e) => msg.set(Some((true, format!("Lỗi nhập danh sách: {}", e.code)))),
+                                            Err(e) => msg.set(Some((true, format!("Error importing list: {}", e.code)))),
                                         }
                                     });
                                 }
                             },
-                            "Thực hiện nhập"
+                            "Perform import"
                         }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_import.set(false), "Đóng" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_import.set(false), "Close" }
                     }
                 }
             }
 
             if let Some((target_uid, target_name)) = quick_task_uid() {
                 div { class: "ent-card ent-inline-bar",
-                    span { class: "ent-pill ok", "Giao việc cho {target_name}" }
+                    span { class: "ent-pill ok", "Assign work to {target_name}" }
                     input {
                         r#type: "text",
-                        placeholder: "Nhập tiêu đề công việc cần giao",
+                        placeholder: "Enter the title of the job to be assigned",
                         value: "{quick_task_title}",
                         oninput: move |e| quick_task_title.set(e.value()),
                     }
@@ -305,25 +305,25 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                         Ok(_) => {
                                             quick_task_title.set(String::new());
                                             quick_task_uid.set(None);
-                                            msg.set(Some((false, "Đã giao công việc thành công".into())));
+                                            msg.set(Some((false, "The job was delivered successfully".into())));
                                         }
-                                        Err(e) => msg.set(Some((true, format!("Không giao được việc: {}", e.code)))),
+                                        Err(e) => msg.set(Some((true, format!("Unable to deliver work: {}", e.code)))),
                                     }
                                 });
                             }
                         },
-                        "Giao ngay"
+                        "Assign now"
                     }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| quick_task_uid.set(None), "Hủy" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| quick_task_uid.set(None), "Cancel" }
                 }
             }
 
             if can_manage && !selected().is_empty() {
                 div { class: "ent-card ent-inline-bar",
-                    span { class: "ent-pill", "Đã chọn {selected().len()} nhân sự" }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| bulk_status.call("active"), "Kích hoạt" }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| bulk_status.call("suspended"), "Tạm khóa" }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| selected.set(HashSet::new()), "Bỏ chọn" }
+                    span { class: "ent-pill", "Selected {selected().len()} personnel" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| bulk_status.call("active"), "Activate" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| bulk_status.call("suspended"), "Temporarily locked" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| selected.set(HashSet::new()), "Deselect" }
                 }
             }
 
@@ -331,7 +331,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
                         if mode == "new" {
-                            label { class: "form-field", span { "Thành viên máy chủ" }
+                            label { class: "form-field", span { "Server member" }
                                 select { value: "{f_uid}", onchange: move |e| {
                                     let id = e.value();
                                     f_uid.set(id.clone());
@@ -341,52 +341,52 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                         }
                                     }
                                 },
-                                    option { value: "", "Chọn thành viên" }
+                                    option { value: "", "Select member" }
                                     for m in members() {
                                         option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" }
                                     }
                                 }
                             }
                         }
-                        label { class: "form-field", span { "Họ và tên" } input { r#type: "text", value: "{f_name}", oninput: move |e| f_name.set(e.value()) } }
-                        label { class: "form-field", span { "Mã nhân viên" } input { r#type: "text", value: "{f_code}", oninput: move |e| f_code.set(e.value()) } }
-                        label { class: "form-field", span { "Chức danh" } input { r#type: "text", value: "{f_title}", oninput: move |e| f_title.set(e.value()) } }
-                        label { class: "form-field", span { "Phòng ban" }
+                        label { class: "form-field", span { "Full name" } input { r#type: "text", value: "{f_name}", oninput: move |e| f_name.set(e.value()) } }
+                        label { class: "form-field", span { "Employee code" } input { r#type: "text", value: "{f_code}", oninput: move |e| f_code.set(e.value()) } }
+                        label { class: "form-field", span { "Title" } input { r#type: "text", value: "{f_title}", oninput: move |e| f_title.set(e.value()) } }
+                        label { class: "form-field", span { "Departments" }
                             select { value: "{f_dept}", onchange: move |e| f_dept.set(e.value()),
-                                option { value: "", "Chưa gán" }
+                                option { value: "", "Not assigned yet" }
                                 for d in depts() { option { key: "{d.id}", value: "{d.id}", "{d.name}" } }
                             }
                         }
-                        label { class: "form-field", span { "Loại thành viên" }
+                        label { class: "form-field", span { "Membership type" }
                             select { value: "{f_kind}", onchange: move |e| f_kind.set(e.value()),
-                                option { value: "employee", "Nhân viên" }
-                                option { value: "partner", "Đối tác" }
-                                option { value: "guest", "Khách mời" }
+                                option { value: "employee", "Staff" }
+                                option { value: "partner", "Partner" }
+                                option { value: "guest", "Guest" }
                             }
                         }
-                        label { class: "form-field", span { "Hình thức" }
+                        label { class: "form-field", span { "Form" }
                             select { value: "{f_mode}", onchange: move |e| f_mode.set(e.value()),
-                                option { value: "onsite", "Tại văn phòng" }
-                                option { value: "remote", "Từ xa" }
-                                option { value: "hybrid", "Linh hoạt" }
+                                option { value: "onsite", "At the office" }
+                                option { value: "remote", "From afar" }
+                                option { value: "hybrid", "Flexible" }
                             }
                         }
-                        label { class: "form-field", span { "Trạng thái" }
+                        label { class: "form-field", span { "Status" }
                             select { value: "{f_status}", onchange: move |e| f_status.set(e.value()),
-                                option { value: "active", "Đang làm việc" }
-                                option { value: "onboarding", "Đang thử việc" }
-                                option { value: "suspended", "Tạm khóa" }
-                                option { value: "offboarded", "Đã nghỉ việc" }
+                                option { value: "active", "Working" }
+                                option { value: "onboarding", "On probation" }
+                                option { value: "suspended", "Temporarily locked" }
+                                option { value: "offboarded", "Retired" }
                             }
                         }
-                        label { class: "form-field", span { "Email công việc" } input { r#type: "text", value: "{f_email}", oninput: move |e| f_email.set(e.value()) } }
-                        label { class: "form-field", span { "Điện thoại công việc" } input { r#type: "text", value: "{f_phone}", oninput: move |e| f_phone.set(e.value()) } }
-                        label { class: "form-field", span { "Loại hợp đồng" } input { r#type: "text", value: "{f_contract}", oninput: move |e| f_contract.set(e.value()) } }
+                        label { class: "form-field", span { "Work email" } input { r#type: "text", value: "{f_email}", oninput: move |e| f_email.set(e.value()) } }
+                        label { class: "form-field", span { "Work phone" } input { r#type: "text", value: "{f_phone}", oninput: move |e| f_phone.set(e.value()) } }
+                        label { class: "form-field", span { "Contract type" } input { r#type: "text", value: "{f_contract}", oninput: move |e| f_contract.set(e.value()) } }
                     }
-                    label { class: "form-field", span { "Ghi chú nội bộ" } textarea { rows: 2, value: "{f_notes}", oninput: move |e| f_notes.set(e.value()) } }
+                    label { class: "form-field", span { "Internal notes" } textarea { rows: 2, value: "{f_notes}", oninput: move |e| f_notes.set(e.value()) } }
                     div { class: "ent-btn-group",
-                        button { r#type: "button", class: "btn-primary", onclick: save_emp, "Lưu hồ sơ" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| editing_uid.set(None), "Đóng" }
+                        button { r#type: "button", class: "btn-primary", onclick: save_emp, "Save profile" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| editing_uid.set(None), "Close" }
                     }
                 }
             }
@@ -395,7 +395,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                 div { class: "ent-card",
                     div { class: "ent-inline-bar",
                         select { value: "{handover_to}", onchange: move |e| handover_to.set(e.value()),
-                            option { value: "", "Chọn người nhận bàn giao công việc & tài liệu" }
+                            option { value: "", "Select the recipient to hand over work & documents" }
                             for m in members() {
                                 if m.user_id != from_id {
                                     option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" }
@@ -419,17 +419,17 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                         match enterprise::handover_employee(&sid, &fid, json!({ "handover_to": to_id, "mark_offboarded": true })).await {
                                             Ok(_) => {
                                                 handover_from.set(None);
-                                                msg.set(Some((false, "Đã bàn giao xong và thu hồi quyền truy cập".into())));
+                                                msg.set(Some((false, "Completed handover and revoked access rights".into())));
                                                 load.call(());
                                             }
-                                            Err(e) => msg.set(Some((true, format!("Bàn giao thất bại: {}", e.code)))),
+                                            Err(e) => msg.set(Some((true, format!("Handover failed: {}", e.code)))),
                                         }
                                     });
                                 }
                             },
-                            "Xác nhận bàn giao"
+                            "Confirm handover"
                         }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| handover_from.set(None), "Hủy" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| handover_from.set(None), "Cancel" }
                     }
                 }
             }
@@ -462,7 +462,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                             span { class: "ent-muted", "@{emp.username}" }
                                         }
                                         div { class: "ent-muted",
-                                            "{emp.job_title.as_deref().unwrap_or(\"Thành viên\")}"
+                                            "{emp.job_title.as_deref().unwrap_or(\"Member\")}"
                                             if let Some(dn) = &emp.department_name { " · {dn}" }
                                         }
                                     }
@@ -482,7 +482,7 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                 }
                                 if can_manage {
                                     div { class: "ent-btn-group",
-                                        button { r#type: "button", class: "btn-secondary", onclick: move |_| open_edit(e_edit.clone()), "Chỉnh sửa" }
+                                        button { r#type: "button", class: "btn-secondary", onclick: move |_| open_edit(e_edit.clone()), "Edit" }
                                         button {
                                             r#type: "button",
                                             class: "btn-secondary",
@@ -491,9 +491,9 @@ pub fn HrPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -> E
                                                 let n = emp.full_name.clone();
                                                 move |_| quick_task_uid.set(Some((u.clone(), n.clone())))
                                             },
-                                            "Giao việc"
+                                            "Assign work"
                                         }
-                                        button { r#type: "button", class: "btn-ghost", onclick: move |_| handover_from.set(Some(emp.user_id.clone())), "Bàn giao" }
+                                        button { r#type: "button", class: "btn-ghost", onclick: move |_| handover_from.set(Some(emp.user_id.clone())), "Handover" }
                                     }
                                 }
                             }
@@ -588,10 +588,10 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                         branch.set(String::new());
                         linked_ch_id.set(String::new());
                         show_create.set(false);
-                        msg.set(Some((false, "Đã tạo phòng ban mới".into())));
+                        msg.set(Some((false, "New department created".into())));
                         r();
                     }
-                    Err(e) => msg.set(Some((true, format!("Không tạo được phòng ban: {}", e.code)))),
+                    Err(e) => msg.set(Some((true, format!("Unable to create department: {}", e.code)))),
                 }
             });
         }
@@ -604,18 +604,18 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
             div { class: "ent-toolbar",
                 div { class: "ent-inline-bar",
                     div { class: "ent-segmented",
-                        button { r#type: "button", class: if view_mode() == "grid" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| view_mode.set("grid".into()), "Danh sách phòng ban" }
-                        button { r#type: "button", class: if view_mode() == "orgchart" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| view_mode.set("orgchart".into()), "Sơ đồ tổ chức" }
+                        button { r#type: "button", class: if view_mode() == "grid" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| view_mode.set("grid".into()), "List of departments" }
+                        button { r#type: "button", class: if view_mode() == "orgchart" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| view_mode.set("orgchart".into()), "Organizational chart" }
                     }
-                    span { class: "ent-pill ok", "{depts().len()} phòng ban" }
-                    span { class: "ent-pill", "{total_assigned} nhân sự trực thuộc" }
+                    span { class: "ent-pill ok", "{depts().len()} departments" }
+                    span { class: "ent-pill", "{total_assigned} affiliated personnel" }
                 }
                 if can_manage {
                     button {
                         r#type: "button",
                         class: "btn-primary",
                         onclick: move |_| show_create.set(!show_create()),
-                        PlusIcon { size: 15 } " Tạo phòng ban"
+                        PlusIcon { size: 15 } " Create departments"
                     }
                 }
             }
@@ -627,30 +627,30 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
             if can_manage && show_create() {
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Tên phòng ban" }
-                            input { r#type: "text", placeholder: "Ví dụ: Phòng Kỹ thuật", value: "{name}", oninput: move |e| name.set(e.value()) }
+                        label { class: "form-field", span { "Department name" }
+                            input { r#type: "text", placeholder: "For example: Technical Department", value: "{name}", oninput: move |e| name.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Mã phòng ban" }
-                            input { r#type: "text", placeholder: "Ví dụ: ENG", value: "{code}", oninput: move |e| code.set(e.value()) }
+                        label { class: "form-field", span { "Department code" }
+                            input { r#type: "text", placeholder: "For example: ENG", value: "{code}", oninput: move |e| code.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Chi nhánh" }
-                            input { r#type: "text", placeholder: "Ví dụ: Trụ sở chính", value: "{branch}", oninput: move |e| branch.set(e.value()) }
+                        label { class: "form-field", span { "Branch" }
+                            input { r#type: "text", placeholder: "For example: Head office", value: "{branch}", oninput: move |e| branch.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Đơn vị cấp trên" }
+                        label { class: "form-field", span { "Superior unit" }
                             select { value: "{parent_id}", onchange: move |e| parent_id.set(e.value()),
-                                option { value: "", "Cấp cao nhất" }
+                                option { value: "", "Highest level" }
                                 for d in depts() { option { key: "{d.id}", value: "{d.id}", "{d.name}" } }
                             }
                         }
-                        label { class: "form-field", span { "Trưởng bộ phận" }
+                        label { class: "form-field", span { "Head of department" }
                             select { value: "{mgr_id}", onchange: move |e| mgr_id.set(e.value()),
-                                option { value: "", "Chưa chọn" }
+                                option { value: "", "Not selected yet" }
                                 for m in members() { option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" } }
                             }
                         }
-                        label { class: "form-field", span { "Kênh chat liên kết" }
+                        label { class: "form-field", span { "Linked chat channel" }
                             select { value: "{linked_ch_id}", onchange: move |e| linked_ch_id.set(e.value()),
-                                option { value: "", "Không liên kết kênh" }
+                                option { value: "", "Do not link channels" }
                                 for ch in channels() {
                                     if ch.channel_type == "text" {
                                         option { key: "{ch.id}", value: "{ch.id}", "#{ch.name}" }
@@ -658,13 +658,13 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                                 }
                             }
                         }
-                        label { class: "form-field", span { "Chức năng & Nhiệm vụ" }
-                            input { r#type: "text", placeholder: "Mô tả chức năng chính của bộ phận", value: "{desc}", oninput: move |e| desc.set(e.value()) }
+                        label { class: "form-field", span { "Functions & Duties" }
+                            input { r#type: "text", placeholder: "Describe the main function of the department", value: "{desc}", oninput: move |e| desc.set(e.value()) }
                         }
                     }
                     div { class: "ent-btn-group",
-                        button { r#type: "button", class: "btn-primary", onclick: create, "Lưu phòng ban" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                        button { r#type: "button", class: "btn-primary", onclick: create, "Save department" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Close" }
                     }
                 }
             }
@@ -679,8 +679,8 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                                     div { class: "ent-row-title",
                                         strong { "{root.name}" }
                                         if let Some(c) = &root.code { if !c.is_empty() { span { class: "ent-pill ok", "{c}" } } }
-                                        span { class: "ent-pill", "{root.member_count} nhân sự" }
-                                        if let Some(m) = &root.manager_name { span { class: "ent-pill", "Quản lý: {m}" } }
+                                        span { class: "ent-pill", "{root.member_count} personnel" }
+                                        if let Some(m) = &root.manager_name { span { class: "ent-pill", "Manager: {m}" } }
                                         if let Some(ch) = &root.linked_channel_name { span { class: "ent-pill ok", "#{ch}" } }
                                     }
                                     if !children.is_empty() {
@@ -690,8 +690,8 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                                                     div { class: "ent-row-title",
                                                         strong { "↳ {child.name}" }
                                                         if let Some(c) = &child.code { if !c.is_empty() { span { class: "ent-pill", "{c}" } } }
-                                                        span { class: "ent-pill", "{child.member_count} nhân sự" }
-                                                        if let Some(m) = &child.manager_name { span { class: "ent-pill", "Quản lý: {m}" } }
+                                                        span { class: "ent-pill", "{child.member_count} personnel" }
+                                                        if let Some(m) = &child.manager_name { span { class: "ent-pill", "Manager: {m}" } }
                                                         if let Some(ch) = &child.linked_channel_name { span { class: "ent-pill ok", "#{ch}" } }
                                                     }
                                                 }
@@ -727,7 +727,7 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                                         }
                                     }
                                     if can_manage {
-                                        button { r#type: "button", class: "icon-btn danger", title: "Xóa phòng ban", onclick: move |_| {
+                                        button { r#type: "button", class: "icon-btn danger", title: "Delete department", onclick: move |_| {
                                             let (s, d_id, r) = (sid_del.clone(), did_del.clone(), r2.clone());
                                             spawn(async move {
                                                 if enterprise::delete_department(&s, &d_id).await.is_ok() { r(); }
@@ -741,15 +741,15 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                                     }
                                 }
                                 div { class: "ent-chips",
-                                    span { class: "ent-pill", "{d.member_count} thành viên" }
+                                    span { class: "ent-pill", "{d.member_count} members" }
                                     if let Some(mn) = &d.manager_name {
-                                        span { class: "ent-pill", "Trưởng bộ phận: {mn}" }
+                                        span { class: "ent-pill", "Head of department: {mn}" }
                                     }
                                     if let Some(ch) = &d.linked_channel_name {
-                                        span { class: "ent-pill ok", "Kênh #{ch}" }
+                                        span { class: "ent-pill ok", "Channel #{ch}" }
                                     }
                                     if let Some(pn) = parent_name {
-                                        span { class: "ent-pill", "Trực thuộc: {pn}" }
+                                        span { class: "ent-pill", "Affiliate: {pn}" }
                                     }
                                 }
                                 if can_manage {
@@ -764,7 +764,7 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
                                                 }
                                             });
                                         },
-                                            option { value: "", "+ Gán thành viên vào phòng ban" }
+                                            option { value: "", "+ Assign members to departments" }
                                             for m in members() { option { key: "{m.user_id}", value: "{m.user_id}", "{m.username}" } }
                                         }
                                     }

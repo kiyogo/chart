@@ -49,11 +49,11 @@ try {
 
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   await page.waitForSelector('.auth-card', { timeout: 25000 });
-  await page.locator('input[aria-label="Tên tài khoản thử nghiệm"]').fill(uname);
+  await page.locator('input[aria-label="Test username"]').fill(uname);
   await page.locator('.auth-dev-form button[type="submit"]').click();
   await page.waitForSelector('.app-rail', { timeout: 25000 });
   await page.waitForTimeout(700);
-  const skip = page.locator('button[aria-label="Bỏ qua giới thiệu"]');
+  const skip = page.locator('button[aria-label="Skip tour"]');
   if (await skip.isVisible().catch(() => false)) await skip.click();
 
   // Open self chat ("Chính mình") and send 14 messages so the message list overflows cleanly
@@ -67,15 +67,15 @@ try {
   await page.waitForTimeout(500);
 
   // Switch away to Settings and back to Messages -> re-open Self-Chat and simulate async tall images expanding inside .message-stream!
-  await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
+  await page.locator('.app-rail button[aria-label="Settings"]').click();
   await page.waitForSelector('.settings-nav', { timeout: 10000 });
-  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Appearance' }).click();
   await page.waitForTimeout(250);
   // Set chat wallpaper to Ocean ("Đại dương") to reproduce user's Image 1 & 2!
-  await page.locator('.wallpaper-tile', { hasText: 'Đại dương' }).first().click();
+  await page.locator('.wallpaper-tile', { hasText: 'Ocean' }).first().click();
   await page.waitForTimeout(200);
 
-  await page.locator('.app-rail button[aria-label="Tin nhắn"]').click();
+  await page.locator('.app-rail button[aria-label="Messages"]').click();
   await page.waitForSelector('.chat-column.wp-ocean #chat-messages-scroll', { timeout: 10000 });
   await page.waitForTimeout(450);
 
@@ -186,12 +186,12 @@ try {
   );
 
   // 4. Test real-time per-position adaptive surface over a split DARK-TOP / BRIGHT-BOTTOM uploaded image wallpaper!
-  await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
+  await page.locator('.app-rail button[aria-label="Settings"]').click();
   await page.waitForSelector('.settings-nav', { timeout: 10000 });
-  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Appearance' }).click();
   await page.waitForTimeout(250);
   // Reset chat wallpaper to wp-none so translucent app wallpaper shows through chat too
-  await page.locator('.wallpaper-tile', { hasText: 'Không' }).first().click();
+  await page.locator('.wallpaper-tile', { hasText: 'None' }).first().click();
   await page.waitForTimeout(150);
 
   // Create a deterministic 2-zone split PNG data URL: top half deep navy-black (#0B1020), bottom half bright pastel pink-white (#FFF0F6)
@@ -283,7 +283,7 @@ try {
   );
 
   // 5. Switch back to Messages with translucent split app wallpaper -> verify 2D cropped canvas strips on BOTH top & bottom chat fades!
-  await page.locator('.app-rail button[aria-label="Tin nhắn"]').click();
+  await page.locator('.app-rail button[aria-label="Messages"]').click();
   await page.waitForSelector('.chat-column #chat-messages-scroll', { timeout: 10000 });
   await page.waitForTimeout(300);
   const stripAudit = await page.evaluate(() => {

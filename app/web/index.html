@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en" translate="no" class="notranslate">
   <head>
     <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-    <title>chatw - Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE</title>
+    <title>ChatW - Private End-to-End Encrypted Messenger</title>
 
     <!-- SEO Meta Tags -->
-    <meta name="description" content="chatw - Ứng dụng nhắn tin cá nhân bảo mật cao, mã hóa đầu cuối (E2EE) chuẩn ECDH P-256 và AES-256-GCM. Không thể nghe lén, hiệu năng cao với Rust và Dioxus." />
-    <meta name="keywords" content="chatw, chart, nhắn tin bảo mật, mã hóa đầu cuối, e2ee chat, private messenger, end-to-end encryption, rust, dioxus" />
-    <meta name="author" content="chatw" />
+    <meta name="description" content="ChatW - High-security private messaging app with end-to-end encryption (E2EE) using ECDH P-256 and AES-256-GCM. Fast, zero-knowledge, built with Rust and Dioxus." />
+    <meta name="keywords" content="chatw, chart, private messenger, end-to-end encryption, e2ee chat, encrypted messaging, rust, dioxus" />
+    <meta name="author" content="ChatW" />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#FFFFFF" />
     <link rel="canonical" href="https://github.com/kiyogo/chart" />
@@ -16,19 +17,19 @@
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://github.com/kiyogo/chart" />
-    <meta property="og:title" content="chatw - Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE" />
-    <meta property="og:description" content="Trải nghiệm nhắn tin riêng tư tức thì với mã hóa đầu cuối chuẩn quân sự, hiệu năng cao và giao diện tối giản." />
+    <meta property="og:title" content="ChatW - Private End-to-End Encrypted Messenger" />
+    <meta property="og:description" content="Instant private messaging with end-to-end encryption, high performance, and minimalist design." />
     <meta property="og:image" content="/og-image.svg" />
     <meta property="og:image:type" content="image/svg+xml" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:site_name" content="chatw" />
-    <meta property="og:locale" content="vi_VN" />
+    <meta property="og:site_name" content="ChatW" />
+    <meta property="og:locale" content="en_US" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="chatw - Ứng dụng nhắn tin bảo mật mã hóa đầu cuối E2EE" />
-    <meta name="twitter:description" content="Nhắn tin cá nhân an toàn, riêng tư tuyệt đối với mã hóa E2EE không thể bị xâm phạm." />
+    <meta name="twitter:title" content="ChatW - Private End-to-End Encrypted Messenger" />
+    <meta name="twitter:description" content="Secure personal messaging with end-to-end encryption on your device." />
     <meta name="twitter:image" content="/og-image.svg" />
 
     <!-- Favicon & Icons -->
@@ -41,24 +42,24 @@
       {
         "@context": "https://schema.org",
         "@type": "WebApplication",
-        "name": "chatw",
-        "alternateName": "chatw Messenger",
+        "name": "ChatW",
+        "alternateName": "ChatW Messenger",
         "url": "https://github.com/kiyogo/chart",
         "applicationCategory": "CommunicationApplication",
         "operatingSystem": "All",
         "browserRequirements": "Requires WebAssembly support",
-        "description": "Ứng dụng nhắn tin cá nhân MVP tối giản, hiệu năng cao, mã hóa đầu cuối E2EE chuẩn ECDH P-256 và AES-256-GCM.",
+        "description": "High-performance minimalist private messaging application with ECDH P-256 and AES-256-GCM end-to-end encryption.",
         "featureList": [
-          "Mã hóa đầu cuối E2EE (ECDH P-256 & AES-256-GCM)",
-          "Chữ ký số chống mạo danh (ECDSA P-256)",
-          "Đăng nhập an toàn qua Google OAuth 2.0 PKCE",
-          "Giao tiếp thời gian thực qua WebSocket hiệu năng cao",
-          "Hệ thống Server, Categories, Text & Voice Channels kiểu Discord với RBAC",
-          "Thoại WebRTC P2P và Voice Rooms với tính năng Mute/Deafen",
-          "Lưu trữ tệp và ghi âm đính kèm mã hóa E2EE",
-          "Hệ thống biểu cảm Emoji Reactions và Ghim tin nhắn (Pinning)",
-          "Quản lý phiên đa thiết bị và Nhật ký kiểm toán bảo mật (Audit Logging)",
-          "Tự động nén và chuẩn hóa ảnh đại diện AVIF"
+          "End-to-end encryption (ECDH P-256 & AES-256-GCM)",
+          "Digital message signatures (ECDSA P-256)",
+          "Secure sign-in via Google OAuth 2.0 PKCE",
+          "Real-time WebSocket messaging",
+          "Communities, Categories, Text & Voice Channels with RBAC",
+          "WebRTC P2P calling and Voice Rooms with Mute/Deafen",
+          "End-to-end encrypted file and voice attachments",
+          "Emoji Reactions and Message Pinning",
+          "Multi-device session management and security audit logs",
+          "Automatic AVIF avatar optimization"
         ],
         "offers": {
           "@type": "Offer",
@@ -68,8 +69,8 @@
       }
     </script>
   </head>
-  <body>
-    <div id="main"></div>
+  <body translate="no" class="notranslate">
+    <div id="main" translate="no" class="notranslate"></div>
     <script src="/i18n_runtime.js"></script>
     <script src="/canvas_scrollbars.js"></script>
     <script src="/panel_resizer.js"></script>
@@ -82,4 +83,3 @@
     <script type="module" src="/boot.js"></script>
   </body>
 </html>
-

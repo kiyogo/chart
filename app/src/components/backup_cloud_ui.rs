@@ -14,32 +14,32 @@ use crate::{
 
 fn format_api_error(code: &str) -> &'static str {
     match code {
-        "reauth_required" | "export_reauth_required" => "Cần xác thực lại trước khi xuất dữ liệu.",
-        "reauth_locked" => "Thử sai quá nhiều lần. Tài khoản xuất tạm khóa 15 phút.",
-        "invalid_credentials" => "Mật khẩu hoặc mã xác thực không đúng.",
-        "export_password_not_set" => "Bạn chưa thiết lập mật khẩu xuất dữ liệu.",
-        "export_password_too_short" => "Mật khẩu xuất cần ít nhất 8 ký tự.",
-        "encryption_password_too_short" => "Mật khẩu mã hóa cần ít nhất 6 ký tự.",
-        "totp_not_enabled" => "Tài khoản chưa bật xác thực 2FA TOTP.",
-        "unencrypted_zip_steps_incomplete" => "Chưa hoàn thành đủ các bước xác nhận mở khóa ZIP không mã hóa.",
+        "reauth_required" | "export_reauth_required" => "Re-authentication is required before exporting data.",
+        "reauth_locked" => "Trial and error too many times. Account is temporarily locked for 15 minutes.",
+        "invalid_credentials" => "Password or authentication code is incorrect.",
+        "export_password_not_set" => "You have not set a data export password.",
+        "export_password_too_short" => "The export password needs to be at least 8 characters.",
+        "encryption_password_too_short" => "Encryption passwords need at least 6 characters.",
+        "totp_not_enabled" => "The account has not enabled 2FA TOTP authentication.",
+        "unencrypted_zip_steps_incomplete" => "Unencrypted ZIP unlock confirmation steps have not been completed.",
         "export_token_expired"
         | "export_token_used"
         | "invalid_export_token"
         | "export_authorization_invalid_or_expired" => {
-            "Phiên xác thực xuất dữ liệu đã hết hạn hoặc đã được sử dụng."
+            "The data export authentication session has expired or has been used."
         }
-        "wrong_password_or_corrupt_kdata" => "Sai mật khẩu giải mã hoặc tệp .kdata đã bị hỏng / chỉnh sửa.",
-        "wrong_password" => "Mật khẩu giải mã không đúng.",
-        "zip_encrypted_requires_password" => "Tệp ZIP được mã hóa AES 256, hãy nhập mật khẩu giải mã.",
+        "wrong_password_or_corrupt_kdata" => "Wrong decryption password or .kdata file has been corrupted/edited.",
+        "wrong_password" => "The decryption password is incorrect.",
+        "zip_encrypted_requires_password" => "The ZIP file is AES 256 encrypted, enter the decryption password.",
         "cross_account_restore_denied" | "backup_belongs_to_another_account" => {
-            "Không thể khôi phục tệp sao lưu thuộc tài khoản khác."
+            "A backup file belonging to another account cannot be restored."
         }
-        "corrupt_kdata" | "unsupported_archive_format" => "Định dạng tệp sao lưu không hợp lệ hoặc bị hỏng.",
-        "zip_bomb_rejected" => "Tệp ZIP vượt quá giới hạn giải nén an toàn.",
-        "unsafe_archive_path" | "unsafe_path_rejected" => "Tệp lưu trữ chứa đường dẫn không an toàn.",
-        "cloud_provider_not_configured" => "Nhà cung cấp Cloud này chưa được quản trị viên cấu hình OAuth.",
-        "invalid_cloud_endpoint_or_config" => "Địa chỉ kết nối Cloud không hợp lệ hoặc bị chặn bởi chính sách an toàn mạng.",
-        _ => "Thao tác không thành công.",
+        "corrupt_kdata" | "unsupported_archive_format" => "The backup file format is invalid or corrupted.",
+        "zip_bomb_rejected" => "The ZIP file exceeds the safe decompression limit.",
+        "unsafe_archive_path" | "unsafe_path_rejected" => "The archive file contains unsafe paths.",
+        "cloud_provider_not_configured" => "This Cloud provider has not had OAuth configured by the administrator.",
+        "invalid_cloud_endpoint_or_config" => "The Cloud connection address is invalid or blocked by network security policy.",
+        _ => "Operation failed.",
     }
 }
 
@@ -53,9 +53,9 @@ fn format_provider_label(id: &str) -> &'static str {
         "s3" => "Amazon S3",
         "r2" => "Cloudflare R2",
         "minio" => "MinIO",
-        "nas" => "NAS cá nhân",
+        "nas" => "Personal NAS",
         "icloud" => "Apple iCloud",
-        _ => "Dịch vụ Cloud",
+        _ => "Cloud service",
     }
 }
 
@@ -124,47 +124,47 @@ pub fn BackupExportRestorePanel() -> Element {
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Dữ liệu sao lưu" }
+                    div { class: "settings-group-title", "Backup data" }
                     div { class: "settings-list",
                         div { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Tin nhắn trong tài khoản" }
+                                span { class: "settings-label", "Messages in account" }
                                 span { class: "settings-sublabel",
-                                    "Cá nhân: {p.dm_messages} · Nhóm: {p.group_messages} · Máy chủ: {p.channel_messages}"
+                                    "Individual: {p.dm_messages} · Group: {p.group_messages} · Server: {p.channel_messages}"
                                 }
                             }
-                            span { class: "chip-privacy", "{p.durable_media_count} tệp · {format_bytes_human(p.durable_media_bytes as u64)}" }
+                            span { class: "chip-privacy", "{p.durable_media_count} files · {format_bytes_human(p.durable_media_bytes as u64)}" }
                         }
                         if p.missing_or_client_only_count > 0 {
                             div { class: "settings-row",
                                 div { class: "settings-row-text",
-                                    span { class: "settings-label", "Tệp chỉ nằm trên thiết bị này" }
+                                    span { class: "settings-label", "The file resides only on this device" }
                                     span { class: "settings-sublabel", "{p.honest_notice}" }
                                 }
                             }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Thông tin tài khoản" }
+                            span { class: "settings-label", "Account information" }
                             input { r#type: "checkbox", role: "switch", class: "switch", checked: include_account(), onchange: move |e| include_account.set(e.checked()) }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Tin nhắn" }
+                            span { class: "settings-label", "Messages" }
                             input { r#type: "checkbox", role: "switch", class: "switch", checked: include_messages(), onchange: move |e| include_messages.set(e.checked()) }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Ảnh, video, âm thanh và tệp" }
+                            span { class: "settings-label", "Photos, videos, audio and files" }
                             input { r#type: "checkbox", role: "switch", class: "switch", checked: include_media(), onchange: move |e| include_media.set(e.checked()) }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Cài đặt cá nhân" }
+                            span { class: "settings-label", "Personal settings" }
                             input { r#type: "checkbox", role: "switch", class: "switch", checked: include_settings(), onchange: move |e| include_settings.set(e.checked()) }
                         }
                         div { class: "settings-row column-layout",
-                            span { class: "settings-label", "Chỉ xuất một cuộc trò chuyện" }
+                            span { class: "settings-label", "Export only one conversation" }
                             input {
                                 class: "settings-input",
                                 r#type: "text",
-                                placeholder: "Để trống để xuất toàn bộ, hoặc nhập mã trò chuyện",
+                                placeholder: "Leave blank to export all, or enter chat code",
                                 value: "{conversation_id}",
                                 oninput: move |e| conversation_id.set(e.value()),
                             }
@@ -173,23 +173,23 @@ pub fn BackupExportRestorePanel() -> Element {
                 }
 
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Tải tệp sao lưu về máy" }
+                    div { class: "settings-group-title", "Download the backup file to your device" }
                     div { class: "settings-list",
                         div { class: "settings-row column-layout",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Tệp sao lưu an toàn KIYO" }
-                                span { class: "settings-sublabel", "Toàn bộ dữ liệu được khóa bằng mật khẩu riêng để chỉ mình bạn mở được." }
+                                span { class: "settings-label", "KIYO secure backup file" }
+                                span { class: "settings-sublabel", "All data is locked with a private password so only you can open it." }
                             }
                             if !m.has_export_password && !m.totp_enabled && m.backup_codes_remaining == 0 && m.passkeys_count == 0 {
                                 div { class: "settings-row-text",
-                                    span { class: "settings-sublabel", "Tạo mật khẩu xuất dữ liệu từ 8 ký tự trở lên trước khi tải tệp." }
+                                    span { class: "settings-sublabel", "Create a data export password of 8 characters or more before downloading the file." }
                                 }
                                 div { class: "inline-form",
                                     input {
                                         class: "settings-input",
                                         id: "quick-export-pw-input",
                                         r#type: "password",
-                                        placeholder: "Mật khẩu xuất từ 8 ký tự",
+                                        placeholder: "Password output from 8 characters",
                                         value: "{new_export_pw}",
                                         oninput: move |e| new_export_pw.set(e.value()),
                                     }
@@ -200,7 +200,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                         onclick: move |_| {
                                             let pw = new_export_pw().trim().to_string();
                                             if pw.chars().count() < 8 {
-                                                notice.set(Some((true, "Mật khẩu xuất cần ít nhất 8 ký tự.".into())));
+                                                notice.set(Some((true, "The export password needs to be at least 8 characters.".into())));
                                                 return;
                                             }
                                             busy.set(true);
@@ -209,7 +209,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                                     Ok(()) => {
                                                         new_export_pw.set(String::new());
                                                         reauth_method.set("password".into());
-                                                        notice.set(Some((false, "Đã thiết lập mật khẩu xuất dữ liệu.".into())));
+                                                        notice.set(Some((false, "Data export password has been set.".into())));
                                                         reload();
                                                     }
                                                     Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
@@ -217,27 +217,27 @@ pub fn BackupExportRestorePanel() -> Element {
                                                 busy.set(false);
                                             });
                                         },
-                                        "Lưu mật khẩu xuất"
+                                        "Save export password"
                                     }
                                 }
                             } else {
                                 div { class: "inline-form",
                                     select {
                                         class: "settings-select",
-                                        aria_label: "Phương thức xác thực xuất",
+                                        aria_label: "Export authentication method",
                                         value: "{reauth_method}",
                                         onchange: move |e| reauth_method.set(e.value()),
                                         if m.has_export_password {
-                                            option { value: "password", "Mật khẩu xuất dữ liệu" }
+                                            option { value: "password", "Data export password" }
                                         }
                                         if m.passkeys_count > 0 {
-                                            option { value: "passkey", "Khóa bảo mật thiết bị · {m.passkeys_count}" }
+                                            option { value: "passkey", "Device security key · {m.passkeys_count}" }
                                         }
                                         if m.totp_enabled {
-                                            option { value: "totp", "Mã xác minh 2 bước" }
+                                            option { value: "totp", "2-step verification code" }
                                         }
                                         if m.backup_codes_remaining > 0 {
-                                            option { value: "backup_code", "Mã dự phòng · {m.backup_codes_remaining}" }
+                                            option { value: "backup_code", "Backup code · {m.backup_codes_remaining}" }
                                         }
                                     }
                                     if reauth_method() != "passkey" {
@@ -245,12 +245,12 @@ pub fn BackupExportRestorePanel() -> Element {
                                             class: "settings-input",
                                             id: "kdata-reauth-secret",
                                             r#type: "password",
-                                            placeholder: "Nhập mật khẩu xuất hoặc mã xác nhận",
+                                            placeholder: "Enter the export password or confirmation code",
                                             value: "{reauth_secret}",
                                             oninput: move |e| reauth_secret.set(e.value()),
                                         }
                                     } else {
-                                        span { class: "settings-sublabel", "Tự xác nhận bằng khóa bảo mật trên máy này." }
+                                        span { class: "settings-sublabel", "Authenticate yourself using the security key on this machine." }
                                     }
                                 }
                             }
@@ -259,7 +259,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                     class: "settings-input",
                                     id: "kdata-enc-password",
                                     r#type: "password",
-                                    placeholder: "Mật khẩu mở tệp từ 6 ký tự",
+                                    placeholder: "File opening password from 6 characters",
                                     value: "{enc_password}",
                                     oninput: move |e| enc_password.set(e.value()),
                                 }
@@ -267,7 +267,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                     class: "settings-input",
                                     id: "kdata-enc-confirm",
                                     r#type: "password",
-                                    placeholder: "Nhập lại mật khẩu mở tệp",
+                                    placeholder: "Re-enter the password to open the file",
                                     value: "{enc_confirm}",
                                     oninput: move |e| enc_confirm.set(e.value()),
                                 }
@@ -284,15 +284,15 @@ pub fn BackupExportRestorePanel() -> Element {
                                         let epw = enc_password();
                                         let econf = enc_confirm();
                                         if method != "passkey" && secret.trim().is_empty() {
-                                            notice.set(Some((true, "Vui lòng nhập thông tin xác nhận tài khoản.".into())));
+                                            notice.set(Some((true, "Please enter account confirmation information.".into())));
                                             return;
                                         }
                                         if epw.chars().count() < 6 {
-                                            notice.set(Some((true, "Mật khẩu mở tệp cần ít nhất 6 ký tự.".into())));
+                                            notice.set(Some((true, "The file opening password needs to be at least 6 characters.".into())));
                                             return;
                                         }
                                         if epw != econf {
-                                            notice.set(Some((true, "Hai lần nhập mật khẩu mở tệp không khớp.".into())));
+                                            notice.set(Some((true, "The two attempts to enter the file opening password do not match.".into())));
                                             return;
                                         }
                                         let scope = ExportScopeOptions {
@@ -315,7 +315,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                                             reauth_secret.set(String::new());
                                                             notice.set(Some((
                                                                 false,
-                                                                format!("Đã tải tệp {} · {}", dl.filename, format_bytes_human(dl.byte_size)),
+                                                                format!("File {} · {} loaded", dl.filename, format_bytes_human(dl.byte_size)),
                                                             )));
                                                             reload();
                                                         }
@@ -327,7 +327,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                             busy.set(false);
                                         });
                                     },
-                                    if busy() { "Đang xuất dữ liệu" } else { "Xuất tệp sao lưu" }
+                                    if busy() { "Exporting data" } else { "Export backup file" }
                                 }
                             }
                         }
@@ -337,12 +337,12 @@ pub fn BackupExportRestorePanel() -> Element {
 
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Khôi phục từ tệp sao lưu" }
+                    div { class: "settings-group-title", "Restore from backup file" }
                     div { class: "settings-list",
                         div { class: "settings-row column-layout",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Chọn tệp sao lưu trên máy" }
-                                span { class: "settings-sublabel", "Tự kiểm tra tệp, bỏ qua tin trùng lặp và cho phép chọn phần cần lấy lại." }
+                                span { class: "settings-label", "Select the backup file on your device" }
+                                span { class: "settings-sublabel", "Automatically checks files, ignores duplicates, and allows you to select which parts to retrieve." }
                             }
                             div { class: "inline-form",
                                 label { class: "btn-secondary",
@@ -359,7 +359,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                             });
                                         },
                                     }
-                                    "Chọn tệp sao lưu"
+                                    "Select the backup file"
                                 }
                                 if let Some(meta) = selected_file() {
                                     span { class: "chip-privacy", "{meta.name} · {format_bytes_human(meta.byte_size)}" }
@@ -370,7 +370,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                     class: "settings-input",
                                     id: "kdata-restore-password",
                                     r#type: "password",
-                                    placeholder: "Mật khẩu mở tệp sao lưu",
+                                    placeholder: "Password to open backup file",
                                     value: "{restore_password}",
                                     oninput: move |e| restore_password.set(e.value()),
                                 }
@@ -396,21 +396,21 @@ pub fn BackupExportRestorePanel() -> Element {
                                             busy.set(false);
                                         });
                                     },
-                                    "Kiểm tra tệp"
+                                    "Check the file"
                                 }
                             }
                             if let Some(info) = inspected() {
                                 div { class: "settings-row column-layout",
                                     div { class: "settings-row-text",
                                         span { class: "settings-label",
-                                            "KIYO · {info.detected_format} · {info.total_entries} mục · {format_bytes_human(info.total_plain_bytes)}"
+                                            "KIYO · {info.detected_format} · {info.total_entries} items · {format_bytes_human(info.total_plain_bytes)}"
                                         }
                                         span { class: "settings-sublabel",
-                                            "Tin nhắn: {info.new_messages} mới, {info.duplicate_messages} trùng · Tệp: {info.new_media} mới, {info.duplicate_media} trùng"
+                                            "Message: {info.new_messages} new, {info.duplicate_messages} duplicate · File: {info.new_media} new, {info.duplicate_media} duplicate"
                                         }
                                     }
                                     if info.owner_mismatch {
-                                        div { class: "status-badge error", "Tệp này thuộc tài khoản khác nên không thể khôi phục." }
+                                        div { class: "status-badge error", "This file belongs to another account so it cannot be restored." }
                                     }
                                     for w in info.warnings.iter() {
                                         div { class: "settings-sublabel", "{w}" }
@@ -420,25 +420,25 @@ pub fn BackupExportRestorePanel() -> Element {
                             div { class: "inline-form",
                                 select {
                                     class: "settings-select",
-                                    aria_label: "Chế độ khôi phục",
+                                    aria_label: "Recovery mode",
                                     value: "{restore_mode}",
                                     onchange: move |e| restore_mode.set(e.value()),
-                                    option { value: "full", "Khôi phục toàn bộ" }
-                                    option { value: "missing_only", "Chỉ bổ sung phần thiếu" }
-                                    option { value: "messages", "Chỉ tin nhắn" }
-                                    option { value: "images", "Chỉ hình ảnh" }
-                                    option { value: "videos", "Chỉ video" }
-                                    option { value: "audio", "Chỉ ghi âm và âm thanh" }
-                                    option { value: "files", "Chỉ tệp đính kèm" }
-                                    option { value: "avatar", "Chỉ ảnh đại diện" }
-                                    option { value: "settings", "Chỉ cài đặt" }
-                                    option { value: "single_conversation", "Chỉ một cuộc trò chuyện" }
+                                    option { value: "full", "Full restore" }
+                                    option { value: "missing_only", "Just supplement the missing part" }
+                                    option { value: "messages", "Messages only" }
+                                    option { value: "images", "Image only" }
+                                    option { value: "videos", "Video only" }
+                                    option { value: "audio", "Record audio and audio only" }
+                                    option { value: "files", "Attachments only" }
+                                    option { value: "avatar", "Representative photo only" }
+                                    option { value: "settings", "Installation only" }
+                                    option { value: "single_conversation", "Just one conversation" }
                                 }
                                 if restore_mode() == "single_conversation" {
                                     input {
                                         class: "settings-input",
                                         r#type: "text",
-                                        placeholder: "Nhập mã cuộc trò chuyện",
+                                        placeholder: "Enter the chat code",
                                         value: "{restore_conv_id}",
                                         oninput: move |e| restore_conv_id.set(e.value()),
                                     }
@@ -464,7 +464,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                                 Ok(res) => {
                                                     notice.set(Some((
                                                         false,
-                                                        format!("Khôi phục hoàn tất: {} tin nhắn, {} tệp phương tiện.", res.restored_messages, res.restored_media),
+                                                        format!("Restore complete: {} messages, {} media files.", res.restored_messages, res.restored_media),
                                                     )));
                                                     restore_result.set(Some(res));
                                                     reload();
@@ -474,16 +474,16 @@ pub fn BackupExportRestorePanel() -> Element {
                                             busy.set(false);
                                         });
                                     },
-                                    "Khôi phục dữ liệu"
+                                    "Restore data"
                                 }
                             }
                             if let Some(rr) = restore_result() {
                                 div { class: "settings-row-text",
                                     span { class: "settings-label",
-                                        "Kết quả: thêm {rr.restored_messages} tin nhắn, bỏ qua {rr.skipped_duplicate_messages} trùng · thêm {rr.restored_media} tệp"
+                                        "Result: add {rr.restored_messages} messages, ignore duplicate {rr.skipped_duplicate_messages} · add {rr.restored_media} files"
                                     }
                                     if rr.skipped_unauthorized_messages > 0 {
-                                        span { class: "settings-sublabel", "Đã bỏ qua {rr.skipped_unauthorized_messages} bản ghi không hợp lệ quyền." }
+                                        span { class: "settings-sublabel", "Ignored {rr.skipped_unauthorized_messages} records with invalid permissions." }
                                     }
                                 }
                             }
@@ -493,14 +493,14 @@ pub fn BackupExportRestorePanel() -> Element {
 
                 if !jobs().is_empty() {
                     div { class: "settings-group",
-                        div { class: "settings-group-title", "Lịch sử sao lưu" }
+                        div { class: "settings-group-title", "Backup history" }
                         div { class: "settings-list",
                             for j in jobs() {
                                 div { key: "{j.id}", class: "settings-row",
                                     div { class: "settings-row-text",
                                         span { class: "settings-label", "{j.format} · {j.status}" }
                                         span { class: "settings-sublabel",
-                                            "{format_bytes_human(j.processed_bytes as u64)} / {format_bytes_human(j.total_bytes as u64)} · {j.processed_files}/{j.total_files} tệp"
+                                            "{format_bytes_human(j.processed_bytes as u64)} / {format_bytes_human(j.total_bytes as u64)} · {j.processed_files}/{j.total_files} files"
                                         }
                                         if let Some(ref n) = j.honest_notice {
                                             span { class: "settings-sublabel", "{n}" }
@@ -522,7 +522,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                                         });
                                                     }
                                                 },
-                                                if j.status == "paused" { "Tiếp tục" } else { "Tạm dừng" }
+                                                if j.status == "paused" { "Continue" } else { "Pause" }
                                             }
                                             button {
                                                 r#type: "button",
@@ -537,7 +537,7 @@ pub fn BackupExportRestorePanel() -> Element {
                                                         });
                                                     }
                                                 },
-                                                "Hủy"
+                                                "Cancel"
                                             }
                                         }
                                     }
@@ -626,23 +626,23 @@ pub fn CloudAccountsPanel() -> Element {
         }
         if let Some(run) = last_run() {
             div { class: "status-badge success",
-                "Ảnh chụp #{run.snapshot_seq}: tổng {format_bytes_human(run.total_plain_bytes)}, tải mới {format_bytes_human(run.uploaded_delta_bytes)}, tiết kiệm {format_bytes_human(run.deduplicated_bytes)}"
+                "Snapshot #{run.snapshot_seq}: total {format_bytes_human(run.total_plain_bytes)}, new load {format_bytes_human(run.uploaded_delta_bytes)}, save {format_bytes_human(run.deduplicated_bytes)}"
             }
         }
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Mật khẩu đám mây" }
+                    div { class: "settings-group-title", "Cloud password" }
                     div { class: "settings-list",
                         div { class: "settings-row column-layout",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Mật khẩu khóa" }
+                                span { class: "settings-label", "Lock password" }
                             }
                             input {
                                 class: "settings-input",
                                 id: "cloud-backup-passphrase",
                                 r#type: "password",
-                                placeholder: "Từ 6 ký tự trở lên",
+                                placeholder: "From 6 characters or more",
                                 value: "{cloud_passphrase}",
                                 oninput: move |e| cloud_passphrase.set(e.value()),
                             }
@@ -651,7 +651,7 @@ pub fn CloudAccountsPanel() -> Element {
                 }
 
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Dịch vụ đám mây" }
+                    div { class: "settings-group-title", "Cloud service" }
                     div { class: "settings-list",
                         for prov in providers() {
                             div { key: "{prov.provider_id}", class: "settings-row cw-brand-row",
@@ -673,16 +673,16 @@ pub fn CloudAccountsPanel() -> Element {
                                                     match backup_cloud::start_cloud_oauth(&pid).await {
                                                         Ok(url) if !url.is_empty() => {
                                                             platform::open_external_url(&url);
-                                                            notice.set(Some((false, "Đã mở trang đăng nhập đám mây.".into())));
+                                                            notice.set(Some((false, "Cloud login page opened.".into())));
                                                         }
-                                                        Ok(_) => notice.set(Some((true, "Không mở được liên kết kết nối.".into()))),
+                                                        Ok(_) => notice.set(Some((true, "Cannot open connection link.".into()))),
                                                         Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
                                                     }
                                                     busy.set(false);
                                                 });
                                             }
                                         },
-                                        if prov.oauth_configured { "Kết nối" } else { "Sắp hỗ trợ" }
+                                        if prov.oauth_configured { "Connect" } else { "Support coming soon" }
                                     }
                                 } else if prov.auth_kind == "credentials" {
                                     button {
@@ -698,7 +698,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                 }
                                             }
                                         },
-                                        if connect_provider().as_deref() == Some(prov.provider_id.as_str()) { "Đóng" } else { "Thiết lập" }
+                                        if connect_provider().as_deref() == Some(prov.provider_id.as_str()) { "Close" } else { "Setup" }
                                     }
                                 }
                             }
@@ -712,14 +712,14 @@ pub fn CloudAccountsPanel() -> Element {
                     div { class: "settings-group",
                         div { class: "settings-group-title",
                             CloudProviderLogo { provider_id: pid.clone(), size: 22 }
-                            span { "Kết nối {format_provider_label(pid)}" }
+                            span { "Connection {format_provider_label(pid)}" }
                         }
                         div { class: "settings-list",
                             div { class: "settings-row column-layout",
                                 input {
                                     class: "settings-input",
                                     r#type: "text",
-                                    placeholder: "Tên gợi nhớ",
+                                    placeholder: "Reminiscent name",
                                     value: "{conn_label}",
                                     oninput: move |e| conn_label.set(e.value()),
                                 }
@@ -728,7 +728,7 @@ pub fn CloudAccountsPanel() -> Element {
                                         class: "settings-input",
                                         id: "cloud-dav-url",
                                         r#type: "text",
-                                        placeholder: "Địa chỉ máy chủ WebDAV",
+                                        placeholder: "WebDAV server address",
                                         value: "{dav_url}",
                                         oninput: move |e| dav_url.set(e.value()),
                                     }
@@ -737,7 +737,7 @@ pub fn CloudAccountsPanel() -> Element {
                                             class: "settings-input",
                                             id: "cloud-dav-user",
                                             r#type: "text",
-                                            placeholder: "Tên đăng nhập",
+                                            placeholder: "Username",
                                             value: "{dav_user}",
                                             oninput: move |e| dav_user.set(e.value()),
                                         }
@@ -745,7 +745,7 @@ pub fn CloudAccountsPanel() -> Element {
                                             class: "settings-input",
                                             id: "cloud-dav-pass",
                                             r#type: "password",
-                                            placeholder: "Mật khẩu",
+                                            placeholder: "Password",
                                             value: "{dav_pass}",
                                             oninput: move |e| dav_pass.set(e.value()),
                                         }
@@ -753,7 +753,7 @@ pub fn CloudAccountsPanel() -> Element {
                                     input {
                                         class: "settings-input",
                                         r#type: "text",
-                                        placeholder: "Tên thư mục lưu trữ",
+                                        placeholder: "Storage folder name",
                                         value: "{dav_folder}",
                                         oninput: move |e| dav_folder.set(e.value()),
                                     }
@@ -762,14 +762,14 @@ pub fn CloudAccountsPanel() -> Element {
                                         input {
                                             class: "settings-input",
                                             r#type: "text",
-                                            placeholder: "Địa chỉ máy chủ HTTPS",
+                                            placeholder: "HTTPS server address",
                                             value: "{s3_endpoint}",
                                             oninput: move |e| s3_endpoint.set(e.value()),
                                         }
                                         input {
                                             class: "settings-input",
                                             r#type: "text",
-                                            placeholder: "Khu vực",
+                                            placeholder: "Area",
                                             value: "{s3_region}",
                                             oninput: move |e| s3_region.set(e.value()),
                                         }
@@ -778,14 +778,14 @@ pub fn CloudAccountsPanel() -> Element {
                                         input {
                                             class: "settings-input",
                                             r#type: "text",
-                                            placeholder: "Tên kho chứa",
+                                            placeholder: "Name of the repository",
                                             value: "{s3_bucket}",
                                             oninput: move |e| s3_bucket.set(e.value()),
                                         }
                                         input {
                                             class: "settings-input",
                                             r#type: "text",
-                                            placeholder: "Thư mục gốc",
+                                            placeholder: "Root directory",
                                             value: "{s3_prefix}",
                                             oninput: move |e| s3_prefix.set(e.value()),
                                         }
@@ -794,20 +794,20 @@ pub fn CloudAccountsPanel() -> Element {
                                         input {
                                             class: "settings-input",
                                             r#type: "text",
-                                            placeholder: "Mã truy cập",
+                                            placeholder: "Access code",
                                             value: "{s3_ak}",
                                             oninput: move |e| s3_ak.set(e.value()),
                                         }
                                         input {
                                             class: "settings-input",
                                             r#type: "password",
-                                            placeholder: "Mã bí mật",
+                                            placeholder: "Secret code",
                                             value: "{s3_sk}",
                                             oninput: move |e| s3_sk.set(e.value()),
                                         }
                                     }
                                     label { class: "settings-row",
-                                        span { class: "settings-label", "Dùng đường dẫn trực tiếp cho MinIO" }
+                                        span { class: "settings-label", "Use direct path for MinIO" }
                                         input { r#type: "checkbox", role: "switch", class: "switch", checked: s3_path_style(), onchange: move |e| s3_path_style.set(e.checked()) }
                                     }
                                 }
@@ -851,7 +851,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                             connect_provider.set(None);
                                                             dav_pass.set(String::new());
                                                             s3_sk.set(String::new());
-                                                            notice.set(Some((false, "Đã kết nối tài khoản đám mây.".into())));
+                                                            notice.set(Some((false, "Cloud account connected.".into())));
                                                             reload();
                                                         }
                                                         Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
@@ -860,7 +860,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                 });
                                             }
                                         },
-                                        "Xác minh và kết nối"
+                                        "Verify and connect"
                                     }
                                 }
                             }
@@ -870,7 +870,7 @@ pub fn CloudAccountsPanel() -> Element {
 
                 if !connections().is_empty() {
                     div { class: "settings-group",
-                        div { class: "settings-group-title", "Tài khoản đám mây đã kết nối" }
+                        div { class: "settings-group-title", "Cloud account connected" }
                         div { class: "settings-list",
                             for conn in connections() {
                                 div { key: "{conn.id}", class: "settings-row column-layout",
@@ -881,16 +881,16 @@ pub fn CloudAccountsPanel() -> Element {
                                                 "{format_provider_label(&conn.provider)} · {conn.account_label}"
                                             }
                                             span { class: "settings-sublabel",
-                                                "Trạng thái: {conn.status}"
+                                                "Status: {conn.status}"
                                                 if let Some(tot) = conn.quota_total_bytes {
-                                                    " · Đã dùng {format_bytes_human(conn.quota_used_bytes.unwrap_or(0) as u64)} / {format_bytes_human(tot as u64)}"
+                                                    " · Used {format_bytes_human(conn.quota_used_bytes.unwrap_or(0) as u64)} / {format_bytes_human(tot as u64)}"
                                                 }
                                                 if let Some(ref ts) = conn.last_backup_at {
-                                                    " · Sao lưu cuối: {ts}"
+                                                    " · Last backup: {ts}"
                                                 }
                                             }
                                             if let Some(ref err) = conn.last_error {
-                                                span { class: "settings-sublabel", "Lỗi gần nhất: {err}" }
+                                                span { class: "settings-sublabel", "Most recent error: {err}" }
                                             }
                                         }
                                     }
@@ -905,7 +905,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                     let cid = cid.clone();
                                                     let pw = cloud_passphrase();
                                                     if pw.chars().count() < 6 {
-                                                        notice.set(Some((true, "Nhập mật khẩu sao lưu từ 6 ký tự trước.".into())));
+                                                        notice.set(Some((true, "Enter the backup password from the previous 6 characters.".into())));
                                                         return;
                                                     }
                                                     busy.set(true);
@@ -915,7 +915,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                             Ok(run) => {
                                                                 notice.set(Some((
                                                                     false,
-                                                                    format!("Ảnh chụp #{} thành công · tải lên {}", run.snapshot_seq, format_bytes_human(run.uploaded_delta_bytes)),
+                                                                    format!("Photo #{} successfully · uploaded {}", run.snapshot_seq, format_bytes_human(run.uploaded_delta_bytes)),
                                                                 )));
                                                                 last_run.set(Some(run));
                                                                 load_snapshots(cid);
@@ -927,7 +927,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                     });
                                                 }
                                             },
-                                            "Sao lưu tăng dần"
+                                            "Incremental backups"
                                         }
                                         button {
                                             r#type: "button",
@@ -941,7 +941,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                     spawn(async move {
                                                         match backup_cloud::verify_cloud_connection(&cid).await {
                                                             Ok(_) => {
-                                                                notice.set(Some((false, "Kết nối đám mây đang hoạt động tốt.".into())));
+                                                                notice.set(Some((false, "Cloud connection is working fine.".into())));
                                                                 reload();
                                                             }
                                                             Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
@@ -950,7 +950,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                     });
                                                 }
                                             },
-                                            "Kiểm tra"
+                                            "Check"
                                         }
                                         button {
                                             r#type: "button",
@@ -959,7 +959,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                 let cid = conn.id.clone();
                                                 move |_| load_snapshots(cid.clone())
                                             },
-                                            "Xem bản sao"
+                                            "See copy"
                                         }
                                         button {
                                             r#type: "button",
@@ -981,7 +981,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                     });
                                                 }
                                             },
-                                            "Ngắt kết nối"
+                                            "Disconnect"
                                         }
                                     }
                                 }
@@ -993,27 +993,27 @@ pub fn CloudAccountsPanel() -> Element {
                 if let Some(cid) = active_conn_id() {
                     if !snapshots().is_empty() {
                         div { class: "settings-group",
-                            div { class: "settings-group-title", "Bản sao trên đám mây" }
+                            div { class: "settings-group-title", "Cloud copy" }
                             div { class: "settings-list",
                                 div { class: "settings-row",
-                                    span { class: "settings-label", "Phần cần khôi phục" }
+                                    span { class: "settings-label", "Part to restore" }
                                     select {
                                         class: "settings-select",
-                                        aria_label: "Chế độ khôi phục Cloud",
+                                        aria_label: "Cloud recovery mode",
                                         value: "{restore_mode}",
                                         onchange: move |e| restore_mode.set(e.value()),
-                                        option { value: "full", "Khôi phục toàn bộ" }
-                                        option { value: "missing_only", "Chỉ bổ sung phần thiếu" }
-                                        option { value: "messages", "Chỉ tin nhắn" }
-                                        option { value: "media", "Chỉ phương tiện" }
+                                        option { value: "full", "Full restore" }
+                                        option { value: "missing_only", "Just supplement the missing part" }
+                                        option { value: "messages", "Messages only" }
+                                        option { value: "media", "Means only" }
                                     }
                                 }
                                 for snap in snapshots() {
                                     div { key: "{snap.id}", class: "settings-row",
                                         div { class: "settings-row-text",
-                                            span { class: "settings-label", "Bản sao #{snap.snapshot_seq} · {snap.status}" }
+                                            span { class: "settings-label", "Copy #{snap.snapshot_seq} · {snap.status}" }
                                             span { class: "settings-sublabel",
-                                                "{snap.file_count} tệp · Gốc {format_bytes_human(snap.total_plain_bytes as u64)} · Mới {format_bytes_human(snap.uploaded_delta_bytes as u64)} · {snap.created_at}"
+                                                "{snap.file_count} file · Original {format_bytes_human(snap.total_plain_bytes as u64)} · New {format_bytes_human(snap.uploaded_delta_bytes as u64)} · {snap.created_at}"
                                             }
                                         }
                                         div { class: "inline-form",
@@ -1030,7 +1030,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                         let pw = cloud_passphrase();
                                                         let mode = restore_mode();
                                                         if pw.chars().count() < 6 {
-                                                            notice.set(Some((true, "Nhập mật khẩu sao lưu trước khi khôi phục.".into())));
+                                                            notice.set(Some((true, "Enter the backup password before restoring.".into())));
                                                             return;
                                                         }
                                                         busy.set(true);
@@ -1038,7 +1038,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                             match backup_cloud::restore_cloud_snapshot(&cid, &sid, &pw, &mode).await {
                                                                 Ok(rr) => notice.set(Some((
                                                                     false,
-                                                                    format!("Đã khôi phục: thêm {} tin nhắn, {} tệp.", rr.restored_messages, rr.restored_media),
+                                                                    format!("Recovered: added {} messages, {} files.", rr.restored_messages, rr.restored_media),
                                                                 ))),
                                                                 Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
                                                             }
@@ -1046,7 +1046,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                         });
                                                     }
                                                 },
-                                                "Khôi phục"
+                                                "Restore"
                                             }
                                             button {
                                                 r#type: "button",
@@ -1066,7 +1066,7 @@ pub fn CloudAccountsPanel() -> Element {
                                                         });
                                                     }
                                                 },
-                                                "Xóa"
+                                                "Delete"
                                             }
                                         }
                                     }
@@ -1077,11 +1077,11 @@ pub fn CloudAccountsPanel() -> Element {
                 }
 
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Sao lưu tự động" }
+                    div { class: "settings-group-title", "Automatic backup" }
                     div { class: "settings-list",
                         label { class: "settings-row",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Tự động sao lưu" }
+                                span { class: "settings-label", "Automatic backup" }
                             }
                             input {
                                 r#type: "checkbox",
@@ -1096,28 +1096,28 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         div { class: "settings-row",
-                            span { class: "settings-label", "Chu kỳ" }
+                            span { class: "settings-label", "Cycle" }
                             select {
                                 class: "settings-select",
-                                aria_label: "Chu kỳ sao lưu Cloud",
+                                aria_label: "Cloud backup cycle",
                                 value: "{pol.schedule_mode}",
                                 onchange: move |e| {
                                     let mut next = policy();
                                     next.schedule_mode = e.value();
                                     policy.set(next);
                                 },
-                                option { value: "manual", "Thủ công" }
-                                option { value: "daily", "Hàng ngày" }
-                                option { value: "weekly", "Hàng tuần" }
-                                option { value: "on_change", "Khi thay đổi" }
+                                option { value: "manual", "Manual" }
+                                option { value: "daily", "Every day" }
+                                option { value: "weekly", "Every week" }
+                                option { value: "on_change", "When changed" }
                             }
                         }
                         if !connections().is_empty() {
                             div { class: "settings-row",
-                                span { class: "settings-label", "Tài khoản đích" }
+                                span { class: "settings-label", "Destination account" }
                                 select {
                                     class: "settings-select",
-                                    aria_label: "Tài khoản Cloud mặc định",
+                                    aria_label: "Default Cloud account",
                                     value: "{pol.connection_id.clone().unwrap_or_default()}",
                                     onchange: move |e| {
                                         let v = e.value();
@@ -1125,7 +1125,7 @@ pub fn CloudAccountsPanel() -> Element {
                                         next.connection_id = if v.is_empty() { None } else { Some(v) };
                                         policy.set(next);
                                     },
-                                    option { value: "", "Chưa chọn" }
+                                    option { value: "", "Not selected yet" }
                                     for conn in connections() {
                                         option { value: "{conn.id}", "{format_provider_label(&conn.provider)} · {conn.account_label}" }
                                     }
@@ -1133,7 +1133,7 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Chỉ qua Wi-Fi" }
+                            span { class: "settings-label", "Only over Wi-Fi" }
                             input {
                                 r#type: "checkbox",
                                 role: "switch",
@@ -1147,7 +1147,7 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Chỉ khi sạc" }
+                            span { class: "settings-label", "Only when charging" }
                             input {
                                 r#type: "checkbox",
                                 role: "switch",
@@ -1161,7 +1161,7 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         label { class: "settings-row",
-                            span { class: "settings-label", "Tạm dừng" }
+                            span { class: "settings-label", "Pause" }
                             input {
                                 r#type: "checkbox",
                                 role: "switch",
@@ -1175,10 +1175,10 @@ pub fn CloudAccountsPanel() -> Element {
                             }
                         }
                         div { class: "settings-row",
-                            span { class: "settings-label", "Bản sao giữ lại" }
+                            span { class: "settings-label", "Copy retained" }
                             select {
                                 class: "settings-select",
-                                aria_label: "Số bản chụp giữ lại",
+                                aria_label: "Number of copies kept",
                                 value: "{pol.retain_snapshots}",
                                 onchange: move |e| {
                                     if let Ok(n) = e.value().parse::<i32>() {
@@ -1187,35 +1187,35 @@ pub fn CloudAccountsPanel() -> Element {
                                         policy.set(next);
                                     }
                                 },
-                                option { value: "3", "3 bản" }
-                                option { value: "5", "5 bản" }
-                                option { value: "10", "10 bản" }
-                                option { value: "20", "20 bản" }
+                                option { value: "3", "3 copies" }
+                                option { value: "5", "5 copies" }
+                                option { value: "10", "10 copies" }
+                                option { value: "20", "20 copies" }
                             }
                         }
                         div { class: "settings-row column-layout",
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Mật khẩu tự động" }
+                                span { class: "settings-label", "Automatic password" }
                             }
                             div { class: "inline-form",
                                 input {
                                     class: "settings-input",
                                     id: "cloud-auto-passphrase",
                                     r#type: "password",
-                                    placeholder: if pol.has_auto_key { "Đổi mật khẩu tự động" } else { "Từ 6 ký tự" },
+                                    placeholder: if pol.has_auto_key { "Change password automatically" } else { "From 6 characters" },
                                     value: "{auto_backup_passphrase}",
                                     oninput: move |e| auto_backup_passphrase.set(e.value()),
                                 }
                                 if pol.has_auto_key {
                                     label { class: "inline-form",
                                         input { r#type: "checkbox", checked: clear_auto_key(), onchange: move |e| clear_auto_key.set(e.checked()) }
-                                        span { class: "settings-sublabel", "Xóa khóa" }
+                                        span { class: "settings-sublabel", "Delete key" }
                                     }
                                 }
                             }
                         }
                         div { class: "settings-row",
-                            span { class: "settings-label", "Lưu lịch" }
+                            span { class: "settings-label", "Save calendar" }
                             button {
                                 r#type: "button",
                                 id: "btn-save-cloud-policy",
@@ -1236,14 +1236,14 @@ pub fn CloudAccountsPanel() -> Element {
                                                 policy.set(saved);
                                                 auto_backup_passphrase.set(String::new());
                                                 clear_auto_key.set(false);
-                                                notice.set(Some((false, "Đã lưu lịch sao lưu đám mây.".into())));
+                                                notice.set(Some((false, "Saved cloud backup schedule.".into())));
                                             }
                                             Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
                                         }
                                         busy.set(false);
                                     });
                                 },
-                                "Lưu cấu hình"
+                                "Save configuration"
                             }
                         }
                     }
@@ -1321,14 +1321,14 @@ pub fn AdvancedSecurityExportSection() -> Element {
 
     rsx! {
         div { class: "settings-group",
-            div { class: "settings-group-title", "Mật khẩu xuất dữ liệu" }
+            div { class: "settings-group-title", "Data export password" }
             div { class: "settings-list",
                 div { class: "settings-row column-layout",
                     div { class: "settings-row-text",
                         span { class: "settings-label",
-                            if m.has_export_password { "Đổi mật khẩu xuất dữ liệu" } else { "Đặt mật khẩu xuất dữ liệu" }
+                            if m.has_export_password { "Change data export password" } else { "Set data export password" }
                         }
-                        span { class: "settings-sublabel", "Dùng để xác nhận lại tài khoản mỗi khi tải bản sao lưu." }
+                        span { class: "settings-sublabel", "Used to reconfirm your account each time you download a backup." }
                     }
                     if m.has_export_password {
                         div { class: "inline-form",
@@ -1336,7 +1336,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                 class: "settings-input",
                                 id: "sec-cur-export-pw",
                                 r#type: "password",
-                                placeholder: "Mật khẩu xuất hiện tại",
+                                placeholder: "Password appears now",
                                 value: "{cur_pw}",
                                 oninput: move |e| cur_pw.set(e.value()),
                             }
@@ -1344,7 +1344,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                 input {
                                     class: "settings-input",
                                     r#type: "text",
-                                    placeholder: "Hoặc mã xác minh 2 bước",
+                                    placeholder: "Or 2-step verification code",
                                     value: "{totp_or_backup}",
                                     oninput: move |e| totp_or_backup.set(e.value()),
                                 }
@@ -1356,7 +1356,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                             class: "settings-input",
                             id: "sec-new-export-pw",
                             r#type: "password",
-                            placeholder: "Mật khẩu xuất mới từ 8 ký tự",
+                            placeholder: "New export password from 8 characters",
                             value: "{new_pw}",
                             oninput: move |e| new_pw.set(e.value()),
                         }
@@ -1368,7 +1368,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                             onclick: move |_| {
                                 let np = new_pw();
                                 if np.chars().count() < 8 {
-                                    notice.set(Some((true, "Mật khẩu xuất cần ít nhất 8 ký tự.".into())));
+                                    notice.set(Some((true, "The export password needs to be at least 8 characters.".into())));
                                     return;
                                 }
                                 let cp = cur_pw();
@@ -1385,7 +1385,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                             cur_pw.set(String::new());
                                             totp_or_backup.set(String::new());
                                             new_pw.set(String::new());
-                                            notice.set(Some((false, "Đã cập nhật mật khẩu xuất dữ liệu.".into())));
+                                            notice.set(Some((false, "Updated data export password.".into())));
                                             reload();
                                         }
                                         Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
@@ -1393,15 +1393,15 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                     busy.set(false);
                                 });
                             },
-                            if m.has_export_password { "Cập nhật mật khẩu" } else { "Lưu mật khẩu xuất" }
+                            if m.has_export_password { "Update password" } else { "Save export password" }
                         }
                     }
                 }
                 div { class: "settings-row cw-brand-row",
                     PasskeyLogo { size: 30 }
                     div { class: "settings-row-text",
-                        span { class: "settings-label", "Khóa bảo mật trên thiết bị" }
-                        span { class: "settings-sublabel", "Đã đăng ký {m.passkeys_count} khóa trên máy này để xác nhận nhanh không cần mật khẩu." }
+                        span { class: "settings-label", "Security lock on device" }
+                        span { class: "settings-sublabel", "Registered {m.passkeys_count} key on this machine for quick password-less authentication." }
                     }
                     button {
                         r#type: "button",
@@ -1412,9 +1412,9 @@ pub fn AdvancedSecurityExportSection() -> Element {
                             busy.set(true);
                             notice.set(None);
                             spawn(async move {
-                                match backup_cloud::register_device_passkey("Khóa thiết bị KIYO").await {
+                                match backup_cloud::register_device_passkey("Lock KIYO device").await {
                                     Ok(_) => {
-                                        notice.set(Some((false, "Đã tạo và đăng ký khóa bảo mật P-256 trên thiết bị.".into())));
+                                        notice.set(Some((false, "Created and registered the P-256 security key on the device.".into())));
                                         reload();
                                     }
                                     Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
@@ -1422,7 +1422,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                 busy.set(false);
                             });
                         },
-                        "Đăng ký khóa thiết bị"
+                        "Register device lock"
                     }
                 }
             }
@@ -1433,32 +1433,32 @@ pub fn AdvancedSecurityExportSection() -> Element {
         }
 
         div { class: "settings-group",
-            div { class: "settings-group-title", "Xuất dữ liệu nâng cao" }
+            div { class: "settings-group-title", "Advanced data export" }
             div { class: "settings-list",
                 div { class: "settings-row column-layout",
                     div { class: "cw-brand-row",
                         ZipBackupLogo { size: 28 }
                         div { class: "settings-row-text",
-                            span { class: "settings-label", "Xuất tệp ZIP có mật khẩu" }
-                            span { class: "settings-sublabel", "Bảo vệ nội dung bằng mật khẩu nhưng không ẩn tên tệp bên trong như bản sao lưu chính." }
+                            span { class: "settings-label", "Export ZIP file with password" }
+                            span { class: "settings-sublabel", "Protect the content with a password, but don't hide the file names inside like the primary backup." }
                         }
                     }
                     div { class: "inline-form",
                         select {
                             class: "settings-select",
-                            aria_label: "Phương thức xác thực ZIP AES",
+                            aria_label: "ZIP AES authentication method",
                             value: "{enc_zip_reauth_method}",
                             onchange: move |e| enc_zip_reauth_method.set(e.value()),
-                            if m.has_export_password { option { value: "password", "Mật khẩu xuất" } }
-                            if m.passkeys_count > 0 { option { value: "passkey", "Khóa thiết bị · {m.passkeys_count}" } }
-                            if m.totp_enabled { option { value: "totp", "Mã xác minh 2 bước" } }
-                            if m.backup_codes_remaining > 0 { option { value: "backup_code", "Mã dự phòng" } }
+                            if m.has_export_password { option { value: "password", "Export password" } }
+                            if m.passkeys_count > 0 { option { value: "passkey", "Device Lock · {m.passkeys_count}" } }
+                            if m.totp_enabled { option { value: "totp", "2-step verification code" } }
+                            if m.backup_codes_remaining > 0 { option { value: "backup_code", "Backup code" } }
                         }
                         if enc_zip_reauth_method() != "passkey" {
                             input {
                                 class: "settings-input",
                                 r#type: "password",
-                                placeholder: "Xác nhận tài khoản",
+                                placeholder: "Confirm account",
                                 value: "{enc_zip_reauth_secret}",
                                 oninput: move |e| enc_zip_reauth_secret.set(e.value()),
                             }
@@ -1466,7 +1466,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                         input {
                             class: "settings-input",
                             r#type: "password",
-                            placeholder: "Mật khẩu ZIP từ 6 ký tự",
+                            placeholder: "ZIP password from 6 characters",
                             value: "{enc_zip_pass}",
                             oninput: move |e| enc_zip_pass.set(e.value()),
                         }
@@ -1479,7 +1479,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                 let secret = enc_zip_reauth_secret();
                                 let zpw = enc_zip_pass();
                                 if zpw.chars().count() < 6 {
-                                    notice.set(Some((true, "Mật khẩu ZIP cần ít nhất 6 ký tự.".into())));
+                                    notice.set(Some((true, "ZIP passwords need at least 6 characters.".into())));
                                     return;
                                 }
                                 busy.set(true);
@@ -1493,7 +1493,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                             ).await {
                                                 Ok(dl) => {
                                                     enc_zip_reauth_secret.set(String::new());
-                                                    notice.set(Some((false, format!("Đã xuất {} · {}", dl.filename, format_bytes_human(dl.byte_size)))));
+                                                    notice.set(Some((false, format!("Exported {} · {}", dl.filename, format_bytes_human(dl.byte_size)))));
                                                 }
                                                 Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
                                             }
@@ -1503,7 +1503,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                     busy.set(false);
                                 });
                             },
-                            "Xuất ZIP có mật khẩu"
+                            "Export ZIP with password"
                         }
                     }
                 }
@@ -1512,8 +1512,8 @@ pub fn AdvancedSecurityExportSection() -> Element {
                     div { class: "settings-row",
                         style: "width: 100%; padding: 0; border: none;",
                         div { class: "settings-row-text",
-                            span { class: "settings-label", "Xuất ZIP không mật khẩu" }
-                            span { class: "settings-sublabel", "Đang khóa để bảo vệ dữ liệu. Cần xác nhận nhiều bước trước khi dùng." }
+                            span { class: "settings-label", "Passwordless ZIP export" }
+                            span { class: "settings-sublabel", "Locking to protect data. Need to confirm many steps before using." }
                         }
                         if !zip_panel_open() {
                             button {
@@ -1524,14 +1524,14 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                     zip_panel_open.set(true);
                                     zip_step.set(0);
                                 },
-                                "Mở khóa tùy chọn này"
+                                "Unlock this option"
                             }
                         } else {
                             button {
                                 r#type: "button",
                                 class: "btn-ghost",
                                 onclick: move |_| abort_and_relock(),
-                                "Đóng và khóa lại"
+                                "Close and lock"
                             }
                         }
                     }
@@ -1539,7 +1539,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                     if zip_panel_open() {
                         if zip_step() == 0 {
                             div { class: "status-badge error",
-                                "Cảnh báo: Tệp ZIP không mật khẩu lưu toàn bộ tin nhắn và ảnh ở dạng mở sẵn. Ai mở tệp đều đọc được."
+                                "Warning: Passwordless ZIP files save all messages and photos in an open form. Anyone who opens the file can read it."
                             }
                             div { class: "inline-form",
                                 button {
@@ -1547,36 +1547,36 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                     id: "btn-zip-step1-start",
                                     class: "btn-danger",
                                     onclick: move |_| zip_step.set(1),
-                                    "Tôi hiểu cảnh báo, tiếp tục"
+                                    "I understand the warning, continue"
                                 }
                                 button {
                                     r#type: "button",
                                     class: "btn-ghost",
                                     onclick: move |_| abort_and_relock(),
-                                    "Hủy"
+                                    "Cancel"
                                 }
                             }
                         } else if zip_step() == 1 {
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Bước 1 trên 3: Xác nhận lại tài khoản" }
+                                span { class: "settings-label", "Step 1 of 3: Confirm your account" }
                             }
                             div { class: "inline-form",
                                 select {
                                     class: "settings-select",
-                                    aria_label: "Phương thức xác thực ZIP không mã hóa",
+                                    aria_label: "Unencrypted ZIP authentication method",
                                     value: "{zip_reauth_method}",
                                     onchange: move |e| zip_reauth_method.set(e.value()),
-                                    if m.has_export_password { option { value: "password", "Mật khẩu xuất" } }
-                                    if m.passkeys_count > 0 { option { value: "passkey", "Khóa thiết bị · {m.passkeys_count}" } }
-                                    if m.totp_enabled { option { value: "totp", "Mã xác minh 2 bước" } }
-                                    if m.backup_codes_remaining > 0 { option { value: "backup_code", "Mã dự phòng" } }
+                                    if m.has_export_password { option { value: "password", "Export password" } }
+                                    if m.passkeys_count > 0 { option { value: "passkey", "Device Lock · {m.passkeys_count}" } }
+                                    if m.totp_enabled { option { value: "totp", "2-step verification code" } }
+                                    if m.backup_codes_remaining > 0 { option { value: "backup_code", "Backup code" } }
                                 }
                                 if zip_reauth_method() != "passkey" {
                                     input {
                                         class: "settings-input",
                                         id: "unencrypted-zip-reauth-secret",
                                         r#type: "password",
-                                        placeholder: "Nhập mật khẩu xuất hoặc mã xác minh",
+                                        placeholder: "Enter the export password or verification code",
                                         value: "{zip_reauth_secret}",
                                         oninput: move |e| zip_reauth_secret.set(e.value()),
                                     }
@@ -1602,13 +1602,13 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                             busy.set(false);
                                         });
                                     },
-                                    "Xác nhận và tiếp tục"
+                                    "Confirm and continue"
                                 }
                             }
                         } else if zip_step() == 2 {
                             div { class: "settings-row-text",
-                                span { class: "settings-label", "Bước 2 trên 3: Xem trước dữ liệu" }
-                                span { class: "settings-sublabel", "Không gửi tệp ZIP không mật khẩu qua mạng hoặc nơi công cộng." }
+                                span { class: "settings-label", "Step 2 of 3: Preview data" }
+                                span { class: "settings-sublabel", "Do not send passwordless ZIP files over the internet or in public places." }
                             }
                             div { class: "inline-form",
                                 button {
@@ -1633,16 +1633,16 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                             busy.set(false);
                                         });
                                     },
-                                    "Tôi đồng ý, xem trước dữ liệu"
+                                    "I agree, preview the data"
                                 }
-                                button { r#type: "button", class: "btn-ghost", onclick: move |_| abort_and_relock(), "Hủy và khóa lại" }
+                                button { r#type: "button", class: "btn-ghost", onclick: move |_| abort_and_relock(), "Cancel and lock again" }
                             }
                         } else if zip_step() == 3 {
                             if let Some(prev) = zip_preview() {
                                 div { class: "settings-row-text",
-                                    span { class: "settings-label", "Bước 3 trên 3: Xác nhận lần cuối" }
+                                    span { class: "settings-label", "Step 3 of 3: Final confirmation" }
                                     span { class: "settings-sublabel",
-                                        "Sẽ tải {prev.dm_messages} tin riêng, {prev.group_messages} tin nhóm, {prev.channel_messages} tin máy chủ, {prev.durable_media_count} tệp · {format_bytes_human(prev.durable_media_bytes as u64)} không mật khẩu."
+                                        "Will download {prev.dm_messages} private messages, {prev.group_messages} group messages, {prev.channel_messages} server messages, {prev.durable_media_count} files · {format_bytes_human(prev.durable_media_bytes as u64)} without password."
                                     }
                                 }
                             }
@@ -1667,7 +1667,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                                 Ok(dl) => {
                                                     notice.set(Some((
                                                         false,
-                                                        format!("Đã tải {} · {}. Tùy chọn này đã tự khóa lại.", dl.filename, format_bytes_human(dl.byte_size)),
+                                                        format!("Loaded {} · {}. This option has locked itself.", dl.filename, format_bytes_human(dl.byte_size)),
                                                     )));
                                                 }
                                                 Err(e) => notice.set(Some((true, format_api_error(&e.code).into()))),
@@ -1679,9 +1679,9 @@ pub fn AdvancedSecurityExportSection() -> Element {
                                             busy.set(false);
                                         });
                                     },
-                                    "Xác nhận lần cuối và xuất ZIP"
+                                    "Final confirmation and ZIP export"
                                 }
-                                button { r#type: "button", class: "btn-ghost", onclick: move |_| abort_and_relock(), "Hủy và khóa lại" }
+                                button { r#type: "button", class: "btn-ghost", onclick: move |_| abort_and_relock(), "Cancel and lock again" }
                             }
                         }
                     }

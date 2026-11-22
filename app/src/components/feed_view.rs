@@ -50,13 +50,13 @@ fn format_relative(iso: &str) -> String {
     };
     let mins = Utc::now().signed_duration_since(dt.with_timezone(&Utc)).num_minutes();
     if mins < 1 {
-        "Vừa xong".to_string()
+        "Just now".to_string()
     } else if mins < 60 {
-        format!("{mins} phút")
+        format!("{mins} min")
     } else if mins < 24 * 60 {
-        format!("{} giờ", mins / 60)
+        format!("{} hr", mins / 60)
     } else if mins < 7 * 24 * 60 {
-        format!("{} ngày", mins / (24 * 60))
+        format!("{} days", mins / (24 * 60))
     } else {
         dt.with_timezone(&Local).format("%d/%m/%Y").to_string()
     }
@@ -64,9 +64,9 @@ fn format_relative(iso: &str) -> String {
 
 fn vis_label(v: &str) -> &'static str {
     match v {
-        "public" => "Công khai",
-        "self" => "Chỉ mình tôi",
-        _ => "Bạn bè",
+        "public" => "Public",
+        "self" => "Only me",
+        _ => "Friends",
     }
 }
 
@@ -130,7 +130,7 @@ pub fn FeedView(
                     posts.set(list);
                     err.set(None);
                 }
-                Err(e) => err.set(Some(format!("Không tải được bảng tin: {}", e.code))),
+                Err(e) => err.set(Some(format!("Unable to load bulletin board: {}", e.code))),
             }
             loading.set(false);
         });
@@ -229,9 +229,9 @@ pub fn FeedView(
 
     let prompt_name = my_username.trim();
     let compose_prompt = if prompt_name.is_empty() {
-        "Bạn đang nghĩ gì thế?".to_string()
+        "What's on your mind?".to_string()
     } else {
-        format!("{prompt_name} ơi, bạn đang nghĩ gì thế?")
+        format!("{prompt_name} Hey, what are you thinking?")
     };
 
     let show_expanded = composer_open() || !draft().is_empty() || media_url().is_some();
@@ -249,7 +249,7 @@ pub fn FeedView(
                     button {
                         r#type: "button",
                         class: "icon-btn back-btn",
-                        aria_label: "Quay lại",
+                        aria_label: "Back",
                         onclick: move |_| on_back.call(()),
                         BackIcon {}
                     }
@@ -264,7 +264,7 @@ pub fn FeedView(
                                 button {
                                     r#type: "button",
                                     class: "feed-compose-pill",
-                                    aria_label: "Viết bài mới",
+                                    aria_label: "New post",
                                     onclick: move |_| {
                                         composer_open.set(true);
                                         let _ = dioxus::document::eval("setTimeout(() => { const el = document.getElementById('feed-compose-textarea'); if (el) el.focus(); }, 30);");
@@ -276,8 +276,8 @@ pub fn FeedView(
                                     button {
                                         r#type: "button",
                                         class: "feed-quick-btn quick-story",
-                                        title: "Tạo tin ảnh",
-                                        aria_label: "Tạo tin ảnh",
+                                        title: "Create photo news",
+                                        aria_label: "Create photo news",
                                         onclick: move |_| {
                                             story_err.set(None);
                                             create_story_open.set(true);
@@ -304,7 +304,7 @@ pub fn FeedView(
                                                 if let Ok((bytes, mime)) = platform::read_selected_file_raw("feed-media-upload").await {
                                                     match library::upload_media(bytes, &mime).await {
                                                         Ok(url) => { media_url.set(Some(url)); err.set(None); }
-                                                        Err(_) => err.set(Some("Không tải ảnh lên được".into())),
+                                                        Err(_) => err.set(Some("Unable to upload photo".into())),
                                                     }
                                                 }
                                                 uploading_img.set(false);
@@ -314,8 +314,8 @@ pub fn FeedView(
                                     label {
                                         r#for: "feed-media-upload",
                                         class: "feed-quick-btn quick-photo",
-                                        title: "Thêm ảnh",
-                                        aria_label: "Thêm ảnh",
+                                        title: "Add photos",
+                                        aria_label: "Add photos",
                                         svg {
                                             width: "22", height: "22", view_box: "0 0 24 24",
                                             fill: "none", stroke: "currentColor", stroke_width: "1.9",
@@ -329,8 +329,8 @@ pub fn FeedView(
                                     button {
                                         r#type: "button",
                                         class: "feed-quick-btn quick-moment",
-                                        title: "Chia sẻ suy nghĩ",
-                                        aria_label: "Chia sẻ suy nghĩ",
+                                        title: "Share a thought",
+                                        aria_label: "Share a thought",
                                         onclick: move |_| {
                                             note_emoji.set(init_em_btn.clone());
                                             note_text.set(init_tx_btn.clone());
@@ -359,17 +359,17 @@ pub fn FeedView(
                                         rows: "3",
                                         maxlength: "1000",
                                         placeholder: "{compose_prompt}",
-                                        aria_label: "Nội dung bài viết",
+                                        aria_label: "Article content",
                                         value: "{draft}",
                                         oninput: move |e| draft.set(e.value()),
                                     }
                                     if let Some(murl) = media_url() {
                                         div { class: "feed-media-preview",
-                                            img { src: "{platform::resolve_asset_url(&murl)}", alt: "Ảnh đính kèm" }
+                                            img { src: "{platform::resolve_asset_url(&murl)}", alt: "Attached photo" }
                                             button {
                                                 r#type: "button",
                                                 class: "icon-btn feed-media-rm",
-                                                aria_label: "Xóa ảnh",
+                                                aria_label: "Delete photos",
                                                 onclick: move |_| media_url.set(None),
                                                 CloseIcon { size: 14 }
                                             }
@@ -380,17 +380,17 @@ pub fn FeedView(
                                             label {
                                                 r#for: "feed-media-upload",
                                                 class: "icon-btn",
-                                                title: "Thêm ảnh",
-                                                aria_label: "Thêm ảnh bài viết",
+                                                title: "Add photos",
+                                                aria_label: "Add photo to article",
                                                 ImageIcon { size: 18 }
                                             }
                                             select {
                                                 class: "feed-vis-select",
                                                 value: "{visibility}",
                                                 onchange: move |e| visibility.set(e.value()),
-                                                option { value: "friends", "Bạn bè" }
-                                                option { value: "public", "Công khai" }
-                                                option { value: "self", "Chỉ mình tôi" }
+                                                option { value: "friends", "Friends" }
+                                                option { value: "public", "Public" }
+                                                option { value: "self", "Only me" }
                                             }
                                         }
                                         div { style: "display: flex; gap: 8px; align-items: center;",
@@ -402,7 +402,7 @@ pub fn FeedView(
                                                     media_url.set(None);
                                                     composer_open.set(false);
                                                 },
-                                                "Hủy"
+                                                "Cancel"
                                             }
                                             button {
                                                 r#type: "button",
@@ -425,12 +425,12 @@ pub fn FeedView(
                                                                 err.set(None);
                                                                 load_posts.call(filter());
                                                             }
-                                                            Err(e) => err.set(Some(format!("Đăng bài thất bại: {}", e.code))),
+                                                            Err(e) => err.set(Some(format!("Posting failed: {}", e.code))),
                                                         }
                                                         posting.set(false);
                                                     });
                                                 },
-                                                if uploading_img() { "Đang tải" } else { "Đăng" }
+                                                if uploading_img() { "Loading" } else { "Post" }
                                             }
                                         }
                                     }
@@ -440,20 +440,20 @@ pub fn FeedView(
 
                         // 2. Vertical Facebook-style Story Cards Carousel
                         div { id: "feed-story-carousel", class: "feed-story-carousel",
-                            div { id: "feed-story-rail", class: "feed-story-rail", role: "list", aria_label: "Tin nổi bật",
+                            div { id: "feed-story-rail", class: "feed-story-rail", role: "list", aria_label: "Featured news",
                                 // First Card: "Tạo tin"
                                 button {
                                     r#type: "button",
                                     class: "feed-story-card create-card",
                                     role: "listitem",
-                                    aria_label: "Tạo tin",
+                                    aria_label: "Add story",
                                     onclick: move |_| {
                                         story_err.set(None);
                                         create_story_open.set(true);
                                     },
                                     div { class: "feed-story-create-media",
                                         if let Some(ref url) = my_avatar_url.as_ref().filter(|u| !u.trim().is_empty()) {
-                                            img { src: "{platform::resolve_asset_url(url)}", alt: "Tạo tin" }
+                                            img { src: "{platform::resolve_asset_url(url)}", alt: "Add story" }
                                         } else {
                                             div {
                                                 class: "feed-story-create-fallback",
@@ -464,7 +464,7 @@ pub fn FeedView(
                                     }
                                     div { class: "feed-story-create-footer",
                                         span { class: "feed-story-create-plus", PlusIcon { size: 20 } }
-                                        span { class: "feed-story-create-label", "Tạo tin" }
+                                        span { class: "feed-story-create-label", "Add story" }
                                     }
                                 }
 
@@ -479,13 +479,13 @@ pub fn FeedView(
                                                 r#type: "button",
                                                 class: "feed-story-card story-card",
                                                 role: "listitem",
-                                                aria_label: "Tin của bạn",
+                                                aria_label: "Your news",
                                                 onclick: move |_| {
                                                     story_reply_draft.set(String::new());
                                                     viewing_story.set(Some(my_st_open.clone()));
                                                 },
                                                 if let Some(ref murl) = my_st.media_url.as_ref().filter(|s| !s.trim().is_empty()) {
-                                                    img { class: "feed-story-bg-img", src: "{platform::resolve_asset_url(murl)}", alt: "Tin của bạn", loading: "lazy" }
+                                                    img { class: "feed-story-bg-img", src: "{platform::resolve_asset_url(murl)}", alt: "Your news", loading: "lazy" }
                                                 } else {
                                                     div { class: "feed-story-text-bg", style: "background: {my_bg_grad};",
                                                         span { class: "feed-story-text-preview", "{st_caption}" }
@@ -495,7 +495,7 @@ pub fn FeedView(
                                                 span { class: "feed-story-avatar-badge has-story",
                                                     Avatar { name: my_username.clone(), avatar_url: my_avatar_url.clone(), size: 36 }
                                                 }
-                                                span { class: "feed-story-name", "Tin của bạn" }
+                                                span { class: "feed-story-name", "Your news" }
                                             }
                                         }
                                     }
@@ -510,7 +510,7 @@ pub fn FeedView(
                                                 r#type: "button",
                                                 class: "feed-story-card story-card",
                                                 role: "listitem",
-                                                aria_label: "Tin của bạn",
+                                                aria_label: "Your news",
                                                 onclick: move |_| {
                                                     note_emoji.set(em_c.clone());
                                                     note_text.set(tx_c.clone());
@@ -524,7 +524,7 @@ pub fn FeedView(
                                                 span { class: "feed-story-avatar-badge has-story",
                                                     Avatar { name: my_username.clone(), avatar_url: my_avatar_url.clone(), size: 36 }
                                                 }
-                                                span { class: "feed-story-name", "Tin của bạn" }
+                                                span { class: "feed-story-name", "Your news" }
                                             }
                                         }
                                     }
@@ -562,7 +562,7 @@ pub fn FeedView(
                                                 r#type: "button",
                                                 class: "feed-story-card story-card",
                                                 role: "listitem",
-                                                aria_label: "Tin của {shown}",
+                                                aria_label: "News from {shown}",
                                                 onclick: move |_| {
                                                     story_reply_draft.set(String::new());
                                                     if let Some(st) = st_click.clone() {
@@ -598,7 +598,7 @@ pub fn FeedView(
                                                 span { class: "{badge_cls}",
                                                     Avatar { name: fr.username.clone(), avatar_url: fr.avatar_url.clone(), size: 36 }
                                                     if online {
-                                                        span { class: "feed-story-online-dot", title: "Đang hoạt động" }
+                                                        span { class: "feed-story-online-dot", title: "Online" }
                                                     }
                                                 }
                                                 span { class: "feed-story-name", "{shown}" }
@@ -611,7 +611,7 @@ pub fn FeedView(
                             button {
                                 r#type: "button",
                                 class: "feed-story-nav-btn prev",
-                                aria_label: "Tin trước",
+                                aria_label: "News first",
                                 onclick: move |_| {
                                     let _ = dioxus::document::eval("const el = document.getElementById('feed-story-rail'); if (el) el.scrollBy({ left: -360, behavior: 'smooth' });");
                                 },
@@ -620,7 +620,7 @@ pub fn FeedView(
                             button {
                                 r#type: "button",
                                 class: "feed-story-nav-btn next",
-                                aria_label: "Tin tiếp theo",
+                                aria_label: "Next news",
                                 onclick: move |_| {
                                     let _ = dioxus::document::eval("const el = document.getElementById('feed-story-rail'); if (el) el.scrollBy({ left: 360, behavior: 'smooth' });");
                                 },
@@ -633,11 +633,11 @@ pub fn FeedView(
                         }
 
                         if loading() && posts().is_empty() {
-                            div { class: "feed-empty", "Đang tải bảng tin" }
+                            div { class: "feed-empty", "Loading bulletin board" }
                         } else if posts().is_empty() {
                             div { class: "feed-card feed-empty",
                                 FeedThreadsIcon { size: 28 }
-                                p { "Chưa có bài viết nào ở đây. Hãy chia sẻ bài viết đầu tiên của bạn." }
+                                p { "There are no posts here yet. Please share your first post." }
                             }
                         } else {
                             for p in posts() {
@@ -695,8 +695,8 @@ pub fn FeedView(
                                                                 button {
                                                                     r#type: "button",
                                                                     class: "icon-btn danger",
-                                                                    title: "Xóa bài viết",
-                                                                    aria_label: "Xóa bài viết",
+                                                                    title: "Delete posts",
+                                                                    aria_label: "Delete posts",
                                                                     onclick: move |_| {
                                                                         let id = pid_del.clone();
                                                                         spawn(async move {
@@ -716,7 +716,7 @@ pub fn FeedView(
                                                     }
                                                     if let Some(ref img) = p.media_url {
                                                         div { class: "feed-post-media",
-                                                            img { src: "{platform::resolve_asset_url(img)}", alt: "Ảnh bài viết", loading: "lazy" }
+                                                            img { src: "{platform::resolve_asset_url(img)}", alt: "Article photo", loading: "lazy" }
                                                         }
                                                     }
                                                     if let Some(ref rep) = p.repost_of {
@@ -779,7 +779,7 @@ pub fn FeedView(
                                                         button {
                                                             r#type: "button",
                                                             class: "feed-act-btn",
-                                                            title: "Đăng lại",
+                                                            title: "Repost",
                                                             onclick: move |_| {
                                                                 repost_comment.set(String::new());
                                                                 repost_target.set(Some(p_for_repost.clone()));
@@ -838,7 +838,7 @@ pub fn FeedView(
                                                             div { class: "feed-reply-input-row",
                                                                 input {
                                                                     r#type: "text",
-                                                                    placeholder: "Trả lời vào luồng",
+                                                                    placeholder: "Reply to the thread",
                                                                     value: "{r_draft}",
                                                                     oninput: {
                                                                         let pid = pid_reply_btn.clone();
@@ -895,20 +895,20 @@ pub fn FeedView(
         // Modal: Tạo tin ảnh
         if create_story_open() {
             div { class: "modal-overlay", onclick: move |_| create_story_open.set(false),
-                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Tạo tin ảnh", onclick: move |e| e.stop_propagation(),
+                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Create photo news", onclick: move |e| e.stop_propagation(),
                     div { class: "modal-header",
-                        h3 { class: "modal-title", "Tạo tin ảnh" }
-                        button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| create_story_open.set(false), CloseIcon { size: 18 } }
+                        h3 { class: "modal-title", "Create photo news" }
+                        button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| create_story_open.set(false), CloseIcon { size: 18 } }
                     }
                     div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
                         if let Some(murl) = story_media_url() {
                             div { style: "position: relative; max-height: 220px; overflow: hidden; border-radius: var(--radius-lg);",
-                                img { src: "{platform::resolve_asset_url(&murl)}", alt: "Ảnh tin", style: "width: 100%; object-fit: cover;" }
+                                img { src: "{platform::resolve_asset_url(&murl)}", alt: "News photo", style: "width: 100%; object-fit: cover;" }
                                 button {
                                     r#type: "button",
                                     class: "icon-btn",
                                     style: "position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff;",
-                                    aria_label: "Xóa ảnh",
+                                    aria_label: "Delete photos",
                                     onclick: move |_| story_media_url.set(None),
                                     CloseIcon { size: 14 }
                                 }
@@ -926,7 +926,7 @@ pub fn FeedView(
                                             if let Ok((bytes, mime)) = platform::read_selected_file_raw("feed-story-media-upload").await {
                                                 match library::upload_media(bytes, &mime).await {
                                                     Ok(url) => { story_media_url.set(Some(url)); story_err.set(None); }
-                                                    Err(_) => story_err.set(Some("Không tải ảnh lên được".into())),
+                                                    Err(_) => story_err.set(Some("Unable to upload photo".into())),
                                                 }
                                             }
                                             story_uploading.set(false);
@@ -938,15 +938,15 @@ pub fn FeedView(
                                     class: "btn-secondary",
                                     style: "display: inline-flex; align-items: center; gap: 6px; cursor: pointer; width: 100%; justify-content: center;",
                                     ImageIcon { size: 18 }
-                                    if story_uploading() { "Đang tải ảnh lên" } else { "Chọn ảnh cho tin mới" }
+                                    if story_uploading() { "Uploading photos" } else { "Select photo for new news" }
                                 }
                             }
                         }
                         input {
                             r#type: "text",
                             maxlength: "200",
-                            placeholder: "Thêm chú thích cho tin",
-                            aria_label: "Chú thích tin",
+                            placeholder: "Add captions to stories",
+                            aria_label: "News caption",
                             value: "{story_draft}",
                             oninput: move |e| story_draft.set(e.value()),
                         }
@@ -954,7 +954,7 @@ pub fn FeedView(
                             div { class: "status-badge error", "{e}" }
                         }
                         div { class: "modal-actions",
-                            button { r#type: "button", class: "btn-secondary", onclick: move |_| create_story_open.set(false), "Hủy" }
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| create_story_open.set(false), "Cancel" }
                             button {
                                 r#type: "button",
                                 class: "btn-primary",
@@ -972,12 +972,12 @@ pub fn FeedView(
                                                 create_story_open.set(false);
                                                 load_posts.call(filter());
                                             }
-                                            Err(e) => story_err.set(Some(format!("Đăng tin thất bại: {}", e.code))),
+                                            Err(e) => story_err.set(Some(format!("Posting failed: {}", e.code))),
                                         }
                                         story_posting.set(false);
                                     });
                                 },
-                                if story_posting() { "Đang đăng" } else { "Đăng tin" }
+                                if story_posting() { "Posting" } else { "Post story" }
                             }
                         }
                     }
@@ -988,10 +988,10 @@ pub fn FeedView(
         // Modal: Chia sẻ suy nghĩ
         if thought_open() {
             div { class: "modal-overlay", onclick: move |_| thought_open.set(false),
-                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Chia sẻ suy nghĩ", onclick: move |e| e.stop_propagation(),
+                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Share a thought", onclick: move |e| e.stop_propagation(),
                     div { class: "modal-header",
-                        h3 { class: "modal-title", "Chia sẻ suy nghĩ" }
-                        button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| thought_open.set(false), CloseIcon { size: 18 } }
+                        h3 { class: "modal-title", "Share a thought" }
+                        button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| thought_open.set(false), CloseIcon { size: 18 } }
                     }
                     div { class: "note-emoji-row",
                         for em in QUICK_NOTE_EMOJIS {
@@ -1015,21 +1015,21 @@ pub fn FeedView(
                             r#type: "text",
                             maxlength: "8",
                             placeholder: "😊",
-                            aria_label: "Biểu tượng cảm xúc",
+                            aria_label: "Emoticons",
                             value: "{note_emoji}",
                             oninput: move |e| note_emoji.set(e.value()),
                         }
                         input {
                             r#type: "text",
                             maxlength: "60",
-                            placeholder: "Chia sẻ suy nghĩ với bạn bè",
-                            aria_label: "Nội dung ghi chú",
+                            placeholder: "Share thoughts with friends",
+                            aria_label: "Note content",
                             value: "{note_text}",
                             oninput: move |e| note_text.set(e.value()),
                         }
                     }
                     div { class: "note-expiry-row",
-                        span { "Hiển thị trong" }
+                        span { "Shown in" }
                         select {
                             value: "{note_expiry}",
                             onchange: move |e| {
@@ -1037,10 +1037,10 @@ pub fn FeedView(
                                     note_expiry.set(v);
                                 }
                             },
-                            option { value: "60", "1 giờ" }
-                            option { value: "240", "4 giờ" }
-                            option { value: "1440", "24 giờ" }
-                            option { value: "0", "Không tự xóa" }
+                            option { value: "60", "1 hour" }
+                            option { value: "240", "4 hours" }
+                            option { value: "1440", "24 hours" }
+                            option { value: "0", "Do not delete yourself" }
                         }
                     }
                     if let Some(e) = note_err() {
@@ -1065,14 +1065,14 @@ pub fn FeedView(
                                             on_my_status_updated.call((None, None));
                                             thought_open.set(false);
                                         } else {
-                                            note_err.set(Some("Không xóa được ghi chú".into()));
+                                            note_err.set(Some("Cannot delete notes".into()));
                                         }
                                     });
                                 },
-                                "Xóa tin"
+                                "Delete news"
                             }
                         }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| thought_open.set(false), "Hủy" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| thought_open.set(false), "Cancel" }
                         button {
                             r#type: "button",
                             class: "btn-primary",
@@ -1095,11 +1095,11 @@ pub fn FeedView(
                                         on_my_status_updated.call((nt, ne));
                                         thought_open.set(false);
                                     } else {
-                                        note_err.set(Some("Không lưu được ghi chú".into()));
+                                        note_err.set(Some("Notes cannot be saved".into()));
                                     }
                                 });
                             },
-                            "Chia sẻ"
+                            "Share"
                         }
                     }
                 }
@@ -1118,7 +1118,7 @@ pub fn FeedView(
                 let st_friend = friends.iter().find(|f| f.id == st.author_id || f.username == st.author_username).cloned();
                 rsx! {
                     div { class: "modal-overlay", onclick: move |_| viewing_story.set(None),
-                        div { class: "modal-dialog story-viewer-modal", role: "dialog", aria_modal: "true", aria_label: "Tin của {st_author_name}", onclick: move |e| e.stop_propagation(),
+                        div { class: "modal-dialog story-viewer-modal", role: "dialog", aria_modal: "true", aria_label: "News from {st_author_name}", onclick: move |e| e.stop_propagation(),
                             div { class: "modal-header",
                                 div { style: "display: flex; align-items: center; gap: 10px;",
                                     Avatar { name: st.author_username.clone(), avatar_url: st.author_avatar_url.clone(), size: 36 }
@@ -1127,11 +1127,11 @@ pub fn FeedView(
                                         div { class: "member-sub", "@{st.author_username} · {st_time}" }
                                     }
                                 }
-                                button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| viewing_story.set(None), CloseIcon { size: 18 } }
+                                button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| viewing_story.set(None), CloseIcon { size: 18 } }
                             }
                             if let Some(ref murl) = st.media_url.as_ref().filter(|s| !s.trim().is_empty()) {
                                 div { class: "story-viewer-media",
-                                    img { src: "{platform::resolve_asset_url(murl)}", alt: "Ảnh tin" }
+                                    img { src: "{platform::resolve_asset_url(murl)}", alt: "News photo" }
                                 }
                             }
                             if !st.content.trim().is_empty() {
@@ -1142,7 +1142,7 @@ pub fn FeedView(
                                     div { class: "note-input-row",
                                         input {
                                             r#type: "text",
-                                            placeholder: "Trả lời tin của {st_author_name}",
+                                            placeholder: "Reply to {st_author_name}'s message",
                                             value: "{story_reply_draft}",
                                             oninput: move |e| story_reply_draft.set(e.value()),
                                         }
@@ -1158,7 +1158,7 @@ pub fn FeedView(
                                                     viewing_story.set(None);
                                                 }
                                             },
-                                            "Gửi"
+                                            "Send"
                                         }
                                     }
                                 }
@@ -1177,10 +1177,10 @@ pub fn FeedView(
                                                 }
                                             });
                                         },
-                                        "Xóa tin"
+                                        "Delete news"
                                     }
                                 }
-                                button { r#type: "button", class: "btn-secondary", onclick: move |_| viewing_story.set(None), "Đóng" }
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| viewing_story.set(None), "Close" }
                             }
                         }
                     }
@@ -1205,7 +1205,7 @@ pub fn FeedView(
                 let vf_reply = vf.clone();
                 rsx! {
                     div { class: "modal-overlay", onclick: move |_| viewing_friend_note.set(None),
-                        div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Ghi chú của {shown}", onclick: move |e| e.stop_propagation(),
+                        div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "{shown}'s note", onclick: move |e| e.stop_propagation(),
                             div { class: "modal-header",
                                 div { style: "display: flex; align-items: center; gap: 10px;",
                                     Avatar { name: vf.username.clone(), avatar_url: vf.avatar_url.clone(), size: 36 }
@@ -1214,13 +1214,13 @@ pub fn FeedView(
                                         div { class: "member-sub", "@{vf.username}" }
                                     }
                                 }
-                                button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| viewing_friend_note.set(None), CloseIcon { size: 18 } }
+                                button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| viewing_friend_note.set(None), CloseIcon { size: 18 } }
                             }
                             div { class: "note-view-card", "{full_note}" }
                             div { class: "note-input-row",
                                 input {
                                     r#type: "text",
-                                    placeholder: "Trả lời ghi chú của {shown}",
+                                    placeholder: "Reply to {shown}'s note",
                                     value: "{story_reply_draft}",
                                     oninput: move |e| story_reply_draft.set(e.value()),
                                 }
@@ -1236,11 +1236,11 @@ pub fn FeedView(
                                             viewing_friend_note.set(None);
                                         }
                                     },
-                                    "Gửi"
+                                    "Send"
                                 }
                             }
                             div { class: "modal-actions",
-                                button { r#type: "button", class: "btn-secondary", onclick: move |_| viewing_friend_note.set(None), "Đóng" }
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| viewing_friend_note.set(None), "Close" }
                                 button {
                                     r#type: "button",
                                     class: "btn-primary",
@@ -1248,7 +1248,7 @@ pub fn FeedView(
                                         viewing_friend_note.set(None);
                                         on_open_friend.call(vf_open.clone());
                                     },
-                                    "Nhắn tin"
+                                    "Message"
                                 }
                             }
                         }
@@ -1260,14 +1260,14 @@ pub fn FeedView(
         // Modal: Đăng lại bài viết
         if let Some(rt) = repost_target() {
             div { class: "modal-overlay", onclick: move |_| repost_target.set(None),
-                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Đăng lại bài viết", onclick: move |e| e.stop_propagation(),
+                div { class: "modal-dialog note-modal", role: "dialog", aria_modal: "true", aria_label: "Repost the article", onclick: move |e| e.stop_propagation(),
                     div { class: "modal-header",
-                        h2 { class: "modal-title", "Đăng lại bài viết" }
-                        button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| repost_target.set(None), CloseIcon { size: 18 } }
+                        h2 { class: "modal-title", "Repost the article" }
+                        button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| repost_target.set(None), CloseIcon { size: 18 } }
                     }
                     textarea {
                         rows: "3",
-                        placeholder: "Thêm suy nghĩ của bạn (tùy chọn)",
+                        placeholder: "Add your thoughts (optional)",
                         value: "{repost_comment}",
                         oninput: move |e| repost_comment.set(e.value()),
                     }
@@ -1276,7 +1276,7 @@ pub fn FeedView(
                         div { class: "feed-quote-text", "{rt.content}" }
                     }
                     div { class: "modal-actions",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| repost_target.set(None), "Hủy" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| repost_target.set(None), "Cancel" }
                         button {
                             r#type: "button",
                             class: "btn-primary",
@@ -1291,7 +1291,7 @@ pub fn FeedView(
                                     }
                                 });
                             },
-                            "Đăng lại"
+                            "Repost"
                         }
                     }
                 }

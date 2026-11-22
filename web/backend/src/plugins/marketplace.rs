@@ -997,7 +997,7 @@ pub async fn seed_official_catalog(db: &PgPool) {
 
     let manifest = PluginManifest {
         plugin_key: sample_key.into(),
-        name: "Bảng Nhiệm Vụ & Ghi Chú Nhanh".into(),
+        name: "Task Board & Quick Notes".into(),
         version: "1.0.0".into(),
         publisher: "chatw".into(),
         entry_point: "index.js".into(),
@@ -1015,10 +1015,10 @@ pub async fn seed_official_catalog(db: &PgPool) {
             "events.lifecycle".into(),
         ],
         ui_contributions: json!({
-            "messageActions": [{ "id": "save_task", "label": "Lưu thành việc", "icon": "check" }],
-            "composerButtons": [{ "id": "insert_checklist", "label": "Việc mới", "content": "/task " }]
+            "messageActions": [{ "id": "save_task", "label": "Save as work", "icon": "check" }],
+            "composerButtons": [{ "id": "insert_checklist", "label": "New job", "content": "/task " }]
         }),
-        commands: vec![json!({ "trigger": "/task", "description": "Thêm nhanh nhiệm vụ vào bảng" })],
+        commands: vec![json!({ "trigger": "/task", "description": "Quickly add tasks to the board" })],
         event_subscriptions: vec!["onEnable".into(), "onMessageAction".into(), "onCommand".into()],
         ..Default::default()
     };
@@ -1093,8 +1093,8 @@ chatw.onReady(load);
     .bind(sample_key)
     .bind(pub_id)
     .bind(&manifest.name)
-    .bind("Plugin JS chạy trong sandbox: lưu tin nhắn thành nhiệm vụ, lệnh /task và đồng bộ đa thiết bị")
-    .bind("Minh họa đầy đủ giao diện HTML/CSS/JS độc lập, nút hành động trên tin nhắn, lệnh gõ tắt và lưu trữ đồng bộ qua ChatW Plugin SDK.")
+    .bind("JS plugin runs in sandbox: save messages as tasks, command /task and sync across devices")
+    .bind("Fully illustrated standalone HTML/CSS/JS interface, message action buttons, keyboard shortcuts, and synchronous storage via ChatW Plugin SDK.")
     .execute(db)
     .await;
 

@@ -20,7 +20,7 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
     let mut show_tpl_create = use_signal(|| false);
     let mut new_tpl_name = use_signal(String::new);
     let mut new_tpl_cat = use_signal(|| "custom".to_string());
-    let mut new_tpl_steps = use_signal(|| "Trưởng bộ phận, Ban điều hành".to_string());
+    let mut new_tpl_steps = use_signal(|| "Head of Department, Executive Board".to_string());
     let mut tpl_id = use_signal(String::new);
     let mut title = use_signal(String::new);
     let mut category = use_signal(|| "purchase".to_string());
@@ -84,14 +84,14 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                             r#type: "button",
                             class: "btn-secondary",
                             onclick: move |_| show_tpl_create.set(!show_tpl_create()),
-                            PlusIcon { size: 15 } " Tạo mẫu biểu mẫu"
+                            PlusIcon { size: 15 } " Create a form template"
                         }
                     }
                     button {
                         r#type: "button",
                         class: "btn-primary",
                         onclick: move |_| show_create.set(!show_create()),
-                        PlusIcon { size: 15 } " Gửi đề xuất"
+                        PlusIcon { size: 15 } " Submit suggestions"
                     }
                 }
             }
@@ -103,21 +103,21 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
             if can_manage_tpl && show_tpl_create() {
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Tên mẫu biểu mẫu" }
-                            input { r#type: "text", placeholder: "Ví dụ: Đề nghị công tác nước ngoài", value: "{new_tpl_name}", oninput: move |e| new_tpl_name.set(e.value()) }
+                        label { class: "form-field", span { "Form template name" }
+                            input { r#type: "text", placeholder: "For example: Proposal to work abroad", value: "{new_tpl_name}", oninput: move |e| new_tpl_name.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Phân loại" }
+                        label { class: "form-field", span { "Classification" }
                             select { value: "{new_tpl_cat}", onchange: move |e| new_tpl_cat.set(e.value()),
-                                option { value: "custom", "Tùy chỉnh" }
-                                option { value: "purchase", "Mua sắm" }
-                                option { value: "payment", "Thanh toán" }
-                                option { value: "equipment", "Thiết bị" }
-                                option { value: "travel", "Công tác" }
-                                option { value: "access_request", "Cấp quyền" }
+                                option { value: "custom", "Customize" }
+                                option { value: "purchase", "Shopping" }
+                                option { value: "payment", "Payment" }
+                                option { value: "equipment", "Devices" }
+                                option { value: "travel", "Work" }
+                                option { value: "access_request", "Grant permissions" }
                             }
                         }
-                        label { class: "form-field", span { "Các cấp phê duyệt (ngăn cách bằng dấu phẩy)" }
-                            input { r#type: "text", placeholder: "Trưởng bộ phận, Kế toán, Ban điều hành", value: "{new_tpl_steps}", oninput: move |e| new_tpl_steps.set(e.value()) }
+                        label { class: "form-field", span { "Approval levels (separated by commas)" }
+                            input { r#type: "text", placeholder: "Head of Department, Accounting, Executive Board", value: "{new_tpl_steps}", oninput: move |e| new_tpl_steps.set(e.value()) }
                         }
                     }
                     div { class: "ent-btn-group",
@@ -141,23 +141,23 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                                         match enterprise::create_form_template(&sid, json!({
                                             "name": n,
                                             "category": new_tpl_cat(),
-                                            "fields": [{ "key": "summary", "label": "Nội dung chi tiết", "required": true }],
+                                            "fields": [{ "key": "summary", "label": "Detailed content", "required": true }],
                                             "workflow_steps": steps,
                                         })).await {
                                             Ok(_) => {
                                                 new_tpl_name.set(String::new());
                                                 show_tpl_create.set(false);
-                                                msg.set(Some((false, "Đã tạo mẫu biểu mẫu nhiều cấp".into())));
+                                                msg.set(Some((false, "Created a multi-level form template".into())));
                                                 r();
                                             }
-                                            Err(e) => msg.set(Some((true, format!("Không tạo được mẫu: {}", e.code)))),
+                                            Err(e) => msg.set(Some((true, format!("Unable to create template: {}", e.code)))),
                                         }
                                     });
                                 }
                             },
-                            "Lưu mẫu"
+                            "Save the template"
                         }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_tpl_create.set(false), "Đóng" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_tpl_create.set(false), "Close" }
                     }
                 }
             }
@@ -165,7 +165,7 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
             if show_create() {
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Mẫu biểu mẫu" }
+                        label { class: "form-field", span { "Form templates" }
                             select { value: "{tpl_id}", onchange: move |e| {
                                 let id = e.value();
                                 tpl_id.set(id.clone());
@@ -174,25 +174,25 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                                     if title().is_empty() { title.set(t.name.clone()); }
                                 }
                             },
-                                option { value: "", "Biểu mẫu tùy chỉnh" }
+                                option { value: "", "Custom forms" }
                                 for t in data().templates { option { key: "{t.id}", value: "{t.id}", "{t.name}" } }
                             }
                         }
-                        label { class: "form-field", span { "Tiêu đề đề xuất" }
-                            input { r#type: "text", placeholder: "Nhập tiêu đề đề xuất", value: "{title}", oninput: move |e| title.set(e.value()) }
+                        label { class: "form-field", span { "Suggested title" }
+                            input { r#type: "text", placeholder: "Enter a proposal title", value: "{title}", oninput: move |e| title.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Phân loại" }
+                        label { class: "form-field", span { "Classification" }
                             select { value: "{category}", onchange: move |e| category.set(e.value()),
-                                option { value: "purchase", "Mua sắm" }
-                                option { value: "payment", "Thanh toán" }
-                                option { value: "equipment", "Thiết bị" }
-                                option { value: "it_support", "Hỗ trợ IT" }
-                                option { value: "travel", "Công tác" }
-                                option { value: "access_request", "Cấp quyền" }
+                                option { value: "purchase", "Shopping" }
+                                option { value: "payment", "Payment" }
+                                option { value: "equipment", "Devices" }
+                                option { value: "it_support", "IT support" }
+                                option { value: "travel", "Work" }
+                                option { value: "access_request", "Grant permissions" }
                             }
                         }
-                        label { class: "form-field", span { "Nội dung chi tiết" }
-                            input { r#type: "text", placeholder: "Mô tả chi tiết lý do và hạng mục cần duyệt", value: "{detail}", oninput: move |e| detail.set(e.value()) }
+                        label { class: "form-field", span { "Detailed content" }
+                            input { r#type: "text", placeholder: "Describe in detail the reasons and items that need approval", value: "{detail}", oninput: move |e| detail.set(e.value()) }
                         }
                     }
                     div { class: "ent-btn-group",
@@ -215,15 +215,15 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                                             title.set(String::new());
                                             detail.set(String::new());
                                             show_create.set(false);
-                                            msg.set(Some((false, "Đã gửi yêu cầu phê duyệt".into())));
+                                            msg.set(Some((false, "Approval request sent".into())));
                                             r();
                                         }
-                                        Err(e) => msg.set(Some((true, format!("Gửi yêu cầu thất bại: {}", e.code)))),
+                                        Err(e) => msg.set(Some((true, format!("Send request failed: {}", e.code)))),
                                     }
                                 });
                             }
-                        }, "Gửi phê duyệt" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                        }, "Submit approval" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Close" }
                     }
                 }
             }
@@ -242,11 +242,11 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                                     div { class: "ent-row-title",
                                         strong { "{req.title}" }
                                         span { class: "ent-pill", "{enterprise::vn_category(&req.category)}" }
-                                        span { class: "ent-pill", "Bước {req.current_step + 1}/{req.total_steps}" }
+                                        span { class: "ent-pill", "Step {req.current_step + 1}/{req.total_steps}" }
                                         span { class: "ent-pill ok", "{enterprise::vn_approval_status(&req.status)}" }
                                     }
                                     div { class: "ent-muted",
-                                        "Người gửi: {req.requester_name}"
+                                        "Sender: {req.requester_name}"
                                         if let Some(s) = req.form_data.get("summary").and_then(|v| v.as_str()) {
                                             if !s.is_empty() { " · {s}" }
                                         }
@@ -255,25 +255,25 @@ pub fn ApprovalsPanel(server_id: String, my_id: String, cfg: EnterpriseConfig, r
                                 if matches!(req.status.as_str(), "pending" | "needs_revision") {
                                     div { class: "ent-btn-group",
                                         if can_approve {
-                                            input { r#type: "text", placeholder: "Ghi chú duyệt", style: "max-width: 140px;", value: "{comment}", oninput: move |e| comment.set(e.value()) }
+                                            input { r#type: "text", placeholder: "Browsing notes", style: "max-width: 140px;", value: "{comment}", oninput: move |e| comment.set(e.value()) }
                                             button { r#type: "button", class: "btn-primary", onclick: move |_| {
                                                 let (s, id, r, c) = (s1.clone(), id1.clone(), r1.clone(), comment());
                                                 spawn(async move { if enterprise::decide_approval(&s, &id, "approved", &c).await.is_ok() { r(); } });
-                                            }, "Duyệt" }
+                                            }, "Browse" }
                                             button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                                 let (s, id, r, c) = (s4.clone(), id4.clone(), r4.clone(), comment());
                                                 spawn(async move { if enterprise::decide_approval(&s, &id, "revision", &c).await.is_ok() { r(); } });
-                                            }, "Yêu cầu sửa" }
+                                            }, "Request correction" }
                                             button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                                 let (s, id, r, c) = (s2.clone(), id2.clone(), r2.clone(), comment());
                                                 spawn(async move { if enterprise::decide_approval(&s, &id, "rejected", &c).await.is_ok() { r(); } });
-                                            }, "Từ chối" }
+                                            }, "Refuse" }
                                         }
                                         if is_mine {
                                             button { r#type: "button", class: "btn-ghost", onclick: move |_| {
                                                 let (s, id, r) = (s3.clone(), id3.clone(), r3.clone());
                                                 spawn(async move { if enterprise::decide_approval(&s, &id, "withdrawn", "").await.is_ok() { r(); } });
-                                            }, "Thu hồi" }
+                                            }, "Withdrawal" }
                                         }
                                     }
                                 }
@@ -327,15 +327,15 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
             div { class: "ent-toolbar",
                 div { class: "ent-inline-bar",
                     select { value: "{scope}", onchange: move |e| { scope.set(e.value()); reload.call(()); },
-                        option { value: "", "Mọi phạm vi" }
-                        option { value: "company", "Công ty" }
-                        option { value: "department", "Phòng ban" }
-                        option { value: "project", "Dự án" }
-                        option { value: "personal", "Cá nhân" }
+                        option { value: "", "Any range" }
+                        option { value: "company", "Company" }
+                        option { value: "department", "Departments" }
+                        option { value: "project", "Project" }
+                        option { value: "personal", "Personal" }
                     }
-                    button { r#type: "button", class: if trashed() { "filter-chip active" } else { "filter-chip" }, onclick: move |_| { trashed.set(!trashed()); reload.call(()); }, "Thùng rác" }
-                    input { r#type: "text", placeholder: "Tìm tài liệu", value: "{q}", oninput: move |e| q.set(e.value()) }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| reload.call(()), "Lọc" }
+                    button { r#type: "button", class: if trashed() { "filter-chip active" } else { "filter-chip" }, onclick: move |_| { trashed.set(!trashed()); reload.call(()); }, "Trash" }
+                    input { r#type: "text", placeholder: "Find documents", value: "{q}", oninput: move |e| q.set(e.value()) }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| reload.call(()), "Filter" }
                 }
                 div { class: "ent-btn-group",
                     if can_manage {
@@ -343,7 +343,7 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                             r#type: "button",
                             class: "btn-secondary",
                             onclick: move |_| show_folder.set(!show_folder()),
-                            PlusIcon { size: 15 } " Thư mục mới"
+                            PlusIcon { size: 15 } " New folder"
                         }
                     }
                     if can_manage || scope() == "personal" {
@@ -358,7 +358,7 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                                         match library::upload_media(bytes, &mime).await {
                                             Ok(url) => {
                                                 let body = json!({
-                                                    "title": format!("Tài liệu {}", chrono::Utc::now().format("%d-%m-%Y %H:%M")),
+                                                    "title": format!("Document {}", chrono::Utc::now().format("%d-%m-%Y %H:%M")),
                                                     "scope": sc,
                                                     "file_url": url,
                                                     "file_name": format!("document.{}", if mime.contains("pdf") { "pdf" } else { "bin" }),
@@ -366,17 +366,17 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                                                     "mime_type": mime,
                                                 });
                                                 match enterprise::create_document(&sid, body).await {
-                                                    Ok(_) => { msg.set(Some((false, "Đã tải tài liệu lên kho".into()))); reload.call(()); }
-                                                    Err(e) => msg.set(Some((true, format!("Lưu tài liệu thất bại: {}", e.code)))),
+                                                    Ok(_) => { msg.set(Some((false, "Uploaded documents to the repository".into()))); reload.call(()); }
+                                                    Err(e) => msg.set(Some((true, format!("Save document failed: {}", e.code)))),
                                                 }
                                             }
-                                            Err(_) => msg.set(Some((true, "Không tải tệp lên máy chủ được".into()))),
+                                            Err(_) => msg.set(Some((true, "Unable to upload file to server".into()))),
                                         }
                                     }
                                 });
                             }
                         } }
-                        label { r#for: "ent-doc-upload", class: "btn-primary", role: "button", tabindex: "0", PlusIcon { size: 15 } " Tải tài liệu" }
+                        label { r#for: "ent-doc-upload", class: "btn-primary", role: "button", tabindex: "0", PlusIcon { size: 15 } " Download documents" }
                     }
                 }
             }
@@ -386,15 +386,15 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
             }
             if let Some(link) = share_link() {
                 div { class: "ent-card ent-inline-bar",
-                    span { "Liên kết chia sẻ có thời hạn: " }
+                    span { "Time-limited sharing link: " }
                     code { "{link}" }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&link), "Sao chép" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::copy_to_clipboard(&link), "Copy" }
                 }
             }
 
             if can_manage && show_folder() {
                 div { class: "ent-card ent-inline-bar",
-                    input { r#type: "text", placeholder: "Nhập tên thư mục mới", value: "{folder_name}", oninput: move |e| folder_name.set(e.value()) }
+                    input { r#type: "text", placeholder: "Enter a new folder name", value: "{folder_name}", oninput: move |e| folder_name.set(e.value()) }
                     button { r#type: "button", class: "btn-primary", onclick: {
                         let sid = server_id.clone();
                         move |_| {
@@ -410,8 +410,8 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                                 }
                             });
                         }
-                    }, "Lưu thư mục" }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| show_folder.set(false), "Đóng" }
+                    }, "Save folder" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| show_folder.set(false), "Close" }
                 }
             }
 
@@ -444,27 +444,27 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                                         strong { "{d.title}" }
                                         span { class: "ent-pill", "{enterprise::vn_doc_scope(&d.scope)}" }
                                         span { class: "ent-pill", "v{d.version}" }
-                                        if d.pinned { span { class: "ent-pill ok", "Đã ghim" } }
+                                        if d.pinned { span { class: "ent-pill ok", "Pinned" } }
                                     }
                                     div { class: "ent-muted",
-                                        "Người tải: {d.owner_name} · {d.file_name} · {d.file_size / 1024} KB"
+                                        "Downloader: {d.owner_name} · {d.file_name} · {d.file_size / 1024} KB"
                                     }
                                 }
                                 div { class: "ent-btn-group",
-                                    a { class: "btn-secondary", href: "{platform::resolve_asset_url(&d.file_url)}", target: "_blank", "Mở tệp" }
+                                    a { class: "btn-secondary", href: "{platform::resolve_asset_url(&d.file_url)}", target: "_blank", "Open the file" }
                                     if can_manage && !trashed() {
                                         button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                             let (s, id) = (s_pin.clone(), d_pin.clone());
                                             spawn(async move {
                                                 if enterprise::update_document(&s, &id, json!({ "action": act_pin })).await.is_ok() { reload.call(()); }
                                             });
-                                        }, if d.pinned { "Bỏ ghim" } else { "Ghim" } }
+                                        }, if d.pinned { "Unpin" } else { "Pin" } }
                                         button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                             let (s, id) = (s_ver.clone(), d_ver.clone());
                                             spawn(async move {
                                                 if enterprise::update_document(&s, &id, json!({ "action": "bump_version" })).await.is_ok() { reload.call(()); }
                                             });
-                                        }, "+ Phiên bản" }
+                                        }, "+ Version" }
                                     }
                                     button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                         let (s, id) = (s_sh.clone(), d_sh.clone());
@@ -475,13 +475,13 @@ pub fn DocumentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u6
                                                 }
                                             }
                                         });
-                                    }, ShareIcon { size: 14 } " Chia sẻ 24h" }
+                                    }, ShareIcon { size: 14 } " Share 24h" }
                                     button { r#type: "button", class: "btn-ghost", onclick: move |_| {
                                         let (s, id) = (s_tr.clone(), d_tr.clone());
                                         spawn(async move {
                                             if enterprise::update_document(&s, &id, json!({ "action": act_tr })).await.is_ok() { reload.call(()); }
                                         });
-                                    }, TrashIcon { size: 14 } if trashed() { " Khôi phục" } else { " Xóa tạm" } }
+                                    }, TrashIcon { size: 14 } if trashed() { " Restore" } else { " Temporarily delete" } }
                                 }
                             }
                         }
@@ -529,14 +529,14 @@ pub fn AnnouncementsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-chips",
-                    span { class: "ent-pill ok", "{rows().len()} thông báo chính thức" }
+                    span { class: "ent-pill ok", "{rows().len()} official announcement" }
                 }
                 if can_post {
                     button {
                         r#type: "button",
                         class: "btn-primary",
                         onclick: move |_| show_create.set(!show_create()),
-                        PlusIcon { size: 15 } " Đăng thông báo"
+                        PlusIcon { size: 15 } " Post an announcement"
                     }
                 }
             }
@@ -546,18 +546,18 @@ pub fn AnnouncementsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick
             if can_post && show_create() {
                 div { class: "ent-card",
                     div { class: "ent-inline-bar",
-                        input { r#type: "text", placeholder: "Tiêu đề thông báo", value: "{title}", oninput: move |e| title.set(e.value()) }
+                        input { r#type: "text", placeholder: "Notification title", value: "{title}", oninput: move |e| title.set(e.value()) }
                         select { value: "{priority}", onchange: move |e| priority.set(e.value()),
-                            option { value: "normal", "Bình thường" }
-                            option { value: "important", "Quan trọng" }
-                            option { value: "urgent", "Khẩn cấp" }
+                            option { value: "normal", "Normal" }
+                            option { value: "important", "Important" }
+                            option { value: "urgent", "Urgent" }
                         }
                         label { style: "display: flex; gap: 6px; align-items: center;",
                             input { r#type: "checkbox", checked: pinned(), onchange: move |e| pinned.set(e.checked()) }
-                            "Ghim đầu bảng"
+                            "Table top pin"
                         }
                     }
-                    textarea { rows: 3, placeholder: "Nội dung thông báo", value: "{content}", oninput: move |e| content.set(e.value()) }
+                    textarea { rows: 3, placeholder: "Notification content", value: "{content}", oninput: move |e| content.set(e.value()) }
                     div { class: "ent-btn-group",
                         button { r#type: "button", class: "btn-primary", onclick: {
                             let sid = server_id.clone();
@@ -572,15 +572,15 @@ pub fn AnnouncementsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick
                                             title.set(String::new());
                                             content.set(String::new());
                                             show_create.set(false);
-                                            msg.set(Some((false, "Đã phát hành thông báo nội bộ".into())));
+                                            msg.set(Some((false, "An internal announcement has been issued".into())));
                                             r();
                                         }
-                                        Err(e) => msg.set(Some((true, format!("Lỗi đăng thông báo: {}", e.code)))),
+                                        Err(e) => msg.set(Some((true, format!("Error posting notice: {}", e.code)))),
                                     }
                                 });
                             }
-                        }, "Phát hành" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                        }, "Released" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Close" }
                     }
                 }
             }
@@ -595,18 +595,18 @@ pub fn AnnouncementsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick
                                         div { class: "ent-row-title",
                                             strong { "{a.title}" }
                                             span { class: "ent-pill", "{enterprise::vn_ann_priority(&a.priority)}" }
-                                            if a.pinned { span { class: "ent-pill ok", "Đã ghim" } }
+                                            if a.pinned { span { class: "ent-pill ok", "Pinned" } }
                                         }
                                         p { style: "margin: 6px 0;", "{a.content}" }
-                                        div { class: "ent-muted", "Đăng bởi {a.author_name} · {a.read_count} người đã xác nhận đọc" }
+                                        div { class: "ent-muted", "Posted by {a.author_name} · {a.read_count} confirmed reader" }
                                     }
                                     if !a.read_by_me {
                                         button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                             let (sid, id, r) = (sid.clone(), id.clone(), r.clone());
                                             spawn(async move { if enterprise::mark_announcement_read(&sid, &id).await.is_ok() { r(); } });
-                                        }, "Xác nhận đã đọc" }
+                                        }, "Confirm read" }
                                     } else {
-                                        span { class: "ent-pill ok", "Đã đọc" }
+                                        span { class: "ent-pill ok", "Read" }
                                     }
                                 }
                             }
@@ -633,7 +633,7 @@ pub fn AiPanel(server_id: String, cfg: EnterpriseConfig) -> Element {
                 div { class: "ent-card",
                     div { class: "ent-inline-bar",
                         crate::components::icons::VicoAiIcon { size: 22 }
-                        p { class: "ent-muted", "Vico AI chỉ hoạt động trong không gian này khi quản trị viên bật trong Cài đặt máy chủ và không bao giờ đọc tin nhắn cá nhân mã hóa đầu cuối." }
+                        p { class: "ent-muted", "Vico AI only operates in this space when enabled by the administrator in Server Settings and never reads end-to-end encrypted personal messages." }
                     }
                 }
             } else {
@@ -641,8 +641,8 @@ pub fn AiPanel(server_id: String, cfg: EnterpriseConfig) -> Element {
                     div { class: "ent-inline-bar",
                         crate::components::icons::VicoAiIcon { size: 22 }
                         select { value: "{scope}", onchange: move |e| scope.set(e.value()),
-                            option { value: "overview", "Tổng quan toàn công ty" }
-                            option { value: "tasks", "Tiến độ công việc" }
+                            option { value: "overview", "Overview of the entire company" }
+                            option { value: "tasks", "Work progress" }
                         }
                         button { r#type: "button", class: "btn-primary", onclick: {
                             let sid = server_id.clone();
@@ -655,11 +655,11 @@ pub fn AiPanel(server_id: String, cfg: EnterpriseConfig) -> Element {
                                             note.set(v.get("e2ee_note").and_then(|x| x.as_str()).map(str::to_string));
                                             err.set(None);
                                         }
-                                        Err(e) => err.set(Some(format!("Vico AI không chạy tổng hợp được: {}", e.code))),
+                                        Err(e) => err.set(Some(format!("Vico AI cannot run synthesis: {}", e.code))),
                                     }
                                 });
                             }
-                        }, "Tóm tắt bằng Vico AI" }
+                        }, "Summary using Vico AI" }
                     }
                     if let Some(e) = err() { div { class: "status-badge error", "{e}" } }
                     if let Some(s) = summary() {
@@ -718,15 +718,15 @@ pub fn AutomationPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-chips",
-                    span { class: "ent-pill ok", "{data().workflows.len()} quy trình tự động" }
-                    span { class: "ent-pill", "{data().integrations.len()} kết nối tích hợp" }
+                    span { class: "ent-pill ok", "{data().workflows.len()} automated process" }
+                    span { class: "ent-pill", "{data().integrations.len()} built-in connection" }
                 }
                 div { class: "ent-btn-group",
                     if can_integ {
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_integ.set(!show_integ()), PlusIcon { size: 15 } " Thêm kết nối" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_integ.set(!show_integ()), PlusIcon { size: 15 } " Add connection" }
                     }
                     if can_wf {
-                        button { r#type: "button", class: "btn-primary", onclick: move |_| show_wf.set(!show_wf()), PlusIcon { size: 15 } " Thêm quy trình" }
+                        button { r#type: "button", class: "btn-primary", onclick: move |_| show_wf.set(!show_wf()), PlusIcon { size: 15 } " Add process" }
                     }
                 }
             }
@@ -744,7 +744,7 @@ pub fn AutomationPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                             option { value: "google_calendar", "Google Calendar" }
                             option { value: "rest_api", "REST API" }
                         }
-                        input { r#type: "text", placeholder: "Tên kết nối", value: "{integ_name}", oninput: move |e| integ_name.set(e.value()) }
+                        input { r#type: "text", placeholder: "Connection name", value: "{integ_name}", oninput: move |e| integ_name.set(e.value()) }
                         input { r#type: "text", placeholder: "https://endpoint", value: "{integ_url}", oninput: move |e| integ_url.set(e.value()) }
                         button { r#type: "button", class: "btn-primary", onclick: {
                             let sid = server_id.clone();
@@ -760,11 +760,11 @@ pub fn AutomationPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                                         "endpoint_url": integ_url(),
                                     })).await {
                                         Ok(_) => { integ_name.set(String::new()); integ_url.set(String::new()); show_integ.set(false); r(); }
-                                        Err(e) => msg.set(Some((true, format!("Không lưu được tích hợp: {}", e.code)))),
+                                        Err(e) => msg.set(Some((true, format!("No built-in saving: {}", e.code)))),
                                     }
                                 });
                             }
-                        }, "Lưu kết nối" }
+                        }, "Save connection" }
                     }
                 }
             }
@@ -772,16 +772,16 @@ pub fn AutomationPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
             if can_wf && show_wf() {
                 div { class: "ent-card",
                     div { class: "ent-inline-bar",
-                        input { r#type: "text", placeholder: "Tên quy trình", value: "{wf_name}", oninput: move |e| wf_name.set(e.value()) }
+                        input { r#type: "text", placeholder: "Process name", value: "{wf_name}", oninput: move |e| wf_name.set(e.value()) }
                         select { value: "{wf_trigger}", onchange: move |e| wf_trigger.set(e.value()),
-                            option { value: "task_assigned", "Khi giao công việc" }
-                            option { value: "task_completed", "Khi hoàn thành việc" }
-                            option { value: "leave_decided", "Khi duyệt nghỉ phép" }
-                            option { value: "approval_decided", "Khi duyệt đề xuất" }
-                            option { value: "announcement_posted", "Khi có thông báo mới" }
+                            option { value: "task_assigned", "When assigning work" }
+                            option { value: "task_completed", "When the job is done" }
+                            option { value: "leave_decided", "When approving leave" }
+                            option { value: "approval_decided", "When approving proposals" }
+                            option { value: "announcement_posted", "When there is a new announcement" }
                         }
                         select { value: "{wf_channel}", onchange: move |e| wf_channel.set(e.value()),
-                            option { value: "", "Chọn kênh gửi thông báo" }
+                            option { value: "", "Select the channel to send notifications" }
                             for ch in channels() {
                                 if ch.channel_type == "text" {
                                     option { key: "{ch.id}", value: "{ch.id}", "#{ch.name}" }
@@ -803,11 +803,11 @@ pub fn AutomationPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                                         "action_config": { "channel_id": cid },
                                     })).await {
                                         Ok(_) => { wf_name.set(String::new()); show_wf.set(false); r(); }
-                                        Err(e) => msg.set(Some((true, format!("Không tạo được quy trình: {}", e.code)))),
+                                        Err(e) => msg.set(Some((true, format!("Failed to create process: {}", e.code)))),
                                     }
                                 });
                             }
-                        }, "Lưu quy trình" }
+                        }, "Save the process" }
                     }
                 }
             }
@@ -830,11 +830,11 @@ pub fn AutomationPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                                         let (sid, id, r) = (sid.clone(), id.clone(), r.clone());
                                         spawn(async move {
                                             match enterprise::test_integration(&sid, &id).await {
-                                                Ok(_) => { msg.set(Some((false, "Kiểm tra kết nối thành công".into()))); r(); }
-                                                Err(e) => msg.set(Some((true, format!("Kiểm tra thất bại: {}", e.code)))),
+                                                Ok(_) => { msg.set(Some((false, "Check for successful connection".into()))); r(); }
+                                                Err(e) => msg.set(Some((true, format!("Test failed: {}", e.code)))),
                                             }
                                         });
-                                    }, "Kiểm tra kết nối" }
+                                    }, "Check connection" }
                                 }
                             }
                         }
@@ -852,13 +852,13 @@ pub fn AutomationPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                                     div { class: "ent-row-title",
                                         strong { "{w.name}" }
                                         span { class: "ent-pill", "{w.trigger_event}" }
-                                        span { class: "ent-muted", "Đã chạy {w.run_count} lần" }
+                                        span { class: "ent-muted", "Run {w.run_count} times" }
                                     }
                                 }
                                 button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                     let (sid, id, r) = (sid.clone(), id.clone(), r.clone());
                                     spawn(async move { if enterprise::toggle_workflow(&sid, &id).await.is_ok() { r(); } });
-                                }, if w.enabled { "Đang bật" } else { "Đang tắt" } }
+                                }, if w.enabled { "On" } else { "Turning off" } }
                             }
                         }
                     }

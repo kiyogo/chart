@@ -41,14 +41,14 @@ pub fn WelcomeDialog(server_id: String, welcome: cm::Welcome, on_close: EventHan
             div { class: "modal-content welcome-dialog", role: "dialog", aria_modal: "true", aria_labelledby: "welcome-title", tabindex: "-1",
                 onkeydown: { let c = close.clone(); move |e: Event<KeyboardData>| if e.key() == Key::Escape && !must { c(()) } },
                 div { class: "welcome-hero",
-                    div { class: "welcome-kicker", "Chào mừng bạn đến" }
+                    div { class: "welcome-kicker", "Welcome" }
                     h2 { id: "welcome-title", class: "welcome-name", "{welcome.name}" }
                 }
                 if let Some(m) = welcome.welcome_message.clone().filter(|m| !m.trim().is_empty()) {
                     p { class: "welcome-message", "{m}" }
                 }
                 if !welcome.channels.is_empty() {
-                    div { class: "settings-group-title", "Bắt đầu từ đây" }
+                    div { class: "settings-group-title", "Start here" }
                     div { class: "welcome-channels",
                         for c in welcome.channels.iter().cloned() {
                             button { key: "{c.id}", r#type: "button", class: "welcome-channel",
@@ -60,10 +60,10 @@ pub fn WelcomeDialog(server_id: String, welcome: cm::Welcome, on_close: EventHan
                     }
                 }
                 if let Some(r) = welcome.rules.clone().filter(|r| !r.trim().is_empty()) {
-                    div { class: "settings-group-title", "Nội quy" }
+                    div { class: "settings-group-title", "Rules" }
                     div { class: "welcome-rules", "{r}" }
                     if must {
-                        label { class: "demo-check", input { r#type: "checkbox", checked: agreed(), onchange: move |e| agreed.set(e.checked()) } "Tôi đã đọc và đồng ý nội quy" }
+                        label { class: "demo-check", input { r#type: "checkbox", checked: agreed(), onchange: move |e| agreed.set(e.checked()) } "I have read and agree to the rules" }
                     }
                 }
                 if let Some(e) = error() { div { class: "status-badge error", "{e}" } }
@@ -81,10 +81,10 @@ pub fn WelcomeDialog(server_id: String, welcome: cm::Welcome, on_close: EventHan
                                     busy.set(false);
                                 });
                             } },
-                            "Đồng ý và vào cộng đồng"
+                            "Agree and join the community"
                         }
                     } else {
-                        button { r#type: "button", class: "btn-primary", onclick: { let c = close.clone(); move |_| c(()) }, "Vào cộng đồng" }
+                        button { r#type: "button", class: "btn-primary", onclick: { let c = close.clone(); move |_| c(()) }, "Enter the community" }
                     }
                 }
             }
@@ -117,10 +117,10 @@ pub fn CommunityProfileDialog(server_id: String, server_name: String, my_name: S
             div { class: "modal-content", role: "dialog", aria_modal: "true", aria_labelledby: "cprof-title", tabindex: "-1", onclick: move |e| e.stop_propagation(),
                 onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
                 div { class: "modal-header",
-                    h3 { id: "cprof-title", class: "modal-title", "Hồ sơ của bạn trong {server_name}" }
-                    button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
+                    h3 { id: "cprof-title", class: "modal-title", "Your profile in {server_name}" }
+                    button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
                 }
-                p { class: "modal-sub", "Chỉ đổi cách bạn xuất hiện trong cộng đồng này. Hồ sơ chung của bạn giữ nguyên." }
+                p { class: "modal-sub", "Just change the way you appear in this community. Your general profile stays the same." }
                 div { class: "inline-form",
                     Avatar { name: if nick().is_empty() { my_name.clone() } else { nick() }, avatar_url: avatar(), size: 56 }
                     input { id: "cprof-avatar", r#type: "file", accept: "image/png,image/jpeg,image/webp,image/gif,image/avif", style: "display: none;",
@@ -129,34 +129,34 @@ pub fn CommunityProfileDialog(server_id: String, server_name: String, my_name: S
                                 match platform::read_selected_file_raw("cprof-avatar").await {
                                     Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                         Ok(u) => avatar.set(Some(u)),
-                                        Err(_) => msg.set(Some((true, "Không tải ảnh lên được".into()))),
+                                        Err(_) => msg.set(Some((true, "Unable to upload photo".into()))),
                                     },
-                                    Err(e) if e == "too_large" => msg.set(Some((true, "Ảnh lớn hơn 2 MB".into()))),
+                                    Err(e) if e == "too_large" => msg.set(Some((true, "Photo larger than 2 MB".into()))),
                                     Err(_) => {}
                                 }
                             });
                         },
                     }
-                    label { r#for: "cprof-avatar", class: "btn-secondary", role: "button", tabindex: "0", "Ảnh riêng cho cộng đồng" }
-                    if avatar().is_some() { button { r#type: "button", class: "btn-small-secondary", onclick: move |_| avatar.set(None), "Dùng ảnh chung" } }
+                    label { r#for: "cprof-avatar", class: "btn-secondary", role: "button", tabindex: "0", "Private photos for the community" }
+                    if avatar().is_some() { button { r#type: "button", class: "btn-small-secondary", onclick: move |_| avatar.set(None), "Use common photos" } }
                 }
-                label { class: "form-field", span { class: "form-label", "Biệt danh trong cộng đồng" }
+                label { class: "form-field", span { class: "form-label", "Nickname in the community" }
                     input { maxlength: "32", placeholder: "{my_name}", value: "{nick}", oninput: move |e| nick.set(e.value()) } }
-                label { class: "form-field", span { class: "form-label", "Giới thiệu ngắn" }
+                label { class: "form-field", span { class: "form-label", "Short introduction" }
                     textarea { rows: "3", maxlength: "190", value: "{bio}", oninput: move |e| bio.set(e.value()) } }
                 if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
                 div { class: "modal-actions",
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Đóng" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Close" }
                     button { r#type: "button", class: "btn-primary",
                         onclick: move |_| {
                             let s = sid2.clone();
                             spawn(async move {
                                 msg.set(Some(match cm::save_my_profile(&s, &nick(), avatar().as_deref(), &bio()).await {
-                                    Ok(()) => (false, "Đã lưu hồ sơ cộng đồng".into()),
+                                    Ok(()) => (false, "Community profile saved".into()),
                                     Err(e) => (true, cm::error_text(&e.code)),
                                 }));
                             });
-                        }, "Lưu" }
+                        }, "Save" }
                 }
             }
         }
@@ -197,21 +197,21 @@ pub fn EventsPanel(server_id: String, can_manage: bool, #[props(default)] on_clo
     rsx! {
         div { class: "events-panel",
             div { class: "studio-panel-head",
-                span { class: "settings-group-title", "Sự kiện sắp tới" }
+                span { class: "settings-group-title", "Upcoming events" }
                 div { class: "inline-form",
-                    if can_manage { button { r#type: "button", class: "btn-small-secondary", onclick: move |_| creating.set(!creating()), if creating() { "Đóng" } else { "+ Tạo sự kiện" } } }
-                    if let Some(h) = on_close { button { r#type: "button", class: "icon-btn", aria_label: "Đóng sự kiện", onclick: move |_| h.call(()), CloseIcon { size: 16 } } }
+                    if can_manage { button { r#type: "button", class: "btn-small-secondary", onclick: move |_| creating.set(!creating()), if creating() { "Close" } else { "+ Create events" } } }
+                    if let Some(h) = on_close { button { r#type: "button", class: "icon-btn", aria_label: "Close event", onclick: move |_| h.call(()), CloseIcon { size: 16 } } }
                 }
             }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
             if creating() {
                 div { class: "event-form",
-                    input { maxlength: "100", placeholder: "Tên sự kiện", aria_label: "Tên sự kiện", value: "{title}", oninput: move |e| title.set(e.value()) }
-                    textarea { rows: "2", maxlength: "1000", placeholder: "Mô tả", aria_label: "Mô tả sự kiện", value: "{desc}", oninput: move |e| desc.set(e.value()) }
-                    input { maxlength: "120", placeholder: "Địa điểm hoặc kênh", aria_label: "Địa điểm", value: "{place}", oninput: move |e| place.set(e.value()) }
+                    input { maxlength: "100", placeholder: "Event name", aria_label: "Event name", value: "{title}", oninput: move |e| title.set(e.value()) }
+                    textarea { rows: "2", maxlength: "1000", placeholder: "Description", aria_label: "Event description", value: "{desc}", oninput: move |e| desc.set(e.value()) }
+                    input { maxlength: "120", placeholder: "Location or channel", aria_label: "Location", value: "{place}", oninput: move |e| place.set(e.value()) }
                     div { class: "inline-form",
-                        label { class: "studio-inline", "Bắt đầu" input { r#type: "datetime-local", aria_label: "Thời gian bắt đầu", value: "{start}", oninput: move |e| start.set(e.value()) } }
-                        label { class: "studio-inline", "Kết thúc" input { r#type: "datetime-local", aria_label: "Thời gian kết thúc", value: "{end}", oninput: move |e| end.set(e.value()) } }
+                        label { class: "studio-inline", "Get started" input { r#type: "datetime-local", aria_label: "Start time", value: "{start}", oninput: move |e| start.set(e.value()) } }
+                        label { class: "studio-inline", "End" input { r#type: "datetime-local", aria_label: "End time", value: "{end}", oninput: move |e| end.set(e.value()) } }
                     }
                     button { r#type: "button", class: "btn-primary", disabled: title().trim().is_empty() || start().is_empty(),
                         onclick: move |_| {
@@ -220,15 +220,15 @@ pub fn EventsPanel(server_id: String, can_manage: bool, #[props(default)] on_clo
                                 let st = to_iso(start()).await.unwrap_or_default();
                                 let en = to_iso(end()).await;
                                 match cm::create_event(&s, title().trim(), desc().trim(), place().trim(), &st, en.as_deref()).await {
-                                    Ok(()) => { creating.set(false); title.set(String::new()); desc.set(String::new()); place.set(String::new()); msg.set(Some((false, "Đã tạo sự kiện".into()))); reload.call(()); }
+                                    Ok(()) => { creating.set(false); title.set(String::new()); desc.set(String::new()); place.set(String::new()); msg.set(Some((false, "Event created".into()))); reload.call(()); }
                                     Err(e) => msg.set(Some((true, cm::error_text(&e.code)))),
                                 }
                             });
-                        }, "Tạo" }
+                        }, "Create" }
                 }
             }
             if list.read().is_empty() {
-                div { class: "sidebar-empty", "Chưa có sự kiện sắp tới" }
+                div { class: "sidebar-empty", "There are no upcoming events" }
             }
             for ev in list() {
                 {
@@ -241,18 +241,18 @@ pub fn EventsPanel(server_id: String, can_manage: bool, #[props(default)] on_clo
                             div { class: "settings-label", "{ev.title}" }
                             if let Some(l) = ev.location.clone().filter(|l| !l.is_empty()) { div { class: "member-sub", "📍 {l}" } }
                             if let Some(d) = ev.description.clone().filter(|d| !d.is_empty()) { p { class: "event-desc", "{d}" } }
-                            div { class: "member-sub", "{ev.going} người tham gia · {ev.interested} người quan tâm" }
+                            div { class: "member-sub", "{ev.going} participants · {ev.interested} interested people" }
                             div { class: "inline-form",
                                 button { r#type: "button", class: if mine == "going" { "btn-small-secondary active" } else { "btn-small-secondary" }, aria_pressed: "{mine == \"going\"}",
                                     onclick: { let m = mine.clone(); move |_| { let (s, e, st) = (s1.clone(), e1.clone(), if m == "going" { "none" } else { "going" }); spawn(async move { let _ = cm::rsvp(&s, &e, st).await; reload.call(()); }); } },
                                     "✓ Tham gia" }
                                 button { r#type: "button", class: if mine == "interested" { "btn-small-secondary active" } else { "btn-small-secondary" }, aria_pressed: "{mine == \"interested\"}",
                                     onclick: { let m = mine.clone(); move |_| { let (s, e, st) = (s2.clone(), e2.clone(), if m == "interested" { "none" } else { "interested" }); spawn(async move { let _ = cm::rsvp(&s, &e, st).await; reload.call(()); }); } },
-                                    "☆ Quan tâm" }
+                                    "☆ Care" }
                                 if can_manage {
                                     button { r#type: "button", class: "btn-small-secondary danger",
                                         onclick: move |_| { let (s, e) = (s3.clone(), e3.clone()); spawn(async move { if cm::delete_event(&s, &e).await.is_ok() { reload.call(()); } }); },
-                                        "Xóa" }
+                                        "Delete" }
                                 }
                             }
                             { let _ = (&s4, &e4); rsx! {} }
@@ -305,15 +305,15 @@ pub fn ForumView(channel_id: String, can_manage: bool) -> Element {
             if let Some(t) = open() {
                 div { class: "forum-thread",
                     div { class: "inline-form",
-                        button { r#type: "button", class: "btn-small-secondary", onclick: move |_| { open.set(None); reload.call(()); }, "← Tất cả chủ đề" }
+                        button { r#type: "button", class: "btn-small-secondary", onclick: move |_| { open.set(None); reload.call(()); }, "← All topics" }
                         h3 { class: "grow forum-title", if t.pinned { "📌 " } "{t.title}" if t.locked { " 🔒" } }
                         if can_manage {
                             button { r#type: "button", class: "btn-small-secondary",
                                 onclick: { let (c, t) = (ch3.clone(), t.clone()); move |_| { let (c, mut t) = (c.clone(), t.clone()); spawn(async move { if cm::update_thread(&c, &t.id, Some(!t.pinned), None).await.is_ok() { t.pinned = !t.pinned; open.set(Some(t)); } }); } },
-                                if t.pinned { "Bỏ ghim" } else { "Ghim" } }
+                                if t.pinned { "Unpin" } else { "Pin" } }
                             button { r#type: "button", class: "btn-small-secondary",
                                 onclick: { let (c, t) = (ch4.clone(), t.clone()); move |_| { let (c, mut t) = (c.clone(), t.clone()); spawn(async move { if cm::update_thread(&c, &t.id, None, Some(!t.locked)).await.is_ok() { t.locked = !t.locked; open.set(Some(t)); } }); } },
-                                if t.locked { "Mở khóa" } else { "Khóa" } }
+                                if t.locked { "Unlock" } else { "Lock" } }
                         }
                     }
                     div { class: "forum-posts",
@@ -340,17 +340,17 @@ pub fn ForumView(channel_id: String, can_manage: bool) -> Element {
                                     }
                                 });
                             } },
-                            input { maxlength: "4000", placeholder: "Trả lời chủ đề", aria_label: "Trả lời chủ đề", value: "{reply}", oninput: move |e| reply.set(e.value()) }
-                            button { r#type: "submit", class: "btn-primary", disabled: reply().trim().is_empty(), "Gửi" }
+                            input { maxlength: "4000", placeholder: "Reply to topic", aria_label: "Reply to topic", value: "{reply}", oninput: move |e| reply.set(e.value()) }
+                            button { r#type: "submit", class: "btn-primary", disabled: reply().trim().is_empty(), "Send" }
                         }
                     } else {
-                        div { class: "member-sub", "Chủ đề đã khóa." }
+                        div { class: "member-sub", "Topic locked." }
                     }
                 }
             } else {
                 div { class: "forum-new",
-                    input { maxlength: "120", placeholder: "Tiêu đề chủ đề mới", aria_label: "Tiêu đề chủ đề", value: "{new_title}", oninput: move |e| new_title.set(e.value()) }
-                    textarea { rows: "3", maxlength: "4000", placeholder: "Nội dung", aria_label: "Nội dung chủ đề", value: "{new_body}", oninput: move |e| new_body.set(e.value()) }
+                    input { maxlength: "120", placeholder: "New topic title", aria_label: "Topic title", value: "{new_title}", oninput: move |e| new_title.set(e.value()) }
+                    textarea { rows: "3", maxlength: "4000", placeholder: "Content", aria_label: "Topic content", value: "{new_body}", oninput: move |e| new_body.set(e.value()) }
                     button { r#type: "button", class: "btn-primary", disabled: new_title().trim().is_empty() || new_body().trim().is_empty(),
                         onclick: { let c = channel_id.clone(); move |_| {
                             let (c, t, b) = (c.clone(), new_title().trim().to_string(), new_body().trim().to_string());
@@ -361,15 +361,15 @@ pub fn ForumView(channel_id: String, can_manage: bool) -> Element {
                                 }
                             });
                         } },
-                        "Đăng chủ đề" }
+                        "Post topic" }
                 }
-                if threads.read().is_empty() { div { class: "sidebar-empty", "Chưa có chủ đề nào. Hãy mở chủ đề đầu tiên." } }
+                if threads.read().is_empty() { div { class: "sidebar-empty", "There are no topics yet. Let's open the topic first." } }
                 div { class: "forum-list",
                     for t in threads() {
                         button { key: "{t.id}", r#type: "button", class: "forum-row",
                             onclick: { let t = t.clone(); move |_| { load_posts.call(t.id.clone()); open.set(Some(t.clone())); } },
                             span { class: "grow forum-title", if t.pinned { "📌 " } "{t.title}" if t.locked { " 🔒" } }
-                            span { class: "member-sub", "{t.author.clone().unwrap_or_default()} · {t.replies} bài · {platform::format_local_time(&t.last_activity)}" }
+                            span { class: "member-sub", "{t.author.clone().unwrap_or_default()} · {t.replies} articles · {platform::format_local_time(&t.last_activity)}" }
                         }
                     }
                 }
@@ -398,22 +398,22 @@ pub fn WelcomeEditor(server_id: String) -> Element {
     });
     rsx! {
         div { class: "settings-section",
-            label { class: "form-field", span { class: "form-label", "Lời chào" }
+            label { class: "form-field", span { class: "form-label", "Greetings" }
                 textarea { rows: "3", maxlength: "500", value: "{message}", oninput: move |e| message.set(e.value()) } }
-            label { class: "form-field", span { class: "form-label", "Nội quy" }
-                textarea { rows: "6", maxlength: "2000", placeholder: "1. Tôn trọng mọi người\n2. Không spam", value: "{rules}", oninput: move |e| rules.set(e.value()) } }
-            label { class: "demo-check", input { r#type: "checkbox", checked: require(), onchange: move |e| require.set(e.checked()) } "Thành viên phải đồng ý nội quy trước khi gửi tin nhắn" }
+            label { class: "form-field", span { class: "form-label", "Rules" }
+                textarea { rows: "6", maxlength: "2000", placeholder: "1. Respect everyone\n2. Don't spam", value: "{rules}", oninput: move |e| rules.set(e.value()) } }
+            label { class: "demo-check", input { r#type: "checkbox", checked: require(), onchange: move |e| require.set(e.checked()) } "Members must agree to the rules before sending messages" }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
             button { r#type: "button", class: "btn-primary",
                 onclick: move |_| {
                     let s = server_id.clone();
                     spawn(async move {
                         msg.set(Some(match cm::save_welcome(&s, &message(), &rules(), require()).await {
-                            Ok(()) => (false, "Đã lưu màn hình chào mừng".into()),
+                            Ok(()) => (false, "Welcome screen saved".into()),
                             Err(e) => (true, cm::error_text(&e.code)),
                         }));
                     });
-                }, "Lưu" }
+                }, "Save" }
         }
     }
 }
@@ -439,13 +439,13 @@ pub fn ExpressionsManager(server_id: String) -> Element {
     let sid_up = server_id.clone();
     rsx! {
         div { class: "settings-section",
-            p { class: "settings-row-desc", "Emoji và sticker riêng của cộng đồng. Thành viên dùng được trong các kênh của cộng đồng này." }
+            p { class: "settings-row-desc", "Community-owned emojis and stickers. Members can use this community's channels." }
             div { class: "inline-form",
-                select { aria_label: "Loại", value: "{kind}", onchange: move |e| kind.set(e.value()),
-                    option { value: "emoji", "Emoji tùy chỉnh" }
+                select { aria_label: "Type", value: "{kind}", onchange: move |e| kind.set(e.value()),
+                    option { value: "emoji", "Custom emojis" }
                     option { value: "sticker", "Sticker" }
                 }
-                input { maxlength: "32", placeholder: "Tên emoji, ví dụ party_cat", aria_label: "Tên emoji hoặc sticker", value: "{name}", oninput: move |e| name.set(e.value()) }
+                input { maxlength: "32", placeholder: "Emoji name, for example party_cat", aria_label: "Emoji or sticker name", value: "{name}", oninput: move |e| name.set(e.value()) }
                 input { id: "expr-file", r#type: "file", accept: "image/png,image/gif,image/webp,image/avif", style: "display: none;",
                     onchange: move |_| {
                         let (s, k, n) = (sid_up.clone(), kind(), name().trim().to_lowercase());
@@ -453,18 +453,18 @@ pub fn ExpressionsManager(server_id: String) -> Element {
                             match platform::read_selected_file_raw("expr-file").await {
                                 Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                     Ok(u) => match cm::add_expression(&s, &k, &n, &u, mime == "image/gif").await {
-                                        Ok(()) => { name.set(String::new()); msg.set(Some((false, "Đã thêm".into()))); reload.call(()); }
+                                        Ok(()) => { name.set(String::new()); msg.set(Some((false, "Added".into()))); reload.call(()); }
                                         Err(e) => msg.set(Some((true, cm::error_text(&e.code)))),
                                     },
-                                    Err(_) => msg.set(Some((true, "Không tải lên được".into()))),
+                                    Err(_) => msg.set(Some((true, "Unable to upload".into()))),
                                 },
-                                Err(e) if e == "too_large" => msg.set(Some((true, "Ảnh lớn hơn 2 MB".into()))),
+                                Err(e) if e == "too_large" => msg.set(Some((true, "Photo larger than 2 MB".into()))),
                                 Err(_) => {}
                             }
                         });
                     },
                 }
-                label { r#for: "expr-file", class: if name().trim().len() < 2 { "btn-secondary disabled" } else { "btn-secondary" }, role: "button", tabindex: "0", aria_disabled: "{name().trim().len() < 2}", "Tải ảnh lên" }
+                label { r#for: "expr-file", class: if name().trim().len() < 2 { "btn-secondary disabled" } else { "btn-secondary" }, role: "button", tabindex: "0", aria_disabled: "{name().trim().len() < 2}", "Upload image" }
             }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
             div { class: "inv-grid compact",
@@ -477,7 +477,7 @@ pub fn ExpressionsManager(server_id: String) -> Element {
                                 div { class: "settings-label", if x.kind == "emoji" { ":{x.name}:" } else { "{x.name}" } }
                                 button { r#type: "button", class: "btn-small-secondary danger",
                                     onclick: move |_| { let (s, id) = (s.clone(), id.clone()); spawn(async move { if cm::delete_expression(&s, &id).await.is_ok() { reload.call(()); } }); },
-                                    "Xóa" }
+                                    "Delete" }
                             }
                         }
                     }
@@ -503,7 +503,7 @@ pub fn AuditLogView(server_id: String) -> Element {
     rsx! {
         div { class: "settings-section",
             if let Some(e) = err() { div { class: "status-badge error", "{e}" } }
-            if list.read().is_empty() && err().is_none() { div { class: "sidebar-empty", "Chưa có thay đổi nào được ghi" } }
+            if list.read().is_empty() && err().is_none() { div { class: "sidebar-empty", "No changes have been recorded yet" } }
             div { class: "security-log",
                 for (i, a) in list().into_iter().enumerate() {
                     div { key: "{i}", class: if a.action.contains("deleted") || a.action.contains("kicked") { "security-event warn" } else { "security-event" },

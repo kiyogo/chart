@@ -100,7 +100,7 @@ pub async fn init_enterprise_tx(
         .bind(owner_id)
         .fetch_optional(&mut **tx)
         .await?
-        .unwrap_or_else(|| "Quản trị viên".to_string());
+        .unwrap_or_else(|| "Administrator".to_string());
 
     sqlx::query(
         r#"
@@ -125,37 +125,37 @@ pub async fn init_enterprise_tx(
     if tpl_count == 0 {
         let templates = [
             (
-                "Đề xuất mua sắm thiết bị",
+                "Proposal for equipment purchase",
                 "purchase",
-                "Đề xuất trang bị phần cứng, phần mềm hoặc vật tư",
+                "Proposal to equip hardware, software or supplies",
                 json!([
-                    {"key": "item", "label": "Hạng mục đề xuất", "required": true},
-                    {"key": "budget", "label": "Dự toán chi phí (VNĐ)", "required": true},
-                    {"key": "reason", "label": "Lý do sử dụng", "required": true}
+                    {"key": "item", "label": "Recommended categories", "required": true},
+                    {"key": "budget", "label": "Cost estimate (VND)", "required": true},
+                    {"key": "reason", "label": "Reason for use", "required": true}
                 ]),
-                json!(["Quản lý trực tiếp", "Kế toán / Vận hành"]),
+                json!(["Direct management", "Accounting/Operations"]),
             ),
             (
-                "Đề nghị thanh toán",
+                "Offer to pay",
                 "payment",
-                "Thanh toán tạm ứng, hóa đơn nhà cung cấp hoặc công tác phí",
+                "Advance payment, supplier invoice or per diem",
                 json!([
-                    {"key": "amount", "label": "Số tiền (VNĐ)", "required": true},
-                    {"key": "beneficiary", "label": "Người / Đơn vị thụ hưởng", "required": true},
-                    {"key": "note", "label": "Diễn giải chứng từ", "required": false}
+                    {"key": "amount", "label": "Amount (VND)", "required": true},
+                    {"key": "beneficiary", "label": "Beneficiary person/unit", "required": true},
+                    {"key": "note", "label": "Interpretation of documents", "required": false}
                 ]),
-                json!(["Quản lý bộ phận", "Phê duyệt tài chính"]),
+                json!(["Department management", "Financial approval"]),
             ),
             (
-                "Yêu cầu hỗ trợ kỹ thuật và cấp quyền",
+                "Request technical support and authorization",
                 "it_support",
-                "Cấp tài khoản, phân quyền hệ thống hoặc xử lý sự cố kỹ thuật",
+                "Grant accounts, decentralize system rights or handle technical problems",
                 json!([
-                    {"key": "system", "label": "Hệ thống / Thiết bị", "required": true},
-                    {"key": "urgency", "label": "Mức độ ưu tiên", "required": true},
-                    {"key": "detail", "label": "Mô tả chi tiết", "required": true}
+                    {"key": "system", "label": "System/Equipment", "required": true},
+                    {"key": "urgency", "label": "Priority level", "required": true},
+                    {"key": "detail", "label": "Detailed description", "required": true}
                 ]),
-                json!(["Quản trị hệ thống"]),
+                json!(["System administration"]),
             ),
         ];
         for (name, cat, desc, fields, steps) in templates {
@@ -199,10 +199,10 @@ pub async fn init_enterprise_tx(
         | ent_perm::POST_ANNOUNCEMENTS;
 
     let default_roles = [
-        ("Quản lý nhân sự", "#10b981", 30i32, base_perm::DEFAULT_EVERYONE, hr_bits),
-        ("Quản lý dự án", "#3b82f6", 20i32, base_perm::DEFAULT_EVERYONE | base_perm::MANAGE_CHANNELS, pm_bits),
-        ("Nhân viên", "#64748b", 10i32, base_perm::DEFAULT_EVERYONE, ent_perm::DEFAULT_EMPLOYEE),
-        ("Khách mời", "#94a3b8", 5i32, base_perm::VIEW_CHANNELS | base_perm::SEND_MESSAGES, ent_perm::VIEW_HR),
+        ("Personnel management", "#10b981", 30i32, base_perm::DEFAULT_EVERYONE, hr_bits),
+        ("Project management", "#3b82f6", 20i32, base_perm::DEFAULT_EVERYONE | base_perm::MANAGE_CHANNELS, pm_bits),
+        ("Staff", "#64748b", 10i32, base_perm::DEFAULT_EVERYONE, ent_perm::DEFAULT_EMPLOYEE),
+        ("Guest", "#94a3b8", 5i32, base_perm::VIEW_CHANNELS | base_perm::SEND_MESSAGES, ent_perm::VIEW_HR),
     ];
 
     for (rname, color, pos, b_perm, e_perm) in default_roles {
@@ -272,14 +272,14 @@ pub async fn init_enterprise_tx(
     };
 
     let ent_channels = [
-        ("Thông báo nội bộ", "announcement", ent_cat_id, 1i32),
-        ("Ban điều hành", "text", ent_cat_id, 2i32),
-        ("Nhân sự hành chính", "text", ent_cat_id, 3i32),
-        ("Kỹ thuật sản phẩm", "text", ent_cat_id, 4i32),
-        ("Kinh doanh vận hành", "text", ent_cat_id, 5i32),
-        ("Tự động hóa", "text", ent_cat_id, 6i32),
-        ("Phòng họp điều hành", "voice", meet_cat_id, 7i32),
-        ("Phòng họp nhanh", "voice", meet_cat_id, 8i32),
+        ("Internal announcement", "announcement", ent_cat_id, 1i32),
+        ("Executive Board", "text", ent_cat_id, 2i32),
+        ("Administrative personnel", "text", ent_cat_id, 3i32),
+        ("Product engineering", "text", ent_cat_id, 4i32),
+        ("Operational business", "text", ent_cat_id, 5i32),
+        ("Automation", "text", ent_cat_id, 6i32),
+        ("Executive meeting room", "voice", meet_cat_id, 7i32),
+        ("Quick meeting room", "voice", meet_cat_id, 8i32),
     ];
 
     let mut ch_map = std::collections::HashMap::new();
@@ -306,8 +306,8 @@ pub async fn init_enterprise_tx(
                 .bind(pos)
                 .execute(&mut **tx)
                 .await?;
-                if cname == "Thông báo nội bộ" {
-                    let welcome = "Chào mừng đến với Không gian doanh nghiệp. Các kênh phòng ban, quy trình phê duyệt, chấm công, bảng công việc và lệnh nhanh (/task, /checkin, /checkout, /leave, /meet, /approve, /announce, /workspace) đã được kích hoạt.";
+                if cname == "Internal announcement" {
+                    let welcome = "Welcome to Enterprise Space. Departmental channels, approval processes, timekeeping, job boards, and quick commands (/task, /checkin, /checkout, /leave, /meet, /approve, /announce, /workspace) have been enabled.";
                     sqlx::query(
                         "INSERT INTO channel_messages (id, channel_id, sender_id, content) VALUES ($1, $2, $3, $4)",
                     )
@@ -336,10 +336,10 @@ pub async fn init_enterprise_tx(
     let mut eng_dept_id: Option<Uuid> = None;
     if dept_count == 0 {
         let depts = [
-            ("Ban điều hành", "BOD", "Điều hành chiến lược và phê duyệt cấp cao", "Trụ sở chính", ch_map.get("Ban điều hành").copied()),
-            ("Phòng kỹ thuật sản phẩm", "ENG", "Phát triển sản phẩm, hạ tầng kỹ thuật và bảo mật", "Trụ sở chính", ch_map.get("Kỹ thuật sản phẩm").copied()),
-            ("Phòng nhân sự hành chính", "HR", "Tuyển dụng, hồ sơ nhân sự, chấm công và phúc lợi", "Trụ sở chính", ch_map.get("Nhân sự hành chính").copied()),
-            ("Phòng kinh doanh vận hành", "BIZ", "Phát triển kinh doanh, đối tác và chăm sóc khách hàng", "Chi nhánh", ch_map.get("Kinh doanh vận hành").copied()),
+            ("Executive Board", "BOD", "Executive strategy and senior approval", "Head office", ch_map.get("Executive Board").copied()),
+            ("Product technical department", "ENG", "Product development, technical infrastructure and security", "Head office", ch_map.get("Product engineering").copied()),
+            ("Administrative personnel department", "HR", "Recruitment, personnel records, timekeeping and benefits", "Head office", ch_map.get("Administrative personnel").copied()),
+            ("Operational sales department", "BIZ", "Business development, partners and customer care", "Branch", ch_map.get("Operational business").copied()),
         ];
         for (idx, (dname, dcode, ddesc, branch, lch)) in depts.iter().enumerate() {
             let did: Uuid = sqlx::query_scalar(
@@ -401,7 +401,7 @@ pub async fn init_enterprise_tx(
         .bind(server_id)
         .bind(primary_dept_id)
         .bind(owner_id)
-        .bind(ch_map.get("Ban điều hành").copied())
+        .bind(ch_map.get("Executive Board").copied())
         .fetch_one(&mut **tx)
         .await?;
 
@@ -415,7 +415,7 @@ pub async fn init_enterprise_tx(
         .bind(server_id)
         .bind(eng_dept_id.or(primary_dept_id))
         .bind(owner_id)
-        .bind(ch_map.get("Kỹ thuật sản phẩm").copied())
+        .bind(ch_map.get("Product engineering").copied())
         .fetch_one(&mut **tx)
         .await?;
 
@@ -428,10 +428,10 @@ pub async fn init_enterprise_tx(
 
         if task_count == 0 {
             let starter_tasks = [
-                ("Thiết lập cơ cấu phòng ban và phân quyền nhân sự", "Kiểm tra danh sách phòng ban, bổ nhiệm trưởng bộ phận và gán vai trò tương ứng", "done", "high", "2026-11-20"),
-                ("Triển khai quy trình chấm công và phê duyệt nghỉ phép", "Hướng dẫn thành viên sử dụng lệnh /checkin, /checkout và gửi đơn trên hệ thống", "in_progress", "high", "2026-11-25"),
-                ("Đồng bộ tài liệu quy chế và sổ tay nhân viên", "Tải lên quy định làm việc và biểu mẫu hành chính vào kho tài liệu doanh nghiệp", "review", "medium", "2026-11-28"),
-                ("Đánh giá hiệu suất và báo cáo vận hành định kỳ", "Tổng hợp chỉ số hoàn thành công việc và chuyên cần tại mục báo cáo", "todo", "medium", "2026-12-05"),
+                ("Establish departmental structure and decentralize personnel", "Check the list of departments, appoint department heads and assign corresponding roles", "done", "high", "2026-11-20"),
+                ("Implement timekeeping and leave approval processes", "Instruct members to use /checkin, /checkout commands and submit applications on the system", "in_progress", "high", "2026-11-25"),
+                ("Synchronize regulatory documents and employee handbooks", "Upload work regulations and administrative forms to your corporate document repository", "review", "medium", "2026-11-28"),
+                ("Evaluate performance and periodically report operations", "Summary of work completion and attendance indicators in the report section", "todo", "medium", "2026-12-05"),
             ];
             for (title, desc, status, prio, due) in starter_tasks {
                 sqlx::query(
@@ -477,7 +477,7 @@ pub async fn init_enterprise_tx(
         )
         .bind(server_id)
         .bind(primary_dept_id)
-        .bind(ch_map.get("Phòng họp điều hành").copied())
+        .bind(ch_map.get("Executive meeting room").copied())
         .bind(owner_id)
         .bind(m1_start)
         .bind(m1_end)
@@ -492,7 +492,7 @@ pub async fn init_enterprise_tx(
         )
         .bind(server_id)
         .bind(eng_dept_id.or(primary_dept_id))
-        .bind(ch_map.get("Phòng họp nhanh").copied())
+        .bind(ch_map.get("Quick meeting room").copied())
         .bind(owner_id)
         .bind(m2_start)
         .bind(m2_end)
@@ -507,7 +507,7 @@ pub async fn init_enterprise_tx(
     .fetch_one(&mut **tx)
     .await?;
     if folder_count == 0 {
-        for fname in ["Quy chế và sổ tay nhân sự", "Tài liệu dự án và kỹ thuật", "Biểu mẫu và hợp đồng"] {
+        for fname in ["Regulations and personnel handbook", "Project and technical documents", "Forms and contracts"] {
             sqlx::query(
                 "INSERT INTO enterprise_folders (server_id, scope, owner_id, name) VALUES ($1, 'company', $2, $3)",
             )
@@ -545,13 +545,13 @@ pub async fn init_enterprise_tx(
     .fetch_one(&mut **tx)
     .await?;
     if wf_count == 0 {
-        let auto_ch = ch_map.get("Tự động hóa").copied();
+        let auto_ch = ch_map.get("Automation").copied();
         let cfg = serde_json::json!({ "channel_id": auto_ch });
         let default_wfs = [
-            ("Thông báo khi giao công việc mới", "task_assigned", "post_channel_message"),
-            ("Cập nhật khi hoàn thành công việc", "task_completed", "post_channel_message"),
-            ("Thông báo kết quả duyệt nghỉ phép", "leave_decided", "post_channel_message"),
-            ("Thông báo kết quả phê duyệt đề xuất", "approval_decided", "post_channel_message"),
+            ("Notification when new job is assigned", "task_assigned", "post_channel_message"),
+            ("Updated when work is completed", "task_completed", "post_channel_message"),
+            ("Notification of leave approval results", "leave_decided", "post_channel_message"),
+            ("Notification of proposal approval results", "approval_decided", "post_channel_message"),
         ];
         for (wname, trig, act) in default_wfs {
             sqlx::query(
@@ -986,7 +986,7 @@ pub async fn enterprise_search(
                 module: "hr",
                 id: id.to_string(),
                 title: name,
-                subtitle: title.unwrap_or_else(|| "Nhân sự".to_string()),
+                subtitle: title.unwrap_or_else(|| "Human resources".to_string()),
             });
         }
     }
@@ -1004,7 +1004,7 @@ pub async fn enterprise_search(
             module: "departments",
             id: id.to_string(),
             title: name,
-            subtitle: branch.unwrap_or_else(|| "Phòng ban".to_string()),
+            subtitle: branch.unwrap_or_else(|| "Departments".to_string()),
         });
     }
 

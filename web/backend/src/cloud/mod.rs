@@ -62,18 +62,18 @@ pub enum CloudError {
 impl fmt::Display for CloudError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::AuthRequired => write!(f, "Cần xác thực lại tài khoản Cloud"),
-            Self::TokenExpired => write!(f, "Phiên đăng nhập Cloud đã hết hạn"),
-            Self::PermissionRevoked => write!(f, "Người dùng đã thu hồi quyền truy cập Cloud"),
-            Self::QuotaExceeded => write!(f, "Tài khoản Cloud đã hết dung lượng trống"),
-            Self::NotConfiguredByAdmin(msg) => write!(f, "Quản trị viên chưa cấu hình thông tin nhà cung cấp: {msg}"),
-            Self::SsrfBlocked(host) => write!(f, "Địa chỉ bị chặn vì chính sách an toàn mạng nội bộ/SSRF: {host}"),
-            Self::TlsRequired => write!(f, "Yêu cầu kết nối HTTPS/TLS hợp lệ"),
-            Self::InvalidConfig(m) => write!(f, "Cấu hình không hợp lệ: {m}"),
-            Self::ChecksumMismatch => write!(f, "Checksum tệp sao lưu trên Cloud không khớp"),
-            Self::Unsupported(op) => write!(f, "Nhà cung cấp chưa hỗ trợ thao tác: {op}"),
-            Self::Network(m) => write!(f, "Lỗi mạng khi kết nối Cloud: {m}"),
-            Self::Remote(m) => write!(f, "Lỗi từ máy chủ Cloud: {m}"),
+            Self::AuthRequired => write!(f, "Need to re-authenticate Cloud account"),
+            Self::TokenExpired => write!(f, "Cloud login session has expired"),
+            Self::PermissionRevoked => write!(f, "The user has revoked Cloud access"),
+            Self::QuotaExceeded => write!(f, "Cloud account has run out of free space"),
+            Self::NotConfiguredByAdmin(msg) => write!(f, "Administrator has not configured provider information: {msg}"),
+            Self::SsrfBlocked(host) => write!(f, "Address blocked because of intranet security policy/SSRF: {host}"),
+            Self::TlsRequired => write!(f, "Requires a valid HTTPS/TLS connection"),
+            Self::InvalidConfig(m) => write!(f, "Invalid configuration: {m}"),
+            Self::ChecksumMismatch => write!(f, "Cloud backup file checksum does not match"),
+            Self::Unsupported(op) => write!(f, "The provider does not support this operation: {op}"),
+            Self::Network(m) => write!(f, "Network error when connecting to Cloud: {m}"),
+            Self::Remote(m) => write!(f, "Error from Cloud server: {m}"),
         }
     }
 }

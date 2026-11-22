@@ -35,10 +35,10 @@ pub fn InviteDialog(kind: String, code: String, on_close: EventHandler<()>, on_j
             match social::invite_preview(&k, &c).await {
                 Ok(p) => preview.set(Some(p)),
                 Err(e) => error.set(Some(match e.code.as_str() {
-                    "invite_not_found" | "not_found" => "Liên kết mời không tồn tại hoặc đã hết hạn".into(),
-                    "invite_expired" => "Liên kết mời đã hết hạn".into(),
-                    "link_join_disabled" => "Nhóm đã tắt tham gia bằng liên kết".into(),
-                    _ => "Không mở được liên kết mời".into(),
+                    "invite_not_found" | "not_found" => "The invite link does not exist or has expired".into(),
+                    "invite_expired" => "The invite link has expired".into(),
+                    "link_join_disabled" => "The group has disabled join by link".into(),
+                    _ => "Cannot open invite link".into(),
                 })),
             }
         });
@@ -54,28 +54,28 @@ pub fn InviteDialog(kind: String, code: String, on_close: EventHandler<()>, on_j
             if k == "server" {
                 match api::servers_join(&c).await {
                     Ok(srv) => on_joined.call(("server".into(), srv.id)),
-                    Err(_) => error.set(Some("Không tham gia được cộng đồng".into())),
+                    Err(_) => error.set(Some("Unable to join the community".into())),
                 }
             } else {
                 match groups::groups_join_by_invite(&c).await {
                     Ok(g) => on_joined.call(("group".into(), g.id)),
                     Err(e) if e.code == "join_request_pending" => pending.set(true),
                     Err(e) => error.set(Some(match e.code.as_str() {
-                        "group_blocked" | "blocked_from_group" => "Bạn không thể tham gia nhóm này".into(),
-                        "link_join_disabled" => "Nhóm đã tắt tham gia bằng liên kết".into(),
-                        _ => "Không tham gia được nhóm".into(),
+                        "group_blocked" | "blocked_from_group" => "You cannot join this group".into(),
+                        "link_join_disabled" => "The group has disabled join by link".into(),
+                        _ => "Unable to join the group".into(),
                     })),
                 }
             }
             busy.set(false);
         });
     };
-    let what = if kind == "server" { "cộng đồng" } else { "nhóm" };
+    let what = if kind == "server" { "community" } else { "group" };
     rsx! {
         div { class: "modal-overlay", onclick: move |_| on_close.call(()),
-            div { class: "modal-content invite-dialog", role: "dialog", aria_modal: "true", aria_label: "Lời mời tham gia", onclick: move |e| e.stop_propagation(),
+            div { class: "modal-content invite-dialog", role: "dialog", aria_modal: "true", aria_label: "Invitation to participate", onclick: move |e| e.stop_propagation(),
                 onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
-                button { r#type: "button", class: "icon-btn invite-close", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
+                button { r#type: "button", class: "icon-btn invite-close", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
                 if let Some(p) = preview() {
                     {
                         let banner = p.banner_url.clone().filter(|b| platform::safe_asset_path(b));
@@ -83,26 +83,26 @@ pub fn InviteDialog(kind: String, code: String, on_close: EventHandler<()>, on_j
                             div { class: "invite-banner", style: if let Some(b) = banner.as_ref() { format!("background-image: url('{}');", platform::resolve_asset_url(b)) } else { String::new() } }
                             div { class: "invite-body",
                                 div { class: "invite-avatar", Avatar { name: p.name.clone(), avatar_url: p.avatar_url.clone(), size: 72 } }
-                                div { class: "invite-kicker", "Bạn được mời tham gia {what}" }
+                                div { class: "invite-kicker", "You are invited to join {what}" }
                                 h3 { class: "invite-name", "{p.name}" }
-                                div { class: "invite-meta", "{p.member_count} thành viên" if p.require_approval { " · cần trưởng nhóm duyệt" } }
+                                div { class: "invite-meta", "{p.member_count} members" if p.require_approval { " · Need group leader approval" } }
                                 if let Some(d) = p.description.as_ref().filter(|d| !d.trim().is_empty()) { p { class: "invite-desc", "{d}" } }
                                 if pending() {
-                                    div { class: "status-badge success", "Đã gửi yêu cầu tham gia. Bạn sẽ vào nhóm khi được duyệt." }
+                                    div { class: "status-badge success", "Request to join has been sent. You will join the group when approved." }
                                 } else if p.is_member {
-                                    button { r#type: "button", class: "btn-primary wide", onclick: { let (k, id) = (kind.clone(), p.id.clone()); move |_| on_joined.call((k.clone(), id.clone())) }, CheckIcon { size: 16 } "Bạn đã ở trong {what} · Mở" }
+                                    button { r#type: "button", class: "btn-primary wide", onclick: { let (k, id) = (kind.clone(), p.id.clone()); move |_| on_joined.call((k.clone(), id.clone())) }, CheckIcon { size: 16 } "You are in {what} · Open" }
                                 } else {
                                     button { r#type: "button", class: "btn-primary wide", disabled: busy(), onclick: join,
-                                        if p.require_approval { "Gửi yêu cầu tham gia" } else { "Tham gia {what}" }
+                                        if p.require_approval { "Submit a request to join" } else { "Tham gia {what}" }
                                     }
                                 }
                             }
                         }
                     }
                 } else if let Some(e) = error() {
-                    div { class: "invite-body", h3 { class: "invite-name", "Không mở được lời mời" } p { class: "invite-desc", "{e}" } }
+                    div { class: "invite-body", h3 { class: "invite-name", "Unable to open invitation" } p { class: "invite-desc", "{e}" } }
                 } else {
-                    div { class: "invite-body", p { class: "invite-desc", role: "status", "Đang tải lời mời" } }
+                    div { class: "invite-body", p { class: "invite-desc", role: "status", "Loading invitations" } }
                 }
                 if let (Some(e), Some(_)) = (error(), preview()) { div { class: "status-badge error", "{e}" } }
             }
@@ -144,7 +144,7 @@ pub fn InviteFriendsDialog(
                     Ok(c) => Some(c),
                     Err(e) => {
                         if e.code == "link_join_disabled" {
-                            error.set(Some("Nhóm đang tắt tham gia bằng liên kết. Bật lại trong Quản lý nhóm › Tham gia.".into()));
+                            error.set(Some("The group is turning off join by link. Turn it back on in Manage Groups › Join.".into()));
                         }
                         None
                     }
@@ -186,37 +186,37 @@ pub fn InviteFriendsDialog(
             for fid in targets {
                 match dm::send_encrypted_dm(&me, &fid, &text, None).await {
                     Ok(_) => sent.with_mut(|s| s.push(fid.clone())),
-                    Err(_) => error.set(Some("Một số lời mời không gửi được".into())),
+                    Err(_) => error.set(Some("Some invitations could not be sent".into())),
                 }
             }
             picked.set(Vec::new());
             busy.set(false);
         });
     };
-    let what = if kind == "server" { "cộng đồng" } else { "nhóm" };
+    let what = if kind == "server" { "community" } else { "group" };
     rsx! {
         div { class: "modal-overlay", onclick: move |_| on_close.call(()),
             div { class: "modal-content", role: "dialog", aria_modal: "true", aria_labelledby: "invf-title", onclick: move |e| e.stop_propagation(),
                 onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
                 div { class: "modal-header",
-                    h3 { id: "invf-title", class: "modal-title", "Mời bạn bè vào {name}" }
-                    button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
+                    h3 { id: "invf-title", class: "modal-title", "Invite friends to {name}" }
+                    button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
                 }
-                p { class: "modal-sub", "Bạn bè nhận một thẻ mời có ảnh {what}, tên và số thành viên trong tin nhắn mã hóa đầu cuối." }
+                p { class: "modal-sub", "Friends receive an invitation card with {what}'s photo, name, and member number in an end-to-end encrypted message." }
                 if let Some(l) = link.clone() {
                     div { class: "invite-link-box",
                         code { class: "invite-link-text", "{l}" }
-                        button { r#type: "button", class: "btn-secondary", onclick: { let l = l.clone(); move |_| platform::copy_to_clipboard(&l) }, CopyIcon {} "Sao chép" }
-                        button { r#type: "button", class: "btn-secondary", onclick: { let l = l.clone(); let n = name.clone(); move |_| platform::share_link(&n, &l) }, ShareIcon { size: 16 } "Chia sẻ" }
+                        button { r#type: "button", class: "btn-secondary", onclick: { let l = l.clone(); move |_| platform::copy_to_clipboard(&l) }, CopyIcon {} "Copy" }
+                        button { r#type: "button", class: "btn-secondary", onclick: { let l = l.clone(); let n = name.clone(); move |_| platform::share_link(&n, &l) }, ShareIcon { size: 16 } "Share" }
                     }
                 }
                 if let Some(e) = error() { div { class: "status-badge error", "{e}" } }
                 div { class: "search-field",
                     SearchIcon { size: 16 }
-                    input { r#type: "search", placeholder: "Tìm bạn bè", aria_label: "Tìm bạn bè", value: "{query}", oninput: move |e| query.set(e.value()) }
+                    input { r#type: "search", placeholder: "Find friends", aria_label: "Find friends", value: "{query}", oninput: move |e| query.set(e.value()) }
                 }
                 div { class: "pick-list",
-                    if shown.is_empty() { div { class: "sidebar-empty", "Không có bạn bè phù hợp" } }
+                    if shown.is_empty() { div { class: "sidebar-empty", "No suitable friends" } }
                     for f in shown {
                         {
                             let id = f.id.clone();
@@ -229,16 +229,16 @@ pub fn InviteFriendsDialog(
                                     }
                                     Avatar { name: f.username.clone(), avatar_url: f.avatar_url.clone(), size: 32 }
                                     span { class: "grow", "{f.username}" }
-                                    if done { span { class: "member-sub", CheckIcon { size: 14 } " Đã gửi" } }
+                                    if done { span { class: "member-sub", CheckIcon { size: 14 } " Sent" } }
                                 }
                             }
                         }
                     }
                 }
                 div { class: "modal-actions",
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Xong" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Done" }
                     button { r#type: "button", class: "btn-primary", disabled: picked.read().is_empty() || code().is_none() || busy(), onclick: send,
-                        "Gửi thẻ mời"
+                        "Send invitation cards"
                     }
                 }
             }

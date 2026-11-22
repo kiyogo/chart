@@ -61,10 +61,10 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                 match res {
                     Ok(_) => {
                         note.set(String::new());
-                        msg.set(Some((false, if is_in { "Đã ghi nhận giờ vào ca".into() } else { "Đã ghi nhận giờ tan ca".into() })));
+                        msg.set(Some((false, if is_in { "Recorded shift time".into() } else { "The end of shift time has been recorded".into() })));
                         r();
                     }
-                    Err(e) => msg.set(Some((true, format!("Chưa chấm công được: {}", e.code)))),
+                    Err(e) => msg.set(Some((true, format!("Unable to clock time: {}", e.code)))),
                 }
             });
         }
@@ -75,23 +75,23 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
             div { class: "ent-toolbar",
                 div { class: "ent-inline-bar",
                     select { value: "{work_mode}", onchange: move |e| work_mode.set(e.value()),
-                        option { value: "onsite", "Tại văn phòng" }
-                        option { value: "remote", "Làm từ xa" }
-                        option { value: "hybrid", "Linh hoạt" }
+                        option { value: "onsite", "At the office" }
+                        option { value: "remote", "Work remotely" }
+                        option { value: "hybrid", "Flexible" }
                     }
-                    input { r#type: "text", placeholder: "Ghi chú ca làm", value: "{note}", oninput: move |e| note.set(e.value()) }
-                    button { r#type: "button", class: "btn-primary", onclick: { let c = check.clone(); move |_| c(true) }, "Bấm vào ca" }
-                    button { r#type: "button", class: "btn-secondary", onclick: move |_| check(false), "Bấm tan ca" }
+                    input { r#type: "text", placeholder: "Shift notes", value: "{note}", oninput: move |e| note.set(e.value()) }
+                    button { r#type: "button", class: "btn-primary", onclick: { let c = check.clone(); move |_| c(true) }, "Click on shift" }
+                    button { r#type: "button", class: "btn-secondary", onclick: move |_| check(false), "Click to end shift" }
                 }
                 div { class: "ent-btn-group",
                     button {
                         r#type: "button",
                         class: "btn-secondary",
                         onclick: move |_| show_adj.set(!show_adj()),
-                        PlusIcon { size: 15 } " Điều chỉnh giờ công"
+                        PlusIcon { size: 15 } " Adjust working hours"
                     }
                     if can_export {
-                        a { class: "btn-secondary", href: "{export_attendance_csv_url(&server_id)}", download: "attendance.csv", DownloadIcon { size: 15 } " Xuất CSV" }
+                        a { class: "btn-secondary", href: "{export_attendance_csv_url(&server_id)}", download: "attendance.csv", DownloadIcon { size: 15 } " Export CSV" }
                     }
                 }
             }
@@ -102,14 +102,14 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
             if show_adj() {
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Ngày làm việc" }
+                        label { class: "form-field", span { "Working day" }
                             input { r#type: "date", value: "{adj_date}", oninput: move |e| adj_date.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Giờ vào ca đề xuất" }
+                        label { class: "form-field", span { "Time for proposed shift" }
                             input { r#type: "time", value: "{adj_time}", oninput: move |e| adj_time.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Lý do điều chỉnh" }
-                            input { r#type: "text", placeholder: "Ví dụ: Quên bấm vào ca khi họp khách hàng", value: "{adj_reason}", oninput: move |e| adj_reason.set(e.value()) }
+                        label { class: "form-field", span { "Reason for adjustment" }
+                            input { r#type: "text", placeholder: "For example: Forgot to click on shift during a client meeting", value: "{adj_reason}", oninput: move |e| adj_reason.set(e.value()) }
                         }
                     }
                     div { class: "ent-btn-group",
@@ -126,15 +126,15 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                                         Ok(_) => {
                                             adj_reason.set(String::new());
                                             show_adj.set(false);
-                                            msg.set(Some((false, "Đã gửi đề xuất điều chỉnh công".into())));
+                                            msg.set(Some((false, "The public adjustment proposal has been sent".into())));
                                             r();
                                         }
-                                        Err(e) => msg.set(Some((true, format!("Lỗi gửi đề xuất: {}", e.code)))),
+                                        Err(e) => msg.set(Some((true, format!("Error sending proposal: {}", e.code)))),
                                     }
                                 });
                             }
-                        }, "Gửi điều chỉnh" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_adj.set(false), "Đóng" }
+                        }, "Submit corrections" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_adj.set(false), "Close" }
                     }
                 }
             }
@@ -156,11 +156,11 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                                             button { r#type: "button", class: "btn-primary", onclick: move |_| {
                                                 let (s, id, r) = (sid1.clone(), id1.clone(), r1.clone());
                                                 spawn(async move { if enterprise::decide_adjustment(&s, &id, "approved", "").await.is_ok() { r(); } });
-                                            }, "Duyệt" }
+                                            }, "Browse" }
                                             button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                                 let (s, id, r) = (sid2.clone(), id2.clone(), r2.clone());
                                                 spawn(async move { if enterprise::decide_adjustment(&s, &id, "rejected", "").await.is_ok() { r(); } });
-                                            }, "Từ chối" }
+                                            }, "Refuse" }
                                         }
                                     }
                                 }
@@ -172,7 +172,7 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
 
             div { class: "ent-table-wrap",
                 table { class: "ent-table",
-                    thead { tr { th { "Ngày" } th { "Nhân sự" } th { "Vào ca" } th { "Tan ca" } th { "Hình thức" } th { "Trạng thái" } } }
+                    thead { tr { th { "Date" } th { "Human resources" } th { "Clock in" } th { "Clock out" } th { "Form" } th { "Status" } } }
                     tbody {
                         for row in rows() {
                             tr { key: "{row.id}",
@@ -229,13 +229,13 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-chips",
-                    span { class: "ent-pill ok", "{data().requests.len()} đơn nghỉ phép" }
+                    span { class: "ent-pill ok", "{data().requests.len()} leave application" }
                 }
                 button {
                     r#type: "button",
                     class: "btn-primary",
                     onclick: move |_| show_create.set(!show_create()),
-                    PlusIcon { size: 15 } " Tạo đơn xin nghỉ"
+                    PlusIcon { size: 15 } " Create a leave application"
                 }
             }
             if let Some((is_err, text)) = msg() {
@@ -245,8 +245,8 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
                 for b in data().balances {
                     div { key: "{b.leave_type}-{b.year}", class: "ent-kpi-card",
                         div { class: "ent-kpi-head", span { "{enterprise::vn_leave_type(&b.leave_type)} ({b.year})" } }
-                        div { class: "ent-kpi-val", "{b.total_days - b.used_days} ngày còn" }
-                        div { class: "ent-kpi-sub", "Đã dùng {b.used_days}/{b.total_days} ngày" }
+                        div { class: "ent-kpi-val", "{b.total_days - b.used_days} days left" }
+                        div { class: "ent-kpi-sub", "Used {b.used_days}/{b.total_days} days" }
                     }
                 }
             }
@@ -254,28 +254,28 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
             if show_create() {
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Loại nghỉ phép" }
+                        label { class: "form-field", span { "Type of leave" }
                             select { value: "{leave_type}", onchange: move |e| leave_type.set(e.value()),
-                                option { value: "annual", "Phép năm" }
-                                option { value: "sick", "Nghỉ ốm" }
-                                option { value: "unpaid", "Nghỉ không lương" }
+                                option { value: "annual", "Permit year" }
+                                option { value: "sick", "Sick leave" }
+                                option { value: "unpaid", "Leave without pay" }
                             }
                         }
-                        label { class: "form-field", span { "Từ ngày" }
+                        label { class: "form-field", span { "From date" }
                             input { r#type: "date", value: "{start_date}", oninput: move |e| start_date.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Đến ngày" }
+                        label { class: "form-field", span { "Come day" }
                             input { r#type: "date", value: "{end_date}", oninput: move |e| end_date.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Khung buổi" }
+                        label { class: "form-field", span { "Session frame" }
                             select { value: "{half_day}", onchange: move |e| half_day.set(e.value()),
-                                option { value: "full", "Cả ngày" }
-                                option { value: "morning", "Nửa buổi sáng" }
-                                option { value: "afternoon", "Nửa buổi chiều" }
+                                option { value: "full", "All day" }
+                                option { value: "morning", "Half morning" }
+                                option { value: "afternoon", "Half afternoon" }
                             }
                         }
-                        label { class: "form-field", span { "Lý do xin nghỉ" }
-                            input { r#type: "text", placeholder: "Nhập lý do xin nghỉ", value: "{reason}", oninput: move |e| reason.set(e.value()) }
+                        label { class: "form-field", span { "Reason for leave" }
+                            input { r#type: "text", placeholder: "Enter the reason for leaving", value: "{reason}", oninput: move |e| reason.set(e.value()) }
                         }
                     }
                     div { class: "ent-btn-group",
@@ -284,7 +284,7 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
                             let r = reload.clone();
                             move |_| {
                                 if start_date().is_empty() || end_date().is_empty() || reason().trim().is_empty() {
-                                    msg.set(Some((true, "Nhập đầy đủ ngày bắt đầu, kết thúc và lý do".into())));
+                                    msg.set(Some((true, "Enter the full start date, end date and reason".into())));
                                     return;
                                 }
                                 let (sid, r) = (sid.clone(), r.clone());
@@ -300,15 +300,15 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
                                         Ok(_) => {
                                             reason.set(String::new());
                                             show_create.set(false);
-                                            msg.set(Some((false, "Đã gửi đơn xin nghỉ phép".into())));
+                                            msg.set(Some((false, "Leave application has been sent".into())));
                                             r();
                                         }
-                                        Err(e) => msg.set(Some((true, format!("Gửi đơn thất bại: {}", e.code)))),
+                                        Err(e) => msg.set(Some((true, format!("Application submission failed: {}", e.code)))),
                                     }
                                 });
                             }
-                        }, "Gửi đơn" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                        }, "Submit application" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Close" }
                     }
                 }
             }
@@ -326,7 +326,7 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
                                     div { class: "ent-row-title",
                                         strong { "{req.username}" }
                                         span { class: "ent-pill", "{enterprise::vn_leave_type(&req.leave_type)}" }
-                                        span { class: "ent-pill", "{req.start_date} đến {req.end_date} ({req.days_count} ngày)" }
+                                        span { class: "ent-pill", "{req.start_date} to {req.end_date} ({req.days_count} days)" }
                                         span { class: "ent-pill ok", "{enterprise::vn_approval_status(&req.status)}" }
                                     }
                                     div { class: "ent-muted", "{req.reason}" }
@@ -339,20 +339,20 @@ pub fn LeavePanel(server_id: String, my_id: String, cfg: EnterpriseConfig, refre
                                                 spawn(async move {
                                                     match enterprise::decide_leave(&s, &id, "approved", "").await {
                                                         Ok(_) => r(),
-                                                        Err(e) => msg.set(Some((true, format!("Lỗi duyệt: {}", e.code)))),
+                                                        Err(e) => msg.set(Some((true, format!("Browsing error: {}", e.code)))),
                                                     }
                                                 });
-                                            }, "Duyệt" }
+                                            }, "Browse" }
                                             button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                                 let (s, id, r) = (s2.clone(), id2.clone(), r2.clone());
                                                 spawn(async move { if enterprise::decide_leave(&s, &id, "rejected", "").await.is_ok() { r(); } });
-                                            }, "Từ chối" }
+                                            }, "Refuse" }
                                         }
                                         if is_mine {
                                             button { r#type: "button", class: "btn-ghost", onclick: move |_| {
                                                 let (s, id, r) = (s3.clone(), id3.clone(), r3.clone());
                                                 spawn(async move { if enterprise::decide_leave(&s, &id, "withdrawn", "").await.is_ok() { r(); } });
-                                            }, "Thu hồi" }
+                                            }, "Withdrawal" }
                                         }
                                     }
                                 }
@@ -407,13 +407,13 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-chips",
-                    span { class: "ent-pill ok", "{meetings().len()} cuộc họp đã lên lịch" }
+                    span { class: "ent-pill ok", "{meetings().len()} scheduled meeting" }
                 }
                 button {
                     r#type: "button",
                     class: "btn-primary",
                     onclick: move |_| show_create.set(!show_create()),
-                    PlusIcon { size: 15 } " Đặt lịch họp"
+                    PlusIcon { size: 15 } " Schedule a meeting"
                 }
             }
             if let Some((is_err, text)) = msg() {
@@ -422,29 +422,29 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
             if show_create() {
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Tiêu đề cuộc họp" }
-                            input { r#type: "text", placeholder: "Nhập tiêu đề cuộc họp", value: "{title}", oninput: move |e| title.set(e.value()) }
+                        label { class: "form-field", span { "Meeting title" }
+                            input { r#type: "text", placeholder: "Enter a meeting title", value: "{title}", oninput: move |e| title.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Hình thức họp" }
+                        label { class: "form-field", span { "Meeting format" }
                             select { value: "{meeting_type}", onchange: move |e| meeting_type.set(e.value()),
                                 option { value: "video", "Video" }
-                                option { value: "standup", "Họp nhanh" }
-                                option { value: "review", "Đánh giá" }
-                                option { value: "all_hands", "Toàn công ty" }
+                                option { value: "standup", "Quick meeting" }
+                                option { value: "review", "Review" }
+                                option { value: "all_hands", "Whole company" }
                             }
                         }
-                        label { class: "form-field", span { "Ngày họp" }
+                        label { class: "form-field", span { "Meeting date" }
                             input { r#type: "date", value: "{date_str}", oninput: move |e| date_str.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Giờ bắt đầu" }
+                        label { class: "form-field", span { "Start time" }
                             input { r#type: "time", value: "{start_time}", oninput: move |e| start_time.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Giờ kết thúc" }
+                        label { class: "form-field", span { "End time" }
                             input { r#type: "time", value: "{end_time}", oninput: move |e| end_time.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Phòng thoại liên kết" }
+                        label { class: "form-field", span { "Linked voice room" }
                             select { value: "{voice_ch_id}", onchange: move |e| voice_ch_id.set(e.value()),
-                                option { value: "", "Tự động" }
+                                option { value: "", "Auto" }
                                 for ch in channels() {
                                     if ch.channel_type == "voice" {
                                         option { key: "{ch.id}", value: "{ch.id}", "{ch.name}" }
@@ -454,7 +454,7 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
                         }
                         label { style: "display: flex; align-items: center; gap: 6px; padding-top: 18px;",
                             input { r#type: "checkbox", checked: waiting_room(), onchange: move |e| waiting_room.set(e.checked()) }
-                            "Bật phòng chờ duyệt"
+                            "Turn on browsing lounge"
                         }
                     }
                     div { class: "ent-btn-group",
@@ -481,15 +481,15 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
                                             title.set(String::new());
                                             show_create.set(false);
                                             let warn = v.get("conflict_warning").and_then(|x| x.as_bool()).unwrap_or(false);
-                                            msg.set(Some((false, if warn { "Đã tạo lịch họp (cảnh báo trùng khung giờ)".into() } else { "Đã đặt lịch cuộc họp".into() })));
+                                            msg.set(Some((false, if warn { "Created meeting schedule (warning about overlapping time frames)".into() } else { "Meeting scheduled".into() })));
                                             r();
                                         }
-                                        Err(e) => msg.set(Some((true, format!("Không tạo được lịch họp: {}", e.code)))),
+                                        Err(e) => msg.set(Some((true, format!("Unable to create meeting schedule: {}", e.code)))),
                                     }
                                 });
                             }
-                        }, "Lưu lịch họp" }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                        }, "Save meeting schedule" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Close" }
                     }
                 }
             }
@@ -499,7 +499,7 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
                     {
                         let mid_m = m.id.clone();
                         let mid_t = m.id.clone();
-                        let title_t = format!("Theo dõi sau họp: {}", m.title);
+                        let title_t = format!("Post-meeting follow-up: {}", m.title);
                         let min_cur = m.minutes.clone();
                         let sid_m = server_id.clone();
                         let sid_t = server_id.clone();
@@ -513,24 +513,24 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
                                     }
                                 }
                                 div { class: "ent-chips",
-                                    span { class: "ent-pill", "Chủ trì: {m.host_name}" }
-                                    span { class: "ent-pill", "Bắt đầu: {m.starts_at.chars().take(16).collect::<String>()}" }
+                                    span { class: "ent-pill", "Chair: {m.host_name}" }
+                                    span { class: "ent-pill", "Start: {m.starts_at.chars().take(16).collect::<String>()}" }
                                 }
                                 if !m.minutes.is_empty() {
                                     div { class: "ent-quote", "{m.minutes}" }
                                 }
                                 div { class: "ent-btn-group",
-                                    button { r#type: "button", class: "btn-secondary", onclick: move |_| minutes_edit.set(Some((mid_m.clone(), min_cur.clone()))), "Biên bản" }
+                                    button { r#type: "button", class: "btn-secondary", onclick: move |_| minutes_edit.set(Some((mid_m.clone(), min_cur.clone()))), "Minutes" }
                                     button { r#type: "button", class: "btn-secondary", onclick: move |_| {
                                         let (sid, tt) = (sid_t.clone(), title_t.clone());
                                         let _ = mid_t;
                                         spawn(async move {
                                             match enterprise::create_task(&sid, json!({ "title": tt, "priority": "medium" })).await {
-                                                Ok(_) => msg.set(Some((false, "Đã chuyển thành công việc trong bảng tiến độ".into()))),
-                                                Err(e) => msg.set(Some((true, format!("Không tạo được việc: {}", e.code)))),
+                                                Ok(_) => msg.set(Some((false, "Converted to work in progress table".into()))),
+                                                Err(e) => msg.set(Some((true, format!("Unable to create job: {}", e.code)))),
                                             }
                                         });
-                                    }, "Tạo công việc" }
+                                    }, "Create jobs" }
                                 }
                                 if let Some((eid, txt)) = minutes_edit() {
                                     if eid == m.id {
@@ -551,8 +551,8 @@ pub fn MeetingsPanel(server_id: String, refresh_tick: u64) -> Element {
                                                             }
                                                         });
                                                     }
-                                                }, "Lưu biên bản" }
-                                                button { r#type: "button", class: "btn-ghost", onclick: move |_| minutes_edit.set(None), "Đóng" }
+                                                }, "Save minutes" }
+                                                button { r#type: "button", class: "btn-ghost", onclick: move |_| minutes_edit.set(None), "Close" }
                                             }
                                         }
                                     }
@@ -615,38 +615,38 @@ pub fn CalendarPanel(server_id: String, refresh_tick: u64) -> Element {
             div { class: "ent-toolbar",
                 div { class: "ent-inline-bar",
                     div { class: "ent-segmented",
-                        button { r#type: "button", class: if horizon() == "day" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("day".into()), "Ngày" }
-                        button { r#type: "button", class: if horizon() == "week" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("week".into()), "Tuần" }
-                        button { r#type: "button", class: if horizon() == "month" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("month".into()), "Tháng" }
+                        button { r#type: "button", class: if horizon() == "day" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("day".into()), "Date" }
+                        button { r#type: "button", class: if horizon() == "week" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("week".into()), "Week" }
+                        button { r#type: "button", class: if horizon() == "month" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("month".into()), "Month" }
                     }
                     div { class: "ent-segmented",
-                        button { r#type: "button", class: if filter() == "all" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("all".into()), "Tất cả" }
-                        button { r#type: "button", class: if filter() == "meetings" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("meetings".into()), "Cuộc họp ({meetings().len()})" }
-                        button { r#type: "button", class: if filter() == "tasks" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("tasks".into()), "Hạn việc ({due_tasks.len()})" }
-                        button { r#type: "button", class: if filter() == "leave" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("leave".into()), "Nghỉ phép ({leave().requests.len()})" }
+                        button { r#type: "button", class: if filter() == "all" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("all".into()), "All" }
+                        button { r#type: "button", class: if filter() == "meetings" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("meetings".into()), "Meeting ({meetings().len()})" }
+                        button { r#type: "button", class: if filter() == "tasks" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("tasks".into()), "Job term ({due_tasks.len()})" }
+                        button { r#type: "button", class: if filter() == "leave" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("leave".into()), "Leave ({leave().requests.len()})" }
                     }
                 }
                 button {
                     r#type: "button",
                     class: "btn-primary",
                     onclick: move |_| show_create.set(!show_create()),
-                    PlusIcon { size: 15 } " Thêm sự kiện lịch"
+                    PlusIcon { size: 15 } " Add calendar events"
                 }
             }
 
             if show_create() {
                 div { class: "ent-card",
                     div { class: "ent-form-grid",
-                        label { class: "form-field", span { "Tên sự kiện / Cuộc họp" }
-                            input { r#type: "text", placeholder: "Nhập tiêu đề lịch làm việc", value: "{m_title}", oninput: move |e| m_title.set(e.value()) }
+                        label { class: "form-field", span { "Event/Meeting name" }
+                            input { r#type: "text", placeholder: "Enter the schedule title", value: "{m_title}", oninput: move |e| m_title.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Ngày" }
+                        label { class: "form-field", span { "Date" }
                             input { r#type: "date", value: "{m_date}", oninput: move |e| m_date.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Bắt đầu" }
+                        label { class: "form-field", span { "Get started" }
                             input { r#type: "time", value: "{m_start}", oninput: move |e| m_start.set(e.value()) }
                         }
-                        label { class: "form-field", span { "Kết thúc" }
+                        label { class: "form-field", span { "End" }
                             input { r#type: "time", value: "{m_end}", oninput: move |e| m_end.set(e.value()) }
                         }
                     }
@@ -673,9 +673,9 @@ pub fn CalendarPanel(server_id: String, refresh_tick: u64) -> Element {
                                     });
                                 }
                             },
-                            "Lưu vào lịch"
+                            "Save to calendar"
                         }
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Đóng" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| show_create.set(false), "Close" }
                     }
                 }
             }
@@ -688,10 +688,10 @@ pub fn CalendarPanel(server_id: String, refresh_tick: u64) -> Element {
                             div { class: "grow",
                                 div { class: "ent-row-title",
                                     strong { "{m.title}" }
-                                    span { class: "ent-pill ok", "Cuộc họp · {enterprise::vn_meeting_type(&m.meeting_type)}" }
+                                    span { class: "ent-pill ok", "Meeting · {enterprise::vn_meeting_type(&m.meeting_type)}" }
                                     span { class: "ent-pill", "{enterprise::vn_meeting_status(&m.status)}" }
                                 }
-                                div { class: "ent-muted", "Chủ trì: {m.host_name}" }
+                                div { class: "ent-muted", "Chair: {m.host_name}" }
                             }
                         }
                     }
@@ -704,13 +704,13 @@ pub fn CalendarPanel(server_id: String, refresh_tick: u64) -> Element {
                                 div { class: "grow",
                                     div { class: "ent-row-title",
                                         strong { "{t.title}" }
-                                        span { class: "ent-pill", "Hạn công việc" }
+                                        span { class: "ent-pill", "Work term" }
                                         span { class: "ent-pill", "{enterprise::vn_task_status(&t.status)}" }
                                         span { class: "ent-pill", "{enterprise::vn_priority(&t.priority)}" }
                                     }
                                     div { class: "ent-muted",
-                                        if let Some(an) = &t.assignee_name { "Phụ trách: {an}" } else { "Chưa phân công" }
-                                        if let Some(pn) = &t.project_name { " · Dự án: {pn}" }
+                                        if let Some(an) = &t.assignee_name { "In charge: {an}" } else { "Not assigned yet" }
+                                        if let Some(pn) = &t.project_name { " · Project: {pn}" }
                                     }
                                 }
                             }
@@ -723,11 +723,11 @@ pub fn CalendarPanel(server_id: String, refresh_tick: u64) -> Element {
                             div { class: "ent-timeline-date", "{lr.start_date}" }
                             div { class: "grow",
                                 div { class: "ent-row-title",
-                                    strong { "Nghỉ phép: {lr.username}" }
+                                    strong { "Leave: {lr.username}" }
                                     span { class: "ent-pill", "{enterprise::vn_leave_type(&lr.leave_type)}" }
                                     span { class: "ent-pill ok", "{enterprise::vn_approval_status(&lr.status)}" }
                                 }
-                                div { class: "ent-muted", "{lr.start_date} đến {lr.end_date} ({lr.days_count} ngày) · {lr.reason}" }
+                                div { class: "ent-muted", "{lr.start_date} to {lr.end_date} ({lr.days_count} days) · {lr.reason}" }
                             }
                         }
                     }

@@ -99,11 +99,11 @@ pub fn DrawStudio(target: String, on_saved: EventHandler<String>, on_close: Even
                 serde_json::to_string(&id).unwrap_or_default()
             ));
             let result: Result<String, String> = async {
-                let data_url = ev.recv::<String>().await.map_err(|_| "Không xuất được hình vẽ".to_string())?;
-                let b64 = data_url.split(',').nth(1).ok_or("Dữ liệu ảnh không hợp lệ")?;
+                let data_url = ev.recv::<String>().await.map_err(|_| "Unable to export drawing".to_string())?;
+                let b64 = data_url.split(',').nth(1).ok_or("Invalid photo data")?;
                 use base64::Engine;
-                let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "Dữ liệu ảnh không hợp lệ".to_string())?;
-                library::upload_media(bytes, "image/png").await.map_err(|_e| "Tải lên thất bại".to_string())
+                let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| "Invalid photo data".to_string())?;
+                library::upload_media(bytes, "image/png").await.map_err(|_e| "Upload failed".to_string())
             }
             .await;
             match result {
@@ -115,14 +115,14 @@ pub fn DrawStudio(target: String, on_saved: EventHandler<String>, on_close: Even
     };
 
     let label = match target.as_str() {
-        "nameplate" => "Vẽ bảng tên",
-        "effect" => "Vẽ hiệu ứng hồ sơ",
-        _ => "Vẽ khung ảnh đại diện",
+        "nameplate" => "Draw a nameplate",
+        "effect" => "Draw profile effects",
+        _ => "Draw a representative photo frame",
     };
     let hint = match target.as_str() {
-        "nameplate" => "Bảng tên hiển thị phía sau tên bạn trong danh sách trò chuyện và trên hồ sơ.",
-        "effect" => "Hình vẽ được phủ lên hồ sơ; chọn kiểu chuyển động sau khi lưu.",
-        _ => "Vòng tròn mờ là vị trí ảnh đại diện. Vẽ quanh viền để làm khung.",
+        "nameplate" => "The nameplate appears behind your name in the chat list and on your profile.",
+        "effect" => "The drawing is overlaid on the profile; Select the motion type after saving.",
+        _ => "The blurred circle is the avatar location. Draw around the edges to make a frame.",
     };
     let c_id = canvas_id.clone();
     let c_id2 = canvas_id.clone();
@@ -137,13 +137,13 @@ pub fn DrawStudio(target: String, on_saved: EventHandler<String>, on_close: Even
                     div { class: "settings-group-title", "{label}" }
                     div { class: "form-hint", "{hint}" }
                 }
-                button { r#type: "button", class: "icon-btn", aria_label: "Đóng xưởng vẽ", onclick: move |_| on_close.call(()), CloseIcon {} }
+                button { r#type: "button", class: "icon-btn", aria_label: "Close the studio", onclick: move |_| on_close.call(()), CloseIcon {} }
             }
             div { class: "studio-stage studio-{target}",
                 canvas { id: "{canvas_id}", width: "{w}", height: "{h}", class: "studio-canvas", aria_label: "{label}" }
             }
             div { class: "studio-tools",
-                div { class: "studio-swatches", role: "radiogroup", aria_label: "Màu vẽ",
+                div { class: "studio-swatches", role: "radiogroup", aria_label: "Painting color",
                     for c in PALETTE {
                         {
                             let id = c_id.clone();
@@ -153,7 +153,7 @@ pub fn DrawStudio(target: String, on_saved: EventHandler<String>, on_close: Even
                                     r#type: "button",
                                     class: if color() == c { "studio-swatch active" } else { "studio-swatch" },
                                     style: "background: {c};",
-                                    aria_label: "Màu {c}",
+                                    aria_label: "Color {c}",
                                     onclick: move |_| { color.set(c.to_string()); cmd(&id, "color", c); if mode() == "eraser" { mode.set("pen"); cmd(&id, "mode", "pen"); } },
                                 }
                             }
@@ -162,14 +162,14 @@ pub fn DrawStudio(target: String, on_saved: EventHandler<String>, on_close: Even
                     input {
                         r#type: "color",
                         class: "studio-color",
-                        aria_label: "Chọn màu tự do",
+                        aria_label: "Choose color freely",
                         value: "{color}",
                         oninput: move |e| { let v = e.value(); cmd(&c_id2, "color", &v); color.set(v); },
                     }
                 }
                 div { class: "studio-row",
                     div { class: "segmented",
-                        for (m, l) in [("pen", "Bút"), ("eraser", "Tẩy"), ("star", "Dấu sao")] {
+                        for (m, l) in [("pen", "Pen"), ("eraser", "Eraser"), ("star", "Star sign")] {
                             {
                                 let id = c_id3.clone();
                                 rsx! {
@@ -183,19 +183,19 @@ pub fn DrawStudio(target: String, on_saved: EventHandler<String>, on_close: Even
                         }
                     }
                     label { class: "range-row", style: "max-width: 14rem;",
-                        span { class: "form-label", "Cỡ" }
-                        input { r#type: "range", min: "2", max: "40", value: "{size}", aria_label: "Cỡ nét",
+                        span { class: "form-label", "Size" }
+                        input { r#type: "range", min: "2", max: "40", value: "{size}", aria_label: "Sharpness size",
                             oninput: move |e| { let v = e.value(); cmd(&c_id4, "size", &v); size.set(v.parse().unwrap_or(8)); } }
                         span { class: "range-value", "{size}px" }
                     }
-                    button { r#type: "button", class: "btn-secondary", onclick: { let id = c_id5.clone(); move |_| cmd(&id, "undo", "") }, "Hoàn tác" }
-                    button { r#type: "button", class: "btn-secondary", onclick: { let id = canvas_id.clone(); move |_| cmd(&id, "clear", "") }, "Xóa hết" }
+                    button { r#type: "button", class: "btn-secondary", onclick: { let id = c_id5.clone(); move |_| cmd(&id, "undo", "") }, "Undo" }
+                    button { r#type: "button", class: "btn-secondary", onclick: { let id = canvas_id.clone(); move |_| cmd(&id, "clear", "") }, "Delete all" }
                 }
             }
             if let Some(e) = error() { div { class: "status-badge error", "{e}" } }
             div { class: "studio-foot",
                 button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: save,
-                    if busy() { span { class: "spinner" } } else { "Lưu và dùng" }
+                    if busy() { span { class: "spinner" } } else { "Save and use" }
                 }
             }
         }

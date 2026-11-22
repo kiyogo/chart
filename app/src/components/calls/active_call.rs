@@ -201,9 +201,9 @@ pub fn ActiveCallOverlay(
     let call_title = if let Some(t) = session.meet_title.as_ref().filter(|s| !s.trim().is_empty()) {
         t.clone()
     } else if is_group {
-        session.group_name.clone().unwrap_or_else(|| "Cuộc gọi nhóm".to_string())
+        session.group_name.clone().unwrap_or_else(|| "Group call".to_string())
     } else if session.caller_id == current_user_id {
-        session.receiver_name.clone().unwrap_or_else(|| "Cuộc gọi".to_string())
+        session.receiver_name.clone().unwrap_or_else(|| "Call".to_string())
     } else {
         session.caller_name.clone()
     };
@@ -233,7 +233,7 @@ pub fn ActiveCallOverlay(
                     }
                     span { style: "font-weight: 600; font-size: 16px; color: #F8FAFC;", "{call_title}" }
                     span { style: "background: rgba(255, 255, 255, 0.08); padding: 4px 10px; border-radius: 12px; font-size: 12px; color: #94A3B8;",
-                        "{total_participants} người tham gia"
+                        "{total_participants} participants"
                     }
                     span {
                         class: "sfu-status-pill",
@@ -242,7 +242,7 @@ pub fn ActiveCallOverlay(
                         } else {
                             "background: rgba(59, 130, 246, 0.15); color: #93C5FD; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;"
                         },
-                        if sfu_connected { "Máy chủ SFU · Đã kết nối" } else { "Máy chủ SFU · Đang kết nối" }
+                        if sfu_connected { "SFU Server · Connected" } else { "SFU Server · Connecting" }
                     }
                 }
                 if let Some(code) = meet_code_opt {
@@ -253,7 +253,7 @@ pub fn ActiveCallOverlay(
                                 span {
                                     class: "call-meet-code",
                                     style: "background: rgba(255, 255, 255, 0.08); color: #E2E8F0; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-family: monospace;",
-                                    "Mã: {code}"
+                                    "Code: {code}"
                                 }
                                 button {
                                     r#type: "button",
@@ -270,10 +270,10 @@ pub fn ActiveCallOverlay(
                                     },
                                     if copied_link() {
                                         CheckIcon { size: 15 }
-                                        "Đã sao chép link"
+                                        "Link copied"
                                     } else {
                                         CopyIcon { size: 15 }
-                                        "Sao chép link mời"
+                                        "Copy invitation link"
                                     }
                                 }
                             }
@@ -303,9 +303,9 @@ pub fn ActiveCallOverlay(
                                 div { style: "position: absolute; top: 10px; left: 10px; background: rgba(15, 23, 42, 0.78); color: #F8FAFC; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;",
                                     MonitorIcon { size: 14 }
                                     if let Some(ref pname) = remote_presenter_name {
-                                        "{pname} đang chia sẻ màn hình"
+                                        "{pname} is sharing the screen"
                                     } else {
-                                        "Màn hình đang được chia sẻ"
+                                        "The screen is being shared"
                                     }
                                 }
                             }
@@ -322,7 +322,7 @@ pub fn ActiveCallOverlay(
                                 }
                                 div { style: "position: absolute; top: 10px; left: 10px; background: rgba(37, 99, 235, 0.88); color: #FFFFFF; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;",
                                     MonitorIcon { size: 14 }
-                                    "Bạn đang chia sẻ màn hình"
+                                    "You are sharing your screen"
                                 }
                             }
                         }
@@ -350,18 +350,18 @@ pub fn ActiveCallOverlay(
                             div { style: "display: flex; flex-direction: column; align-items: center; gap: 8px;",
                                 Avatar {
                                     user_id: current_user_id.clone(),
-                                    username: "Bạn".to_string(),
+                                    username: "You".to_string(),
                                     avatar_url: None,
                                     size: if show_stage { 44 } else { 64 },
                                 }
                                 if !show_stage {
-                                    span { style: "color: #94A3B8; font-size: 13px;", "Camera đang tắt" }
+                                    span { style: "color: #94A3B8; font-size: 13px;", "Camera is off" }
                                 }
                             }
                         }
                         div { style: "position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white;",
-                            "Bạn"
-                            if is_muted() { " · Đã tắt tiếng" }
+                            "You"
+                            if is_muted() { " · Muted" }
                         }
                     }
 
@@ -401,7 +401,7 @@ pub fn ActiveCallOverlay(
                                     }
                                     div { style: "position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white;",
                                         "{p.username}"
-                                        if p.muted { " · Đã tắt tiếng" }
+                                        if p.muted { " · Muted" }
                                     }
                                 }
                             }
@@ -416,8 +416,8 @@ pub fn ActiveCallOverlay(
                 button {
                     r#type: "button",
                     class: "partner-action-btn",
-                    title: if is_muted() { "Bật micro" } else { "Tắt micro" },
-                    aria_label: if is_muted() { "Bật micro" } else { "Tắt micro" },
+                    title: if is_muted() { "Turn on the microphone" } else { "Turn off the microphone" },
+                    aria_label: if is_muted() { "Turn on the microphone" } else { "Turn off the microphone" },
                     style: if is_muted() { "background: #EF4444; color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" } else { "background: rgba(255,255,255,0.15); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" },
                     onclick: handle_toggle_mic,
                     if is_muted() {
@@ -431,8 +431,8 @@ pub fn ActiveCallOverlay(
                 button {
                     r#type: "button",
                     class: "partner-action-btn",
-                    title: if is_camera_off() { "Bật camera" } else { "Tắt camera" },
-                    aria_label: if is_camera_off() { "Bật camera" } else { "Tắt camera" },
+                    title: if is_camera_off() { "Turn on the camera" } else { "Turn off the camera" },
+                    aria_label: if is_camera_off() { "Turn on the camera" } else { "Turn off the camera" },
                     style: if is_camera_off() { "background: #EF4444; color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" } else { "background: rgba(255,255,255,0.15); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" },
                     onclick: handle_toggle_camera,
                     if is_camera_off() {
@@ -446,8 +446,8 @@ pub fn ActiveCallOverlay(
                 button {
                     r#type: "button",
                     class: "partner-action-btn",
-                    title: if is_screen_sharing() { "Dừng chia sẻ màn hình" } else { "Chia sẻ màn hình" },
-                    aria_label: if is_screen_sharing() { "Dừng chia sẻ màn hình" } else { "Chia sẻ màn hình" },
+                    title: if is_screen_sharing() { "Stop screen sharing" } else { "Screen sharing" },
+                    aria_label: if is_screen_sharing() { "Stop screen sharing" } else { "Screen sharing" },
                     style: if is_screen_sharing() { "background: #2563EB; color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" } else { "background: rgba(255,255,255,0.15); color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;" },
                     onclick: handle_toggle_screen,
                     MonitorIcon { size: 22 }
@@ -457,8 +457,8 @@ pub fn ActiveCallOverlay(
                 button {
                     r#type: "button",
                     class: "call-btn call-btn-danger",
-                    title: "Rời cuộc gọi",
-                    aria_label: "Rời cuộc gọi",
+                    title: "Leave the call",
+                    aria_label: "Leave the call",
                     style: "background: #EF4444; color: white; border: none; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;",
                     onclick: move |_| on_end_call.call(()),
                     PhoneOffIcon { size: 24 }

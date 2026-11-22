@@ -48,28 +48,28 @@ enum SettingsTab {
 
 /// (group title, tab, short label). Labels stay on one line; no descriptions.
 const NAV: [(&str, SettingsTab, &str); 22] = [
-    ("Tài khoản", SettingsTab::Account, "Tài khoản"),
-    ("Tài khoản", SettingsTab::Privacy, "Quyền riêng tư"),
-    ("Tài khoản", SettingsTab::Security, "Bảo mật"),
-    ("Tài khoản", SettingsTab::Lock, "Khóa ứng dụng"),
-    ("Tài khoản", SettingsTab::Session, "Thiết bị"),
-    ("Tài khoản", SettingsTab::Storage, "Lưu trữ"),
-    ("Tài khoản", SettingsTab::SyncRecovery, "Đồng bộ"),
-    ("Tài khoản", SettingsTab::Backup, "Sao lưu"),
-    ("Tài khoản", SettingsTab::Cloud, "Đám mây"),
-    ("Ứng dụng", SettingsTab::Chat, "Trò chuyện"),
-    ("Ứng dụng", SettingsTab::Notifications, "Thông báo"),
-    ("Ứng dụng", SettingsTab::AutoReply, "Trả lời tự động"),
-    ("Ứng dụng", SettingsTab::Appearance, "Giao diện"),
-    ("Ứng dụng", SettingsTab::Customize, "Tùy chỉnh"),
-    ("Ứng dụng", SettingsTab::Language, "Ngôn ngữ"),
-    ("Sáng tạo", SettingsTab::Stickers, "Thư viện"),
-    ("Sáng tạo", SettingsTab::Studio, "Vẽ hình"),
-    ("Sáng tạo", SettingsTab::Inventory, "Kho đồ"),
-    ("Sáng tạo", SettingsTab::Demo, "Xem thử"),
-    ("Khác", SettingsTab::Business, "Kinh doanh"),
-    ("Khác", SettingsTab::Bots, "Tiện ích"),
-    ("Khác", SettingsTab::Guide, "Hướng dẫn"),
+    ("Account", SettingsTab::Account, "Account"),
+    ("Account", SettingsTab::Privacy, "Privacy"),
+    ("Account", SettingsTab::Security, "Security"),
+    ("Account", SettingsTab::Lock, "App lock"),
+    ("Account", SettingsTab::Session, "Devices"),
+    ("Account", SettingsTab::Storage, "Storage"),
+    ("Account", SettingsTab::SyncRecovery, "Sync"),
+    ("Account", SettingsTab::Backup, "Backup"),
+    ("Account", SettingsTab::Cloud, "Cloud"),
+    ("Application", SettingsTab::Chat, "Chat"),
+    ("Application", SettingsTab::Notifications, "Notifications"),
+    ("Application", SettingsTab::AutoReply, "Auto reply"),
+    ("Application", SettingsTab::Appearance, "Appearance"),
+    ("Application", SettingsTab::Customize, "Customize"),
+    ("Application", SettingsTab::Language, "Language"),
+    ("Creative", SettingsTab::Stickers, "Library"),
+    ("Creative", SettingsTab::Studio, "Draw"),
+    ("Creative", SettingsTab::Inventory, "Inventory"),
+    ("Creative", SettingsTab::Demo, "Showcase"),
+    ("Other", SettingsTab::Business, "Business"),
+    ("Other", SettingsTab::Bots, "Extensions"),
+    ("Other", SettingsTab::Guide, "Guide"),
 ];
 
 fn tab_label(t: SettingsTab) -> &'static str {
@@ -150,18 +150,18 @@ pub fn SettingsView(
                         button {
                             r#type: "button",
                             class: "icon-btn",
-                            aria_label: "Quay lại danh sách cài đặt",
+                            aria_label: "Back to settings",
                             onclick: move |_| has_detail.set(false),
                             BackIcon {}
                         }
-                        span { class: "settings-mobile-title", "Cài đặt" }
+                        span { class: "settings-mobile-title", "Settings" }
                     }
                 }
                 // Left Settings Nav (on mobile this is the first screen)
-                nav { class: "settings-nav", aria_label: "Danh mục cài đặt",
+                nav { class: "settings-nav", aria_label: "Settings categories",
                     div { class: "settings-search search-field",
                         crate::components::icons::SearchIcon { size: 16 }
-                        input { r#type: "search", placeholder: "Tìm cài đặt", aria_label: "Tìm cài đặt", value: "{nav_query}",
+                        input { r#type: "search", placeholder: "Search settings", aria_label: "Search settings", value: "{nav_query}",
                             oninput: move |e| nav_query.set(e.value()),
                             onkeydown: move |e| if e.key() == Key::Enter {
                                 let q = crate::components::composer::fold(nav_query().trim());
@@ -173,7 +173,7 @@ pub fn SettingsView(
                         }
                     }
                     if !nav_query().trim().is_empty() && !NAV.iter().any(|(_, t, l)| { let q = crate::components::composer::fold(nav_query().trim()); crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
-                        div { class: "sidebar-empty", "Không tìm thấy cài đặt phù hợp" }
+                        div { class: "sidebar-empty", "No matching settings found" }
                     }
                     for (i, (group, t, label)) in NAV.iter().copied().enumerate().filter(|(_, (_, t, l))| { let q = crate::components::composer::fold(nav_query().trim()); q.is_empty() || crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
                         if nav_query().trim().is_empty() && (i == 0 || NAV[i - 1].0 != group) {
@@ -219,7 +219,7 @@ pub fn SettingsView(
                 div {
                     class: "panel-resizer",
                     "data-resizer": "settings-nav",
-                    title: "Kéo để thay đổi kích thước danh mục",
+                    title: "Drag to resize sidebar",
                 }
 
                 // Right Settings Body
@@ -248,7 +248,7 @@ pub fn SettingsView(
                                         r#type: "button",
                                         class: "btn-primary",
                                         onclick: move |_| on_open_profile.call(()),
-                                        "Chỉnh sửa hồ sơ"
+                                        "Edit profile"
                                     }
                                   }
                                   div { class: "settings-profile-action", style: "padding: 0 var(--space-5) var(--space-5);",
@@ -266,16 +266,16 @@ pub fn SettingsView(
                                                         match platform::process_selected_avatar_bytes().await {
                                                             Ok(bytes) => match api::users_upload_avatar(bytes).await {
                                                                 Ok(resp) => on_avatar_updated.call(resp.avatar_url),
-                                                                Err(_) => avatar_error.set(Some("Không thể cập nhật ảnh đại diện".into())),
+                                                                Err(_) => avatar_error.set(Some("Unable to update avatar".into())),
                                                             },
                                                             Err(e) if e == "no_file" => {}
-                                                            Err(_) => avatar_error.set(Some("Không thể xử lý tệp ảnh".into())),
+                                                            Err(_) => avatar_error.set(Some("Unable to process image file".into())),
                                                         }
                                                         is_uploading_avatar.set(false);
                                                     });
                                                 },
                                             }
-                                            if is_uploading_avatar() { "Đang tải ảnh" } else { "Đổi ảnh đại diện" }
+                                            if is_uploading_avatar() { "Uploading avatar" } else { "Change avatar" }
                                         }
                                         label { class: "btn-avatar-upload",
                                             input {
@@ -290,17 +290,17 @@ pub fn SettingsView(
                                                     spawn(async move {
                                                         match platform::process_selected_banner_bytes().await {
                                                             Ok(bytes) => match api::users_upload_banner(bytes).await {
-                                                                Ok(_) => banner_status.set(Some((false, "Đã lưu ảnh bìa hồ sơ".into()))),
-                                                                Err(_) => banner_status.set(Some((true, "Không thể tải ảnh bìa".into()))),
+                                                                Ok(_) => banner_status.set(Some((false, "Profile banner saved".into()))),
+                                                                Err(_) => banner_status.set(Some((true, "Unable to upload banner image".into()))),
                                                             },
                                                             Err(e) if e == "no_file" => {}
-                                                            Err(_) => banner_status.set(Some((true, "Không thể xử lý ảnh bìa".into()))),
+                                                            Err(_) => banner_status.set(Some((true, "Unable to process banner image".into()))),
                                                         }
                                                         is_uploading_banner.set(false);
                                                     });
                                                 },
                                             }
-                                            if is_uploading_banner() { "Đang tải bìa" } else { "Đổi ảnh bìa" }
+                                            if is_uploading_banner() { "Uploading banner" } else { "Change banner" }
                                         }
                                         if let Some(err) = avatar_error() {
                                             span { class: "error-text", "{err}" }
@@ -325,14 +325,14 @@ pub fn SettingsView(
                                 div { class: "settings-cols",
                                     div { class: "settings-col",
                                         div { class: "settings-group",
-                                            div { class: "settings-group-title", "Chủ đề" }
-                                            div { class: "theme-preview theme-preview-5", role: "radiogroup", aria_label: "Chủ đề",
+                                            div { class: "settings-group-title", "Theme" }
+                                            div { class: "theme-preview theme-preview-5", role: "radiogroup", aria_label: "Theme",
                                                 for (val, label) in [
-                                                    ("light", "Sáng"),
-                                                    ("ash", "Xám tro"),
-                                                    ("dark", "Tối"),
-                                                    ("oled", "Đen huyền"),
-                                                    ("system", "Theo hệ thống"),
+                                                    ("light", "Light"),
+                                                    ("ash", "Ash"),
+                                                    ("dark", "Dark"),
+                                                    ("oled", "Obsidian"),
+                                                    ("system", "System"),
                                                 ] {
                                                     button {
                                                         key: "{val}",
@@ -375,9 +375,9 @@ pub fn SettingsView(
                                         }
 
                                         div { class: "settings-group",
-                                            div { class: "settings-group-title", "Màu nhấn" }
-                                            div { class: "settings-group-desc", "Áp dụng cho nút chính, bong bóng tin nhắn đã gửi và mục đang chọn." }
-                                            div { class: "accent-swatches", role: "radiogroup", aria_label: "Màu nhấn",
+                                            div { class: "settings-group-title", "Accent color" }
+                                            div { class: "settings-group-desc", "Applies to primary buttons, sent bubbles, and selected items." }
+                                            div { class: "accent-swatches", role: "radiogroup", aria_label: "Accent color",
                                                 {
                                                     let cur_custom = prefs_ctx.prefs.read().custom_accent.clone();
                                                     let cur_custom_empty = cur_custom.is_empty();
@@ -390,12 +390,12 @@ pub fn SettingsView(
                                                     };
                                                     rsx! {
                                                         for (val, color, label) in [
-                                                            ("blue", "#2E7CF6", "Xanh dương"),
-                                                            ("violet", "#8B5CF6", "Tím"),
-                                                            ("green", "#10B981", "Xanh lá"),
-                                                            ("orange", "#F97316", "Cam"),
-                                                            ("rose", "#F43F7E", "Hồng"),
-                                                            ("cyan", "#06B6D4", "Xanh ngọc"),
+                                                            ("blue", "#2E7CF6", "Blue"),
+                                                            ("violet", "#8B5CF6", "Violet"),
+                                                            ("green", "#10B981", "Green"),
+                                                            ("orange", "#F97316", "Orange"),
+                                                            ("rose", "#F43F7E", "Rose"),
+                                                            ("cyan", "#06B6D4", "Cyan"),
                                                         ] {
                                                             {
                                                                 let is_sw_active = cur_custom_empty && appearance().accent == val;
@@ -423,11 +423,11 @@ pub fn SettingsView(
                                                         span {
                                                             class: if !cur_custom_empty { "accent-swatch accent-swatch-custom active" } else { "accent-swatch accent-swatch-custom" },
                                                             style: "{custom_bg}",
-                                                            title: "Màu tùy chọn",
+                                                            title: "Custom color",
                                                             input {
                                                                 r#type: "color",
                                                                 class: "accent-swatch-color-input",
-                                                                aria_label: "Màu nhấn",
+                                                                aria_label: "Accent color",
                                                                 value: "{picker_val}",
                                                                 onchange: move |e| {
                                                                     let v = e.value().to_uppercase();
@@ -445,8 +445,8 @@ pub fn SettingsView(
                                             div { class: "settings-list",
                                                 div { class: "settings-row column-layout",
                                                     div { class: "settings-row-text",
-                                                        span { class: "settings-label", "Cỡ chữ" }
-                                                        span { class: "settings-sublabel", "Tự động chỉnh vừa mắt hoặc chọn kích thước bên dưới" }
+                                                        span { class: "settings-label", "Font size" }
+                                                        span { class: "settings-sublabel", "Auto-scale for comfortable reading or choose a size below" }
                                                     }
                                                     div { class: "range-row",
                                                         label { style: "display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap;",
@@ -458,7 +458,7 @@ pub fn SettingsView(
                                                                     update_appearance(&|a| a.font_size = if auto { "auto".to_string() } else { "15".to_string() });
                                                                 },
                                                             }
-                                                            "Tự động"
+                                                            "Auto"
                                                         }
                                                         {
                                                             let cur_font: f32 = if appearance().font_size == "auto" { 15.0 } else { appearance().font_size.parse().unwrap_or(15.0) };
@@ -470,7 +470,7 @@ pub fn SettingsView(
                                                                     max: "20",
                                                                     step: "1",
                                                                     style: "--range-pct: {font_pct}%;",
-                                                                    aria_label: "Cỡ chữ",
+                                                                    aria_label: "Font size",
                                                                     disabled: appearance().font_size == "auto",
                                                                     value: if appearance().font_size == "auto" { "15".to_string() } else { appearance().font_size },
                                                                     oninput: move |e| {
@@ -481,17 +481,17 @@ pub fn SettingsView(
                                                             }
                                                         }
                                                         span { class: "range-value",
-                                                            if appearance().font_size == "auto" { "Tự động" } else { "{appearance().font_size}px" }
+                                                            if appearance().font_size == "auto" { "Auto" } else { "{appearance().font_size}px" }
                                                         }
                                                     }
                                                 }
                                                 div { class: "settings-row",
                                                     div { class: "settings-row-text",
-                                                        span { class: "settings-label", "Mật độ hiển thị" }
-                                                        span { class: "settings-sublabel", "Khoảng cách giữa các tin nhắn và danh sách" }
+                                                        span { class: "settings-label", "Display density" }
+                                                        span { class: "settings-sublabel", "Spacing between messages and lists" }
                                                     }
-                                                    div { class: "segmented", role: "radiogroup", aria_label: "Mật độ hiển thị",
-                                                        for (val, label) in [("compact", "Gọn"), ("comfortable", "Vừa"), ("spacious", "Rộng")] {
+                                                    div { class: "segmented", role: "radiogroup", aria_label: "Display density",
+                                                        for (val, label) in [("compact", "Compact"), ("comfortable", "Normal"), ("spacious", "Wide")] {
                                                             button {
                                                                 key: "{val}",
                                                                 r#type: "button",
@@ -512,7 +512,7 @@ pub fn SettingsView(
 
                                     div { class: "settings-col",
                                         div { class: "settings-group",
-                                            div { class: "settings-group-title", "Xem trước" }
+                                            div { class: "settings-group-title", "Preview" }
                                             {
                                                 let preview_wp = prefs_ctx.prefs.read().wallpaper.clone();
                                                 let preview_cls = if preview_wp.is_empty() || preview_wp == "none" {
@@ -524,12 +524,12 @@ pub fn SettingsView(
                                                     div { class: "{preview_cls}",
                                                         div { class: "message-row received group-start group-end",
                                                             div { class: "message-content-wrapper",
-                                                                div { class: "message-bubble", "Chữ và màu nền tự cân bằng rất dễ đọc." span { class: "bubble-meta", "09:41" } }
+                                                                div { class: "message-bubble", "Text and background auto-balance for easy reading." span { class: "bubble-meta", "09:41" } }
                                                             }
                                                         }
                                                         div { class: "message-row sent group-start group-end",
                                                             div { class: "message-content-wrapper",
-                                                                div { class: "message-bubble", "Đẹp và rõ nét ở mọi kiểu giao diện." span { class: "bubble-meta", "09:42" } }
+                                                                div { class: "message-bubble", "Crisp and clear in every theme style." span { class: "bubble-meta", "09:42" } }
                                                             }
                                                         }
                                                     }
@@ -556,18 +556,18 @@ pub fn SettingsView(
                                             div { class: "settings-row cw-brand-row",
                                                 crate::components::brand_logos::E2eeLiveShield { size: 30 }
                                                 div { class: "settings-row-text",
-                                                    span { class: "settings-label", "Tiêu chuẩn bảo vệ" }
-                                                    span { class: "settings-sublabel", "Mã hóa hai đầu chuẩn cao nhất" }
+                                                    span { class: "settings-label", "Protection standard" }
+                                                    span { class: "settings-sublabel", "Highest-grade end-to-end encryption" }
                                                 }
                                                 span { class: "settings-value tag-active",
                                                     span { class: "cw-live-dot" }
-                                                    if user_keys.is_some() { "Đang hoạt động an toàn" } else { "Chưa có khóa" }
+                                                    if user_keys.is_some() { "Active & secure" } else { "No key yet" }
                                                 }
                                             }
                                             if let Some(ref keys) = user_keys {
                                                 div { class: "settings-row column-layout",
                                                     div { style: "display: flex; justify-content: space-between; width: 100%; align-items: center;",
-                                                        span { class: "settings-label", "Vân tay bảo mật" }
+                                                        span { class: "settings-label", "Security fingerprint" }
                                                         button {
                                                             r#type: "button",
                                                             class: "btn-secondary",
@@ -578,7 +578,7 @@ pub fn SettingsView(
                                                                     copied_fp.set(true);
                                                                 }
                                                             },
-                                                            if copied_fp() { "Đã sao chép" } else { "Sao chép" }
+                                                            if copied_fp() { "Copied" } else { "Copy" }
                                                         }
                                                     }
                                                     div { class: "fingerprint", "{format_fingerprint(&keys.fingerprint_b64)}" }
@@ -589,10 +589,10 @@ pub fn SettingsView(
 
                                     div { class: "settings-col",
                                         div { class: "settings-group",
-                                            div { class: "settings-group-title", "Sao lưu chìa khóa bảo mật" }
+                                            div { class: "settings-group-title", "Backup security key" }
                                             div { class: "settings-row column-layout",
                                                 div { style: "font-size: 13px; color: var(--text-secondary);",
-                                                    "Chìa khóa bảo mật chỉ lưu trên máy này và không gửi lên mạng. Bạn có thể lưu lại để chuyển sang máy khác."
+                                                    "Your security key is stored only on this device and never sent over the network. You can back it up to transfer to another device."
                                                 }
                                                 if let Some(ref keys) = user_keys {
                                                     button {
@@ -607,7 +607,7 @@ pub fn SettingsView(
                                                             }
                                                         },
                                                         KeyIcon { size: 15 }
-                                                        span { "Sao chép chìa khóa bảo mật" }
+                                                        span { "Copy security key" }
                                                     }
                                                 }
                                                 if let Some(ref exp) = exported_json() {
@@ -620,10 +620,10 @@ pub fn SettingsView(
                                             }
 
                                             div { class: "settings-row column-layout",
-                                                label { class: "form-label", "Nhập chìa khóa bảo mật" }
+                                                label { class: "form-label", "Import security key" }
                                                 textarea {
                                                     style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
-                                                    placeholder: "Dán chìa khóa bảo mật vào đây",
+                                                    placeholder: "Paste security key here",
                                                     value: "{import_input}",
                                                     oninput: move |e| import_input.set(e.value()),
                                                 }
@@ -644,16 +644,16 @@ pub fn SettingsView(
                                                                         let _ = api::keys_register(&ecdh, &ecdsa).await;
                                                                         on_keys_imported.call(restored_clone);
                                                                         import_input.set(String::new());
-                                                                        import_status.set(Some((false, "Đã khôi phục chìa khóa thành công".into())));
+                                                                        import_status.set(Some((false, "Key restored successfully".into())));
                                                                     });
                                                                 }
                                                                 Err(_) => {
-                                                                    import_status.set(Some((true, "Chìa khóa không hợp lệ".into())));
+                                                                    import_status.set(Some((true, "Invalid key".into())));
                                                                 }
                                                             }
                                                         }
                                                     },
-                                                    "Khôi phục chìa khóa"
+                                                    "Restore key"
                                                 }
                                                 if let Some((is_err, msg)) = import_status() {
                                                     div {
@@ -710,15 +710,15 @@ pub fn SettingsView(
                                         div { class: "settings-group",
                                             div { class: "settings-row",
                                                 div { class: "settings-row-text",
-                                                    span { class: "settings-label", "Đăng xuất tài khoản" }
-                                                    span { class: "settings-sublabel", "Thoát tài khoản khỏi máy này. Tin nhắn của bạn vẫn an toàn." }
+                                                    span { class: "settings-label", "Sign out of account" }
+                                                    span { class: "settings-sublabel", "Sign out of this device. Your messages remain safe." }
                                                 }
                                                 button {
                                                     r#type: "button",
                                                     class: "btn-danger-outline",
                                                     onclick: move |_| on_logout.call(()),
                                                     LogoutIcon {}
-                                                    span { "Đăng xuất" }
+                                                    span { "Log out" }
                                                 }
                                             }
                                         }

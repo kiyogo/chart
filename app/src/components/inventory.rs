@@ -25,14 +25,14 @@ enum Cat {
 }
 
 const CATS: [(Cat, &str); 8] = [
-    (Cat::All, "Tất cả"),
-    (Cat::Equipped, "Đang trang bị"),
+    (Cat::All, "All"),
+    (Cat::Equipped, "Equipping"),
     (Cat::Stickers, "Sticker Packs"),
     (Cat::Emoji, "Custom Emoji"),
     (Cat::Gifs, "GIF Collections"),
     (Cat::Drawings, "Drawings"),
     (Cat::Layouts, "Profile Templates"),
-    (Cat::Achievements, "Thành tích"),
+    (Cat::Achievements, "Achievements"),
 ];
 
 const SEEN_KEY: &str = "chatw_seen_achievements";
@@ -78,7 +78,7 @@ pub fn Inventory(my_id: String) -> Element {
                 let now: Vec<String> = x.achievements.iter().filter(|a| a.unlocked).map(|a| a.id.clone()).collect();
                 let new: Vec<&str> = now.iter().filter(|a| !seen.contains(a)).filter_map(|a| pp::ACHIEVEMENTS.iter().find(|m| m.0 == a).map(|m| m.1)).collect();
                 if !new.is_empty() && !seen.is_empty() {
-                    msg.set(Some((false, format!("Vừa mở khóa: {}", new.join(", ")))));
+                    msg.set(Some((false, format!("Just unlocked: {}", new.join(", ")))));
                 }
                 platform::storage_set(SEEN_KEY, &serde_json::to_string(&now).unwrap_or_default());
                 plus.set(Some(x));
@@ -98,51 +98,51 @@ pub fn Inventory(my_id: String) -> Element {
         div { class: "inventory",
             div { class: "search-field",
                 crate::components::icons::SearchIcon { size: 16 }
-                input { r#type: "search", placeholder: "Tìm trong kho đồ", aria_label: "Tìm trong kho vật phẩm", value: "{query}", oninput: move |e| query.set(e.value()) }
+                input { r#type: "search", placeholder: "Search in inventory", aria_label: "Search in item inventory", value: "{query}", oninput: move |e| query.set(e.value()) }
             }
             if let Some((err, m)) = msg() { div { class: if err { "status-badge error" } else { "status-badge success" }, role: "status", "{m}" } }
 
             if show(Cat::Equipped) {
                 if let Some(pr) = p.clone() {
-                    div { class: "settings-group-title", "Đang trang bị" }
+                    div { class: "settings-group-title", "Equipping" }
                     div { class: "inv-grid",
-                        InvCard { title: "Chuyển động Avatar", sub: pr.avatar_motion.as_ref().and_then(|m| m.meta()).map(|m| m.1.to_string()).unwrap_or_else(|| "Không".into()) }
-                        InvCard { title: "Trang trí Avatar", sub: pr.avatar_decoration.clone().unwrap_or_else(|| "Không".into()), img: pr.custom_decoration_url.clone().filter(|_| pr.avatar_decoration.as_deref() == Some("custom")) }
-                        InvCard { title: "Hiệu ứng tên", sub: pr.name_effect.clone().unwrap_or_else(|| "Không".into()) }
-                        InvCard { title: "Bảng tên", sub: pr.nameplate.clone().unwrap_or_else(|| "Không".into()), img: pr.custom_nameplate_url.clone().filter(|_| pr.nameplate.as_deref() == Some("custom")) }
-                        InvCard { title: "Hiệu ứng hồ sơ", sub: pr.profile_effect.clone().unwrap_or_else(|| "Không".into()), img: pr.custom_effect_url.clone().filter(|_| pr.profile_effect.as_deref() == Some("custom")) }
-                        InvCard { title: "Bố cục hồ sơ", sub: plus().map(|x| pp::template_name(&x.template).to_string()).unwrap_or_else(|| "Tối giản".into()) }
-                        for b in pr.badges.iter() { InvCard { key: "{b}", title: "Huy hiệu", sub: crate::components::profile_card::badge_label(b).to_string() } }
+                        InvCard { title: "Avatar Movement", sub: pr.avatar_motion.as_ref().and_then(|m| m.meta()).map(|m| m.1.to_string()).unwrap_or_else(|| "None".into()) }
+                        InvCard { title: "Avatar decoration", sub: pr.avatar_decoration.clone().unwrap_or_else(|| "None".into()), img: pr.custom_decoration_url.clone().filter(|_| pr.avatar_decoration.as_deref() == Some("custom")) }
+                        InvCard { title: "Name effect", sub: pr.name_effect.clone().unwrap_or_else(|| "None".into()) }
+                        InvCard { title: "Name plate", sub: pr.nameplate.clone().unwrap_or_else(|| "None".into()), img: pr.custom_nameplate_url.clone().filter(|_| pr.nameplate.as_deref() == Some("custom")) }
+                        InvCard { title: "Profile effects", sub: pr.profile_effect.clone().unwrap_or_else(|| "None".into()), img: pr.custom_effect_url.clone().filter(|_| pr.profile_effect.as_deref() == Some("custom")) }
+                        InvCard { title: "Profile layout", sub: plus().map(|x| pp::template_name(&x.template).to_string()).unwrap_or_else(|| "Minimalist".into()) }
+                        for b in pr.badges.iter() { InvCard { key: "{b}", title: "Badge", sub: crate::components::profile_card::badge_label(b).to_string() } }
                     }
                 }
             }
             if show(Cat::Stickers) {
-                div { class: "settings-group-title", "Bộ Sticker & Sticker yêu thích" }
+                div { class: "settings-group-title", "Favorite Sticker & Sticker Set" }
                 div { class: "inv-grid",
                     for pk in packs().into_iter().filter(|x| hit(&x.name)) {
                         InvCard { key: "{pk.id}", title: pk.name.clone(), sub: format!("{} sticker", pk.stickers.len()), img: pk.cover_url.clone().or(pk.stickers.first().map(|s| s.file_url.clone())) }
                     }
                     for u in favs.iter().cloned().filter(|u| hit(u)) {
-                        InvCard { key: "{u}", title: "Sticker yêu thích", sub: String::new(), img: Some(u.clone()) }
+                        InvCard { key: "{u}", title: "Favorite stickers", sub: String::new(), img: Some(u.clone()) }
                     }
                 }
-                if packs.read().is_empty() && favs.is_empty() { div { class: "sidebar-empty", "Trống" } }
+                if packs.read().is_empty() && favs.is_empty() { div { class: "sidebar-empty", "Blank" } }
             }
             if show(Cat::Emoji) {
-                div { class: "settings-group-title", "Emoji tùy chỉnh" }
+                div { class: "settings-group-title", "Custom emojis" }
                 div { class: "inv-grid compact",
                     for e in emojis().into_iter().filter(|x| hit(&x.name)) { InvCard { key: "{e.id}", title: format!(":{}:", e.name), sub: String::new(), img: Some(e.file_url.clone()) } }
                 }
             }
             if show(Cat::Gifs) {
-                div { class: "settings-group-title", "Bộ sưu tập GIF" }
+                div { class: "settings-group-title", "GIF collection" }
                 div { class: "inv-grid compact",
                     for g in gifs().into_iter().filter(|x| hit(&x.name)) { InvCard { key: "{g.id}", title: g.name.clone(), sub: String::new(), img: Some(g.file_url.clone()) } }
-                    for u in fav_gifs.iter().cloned() { InvCard { key: "f{u}", title: "GIF yêu thích", sub: String::new(), img: Some(u.clone()) } }
+                    for u in fav_gifs.iter().cloned() { InvCard { key: "f{u}", title: "Favorite GIFs", sub: String::new(), img: Some(u.clone()) } }
                 }
             }
             if show(Cat::Drawings) {
-                div { class: "settings-group-title", "Bản vẽ Studio" }
+                div { class: "settings-group-title", "Studio Drawing" }
                 div { class: "inv-grid",
                     for pj in projects().into_iter().filter(|x| hit(&x.name)) {
                         {
@@ -151,8 +151,8 @@ pub fn Inventory(my_id: String) -> Element {
                                 div { key: "{pj.id}", class: "inv-card",
                                     if pj.has_thumb { img { src: "{drawings::thumb_url(&pj.id)}", alt: "", loading: "lazy" } }
                                     div { class: "settings-label", "{pj.name}" }
-                                    div { class: "member-sub", "{pj.layers} lớp · {pj.frames} khung" }
-                                    button { r#type: "button", class: "btn-small-secondary", onclick: move |_| studio.set(Some(id.clone())), "Mở trong Studio" }
+                                    div { class: "member-sub", "{pj.layers} layer · {pj.frames} frame" }
+                                    button { r#type: "button", class: "btn-small-secondary", onclick: move |_| studio.set(Some(id.clone())), "Open in Studio" }
                                 }
                             }
                         }
@@ -160,7 +160,7 @@ pub fn Inventory(my_id: String) -> Element {
                 }
             }
             if show(Cat::Layouts) {
-                div { class: "settings-group-title", "Mẫu bố cục hồ sơ" }
+                div { class: "settings-group-title", "Resume layout template" }
                 div { class: "inv-grid",
                     for pr in presets().into_iter().filter(|x| hit(&x.name)) {
                         {
@@ -176,33 +176,33 @@ pub fn Inventory(my_id: String) -> Element {
                                             let (t, s, m) = (t.clone(), s.clone(), mode.clone());
                                             spawn(async move {
                                                 msg.set(Some(match pp::save_layout(&t, &s, &m).await {
-                                                    Ok(()) => (false, "Đã áp dụng bố cục cho hồ sơ".into()),
-                                                    Err(_) => (true, "Không áp dụng được bố cục".into()),
+                                                    Ok(()) => (false, "The layout has been applied to the profile".into()),
+                                                    Err(_) => (true, "Layout not applicable".into()),
                                                 }));
                                             });
-                                        }, "Áp dụng" }
+                                        }, "Apply" }
                                 }
                             }
                         }
                     }
                 }
-                if presets.read().is_empty() { div { class: "sidebar-empty", "Trống" } }
+                if presets.read().is_empty() { div { class: "sidebar-empty", "Blank" } }
             }
             if show(Cat::Achievements) {
                 if let Some(x) = plus() {
-                    div { class: "settings-group-title", "Thành tích" }
+                    div { class: "settings-group-title", "Achievements" }
                     div { class: "achievement-grid wide",
                         for a in x.achievements.iter().cloned() {
                             {
-                                let meta = pp::ACHIEVEMENTS.iter().find(|m| m.0 == a.id).copied().unwrap_or(("", "Thành tích", ""));
+                                let meta = pp::ACHIEVEMENTS.iter().find(|m| m.0 == a.id).copied().unwrap_or(("", "Achievements", ""));
                                 let secret = a.hidden && !a.unlocked;
                                 rsx! {
                                     div { key: "{a.id}", class: if a.unlocked { "achievement unlocked" } else { "achievement" },
                                         span { class: "achievement-medal", if a.unlocked { "🏅" } else if secret { "?" } else { "○" } }
-                                        span { class: "achievement-name", if secret { "Thành tích ẩn" } else { "{meta.1}" } }
-                                        span { class: "member-sub", if secret { "Bí mật cho đến khi mở khóa" } else { "{meta.2}" } }
+                                        span { class: "achievement-name", if secret { "Hidden achievements" } else { "{meta.1}" } }
+                                        span { class: "member-sub", if secret { "Secret until unlocked" } else { "{meta.2}" } }
                                         if a.unlocked {
-                                            span { class: "member-sub", "Mở khóa {a.unlocked_at.as_deref().map(platform::format_local_time).unwrap_or_default()}" }
+                                            span { class: "member-sub", "Unlock {a.unlocked_at.as_deref().map(platform::format_local_time).unwrap_or_default()}" }
                                         } else if !secret {
                                             span { class: "achievement-progress", span { class: "achievement-bar", style: "width: {(a.progress as f64 / a.goal.max(1) as f64 * 100.0).round()}%;" } }
                                             span { class: "member-sub", "{a.progress}/{a.goal}" }

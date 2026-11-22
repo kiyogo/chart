@@ -39,11 +39,11 @@ try {
 
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   await page.waitForSelector('.auth-card', { timeout: 25000 });
-  await page.locator('input[aria-label="Tên tài khoản thử nghiệm"]').fill(uname);
+  await page.locator('input[aria-label="Test username"]').fill(uname);
   await page.locator('.auth-dev-form button[type="submit"]').click();
   await page.waitForSelector('.app-rail', { timeout: 25000 });
   await page.waitForTimeout(800);
-  const skip = page.locator('button[aria-label="Bỏ qua giới thiệu"]');
+  const skip = page.locator('button[aria-label="Skip tour"]');
   if (await skip.isVisible().catch(() => false)) await skip.click();
 
   // 1. Check .chat-item symmetrical avatar padding (top, bottom, left all equal ~6px)
@@ -83,13 +83,13 @@ try {
   );
 
   // 2. Open Settings -> Appearance: verify 5 theme cards, borderless swatches, frameless <input type="color">, inline custom color row under "Màu nhấn"
-  await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
+  await page.locator('.app-rail button[aria-label="Settings"]').click();
   await page.waitForSelector('.settings-nav', { timeout: 10000 });
-  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Appearance' }).click();
   await page.waitForTimeout(300);
 
-  // Switch to explicit Sáng first for screenshot
-  await page.locator('.theme-card', { hasText: 'Sáng' }).click();
+  // Switch to explicit Light first for screenshot
+  await page.locator('.theme-card', { hasText: 'Light' }).click();
   await page.waitForTimeout(250);
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '01_appearance_5_themes_accents.png') });
 
@@ -106,7 +106,7 @@ try {
     const customInputInAccentGroup = accentGroup?.querySelector('input[type="color"]');
     const allColorInputs = Array.from(document.querySelectorAll('.settings-body input[type="color"]'));
     const allColorBorderZero = allColorInputs.every((el) => getComputedStyle(el).borderTopWidth === '0px' && getComputedStyle(el).boxShadow === 'none');
-    const hasOldCustomLabel = document.querySelector('.settings-body').innerText.includes('Màu nhấn tùy chọn');
+    const hasOldCustomLabel = document.querySelector('.settings-body').innerText.includes('Custom accent color');
     const navActive = document.querySelector('.settings-nav-item.active');
     return {
       themeLabels,
@@ -131,13 +131,13 @@ try {
     };
   });
   record(
-    'Appearance renders 5 theme cards, 7 borderless circular accent swatches (6 presets + rightmost circular custom picker, zero "Màu nhấn tùy chọn" label), and frameless color inputs',
+    'Appearance renders 5 theme cards, 7 borderless circular accent swatches (6 presets + rightmost circular custom picker), and frameless color inputs',
     accentAndColorAudit.themeLabels.length === 5 &&
-      accentAndColorAudit.themeLabels.includes('Sáng') &&
-      accentAndColorAudit.themeLabels.includes('Xám tro') &&
-      accentAndColorAudit.themeLabels.includes('Tối') &&
-      accentAndColorAudit.themeLabels.includes('Đen huyền') &&
-      accentAndColorAudit.themeLabels.includes('Theo hệ thống') &&
+      accentAndColorAudit.themeLabels.includes('Light') &&
+      accentAndColorAudit.themeLabels.includes('Ash') &&
+      accentAndColorAudit.themeLabels.includes('Dark') &&
+      accentAndColorAudit.themeLabels.includes('Obsidian') &&
+      accentAndColorAudit.themeLabels.includes('System') &&
       accentAndColorAudit.swatchCount === 7 &&
       accentAndColorAudit.activeSwatchShadow === 'none' &&
       accentAndColorAudit.activeSwatchBorder === '0px' &&
@@ -148,7 +148,7 @@ try {
     JSON.stringify(accentAndColorAudit)
   );
 
-  // 3. Verify all 3 dark theme variants (Xám tro > Tối > Đen huyền brightness progression + crisp white readable text)
+  // 3. Verify all 3 dark theme variants (Ash > Dark > Obsidian brightness progression + crisp white readable text)
   const readThemeState = () =>
     page.evaluate(() => {
       const root = document.documentElement;
@@ -169,17 +169,17 @@ try {
       };
     });
 
-  await page.locator('.theme-card', { hasText: 'Xám tro' }).click();
+  await page.locator('.theme-card', { hasText: 'Ash' }).click();
   await page.waitForTimeout(250);
   const ashState = await readThemeState();
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '02_theme_ash.png') });
 
-  await page.locator('.theme-card', { hasText: /^Tối$/ }).click();
+  await page.locator('.theme-card', { hasText: /^Dark$/ }).click();
   await page.waitForTimeout(250);
   const darkState = await readThemeState();
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03_theme_dark.png') });
 
-  await page.locator('.theme-card', { hasText: 'Đen huyền' }).click();
+  await page.locator('.theme-card', { hasText: 'Obsidian' }).click();
   await page.waitForTimeout(250);
   const oledState = await readThemeState();
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '04_theme_oled.png') });

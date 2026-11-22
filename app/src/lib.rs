@@ -125,7 +125,7 @@ pub fn App() -> Element {
                     AuthStatus::Loading => rsx! {
                         div { class: "boot-screen", role: "status",
                             span { class: "brand-mark", components::icons::LogoIcon { size: 22 } }
-                            span { "Đang khởi tạo phiên làm việc" }
+                            span { "Initializing session" }
                         }
                     },
                     AuthStatus::Unauthenticated => rsx! {

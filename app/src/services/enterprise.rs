@@ -33,187 +33,187 @@ pub mod ent_perm {
 }
 
 pub const ENT_PERMS_META: [(i64, &str, &str); 23] = [
-    (ent_perm::VIEW_HR, "Xem danh bạ nhân sự", "Xem danh sách thành viên, phòng ban và hồ sơ cơ bản"),
-    (ent_perm::MANAGE_HR, "Quản lý nhân sự", "Thêm, sửa hồ sơ, cập nhật hàng loạt và bàn giao nghỉ việc"),
-    (ent_perm::VIEW_SENSITIVE_HR, "Xem dữ liệu nhân sự nhạy cảm", "Xem email công việc, số điện thoại, loại hợp đồng và ghi chú nội bộ"),
-    (ent_perm::MANAGE_DEPARTMENTS, "Quản lý phòng ban", "Tạo, xóa phòng ban và sắp xếp nhân sự"),
-    (ent_perm::MANAGE_PROJECTS, "Quản lý dự án", "Tạo, chỉnh sửa dự án và mốc tiến độ"),
-    (ent_perm::CREATE_TASKS, "Tạo công việc", "Tạo công việc mới và chuyển tin nhắn kênh thành công việc"),
-    (ent_perm::ASSIGN_TASKS, "Giao việc và điều phối", "Xem toàn bộ công việc và phân công cho thành viên khác"),
-    (ent_perm::APPROVE_TASKS, "Duyệt hoàn thành công việc", "Xem xét và phê duyệt công việc ở bước kiểm tra"),
-    (ent_perm::VIEW_ATTENDANCE, "Chấm công và xem chấm công", "Thực hiện vào ca, tan ca và xem chấm công cá nhân"),
-    (ent_perm::MANAGE_ATTENDANCE, "Quản lý chấm công toàn công ty", "Xem chấm công mọi nhân viên và duyệt điều chỉnh giờ công"),
-    (ent_perm::APPROVE_LEAVE, "Duyệt đơn nghỉ phép", "Phê duyệt hoặc từ chối đơn xin nghỉ phép"),
-    (ent_perm::MANAGE_DOCUMENTS, "Quản lý kho tài liệu", "Tải lên, ghim, đưa vào thùng rác và chia sẻ tài liệu chung"),
-    (ent_perm::APPROVE_REQUESTS, "Phê duyệt đề xuất", "Xem xét và duyệt quy trình đề xuất nội bộ nhiều bước"),
-    (ent_perm::VIEW_REPORTS, "Xem báo cáo thống kê", "Xem biểu đồ tiến độ, công việc và khối lượng phòng ban"),
-    (ent_perm::EXPORT_DATA, "Xuất dữ liệu CSV / JSON", "Xuất bảng chấm công, báo cáo, nhật ký và toàn bộ dữ liệu"),
-    (ent_perm::MANAGE_SECURITY, "Quản lý bảo mật và lưu trữ", "Thiết lập khóa bảo toàn dữ liệu và chính sách bảo mật doanh nghiệp"),
-    (ent_perm::MANAGE_ENTERPRISE, "Cấu hình không gian doanh nghiệp", "Bật tắt phân hệ làm việc, giao diện và quy định chung"),
-    (ent_perm::VIEW_AUDIT, "Xem nhật ký kiểm tra", "Theo dõi toàn bộ thao tác thay đổi trên máy chủ doanh nghiệp"),
-    (ent_perm::MANAGE_INTEGRATIONS, "Quản lý tích hợp ngoài", "Cấu hình webhook và kết nối hệ thống bên thứ ba"),
-    (ent_perm::MANAGE_AI, "Quản lý Vico AI doanh nghiệp", "Bật tắt và cấu hình tính năng tóm tắt bằng Vico AI"),
-    (ent_perm::MANAGE_AUTOMATION, "Quản lý quy trình tự động hóa", "Tạo và điều khiển luật tự động chạy theo sự kiện"),
-    (ent_perm::POST_ANNOUNCEMENTS, "Đăng thông báo nội bộ", "Gửi thông báo toàn công ty hoặc theo phòng ban"),
-    (ent_perm::MANAGE_MEETINGS, "Quản lý tất cả cuộc họp", "Xem và điều phối toàn bộ lịch họp nội bộ"),
+    (ent_perm::VIEW_HR, "View personnel directory", "View list of members, departments and basic profiles"),
+    (ent_perm::MANAGE_HR, "Personnel management", "Add, edit records, batch update and hand over leave"),
+    (ent_perm::VIEW_SENSITIVE_HR, "View sensitive HR data", "View work emails, phone numbers, contract types and internal notes"),
+    (ent_perm::MANAGE_DEPARTMENTS, "Department management", "Create, delete departments and arrange personnel"),
+    (ent_perm::MANAGE_PROJECTS, "Project management", "Create and edit projects and milestones"),
+    (ent_perm::CREATE_TASKS, "Create jobs", "Create new jobs and convert channel messages into jobs"),
+    (ent_perm::ASSIGN_TASKS, "Assign work and coordinate", "View all jobs and assign them to other members"),
+    (ent_perm::APPROVE_TASKS, "Browse completed work", "Review and approve work at the inspection step"),
+    (ent_perm::VIEW_ATTENDANCE, "Timekeeping and viewing timekeeping", "Perform on-shift, off-shift and view personal timekeeping"),
+    (ent_perm::MANAGE_ATTENDANCE, "Timekeeping management for the entire company", "View timekeeping for all employees and approve adjustments to work hours"),
+    (ent_perm::APPROVE_LEAVE, "Approve leave applications", "Approve or deny leave applications"),
+    (ent_perm::MANAGE_DOCUMENTS, "Manage document warehouse", "Upload, pin, trash, and share documents collectively"),
+    (ent_perm::APPROVE_REQUESTS, "Approve the proposal", "Review and approve multi-step internal proposal process"),
+    (ent_perm::VIEW_REPORTS, "View statistical reports", "View progress charts, work and departmental volumes"),
+    (ent_perm::EXPORT_DATA, "Export CSV/JSON data", "Export timesheets, reports, logs and all data"),
+    (ent_perm::MANAGE_SECURITY, "Manage security and storage", "Set up data protection keys and corporate security policies"),
+    (ent_perm::MANAGE_ENTERPRISE, "Enterprise space configuration", "Turn on and off working modules, interfaces and general regulations"),
+    (ent_perm::VIEW_AUDIT, "View audit log", "Track all change operations on enterprise servers"),
+    (ent_perm::MANAGE_INTEGRATIONS, "External integration management", "Configure webhooks and connect third-party systems"),
+    (ent_perm::MANAGE_AI, "Manage Vico AI enterprise", "Enable, disable and configure the summary feature with Vico AI"),
+    (ent_perm::MANAGE_AUTOMATION, "Manage automation processes", "Create and control rules that automatically run according to events"),
+    (ent_perm::POST_ANNOUNCEMENTS, "Post internal announcements", "Send announcements company-wide or by department"),
+    (ent_perm::MANAGE_MEETINGS, "Manage all meetings", "View and coordinate all internal meeting schedules"),
 ];
 
 pub const MODULE_DEFS: [(&str, &str); 15] = [
-    ("overview", "Tổng quan"),
-    ("hr", "Nhân sự"),
-    ("departments", "Phòng ban"),
-    ("tasks", "Công việc"),
-    ("projects", "Dự án"),
-    ("calendar", "Lịch làm việc"),
-    ("meetings", "Cuộc họp"),
-    ("attendance", "Chấm công"),
-    ("leave", "Nghỉ phép"),
-    ("approvals", "Phê duyệt"),
-    ("documents", "Tài liệu"),
-    ("announcements", "Thông báo"),
-    ("reports", "Báo cáo"),
+    ("overview", "Overview"),
+    ("hr", "Human resources"),
+    ("departments", "Departments"),
+    ("tasks", "Work"),
+    ("projects", "Project"),
+    ("calendar", "Work schedule"),
+    ("meetings", "Meeting"),
+    ("attendance", "Timekeeping"),
+    ("leave", "Leave"),
+    ("approvals", "Approval"),
+    ("documents", "Documents"),
+    ("announcements", "Notifications"),
+    ("reports", "Report"),
     ("ai", "Vico AI"),
-    ("automation", "Tự động hóa"),
+    ("automation", "Automation"),
 ];
 
 pub fn module_label(key: &str) -> &'static str {
-    MODULE_DEFS.iter().find(|(k, _)| *k == key).map(|(_, l)| *l).unwrap_or("Không gian làm việc")
+    MODULE_DEFS.iter().find(|(k, _)| *k == key).map(|(_, l)| *l).unwrap_or("Work space")
 }
 
 pub fn vn_emp_status(s: &str) -> &'static str {
     match s {
-        "active" => "Đang làm việc",
-        "onboarding" => "Thử việc",
-        "suspended" => "Tạm khóa",
-        "offboarded" => "Đã nghỉ việc",
-        _ => "Đang làm việc",
+        "active" => "Working",
+        "onboarding" => "Try job",
+        "suspended" => "Temporarily locked",
+        "offboarded" => "Retired",
+        _ => "Working",
     }
 }
 
 pub fn vn_work_mode(s: &str) -> &'static str {
     match s {
-        "onsite" => "Tại văn phòng",
-        "remote" => "Từ xa",
-        "hybrid" => "Linh hoạt",
-        _ => "Tại văn phòng",
+        "onsite" => "At the office",
+        "remote" => "From afar",
+        "hybrid" => "Flexible",
+        _ => "At the office",
     }
 }
 
 pub fn vn_task_status(s: &str) -> &'static str {
     match s {
-        "todo" => "Cần làm",
-        "in_progress" => "Đang làm",
-        "review" => "Chờ duyệt",
-        "done" => "Hoàn thành",
-        "archived" => "Lưu trữ",
-        _ => "Cần làm",
+        "todo" => "Need to do",
+        "in_progress" => "Working",
+        "review" => "Waiting for approval",
+        "done" => "Completed",
+        "archived" => "Storage",
+        _ => "Need to do",
     }
 }
 
 pub fn vn_project_status(s: &str) -> &'static str {
     match s {
-        "planning" => "Lập kế hoạch",
-        "active" => "Đang triển khai",
-        "on_hold" => "Tạm dừng",
-        "completed" => "Hoàn thành",
-        "archived" => "Lưu trữ",
-        _ => "Đang triển khai",
+        "planning" => "Make a plan",
+        "active" => "In progress",
+        "on_hold" => "Pause",
+        "completed" => "Completed",
+        "archived" => "Storage",
+        _ => "In progress",
     }
 }
 
 pub fn vn_priority(s: &str) -> &'static str {
     match s {
-        "low" => "Thấp",
-        "medium" => "Trung bình",
-        "high" => "Cao",
-        "urgent" => "Khẩn cấp",
-        _ => "Trung bình",
+        "low" => "Low",
+        "medium" => "Average",
+        "high" => "High",
+        "urgent" => "Urgent",
+        _ => "Average",
     }
 }
 
 pub fn vn_att_status(s: &str) -> &'static str {
     match s {
-        "present" => "Đúng giờ",
-        "late" => "Đi muộn",
-        "early_leave" => "Về sớm",
-        "remote" => "Làm từ xa",
-        "overtime" => "Tăng ca",
-        _ => "Đúng giờ",
+        "present" => "On time",
+        "late" => "Go late",
+        "early_leave" => "Return early",
+        "remote" => "Work remotely",
+        "overtime" => "Overtime",
+        _ => "On time",
     }
 }
 
 pub fn vn_approval_status(s: &str) -> &'static str {
     match s {
-        "pending" => "Chờ duyệt",
-        "approved" => "Đã duyệt",
-        "rejected" => "Từ chối",
-        "needs_revision" => "Cần bổ sung",
-        "withdrawn" => "Đã thu hồi",
-        _ => "Chờ duyệt",
+        "pending" => "Waiting for approval",
+        "approved" => "Approved",
+        "rejected" => "Refuse",
+        "needs_revision" => "Need supplement",
+        "withdrawn" => "Revoked",
+        _ => "Waiting for approval",
     }
 }
 
 pub fn vn_leave_type(s: &str) -> &'static str {
     match s {
-        "annual" => "Phép năm",
-        "sick" => "Nghỉ ốm",
-        "unpaid" => "Không lương",
-        _ => "Nghỉ phép",
+        "annual" => "Permit year",
+        "sick" => "Sick leave",
+        "unpaid" => "No salary",
+        _ => "Leave",
     }
 }
 
 pub fn vn_doc_scope(s: &str) -> &'static str {
     match s {
-        "company" => "Toàn công ty",
-        "department" => "Phòng ban",
-        "project" => "Dự án",
-        "personal" => "Cá nhân",
-        _ => "Nội bộ",
+        "company" => "Whole company",
+        "department" => "Departments",
+        "project" => "Project",
+        "personal" => "Personal",
+        _ => "Internal",
     }
 }
 
 pub fn vn_category(s: &str) -> &'static str {
     match s {
-        "purchase" => "Mua sắm",
-        "payment" => "Thanh toán",
-        "equipment" => "Thiết bị",
-        "it_support" => "Hỗ trợ CNTT",
-        "travel" => "Công tác",
-        "access_request" => "Cấp quyền",
-        "leave" => "Nghỉ phép",
-        "attendance_fix" => "Điều chỉnh công",
-        "project_proposal" => "Đề xuất dự án",
-        _ => "Đề xuất",
+        "purchase" => "Shopping",
+        "payment" => "Payment",
+        "equipment" => "Devices",
+        "it_support" => "IT support",
+        "travel" => "Work",
+        "access_request" => "Grant permissions",
+        "leave" => "Leave",
+        "attendance_fix" => "Work adjustment",
+        "project_proposal" => "Project proposal",
+        _ => "Recommended",
     }
 }
 
 pub fn vn_meeting_type(s: &str) -> &'static str {
     match s {
-        "video" => "Họp video",
-        "audio" => "Họp thoại",
-        "standup" => "Họp nhanh",
-        "review" => "Đánh giá",
-        "all_hands" => "Toàn công ty",
-        _ => "Họp nội bộ",
+        "video" => "Video meeting",
+        "audio" => "Voice meeting",
+        "standup" => "Quick meeting",
+        "review" => "Review",
+        "all_hands" => "Whole company",
+        _ => "Internal meeting",
     }
 }
 
 pub fn vn_meeting_status(s: &str) -> &'static str {
     match s {
-        "scheduled" => "Đã lên lịch",
-        "live" => "Đang diễn ra",
-        "ended" => "Đã kết thúc",
-        "cancelled" => "Đã hủy",
-        _ => "Đã lên lịch",
+        "scheduled" => "Scheduled",
+        "live" => "Ongoing",
+        "ended" => "It's over",
+        "cancelled" => "Canceled",
+        _ => "Scheduled",
     }
 }
 
 pub fn vn_ann_priority(s: &str) -> &'static str {
     match s {
-        "normal" => "Bình thường",
-        "important" => "Quan trọng",
-        "urgent" => "Khẩn cấp",
-        _ => "Bình thường",
+        "normal" => "Normal",
+        "important" => "Important",
+        "urgent" => "Urgent",
+        _ => "Normal",
     }
 }
 

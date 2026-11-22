@@ -502,12 +502,12 @@ pub fn trigger_workflows<'a>(
                                 let template = cfg
                                     .get("message")
                                     .and_then(|v| v.as_str())
-                                    .unwrap_or("Cập nhật tự động từ không gian doanh nghiệp");
+                                    .unwrap_or("Automatic updates from enterprise space");
                                 let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("");
                                 let content = if title.is_empty() {
-                                    format!("[Tự động hóa · {}] {}", event, template)
+                                    format!("[Automation · {}] {}", event, template)
                                 } else {
-                                    format!("[Tự động hóa · {}] {}: {}", event, template, title)
+                                    format!("[Automation · {}] {}: {}", event, template, title)
                                 };
                                 let msg_id = Uuid::new_v4();
                                 if let Ok(r) = sqlx::query_as::<_, (i64, DateTime<Utc>, bool, bool)>(
@@ -532,7 +532,7 @@ pub fn trigger_workflows<'a>(
                                             seq: r.0,
                                             channel_id,
                                             sender_id: sender,
-                                            sender_name: "Tự động hóa".to_string(),
+                                            sender_name: "Automation".to_string(),
                                             sender_avatar_url: None,
                                             content,
                                             reply_to_id: None,

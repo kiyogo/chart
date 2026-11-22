@@ -62,7 +62,7 @@ pub fn device_family(user_agent: Option<&str>) -> &'static str {
     } else if ua.contains("Linux") || ua.contains("X11") {
         "Linux"
     } else {
-        "Thiết bị"
+        "Devices"
     }
 }
 

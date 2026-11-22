@@ -31,7 +31,7 @@ pub fn CreateGroupModal(
     let handle_submit = move |_| {
         let name = group_name();
         if name.trim().is_empty() {
-            error_msg.set(Some("Vui lòng nhập tên nhóm".to_string()));
+            error_msg.set(Some("Please enter a group name".to_string()));
             return;
         }
 
@@ -54,7 +54,7 @@ pub fn CreateGroupModal(
                 }
                 Err(err) => {
                     is_submitting.set(false);
-                    error_msg.set(Some(format!("Lỗi tạo nhóm: {err}")));
+                    error_msg.set(Some(format!("Error creating group: {err}")));
                 }
             }
         });
@@ -67,7 +67,7 @@ pub fn CreateGroupModal(
                 style: "max-width: 480px;",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "settings-modal-header",
-                    h2 { "Tạo nhóm mới" }
+                    h2 { "Create new group" }
                     button {
                         class: "settings-close-btn",
                         onclick: move |_| on_close.call(()),
@@ -80,35 +80,35 @@ pub fn CreateGroupModal(
                     }
 
                     div { class: "settings-section",
-                        label { class: "settings-label", "Tên nhóm *" }
+                        label { class: "settings-label", "Group name *" }
                         input {
                             class: "search-input",
                             style: "width: 100%; box-sizing: border-box; margin-top: 6px;",
                             r#type: "text",
-                            placeholder: "Nhập tên nhóm",
+                            placeholder: "Enter a group name",
                             value: "{group_name}",
                             oninput: move |e| group_name.set(e.value()),
                         }
                     }
 
                     div { class: "settings-section", style: "margin-top: 12px;",
-                        label { class: "settings-label", "Mô tả nhóm" }
+                        label { class: "settings-label", "Group description" }
                         input {
                             class: "search-input",
                             style: "width: 100%; box-sizing: border-box; margin-top: 6px;",
                             r#type: "text",
-                            placeholder: "Mô tả mục đích nhóm",
+                            placeholder: "Describe the group's purpose",
                             value: "{description}",
                             oninput: move |e| description.set(e.value()),
                         }
                     }
 
                     div { class: "settings-section", style: "margin-top: 16px;",
-                        label { class: "settings-label", "Thêm bạn bè vào nhóm" }
+                        label { class: "settings-label", "Add friends to the group" }
                         div {
                             style: "max-height: 200px; overflow-y: auto; margin-top: 8px; background: var(--bg-surface-hover); border-radius: 8px;",
                             if friends.is_empty() {
-                                div { style: "padding: 16px; text-align: center; color: var(--text-secondary);", "Chưa có bạn bè nào để thêm." }
+                                div { style: "padding: 16px; text-align: center; color: var(--text-secondary);", "There are no friends to add yet." }
                             } else {
                                 for f in friends.iter() {
                                     {
@@ -153,13 +153,13 @@ pub fn CreateGroupModal(
                         button {
                             class: "partner-action-btn",
                             onclick: move |_| on_close.call(()),
-                            "Hủy"
+                            "Cancel"
                         }
                         button {
                             class: "add-friend-submit-btn",
                             disabled: is_submitting(),
                             onclick: handle_submit,
-                            if is_submitting() { "Đang tạo" } else { "Tạo nhóm" }
+                            if is_submitting() { "Creating" } else { "Create groups" }
                         }
                     }
                 }

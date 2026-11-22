@@ -17,9 +17,9 @@ use crate::{
 
 pub fn role_label(role: &str) -> &'static str {
     match role {
-        "owner" => "Trưởng nhóm",
-        "admin" => "Phó nhóm",
-        _ => "Thành viên",
+        "owner" => "Group leader",
+        "admin" => "Group deputy",
+        _ => "Member",
     }
 }
 
@@ -82,24 +82,24 @@ pub fn GroupManageDialog(
                 Ok(s) => {
                     st.set(s.clone());
                     on_settings.call(s);
-                    msg.set(Some("Đã lưu".into()));
+                    msg.set(Some("Saved".into()));
                 }
                 Err(e) => msg.set(Some(match e.code.as_str() {
-                    "insufficient_permissions" | "only_owner" => "Chỉ trưởng hoặc phó nhóm được đổi cài đặt".into(),
-                    _ => "Không lưu được".into(),
+                    "insufficient_permissions" | "only_owner" => "Only the group leader or deputy group leader can change the settings".into(),
+                    _ => "Unable to save".into(),
                 })),
             }
         });
     };
 
     let perm_rows: [(&str, &str, bool); 7] = [
-        ("perm_send", "Gửi tin nhắn", st().perm_send),
-        ("perm_poll", "Tạo mới bình chọn", st().perm_poll),
-        ("perm_note", "Tạo mới ghi chú", st().perm_note),
-        ("perm_reminder", "Tạo mới nhắc hẹn", st().perm_reminder),
-        ("perm_pin", "Ghim tin nhắn", st().perm_pin),
-        ("perm_rename", "Đổi tên nhóm", st().perm_rename),
-        ("perm_avatar", "Đổi ảnh đại diện nhóm", st().perm_avatar),
+        ("perm_send", "Send a message", st().perm_send),
+        ("perm_poll", "Create a new vote", st().perm_poll),
+        ("perm_note", "Create new notes", st().perm_note),
+        ("perm_reminder", "Create a new appointment reminder", st().perm_reminder),
+        ("perm_pin", "Pin message", st().perm_pin),
+        ("perm_rename", "Rename the group", st().perm_rename),
+        ("perm_avatar", "Change group avatar photo", st().perm_avatar),
     ];
 
     rsx! {
@@ -109,13 +109,13 @@ pub fn GroupManageDialog(
                 div { class: "modal-header",
                     Avatar { name: group.name.clone(), avatar_url: group.avatar_url.clone(), size: 40 }
                     div { class: "modal-head-text",
-                        h3 { id: "gm-title", class: "modal-title", "Quản lý nhóm" }
-                        div { class: "modal-sub", "{group.name} · bạn là {role_label(&my_role)}" }
+                        h3 { id: "gm-title", class: "modal-title", "Manage group" }
+                        div { class: "modal-sub", "{group.name} · you are {role_label(&my_role)}" }
                     }
-                    button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
+                    button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon { size: 18 } }
                 }
                 div { class: "sidebar-filters", role: "tablist",
-                    for (tb, label) in [(Tab::Perms, "Quyền thành viên"), (Tab::Join, "Tham gia"), (Tab::Members, "Trưởng & phó nhóm"), (Tab::Public, "Công khai & chặn"), (Tab::Plugins, "Plugin & Webhook")] {
+                    for (tb, label) in [(Tab::Perms, "Membership rights"), (Tab::Join, "Join"), (Tab::Members, "Team leader & deputy"), (Tab::Public, "Public & blocked"), (Tab::Plugins, "Plugin & Webhook")] {
                         button { key: "{label}", r#type: "button", role: "tab", aria_selected: "{tab() == tb}", class: if tab() == tb { "filter-chip active" } else { "filter-chip" }, onclick: move |_| tab.set(tb),
                             "{label}"
                             if tb == Tab::Join && !requests.read().is_empty() { span { class: "chat-item-badge", "{requests.read().len()}" } }
@@ -126,7 +126,7 @@ pub fn GroupManageDialog(
                 div { class: "manage-body",
                     match tab() {
                         Tab::Perms => rsx! {
-                            p { class: "settings-group-desc", "Cho phép các thành viên trong nhóm. Trưởng nhóm và phó nhóm luôn làm được mọi việc." }
+                            p { class: "settings-group-desc", "Allow group members. The team leader and deputy team leader always get everything done." }
                             for (key, label, on) in perm_rows {
                                 {
                                     let s2 = save.clone();
@@ -146,8 +146,8 @@ pub fn GroupManageDialog(
                             }
                             label { class: "toggle-row settings-row",
                                 span { class: "grow",
-                                    "Đánh dấu tin nhắn từ trưởng / phó nhóm"
-                                    span { class: "settings-row-desc", "Tin nhắn của trưởng, phó nhóm được làm nổi bật" }
+                                    "Mark messages from team leader/deputy"
+                                    span { class: "settings-row-desc", "Messages from group leaders and deputy leaders are highlighted" }
                                 }
                                 input { r#type: "checkbox", class: "switch", checked: st().highlight_admins, disabled: !is_admin,
                                     onchange: { let s2 = save.clone(); move |e: Event<FormData>| s2(json!({ "highlight_admins": e.checked() })) },
@@ -157,8 +157,8 @@ pub fn GroupManageDialog(
                         Tab::Join => rsx! {
                             label { class: "toggle-row settings-row",
                                 span { class: "grow",
-                                    "Phê duyệt thành viên mới"
-                                    span { class: "settings-row-desc", "Người tham gia bằng liên kết phải chờ trưởng hoặc phó nhóm duyệt" }
+                                    "Approve new members"
+                                    span { class: "settings-row-desc", "People joining by link must wait for approval from the group leader or deputy" }
                                 }
                                 input { r#type: "checkbox", class: "switch", checked: st().require_approval, disabled: !is_admin,
                                     onchange: { let s2 = save.clone(); move |e: Event<FormData>| s2(json!({ "require_approval": e.checked() })) },
@@ -166,8 +166,8 @@ pub fn GroupManageDialog(
                             }
                             label { class: "toggle-row settings-row",
                                 span { class: "grow",
-                                    "Cho phép dùng liên kết tham gia nhóm"
-                                    span { class: "settings-row-desc", "Tắt để vô hiệu hóa mọi liên kết mời hiện có" }
+                                    "Allows using link to join group"
+                                    span { class: "settings-row-desc", "Turn off to disable any existing invite links" }
                                 }
                                 input { r#type: "checkbox", class: "switch", checked: st().allow_link_join, disabled: !is_admin,
                                     onchange: { let s2 = save.clone(); move |e: Event<FormData>| s2(json!({ "allow_link_join": e.checked() })) },
@@ -176,34 +176,34 @@ pub fn GroupManageDialog(
                             if st().allow_link_join {
                                 div { class: "invite-link-box",
                                     LinkIcon { size: 16 }
-                                    code { class: "invite-link-text", if let Some(l) = link() { "{l}" } else { "Đang tạo liên kết" } }
+                                    code { class: "invite-link-text", if let Some(l) = link() { "{l}" } else { "Creating link" } }
                                     if let Some(l) = link() {
                                         {
                                             let l1 = l.clone();
                                             let l2 = l.clone();
                                             let name = group.name.clone();
                                             rsx! {
-                                                button { r#type: "button", class: "btn-secondary", onclick: move |_| { platform::copy_to_clipboard(&l1); msg.set(Some("Đã sao chép liên kết".into())); }, CopyIcon {} "Sao chép" }
-                                                button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::share_link(&name, &l2), ShareIcon { size: 16 } "Chia sẻ" }
+                                                button { r#type: "button", class: "btn-secondary", onclick: move |_| { platform::copy_to_clipboard(&l1); msg.set(Some("Link copied".into())); }, CopyIcon {} "Copy" }
+                                                button { r#type: "button", class: "btn-secondary", onclick: move |_| platform::share_link(&name, &l2), ShareIcon { size: 16 } "Share" }
                                             }
                                         }
                                     }
                                     if is_admin {
-                                        button { r#type: "button", class: "btn-ghost", title: "Liên kết cũ sẽ ngừng hoạt động",
+                                        button { r#type: "button", class: "btn-ghost", title: "The old link will no longer work",
                                             onclick: { let g = gid.clone(); move |_| { let g = g.clone(); spawn(async move {
                                                 if let Ok(code) = social::group_invite_regenerate(&g).await {
                                                     link.set(Some(format!("{}/invite/g/{}", platform::app_origin().await, code)));
-                                                    msg.set(Some("Đã đổi liên kết. Liên kết cũ không còn dùng được.".into()));
+                                                    msg.set(Some("Link changed. The old link is no longer available.".into()));
                                                 }
                                             }); } },
-                                            RefreshIcon { size: 16 } "Đổi liên kết"
+                                            RefreshIcon { size: 16 } "Change link"
                                         }
                                     }
                                 }
                             }
-                            div { class: "settings-group-title", "Yêu cầu tham gia" }
+                            div { class: "settings-group-title", "Request to join" }
                             if requests.read().is_empty() {
-                                div { class: "sidebar-empty", "Không có yêu cầu nào" }
+                                div { class: "sidebar-empty", "There are no requirements" }
                             }
                             for r in requests() {
                                 {
@@ -219,10 +219,10 @@ pub fn GroupManageDialog(
                                             if is_admin {
                                                 button { r#type: "button", class: "btn-primary", onclick: move |_| { let (g, u) = (g1.clone(), u1.clone()); spawn(async move {
                                                     if social::group_decide_request(&g, &u, true).await.is_ok() { requests.with_mut(|l| l.retain(|x| x.user_id != u)); on_members_changed.call(()); }
-                                                }); }, CheckIcon { size: 16 } "Duyệt" }
+                                                }); }, CheckIcon { size: 16 } "Browse" }
                                                 button { r#type: "button", class: "btn-ghost", onclick: move |_| { let (g, u) = (g2.clone(), u2.clone()); spawn(async move {
                                                     if social::group_decide_request(&g, &u, false).await.is_ok() { requests.with_mut(|l| l.retain(|x| x.user_id != u)); }
-                                                }); }, "Từ chối" }
+                                                }); }, "Refuse" }
                                             }
                                         }
                                     }
@@ -230,7 +230,7 @@ pub fn GroupManageDialog(
                             }
                         },
                         Tab::Members => rsx! {
-                            p { class: "settings-group-desc", "Trưởng nhóm có toàn quyền và bổ nhiệm phó nhóm. Phó nhóm quản lý thành viên, duyệt người mới và ghim tin nhắn." }
+                            p { class: "settings-group-desc", "The group leader has full authority and appoints group deputies. Group deputy manages members, approves new people and pins messages." }
                             for m in members.iter().cloned() {
                                 {
                                     let (g1, g2, g3) = (gid.clone(), gid.clone(), gid.clone());
@@ -241,31 +241,31 @@ pub fn GroupManageDialog(
                                         div { key: "{m.user_id}", class: "member-row",
                                             Avatar { name: m.username.clone(), avatar_url: m.avatar_url.clone(), size: 36 }
                                             div { class: "grow",
-                                                div { class: "member-name", "{m.username}" if is_me { span { class: "member-sub", " · bạn" } } }
+                                                div { class: "member-name", "{m.username}" if is_me { span { class: "member-sub", " · you" } } }
                                                 div { class: "member-sub", if role == "owner" { CrownIcon { size: 12 } } " {role_label(&role)}" }
                                             }
                                             if is_owner && !is_me && role != "owner" {
                                                 button { r#type: "button", class: "btn-ghost",
                                                     onclick: move |_| { let (g, u) = (g1.clone(), u1.clone()); let next = if role == "admin" { "member" } else { "admin" }; spawn(async move {
                                                         match groups::groups_update_member_role(&g, &u, next).await {
-                                                            Ok(_) => { on_members_changed.call(()); msg.set(Some(if next == "admin" { "Đã bổ nhiệm phó nhóm".into() } else { "Đã gỡ quyền phó nhóm".into() })); }
-                                                            Err(_) => msg.set(Some("Không đổi được vai trò".into())),
+                                                            Ok(_) => { on_members_changed.call(()); msg.set(Some(if next == "admin" { "Appointed group deputy".into() } else { "Removed group deputy rights".into() })); }
+                                                            Err(_) => msg.set(Some("Roles cannot be changed".into())),
                                                         }
                                                     }); },
-                                                    if m.role == "admin" { "Gỡ phó nhóm" } else { "Bổ nhiệm phó nhóm" }
+                                                    if m.role == "admin" { "Remove team leader" } else { "Appoint group deputy" }
                                                 }
-                                                button { r#type: "button", class: "btn-ghost", title: "Bạn sẽ trở thành phó nhóm",
+                                                button { r#type: "button", class: "btn-ghost", title: "You will become the group's deputy",
                                                     onclick: move |_| { let (g, u) = (g2.clone(), u2.clone()); spawn(async move {
                                                         match groups::groups_update_member_role(&g, &u, "owner").await {
-                                                            Ok(_) => { on_members_changed.call(()); msg.set(Some("Đã chuyển quyền trưởng nhóm".into())); }
-                                                            Err(_) => msg.set(Some("Không chuyển được quyền".into())),
+                                                            Ok(_) => { on_members_changed.call(()); msg.set(Some("Team leader position has been transferred".into())); }
+                                                            Err(_) => msg.set(Some("Rights cannot be transferred".into())),
                                                         }
                                                     }); },
-                                                    CrownIcon { size: 14 } "Chuyển trưởng nhóm"
+                                                    CrownIcon { size: 14 } "Change group leader"
                                                 }
                                             }
                                             if is_admin && !is_me && m.role == "member" {
-                                                button { r#type: "button", class: "icon-btn danger", title: "Xóa khỏi nhóm", aria_label: "Xóa {m.username} khỏi nhóm",
+                                                button { r#type: "button", class: "icon-btn danger", title: "Remove from group", aria_label: "Remove {m.username} from the group",
                                                     onclick: move |_| { let (g, u) = (g3.clone(), u3.clone()); spawn(async move {
                                                         if groups::groups_remove_member(&g, &u).await.is_ok() { on_members_changed.call(()); }
                                                     }); },
@@ -280,13 +280,13 @@ pub fn GroupManageDialog(
                         Tab::Public => rsx! {
                             label { class: "toggle-row settings-row",
                                 span { class: "grow",
-                                    GlobeIcon { size: 16 } " Nhóm công khai"
+                                    GlobeIcon { size: 16 } " Public group"
                                     span { class: "settings-row-desc",
                                         match (st().is_public, st().verification_status.as_str()) {
-                                            (false, _) => "Chỉ người có liên kết mời mới tham gia được",
-                                            (true, "verified") => "Đã xác minh · hiện trong Tìm kiếm cho mọi người",
-                                            (true, "rejected") => "Bị từ chối xác minh · chưa hiện trong Tìm kiếm",
-                                            _ => "Đang chờ đội ngũ ChatW xác minh trước khi hiện trong Tìm kiếm",
+                                            (false, _) => "Only people with the invite link can join",
+                                            (true, "verified") => "Verified · shown in Search for everyone",
+                                            (true, "rejected") => "Verification denied · not showing up in Search",
+                                            _ => "Waiting for ChatW team to verify before appearing in Search",
                                         }
                                     }
                                 }
@@ -294,31 +294,31 @@ pub fn GroupManageDialog(
                                     onchange: { let s2 = save.clone(); move |e: Event<FormData>| s2(json!({ "is_public": e.checked() })) },
                                 }
                             }
-                            div { class: "settings-group-title", "Ảnh bìa nhóm" }
+                            div { class: "settings-group-title", "Group cover photo" }
                             div { class: "inline-form",
                                 input { id: "group-banner-file", r#type: "file", accept: "image/png,image/jpeg,image/webp,image/avif", style: "display: none;",
                                     onchange: { let s2 = save.clone(); move |_| { let s3 = s2.clone(); spawn(async move {
                                         match platform::read_selected_file_raw("group-banner-file").await {
                                             Ok((bytes, mime)) => match crate::services::library::upload_media(bytes, &mime).await {
                                                 Ok(url) => s3(json!({ "banner_url": url })),
-                                                Err(_) => msg.set(Some("Không tải ảnh bìa lên được".into())),
+                                                Err(_) => msg.set(Some("Unable to upload cover photo".into())),
                                             },
-                                            Err(e) if e == "too_large" => msg.set(Some("Ảnh lớn hơn 2 MB".into())),
+                                            Err(e) if e == "too_large" => msg.set(Some("Photo larger than 2 MB".into())),
                                             Err(_) => {}
                                         }
                                     }); } },
                                 }
                                 if is_admin {
-                                    label { r#for: "group-banner-file", class: "btn-secondary", role: "button", tabindex: "0", "Tải ảnh bìa" }
+                                    label { r#for: "group-banner-file", class: "btn-secondary", role: "button", tabindex: "0", "Download cover photo" }
                                 }
                                 if let Some(b) = st().banner_url.filter(|b| platform::safe_asset_path(b)) {
                                     span { class: "banner-preview", style: "background-image: url('{platform::resolve_asset_url(&b)}');" }
                                 }
                             }
                             div { class: "danger-zone",
-                                div { class: "settings-group-title", ShieldIcon { size: 16 } " Chặn nhóm" }
-                                p { class: "settings-group-desc", "Rời nhóm và không ai có thể thêm bạn vào nhóm này nữa, kể cả qua liên kết mời." }
-                                button { r#type: "button", class: "btn-danger", onclick: move |_| confirm_block.set(true), BlockIcon { size: 16 } "Chặn nhóm này" }
+                                div { class: "settings-group-title", ShieldIcon { size: 16 } " Block groups" }
+                                p { class: "settings-group-desc", "Leave the group and no one can add you to this group again, even through the invite link." }
+                                button { r#type: "button", class: "btn-danger", onclick: move |_| confirm_block.set(true), BlockIcon { size: 16 } "Block this group" }
                             }
                         },
                         Tab::Plugins => rsx! {
@@ -336,19 +336,19 @@ pub fn GroupManageDialog(
         if confirm_block() {
             div { class: "modal-overlay", onclick: move |_| confirm_block.set(false),
                 div { class: "modal-content compact", role: "alertdialog", aria_modal: "true", onclick: move |e| e.stop_propagation(),
-                    h3 { class: "modal-title", "Chặn nhóm {group.name}?" }
-                    p { class: "modal-sub", if is_owner { "Bạn là trưởng nhóm: hãy chuyển quyền trưởng nhóm trước khi chặn." } else { "Bạn sẽ rời nhóm ngay và không thể bị thêm lại." } }
+                    h3 { class: "modal-title", "Block group {group.name}?" }
+                    p { class: "modal-sub", if is_owner { "You are the team leader: please transfer team leader rights before blocking." } else { "You will leave the group immediately and cannot be added again." } }
                     div { class: "modal-actions",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_block.set(false), "Hủy" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| confirm_block.set(false), "Cancel" }
                         if !is_owner {
                             button { r#type: "button", class: "btn-danger",
                                 onclick: { let g = gid.clone(); move |_| { let g = g.clone(); confirm_block.set(false); spawn(async move {
                                     match social::group_block(&g).await {
                                         Ok(_) => on_blocked.call(()),
-                                        Err(_) => msg.set(Some("Không chặn được nhóm".into())),
+                                        Err(_) => msg.set(Some("The group cannot be blocked".into())),
                                     }
                                 }); } },
-                                BlockIcon { size: 16 } "Chặn nhóm"
+                                BlockIcon { size: 16 } "Block groups"
                             }
                         }
                     }

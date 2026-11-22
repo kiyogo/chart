@@ -40,11 +40,11 @@ pub fn CommunityModal(
                 class: "modal-dialog",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "modal-header",
-                    h3 { class: "modal-title", "Cộng đồng" }
+                    h3 { class: "modal-title", "Communities" }
                     button {
                         r#type: "button",
                         class: "icon-btn",
-                        aria_label: "Đóng",
+                        aria_label: "Close",
                         onclick: move |_| on_close.call(()),
                         CloseIcon {}
                     }
@@ -55,19 +55,19 @@ pub fn CommunityModal(
                             r#type: "button",
                             class: if tab() == "create" { "btn-primary" } else { "btn-secondary" },
                             onclick: move |_| { tab.set("create"); error.set(None); },
-                            "Tạo mới"
+                            "Create new"
                         }
                         button {
                             r#type: "button",
                             class: if tab() == "join" { "btn-primary" } else { "btn-secondary" },
                             onclick: move |_| { tab.set("join"); error.set(None); },
-                            "Nhập mã mời"
+                            "Enter invitation code"
                         }
                         button {
                             r#type: "button",
                             class: if tab() == "discover" { "btn-primary" } else { "btn-secondary" },
                             onclick: move |_| { tab.set("discover"); error.set(None); },
-                            "Khám phá"
+                            "Explore"
                         }
                     }
 
@@ -81,7 +81,7 @@ pub fn CommunityModal(
                                 }
                                 let n = name().trim().to_string();
                                 if n.len() < 2 {
-                                    error.set(Some("Tên cộng đồng phải từ 2 ký tự trở lên".into()));
+                                    error.set(Some("Community name must be 2 characters or more".into()));
                                     return;
                                 }
                                 let ent = is_enterprise();
@@ -90,24 +90,24 @@ pub fn CommunityModal(
                                 spawn(async move {
                                     match api::servers_create(&n, ent).await {
                                         Ok(srv) => on_server_ready.call(srv),
-                                        Err(err) => error.set(Some(format!("Không thể tạo cộng đồng: {}", err.code))),
+                                        Err(err) => error.set(Some(format!("Unable to create community: {}", err.code))),
                                     }
                                     loading.set(false);
                                 });
                             },
                             div { class: "form-field",
-                                label { class: "form-label", "Tên cộng đồng" }
+                                label { class: "form-label", "Community name" }
                                 input {
                                     r#type: "text",
-                                    placeholder: "Ví dụ: Cộng đồng Rust Việt Nam",
+                                    placeholder: "For example: Vietnam Rust Community",
                                     value: "{name}",
                                     oninput: move |e| name.set(e.value()),
                                 }
                             }
                             label { class: "settings-row toggle-row", style: "margin: 0;",
                                 span { class: "grow",
-                                    span { class: "settings-label", "Chế độ doanh nghiệp" }
-                                    span { class: "ent-switch-desc", "Bổ sung công cụ quản lý và làm việc dành cho doanh nghiệp." }
+                                    span { class: "settings-label", "Enterprise mode" }
+                                    span { class: "ent-switch-desc", "Additional management and working tools for businesses." }
                                 }
                                 input {
                                     r#type: "checkbox",
@@ -120,12 +120,12 @@ pub fn CommunityModal(
                                 div { class: "status-badge error", "{err}" }
                             }
                             div { style: "display: flex; justify-content: flex-end; gap: 8px;",
-                                button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Hủy" }
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Cancel" }
                                 button {
                                     r#type: "submit",
                                     class: "btn-primary",
                                     disabled: loading() || name().trim().len() < 2,
-                                    if loading() { "Đang tạo" } else { "Tạo cộng đồng" }
+                                    if loading() { "Creating" } else { "Create a community" }
                                 }
                             }
                         }
@@ -143,16 +143,16 @@ pub fn CommunityModal(
                                 spawn(async move {
                                     match api::servers_join(&code).await {
                                         Ok(srv) => on_server_ready.call(srv),
-                                        Err(_) => error.set(Some("Mã mời không hợp lệ hoặc đã hết hạn".into())),
+                                        Err(_) => error.set(Some("Invitation code is invalid or has expired".into())),
                                     }
                                     loading.set(false);
                                 });
                             },
                             div { class: "form-field",
-                                label { class: "form-label", "Mã mời" }
+                                label { class: "form-label", "Invitation code" }
                                 input {
                                     r#type: "text",
-                                    placeholder: "Nhập mã mời, ví dụ a1b2c3d4",
+                                    placeholder: "Enter the invitation code, for example a1b2c3d4",
                                     value: "{invite_code}",
                                     oninput: move |e| invite_code.set(e.value()),
                                 }
@@ -161,19 +161,19 @@ pub fn CommunityModal(
                                 div { class: "status-badge error", "{err}" }
                             }
                             div { style: "display: flex; justify-content: flex-end; gap: 8px;",
-                                button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Hủy" }
+                                button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Cancel" }
                                 button {
                                     r#type: "submit",
                                     class: "btn-primary",
                                     disabled: loading() || invite_code().trim().is_empty(),
-                                    if loading() { "Đang tham gia" } else { "Tham gia" }
+                                    if loading() { "Participating" } else { "Join" }
                                 }
                             }
                         }
                     } else {
                         div { style: "display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;",
                             if discover_list.read().is_empty() {
-                                div { class: "empty-chat-inner", "Chưa có cộng đồng công khai" }
+                                div { class: "empty-chat-inner", "There is no public community yet" }
                             } else {
                                 for srv in discover_list() {
                                     {
@@ -192,7 +192,7 @@ pub fn CommunityModal(
                                                             }
                                                         });
                                                     },
-                                                    "Tham gia"
+                                                    "Join"
                                                 }
                                             }
                                         }
@@ -227,8 +227,8 @@ pub fn CreateCategoryModal(
                 class: "modal-dialog",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "modal-header",
-                    h3 { class: "modal-title", "Tạo danh mục kênh" }
-                    button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon {} }
+                    h3 { class: "modal-title", "Create channel categories" }
+                    button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon {} }
                 }
                 form {
                     class: "modal-body",
@@ -243,16 +243,16 @@ pub fn CreateCategoryModal(
                         spawn(async move {
                             match api::servers_create_category(&sid, &n).await {
                                 Ok(cat) => on_created.call(cat),
-                                Err(err) => error.set(Some(format!("Không thể tạo danh mục: {}", err.code))),
+                                Err(err) => error.set(Some(format!("Unable to create category: {}", err.code))),
                             }
                             loading.set(false);
                         });
                     },
                     div { class: "form-field",
-                        label { class: "form-label", "Tên danh mục" }
+                        label { class: "form-label", "Category name" }
                         input {
                             r#type: "text",
-                            placeholder: "Ví dụ: THÔNG TIN, TRÒ CHUYỆN, GIỌNG NÓI",
+                            placeholder: "For example: INFORMATION, CHAT, VOICE",
                             value: "{name}",
                             oninput: move |e| name.set(e.value()),
                         }
@@ -261,8 +261,8 @@ pub fn CreateCategoryModal(
                         div { class: "status-badge error", "{err}" }
                     }
                     div { style: "display: flex; justify-content: flex-end; gap: 8px;",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Hủy" }
-                        button { r#type: "submit", class: "btn-primary", disabled: loading() || name().trim().is_empty(), "Tạo danh mục" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Cancel" }
+                        button { r#type: "submit", class: "btn-primary", disabled: loading() || name().trim().is_empty(), "Create categories" }
                     }
                 }
             }
@@ -292,8 +292,8 @@ pub fn CreateChannelModal(
                 class: "modal-dialog",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "modal-header",
-                    h3 { class: "modal-title", "Tạo kênh mới" }
-                    button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon {} }
+                    h3 { class: "modal-title", "Create a new channel" }
+                    button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon {} }
                 }
                 form {
                     class: "modal-body",
@@ -310,28 +310,28 @@ pub fn CreateChannelModal(
                         spawn(async move {
                             match api::servers_create_channel(&sid, &n, cid.as_deref(), &ctype).await {
                                 Ok(ch) => on_created.call(ch),
-                                Err(err) => error.set(Some(format!("Không thể tạo kênh: {}", err.code))),
+                                Err(err) => error.set(Some(format!("Unable to create channel: {}", err.code))),
                             }
                             loading.set(false);
                         });
                     },
                     div { class: "form-field",
-                        label { class: "form-label", "Loại kênh" }
+                        label { class: "form-label", "Channel type" }
                         select {
                             value: "{channel_type}",
                             onchange: move |e| channel_type.set(e.value()),
-                            option { value: "text", "Kênh văn bản" }
-                            option { value: "voice", "Kênh thoại" }
-                            option { value: "announcement", "Kênh thông báo" }
-                            option { value: "forum", "Kênh diễn đàn" }
-                            option { value: "event", "Kênh sự kiện" }
+                            option { value: "text", "Text channel" }
+                            option { value: "voice", "Voice channel" }
+                            option { value: "announcement", "Notification channel" }
+                            option { value: "forum", "Forum channel" }
+                            option { value: "event", "Event channel" }
                         }
                     }
                     div { class: "form-field",
-                        label { class: "form-label", "Tên kênh" }
+                        label { class: "form-label", "Channel name" }
                         input {
                             r#type: "text",
-                            placeholder: "Ví dụ: lap-trinh hoặc phong-hop",
+                            placeholder: "For example: lap-trinh or phong-hop",
                             value: "{name}",
                             oninput: move |e| name.set(e.value()),
                         }
@@ -340,8 +340,8 @@ pub fn CreateChannelModal(
                         div { class: "status-badge error", "{err}" }
                     }
                     div { style: "display: flex; justify-content: flex-end; gap: 8px;",
-                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Hủy" }
-                        button { r#type: "submit", class: "btn-primary", disabled: loading() || name().trim().is_empty(), "Tạo kênh" }
+                        button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Cancel" }
+                        button { r#type: "submit", class: "btn-primary", disabled: loading() || name().trim().is_empty(), "Create a channel" }
                     }
                 }
             }
@@ -361,7 +361,7 @@ pub fn ServerInviteModal(server_id: String, server_name: String, on_close: Event
         spawn(async move {
             match api::servers_create_invite(&s).await {
                 Ok(c) => code.set(Some(c)),
-                Err(e) => error.set(Some(format!("Không thể tạo mã mời: {}", e.code))),
+                Err(e) => error.set(Some(format!("Unable to generate invitation code: {}", e.code))),
             }
         });
     });
@@ -376,13 +376,13 @@ pub fn ServerInviteModal(server_id: String, server_name: String, on_close: Event
                 class: "modal-dialog",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "modal-header",
-                    h3 { class: "modal-title", "Mời vào {server_name}" }
-                    button { r#type: "button", class: "icon-btn", aria_label: "Đóng", onclick: move |_| on_close.call(()), CloseIcon {} }
+                    h3 { class: "modal-title", "Please come in {server_name}" }
+                    button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon {} }
                 }
                 div { class: "modal-body",
                     if let Some(c) = code() {
                         p { style: "font-size: 13px; color: var(--text-secondary);",
-                            "Chia sẻ mã mời này để bạn bè tham gia cộng đồng:"
+                            "Share this invitation code for your friends to join the community:"
                         }
                         div { style: "display: flex; gap: 8px;",
                             input { r#type: "text", readonly: true, value: "{c}", style: "flex: 1; font-family: var(--font-mono);" }
@@ -393,13 +393,13 @@ pub fn ServerInviteModal(server_id: String, server_name: String, on_close: Event
                                     platform::copy_to_clipboard(&c);
                                     copied.set(true);
                                 },
-                                if copied() { "Đã sao chép" } else { "Sao chép" }
+                                if copied() { "Copied" } else { "Copy" }
                             }
                         }
                     } else if let Some(err) = error() {
                         div { class: "status-badge error", "{err}" }
                     } else {
-                        div { class: "empty-chat-inner", "Đang tạo mã mời" }
+                        div { class: "empty-chat-inner", "Generating invitation code" }
                     }
                 }
             }

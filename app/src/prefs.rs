@@ -124,7 +124,7 @@ impl Default for Prefs {
             pin_salt: String::new(),
             pin_hash: String::new(),
             auto_reply: false,
-            auto_reply_text: "Mình đang bận, sẽ trả lời bạn sớm nhất có thể.".to_string(),
+            auto_reply_text: "I am currently busy and will reply as soon as possible.".to_string(),
             auto_reply_mode: "away".to_string(),
             auto_reply_from: "18:00".to_string(),
             auto_reply_to: "08:00".to_string(),
@@ -144,7 +144,7 @@ impl Default for Prefs {
             show_avatars: true,
             time_24h: true,
             reduce_motion: false,
-            language: "vi".to_string(),
+            language: crate::i18n::detect_default_language().to_string(),
             fav_stickers: Vec::new(),
             recent_stickers: Vec::new(),
             fav_gifs: Vec::new(),
@@ -231,7 +231,7 @@ impl Prefs {
         if self.auto_reply_text.chars().count() > 500 {
             self.auto_reply_text = self.auto_reply_text.chars().take(500).collect();
         }
-        if !crate::i18n::LANGUAGES.iter().any(|(code, _, _)| *code == self.language) {
+        if crate::i18n::lang_index(&self.language).is_none() {
             self.language = d.language;
         }
         pick(&mut self.avatar_fx_lists, &["always", "hover", "off"], "hover");

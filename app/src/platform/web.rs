@@ -120,7 +120,7 @@ pub async fn start_google_oauth() -> Result<bool, String> {
         let _ = win.location().set_href("/api/auth/google");
         Ok(false)
     } else {
-        Err("Không thể mở trang đăng nhập Google".into())
+        Err("Cannot open Google sign in page".into())
     }
 }
 

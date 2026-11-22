@@ -39,32 +39,32 @@ pub fn NotificationsView(
         div { class: "notifications-page",
             header { class: "notifications-header",
                 div { class: "notifications-title-row",
-                    h1 { class: "notifications-title", "Thông báo" }
+                    h1 { class: "notifications-title", "Notifications" }
                     if total_unread_msgs + total_pending > 0 {
-                        span { class: "notifications-count-pill", "{total_unread_msgs + total_pending} mới" }
+                        span { class: "notifications-count-pill", "new {total_unread_msgs + total_pending}" }
                     }
                 }
-                div { class: "notifications-tabs", role: "tablist", aria_label: "Lọc thông báo",
+                div { class: "notifications-tabs", role: "tablist", aria_label: "Filter notifications",
                     button {
                         r#type: "button",
                         role: "tab",
                         class: if filter() == "all" { "download-tab active" } else { "download-tab" },
                         onclick: move |_| filter.set("all".to_string()),
-                        "Tất cả"
+                        "All"
                     }
                     button {
                         r#type: "button",
                         role: "tab",
                         class: if filter() == "messages" { "download-tab active" } else { "download-tab" },
                         onclick: move |_| filter.set("messages".to_string()),
-                        "Tin nhắn ({total_unread_msgs})"
+                        "Message ({total_unread_msgs})"
                     }
                     button {
                         r#type: "button",
                         role: "tab",
                         class: if filter() == "requests" { "download-tab active" } else { "download-tab" },
                         onclick: move |_| filter.set("requests".to_string()),
-                        "Kết bạn ({total_pending})"
+                        "Make friends ({total_pending})"
                     }
                 }
             }
@@ -74,12 +74,12 @@ pub fn NotificationsView(
                     if show_reqs && !pending_requests.is_empty() {
                         section { class: "notifications-section",
                             div { class: "notifications-section-head",
-                                h2 { "Lời mời kết bạn" }
+                                h2 { "Friend requests" }
                                 button {
                                     r#type: "button",
                                     class: "btn-secondary",
                                     onclick: move |_| on_open_friends_tab.call(()),
-                                    "Mở danh sách bạn bè"
+                                    "Open your friends list"
                                 }
                             }
                             div { class: "notifications-list",
@@ -92,11 +92,11 @@ pub fn NotificationsView(
                                         Avatar { name: req.sender_username.clone(), avatar_url: req.sender_avatar_url.clone(), size: 42 }
                                         div { class: "notification-row-main",
                                             strong { "{req.sender_username}" }
-                                            span { "Đã gửi lời mời kết bạn cho bạn" }
+                                            span { "A friend request has been sent to you" }
                                         }
                                         span { class: "notification-row-tag",
                                             FriendsIcon { size: 15 }
-                                            span { "Xem" }
+                                            span { "View" }
                                         }
                                     }
                                 }
@@ -107,7 +107,7 @@ pub fn NotificationsView(
                     if show_msgs && !unread_friends.is_empty() {
                         section { class: "notifications-section",
                             div { class: "notifications-section-head",
-                                h2 { "Tin nhắn chưa đọc" }
+                                h2 { "Unread messages" }
                             }
                             div { class: "notifications-list",
                                 for (friend, count) in unread_friends.clone() {
@@ -123,7 +123,7 @@ pub fn NotificationsView(
                                                 Avatar { name: friend.username.clone(), avatar_url: friend.avatar_url.clone(), size: 42 }
                                                 div { class: "notification-row-main",
                                                     strong { "{label}" }
-                                                    span { "{count} tin nhắn mới đang chờ bạn đọc" }
+                                                    span { "{count} new messages are waiting for you to read" }
                                                 }
                                                 span { class: "notification-row-badge", "{count}" }
                                             }
@@ -137,22 +137,22 @@ pub fn NotificationsView(
                     if visible_empty {
                         div { class: "notifications-empty",
                             div { class: "notifications-empty-icon", BellIcon { size: 28 } }
-                            h2 { "Không có thông báo mới" }
-                            p { "Mọi tin nhắn chưa đọc và lời mời kết bạn của bạn sẽ hiển thị tập trung tại đây." }
+                            h2 { "No new notifications" }
+                            p { "All your unread messages and friend requests will be displayed here." }
                             div { class: "notifications-empty-actions",
                                 button {
                                     r#type: "button",
                                     class: "btn-primary",
                                     onclick: move |_| on_open_messages.call(()),
                                     MessageIcon { size: 16 }
-                                    span { "Về tin nhắn" }
+                                    span { "Back to messages" }
                                 }
                                 button {
                                     r#type: "button",
                                     class: "btn-secondary",
                                     onclick: move |_| on_open_friends_tab.call(()),
                                     FriendsIcon { size: 16 }
-                                    span { "Tìm bạn bè" }
+                                    span { "Find friends" }
                                 }
                             }
                         }

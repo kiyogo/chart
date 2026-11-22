@@ -20,11 +20,11 @@ use crate::{
 
 fn presence_label(p: &str) -> &'static str {
     match p {
-        "online" => "Đang hoạt động",
-        "idle" => "Đang vắng",
-        "dnd" => "Không làm phiền",
-        "invisible" | "offline" => "Ngoại tuyến",
-        _ => "Không rõ trạng thái",
+        "online" => "Online",
+        "idle" => "Away",
+        "dnd" => "Do not disturb",
+        "invisible" | "offline" => "Offline",
+        _ => "Status unknown",
     }
 }
 
@@ -129,11 +129,11 @@ pub fn DmDetailsPanel(
         button {
             r#type: "button",
             class: "drawer-backdrop",
-            aria_label: "Đóng bảng thông tin",
+            aria_label: "Close the dashboard",
             tabindex: "-1",
             onclick: move |_| on_close.call(()),
         }
-        aside { class: "details-panel", style: "--pc-1: {c1}; --pc-2: {c2};", aria_label: "Thông tin cuộc trò chuyện",
+        aside { class: "details-panel", style: "--pc-1: {c1}; --pc-2: {c2};", aria_label: "Conversation info",
             if effects_on && effect != "none" && effect != "custom" {
                 div { class: "profile-effect effect-{effect}", aria_hidden: "true",
                     for n in 0..14 { i { key: "{n}", style: "--i: {n};" } }
@@ -147,8 +147,8 @@ pub fn DmDetailsPanel(
             button {
                 r#type: "button",
                 class: "icon-btn profile-close only-mobile",
-                title: "Đóng",
-                aria_label: "Đóng",
+                title: "Close",
+                aria_label: "Close",
                 onclick: move |_| on_close.call(()),
                 CloseIcon {}
             }
@@ -169,23 +169,23 @@ pub fn DmDetailsPanel(
                     }
                 }
                 div { class: "details-actions",
-                    button { r#type: "button", class: "details-action", title: "Nhắn tin", onclick: move |_| on_focus_composer.call(()),
-                        MessageIcon {} span { "Nhắn tin" }
+                    button { r#type: "button", class: "details-action", title: "Message", onclick: move |_| on_focus_composer.call(()),
+                        MessageIcon {} span { "Message" }
                     }
-                    button { r#type: "button", class: "details-action", title: "Gọi thoại", onclick: move |_| on_audio_call.call(()),
-                        PhoneIcon {} span { "Gọi" }
+                    button { r#type: "button", class: "details-action", title: "Voice call", onclick: move |_| on_audio_call.call(()),
+                        PhoneIcon {} span { "Call" }
                     }
-                    button { r#type: "button", class: "details-action", title: "Gọi video", onclick: move |_| on_video_call.call(()),
+                    button { r#type: "button", class: "details-action", title: "Video call", onclick: move |_| on_video_call.call(()),
                         VideoIcon {} span { "Video" }
                     }
-                    button { r#type: "button", class: "details-action", title: "Xem hồ sơ", onclick: move |_| on_view_profile.call(()),
-                        UserIcon {} span { "Hồ sơ" }
+                    button { r#type: "button", class: "details-action", title: "View profile", onclick: move |_| on_view_profile.call(()),
+                        UserIcon {} span { "Profile" }
                     }
                 }
 
                 if let Some(b) = bio {
                     div { class: "details-section",
-                        div { class: "details-section-title", "Giới thiệu" }
+                        div { class: "details-section-title", "Introduction" }
                         div { class: "details-bio", "{b}" }
                     }
                 }
@@ -193,26 +193,26 @@ pub fn DmDetailsPanel(
                 ContactNoteEditor { key: "{user_id}", user_id: user_id.clone() }
 
                 div { class: "details-section",
-                    div { class: "details-section-title", "Tìm trong cuộc trò chuyện" }
+                    div { class: "details-section-title", "Search in chat" }
                     div { class: "search-field",
                         SearchIcon { size: 16 }
                         input {
                             r#type: "search",
-                            placeholder: "Tìm tin nhắn đã tải",
-                            aria_label: "Tìm tin nhắn trong cuộc trò chuyện",
+                            placeholder: "Find downloaded messages",
+                            aria_label: "Find messages in chats",
                             value: "{search}",
                             oninput: move |e| search.set(e.value()),
                         }
                     }
                     if !q.is_empty() {
                         if hits.is_empty() {
-                            div { class: "sidebar-empty", "Không có tin nhắn khớp" }
+                            div { class: "sidebar-empty", "There are no matching messages" }
                         } else {
                             div { class: "details-search-results",
                                 for h in hits {
                                     {
                                         let id = h.id.clone();
-                                        let who = if h.is_self { "Bạn".to_string() } else { h.sender_name.clone() };
+                                        let who = if h.is_self { "You".to_string() } else { h.sender_name.clone() };
                                         let when = platform::format_local_time(&h.created_at);
                                         rsx! {
                                             button {
@@ -228,7 +228,7 @@ pub fn DmDetailsPanel(
                                 }
                             }
                         }
-                        div { class: "form-hint", "Tìm kiếm chạy trên thiết bị, trong các tin nhắn đã giải mã của phiên này." }
+                        div { class: "form-hint", "Search runs on the device, in the decoded messages of this session." }
                     }
                 }
 
@@ -240,17 +240,17 @@ pub fn DmDetailsPanel(
                         onclick: move |_| security_open.set(!security_open()),
                         span { class: "disclosure-icon", ShieldIcon { size: 16 } }
                         span { class: "disclosure-text",
-                            span { class: "disclosure-title", "Bảo mật và mã hóa" }
+                            span { class: "disclosure-title", "Security and encryption" }
                             span { class: "disclosure-sub",
-                                if fingerprint.is_some() { "Mã hóa đầu cuối đang bật" } else { "Đang tải khóa công khai" }
+                                if fingerprint.is_some() { "End-to-end encryption is on" } else { "Loading public key" }
                             }
                         }
                         if security_open() { ChevronDownIcon { size: 16 } } else { ChevronRightIcon { size: 16 } }
                     }
                     if security_open() {
                         div { class: "security-note",
-                            "Tin nhắn trực tiếp được mã hóa đầu cuối giao thức v2 (ECDH P-256 + HKDF Ratchet + AES-256-GCM + chữ ký ECDSA P-256). "
-                            "So sánh mã an toàn dưới đây với {username} qua kênh ngoài băng để phát hiện tấn công thay khóa."
+                            "End-to-end encrypted direct messages protocol v2 (ECDH P-256 + HKDF Ratchet + AES-256-GCM + ECDSA P-256 signature). "
+                            "Compare the security code below with {username} over the out-of-band channel to detect a key substitution attack."
                         }
                         {
                             let my_uid = crate::services::api::auth_me_cached_id();
@@ -261,10 +261,10 @@ pub fn DmDetailsPanel(
                             rsx! {
                                 if let Some(alert) = alert_now {
                                     div { class: "status-badge error", style: "margin: 8px 0; display: flex; flex-direction: column; gap: 6px;",
-                                        strong { "Cảnh báo thay đổi khóa danh tính (TOFU)" }
-                                        span { "Khóa mã hóa của {username} đã thay đổi so với phiên trước. Hãy đối chiếu trực tiếp mã an toàn trước khi gửi thông tin nhạy cảm." }
-                                        span { style: "font-family: monospace; font-size: 11px;", "Cũ: {format_fingerprint(&alert.previous_identity_fingerprint)}" }
-                                        span { style: "font-family: monospace; font-size: 11px;", "Mới: {format_fingerprint(&alert.new_identity_fingerprint)}" }
+                                        strong { "Identity Key Change Alert (TOFU)" }
+                                        span { "{username}'s encryption key has changed since the previous session. Check the security code directly before sending sensitive information." }
+                                        span { style: "font-family: monospace; font-size: 11px;", "Old: {format_fingerprint(&alert.previous_identity_fingerprint)}" }
+                                        span { style: "font-family: monospace; font-size: 11px;", "New: {format_fingerprint(&alert.new_identity_fingerprint)}" }
                                         button {
                                             r#type: "button",
                                             class: "btn-secondary",
@@ -272,14 +272,14 @@ pub fn DmDetailsPanel(
                                                 crate::crypto::e2ee::acknowledge_peer_key_change(my_uid_ack.as_deref(), &uid_ack);
                                                 ack_tick.set(ack_tick() + 1);
                                             },
-                                            "Đã xác minh khóa mới"
+                                            "New key verified"
                                         }
                                     }
                                 }
                             }
                         }
                         if let Some(fp) = fingerprint.clone() {
-                            div { class: "details-section-title", "Vân tay khóa của {username}" }
+                            div { class: "details-section-title", "{username}'s lock fingerprint" }
                             div { class: "fingerprint", "{format_fingerprint(&fp)}" }
                             {
                                 let qr_svg = qrcode::QrCode::new(format!("chatw-e2ee-v2:{user_id}:{fp}").as_bytes())
@@ -309,15 +309,15 @@ pub fn DmDetailsPanel(
                                     copied.set(true);
                                 },
                                 CopyIcon {}
-                                if copied() { "Đã sao chép" } else { "Sao chép vân tay" }
+                                if copied() { "Copied" } else { "Copy fingerprint" }
                             }
                         }
                         if let Some(mine) = my_fingerprint.clone() {
-                            div { class: "details-section-title", "Vân tay khóa của bạn" }
+                            div { class: "details-section-title", "Fingerprint your lock" }
                             div { class: "fingerprint", "{format_fingerprint(&mine)}" }
                         }
                         div { class: "details-row",
-                            span { class: "details-row-label", "Mã người dùng" }
+                            span { class: "details-row-label", "User code" }
                         }
                         div { class: "fingerprint", "{user_id}" }
                         PeerRecoveryConvToggle { peer_id: user_id.clone() }
@@ -347,7 +347,7 @@ fn PeerRecoveryConvToggle(peer_id: String) -> Element {
     rsx! {
         div { class: "details-recovery-box",
             label { class: "details-toggle-row",
-                span { "Cho phép khôi phục file hai chiều" }
+                span { "Allows two-way file recovery" }
                 input {
                     r#type: "checkbox",
                     checked: allow_rec(),
@@ -364,8 +364,8 @@ fn PeerRecoveryConvToggle(peer_id: String) -> Element {
                                     dm_encrypted_backup: bkup,
                                 };
                                 match crate::services::storage_sync::update_conv_policy(&peer, &pol).await {
-                                    Ok(_) => status_msg.set(Some(if val { "Đã bật khôi phục hai chiều".into() } else { "Đã tắt khôi phục hai chiều".into() })),
-                                    Err(_) => status_msg.set(Some("Không lưu được cài đặt".into())),
+                                    Ok(_) => status_msg.set(Some(if val { "Two-way recovery enabled".into() } else { "Disabled two-way recovery".into() })),
+                                    Err(_) => status_msg.set(Some("Settings cannot be saved".into())),
                                 }
                             });
                         }
@@ -397,8 +397,8 @@ fn ContactNoteEditor(user_id: String) -> Element {
         let u = uid.clone();
         spawn(async move {
             match crate::services::profile_ext::save_note(&u, &nickname(), &note()).await {
-                Ok(()) => status.set(Some((false, "Đã lưu".into()))),
-                Err(_e) => status.set(Some((true, "Không lưu được".to_string()))),
+                Ok(()) => status.set(Some((false, "Saved".into()))),
+                Err(_e) => status.set(Some((true, "Unable to save".to_string()))),
             }
             busy.set(false);
         });
@@ -406,18 +406,18 @@ fn ContactNoteEditor(user_id: String) -> Element {
     rsx! {
         div { class: "details-section",
             button { r#type: "button", class: "details-section-toggle", aria_expanded: "{open()}", onclick: move |_| open.set(!open()),
-                span { class: "details-section-title", "Biệt danh và ghi chú riêng" }
-                span { class: "member-sub", if open() { "Thu gọn" } else if nickname().is_empty() && note().is_empty() { "Thêm" } else { "Sửa" } }
+                span { class: "details-section-title", "Nicknames and private notes" }
+                span { class: "member-sub", if open() { "Collapse" } else if nickname().is_empty() && note().is_empty() { "Add" } else { "Edit" } }
             }
             if !open() && !note().trim().is_empty() {
                 div { class: "details-bio private-note", "{note}" }
             }
             if open() {
-                p { class: "member-sub", "Chỉ bạn thấy. Biệt danh thay tên người này trong danh sách của bạn." }
-                input { r#type: "text", maxlength: "40", placeholder: "Biệt danh", aria_label: "Biệt danh", value: "{nickname}", oninput: move |e| nickname.set(e.value()) }
-                textarea { rows: "3", maxlength: "500", placeholder: "Ghi chú riêng", aria_label: "Ghi chú riêng", value: "{note}", oninput: move |e| note.set(e.value()) }
+                p { class: "member-sub", "Only you see. Nickname replaces this person's name in your list." }
+                input { r#type: "text", maxlength: "40", placeholder: "Nickname", aria_label: "Nickname", value: "{nickname}", oninput: move |e| nickname.set(e.value()) }
+                textarea { rows: "3", maxlength: "500", placeholder: "Private notes", aria_label: "Private notes", value: "{note}", oninput: move |e| note.set(e.value()) }
                 div { class: "inline-form",
-                    button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: save, "Lưu" }
+                    button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: save, "Save" }
                     if let Some((err, m)) = status() { span { class: if err { "status-badge error" } else { "status-badge success" }, "{m}" } }
                 }
             }

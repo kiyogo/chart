@@ -23,7 +23,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
             }
             match api::auth_providers().await {
                 Ok(p) => providers.set(Some(p)),
-                Err(_) => error.set(Some("Không kết nối được máy chủ".to_string())),
+                Err(_) => error.set(Some("Unable to connect to server".to_string())),
             }
         });
     });
@@ -32,7 +32,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
         let google_enabled = providers().map(|p| p.google).unwrap_or(false);
         if !google_enabled {
             error.set(Some(
-                "Đăng nhập Google chưa được cấu hình trên máy chủ.".to_string(),
+                "Google Sign In is not configured on the server.".to_string(),
             ));
             return;
         }
@@ -66,7 +66,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                 }
                 Err(err) => {
                     let msg = if err.code.is_empty() {
-                        "Đăng nhập không thành công".to_string()
+                        "Login failed".to_string()
                     } else {
                         err.code
                     };
@@ -82,41 +82,41 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
 
     rsx! {
         div { class: "auth-shell",
-            section { class: "auth-hero", aria_label: "Giới thiệu chatw",
+            section { class: "auth-hero", aria_label: "Introducing ChatW",
                 div { class: "auth-brand",
                     span { class: "brand-mark", LogoIcon { size: 22 } }
                     span { "chatw" }
                 }
                 div { class: "auth-hero-copy",
-                    h2 { class: "auth-hero-title", "Nhắn tin riêng tư, cộng đồng gọn gàng." }
+                    h2 { class: "auth-hero-title", "Private messaging, neat community." }
                     p { class: "auth-hero-sub",
-                        "Trò chuyện trực tiếp được mã hóa đầu cuối ngay trên thiết bị, cùng nhóm, cộng đồng nhiều kênh và cuộc gọi thoại, video."
+                        "End-to-end encrypted live chat right on your device, with groups, multi-channel communities, and voice and video calls."
                     }
                 }
                 div { class: "auth-features",
                     div { class: "auth-feature",
                         span { class: "auth-feature-icon", LockIcon { size: 18 } }
                         div {
-                            div { class: "auth-feature-title", "Mã hóa đầu cuối" }
-                            div { class: "auth-feature-sub", "ECDH P-256, AES-256-GCM và chữ ký ECDSA. Khóa riêng tư không rời thiết bị." }
+                            div { class: "auth-feature-title", "End-to-end encrypted" }
+                            div { class: "auth-feature-sub", "ECDH P-256, AES-256-GCM and ECDSA signature. The private key does not leave the device." }
                         }
                     }
                     div { class: "auth-feature",
                         span { class: "auth-feature-icon", HashIcon { size: 18 } }
                         div {
-                            div { class: "auth-feature-title", "Cộng đồng và kênh" }
-                            div { class: "auth-feature-sub", "Danh mục, kênh văn bản, kênh thoại và phân quyền theo vai trò." }
+                            div { class: "auth-feature-title", "Communities and channels" }
+                            div { class: "auth-feature-sub", "Categories, text channels, voice channels and role authorization." }
                         }
                     }
                     div { class: "auth-feature",
                         span { class: "auth-feature-icon", PhoneIcon { size: 18 } }
                         div {
-                            div { class: "auth-feature-title", "Gọi thoại và video" }
-                            div { class: "auth-feature-sub", "Cuộc gọi WebRTC trực tiếp giữa các thiết bị." }
+                            div { class: "auth-feature-title", "Voice and video calling" }
+                            div { class: "auth-feature-sub", "Direct WebRTC calls between devices." }
                         }
                     }
                 }
-                div { class: "auth-hero-foot", "Mã nguồn mở · Rust · Dioxus" }
+                div { class: "auth-hero-foot", "Open source · Rust · Dioxus" }
             }
 
             main { class: "auth-panel",
@@ -135,21 +135,21 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                             span { class: "brand-mark", LogoIcon { size: 22 } }
                             span { "chatw" }
                         }
-                        h1 { class: "auth-title", "Đăng nhập" }
-                        p { class: "auth-subtitle", "Dùng tài khoản Google để tiếp tục. Lần đầu đăng nhập, bạn sẽ chọn tên người dùng." }
+                        h1 { class: "auth-title", "Sign in" }
+                        p { class: "auth-subtitle", "Use your Google account to continue. The first time you log in, you'll choose a username." }
                     }
 
                     button {
                         r#type: "button",
                         class: "auth-btn-google",
                         disabled: google_disabled || providers().is_none(),
-                        aria_label: "Tiếp tục với Google",
+                        aria_label: "Continue with Google",
                         onclick: handle_google_login,
                         GoogleIcon {}
-                        span { "Tiếp tục với Google" }
+                        span { "Continue with Google" }
                     }
                     if google_disabled {
-                        div { class: "form-hint", "Máy chủ chưa cấu hình đăng nhập Google." }
+                        div { class: "form-hint", "The server has not configured Google login." }
                     }
 
                     if let Some(err_msg) = error() {
@@ -160,13 +160,13 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                         form {
                             class: "auth-dev-form",
                             onsubmit: handle_dev_login,
-                            div { class: "auth-dev-title", "Đăng nhập thử nghiệm" }
+                            div { class: "auth-dev-title", "Test sign in" }
                             div { class: "auth-dev-row",
                                 input {
                                     r#type: "text",
                                     class: "auth-input",
-                                    placeholder: "Tên tài khoản thử, ví dụ alice",
-                                    aria_label: "Tên tài khoản thử nghiệm",
+                                    placeholder: "Test account name, for example alice",
+                                    aria_label: "Test username",
                                     maxlength: "32",
                                     autocomplete: "off",
                                     value: "{dev_username}",
@@ -176,14 +176,14 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                                     r#type: "submit",
                                     class: "auth-btn-secondary",
                                     disabled: loading(),
-                                    if loading() { span { class: "spinner" } } else { "Vào" }
+                                    if loading() { span { class: "spinner" } } else { "Enter" }
                                 }
                             }
                         }
                     }
 
                     p { class: "auth-legal",
-                        "Khi tiếp tục, khóa mã hóa của bạn được tạo và lưu trên thiết bị này. Máy chủ chỉ nhận khóa công khai."
+                        "When you continue, your encryption key is generated and saved on this device. The server only receives the public key."
                     }
                 }
                 }

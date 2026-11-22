@@ -36,7 +36,7 @@ pub fn OverviewPanel(
                         data.set(Some(v));
                         err.set(None);
                     }
-                    Err(e) => err.set(Some(format!("Không tải được tổng quan: {}", e.code))),
+                    Err(e) => err.set(Some(format!("Unable to load overview: {}", e.code))),
                 }
             });
         }));
@@ -66,7 +66,7 @@ pub fn OverviewPanel(
                         }
                         err.set(None);
                     }
-                    Err(e) => err.set(Some(format!("Chấm công chưa thành công: {}", e.code))),
+                    Err(e) => err.set(Some(format!("Attendance failed: {}", e.code))),
                 }
                 busy.set(false);
             });
@@ -81,34 +81,34 @@ pub fn OverviewPanel(
             if let Some(ov) = data() {
                 div { class: "ent-kpi-grid",
                     button { r#type: "button", class: "ent-kpi-card", onclick: move |_| on_navigate.call("tasks".into()),
-                        div { class: "ent-kpi-head", span { "Việc cần làm" } ListChecksIcon { size: 16 } }
+                        div { class: "ent-kpi-head", span { "Things to do" } ListChecksIcon { size: 16 } }
                         div { class: "ent-kpi-val", "{ov.my_open_tasks}" }
-                        div { class: "ent-kpi-sub", "{ov.my_overdue_tasks} việc trễ hạn" }
+                        div { class: "ent-kpi-sub", "{ov.my_overdue_tasks} lateness" }
                     }
                     button { r#type: "button", class: "ent-kpi-card", onclick: move |_| on_navigate.call("meetings".into()),
-                        div { class: "ent-kpi-head", span { "Lịch họp hôm nay" } CalendarIcon { size: 16 } }
+                        div { class: "ent-kpi-head", span { "Meeting schedule today" } CalendarIcon { size: 16 } }
                         div { class: "ent-kpi-val", "{ov.today_meetings}" }
-                        div { class: "ent-kpi-sub", "Cuộc họp đang mở" }
+                        div { class: "ent-kpi-sub", "The meeting is open" }
                     }
                     button { r#type: "button", class: "ent-kpi-card", onclick: move |_| on_navigate.call("announcements".into()),
-                        div { class: "ent-kpi-head", span { "Thông báo mới" } MegaphoneIcon { size: 16 } }
+                        div { class: "ent-kpi-head", span { "New announcement" } MegaphoneIcon { size: 16 } }
                         div { class: "ent-kpi-val", "{ov.unread_announcements}" }
-                        div { class: "ent-kpi-sub", "Tin nội bộ chưa đọc" }
+                        div { class: "ent-kpi-sub", "Unread internal news" }
                     }
                     button { r#type: "button", class: "ent-kpi-card", onclick: move |_| on_navigate.call("approvals".into()),
-                        div { class: "ent-kpi-head", span { "Đề xuất chờ duyệt" } ClipboardCheckIcon { size: 16 } }
+                        div { class: "ent-kpi-head", span { "Proposal awaiting approval" } ClipboardCheckIcon { size: 16 } }
                         div { class: "ent-kpi-val", "{ov.pending_approvals}" }
-                        div { class: "ent-kpi-sub", "{ov.pending_leave} đơn nghỉ phép chờ" }
+                        div { class: "ent-kpi-sub", "{ov.pending_leave} pending leave application" }
                     }
                     button { r#type: "button", class: "ent-kpi-card", onclick: move |_| on_navigate.call("hr".into()),
-                        div { class: "ent-kpi-head", span { "Nhân sự hoạt động" } BriefcaseIcon { size: 16 } }
+                        div { class: "ent-kpi-head", span { "Operational personnel" } BriefcaseIcon { size: 16 } }
                         div { class: "ent-kpi-val", "{ov.active_employees}" }
-                        div { class: "ent-kpi-sub", "{ov.departments_count} phòng ban" }
+                        div { class: "ent-kpi-sub", "{ov.departments_count} departments" }
                     }
                     button { r#type: "button", class: "ent-kpi-card", onclick: move |_| on_navigate.call("projects".into()),
-                        div { class: "ent-kpi-head", span { "Dự án đang chạy" } BarChartIcon { size: 16 } }
+                        div { class: "ent-kpi-head", span { "Project is running" } BarChartIcon { size: 16 } }
                         div { class: "ent-kpi-val", "{ov.active_projects}" }
-                        div { class: "ent-kpi-sub", "{ov.done_tasks}/{ov.total_tasks} việc hoàn tất" }
+                        div { class: "ent-kpi-sub", "{ov.done_tasks}/{ov.total_tasks} job completed" }
                     }
                 }
 
@@ -117,38 +117,38 @@ pub fn OverviewPanel(
                         div { class: "ent-toolbar",
                             div { class: "ent-chips",
                                 if let Some(att) = &ov.my_attendance {
-                                    span { class: "ent-pill ok", "Ca hôm nay: {att.work_date}" }
+                                    span { class: "ent-pill ok", "Today's shift: {att.work_date}" }
                                     span { class: "ent-pill", "{enterprise::vn_work_mode(&att.work_mode)}" }
                                     if let Some(ci) = &att.check_in_at {
-                                        span { class: "ent-pill", "Vào ca: {ci.chars().take(19).collect::<String>()}" }
+                                        span { class: "ent-pill", "On shift: {ci.chars().take(19).collect::<String>()}" }
                                     }
                                     if let Some(co) = &att.check_out_at {
                                         span { class: "ent-pill", "Tan ca: {co.chars().take(19).collect::<String>()}" }
                                     }
                                     if att.late_minutes > 0 {
-                                        span { class: "ent-pill warn", "Muộn {att.late_minutes} phút" }
+                                        span { class: "ent-pill warn", "{att.late_minutes} minutes late" }
                                     }
                                     if att.overtime_minutes > 0 {
-                                        span { class: "ent-pill ok", "Tăng ca {att.overtime_minutes} phút" }
+                                        span { class: "ent-pill ok", "Overtime {att.overtime_minutes} minutes" }
                                     }
                                 } else {
-                                    span { class: "ent-pill", "Chưa bấm giờ vào ca hôm nay (giờ máy chủ)" }
+                                    span { class: "ent-pill", "Haven't clocked in today's shift (server time)" }
                                 }
                             }
                             div { class: "ent-inline-bar",
                                 select { value: "{work_mode}", onchange: move |e| work_mode.set(e.value()),
-                                    option { value: "onsite", "Tại văn phòng" }
-                                    option { value: "remote", "Từ xa" }
-                                    option { value: "hybrid", "Linh hoạt" }
+                                    option { value: "onsite", "At the office" }
+                                    option { value: "remote", "From afar" }
+                                    option { value: "hybrid", "Flexible" }
                                 }
                                 input {
                                     r#type: "text",
-                                    placeholder: "Ghi chú ca làm",
+                                    placeholder: "Shift notes",
                                     value: "{check_note}",
                                     oninput: move |e| check_note.set(e.value()),
                                 }
-                                button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: move |_| do_check.call(true), "Vào ca" }
-                                button { r#type: "button", class: "btn-secondary", disabled: busy(), onclick: move |_| do_check.call(false), "Tan ca" }
+                                button { r#type: "button", class: "btn-primary", disabled: busy(), onclick: move |_| do_check.call(true), "Clock in" }
+                                button { r#type: "button", class: "btn-secondary", disabled: busy(), onclick: move |_| do_check.call(false), "Clock out" }
                             }
                         }
                     }
@@ -158,37 +158,37 @@ pub fn OverviewPanel(
                     div { class: "ent-card",
                         div { class: "ent-stat-list",
                             div { class: "ent-stat-row",
-                                span { "Tiến độ hoàn thành công việc" }
+                                span { "Progress of work completion" }
                                 strong { "{ov.done_tasks} / {ov.total_tasks}" }
                             }
                             div { class: "ent-stat-row",
-                                span { "Phòng ban & Bộ phận chuyên trách" }
-                                strong { "{ov.departments_count} phòng ban" }
+                                span { "Departments & Specialized Departments" }
+                                strong { "{ov.departments_count} departments" }
                             }
                             div { class: "ent-stat-row",
-                                span { "Đơn nghỉ phép & Phê duyệt chờ xử lý" }
-                                strong { "{ov.pending_leave + ov.pending_approvals} yêu cầu" }
+                                span { "Leave application & Approval pending" }
+                                strong { "{ov.pending_leave + ov.pending_approvals} request" }
                             }
                         }
                     }
                     div { class: "ent-card",
                         div { class: "ent-chips",
-                            span { class: "ent-pill", "/task <tiêu đề>" }
-                            span { class: "ent-pill", "/checkin [ghi chú]" }
-                            span { class: "ent-pill", "/checkout [ghi chú]" }
-                            span { class: "ent-pill", "/leave <lý do>" }
-                            span { class: "ent-pill", "/meet <tiêu đề>" }
-                            span { class: "ent-pill", "/approve <đề xuất>" }
-                            span { class: "ent-pill", "/announce <nội dung>" }
+                            span { class: "ent-pill", "/task <title>" }
+                            span { class: "ent-pill", "/checkin [note]" }
+                            span { class: "ent-pill", "/checkout [note]" }
+                            span { class: "ent-pill", "/leave <reason>" }
+                            span { class: "ent-pill", "/meet <title>" }
+                            span { class: "ent-pill", "/approve <proposal>" }
+                            span { class: "ent-pill", "/announce <content>" }
                             span { class: "ent-pill", "/workspace" }
                         }
                         div { class: "ent-muted",
-                            "Gõ trực tiếp các lệnh nhanh trên trong bất kỳ kênh chat nào của máy chủ doanh nghiệp để giao việc, chấm công, đặt lịch họp hoặc gửi đề xuất phê duyệt."
+                            "Type the above quick commands directly in any chat channel of the business server to assign tasks, time clock, schedule meetings or send proposals for approval."
                         }
                     }
                 }
             } else {
-                div { class: "ent-empty", "Đang đồng bộ số liệu không gian doanh nghiệp" }
+                div { class: "ent-empty", "Synchronizing business space data" }
             }
         }
     }
@@ -216,7 +216,7 @@ pub fn ReportsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64)
                         rep.set(Some(v));
                         err.set(None);
                     }
-                    Err(e) => err.set(Some(format!("Không xem được báo cáo: {}", e.code))),
+                    Err(e) => err.set(Some(format!("Unable to view report: {}", e.code))),
                 }
                 if can_audit {
                     if let Ok(a) = enterprise::audit_log(&sid, &q).await {
@@ -245,17 +245,17 @@ pub fn ReportsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64)
             div { class: "ent-toolbar",
                 if can_audit {
                     div { class: "ent-inline-bar",
-                        input { r#type: "text", placeholder: "Lọc nhật ký theo hành động hoặc đối tượng", value: "{audit_q}", oninput: move |e| audit_q.set(e.value()) }
-                        button { r#type: "button", class: "btn-secondary", onclick: reload_audits, RefreshIcon { size: 15 } " Lọc nhật ký" }
+                        input { r#type: "text", placeholder: "Filter logs by action or object", value: "{audit_q}", oninput: move |e| audit_q.set(e.value()) }
+                        button { r#type: "button", class: "btn-secondary", onclick: reload_audits, RefreshIcon { size: 15 } " Filter logs" }
                     }
                 } else {
                     div {}
                 }
                 if can_export {
                     div { class: "ent-btn-group",
-                        a { class: "btn-secondary", href: "{export_reports_csv_url(&server_id)}", download: "enterprise-report.csv", DownloadIcon { size: 15 } " Xuất báo cáo CSV" }
-                        a { class: "btn-secondary", href: "{export_audit_csv_url(&server_id)}", download: "enterprise-audit.csv", DownloadIcon { size: 15 } " Nhật ký CSV" }
-                        a { class: "btn-secondary", href: "{export_all_json_url(&server_id)}", download: "enterprise-export.json", DownloadIcon { size: 15 } " Toàn bộ JSON" }
+                        a { class: "btn-secondary", href: "{export_reports_csv_url(&server_id)}", download: "enterprise-report.csv", DownloadIcon { size: 15 } " Export CSV report" }
+                        a { class: "btn-secondary", href: "{export_audit_csv_url(&server_id)}", download: "enterprise-audit.csv", DownloadIcon { size: 15 } " CSV log" }
+                        a { class: "btn-secondary", href: "{export_all_json_url(&server_id)}", download: "enterprise-export.json", DownloadIcon { size: 15 } " Full JSON" }
                     }
                 }
             }
@@ -266,9 +266,9 @@ pub fn ReportsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64)
                 div { class: "ent-two-col",
                     div { class: "ent-card",
                         div { class: "ent-stat-list",
-                            div { class: "ent-stat-row", span { "Nhân sự đang hoạt động" } strong { "{r[\"active_members\"].as_i64().unwrap_or(0)}" } }
-                            div { class: "ent-stat-row", span { "Công việc quá hạn" } strong { "{r[\"overdue_tasks\"].as_i64().unwrap_or(0)}" } }
-                            div { class: "ent-stat-row", span { "Dung lượng kho tài liệu" } strong { "{r[\"total_doc_bytes\"].as_i64().unwrap_or(0) / 1024} KB" } }
+                            div { class: "ent-stat-row", span { "Personnel is active" } strong { "{r[\"active_members\"].as_i64().unwrap_or(0)}" } }
+                            div { class: "ent-stat-row", span { "Overdue work" } strong { "{r[\"overdue_tasks\"].as_i64().unwrap_or(0)}" } }
+                            div { class: "ent-stat-row", span { "Document storage capacity" } strong { "{r[\"total_doc_bytes\"].as_i64().unwrap_or(0) / 1024} KB" } }
                         }
                         if let Some(arr) = r["tasks_by_status"].as_array() {
                             div { class: "ent-chips",
@@ -283,13 +283,13 @@ pub fn ReportsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64)
                     div { class: "ent-card",
                         if let Some(depts) = r["department_workload"].as_array() {
                             if depts.is_empty() {
-                                p { class: "ent-muted", "Chưa có phòng ban nào được thiết lập." }
+                                p { class: "ent-muted", "No departments have been established yet." }
                             } else {
                                 div { class: "ent-stat-list",
                                     for d in depts {
                                         div { class: "ent-stat-row",
                                             span { "{d[\"name\"].as_str().unwrap_or(\"\")}" }
-                                            span { class: "ent-muted", "{d[\"employees\"].as_i64().unwrap_or(0)} nhân sự · {d[\"open_tasks\"].as_i64().unwrap_or(0)} việc mở" }
+                                            span { class: "ent-muted", "{d[\"employees\"].as_i64().unwrap_or(0)} personnel · {d[\"open_tasks\"].as_i64().unwrap_or(0)} job opening" }
                                         }
                                     }
                                 }
@@ -303,13 +303,13 @@ pub fn ReportsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64)
                 div { class: "ent-table-wrap",
                     table { class: "ent-table",
                         thead {
-                            tr { th { "Thời gian" } th { "Người thực hiện" } th { "Hành động" } th { "Đối tượng" } }
+                            tr { th { "Time" } th { "Implementer" } th { "Action" } th { "Object" } }
                         }
                         tbody {
                             for a in audits() {
                                 tr { key: "{a.id}",
                                     td { "{a.created_at.chars().take(19).collect::<String>()}" }
-                                    td { "{a.actor_name.as_deref().unwrap_or(\"Hệ thống\")}" }
+                                    td { "{a.actor_name.as_deref().unwrap_or(\"System\")}" }
                                     td { span { class: "ent-pill", "{a.action}" } }
                                     td { "{a.target.as_deref().unwrap_or(\"-\")}" }
                                 }
