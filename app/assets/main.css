@@ -9909,32 +9909,131 @@ input[type="color"]::-moz-color-swatch {
   z-index: 1;
 }
 
-/* 9. Transparent Chat Header in Normal Flow (zero overlap with Enterprise "Tổng quan" or cards),
-      Unblurred Top Surface Fade Over Message Stream, and Inline Device Pills Right of "Chính mình" */
+/* 9. True Floating Chat Header (Zero Full-Width Top Bar / Zero Cutoff Stripe):
+      On chat columns with a message stream, .chat-header floats above full-height .chat-messages
+      so messages & wallpapers flow edge-to-edge to the very top, while Avatar+Name and Actions float
+      as sleek frosted glass capsules matching the bottom .composer-box.
+      Non-chat views (Enterprise "Tổng quan", Plugins) stay in normal flow without overlap. */
 .chat-column > .chat-header {
   position: relative !important;
   z-index: 12;
   padding: 0 1rem !important;
   background: transparent !important;
 }
-.chat-column:has(> .chat-messages) > .chat-header::after {
-  content: "";
-  position: absolute;
+.chat-column:has(> .chat-messages) > .chat-header {
+  position: absolute !important;
+  top: var(--panel-inset, 8px);
   left: 0;
   right: 0;
-  top: 100%;
-  height: 1.1rem;
+  height: var(--header-height) !important;
+  min-height: var(--header-height) !important;
+  max-height: var(--header-height) !important;
+  padding: 0 var(--panel-inset, 8px) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   pointer-events: none;
-  z-index: 4;
-  display: block !important;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--bg-chat) var(--panel-opacity, 100%), transparent) 0%,
-    color-mix(in srgb, var(--bg-chat) calc(var(--panel-opacity, 100%) * 0.45), transparent) 55%,
-    transparent 100%
-  );
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  z-index: 12;
+  gap: var(--space-2);
+}
+.chat-column:has(> .chat-messages) > .chat-header::before,
+.chat-column:has(> .chat-messages) > .chat-header::after {
+  display: none !important;
+  content: none !important;
+}
+.chat-column:has(> .chat-messages) > .chat-header > * {
+  pointer-events: auto;
+}
+.chat-column:has(> .chat-messages) > .chat-header > .header-inline-devices {
+  pointer-events: none;
+}
+.chat-column:has(> .chat-messages) > .chat-header > .header-inline-devices > * {
+  pointer-events: auto;
+}
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-identity,
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-actions {
+  height: 2.875rem;
+  border-radius: 9999px !important;
+  background: color-mix(in srgb, var(--bg-surface) max(80%, var(--panel-opacity, 100%)), transparent) !important;
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), inset 0 0 0 1px rgba(15, 23, 42, 0.06) !important;
+  text-shadow: none !important;
+  transition: background-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
+}
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-identity {
+  padding: 0.25rem 0.95rem 0.25rem 0.28rem !important;
+  margin-left: 0 !important;
+}
+.chat-column:has(> .chat-messages) > .chat-header button.chat-header-identity:hover {
+  background: color-mix(in srgb, var(--bg-surface) 96%, transparent) !important;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.09), inset 0 0 0 1px rgba(15, 23, 42, 0.09) !important;
+}
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-actions {
+  padding: 0.25rem 0.3rem !important;
+  gap: 2px;
+}
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-actions:empty {
+  display: none !important;
+}
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-actions .icon-btn,
+.chat-column:has(> .chat-messages) > .chat-header .back-btn {
+  border-radius: 9999px !important;
+}
+.chat-column:has(> .chat-messages) > .chat-header .back-btn {
+  background: color-mix(in srgb, var(--bg-surface) max(80%, var(--panel-opacity, 100%)), transparent) !important;
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), inset 0 0 0 1px rgba(15, 23, 42, 0.06) !important;
+}
+.chat-column:has(> .chat-messages) > .chat-header .header-inline-devices .device-chip {
+  background: color-mix(in srgb, var(--bg-surface) max(78%, var(--panel-opacity, 100%)), transparent) !important;
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06), inset 0 0 0 1px rgba(15, 23, 42, 0.06) !important;
+}
+.chat-column:has(> .chat-messages) > .chat-header .header-inline-devices .device-chip.current {
+  background: var(--accent-soft) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06), inset 0 0 0 1px var(--adaptive-active-ring, rgba(39, 100, 231, 0.14)) !important;
+}
+html[data-panel-translucent="true"] .chat-column:has(> .chat-messages) > .chat-header .chat-header-identity,
+html[data-panel-translucent="true"] .chat-column:has(> .chat-messages) > .chat-header .chat-header-actions,
+html[data-panel-translucent="true"] .chat-column:has(> .chat-messages) > .chat-header .back-btn,
+.chat-column.wp-image:has(> .chat-messages) > .chat-header .chat-header-identity,
+.chat-column.wp-image:has(> .chat-messages) > .chat-header .chat-header-actions {
+  background: rgba(255, 255, 255, 0.78) !important;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.65) !important;
+}
+html[data-theme="dark"] .chat-column:has(> .chat-messages) > .chat-header .chat-header-identity,
+html[data-theme="dark"] .chat-column:has(> .chat-messages) > .chat-header .chat-header-actions,
+html[data-theme="dark"] .chat-column:has(> .chat-messages) > .chat-header .back-btn,
+html[data-surface-tone="dark"] .chat-column:has(> .chat-messages) > .chat-header .chat-header-identity,
+html[data-surface-tone="dark"] .chat-column:has(> .chat-messages) > .chat-header .chat-header-actions,
+html[data-surface-tone="dark"] .chat-column:has(> .chat-messages) > .chat-header .back-btn,
+.chat-column.wp-night:has(> .chat-messages) > .chat-header .chat-header-identity,
+.chat-column.wp-night:has(> .chat-messages) > .chat-header .chat-header-actions,
+.chat-column[data-chat-header-tone="dark"]:has(> .chat-messages) > .chat-header .chat-header-identity,
+.chat-column[data-chat-header-tone="dark"]:has(> .chat-messages) > .chat-header .chat-header-actions {
+  background: rgba(24, 32, 48, 0.84) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
+}
+html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):not([data-chat-header-tone="dark"]):has(> .chat-messages) > .chat-header .chat-header-identity,
+html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):not([data-chat-header-tone="dark"]):has(> .chat-messages) > .chat-header .chat-header-actions {
+  background: rgba(255, 255, 255, 0.82) !important;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.65) !important;
+}
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-title,
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-meta {
+  text-shadow: none !important;
+}
+/* Full-height message stream flowing behind the floating header capsules */
+.chat-column:has(> .chat-messages):not(:has(> .pinned-bar, > .chat-banner)) > .chat-messages {
+  padding-top: calc(var(--header-height) + var(--space-4)) !important;
+}
+.chat-column:has(> .chat-messages) > .pinned-bar,
+.chat-column:has(> .chat-messages) > .chat-banner {
+  margin-top: calc(var(--header-height) + 0.75rem);
+  z-index: 6;
 }
 .chat-header-identity.self-header-identity {
   margin-right: 0 !important;
@@ -9944,7 +10043,7 @@ input[type="color"]::-moz-color-swatch {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: 1rem;
+  margin-left: 0.5rem;
   margin-right: auto;
   padding: 0 !important;
   background: transparent !important;

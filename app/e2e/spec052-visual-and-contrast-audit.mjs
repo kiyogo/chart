@@ -118,34 +118,49 @@ try {
   await page.waitForSelector('.date-separator', { timeout: 10000 });
 
   const selfChatAudit = await page.evaluate(() => {
+    const col = document.querySelector('.chat-column');
     const hdr = document.querySelector('.chat-column > .chat-header');
+    const msgs = document.querySelector('.chat-column > .chat-messages');
     const hdrCS = getComputedStyle(hdr);
     const hdrAfterCS = getComputedStyle(hdr, '::after');
     const idEl = hdr.querySelector('.chat-header-identity');
+    const actEl = hdr.querySelector('.chat-header-actions');
     const devStrip = hdr.querySelector('.header-inline-devices');
     const hasThietBiLabel = document.body.innerText.includes('Thiết bị:');
     const dateSep = document.querySelector('.date-separator');
     const dateSepCS = dateSep ? getComputedStyle(dateSep) : null;
     const dateText = dateSep ? dateSep.textContent.trim() : '';
+    const colR = col.getBoundingClientRect();
+    const msgsR = msgs ? msgs.getBoundingClientRect() : null;
     const idR = idEl ? idEl.getBoundingClientRect() : null;
     const devR = devStrip ? devStrip.getBoundingClientRect() : null;
+    const idCS = idEl ? getComputedStyle(idEl) : null;
+    const actCS = actEl ? getComputedStyle(actEl) : null;
     return {
       hdrPos: hdrCS.position,
       hdrBg: hdrCS.backgroundColor,
-      afterBgImg: hdrAfterCS.backgroundImage,
-      afterBlur: hdrAfterCS.backdropFilter || hdrAfterCS.webkitBackdropFilter || 'none',
+      hdrPointer: hdrCS.pointerEvents,
+      afterDisplay: hdrAfterCS.display,
+      msgsStartsAtTop: msgsR ? Math.abs(msgsR.top - colR.top) <= 1 : false,
+      idRadius: idCS ? parseFloat(idCS.borderTopLeftRadius) : 0,
+      idBg: idCS ? idCS.backgroundColor : '',
+      actRadius: actCS ? parseFloat(actCS.borderTopLeftRadius) : 0,
       hasThietBiLabel,
-      devicesRightOfTitle: idR && devR ? devR.left >= idR.right + 8 : false,
+      devicesRightOfTitle: idR && devR ? devR.left >= idR.right + 4 : false,
       datePos: dateSepCS ? dateSepCS.position : '',
       dateText,
     };
   });
   record(
-    'Self-chat header removes "Thiết bị:", places device pills inline right of title, uses non-overlapping relative flow with unblurred top fade, and fixes date pill format',
-    selfChatAudit.hdrPos === 'relative' &&
+    'Self-chat header removes top bar & "Thiết bị:", floats Avatar+Name & Actions as frosted capsules over full-height messages, places device pills inline right of title, and fixes date pill format',
+    selfChatAudit.hdrPos === 'absolute' &&
       selfChatAudit.hdrBg === 'rgba(0, 0, 0, 0)' &&
-      selfChatAudit.afterBgImg.includes('linear-gradient') &&
-      selfChatAudit.afterBlur === 'none' &&
+      selfChatAudit.hdrPointer === 'none' &&
+      selfChatAudit.afterDisplay === 'none' &&
+      selfChatAudit.msgsStartsAtTop &&
+      selfChatAudit.idRadius >= 20 &&
+      selfChatAudit.idBg !== 'rgba(0, 0, 0, 0)' &&
+      selfChatAudit.actRadius >= 20 &&
       !selfChatAudit.hasThietBiLabel &&
       selfChatAudit.devicesRightOfTitle &&
       selfChatAudit.datePos === 'relative' &&

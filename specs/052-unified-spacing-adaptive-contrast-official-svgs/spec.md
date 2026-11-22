@@ -39,9 +39,9 @@
    - Fix `.date-separator` stacking/overlapping bug by removing `position: sticky; top: 0;`.
    - Format dates in the current year as `"{day} tháng {month}"` (e.g., `"20 tháng 11"`) and dates in previous/other years as `"{day} tháng {month} năm {year}"` (e.g., `"22 tháng 11 năm 2025"`).
 
-10. **Self-Chat Inline Device Pills, Top White Bar Removal & Top Unblurred Gradient Fade (Image 15)**:
+10. **Self-Chat Inline Device Pills & True Floating Chat Header (Zero Top Bar)**:
     - Remove `"Thiết bị:"` label and the separate `.device-strip` row below `.chat-header`; render the device pills inline inside `.chat-header` to the right of the `"Chính mình"` title block with clean spacing.
-    - Float `.chat-header` (`position: absolute; top: 0; left: 0; right: 0;`) so messages are never clipped by a boxy white bar at the top, and add a top surface-synced gradient fade (`backdrop-filter: none`) matching the bottom composer fade.
+    - Remove the full-width horizontal top header bar and double-white `::after` stripe completely in chat views (`.chat-column:has(> .chat-messages)`): float `.chat-header` (`position: absolute; top: var(--panel-inset); pointer-events: none; background: transparent`) over full-height `.chat-messages` (starting at `top: 0`), rendering the left identity group (avatar + name + E2EE), inline device chips, and right actions group as sleek floating frosted glass capsules matching the bottom floating `.composer-box`. Non-chat views (e.g., Enterprise `Tổng quan`) remain in normal flow without overlap.
 
 11. **Meet Panel (`.meet-column`) Bottom Rounded Corners & Viewport Gap**:
     - Ensure `.meet-column` never touches the bottom of the browser viewport: restore `border-radius: var(--panel-radius)` on all 4 corners and `margin-bottom: 0` so it sits spaced away from the bottom edge just like `.app-rail` and normal menu panels.
