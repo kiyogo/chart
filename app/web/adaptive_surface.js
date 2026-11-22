@@ -705,26 +705,8 @@
         el.style.setProperty('--local-hover-bg', hoverBg);
       }
 
-      const worstVal = tone === 'light' ? Math.round(m.minB * 255) : Math.round(m.maxB * 255);
-      const worstInk = tone === 'light' ? [0, 0, 0] : [255, 255, 255];
-      const worstLc = Math.abs(calcAPCA(worstInk, [worstVal, worstVal, worstVal]));
-      const needsScrim = alpha < 0.48 && m.stdB > 0.145 && worstLc < 56;
-      if (needsScrim) {
-        let scrimBg;
-        if (tone === 'light') {
-          const sr = Math.round(m.avgR * 0.18 + 255 * 0.82);
-          const sg = Math.round(m.avgG * 0.18 + 255 * 0.82);
-          const sb = Math.round(m.avgB * 0.18 + 255 * 0.82);
-          scrimBg = `rgba(${sr}, ${sg}, ${sb}, 0.50)`;
-        } else {
-          const sr = Math.round(m.avgR * 0.22 + 14 * 0.78);
-          const sg = Math.round(m.avgG * 0.22 + 18 * 0.78);
-          const sb = Math.round(m.avgB * 0.22 + 28 * 0.78);
-          scrimBg = `rgba(${sr}, ${sg}, ${sb}, 0.48)`;
-        }
-        if (el.getAttribute('data-local-scrim') !== 'true') el.setAttribute('data-local-scrim', 'true');
-        if (el.style.getPropertyValue('--local-scrim-bg') !== scrimBg) el.style.setProperty('--local-scrim-bg', scrimBg);
-      } else if (el.hasAttribute('data-local-scrim')) {
+      // Spec 062: Never apply random patchy per-button white frosted scrim boxes (data-local-scrim).
+      if (el.hasAttribute('data-local-scrim')) {
         el.removeAttribute('data-local-scrim');
         el.style.removeProperty('--local-scrim-bg');
       }
@@ -771,17 +753,16 @@
     taggedElements.clear();
   }
 
+  // Spec 062: Only sample truly transparent idle rows/tiles; NEVER override text polarity on
+  // filled controls (.btn-secondary, .btn-ghost, .segmented button) or .active/.selected pills.
   const LOCAL_ROW_SELECTOR = [
-    '.app-rail .rail-item:not(.has-logo)',
-    '.settings-nav .settings-nav-item',
-    '.nav-sidebar .chat-item:not(.has-nameplate)',
-    '.nav-sidebar .filter-chip',
-    '.nav-sidebar .channel-row',
-    '.settings-body .btn-secondary',
-    '.settings-body .btn-ghost',
-    '.settings-body .wallpaper-tile',
-    '.settings-body .theme-card',
-    '.settings-body .segmented button',
+    '.app-rail .rail-item:not(.has-logo):not(.active)',
+    '.settings-nav .settings-nav-item:not(.active)',
+    '.nav-sidebar .chat-item:not(.has-nameplate):not(.selected):not(.active)',
+    '.nav-sidebar .filter-chip:not(.active)',
+    '.nav-sidebar .channel-row:not(.selected)',
+    '.settings-body .wallpaper-tile:not(.active)',
+    '.settings-body .theme-card:not(.active)',
   ].join(', ');
 
   const LOCAL_TEXT_SELECTOR = [

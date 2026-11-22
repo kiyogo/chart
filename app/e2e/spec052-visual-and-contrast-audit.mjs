@@ -407,7 +407,7 @@ try {
     };
   }, easyReadAudit);
   record(
-    'Left Rail (.app-rail) opacity syncs 100%, smooth presets stay crisp with ZERO blurry text-shadow & ZERO cluttered idle boxes, and busy high-contrast photos activate tight dark halo + 0.00px inset frames while pills/buttons stay text-shadow: none',
+    'Left Rail (.app-rail) opacity syncs 100%, smooth presets stay crisp with ZERO blurry text-shadow & ZERO cluttered idle boxes, and busy high-contrast photos activate tight dark halo + 0.00px size stability while pills/buttons stay text-shadow: none',
     railAndHaloAudit.easyReadNoShadow &&
       railAndHaloAudit.railBg === railAndHaloAudit.navBg &&
       railAndHaloAudit.smoothOceanHalo === 'false' &&
@@ -415,11 +415,10 @@ try {
       railAndHaloAudit.smoothOceanShadow === 'none' &&
       railAndHaloAudit.textPrimaryColor === 'rgb(0, 0, 0)' &&
       railAndHaloAudit.busyPhotoHalo === 'true' &&
-      railAndHaloAudit.busyPhotoFramed === 'true' &&
+      railAndHaloAudit.busyPhotoFramed === 'false' &&
       railAndHaloAudit.busyMaxDW === 0 &&
       railAndHaloAudit.busyMaxDH === 0 &&
       railAndHaloAudit.busyIdleBorderTop === '0px' &&
-      railAndHaloAudit.busyIdleShadow.includes('inset') &&
       railAndHaloAudit.busyPhotoShadow.includes('rgba(0, 0, 0') &&
       !railAndHaloAudit.busyPhotoShadow.includes('255, 255, 255') &&
       railAndHaloAudit.busyBtnShadow === 'none',
@@ -580,7 +579,7 @@ try {
   const sunsetActiveRgba = parseRgba(m72.navActiveBg);
   const sunsetHoverRgba = parseRgba(m72.hoverToken);
   const sunsetSecRgba = parseRgba(m72.sec?.bg);
-  const isBluePill = (c) => Boolean(c && c.b >= 200 && c.b > c.r + 120 && c.a >= 0.14 && c.a <= 0.24);
+  const isBluePill = (c) => Boolean(c && c.b >= 220 && c.b > c.r + 160 && c.a >= 0.95);
   const gSafe = Boolean(
     m72.labelG &&
       m72.labelG.lineHeight >= m72.labelG.fontSize * 1.45 &&
@@ -589,7 +588,7 @@ try {
   );
 
   record(
-    'Spec 060 No Wallpaper Auto-Recolor: Sunset/Aurora/Mint/Red Photo @ 0%-100% transparency ALWAYS keep user Blue (#2E7CF6), neutral hover/buttons, custom accent persists across wallpaper switches, frameless idle controls, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
+    'Spec 060 & 062 No Wallpaper Auto-Recolor: Sunset/Aurora/Mint/Red Photo @ 0%-100% transparency ALWAYS keep user Blue (#2E7CF6), synchronized vivid active pills, crisp buttons, custom accent persists across wallpaper switches, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
     mSunset0.wpThemeActive === 'false' &&
       mSunset0.accentVar === '#2E7CF6' &&
       mAurora100.wpThemeActive === 'false' &&
@@ -619,7 +618,7 @@ try {
       isBluePill(mintActiveRgba) &&
       isBluePill(sunsetActiveRgba) &&
       Boolean(sunsetHoverRgba && sunsetHoverRgba.r <= 30 && sunsetHoverRgba.a <= 0.10) &&
-      Boolean(sunsetSecRgba && sunsetSecRgba.r <= 30 && sunsetSecRgba.a >= 0.04 && sunsetSecRgba.a <= 0.10),
+      Boolean(sunsetSecRgba && sunsetSecRgba.r >= 230 && sunsetSecRgba.a >= 0.80),
     JSON.stringify({
       maxSegDW,
       maxSegDH,

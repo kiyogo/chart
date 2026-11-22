@@ -794,9 +794,9 @@ if (!window.__chatwRecomputeContrast) {
             : (alpha * panelBaseB + (1 - alpha) * Math.min(0.98, p90B * (1 - effDim)));
         const worstBgV = Math.round(Math.max(0, Math.min(255, worstBgB * 255)));
         const worstLc = Math.abs(calcAPCA(inkRgb, [worstBgV, worstBgV, worstBgV]));
-        // NEVER clutter clean smooth wallpapers (Aurora, Sunset, Ocean, Mint, Night, Paper, Dots) with boxed frames on idle buttons!
-        // Only frame idle segmented controls when a genuinely busy uploaded photo or low-APCA surface sits behind high transparency.
-        const needsFramedControls = c.wpKind !== 'none' && alpha < 0.38 && (wpBusy || worstLc < 62);
+        // Spec 062: Never clutter idle segmented buttons with disjointed per-button white frames;
+        // .segmented now uses one unified sleek pill track across all transparency states.
+        const needsFramedControls = false;
         const needsHalo = c.wpKind !== 'none' && alpha < 0.36 && (worstLc < 62 || wpBusy);
 
         const isTranslucentWp = c.wpKind !== 'none' && alpha < 0.96;
@@ -867,52 +867,29 @@ if (!window.__chatwRecomputeContrast) {
             root.style.removeProperty('--text-muted');
         }
 
-        // Clean neutral flat action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) & switch track
+        // Spec 062: Unified, crisp action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) & switch track
         if (isTranslucentWp) {
             if (surfaceTone === 'light') {
-                if (wpBusy && alpha < 0.55) {
-                    const btnA = Math.min(0.76, 0.56 + transparency * 0.18);
-                    root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${btnA.toFixed(2)})`);
-                    root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${Math.min(0.90, btnA + 0.14).toFixed(2)})`);
-                    root.style.setProperty('--adaptive-btn-active', `rgba(255, 255, 255, ${Math.min(0.95, btnA + 0.20).toFixed(2)})`);
-                    root.style.setProperty('--adaptive-btn-ring', 'rgba(15, 23, 42, 0.12)');
-                } else {
-                    root.style.setProperty('--adaptive-btn-bg', 'rgba(15, 23, 42, 0.055)');
-                    root.style.setProperty('--adaptive-btn-hover', 'rgba(15, 23, 42, 0.095)');
-                    root.style.setProperty('--adaptive-btn-active', 'rgba(15, 23, 42, 0.14)');
-                    root.style.setProperty('--adaptive-btn-ring', 'transparent');
-                }
-                root.style.setProperty('--adaptive-switch-bg', 'rgba(15, 23, 42, 0.17)');
+                root.style.setProperty('--adaptive-btn-bg', 'rgba(255, 255, 255, 0.88)');
+                root.style.setProperty('--adaptive-btn-hover', 'rgba(255, 255, 255, 0.96)');
+                root.style.setProperty('--adaptive-btn-active', 'rgba(241, 245, 249, 0.98)');
+                root.style.setProperty('--adaptive-btn-ring', 'rgba(15, 23, 42, 0.11)');
+                root.style.setProperty('--adaptive-switch-bg', 'rgba(15, 23, 42, 0.20)');
             } else {
-                const dBtnA = wpBusy ? Math.min(0.24, 0.14 + transparency * 0.08) : Math.min(0.16, 0.10 + transparency * 0.05);
-                root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${dBtnA.toFixed(2)})`);
-                root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${(dBtnA + 0.07).toFixed(2)})`);
-                root.style.setProperty('--adaptive-btn-active', `rgba(255, 255, 255, ${(dBtnA + 0.13).toFixed(2)})`);
-                root.style.setProperty('--adaptive-btn-ring', wpBusy ? 'rgba(255, 255, 255, 0.16)' : 'transparent');
-                root.style.setProperty('--adaptive-switch-bg', 'rgba(255, 255, 255, 0.22)');
+                root.style.setProperty('--adaptive-btn-bg', 'rgba(18, 24, 38, 0.82)');
+                root.style.setProperty('--adaptive-btn-hover', 'rgba(30, 41, 59, 0.92)');
+                root.style.setProperty('--adaptive-btn-active', 'rgba(38, 50, 72, 0.96)');
+                root.style.setProperty('--adaptive-btn-ring', 'rgba(255, 255, 255, 0.16)');
+                root.style.setProperty('--adaptive-switch-bg', 'rgba(255, 255, 255, 0.24)');
             }
         } else {
             ['--adaptive-btn-bg', '--adaptive-btn-hover', '--adaptive-btn-active', '--adaptive-btn-ring', '--adaptive-switch-bg']
                 .forEach((k) => root.style.removeProperty(k));
         }
 
-        // Framed idle segmented buttons ONLY over genuinely busy photos / low-APCA backgrounds (0.00px size shift via inset box-shadow)
-        if (needsFramedControls) {
-            if (surfaceTone === 'light') {
-                const segA = Math.min(0.60, 0.42 + transparency * 0.16);
-                root.style.setProperty('--adaptive-ctrl-bg', `rgba(255, 255, 255, ${segA.toFixed(2)})`);
-                root.style.setProperty('--adaptive-ctrl-hover', `rgba(255, 255, 255, ${Math.min(0.80, segA + 0.18).toFixed(2)})`);
-                root.style.setProperty('--adaptive-ctrl-ring', 'rgba(15, 23, 42, 0.14)');
-            } else {
-                const dSegA = Math.min(0.22, 0.12 + transparency * 0.08);
-                root.style.setProperty('--adaptive-ctrl-bg', `rgba(15, 23, 42, ${(dSegA + 0.22).toFixed(2)})`);
-                root.style.setProperty('--adaptive-ctrl-hover', `rgba(30, 41, 59, ${(dSegA + 0.34).toFixed(2)})`);
-                root.style.setProperty('--adaptive-ctrl-ring', 'rgba(255, 255, 255, 0.16)');
-            }
-        } else {
-            ['--adaptive-ctrl-bg', '--adaptive-ctrl-hover', '--adaptive-ctrl-ring']
-                .forEach((k) => root.style.removeProperty(k));
-        }
+        // Remove legacy per-button framed segmented control variables (Spec 062 unified pill track replaces them)
+        ['--adaptive-ctrl-bg', '--adaptive-ctrl-hover', '--adaptive-ctrl-ring']
+            .forEach((k) => root.style.removeProperty(k));
 
         // Crisp text-contrast shadow ONLY when genuinely busy uploaded image or low APCA legibility demands it
         if (needsHalo) {
@@ -981,34 +958,25 @@ if (!window.__chatwRecomputeContrast) {
             const [vr, vg, vb] = makeVibrantRgb(effAccentHex, isDarkSurf);
             const rI = Math.round(vr), gI = Math.round(vg), bI = Math.round(vb);
             if (isDarkSurf) {
-                const darkPillA = wpBusy ? (0.32 + transparency * 0.08) : (0.22 + transparency * 0.06);
+                const darkPillA = 0.24 + transparency * 0.06;
                 root.style.setProperty('--accent-soft', `rgba(${rI}, ${gI}, ${bI}, ${darkPillA.toFixed(2)})`);
-                root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${Math.min(0.46, darkPillA + 0.09).toFixed(2)})`);
-                root.style.setProperty('--adaptive-active-ring', wpBusy ? 'rgba(255, 255, 255, 0.14)' : 'transparent');
-                root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.085)');
-                root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.14)');
-                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.075)');
-                root.style.removeProperty('--bg-input');
-                root.style.removeProperty('--input-border');
-            } else if (wpBusy && alpha < 0.55) {
-                root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, false, 0.24, 0.76));
-                root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, false, 0.30, 0.86));
-                root.style.setProperty('--adaptive-active-ring', `rgba(${rI}, ${gI}, ${bI}, 0.18)`);
-                root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.46)');
-                root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.62)');
-                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.50)');
-                root.style.setProperty('--bg-input', 'rgba(255, 255, 255, 0.78)');
-                root.style.setProperty('--input-border', 'rgba(15, 23, 42, 0.14)');
+                root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${Math.min(0.42, darkPillA + 0.08).toFixed(2)})`);
+                root.style.setProperty('--adaptive-active-ring', 'transparent');
+                root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.09)');
+                root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.15)');
+                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.08)');
+                root.style.setProperty('--bg-input', 'rgba(15, 23, 42, 0.80)');
+                root.style.setProperty('--input-border', 'rgba(255, 255, 255, 0.16)');
             } else {
-                const lightPillA = 0.14 + transparency * 0.05;
+                const lightPillA = 0.15 + transparency * 0.05;
                 root.style.setProperty('--accent-soft', `rgba(${rI}, ${gI}, ${bI}, ${lightPillA.toFixed(2)})`);
                 root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${(lightPillA + 0.07).toFixed(2)})`);
                 root.style.setProperty('--adaptive-active-ring', 'transparent');
-                root.style.setProperty('--bg-hover', 'rgba(15, 23, 42, 0.055)');
-                root.style.setProperty('--bg-active', 'rgba(15, 23, 42, 0.10)');
-                root.style.setProperty('--bg-surface-hover', 'rgba(15, 23, 42, 0.05)');
-                root.style.removeProperty('--bg-input');
-                root.style.removeProperty('--input-border');
+                root.style.setProperty('--bg-hover', 'rgba(15, 23, 42, 0.06)');
+                root.style.setProperty('--bg-active', 'rgba(15, 23, 42, 0.11)');
+                root.style.setProperty('--bg-surface-hover', 'rgba(15, 23, 42, 0.055)');
+                root.style.setProperty('--bg-input', 'rgba(255, 255, 255, 0.88)');
+                root.style.setProperty('--input-border', 'rgba(15, 23, 42, 0.13)');
             }
         } else {
             ['--adaptive-active-ring', '--bg-hover', '--bg-active', '--bg-surface-hover', '--bg-input', '--input-border']

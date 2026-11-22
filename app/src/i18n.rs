@@ -147,6 +147,14 @@ pub fn current() -> &'static str {
     LANGUAGES.get(*LANG.peek()).map(|l| l.0).unwrap_or("vi")
 }
 
+pub fn init_from_storage() {
+    if let Some(code) = crate::platform::storage_get("chatw_lang") {
+        if lang_index(&code).is_some() {
+            set_language(&code);
+        }
+    }
+}
+
 pub fn set_language(code: &str) {
     let idx = lang_index(code).unwrap_or(0);
     if *LANG.peek() != idx {
@@ -154,8 +162,9 @@ pub fn set_language(code: &str) {
     }
     let code = LANGUAGES[idx].0;
     let dir = if RTL.contains(&code) { "rtl" } else { "ltr" };
+    crate::platform::storage_set("chatw_lang", code);
     let _ = dioxus::document::eval(&format!(
-        "document.documentElement.setAttribute('lang', {code:?}); document.documentElement.setAttribute('dir', {dir:?});"
+        "document.documentElement.setAttribute('lang', {code:?}); document.documentElement.setAttribute('dir', {dir:?}); if (window.__chatwI18n && typeof window.__chatwI18n.setLanguage === 'function') {{ window.__chatwI18n.setLanguage({code:?}); }}"
     ));
 }
 

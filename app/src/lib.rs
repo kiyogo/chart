@@ -100,6 +100,7 @@ pub fn App() -> Element {
 
     use_effect(move || {
         platform::apply_appearance(&platform::load_appearance());
+        i18n::init_from_storage();
         check_auth();
     });
 

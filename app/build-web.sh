@@ -18,6 +18,7 @@ mkdir -p app/dist/pkg
 wasm-bindgen --target web --out-dir app/dist/pkg --out-name chatw_app "$WASM_PATH"
 TS="$(date +%s)"
 sed "s|/boot.js|/boot.js?v=${TS}|g" app/web/index.html > app/dist/index.html
+sed -i "s|/i18n_runtime.js|/i18n_runtime.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/canvas_scrollbars.js|/canvas_scrollbars.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/panel_resizer.js|/panel_resizer.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/custom_pickers.js|/custom_pickers.js?v=${TS}|g" app/dist/index.html
@@ -26,6 +27,9 @@ sed -i "s|/adaptive_surface.js|/adaptive_surface.js?v=${TS}|g" app/dist/index.ht
 sed -i "s|/storage_engine.js|/storage_engine.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/media_optimizer.js|/media_optimizer.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/plugin_runtime.js|/plugin_runtime.js?v=${TS}|g" app/dist/index.html
+cp app/web/i18n_runtime.js app/dist/i18n_runtime.js
+mkdir -p app/dist/locales
+cp -r app/web/locales/. app/dist/locales/
 cp app/web/canvas_scrollbars.js app/dist/canvas_scrollbars.js
 cp app/web/panel_resizer.js app/dist/panel_resizer.js
 cp app/web/custom_pickers.js app/dist/custom_pickers.js

@@ -117,9 +117,6 @@ select:focus,
   box-shadow: none !important;
   outline: none !important;
 }
-.sidebar-search input,
-.sidebar-search input:hover,
-.sidebar-search input:focus,
 .composer-input,
 .composer-input:hover,
 .composer-input:focus {
@@ -3788,9 +3785,10 @@ html[data-rail-scrim="true"][data-rail-tone="dark"] .app-rail {
   background: rgba(15, 19, 28, 0.74);
   border-radius: var(--panel-radius);
 }
-/* Spec 048: Active rail icon uses translucent theme accent tint (never opaque white frame, never recolors icon) */
+/* Spec 062: Active rail icon uses crisp vivid --accent synchronized across the entire app */
 html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo) {
-  background: var(--accent-soft) !important;
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   box-shadow: none !important;
@@ -3988,7 +3986,7 @@ button.result-card:hover { background: var(--bg-hover); }
 .pin-input { letter-spacing: 0.5em; text-align: center; font-size: var(--text-xl); font-family: var(--font-mono); }
 
 /* ---------- Language, Kinh doanh ---------- */
-.lang-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: var(--space-2); }
+.lang-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: var(--space-2); }
 .lang-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--space-3); border-radius: var(--radius-lg); background: var(--bg-surface-hover); text-align: start; }
 .lang-tile:hover { background: var(--bg-hover); }
 .lang-tile.active { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
@@ -9943,58 +9941,8 @@ html[data-text-halo="true"] .btn-small-secondary:active:not(:disabled) {
   background: var(--adaptive-btn-active, var(--accent-soft)) !important;
 }
 
-/* High-transparency framed segmented buttons: 0.00px size change via inset box-shadow + live hover/press
-   Decoupled from data-text-halo so smooth readable presets get crisp framed buttons WITHOUT ugly blurry text-shadow! */
-html[data-framed-controls="true"] .segmented button:not(.active),
-html[data-text-halo="true"] .segmented button:not(.active) {
-  background: var(--adaptive-ctrl-bg, rgba(255, 255, 255, 0.24)) !important;
-  box-shadow: inset 0 0 0 1px var(--adaptive-ctrl-ring, rgba(255, 255, 255, 0.34)) !important;
-}
-html[data-framed-controls="true"] .segmented button:not(.active):hover,
-html[data-text-halo="true"] .segmented button:not(.active):hover {
-  background: var(--adaptive-ctrl-hover, rgba(255, 255, 255, 0.42)) !important;
-}
-html[data-framed-controls="true"] .segmented button:not(.active):active,
-html[data-text-halo="true"] .segmented button:not(.active):active {
-  background: var(--accent-soft) !important;
-  box-shadow: inset 0 0 0 1px var(--adaptive-active-ring, transparent) !important;
-}
-
-/* Luminous non-muddy active / selected / pressed pills over colored or translucent wallpapers */
-html[data-luminous-controls="true"] .settings-nav-item.active,
-html[data-luminous-controls="true"] .segmented button.active,
-html[data-luminous-controls="true"] .wallpaper-tile.active,
-html[data-luminous-controls="true"] .theme-card.active,
-html[data-luminous-controls="true"] .filter-chip.active,
-html[data-luminous-controls="true"] .section-tab.active,
-html[data-luminous-controls="true"] .media-tab.active,
-html[data-luminous-controls="true"] .picker-tab.active,
-html[data-luminous-controls="true"] .chat-item.selected:not(.has-nameplate),
-html[data-luminous-controls="true"] .chat-item.active:not(.has-nameplate),
-html[data-luminous-controls="true"] .channel-row.selected,
-html[data-luminous-controls="true"] .rail-item.active:not(.has-logo),
-html[data-luminous-controls="true"] .icon-btn.active:not(.danger):not(.btn-danger) {
-  background: var(--accent-soft) !important;
-  box-shadow: inset 0 0 0 1px var(--adaptive-active-ring, transparent) !important;
-}
-.segmented button:not(.active):active,
-.settings-nav-item:not(.active):not(.danger):active,
-.wallpaper-tile:not(.active):active,
-.theme-card:not(.active):active,
-.filter-chip:not(.active):active,
-.section-tab:not(.active):active {
-  background: var(--accent-soft) !important;
-}
-.segmented button.active:active,
-.settings-nav-item.active:not(.danger):active,
-.wallpaper-tile.active:active,
-.theme-card.active:active,
-.filter-chip.active:active,
-.section-tab.active:active,
-.chat-item.selected:not(.has-nameplate):active,
-.channel-row.selected:active {
-  background: var(--accent-soft-strong) !important;
-}
+/* Spec 062: Legacy per-button framed segmented overrides and pale busy-photo active overrides removed.
+   Unified sleek segmented tracks, accent-synchronized active pills, and crisp action buttons live below. */
 
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) input[type="checkbox"].switch:not(:checked),
 html[data-text-halo="true"] input[type="checkbox"].switch:not(:checked) {
@@ -10425,23 +10373,23 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   line-height: 1.35 !important;
 }
 
-/* 12. Spec 061 — Real-Time Per-Position Adaptive Surface & Contrast (powered by app/web/adaptive_surface.js)
-       Each visible row/item/heading dynamically adapts ink polarity, local hover glass wash, and split-contrast
-       local scrim to the EXACT wallpaper pixels directly behind its screen coordinates as you scroll/resize,
-       while NEVER overriding --accent or adding layout shift / nested backdrop-filter. */
-[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) {
+/* 12. Spec 061 & 062 — Real-Time Per-Position Adaptive Surface & Contrast (powered by app/web/adaptive_surface.js)
+       Each visible transparent idle row/heading dynamically adapts ink polarity and local hover wash to the
+       EXACT wallpaper pixels directly behind its screen coordinates — NEVER adding patchy white scrim boxes
+       and NEVER overriding ink on active/selected accent pills or filled action buttons. */
+[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) {
   color: #FFFFFF !important;
 }
-[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) > svg,
-[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) > .rail-icon > svg,
-[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
-[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
-.wallpaper-tile[data-local-tone="dark"] > span:not(.wallpaper-sample),
-.theme-card[data-local-tone="dark"] > span {
+[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > svg,
+[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > .rail-icon > svg,
+[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
+[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
+.wallpaper-tile:not(.active)[data-local-tone="dark"] > span:not(.wallpaper-sample),
+.theme-card:not(.active)[data-local-tone="dark"] > span {
   color: #FFFFFF !important;
 }
-[data-local-tone="dark"] .chat-item-preview,
-[data-local-tone="dark"] .chat-item-time,
+[data-local-tone="dark"]:not(.active):not(.selected) .chat-item-preview,
+[data-local-tone="dark"]:not(.active):not(.selected) .chat-item-time,
 [data-local-tone="dark"] .chat-header-meta:not(.secure) {
   color: rgba(241, 245, 249, 0.86) !important;
 }
@@ -10449,26 +10397,26 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   color: #4ADE80 !important;
 }
 
-[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) {
+[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) {
   color: #000000 !important;
 }
-[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) > svg,
-[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) > .rail-icon > svg,
-[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
-[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
-.wallpaper-tile[data-local-tone="light"] > span:not(.wallpaper-sample),
-.theme-card[data-local-tone="light"] > span {
+[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > svg,
+[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > .rail-icon > svg,
+[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
+[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
+.wallpaper-tile:not(.active)[data-local-tone="light"] > span:not(.wallpaper-sample),
+.theme-card:not(.active)[data-local-tone="light"] > span {
   color: #000000 !important;
 }
 /* Per-position adaptive composer pill matching bright/dark bottom region of split wallpapers */
 .composer-box[data-local-tone="light"]::before {
   background: rgba(255, 255, 255, 0.94) !important;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08), 0 2px 12px rgba(15, 23, 42, 0.04) !important;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08), inset 0 0 0 1px rgba(15, 23, 42, 0.08) !important;
 }
 .composer-box[data-local-tone="light"],
 .composer-box[data-local-tone="light"] textarea,
 .composer-box[data-local-tone="light"] input {
-  color: #111827 !important;
+  color: #0F172A !important;
 }
 .composer-box[data-local-tone="light"] .icon-btn:not(.danger):not(.btn-danger),
 .composer-box[data-local-tone="light"] .icon-btn:not(.danger):not(.btn-danger) svg {
@@ -10479,8 +10427,8 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   color: #64748B !important;
 }
 .composer-box[data-local-tone="dark"]::before {
-  background: rgba(24, 32, 48, 0.92) !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.30), inset 0 0 0 1px rgba(255, 255, 255, 0.10) !important;
+  background: rgba(20, 27, 42, 0.92) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.30), inset 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
 }
 .composer-box[data-local-tone="dark"],
 .composer-box[data-local-tone="dark"] textarea,
@@ -10495,13 +10443,13 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 .composer-box[data-local-tone="dark"] input::placeholder {
   color: #94A3B8 !important;
 }
-[data-local-tone="light"] .chat-item-preview,
-[data-local-tone="light"] .chat-item-time,
+[data-local-tone="light"]:not(.active):not(.selected) .chat-item-preview,
+[data-local-tone="light"]:not(.active):not(.selected) .chat-item-time,
 [data-local-tone="light"] .chat-header-meta:not(.secure) {
   color: #1E293B !important;
 }
 
-/* Per-position local wallpaper-matched hover highlight (zero --accent hijacking) */
+/* Per-position local wallpaper-matched hover highlight (zero patchy white scrim boxes) */
 .settings-nav-item[data-local-tone]:not(.active):not(.danger):hover,
 .chat-item[data-local-tone]:not(.selected):not(.active):not(.has-nameplate):hover,
 .channel-row[data-local-tone]:not(.selected):hover,
@@ -10512,21 +10460,351 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   background: var(--local-hover-bg, var(--bg-hover)) !important;
 }
 
-/* Local soft frosted backing ONLY on rows crossing split dark+light high-contrast wallpaper edges */
-.settings-nav-item[data-local-scrim="true"]:not(.active),
-.chat-item[data-local-scrim="true"]:not(.selected):not(.active):not(.has-nameplate),
-.channel-row[data-local-scrim="true"]:not(.selected),
-.filter-chip[data-local-scrim="true"]:not(.active),
-.rail-item[data-local-scrim="true"]:not(.active):not(.has-logo) {
-  background: var(--local-scrim-bg) !important;
+/* ==========================================================================
+   13. Spec 062 — Unified Accent-Synchronized Active Controls, Sleek Segmented
+       Pill Tracks, Crisp Action Buttons, Refined Inputs & Full RTL Support
+   ========================================================================== */
+
+/* A. Language Grid: full native names with zero "..." truncation */
+.lang-tile .lang-native {
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
 }
-.settings-nav-item[data-local-scrim="true"]:not(.active):hover,
-.chat-item[data-local-scrim="true"]:not(.selected):not(.active):not(.has-nameplate):hover,
-.channel-row[data-local-scrim="true"]:not(.selected):hover,
-.filter-chip[data-local-scrim="true"]:not(.active):hover,
-.rail-item[data-local-scrim="true"]:not(.active):not(.has-logo):hover {
-  background: var(--local-hover-bg, var(--local-scrim-bg)) !important;
+
+/* B. 100% Accent Synchronization on Active Nav Items, Tabs, Pills, Chips & Rail */
+.settings-nav-item.active:not(.danger),
+.segmented button.active,
+.lang-tile.active,
+.filter-chip.active,
+.section-tab.active,
+.media-tab.active,
+.picker-tab.active,
+.rail-item.active:not(.has-logo),
+.chat-item.selected:not(.has-nameplate),
+.chat-item.active:not(.has-nameplate),
+.channel-row.selected,
+.cw-select-option.selected,
+.icon-btn.active:not(.danger):not(.btn-danger) {
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
+  box-shadow: none !important;
 }
+.settings-nav-item.active:not(.danger):hover,
+.segmented button.active:hover,
+.lang-tile.active:hover,
+.filter-chip.active:hover,
+.section-tab.active:hover,
+.media-tab.active:hover,
+.picker-tab.active:hover,
+.rail-item.active:not(.has-logo):hover,
+.chat-item.selected:not(.has-nameplate):hover,
+.chat-item.active:not(.has-nameplate):hover,
+.channel-row.selected:hover,
+.icon-btn.active:not(.danger):not(.btn-danger):hover {
+  background: var(--accent-hover) !important;
+  color: var(--on-accent) !important;
+}
+.settings-nav-item.active:not(.danger) > span,
+.settings-nav-item.active:not(.danger) svg,
+.lang-tile.active .lang-native,
+.rail-item.active:not(.has-logo) svg,
+.rail-item.active:not(.has-logo) > .rail-icon > svg,
+.channel-row.selected svg,
+.icon-btn.active:not(.danger):not(.btn-danger) svg,
+.chat-item.selected:not(.has-nameplate) .chat-item-name,
+.chat-item.active:not(.has-nameplate) .chat-item-name {
+  color: var(--on-accent) !important;
+}
+.chat-item.selected:not(.has-nameplate) .chat-item-preview,
+.chat-item.selected:not(.has-nameplate) .chat-item-time,
+.chat-item.active:not(.has-nameplate) .chat-item-preview,
+.chat-item.active:not(.has-nameplate) .chat-item-time {
+  color: color-mix(in srgb, var(--on-accent) 82%, transparent) !important;
+}
+html .app-rail .rail-item.active:not(.has-logo),
+html[data-panel-translucent="true"] .app-rail .rail-item.active:not(.has-logo),
+html[data-panel-scrim="true"] .app-rail .rail-item.active:not(.has-logo),
+html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo),
+html[data-rail-tone="light"] .app-rail .rail-item.active:not(.has-logo) {
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
+  box-shadow: none !important;
+}
+html .app-rail .rail-item.active:not(.has-logo):hover,
+html[data-panel-translucent="true"] .app-rail .rail-item.active:not(.has-logo):hover {
+  background: var(--accent-hover) !important;
+  color: var(--on-accent) !important;
+}
+html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo) svg,
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo) svg {
+  color: var(--on-accent) !important;
+}
+
+/* Active Theme Card & Wallpaper Tile: crisp 2px --accent ring + matched clean backing + high-contrast caption */
+.theme-card.active,
+.wallpaper-tile.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface)) !important;
+  box-shadow: inset 0 0 0 2px var(--accent) !important;
+  color: var(--text-primary) !important;
+}
+.theme-card.active:hover,
+.wallpaper-tile.active:hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-surface)) !important;
+  box-shadow: inset 0 0 0 2px var(--accent) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .theme-card.active,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .wallpaper-tile.active {
+  background: color-mix(in srgb, var(--accent) 14%, rgba(255, 255, 255, 0.90)) !important;
+  color: #0F172A !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .theme-card.active > span,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .wallpaper-tile.active > span:not(.wallpaper-sample) {
+  color: #0F172A !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .theme-card.active,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .wallpaper-tile.active {
+  background: color-mix(in srgb, var(--accent) 22%, rgba(18, 24, 38, 0.88)) !important;
+  color: #F8FAFC !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .theme-card.active > span,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .wallpaper-tile.active > span:not(.wallpaper-sample) {
+  color: #F8FAFC !important;
+}
+
+/* C. Unified Sleek Segmented Control Track (replaces disjointed floating boxes; 0.00px size shift) */
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 2px !important;
+  padding: 3px !important;
+  border-radius: 10px !important;
+  background: #EEF1F6 !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.07) !important;
+}
+[data-theme="dark"] .segmented {
+  background: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .segmented {
+  background: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.11) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented {
+  background: rgba(15, 23, 42, 0.80) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+}
+.segmented button {
+  min-height: 1.95rem;
+  padding: 0 0.72rem;
+  border-radius: 7px !important;
+  border: none !important;
+  transition: background-color var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+}
+.segmented button:not(.active) {
+  background: transparent !important;
+  color: #1E293B !important;
+  box-shadow: none !important;
+}
+.segmented button:not(.active):hover {
+  background: rgba(15, 23, 42, 0.07) !important;
+  color: #0F172A !important;
+}
+[data-theme="dark"] .segmented button:not(.active),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button:not(.active) {
+  color: #E2E8F0 !important;
+}
+[data-theme="dark"] .segmented button:not(.active):hover,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button:not(.active):hover {
+  background: rgba(255, 255, 255, 0.11) !important;
+  color: #FFFFFF !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .segmented button:not(.active) {
+  color: #0F172A !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .segmented button:not(.active):hover {
+  background: rgba(15, 23, 42, 0.08) !important;
+  color: #000000 !important;
+}
+
+/* D. Refined Secondary, Ghost & Primary Action Buttons (guaranteed >= 4.5:1 text & icon contrast) */
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
+.btn-danger,
+.btn-danger-outline,
+.btn-avatar-upload,
+.btn-small-primary,
+.btn-small-secondary {
+  border-radius: 10px;
+}
+.btn-secondary,
+.btn-ghost,
+.btn-avatar-upload,
+.btn-small-secondary,
+.partner-action-btn {
+  background: #EEF1F6 !important;
+  color: #0F172A !important;
+  border: none !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08) !important;
+}
+.btn-secondary:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled),
+.btn-avatar-upload:hover,
+.btn-small-secondary:hover:not(:disabled),
+.partner-action-btn:hover:not(:disabled) {
+  background: #E4E9F2 !important;
+  color: #0F172A !important;
+}
+.btn-secondary svg,
+.btn-ghost svg,
+.btn-avatar-upload svg,
+.btn-small-secondary svg {
+  color: inherit !important;
+}
+[data-theme="dark"] .btn-secondary,
+[data-theme="dark"] .btn-ghost,
+[data-theme="dark"] .btn-avatar-upload,
+[data-theme="dark"] .btn-small-secondary,
+[data-theme="dark"] .partner-action-btn {
+  background: rgba(255, 255, 255, 0.085) !important;
+  color: #F1F5F9 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.11) !important;
+}
+[data-theme="dark"] .btn-secondary:hover:not(:disabled),
+[data-theme="dark"] .btn-ghost:hover:not(:disabled),
+[data-theme="dark"] .btn-avatar-upload:hover,
+[data-theme="dark"] .btn-small-secondary:hover:not(:disabled),
+[data-theme="dark"] .partner-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #FFFFFF !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-avatar-upload,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-small-secondary {
+  background: var(--adaptive-btn-bg, rgba(255, 255, 255, 0.88)) !important;
+  color: #0F172A !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(15, 23, 42, 0.11)) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary:hover:not(:disabled),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost:hover:not(:disabled),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-avatar-upload:hover,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-small-secondary:hover:not(:disabled) {
+  background: var(--adaptive-btn-hover, rgba(255, 255, 255, 0.96)) !important;
+  color: #0F172A !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-secondary,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-ghost,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-avatar-upload,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-small-secondary {
+  background: var(--adaptive-btn-bg, rgba(18, 24, 38, 0.82)) !important;
+  color: #F8FAFC !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(255, 255, 255, 0.16)) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-secondary:hover:not(:disabled),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-ghost:hover:not(:disabled),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-avatar-upload:hover,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-small-secondary:hover:not(:disabled) {
+  background: var(--adaptive-btn-hover, rgba(30, 41, 59, 0.92)) !important;
+  color: #FFFFFF !important;
+}
+
+/* E. Unified Sleek Inputs (Search Fields, Forms, Selects, Textareas & Composer Focus) */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input),
+textarea:not(.composer-input),
+select {
+  border-radius: 10px;
+  border: 1px solid var(--input-border, rgba(15, 23, 42, 0.11));
+  background-color: var(--bg-input);
+  transition: border-color var(--dur-hover) var(--ease), background-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input):hover,
+textarea:not(.composer-input):hover,
+select:hover {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--input-border, rgba(15, 23, 42, 0.18)));
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input):focus,
+textarea:not(.composer-input):focus,
+select:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent) !important;
+}
+.search-field input {
+  padding-left: 2.35rem;
+  border-radius: 10px;
+}
+.search-field svg {
+  z-index: 1;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) textarea:not(.composer-input),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  color: #0F172A !important;
+  border-color: rgba(15, 23, 42, 0.13) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) input:not(.composer-input)::placeholder,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) textarea:not(.composer-input)::placeholder {
+  color: #475569 !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .search-field svg {
+  color: #334155 !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] textarea:not(.composer-input),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select {
+  background-color: rgba(15, 23, 42, 0.82) !important;
+  color: #F8FAFC !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] input:not(.composer-input)::placeholder,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] textarea:not(.composer-input)::placeholder {
+  color: #CBD5E1 !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .search-field svg {
+  color: #CBD5E1 !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input):focus,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input):focus,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input):focus,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) textarea:not(.composer-input):focus,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) textarea:not(.composer-input):focus,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] textarea:not(.composer-input):focus,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) select:focus,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select:focus,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent) !important;
+}
+.composer-box:focus-within::before {
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10), inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, transparent) !important;
+}
+
+/* F. RTL Polish (Arabic, Persian, Hebrew, Urdu) */
+html[dir="rtl"] .search-field svg {
+  left: auto;
+  right: var(--space-3);
+}
+html[dir="rtl"] .search-field input {
+  padding-left: var(--space-3);
+  padding-right: 2.35rem;
+}
+html[dir="rtl"] .settings-nav-item .chevron {
+  margin-left: 0;
+  margin-right: auto;
+  transform: scaleX(-1);
+}
+html[dir="rtl"] .rail-nav [data-tip]:hover::after,
+html[dir="rtl"] .rail-bottom [data-tip]:hover::after {
+  left: auto;
+  right: calc(100% + 10px);
+}
+
 
 
 
