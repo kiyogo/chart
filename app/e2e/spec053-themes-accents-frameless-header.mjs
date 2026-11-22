@@ -97,34 +97,53 @@ try {
     const themeLabels = Array.from(document.querySelectorAll('.theme-card')).map((el) => el.innerText.trim());
     const swatches = Array.from(document.querySelectorAll('.accent-swatch'));
     const activeSwatch = document.querySelector('.accent-swatch.active');
+    const customCircle = document.querySelector('.accent-swatch-custom');
+    const sixthCircle = swatches[5];
+    const customR = customCircle ? customCircle.getBoundingClientRect() : null;
+    const sixthR = sixthCircle ? sixthCircle.getBoundingClientRect() : null;
+    const customCS = customCircle ? getComputedStyle(customCircle) : null;
     const accentGroup = activeSwatch?.closest('.settings-group');
     const customInputInAccentGroup = accentGroup?.querySelector('input[type="color"]');
     const allColorInputs = Array.from(document.querySelectorAll('.settings-body input[type="color"]'));
     const allColorBorderZero = allColorInputs.every((el) => getComputedStyle(el).borderTopWidth === '0px' && getComputedStyle(el).boxShadow === 'none');
+    const hasOldCustomLabel = document.querySelector('.settings-body').innerText.includes('Màu nhấn tùy chọn');
     const navActive = document.querySelector('.settings-nav-item.active');
     return {
       themeLabels,
       swatchCount: swatches.length,
       activeSwatchShadow: activeSwatch ? getComputedStyle(activeSwatch).boxShadow : '',
       activeSwatchBorder: activeSwatch ? getComputedStyle(activeSwatch).borderTopWidth : '',
-      hasCustomPickerUnderAccent: Boolean(customInputInAccentGroup),
+      hasCustomPickerInAccentRow: Boolean(customInputInAccentGroup && customCircle),
+      customIsCircleAtRightEnd: Boolean(
+        customR &&
+          sixthR &&
+          customCS &&
+          Math.abs(customR.width - customR.height) <= 1 &&
+          Math.abs(customR.width - sixthR.width) <= 1 &&
+          customR.left > sixthR.left &&
+          Math.abs(customR.top - sixthR.top) <= 2 &&
+          customCS.borderRadius === '50%'
+      ),
+      hasOldCustomLabel,
       colorInputCount: allColorInputs.length,
       allColorBorderZero,
       navActiveBg: navActive ? getComputedStyle(navActive).backgroundColor : '',
     };
   });
   record(
-    'Appearance renders 5 theme cards, 6 vibrant borderless accent swatches (zero black ring), inline custom accent picker directly below, and frameless color inputs',
+    'Appearance renders 5 theme cards, 7 borderless circular accent swatches (6 presets + rightmost circular custom picker, zero "Màu nhấn tùy chọn" label), and frameless color inputs',
     accentAndColorAudit.themeLabels.length === 5 &&
       accentAndColorAudit.themeLabels.includes('Sáng') &&
       accentAndColorAudit.themeLabels.includes('Xám tro') &&
       accentAndColorAudit.themeLabels.includes('Tối') &&
       accentAndColorAudit.themeLabels.includes('Đen huyền') &&
       accentAndColorAudit.themeLabels.includes('Theo hệ thống') &&
-      accentAndColorAudit.swatchCount === 6 &&
+      accentAndColorAudit.swatchCount === 7 &&
       accentAndColorAudit.activeSwatchShadow === 'none' &&
       accentAndColorAudit.activeSwatchBorder === '0px' &&
-      accentAndColorAudit.hasCustomPickerUnderAccent &&
+      accentAndColorAudit.hasCustomPickerInAccentRow &&
+      accentAndColorAudit.customIsCircleAtRightEnd &&
+      !accentAndColorAudit.hasOldCustomLabel &&
       accentAndColorAudit.allColorBorderZero,
     JSON.stringify(accentAndColorAudit)
   );

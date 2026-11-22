@@ -273,9 +273,9 @@ try {
     JSON.stringify(appearanceAudit)
   );
 
-  // Trigger custom accent color change and verify "Mặc định" button appears to the LEFT of <input type="color"> and has a button frame
-  const colorRowAudit = await page.evaluate(() => {
-    const colorInput = document.querySelector('.settings-body input[type="color"]');
+  // Trigger custom bubble color change and verify "Mặc định" button appears to the LEFT of <input type="color"> and has a button frame
+  await page.evaluate(() => {
+    const colorInput = document.querySelector('.settings-body input[aria-label="Màu bong bóng của bạn"]');
     const proto = window.HTMLInputElement.prototype;
     const desc = Object.getOwnPropertyDescriptor(proto, 'value');
     desc.set.call(colorInput, '#E11D48');
@@ -284,7 +284,7 @@ try {
   });
   await page.waitForTimeout(250);
   const macDinhAudit = await page.evaluate(() => {
-    const colorInput = document.querySelector('.settings-body input[type="color"]');
+    const colorInput = document.querySelector('.settings-body input[aria-label="Màu bong bóng của bạn"]');
     const row = colorInput.closest('.settings-row');
     const resetBtn = Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Mặc định'));
     if (!resetBtn) return null;
@@ -302,6 +302,14 @@ try {
     macDinhAudit && macDinhAudit.isLeftOfColor && macDinhAudit.btnBg !== 'rgba(0, 0, 0, 0)',
     JSON.stringify(macDinhAudit)
   );
+  // Reset bubble_self back to default
+  await page.evaluate(() => {
+    const colorInput = document.querySelector('.settings-body input[aria-label="Màu bong bóng của bạn"]');
+    const row = colorInput?.closest('.settings-row');
+    const resetBtn = row && Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Mặc định'));
+    if (resetBtn) resetBtn.click();
+  });
+  await page.waitForTimeout(150);
 
   // Set panel transparency to 25% over Ocean wallpaper -> verify that when panel is ALREADY easy to read (75% opaque), NO text-shadow is applied!
   await page.locator('.wallpaper-tile', { hasText: 'Đại dương' }).last().click();
@@ -493,6 +501,15 @@ try {
       };
     });
 
+  // Verify Translucent-Only Dynamic Wallpaper Theming (Spec 057):
+  // At 0% transparency (solid opaque white panels) over Sunset ("Hoàng hôn"), the UI MUST stay Blue (data-wp-theme-active="false")!
+  await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
+  await setTransparency(0);
+  const mSunset0 = await measureButtons();
+  if (process.env.SPEC052_SHOT_DIR) {
+    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'sunset_0_solid_keeps_blue.png') });
+  }
+
   // Check Aurora ("Cực quang") at 100% transparency -> dynamically themes ENTIRE app to Aurora Violet!
   await page.locator('.wallpaper-tile', { hasText: 'Cực quang' }).last().click();
   await setTransparency(100);
@@ -573,8 +590,10 @@ try {
   );
 
   record(
-    'Full-App Dynamic Wallpaper Theming (Material You): Aurora -> Violet, Mint -> Emerald, Sunset -> Rose across active pills, hover, buttons & --accent (zero cold blue/purple clash), frameless idle controls, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
-    mAurora100.wpThemeActive === 'true' &&
+    'Translucent-Only Material You Theming: Sunset @ 0% solid white keeps user Blue (data-wp-theme-active=false), while translucent Aurora -> Violet, Mint -> Emerald, Sunset -> Rose with frameless idle controls, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
+    mSunset0.wpThemeActive === 'false' &&
+      mSunset0.accentVar === '#2E7CF6' &&
+      mAurora100.wpThemeActive === 'true' &&
       mMint72.wpThemeActive === 'true' &&
       m72.wpThemeActive === 'true' &&
       mAurora100.framedControls === 'false' &&

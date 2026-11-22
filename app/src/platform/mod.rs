@@ -800,7 +800,9 @@ if (!window.__chatwRecomputeContrast) {
 
         const hasWpSeed = c.wpKind !== 'none' && c.wpKind !== 'preset-dots' && (wpChroma >= 0.08 || c.wpKind === 'image');
         const hasCustomAccent = Boolean(c.customAccent && parseHex(c.customAccent));
-        const useWallpaperTheme = hasWpSeed && !hasCustomAccent && !window.__chatwAccentManual;
+        // ONLY adapt colors to the wallpaper when the panel is actually translucent/blurred (transparency >= 25% -> alpha <= 0.75)
+        // so solid opaque white/dark panels (0% transparency) ALWAYS preserve the user's chosen Màu nhấn untouched!
+        const useWallpaperTheme = hasWpSeed && alpha <= 0.75 && !hasCustomAccent && !window.__chatwAccentManual;
 
         root.setAttribute('data-surface-tone', surfaceTone);
         root.setAttribute('data-rail-tone', railTone);

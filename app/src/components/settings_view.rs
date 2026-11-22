@@ -388,8 +388,12 @@ pub fn SettingsView(
                                             div { class: "settings-group-desc", "Áp dụng cho nút chính, bong bóng tin nhắn đã gửi và mục đang chọn." }
                                             div { class: "accent-swatches", role: "radiogroup", aria_label: "Màu nhấn",
                                                 {
-                                                    let cur_wp_for_sw = prefs_ctx.prefs.read().app_wallpaper.clone();
-                                                    let cur_custom_empty = prefs_ctx.prefs.read().custom_accent.is_empty();
+                                                    let pr_read = prefs_ctx.prefs.read();
+                                                    let cur_wp_for_sw = pr_read.app_wallpaper.clone();
+                                                    let cur_custom = pr_read.custom_accent.clone();
+                                                    let cur_panel_opacity = pr_read.panel_opacity;
+                                                    drop(pr_read);
+                                                    let cur_custom_empty = cur_custom.is_empty();
                                                     let wp_matched_accent: Option<&'static str> = match cur_wp_for_sw.as_str() {
                                                         "sunset" | "bubbles" => Some("rose"),
                                                         "mint" => Some("green"),
@@ -398,7 +402,24 @@ pub fn SettingsView(
                                                         "night" => Some("blue"),
                                                         _ => None,
                                                     };
-                                                    let wp_overrides_swatch = cur_custom_empty && platform::wallpaper_seed_hex(&cur_wp_for_sw).is_some() && !manual_accent();
+                                                    let wp_overrides_swatch = cur_custom_empty
+                                                        && cur_panel_opacity <= 75
+                                                        && platform::wallpaper_seed_hex(&cur_wp_for_sw).is_some()
+                                                        && !manual_accent();
+                                                    let preset_hex = match appearance().accent.as_str() {
+                                                        "cyan" => "#06B6D4",
+                                                        "violet" => "#8B5CF6",
+                                                        "green" => "#10B981",
+                                                        "orange" => "#F97316",
+                                                        "rose" => "#F43F7E",
+                                                        _ => "#2E7CF6",
+                                                    };
+                                                    let picker_val = if cur_custom_empty { preset_hex.to_string() } else { cur_custom.clone() };
+                                                    let custom_bg = if cur_custom_empty {
+                                                        "background: conic-gradient(from 0deg, #FF3B30, #FF9500, #FFCC00, #34C759, #00C7BE, #007AFF, #AF52DE, #FF2D55, #FF3B30);".to_string()
+                                                    } else {
+                                                        format!("background: {cur_custom};")
+                                                    };
                                                     rsx! {
                                                         for (val, color, label) in [
                                                             ("blue", "#2E7CF6", "Xanh dương"),
@@ -437,46 +458,23 @@ pub fn SettingsView(
                                                                 }
                                                             }
                                                         }
-                                                    }
-                                                }
-                                            }
-                                            {
-                                                let cur_custom = prefs_ctx.prefs.read().custom_accent.clone();
-                                                let cur_wp = prefs_ctx.prefs.read().app_wallpaper.clone();
-                                                let preset_hex = match appearance().accent.as_str() {
-                                                    "cyan" => "#06B6D4",
-                                                    "violet" => "#8B5CF6",
-                                                    "green" => "#10B981",
-                                                    "orange" => "#F97316",
-                                                    "rose" => "#F43F7E",
-                                                    _ => "#2E7CF6",
-                                                };
-                                                let picker_val = if cur_custom.is_empty() {
-                                                    platform::wallpaper_seed_hex(&cur_wp).unwrap_or_else(|| preset_hex.to_string())
-                                                } else {
-                                                    cur_custom.clone()
-                                                };
-                                                let sync_attr = if cur_custom.is_empty() { "true" } else { "false" };
-                                                rsx! {
-                                                    div { class: "settings-row accent-custom-row",
-                                                        span { class: "grow", span { class: "settings-label", "Màu nhấn tùy chọn" } }
-                                                        if !cur_custom.is_empty() {
-                                                            button {
-                                                                r#type: "button",
-                                                                class: "btn-secondary",
-                                                                onclick: move |_| prefs_ctx.update(|p| p.custom_accent.clear()),
-                                                                "Mặc định"
+                                                        span {
+                                                            class: if !cur_custom_empty { "accent-swatch accent-swatch-custom active" } else { "accent-swatch accent-swatch-custom" },
+                                                            style: "{custom_bg}",
+                                                            title: "Màu tùy chọn",
+                                                            input {
+                                                                r#type: "color",
+                                                                class: "accent-swatch-color-input",
+                                                                aria_label: "Màu nhấn",
+                                                                value: "{picker_val}",
+                                                                onchange: move |e| {
+                                                                    let v = e.value().to_uppercase();
+                                                                    manual_accent.set(true);
+                                                                    platform::mark_manual_accent();
+                                                                    prefs_ctx.update(move |p| p.custom_accent = v);
+                                                                },
                                                             }
-                                                        }
-                                                        input {
-                                                            r#type: "color",
-                                                            aria_label: "Màu nhấn",
-                                                            "data-sync-accent": "{sync_attr}",
-                                                            value: "{picker_val}",
-                                                            onchange: move |e| {
-                                                                let v = e.value().to_uppercase();
-                                                                prefs_ctx.update(move |p| p.custom_accent = v);
-                                                            },
+                                                            if !cur_custom_empty { CheckIcon { size: 16 } }
                                                         }
                                                     }
                                                 }

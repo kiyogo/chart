@@ -2447,10 +2447,27 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 }
 .segmented button:hover { color: var(--text-primary); }
 .segmented button.active { background: var(--bg-elevated); color: var(--text-primary); box-shadow: var(--shadow-sm); }
-.accent-swatches { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.accent-swatch { width: 2.125rem; height: 2.125rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; border: none !important; box-shadow: none !important; }
+.accent-swatches { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.accent-swatch { width: 2.125rem; height: 2.125rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; border: none !important; box-shadow: none !important; flex-shrink: 0; }
 .accent-swatch.active { box-shadow: none !important; border: none !important; }
-.accent-custom-row { margin-top: var(--space-1); }
+.accent-swatch-custom { position: relative; overflow: hidden; padding: 0; cursor: pointer; }
+.accent-swatch-custom > svg { position: relative; z-index: 2; pointer-events: none; }
+.accent-swatch-custom > input[type="color"].accent-swatch-color-input {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  border: none !important;
+  box-shadow: none !important;
+  opacity: 0 !important;
+  cursor: pointer;
+  z-index: 3;
+}
 .theme-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .theme-preview.theme-preview-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .theme-card {

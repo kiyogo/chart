@@ -458,7 +458,11 @@ pub fn AppearanceColorsShapes() -> Element {
     let c = ctx();
     let pr: Prefs = c.prefs.read().clone();
     let accent_val = if pr.custom_accent.is_empty() {
-        platform::wallpaper_seed_hex(&pr.app_wallpaper).unwrap_or_else(|| "#2E7CF6".to_string())
+        if pr.panel_opacity <= 75 {
+            platform::wallpaper_seed_hex(&pr.app_wallpaper).unwrap_or_else(|| "#2E7CF6".to_string())
+        } else {
+            "#2E7CF6".to_string()
+        }
     } else {
         pr.custom_accent.clone()
     };
