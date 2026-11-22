@@ -555,6 +555,7 @@ if (!window.__chatwRecomputeContrast) {
                 let sum = 0, sumSq = 0, railSum = 0, railN = 0, edgeSum = 0;
                 let leftMainSum = 0, leftMainN = 0, rightMainSum = 0, rightMainN = 0;
                 let topSum = 0, topN = 0, botSum = 0, botN = 0;
+                let topRSum = 0, topGSum = 0, topBSum = 0;
                 let darkCount = 0, brightCount = 0;
                 let rSum = 0, gSum = 0, bSum = 0;
                 // Material-You inspired 36-bin hue scoring for vibrant dominant color extraction
@@ -577,7 +578,7 @@ if (!window.__chatwRecomputeContrast) {
                         if (x < 7) { railSum += b; railN++; }
                         else if (x < 28) { leftMainSum += b; leftMainN++; }
                         else { rightMainSum += b; rightMainN++; }
-                        if (y < 9) { topSum += b; topN++; }
+                        if (y < 9) { topSum += b; topN++; topRSum += r; topGSum += g; topBSum += bl; }
                         if (y >= sz - 9) { botSum += b; botN++; }
                         if (x > 0) edgeSum += Math.abs(b - grid[p - 1]);
                         if (y > 0) edgeSum += Math.abs(b - grid[p - sz]);
@@ -610,6 +611,7 @@ if (!window.__chatwRecomputeContrast) {
                     leftMainB: leftMainN ? (leftMainSum / leftMainN) : meanB,
                     rightMainB: rightMainN ? (rightMainSum / rightMainN) : meanB,
                     topBandB: topN ? (topSum / topN) : meanB,
+                    topHex: topN ? toHex(topRSum / topN, topGSum / topN, topBSum / topN) : domHex,
                     botBandB: botN ? (botSum / botN) : meanB,
                     stdB: Math.sqrt(variance),
                     edgeB,
@@ -719,6 +721,7 @@ if (!window.__chatwRecomputeContrast) {
                     chatCol.setAttribute('data-chat-busy', String(cBusy));
                     chatCol.setAttribute('data-chat-header-halo', String(hdrLc < 68));
                     if (cm.domHex) chatCol.style.setProperty('--chat-dom-color', cm.domHex);
+                    if (cm.topHex) chatCol.style.setProperty('--chat-top-fade-color', cm.topHex);
                 } else {
                     sampleImage(chatUrl);
                 }
@@ -731,17 +734,20 @@ if (!window.__chatwRecomputeContrast) {
                 chatCol.setAttribute('data-chat-busy', 'false');
                 chatCol.setAttribute('data-chat-header-halo', 'false');
                 chatCol.style.setProperty('--chat-dom-color', mHex[1]);
+                chatCol.style.setProperty('--chat-top-fade-color', mHex[1]);
             } else if (chatCol.classList.contains('wp-night')) {
                 chatCol.setAttribute('data-chat-tone', 'dark');
                 chatCol.setAttribute('data-chat-header-tone', 'dark');
                 chatCol.setAttribute('data-chat-busy', 'false');
                 chatCol.setAttribute('data-chat-header-halo', 'false');
+                chatCol.style.removeProperty('--chat-top-fade-color');
             } else {
                 chatCol.removeAttribute('data-chat-tone');
                 chatCol.removeAttribute('data-chat-header-tone');
                 chatCol.removeAttribute('data-chat-busy');
                 chatCol.removeAttribute('data-chat-header-halo');
                 chatCol.style.removeProperty('--chat-dom-color');
+                chatCol.style.removeProperty('--chat-top-fade-color');
             }
         }
 

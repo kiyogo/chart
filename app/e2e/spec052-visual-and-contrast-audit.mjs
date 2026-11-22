@@ -142,7 +142,9 @@ try {
       hdrBg: hdrCS.backgroundColor,
       hdrPointer: hdrCS.pointerEvents,
       beforeDisplay: hdrBeforeCS.display,
+      beforeBg: hdrBeforeCS.backgroundColor,
       beforeBgImg: hdrBeforeCS.backgroundImage,
+      beforeMask: hdrBeforeCS.maskImage || hdrBeforeCS.webkitMaskImage || 'none',
       beforeBlur: hdrBeforeCS.backdropFilter || hdrBeforeCS.webkitBackdropFilter || 'none',
       beforeHeight: parseFloat(hdrBeforeCS.height) || 0,
       afterDisplay: hdrAfterCS.display,
@@ -150,6 +152,7 @@ try {
       idRadius: idCS ? parseFloat(idCS.borderTopLeftRadius) : 0,
       idBg: idCS ? idCS.backgroundColor : '',
       actRadius: actCS ? parseFloat(actCS.borderTopLeftRadius) : 0,
+      curChipBg: hdr.querySelector('.device-chip.current') ? getComputedStyle(hdr.querySelector('.device-chip.current')).backgroundColor : '',
       hasThietBiLabel,
       devicesRightOfTitle: idR && devR ? devR.left >= idR.right + 4 : false,
       datePos: dateSepCS ? dateSepCS.position : '',
@@ -157,15 +160,15 @@ try {
     };
   });
   record(
-    'Self-chat header floats Avatar+Name & Actions as frosted capsules with compact unblurred white top edge fade (<=32px), places device pills inline right of title, and fixes date pill format',
+    'Self-chat header floats Avatar+Name & Actions as frosted capsules with wallpaper-matched unblurred top edge fade (~41px) and opaque non-bleeding current device chip',
     selfChatAudit.hdrPos === 'absolute' &&
       selfChatAudit.hdrBg === 'rgba(0, 0, 0, 0)' &&
       selfChatAudit.hdrPointer === 'none' &&
       selfChatAudit.beforeDisplay === 'block' &&
-      selfChatAudit.beforeBgImg.includes('linear-gradient') &&
+      selfChatAudit.beforeMask.includes('linear-gradient') &&
       selfChatAudit.beforeBlur === 'none' &&
-      selfChatAudit.beforeHeight > 12 &&
-      selfChatAudit.beforeHeight <= 32 &&
+      selfChatAudit.beforeHeight >= 34 &&
+      selfChatAudit.beforeHeight <= 48 &&
       selfChatAudit.afterDisplay === 'none' &&
       selfChatAudit.msgsStartsAtTop &&
       selfChatAudit.idRadius >= 20 &&
@@ -515,6 +518,93 @@ try {
     'All 33/33 language tiles render official SVG national flags with zero grey text code fallbacks',
     langAudit.tiles === 33 && langAudit.flagSvgs === 33 && langAudit.textPills === 0,
     JSON.stringify(langAudit)
+  );
+
+  // 7. Light/Dark & Chat Wallpaper Contrast Audit:
+  //    a) Light Theme + Translucent Panel + "Đêm sao" (.wp-night): floating header pills & ChatMoreMenu stay dark with bright text, top fade matches #101833
+  //    b) "Đại dương" (.wp-ocean): top fade matches sky-blue gradient (never plain white stripe)
+  await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
+  await page.waitForSelector('.settings-nav', { timeout: 10000 });
+  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.waitForTimeout(250);
+  // First wallpaper grid is "Hình nền trò chuyện"
+  await page.locator('.wallpaper-tile', { hasText: 'Đêm sao' }).first().click();
+  await page.waitForTimeout(250);
+  await page.locator('.app-rail button[aria-label="Tin nhắn"]').click();
+  await page.waitForSelector('.chat-column.wp-night', { timeout: 10000 });
+  await page.waitForTimeout(300);
+  await page.locator('.chat-header button[aria-label="Tùy chọn khác"]').click();
+  await page.waitForSelector('.chat-more-menu', { timeout: 5000 });
+  await page.waitForTimeout(200);
+  if (process.env.SPEC052_SHOT_DIR) {
+    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'wp_night_menu.png') });
+  }
+  const nightAudit = await page.evaluate(() => {
+    const parse = (s) => {
+      const m = (s || '').match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+      return m ? { r: +m[1], g: +m[2], b: +m[3] } : null;
+    };
+    const hdr = document.querySelector('.chat-column.wp-night > .chat-header');
+    const idEl = hdr.querySelector('.chat-header-identity');
+    const titleEl = hdr.querySelector('.chat-header-title');
+    const actEl = hdr.querySelector('.chat-header-actions');
+    const menu = document.querySelector('.chat-more-menu');
+    const menuItem = menu?.querySelector('.account-menu-item');
+    const beforeCS = getComputedStyle(hdr, '::before');
+    return {
+      idBg: getComputedStyle(idEl).backgroundColor,
+      idRgb: parse(getComputedStyle(idEl).backgroundColor),
+      actBg: getComputedStyle(actEl).backgroundColor,
+      actRgb: parse(getComputedStyle(actEl).backgroundColor),
+      titleColor: getComputedStyle(titleEl).color,
+      titleRgb: parse(getComputedStyle(titleEl).color),
+      beforeBg: beforeCS.backgroundColor,
+      beforeRgb: parse(beforeCS.backgroundColor),
+      menuBg: menu ? getComputedStyle(menu).backgroundColor : '',
+      menuRgb: menu ? parse(getComputedStyle(menu).backgroundColor) : null,
+      menuItemColor: menuItem ? getComputedStyle(menuItem).color : '',
+      menuItemRgb: menuItem ? parse(getComputedStyle(menuItem).color) : null,
+    };
+  });
+  await page.locator('.menu-dismiss').click({ force: true }).catch(() => {});
+  await page.waitForTimeout(150);
+
+  // Switch chat wallpaper to Ocean ("Đại dương") and verify top fade uses Ocean gradient (not solid white)
+  await page.locator('.app-rail button[aria-label="Cài đặt"]').click();
+  await page.waitForSelector('.settings-nav', { timeout: 10000 });
+  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.waitForTimeout(250);
+  await page.locator('.wallpaper-tile', { hasText: 'Đại dương' }).first().click();
+  await page.waitForTimeout(250);
+  await page.locator('.app-rail button[aria-label="Tin nhắn"]').click();
+  await page.waitForSelector('.chat-column.wp-ocean', { timeout: 10000 });
+  await page.waitForTimeout(300);
+  if (process.env.SPEC052_SHOT_DIR) {
+    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'wp_ocean_top.png') });
+  }
+  const oceanFadeBgImg = await page.evaluate(() => {
+    const hdr = document.querySelector('.chat-column.wp-ocean > .chat-header');
+    return hdr ? getComputedStyle(hdr, '::before').backgroundImage : '';
+  });
+
+  record(
+    'Light/Dark chat wallpaper integrity: .wp-night keeps dark pills + dark ChatMoreMenu + bright text + navy top fade, and .wp-ocean top fade matches Ocean gradient',
+    Boolean(
+      nightAudit.idRgb &&
+        nightAudit.idRgb.r < 50 &&
+        nightAudit.actRgb &&
+        nightAudit.actRgb.r < 50 &&
+        nightAudit.titleRgb &&
+        nightAudit.titleRgb.r > 220 &&
+        nightAudit.beforeRgb &&
+        nightAudit.beforeRgb.r < 40 &&
+        nightAudit.menuRgb &&
+        nightAudit.menuRgb.r < 50 &&
+        nightAudit.menuItemRgb &&
+        nightAudit.menuItemRgb.r > 220 &&
+        oceanFadeBgImg.includes('linear-gradient')
+    ),
+    JSON.stringify({ nightAudit, oceanFadeBgImg })
   );
 
   record('Zero unhandled page errors during Spec 052 verification', errors.length === 0, errors.join(' | '));
