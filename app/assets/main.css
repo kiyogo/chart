@@ -370,6 +370,9 @@ input[type="color"] {
 
 /* ---------- Left navigation rail (ChatW: labeled sections, optional pins) ---------- */
 .app-rail {
+  position: relative;
+  z-index: 30;
+  overflow: visible;
   width: var(--rail-width);
   flex-shrink: 0;
   height: 100%;
@@ -379,6 +382,16 @@ input[type="color"] {
   gap: var(--space-2);
   padding: var(--space-2) 0;
   min-height: 0;
+}
+.app-rail:hover,
+.app-rail:focus-within {
+  z-index: 80;
+}
+.app-rail:has(.account-menu, .rail-menu, .menu-dismiss) {
+  z-index: var(--z-popover);
+}
+.app-rail:has(.modal-overlay, .settings-modal-backdrop, .lightbox) {
+  z-index: var(--z-modal);
 }
 .rail-brand {
   width: 2.625rem;
@@ -419,7 +432,7 @@ input[type="color"] {
   .rail-nav [data-tip]:hover::after, .rail-bottom [data-tip]:hover::after {
     content: attr(data-tip);
     position: absolute;
-    left: calc(100% + 6px);
+    left: calc(100% + 10px);
     top: 50%;
     transform: translateY(-50%);
     padding: var(--space-1) var(--space-3);
@@ -431,7 +444,8 @@ input[type="color"] {
     white-space: nowrap;
     pointer-events: none;
     z-index: var(--z-popover);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22);
+    text-shadow: none !important;
     animation: tip-in var(--dur-menu) var(--ease);
   }
 }
@@ -605,7 +619,8 @@ input[type="color"] {
 .download-popover-qr {
   padding: 0;
   width: 100%;
-  border-radius: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
   background: transparent;
   border: none;
   box-shadow: none;
@@ -766,8 +781,9 @@ input[type="color"] {
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
   border-radius: var(--radius-xl);
-  box-shadow: none;
-  background: var(--bg-surface-hover);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16), inset 0 0 0 1px var(--border-subtle);
   z-index: var(--z-popover);
   animation: pop-in var(--dur-menu) var(--ease);
 }
@@ -1825,7 +1841,44 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
 .composer:has(.modal-overlay, .settings-modal-backdrop, .lightbox)::before {
   display: none !important;
 }
-.composer:has(.menu-dismiss, .picker-popover, .account-menu, .tools-menu) {
+/* Zero-specificity base panel stacking so all workspace panels sit cleanly below .panel-resizer (15), .app-rail (30), and responsive drawers (--z-drawer: 60) */
+:where(
+  .nav-sidebar,
+  .settings-nav,
+  .settings-body,
+  .chat-column,
+  .details-panel,
+  .partner-info-sidebar,
+  .server-members-panel,
+  .right-panel,
+  .notifications-page,
+  .download-page,
+  .search-page,
+  .feed-column,
+  .meet-column,
+  .vico-chat-column,
+  .plugin-panel
+) {
+  position: relative;
+  z-index: 1;
+}
+.composer:has(.menu-dismiss, .picker-popover, .account-menu, .tools-menu),
+.chat-header:has(.menu-dismiss, .account-menu, .header-search-popover, .header-search-backdrop, .picker-popover),
+.nav-sidebar:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.settings-nav:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.settings-body:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.chat-column:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .header-search-popover, .header-search-backdrop, .tools-menu, .profile-popover),
+.details-panel:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.partner-info-sidebar:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.server-members-panel:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.right-panel:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.feed-column:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.meet-column:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.vico-chat-column:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.plugin-panel:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover, .ent-search-popover),
+.notifications-page:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.download-page:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover),
+.search-page:has(.menu-dismiss, .account-menu, .cw-dropdown-menu, .picker-popover, .profile-popover) {
   z-index: var(--z-popover);
 }
 .composer:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
@@ -1835,12 +1888,17 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
 .details-panel:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
 .partner-info-sidebar:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
 .server-members-panel:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.right-panel:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
 .settings-nav:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
-.settings-body:has(.modal-overlay, .settings-modal-backdrop, .lightbox) {
+.settings-body:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.feed-column:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.meet-column:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.vico-chat-column:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.plugin-panel:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.notifications-page:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.download-page:has(.modal-overlay, .settings-modal-backdrop, .lightbox),
+.search-page:has(.modal-overlay, .settings-modal-backdrop, .lightbox) {
   z-index: var(--z-modal);
-}
-.chat-header:has(.menu-dismiss, .account-menu, .header-search-popover, .picker-popover) {
-  z-index: var(--z-popover);
 }
 .composer-inner { max-width: 68rem; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-2); position: relative; pointer-events: auto; }
 .composer-context {
@@ -2014,8 +2072,9 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   left: 0;
   width: min(22.5rem, calc(100vw - 1.5rem));
   height: min(26rem, 60vh);
-  background: var(--bg-surface-hover);
-  box-shadow: none;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16), inset 0 0 0 1px var(--border-subtle);
   border-radius: var(--radius-xl);
   display: flex;
   flex-direction: column;
@@ -3152,6 +3211,7 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 
 /* ---------- Conversation list ---------- */
 .conv-row { position: relative; display: block; }
+.conv-row:has(.account-menu, .menu-dismiss) { z-index: var(--z-popover); }
 .conv-row .chat-item { padding-right: 0.45rem; }
 .conv-row:hover .chat-item-time,
 .conv-row:focus-within .chat-item-time,
@@ -3447,7 +3507,8 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .suggest-list {
   display: flex; flex-direction: column; gap: 2px;
   padding: var(--space-1); margin-bottom: 4px;
-  border-radius: var(--radius-lg); background: var(--bg-surface-hover); box-shadow: none;
+  border-radius: var(--radius-lg); background: var(--bg-elevated); color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14), inset 0 0 0 1px var(--border-subtle);
   max-height: 16rem; overflow-y: auto;
 }
 .suggest-item { display: flex; align-items: center; gap: var(--space-2); min-height: 2.25rem; padding: 0 var(--space-3); border-radius: var(--radius-md); text-align: left; font-size: var(--text-md); color: var(--text-primary); }
@@ -3461,7 +3522,7 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .sticker-suggest-cell:hover { transform: translateY(-2px); background: var(--bg-hover); }
 .sticker-suggest-cell img { width: 100%; height: 100%; object-fit: contain; }
 .sticker-suggest-close { flex-shrink: 0; }
-.paste-choice { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-2); border-radius: var(--radius-xl); background: var(--bg-surface-hover); box-shadow: none; }
+.paste-choice { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-2); border-radius: var(--radius-xl); background: var(--bg-elevated); color: var(--text-primary); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14), inset 0 0 0 1px var(--border-subtle); }
 .paste-choice-title { font-weight: var(--weight-semibold); }
 .paste-choice-sub { font-size: var(--text-sm); color: var(--text-secondary); }
 .paste-choice-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
@@ -3776,16 +3837,17 @@ html[data-panel-translucent="true"] .chat-header,
 html[data-panel-glass="true"] .chat-header {
   background: transparent;
 }
-html[data-panel-glass="true"] .nav-sidebar:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .chat-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .settings-nav:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .settings-body:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .details-panel:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .partner-info-sidebar:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .server-members-panel:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .notifications-page:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .download-page:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .search-page:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)) {
+html[data-panel-glass="true"] .nav-sidebar:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .chat-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .settings-nav:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .settings-body:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .details-panel:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .partner-info-sidebar:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .server-members-panel:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .right-panel:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .notifications-page:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .download-page:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .search-page:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)) {
   backdrop-filter: blur(var(--panel-blur, 12px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }
@@ -3830,9 +3892,10 @@ html[data-panel-translucent="true"] .composer-box::before,
 html[data-panel-glass="true"] .composer-box::before {
   background: color-mix(in srgb, var(--scrim-card-solid, var(--bg-input)) max(74%, var(--panel-opacity, 100%)), transparent);
 }
+/* Spec 059: Never apply nested backdrop-filter to .rail-item.active (.app-rail::before already renders the rail glass) */
 html[data-panel-glass="true"] .rail-item.active {
-  backdrop-filter: blur(var(--panel-blur, 12px));
-  -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* ---------- Deep customisation ---------- */
@@ -6903,11 +6966,12 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   width: min(22rem, 88vw);
   max-height: 24rem;
   overflow-y: auto;
-  background: var(--bg-surface-hover);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
   border-radius: var(--radius-lg);
-  box-shadow: none;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16), inset 0 0 0 1px var(--border-subtle);
   padding: 6px;
-  z-index: 50;
+  z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -9589,10 +9653,10 @@ html[data-panel-glass="true"] .search-page,
 html[data-panel-glass="true"] .main-stage > .empty-state {
   background-color: color-mix(in srgb, var(--bg-primary) var(--panel-opacity, 100%), transparent);
 }
-html[data-panel-glass="true"] .feed-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .meet-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .vico-chat-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)),
-html[data-panel-glass="true"] .plugin-panel:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)) {
+html[data-panel-glass="true"] .feed-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .meet-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .vico-chat-column:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)),
+html[data-panel-glass="true"] .plugin-panel:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox, .menu-dismiss, .header-search-backdrop, .profile-popover)) {
   backdrop-filter: blur(var(--panel-blur, 12px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }
@@ -9691,21 +9755,68 @@ html[data-surface-tone="dark"] .chat-item.has-nameplate:hover:not(.selected):not
   margin: 0 0 4px !important;
 }
 
-/* 4. Left Rail (.app-rail) 100% Synchronized with Interface Panel Transparency & Glass Blur (Image 10) */
+/* 4. Left Rail (.app-rail) 100% Synchronized with Interface Panel Transparency & Glass Blur (Spec 052 & 059)
+      Glass blur lives on .app-rail::before (z-index: -1) so .app-rail NEVER traps position: fixed (.menu-dismiss)
+      and NEVER flickers on hover while keeping .app-rail strictly above sibling glass panels. */
 .app-rail {
   background-color: var(--bg-primary);
   border-radius: var(--panel-radius);
 }
-html[data-rail-scrim="true"][data-rail-tone="light"] .app-rail,
-html[data-rail-scrim="true"][data-rail-tone="dark"] .app-rail,
-html[data-panel-translucent="true"] .app-rail,
-html[data-panel-glass="true"] .app-rail {
+html[data-rail-scrim="true"][data-rail-tone="light"]:not([data-panel-glass="true"]) .app-rail,
+html[data-rail-scrim="true"][data-rail-tone="dark"]:not([data-panel-glass="true"]) .app-rail,
+html[data-panel-translucent="true"]:not([data-panel-glass="true"]) .app-rail {
   background: color-mix(in srgb, var(--bg-primary) var(--panel-opacity, 100%), transparent) !important;
   border-radius: var(--panel-radius);
 }
-html[data-panel-glass="true"] .app-rail:not(:has(.modal-overlay, .settings-modal-backdrop, .lightbox)) {
+html[data-panel-glass="true"] .app-rail {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: var(--panel-radius);
+}
+html[data-panel-glass="true"] .app-rail::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--bg-primary) var(--panel-opacity, 100%), transparent);
   backdrop-filter: blur(var(--panel-blur, 12px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Spec 059: Crisp adaptive dark/light surfaces for elevated popovers */
+html[data-theme="dark"] .picker-popover,
+html[data-surface-tone="dark"] .picker-popover,
+html[data-theme="dark"] .profile-popover,
+html[data-surface-tone="dark"] .profile-popover,
+html[data-theme="dark"] .header-search-popover,
+html[data-surface-tone="dark"] .header-search-popover,
+html[data-theme="dark"] .suggest-list,
+html[data-surface-tone="dark"] .suggest-list,
+html[data-theme="dark"] .paste-choice,
+html[data-surface-tone="dark"] .paste-choice,
+.chat-column.wp-night .picker-popover,
+.chat-column[data-chat-tone="dark"] .picker-popover,
+.chat-column.wp-night .header-search-popover,
+.chat-column[data-chat-tone="dark"] .header-search-popover,
+.chat-column.wp-night .suggest-list,
+.chat-column[data-chat-tone="dark"] .suggest-list,
+.chat-column.wp-night .paste-choice,
+.chat-column[data-chat-tone="dark"] .paste-choice {
+  background: #1C2230;
+  color: #F4F6FA;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.48), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+html[data-theme="dark"][data-surface-tone="light"] .picker-popover,
+html[data-theme="dark"][data-surface-tone="light"] .profile-popover,
+html[data-theme="dark"][data-surface-tone="light"] .header-search-popover,
+html[data-theme="dark"][data-surface-tone="light"] .suggest-list,
+html[data-theme="dark"][data-surface-tone="light"] .paste-choice {
+  background: #FFFFFF;
+  color: #0F172A;
+  box-shadow: 0 8px 26px rgba(15, 23, 42, 0.14), inset 0 0 0 1px rgba(15, 23, 42, 0.08);
 }
 
 /* 5. Adaptive Contrast & Razor-Sharp Single-Polarity Halo Over Transparent/Wallpaper Panels (Image 9) */
@@ -9763,7 +9874,19 @@ input,
 select,
 textarea,
 .modal-dialog,
-.cw-picker-popover {
+.cw-picker-popover,
+.account-menu,
+.rail-menu,
+.download-rail-menu,
+.cw-dropdown-menu,
+.picker-popover,
+.profile-popover,
+.header-search-popover,
+.ent-search-popover,
+.suggest-list,
+.paste-choice,
+.rail-nav [data-tip]:hover::after,
+.rail-bottom [data-tip]:hover::after {
   text-shadow: none !important;
 }
 html[data-text-halo="true"] .settings-label,

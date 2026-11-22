@@ -1,0 +1,8 @@
+# Tasks 059 — Unified Glass Stacking Contexts & Popover Surface Fix
+
+- [x] **T1**: Move `.app-rail` glass `backdrop-filter` onto `.app-rail::before`, set `.app-rail` stacking ladder (`30` rest / `80` hover / `--z-popover` menu / `--z-modal` modal), and remove redundant nested `backdrop-filter` on `html[data-panel-glass="true"] .rail-item.active`.
+- [x] **T2**: Add zero-specificity `:where(...)` base stacking (`position: relative; z-index: 1`) on all workspace panels, add popover/dropdown elevation (`--z-popover`) and complete modal elevation (`--z-modal`) across all panels, add `.conv-row` popover elevation, and exclude `.menu-dismiss, .header-search-backdrop, .profile-popover` from direct sibling-panel `backdrop-filter` so `position: fixed` overlays always cover the full viewport.
+- [x] **T3**: Polish rail tooltips (`[data-tip]:hover::after`), `.download-popover-qr`, upgrade `.picker-popover` / `.profile-popover` / `.header-search-popover` / `.suggest-list` / `.paste-choice` from translucent `var(--bg-surface-hover)` to crisp elevated `var(--bg-elevated)` surfaces (light + dark), and exempt all popovers/menus/tooltips from `data-text-halo` `text-shadow`.
+- [x] **T4**: Rebuild frontend WASM release bundle (`./app/build-web.sh release`).
+- [x] **T5**: Write and run `app/e2e/spec059-glass-stacking-popovers.mjs` (12/12 PASS) with live Chromium hit-testing + visual screenshot inspection (`read_file`), and re-run `spec052` (12/12 PASS), `spec053` (4/4 PASS), `modal-overlay-check` (7/7 PASS) for zero regressions.
+- [x] **T6**: Update tasks checklist, verify `git status`, commit with Conventional Commits, and push to `origin main`.
