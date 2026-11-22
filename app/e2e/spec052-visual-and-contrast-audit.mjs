@@ -144,6 +144,7 @@ try {
       beforeDisplay: hdrBeforeCS.display,
       beforeBgImg: hdrBeforeCS.backgroundImage,
       beforeBlur: hdrBeforeCS.backdropFilter || hdrBeforeCS.webkitBackdropFilter || 'none',
+      beforeHeight: parseFloat(hdrBeforeCS.height) || 0,
       afterDisplay: hdrAfterCS.display,
       msgsStartsAtTop: msgsR ? Math.abs(msgsR.top - colR.top) <= 1 : false,
       idRadius: idCS ? parseFloat(idCS.borderTopLeftRadius) : 0,
@@ -156,13 +157,15 @@ try {
     };
   });
   record(
-    'Self-chat header floats Avatar+Name & Actions as frosted capsules with progressive top frosted mist mirroring composer, places device pills inline right of title, and fixes date pill format',
+    'Self-chat header floats Avatar+Name & Actions as frosted capsules with compact unblurred white top edge fade (<=32px), places device pills inline right of title, and fixes date pill format',
     selfChatAudit.hdrPos === 'absolute' &&
       selfChatAudit.hdrBg === 'rgba(0, 0, 0, 0)' &&
       selfChatAudit.hdrPointer === 'none' &&
       selfChatAudit.beforeDisplay === 'block' &&
       selfChatAudit.beforeBgImg.includes('linear-gradient') &&
-      selfChatAudit.beforeBlur.includes('blur') &&
+      selfChatAudit.beforeBlur === 'none' &&
+      selfChatAudit.beforeHeight > 12 &&
+      selfChatAudit.beforeHeight <= 32 &&
       selfChatAudit.afterDisplay === 'none' &&
       selfChatAudit.msgsStartsAtTop &&
       selfChatAudit.idRadius >= 20 &&
