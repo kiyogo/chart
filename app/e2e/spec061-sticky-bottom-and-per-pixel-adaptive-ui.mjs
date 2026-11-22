@@ -256,8 +256,12 @@ try {
     window.__chatwAdaptiveSurface?.refreshSync();
 
     const items = Array.from(document.querySelectorAll('.settings-nav .settings-nav-item'));
-    const topItem = items[0]; // Tài khoản (top of screen -> over #0B1020 dark!)
-    const botItem = items[items.length - 1]; // bottom of nav -> over #FFF0F6 bright!
+    const bodyLabels = Array.from(document.querySelectorAll('.settings-body .settings-label'));
+    const topItem = items[0]; // Account (top of screen -> over #0B1020 dark!)
+    const botItem =
+      bodyLabels.find((el) => el.getBoundingClientRect().top > window.innerHeight * 0.62) ||
+      bodyLabels[bodyLabels.length - 1] ||
+      items[items.length - 1]; // lower half of Appearance -> over #FFF0F6 bright!
     const topBefore = {
       text: topItem.textContent.trim(),
       tone: topItem.getAttribute('data-local-tone'),
@@ -269,17 +273,18 @@ try {
       color: getComputedStyle(botItem).color,
     };
 
-    // Now test real-time scroll update: find an item currently in bright bottom half, scroll .settings-nav down so it moves into dark top half!
-    const nav = document.querySelector('.settings-nav');
-    const midIdx = Math.min(items.length - 1, 12);
-    const mover = items[midIdx];
+    // Now test real-time scroll update on .settings-body: scroll down so lower label moves upward toward the dark top half!
+    const body = document.querySelector('.settings-body');
+    const mover = botItem;
     const moverToneBefore = mover.getAttribute('data-local-tone');
     const moverTopBefore = Math.round(mover.getBoundingClientRect().top);
 
-    nav.scrollTop = nav.scrollHeight;
-    await new Promise((r) => setTimeout(r, 120));
+    body.scrollTop = body.scrollHeight;
+    await new Promise((r) => setTimeout(r, 150));
+    window.__chatwAdaptiveSurface?.refreshSync();
     const moverToneAfter = mover.getAttribute('data-local-tone');
     const moverTopAfter = Math.round(mover.getBoundingClientRect().top);
+    body.scrollTop = 0;
 
     const accentVar = getComputedStyle(root).getPropertyValue('--accent').trim();
     const brandBg = getComputedStyle(document.querySelector('.rail-brand')).backgroundColor;

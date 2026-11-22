@@ -647,8 +647,10 @@ try {
     })
   );
 
-  // 5. Cloud Settings: 3-step guide banner removed, verbose descriptions removed, concise labels, official SVG brand logos present
-  await page.locator('.settings-nav-item', { hasText: 'Cloud' }).click();
+  // 5. Cloud Settings (inside Data & backup -> Cloud): 3-step guide banner removed, verbose descriptions removed, concise labels, official SVG brand logos present
+  await page.locator('.settings-nav-item', { hasText: 'Data & backup' }).click();
+  await page.waitForTimeout(200);
+  await page.locator('.settings-subtab', { hasText: 'Cloud' }).click();
   await page.waitForTimeout(300);
   const cloudAudit = await page.evaluate(() => {
     const guide = document.querySelector('.cw-cloud-guide');

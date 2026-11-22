@@ -1449,7 +1449,7 @@ pub fn AdvancedSecurityExportSection() -> Element {
                             aria_label: "ZIP AES authentication method",
                             value: "{enc_zip_reauth_method}",
                             onchange: move |e| enc_zip_reauth_method.set(e.value()),
-                            if m.has_export_password { option { value: "password", "Export password" } }
+                            if m.has_export_password || (m.passkeys_count == 0 && !m.totp_enabled && m.backup_codes_remaining == 0) { option { value: "password", "Export password" } }
                             if m.passkeys_count > 0 { option { value: "passkey", "Device Lock · {m.passkeys_count}" } }
                             if m.totp_enabled { option { value: "totp", "2-step verification code" } }
                             if m.backup_codes_remaining > 0 { option { value: "backup_code", "Backup code" } }

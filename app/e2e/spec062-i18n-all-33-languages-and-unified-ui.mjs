@@ -321,47 +321,63 @@ try {
   await page.waitForSelector('.lang-grid .lang-tile', { timeout: 10000 });
   await pickLang('vi');
 
-  // Inspect Account screen in Vietnamese (the exact screen from user's screenshot #2!)
+  // Inspect Account screen in Vietnamese & compact 8-tab Settings sidebar (Spec 067!)
   await page.locator('.settings-nav-item', { hasText: 'Tài khoản' }).click();
   await page.waitForTimeout(300);
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03_account_vietnamese_100pct.png') });
-  const viAccount = await page.evaluate(() => ({
-    lang: document.documentElement.getAttribute('lang'),
-    dir: document.documentElement.getAttribute('dir'),
-    searchPh: document.querySelector('.settings-search input')?.getAttribute('placeholder'),
-    navs: Array.from(document.querySelectorAll('.settings-nav-item')).map((e) => e.textContent.trim()),
-    bodyText: document.querySelector('.settings-body')?.innerText || '',
-  }));
+  const viAccount = await page.evaluate(() => {
+    const navSpans = Array.from(document.querySelectorAll('.settings-nav-item > span:not(.chevron)'));
+    const truncatedNavs = navSpans
+      .filter((s) => s.scrollWidth > s.clientWidth + 1)
+      .map((s) => s.textContent.trim());
+    return {
+      lang: document.documentElement.getAttribute('lang'),
+      dir: document.documentElement.getAttribute('dir'),
+      searchPh: document.querySelector('.settings-search input')?.getAttribute('placeholder'),
+      navs: Array.from(document.querySelectorAll('.settings-nav-item')).map((e) => e.textContent.trim()),
+      truncatedNavs,
+      bodyText: document.querySelector('.settings-body')?.innerText || '',
+    };
+  });
   record(
-    'Authentic Vietnamese (vi) translates 100% of Account page, Settings Nav ("Đám mây", "Trò chuyện", "Giao diện", "Đồng bộ") with ZERO garbled Chrome-translate labels',
+    'Spec 064 & 067: Authentic Vietnamese (vi) renders compact 8-tab Settings Nav with ZERO ellipsis truncation (Developer hidden by default) and translates 100% of Account page',
     viAccount.lang === 'vi' &&
       viAccount.dir === 'ltr' &&
       viAccount.searchPh === 'Tìm cài đặt' &&
+      viAccount.navs.length === 8 &&
+      viAccount.truncatedNavs.length === 0 &&
       viAccount.navs.includes('Tài khoản') &&
-      viAccount.navs.includes('Đám mây') &&
-      viAccount.navs.includes('Trò chuyện') &&
+      viAccount.navs.includes('Riêng tư & bảo mật') &&
+      viAccount.navs.includes('Nhắn tin & thông báo') &&
       viAccount.navs.includes('Giao diện') &&
-      viAccount.navs.includes('Đồng bộ') &&
+      viAccount.navs.includes('Ngôn ngữ') &&
+      viAccount.navs.includes('Dữ liệu & sao lưu') &&
+      viAccount.navs.includes('Sáng tạo') &&
+      viAccount.navs.includes('Giới thiệu') &&
+      !viAccount.navs.includes('Nhà phát triển') &&
       !viAccount.navs.includes('Thiên đường') &&
       !viAccount.navs.includes('Ngoại cảnh') &&
       viAccount.bodyText.includes('Đổi ảnh bìa') &&
       viAccount.bodyText.includes('Đổi ảnh đại diện') &&
       viAccount.bodyText.includes('Tên đăng nhập') &&
       viAccount.bodyText.includes('Chỉnh sửa'),
-    JSON.stringify({ lang: viAccount.lang, searchPh: viAccount.searchPh, hasCloud: viAccount.navs.includes('Đám mây'), hasChat: viAccount.navs.includes('Trò chuyện') })
+    JSON.stringify({ lang: viAccount.lang, navCount: viAccount.navs.length, truncatedNavs: viAccount.truncatedNavs, navs: viAccount.navs })
   );
 
-  // Spec 066: Inspect Vietnamese Privacy, Notifications & Sync tabs — ZERO legacy .segmented bars, modern horizontal .cw-dropdown menus!
-  await page.locator('.settings-nav-item', { hasText: 'Quyền riêng tư' }).click();
+  // Spec 066 & 067: Inspect consolidated Vietnamese Settings tabs (Privacy & security, Chat & notifications -> Notifications, Appearance -> Personalize, Data & backup -> Cloud)
+  await page.locator('.settings-nav-item', { hasText: 'Riêng tư & bảo mật' }).click();
   await page.waitForTimeout(300);
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03b_privacy_dropdowns_vietnamese.png') });
   const viPrivacyDrops = await page.evaluate(() => ({
     segCount: document.querySelectorAll('.segmented, .ent-segmented').length,
+    subTabs: Array.from(document.querySelectorAll('.settings-subtab')).map((e) => e.textContent.trim()),
     dropCount: document.querySelectorAll('.settings-body select.cw-dropdown').length,
     optionTexts: Array.from(document.querySelectorAll('.settings-body select.cw-dropdown option')).map((o) => o.textContent.trim()),
   }));
 
-  await page.locator('.settings-nav-item', { hasText: 'Thông báo' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Nhắn tin & thông báo' }).click();
+  await page.waitForTimeout(200);
+  await page.locator('.settings-subtab', { hasText: 'Thông báo' }).click();
   await page.waitForTimeout(260);
   const viNotifDrop = page.locator('.settings-body select.cw-dropdown').first();
   await viNotifDrop.click();
@@ -375,7 +391,9 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
 
-  await page.locator('.settings-nav-item', { hasText: 'Tùy chỉnh' }).click();
+  await page.locator('.settings-nav-item', { hasText: 'Giao diện' }).click();
+  await page.waitForTimeout(200);
+  await page.locator('.settings-subtab', { hasText: 'Cá nhân hóa' }).click();
   await page.waitForTimeout(260);
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03d_customize_dropdown_vietnamese.png') });
   const viCustomizeDrops = await page.evaluate(() => ({
@@ -383,10 +401,17 @@ try {
     dropCount: document.querySelectorAll('.settings-body select.cw-dropdown').length,
     optionTexts: Array.from(document.querySelectorAll('.settings-body select.cw-dropdown option')).map((o) => o.textContent.trim()),
   }));
+  // Restore Appearance back to default Theme & look sub-tab for later assertions
+  await page.locator('.settings-subtab', { hasText: 'Giao diện & hiển thị' }).click();
+  await page.waitForTimeout(160);
+
   record(
-    'Spec 066 Vietnamese Settings (Privacy, Notifications, Customize): ZERO .segmented bars, translated modern .cw-dropdown menus & translated floating popover options',
+    'Spec 066 & 067 Vietnamese Settings (Privacy & security, Chat & notifications, Appearance -> Personalize): ZERO .segmented bars, crisp flat underline sub-tabs & translated modern .cw-dropdown menus',
     viPrivacyDrops.segCount === 0 &&
       viPrivacyDrops.dropCount === 3 &&
+      viPrivacyDrops.subTabs.includes('Quyền riêng tư') &&
+      viPrivacyDrops.subTabs.includes('Khóa ứng dụng') &&
+      viPrivacyDrops.subTabs.includes('Bảo mật') &&
       viPrivacyDrops.optionTexts.includes('Mọi người') &&
       viPrivacyDrops.optionTexts.includes('Không ai') &&
       viNotifAudit.segCount === 0 &&
@@ -396,6 +421,67 @@ try {
       viCustomizeDrops.dropCount >= 1 &&
       viCustomizeDrops.optionTexts.includes('Luôn luôn'),
     JSON.stringify({ viPrivacyDrops, viNotifAudit, viCustomizeDrops })
+  );
+
+  // Spec 067: About screen (Giới thiệu) + Developer Mode ON -> reveals 9th tab "Nhà phát triển" with "Xuất dữ liệu nâng cao" -> Developer Mode OFF hides it cleanly!
+  await page.locator('.settings-nav-item', { hasText: 'Giới thiệu' }).click();
+  await page.waitForTimeout(260);
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03e_about_vietnamese_ios_android.png') });
+  const aboutOff = await page.evaluate(() => ({
+    navCount: document.querySelectorAll('.settings-nav-item').length,
+    hasDevNav: Array.from(document.querySelectorAll('.settings-nav-item')).some((e) => e.textContent.trim() === 'Nhà phát triển'),
+    bodyText: document.querySelector('.settings-body')?.innerText || '',
+  }));
+
+  // Toggle Developer Mode ON via switch inside About
+  await page.locator('.about-dev-card input[type="checkbox"].switch').click();
+  await page.waitForTimeout(260);
+  const aboutOn = await page.evaluate(() => ({
+    navCount: document.querySelectorAll('.settings-nav-item').length,
+    hasDevNav: Array.from(document.querySelectorAll('.settings-nav-item')).some((e) => e.textContent.trim() === 'Nhà phát triển'),
+    hasOpenDevBtn: Boolean(Array.from(document.querySelectorAll('.about-dev-card button')).find((b) => b.textContent.includes('Mở Nhà phát triển'))),
+  }));
+
+  // Click the newly revealed 9th sidebar tab "Nhà phát triển" and verify "Xuất dữ liệu nâng cao" + all 5 advanced sub-tabs!
+  await page.locator('.settings-nav-item', { hasText: 'Nhà phát triển' }).click();
+  await page.waitForTimeout(300);
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03f_developer_advanced_export_vietnamese.png') });
+  const devPanelAudit = await page.evaluate(() => ({
+    subTabs: Array.from(document.querySelectorAll('.settings-subtab')).map((e) => e.textContent.trim()),
+    bodyText: document.querySelector('.settings-body')?.innerText || '',
+  }));
+
+  // Turn OFF Developer Mode via Developer -> Chẩn đoán -> Tắt chế độ nhà phát triển and confirm redirect to About + 8 tabs!
+  await page.locator('.settings-subtab', { hasText: 'Chẩn đoán' }).click();
+  await page.waitForTimeout(200);
+  await page.locator('.settings-body button', { hasText: 'Tắt chế độ nhà phát triển' }).click();
+  await page.waitForTimeout(260);
+  const devAfterOff = await page.evaluate(() => ({
+    navCount: document.querySelectorAll('.settings-nav-item').length,
+    hasDevNav: Array.from(document.querySelectorAll('.settings-nav-item')).some((e) => e.textContent.trim() === 'Nhà phát triển'),
+    activeNav: document.querySelector('.settings-nav-item.active')?.textContent?.trim(),
+  }));
+
+  record(
+    'Spec 067 About & Developer Mode: iOS/Android About card + toggle cleanly reveals 9th "Nhà phát triển" tab housing "Xuất dữ liệu nâng cao", Encryption keys, Sync, Extensions & Diagnostics, and turning off hides it',
+    aboutOff.navCount === 8 &&
+      !aboutOff.hasDevNav &&
+      aboutOff.bodyText.includes('Phiên bản') &&
+      aboutOff.bodyText.includes('Số bản dựng') &&
+      aboutOff.bodyText.includes('Chế độ nhà phát triển') &&
+      aboutOn.navCount === 9 &&
+      aboutOn.hasDevNav &&
+      aboutOn.hasOpenDevBtn &&
+      devPanelAudit.subTabs.includes('Xuất dữ liệu nâng cao') &&
+      devPanelAudit.subTabs.includes('Khóa mã hóa') &&
+      devPanelAudit.subTabs.includes('Đồng bộ & khôi phục') &&
+      devPanelAudit.subTabs.includes('Tiện ích') &&
+      devPanelAudit.subTabs.includes('Chẩn đoán') &&
+      devPanelAudit.bodyText.includes('Mật khẩu xuất dữ liệu') &&
+      devAfterOff.navCount === 8 &&
+      !devAfterOff.hasDevNav &&
+      devAfterOff.activeNav === 'Giới thiệu',
+    JSON.stringify({ aboutOff: { navCount: aboutOff.navCount, hasDevNav: aboutOff.hasDevNav }, aboutOn, devSubTabs: devPanelAudit.subTabs, devAfterOff })
   );
 
   // Full page reload persistence in Vietnamese + Messages empty state & chat check!

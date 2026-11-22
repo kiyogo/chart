@@ -3,16 +3,21 @@ use dioxus::prelude::*;
 use crate::{
     components::{
         avatar::Avatar,
+        business_view::BusinessSettings,
         details_panel::format_fingerprint,
         guide::GuideSettings,
-        settings_extra::{AccountSecurity, CustomizationSettings, LibrarySettings},
-        settings_more::{AppearanceColorsShapes, AppearanceWallpapersGlass, AutoReplySettings, ChatPrefsSettings, LanguageSettings, LockSettings, NotificationSettings, PrivacySettingsPanel},
-        business_view::BusinessSettings,
-        plugins_view::BotsSettings,
         icons::{
-            BackIcon, CheckIcon, ChevronRightIcon, KeyIcon, LogoutIcon, MonitorIcon,
-            MoonIcon, BookIcon, LibraryIcon, PaletteIcon, ShieldIcon, SlidersIcon, SunIcon, UserIcon,
-            BellIcon, BlockIcon, GlobeIcon, LockIcon, MessageIcon, PluginIcon, ReplyIcon, StoreIcon,
+            BackIcon, BoltIcon, CheckIcon, ChevronRightIcon, CloudIcon, GlobeIcon, InfoIcon,
+            KeyIcon, LogoutIcon, MessageIcon, MonitorIcon, MoonIcon, PaletteIcon, SearchIcon,
+            ShieldIcon, SparkleIcon, SunIcon, UserIcon,
+        },
+        plugins_view::BotsSettings,
+        settings_about_dev::{AboutOverviewPanel, DeveloperDiagnosticsPanel},
+        settings_extra::{AccountSecurity, CustomizationSettings, LibrarySettings},
+        settings_more::{
+            AppearanceColorsShapes, AppearanceWallpapersGlass, AutoReplySettings,
+            ChatPrefsSettings, LanguageSettings, LockSettings, NotificationSettings,
+            PrivacySettingsPanel, SyncMotionSettings,
         },
     },
     crypto::e2ee::{UserKeys, export_user_keys_json, import_user_keys_json},
@@ -23,84 +28,121 @@ use crate::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SettingsTab {
     Account,
+    PrivacySecurity,
+    ChatNotifications,
     Appearance,
-    Customize,
-    Stickers,
-    Guide,
-    Security,
-    Session,
-    Storage,
-    SyncRecovery,
-    Backup,
-    Cloud,
-    Chat,
-    Notifications,
-    Privacy,
-    Lock,
-    AutoReply,
-    Business,
-    Bots,
     Language,
-    Demo,
-    Studio,
-    Inventory,
+    DataBackup,
+    Creative,
+    About,
+    Developer,
 }
 
-/// (group title, tab, short label). Labels stay on one line; no descriptions.
-const NAV: [(&str, SettingsTab, &str); 22] = [
-    ("Account", SettingsTab::Account, "Account"),
-    ("Account", SettingsTab::Privacy, "Privacy"),
-    ("Account", SettingsTab::Security, "Security"),
-    ("Account", SettingsTab::Lock, "App lock"),
-    ("Account", SettingsTab::Session, "Devices"),
-    ("Account", SettingsTab::Storage, "Storage"),
-    ("Account", SettingsTab::SyncRecovery, "Sync"),
-    ("Account", SettingsTab::Backup, "Backup"),
-    ("Account", SettingsTab::Cloud, "Cloud"),
-    ("Application", SettingsTab::Chat, "Chat"),
-    ("Application", SettingsTab::Notifications, "Notifications"),
-    ("Application", SettingsTab::AutoReply, "Auto reply"),
-    ("Application", SettingsTab::Appearance, "Appearance"),
-    ("Application", SettingsTab::Customize, "Customize"),
-    ("Application", SettingsTab::Language, "Language"),
-    ("Creative", SettingsTab::Stickers, "Library"),
-    ("Creative", SettingsTab::Studio, "Draw"),
-    ("Creative", SettingsTab::Inventory, "Inventory"),
-    ("Creative", SettingsTab::Demo, "Showcase"),
-    ("Other", SettingsTab::Business, "Business"),
-    ("Other", SettingsTab::Bots, "Extensions"),
-    ("Other", SettingsTab::Guide, "Guide"),
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AccountSub {
+    Profile,
+    Devices,
+    Business,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PrivacySub {
+    Privacy,
+    AppLock,
+    Security,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChatSub {
+    Chat,
+    Notifications,
+    AutoReply,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AppearanceSub {
+    Look,
+    Personalize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DataSub {
+    Storage,
+    Backup,
+    Cloud,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CreativeSub {
+    Library,
+    Draw,
+    Inventory,
+    Showcase,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AboutSub {
+    Overview,
+    Guide,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DevSub {
+    AdvancedExport,
+    EncryptionKeys,
+    SyncRecovery,
+    Extensions,
+    Diagnostics,
+}
+
+/// Compact 8 everyday top-level Settings items + conditional 9th Developer item.
+const NAV: [(SettingsTab, &str); 9] = [
+    (SettingsTab::Account, "Account"),
+    (SettingsTab::PrivacySecurity, "Privacy & security"),
+    (SettingsTab::ChatNotifications, "Chat & notifications"),
+    (SettingsTab::Appearance, "Appearance"),
+    (SettingsTab::Language, "Language"),
+    (SettingsTab::DataBackup, "Data & backup"),
+    (SettingsTab::Creative, "Creative"),
+    (SettingsTab::About, "About"),
+    (SettingsTab::Developer, "Developer"),
 ];
 
 fn tab_label(t: SettingsTab) -> &'static str {
-    NAV.iter().find(|x| x.1 == t).map(|x| x.2).unwrap_or("")
+    NAV.iter().find(|x| x.0 == t).map(|x| x.1).unwrap_or("")
 }
 
-/// Extra search words for each settings page (folded, Vietnamese and English).
+/// Bilingual search keywords so finding any nested setting takes 1 keystroke.
 fn tab_keywords(t: SettingsTab) -> &'static str {
     match t {
-        SettingsTab::Account => "account tai khoan ho so avatar anh dai dien anh bia ten username profile avatar studio hieu ung trang thai danh xung website so thich",
-        SettingsTab::Privacy => "privacy quyen rieng tu chan block da xem dang soan ket ban goi",
-        SettingsTab::Security => "security bao mat ma hoa khoa sao luu e2ee van tay backup xac minh hai buoc 2fa totp ma du phong nhat ky tai khoan da tai khoan chuyen tai khoan",
-        SettingsTab::Lock => "app lock khoa pin ma pin lock",
-        SettingsTab::Session => "devices session thiet bi phien dang xuat device",
-        SettingsTab::Storage => "storage cache luu tru bo nho dem quota opfs indexeddb s3 minio",
-        SettingsTab::SyncRecovery => "sync recovery dong bo khoi phuc da thiet bi backup webrtc",
-        SettingsTab::Backup => "backup export import restore sao luu xuat du lieu khoi phuc kdata zip",
-        SettingsTab::Cloud => "cloud dam may google drive onedrive dropbox nextcloud webdav s3 minio nas snapshot",
-        SettingsTab::Chat => "chat tro chuyen goi y sticker dan excel bang enter tra loi bam dup",
-        SettingsTab::Notifications => "notifications notification sound thong bao am thanh am bao",
-        SettingsTab::AutoReply => "auto reply autoreply tra loi tu dong vang mat",
-        SettingsTab::Appearance => "appearance theme dark light accent wallpaper font giao dien chu de toi sang mau nhan co chu mau bong bong hinh nen phong chu trong suot do mo khung kinh",
-        SettingsTab::Customize => "customize tuy chinh ghim cong dong nhom dong bo thiet bi hieu ung avatar danh sach am bao sync",
-        SettingsTab::Language => "language locale ngon ngu tieng anh english",
-        SettingsTab::Stickers => "library sticker emoji gif upload thu vien tai len",
-        SettingsTab::Business => "business kinh doanh ban hang san pham",
-        SettingsTab::Bots => "plugins plugin extensions bot bots tien ich mo rong am thanh so tay",
-        SettingsTab::Guide => "guide help faq huong dan phim tat cau hoi tro giup",
-        SettingsTab::Inventory => "inventory kho vat pham thanh tich achievement huy hieu badge sticker pack emoji gif ban ve trang bi equipped template bo cuc",
-        SettingsTab::Studio => "draw studio ve hoat anh animation drawing layer lop khung hinh gif sticker emoji avatar anh bia ve tay",
-        SettingsTab::Demo => "preview demo thu hieu ung avatar xoay ten bang ten nameplate hinh nen playground gallery",
+        SettingsTab::Account => "account tai khoan ho so avatar anh dai dien anh bia ten username profile devices session thiet bi phien dang xuat log out business kinh doanh ban hang san pham",
+        SettingsTab::PrivacySecurity => "privacy quyen rieng tu chan block da xem dang soan ket ban goi app lock khoa pin ma pin security bao mat xac minh hai buoc 2fa totp ma du phong nhat ky",
+        SettingsTab::ChatNotifications => "chat tro chuyen goi y sticker dan excel bang enter tra loi bam dup notifications notification sound thong bao am thanh am bao auto reply autoreply tra loi tu dong vang mat",
+        SettingsTab::Appearance => "appearance theme dark light accent wallpaper font giao dien chu de toi sang mau nhan co chu mau bong bong hinh nen phong chu trong suot do mo khung kinh personalize customize tuy chinh ghim cong dong nhom hieu ung avatar danh sach",
+        SettingsTab::Language => "language locale ngon ngu tieng viet tieng anh english",
+        SettingsTab::DataBackup => "data storage cache luu tru bo nho dem quota backup export import restore sao luu khoi phuc kdata cloud dam may google drive onedrive dropbox nextcloud webdav s3 minio nas snapshot",
+        SettingsTab::Creative => "creative sang tao library sticker emoji gif upload thu vien draw studio ve hoat anh animation layer khung hinh inventory kho do vat pham thanh tich huy hieu showcase preview demo xem thu hieu ung nameplate",
+        SettingsTab::About => "about gioi thieu version phien ban build system he thong license giay phep guide help faq huong dan phim tat tro giup developer mode che do nha phat trien",
+        SettingsTab::Developer => "developer nha phat trien advanced export xuat du lieu nang cao zip aes-256 encryption keys khoa ma hoa e2ee van tay fingerprint backup json sync recovery dong bo khoi phuc da thiet bi webrtc extensions plugins bot tien ich mo rong diagnostics chan doan",
+    }
+}
+
+#[component]
+fn SubTabBar(items: Vec<(&'static str, &'static str)>, active: &'static str, on_select: EventHandler<&'static str>) -> Element {
+    rsx! {
+        div { class: "settings-subtabs", role: "tablist",
+            for (id, label) in items {
+                button {
+                    key: "{id}",
+                    r#type: "button",
+                    role: "tab",
+                    aria_selected: "{active == id}",
+                    class: if active == id { "settings-subtab active" } else { "settings-subtab" },
+                    onclick: move |_| on_select.call(id),
+                    "{label}"
+                }
+            }
+        }
     }
 }
 
@@ -121,10 +163,28 @@ pub fn SettingsView(
 ) -> Element {
     let on_replay_tour = on_replay_tour.unwrap_or_else(|| EventHandler::new(|_| {}));
     let mut tab = use_signal(|| SettingsTab::Account);
+    let mut account_sub = use_signal(|| AccountSub::Profile);
+    let mut privacy_sub = use_signal(|| PrivacySub::Privacy);
+    let mut chat_sub = use_signal(|| ChatSub::Chat);
+    let mut appearance_sub = use_signal(|| AppearanceSub::Look);
+    let mut data_sub = use_signal(|| DataSub::Storage);
+    let mut creative_sub = use_signal(|| CreativeSub::Library);
+    let mut about_sub = use_signal(|| AboutSub::Overview);
+    let mut dev_sub = use_signal(|| DevSub::AdvancedExport);
+
     let mut nav_query = use_signal(String::new);
     let mut has_detail = use_signal(|| false);
     let mut appearance = use_signal(platform::load_appearance);
     let prefs_ctx = use_context::<crate::prefs::PrefsCtx>();
+    let dev_mode = prefs_ctx.prefs.read().developer_mode;
+
+    // Auto-redirect away from Developer tab if developer mode is turned off
+    let effective_tab = if !dev_mode && tab() == SettingsTab::Developer {
+        SettingsTab::About
+    } else {
+        tab()
+    };
+
     let mut update_appearance = move |f: &dyn Fn(&mut platform::Appearance)| {
         let mut a = appearance();
         f(&mut a);
@@ -136,11 +196,115 @@ pub fn SettingsView(
     let mut is_uploading_banner = use_signal(|| false);
     let mut banner_status = use_signal(|| Option::<(bool, String)>::None);
 
-    // E2EE Key backup & restore state
+    // Raw E2EE Key backup & restore state (lives in Developer -> Encryption keys)
     let mut exported_json = use_signal(|| Option::<String>::None);
     let mut import_input = use_signal(String::new);
     let mut import_status = use_signal(|| Option::<(bool, String)>::None);
     let mut copied_fp = use_signal(|| false);
+
+    // Deep-link sub-tab matching when navigating from search query
+    let mut select_tab_for_query = move |t: SettingsTab, raw_q: &str| {
+        let q = crate::components::composer::fold(raw_q.trim());
+        tab.set(t);
+        has_detail.set(true);
+        if q.is_empty() {
+            return;
+        }
+        match t {
+            SettingsTab::Account => {
+                if q.contains("device") || q.contains("thiet bi") || q.contains("session") || q.contains("dang xuat") || q.contains("log out") {
+                    account_sub.set(AccountSub::Devices);
+                } else if q.contains("business") || q.contains("kinh doanh") || q.contains("ban hang") || q.contains("san pham") {
+                    account_sub.set(AccountSub::Business);
+                } else {
+                    account_sub.set(AccountSub::Profile);
+                }
+            }
+            SettingsTab::PrivacySecurity => {
+                if q.contains("lock") || q.contains("khoa") || q.contains("pin") {
+                    privacy_sub.set(PrivacySub::AppLock);
+                } else if q.contains("security") || q.contains("bao mat") || q.contains("2fa") || q.contains("totp") || q.contains("xac minh") {
+                    privacy_sub.set(PrivacySub::Security);
+                } else {
+                    privacy_sub.set(PrivacySub::Privacy);
+                }
+            }
+            SettingsTab::ChatNotifications => {
+                if q.contains("notif") || q.contains("thong bao") || q.contains("sound") || q.contains("am bao") || q.contains("am thanh") {
+                    chat_sub.set(ChatSub::Notifications);
+                } else if q.contains("auto") || q.contains("tu dong") || q.contains("vang mat") {
+                    chat_sub.set(ChatSub::AutoReply);
+                } else {
+                    chat_sub.set(ChatSub::Chat);
+                }
+            }
+            SettingsTab::Appearance => {
+                if q.contains("personal") || q.contains("custom") || q.contains("tuy chinh") || q.contains("ghim") || q.contains("hieu ung avatar") {
+                    appearance_sub.set(AppearanceSub::Personalize);
+                } else {
+                    appearance_sub.set(AppearanceSub::Look);
+                }
+            }
+            SettingsTab::DataBackup => {
+                if q.contains("cloud") || q.contains("dam may") || q.contains("drive") || q.contains("dropbox") || q.contains("s3") {
+                    data_sub.set(DataSub::Cloud);
+                } else if q.contains("backup") || q.contains("sao luu") || q.contains("restore") || q.contains("khoi phuc") || q.contains("kdata") {
+                    data_sub.set(DataSub::Backup);
+                } else {
+                    data_sub.set(DataSub::Storage);
+                }
+            }
+            SettingsTab::Creative => {
+                if q.contains("draw") || q.contains("ve") || q.contains("studio") || q.contains("animation") {
+                    creative_sub.set(CreativeSub::Draw);
+                } else if q.contains("inventory") || q.contains("kho") || q.contains("huy hieu") {
+                    creative_sub.set(CreativeSub::Inventory);
+                } else if q.contains("showcase") || q.contains("demo") || q.contains("xem thu") {
+                    creative_sub.set(CreativeSub::Showcase);
+                } else {
+                    creative_sub.set(CreativeSub::Library);
+                }
+            }
+            SettingsTab::About => {
+                if q.contains("guide") || q.contains("huong dan") || q.contains("phim tat") || q.contains("faq") {
+                    about_sub.set(AboutSub::Guide);
+                } else {
+                    about_sub.set(AboutSub::Overview);
+                }
+            }
+            SettingsTab::Developer => {
+                if q.contains("key") || q.contains("khoa") || q.contains("fingerprint") || q.contains("van tay") || q.contains("e2ee") {
+                    dev_sub.set(DevSub::EncryptionKeys);
+                } else if q.contains("sync") || q.contains("dong bo") || q.contains("webrtc") || q.contains("recovery") {
+                    dev_sub.set(DevSub::SyncRecovery);
+                } else if q.contains("ext") || q.contains("plugin") || q.contains("bot") || q.contains("tien ich") {
+                    dev_sub.set(DevSub::Extensions);
+                } else if q.contains("diag") || q.contains("chan doan") {
+                    dev_sub.set(DevSub::Diagnostics);
+                } else {
+                    dev_sub.set(DevSub::AdvancedExport);
+                }
+            }
+            SettingsTab::Language => {}
+        }
+    };
+
+    let visible_nav: Vec<(SettingsTab, &str)> = NAV
+        .iter()
+        .copied()
+        .filter(|(t, _)| *t != SettingsTab::Developer || dev_mode)
+        .collect();
+
+    let folded_q = crate::components::composer::fold(nav_query().trim());
+    let filtered_nav: Vec<(SettingsTab, &str)> = visible_nav
+        .iter()
+        .copied()
+        .filter(|(t, l)| {
+            folded_q.is_empty()
+                || crate::components::composer::fold(l).contains(&folded_q)
+                || tab_keywords(*t).contains(&folded_q)
+        })
+        .collect();
 
     rsx! {
         div { class: "main-stage",
@@ -157,58 +321,60 @@ pub fn SettingsView(
                         span { class: "settings-mobile-title", "Settings" }
                     }
                 }
-                // Left Settings Nav (on mobile this is the first screen)
+
+                // Compact Left Settings Sidebar (8 everyday items + conditional Developer item)
                 nav { class: "settings-nav", aria_label: "Settings categories",
                     div { class: "settings-search search-field",
-                        crate::components::icons::SearchIcon { size: 16 }
-                        input { r#type: "search", placeholder: "Search settings", aria_label: "Search settings", value: "{nav_query}",
+                        SearchIcon { size: 16 }
+                        input {
+                            r#type: "search",
+                            placeholder: "Search settings",
+                            aria_label: "Search settings",
+                            value: "{nav_query}",
                             oninput: move |e| nav_query.set(e.value()),
                             onkeydown: move |e| if e.key() == Key::Enter {
-                                let q = crate::components::composer::fold(nav_query().trim());
-                                if let Some((_, t, _)) = NAV.iter().find(|(_, t, l)| crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q)) {
-                                    tab.set(*t);
-                                    has_detail.set(true);
+                                let raw = nav_query();
+                                let q = crate::components::composer::fold(raw.trim());
+                                if let Some((t, _)) = NAV
+                                    .iter()
+                                    .copied()
+                                    .filter(|(t, _)| *t != SettingsTab::Developer || prefs_ctx.prefs.read().developer_mode)
+                                    .find(|(t, l)| crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q))
+                                {
+                                    select_tab_for_query(t, &raw);
                                 }
                             },
                         }
                     }
-                    if !nav_query().trim().is_empty() && !NAV.iter().any(|(_, t, l)| { let q = crate::components::composer::fold(nav_query().trim()); crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
+
+                    if !folded_q.is_empty() && filtered_nav.is_empty() {
                         div { class: "sidebar-empty", "No matching settings found" }
                     }
-                    for (i, (group, t, label)) in NAV.iter().copied().enumerate().filter(|(_, (_, t, l))| { let q = crate::components::composer::fold(nav_query().trim()); q.is_empty() || crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q) }) {
-                        if nav_query().trim().is_empty() && (i == 0 || NAV[i - 1].0 != group) {
-                            div { class: "settings-nav-title", "{group}" }
-                        }
 
+                    for (t, label) in filtered_nav {
                         button {
-                            
+                            key: "{label}",
                             r#type: "button",
-                            class: if tab() == t { "settings-nav-item active" } else { "settings-nav-item" },
-                            aria_current: if tab() == t { "page" } else { "false" },
-                            onclick: move |_| { tab.set(t); has_detail.set(true); },
+                            class: if effective_tab == t {
+                                if t == SettingsTab::Developer { "settings-nav-item settings-nav-dev active" } else { "settings-nav-item active" }
+                            } else {
+                                if t == SettingsTab::Developer { "settings-nav-item settings-nav-dev" } else { "settings-nav-item" }
+                            },
+                            aria_current: if effective_tab == t { "page" } else { "false" },
+                            onclick: move |_| {
+                                let raw = nav_query();
+                                select_tab_for_query(t, &raw);
+                            },
                             match t {
                                 SettingsTab::Account => rsx! { UserIcon {} },
+                                SettingsTab::PrivacySecurity => rsx! { ShieldIcon { size: 18 } },
+                                SettingsTab::ChatNotifications => rsx! { MessageIcon { size: 18 } },
                                 SettingsTab::Appearance => rsx! { PaletteIcon {} },
-                                SettingsTab::Security => rsx! { ShieldIcon { size: 18 } },
-                                SettingsTab::Session => rsx! { crate::components::icons::DevicesIcon { size: 18 } },
-                                SettingsTab::Storage => rsx! { SlidersIcon {} },
-                                SettingsTab::SyncRecovery => rsx! { crate::components::icons::RefreshIcon { size: 18 } },
-                                SettingsTab::Backup => rsx! { crate::components::icons::ArchiveIcon { size: 18 } },
-                                SettingsTab::Cloud => rsx! { crate::components::icons::CloudIcon { size: 18 } },
-                                SettingsTab::Customize => rsx! { SlidersIcon {} },
-                                SettingsTab::Stickers => rsx! { LibraryIcon {} },
-                                SettingsTab::Guide => rsx! { BookIcon {} },
-                                SettingsTab::Chat => rsx! { MessageIcon { size: 18 } },
-                                SettingsTab::Notifications => rsx! { BellIcon {} },
-                                SettingsTab::Privacy => rsx! { BlockIcon { size: 18 } },
-                                SettingsTab::Lock => rsx! { LockIcon { size: 18 } },
-                                SettingsTab::AutoReply => rsx! { ReplyIcon {} },
-                                SettingsTab::Business => rsx! { StoreIcon { size: 18 } },
-                                SettingsTab::Bots => rsx! { PluginIcon { size: 18 } },
                                 SettingsTab::Language => rsx! { GlobeIcon { size: 18 } },
-                                SettingsTab::Demo => rsx! { crate::components::icons::SparkleIcon { size: 18 } },
-                                SettingsTab::Studio => rsx! { crate::components::icons::ImageIcon { size: 18 } },
-                                SettingsTab::Inventory => rsx! { crate::components::icons::CrownIcon { size: 18 } },
+                                SettingsTab::DataBackup => rsx! { CloudIcon { size: 18 } },
+                                SettingsTab::Creative => rsx! { SparkleIcon { size: 18 } },
+                                SettingsTab::About => rsx! { InfoIcon { size: 18 } },
+                                SettingsTab::Developer => rsx! { BoltIcon { size: 18 } },
                             }
                             span { "{label}" }
                             span { class: "chevron", ChevronRightIcon { size: 16 } }
@@ -226,440 +392,107 @@ pub fn SettingsView(
                 div { class: "settings-body",
                     div { class: "settings-content",
                         div {
-                            h1 { class: "settings-page-title", "{tab_label(tab())}" }
+                            h1 { class: "settings-page-title", "{tab_label(effective_tab)}" }
                         }
-                        match tab() {
+
+                        match effective_tab {
+                            // 1. Account (Profile | Devices | Business)
                             SettingsTab::Account => rsx! {
-                                div { class: "settings-profile-card",
-                                  div { class: "settings-profile-banner" }
-                                  div { class: "settings-profile-main",
-                                    div { class: "settings-avatar-wrapper",
-                                        Avatar {
-                                            name: current_username.clone(),
-                                            avatar_url: my_avatar_url.clone(),
-                                            size: 72,
-                                        }
-                                    }
-                                    div { class: "settings-profile-info",
-                                        div { class: "settings-profile-name", "{current_username}" }
-                                        div { class: "settings-profile-sub", "@{current_username}" }
-                                    }
-                                    button {
-                                        r#type: "button",
-                                        class: "btn-primary",
-                                        onclick: move |_| on_open_profile.call(()),
-                                        "Edit profile"
-                                    }
-                                  }
-                                  div { class: "settings-profile-action", style: "padding: 0 var(--space-5) var(--space-5);",
-                                        label { class: "btn-avatar-upload",
-                                            input {
-                                                id: "avatar-file-input",
-                                                r#type: "file",
-                                                accept: "image/*",
-                                                disabled: is_uploading_avatar(),
-                                                style: "display: none;",
-                                                onchange: move |_| {
-                                                    is_uploading_avatar.set(true);
-                                                    avatar_error.set(None);
-                                                    spawn(async move {
-                                                        match platform::process_selected_avatar_bytes().await {
-                                                            Ok(bytes) => match api::users_upload_avatar(bytes).await {
-                                                                Ok(resp) => on_avatar_updated.call(resp.avatar_url),
-                                                                Err(_) => avatar_error.set(Some("Unable to update avatar".into())),
-                                                            },
-                                                            Err(e) if e == "no_file" => {}
-                                                            Err(_) => avatar_error.set(Some("Unable to process image file".into())),
-                                                        }
-                                                        is_uploading_avatar.set(false);
-                                                    });
-                                                },
-                                            }
-                                            if is_uploading_avatar() { "Uploading avatar" } else { "Change avatar" }
-                                        }
-                                        label { class: "btn-avatar-upload",
-                                            input {
-                                                id: "banner-file-input",
-                                                r#type: "file",
-                                                accept: "image/*",
-                                                disabled: is_uploading_banner(),
-                                                style: "display: none;",
-                                                onchange: move |_| {
-                                                    is_uploading_banner.set(true);
-                                                    banner_status.set(None);
-                                                    spawn(async move {
-                                                        match platform::process_selected_banner_bytes().await {
-                                                            Ok(bytes) => match api::users_upload_banner(bytes).await {
-                                                                Ok(_) => banner_status.set(Some((false, "Profile banner saved".into()))),
-                                                                Err(_) => banner_status.set(Some((true, "Unable to upload banner image".into()))),
-                                                            },
-                                                            Err(e) if e == "no_file" => {}
-                                                            Err(_) => banner_status.set(Some((true, "Unable to process banner image".into()))),
-                                                        }
-                                                        is_uploading_banner.set(false);
-                                                    });
-                                                },
-                                            }
-                                            if is_uploading_banner() { "Uploading banner" } else { "Change banner" }
-                                        }
-                                        if let Some(err) = avatar_error() {
-                                            span { class: "error-text", "{err}" }
-                                        }
-                                        if let Some((is_err, msg)) = banner_status() {
-                                            div {
-                                                class: if is_err { "status-badge error" } else { "status-badge success" },
-                                                "{msg}"
-                                            }
-                                        }
-                                  }
+                                SubTabBar {
+                                    items: vec![
+                                        ("profile", "Profile"),
+                                        ("devices", "Devices"),
+                                        ("business", "Business"),
+                                    ],
+                                    active: match account_sub() {
+                                        AccountSub::Profile => "profile",
+                                        AccountSub::Devices => "devices",
+                                        AccountSub::Business => "business",
+                                    },
+                                    on_select: move |id| match id {
+                                        "devices" => account_sub.set(AccountSub::Devices),
+                                        "business" => account_sub.set(AccountSub::Business),
+                                        _ => account_sub.set(AccountSub::Profile),
+                                    },
                                 }
-
-                                AccountSecurity {
-                                    current_username: current_username.clone(),
-                                    current_user_id: current_user_id.clone(),
-                                    on_username_changed: move |n: String| if let Some(h) = on_username_changed { h.call(n) },
-                                }
-                            },
-
-                            SettingsTab::Appearance => rsx! {
-                                div { class: "settings-cols",
-                                    div { class: "settings-col",
-                                        div { class: "settings-group",
-                                            div { class: "settings-group-title", "Theme" }
-                                            div { class: "theme-preview theme-preview-5", role: "radiogroup", aria_label: "Theme",
-                                                for (val, label) in [
-                                                    ("light", "Light"),
-                                                    ("ash", "Ash"),
-                                                    ("dark", "Dark"),
-                                                    ("oled", "Obsidian"),
-                                                    ("system", "System"),
-                                                ] {
-                                                    button {
-                                                        key: "{val}",
-                                                        r#type: "button",
-                                                        role: "radio",
-                                                        aria_checked: "{appearance().theme == val}",
-                                                        class: if appearance().theme == val { "theme-card active" } else { "theme-card" },
-                                                        onclick: move |_| update_appearance(&|a| a.theme = val.to_string()),
-                                                        div {
-                                                            class: "theme-card-swatch",
-                                                            style: match val {
-                                                                "light" => "background: #F4F6FA;",
-                                                                "ash" => "background: #313338;",
-                                                                "dark" => "background: #1C1F26;",
-                                                                "oled" => "background: #06070A;",
-                                                                _ => "background: linear-gradient(90deg, #F4F6FA 50%, #1C1F26 50%);",
-                                                            },
-                                                            i { style: "width: 28%; background: var(--accent);" }
-                                                            i {
-                                                                style: match val {
-                                                                    "light" => "flex: 1; background: #D8DEE8;",
-                                                                    "ash" => "flex: 1; background: #434751;",
-                                                                    "dark" => "flex: 1; background: #2B303C;",
-                                                                    "oled" => "flex: 1; background: #161923;",
-                                                                    _ => "flex: 1; background: rgba(127, 134, 148, 0.30);",
-                                                                },
-                                                            }
-                                                        }
-                                                        span { style: "display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;",
-                                                            match val {
-                                                                "light" => rsx! { SunIcon { size: 14 } },
-                                                                "ash" | "dark" | "oled" => rsx! { MoonIcon { size: 14 } },
-                                                                _ => rsx! { MonitorIcon { size: 14 } },
-                                                            }
-                                                            "{label}"
-                                                        }
+                                match account_sub() {
+                                    AccountSub::Profile => rsx! {
+                                        div { class: "settings-profile-card",
+                                            div { class: "settings-profile-banner" }
+                                            div { class: "settings-profile-main",
+                                                div { class: "settings-avatar-wrapper",
+                                                    Avatar {
+                                                        name: current_username.clone(),
+                                                        avatar_url: my_avatar_url.clone(),
+                                                        size: 72,
                                                     }
                                                 }
-                                            }
-                                        }
-
-                                        div { class: "settings-group",
-                                            div { class: "settings-group-title", "Accent color" }
-                                            div { class: "settings-group-desc", "Applies to primary buttons, sent bubbles, and selected items." }
-                                            div { class: "accent-swatches", role: "radiogroup", aria_label: "Accent color",
-                                                {
-                                                    let cur_custom = prefs_ctx.prefs.read().custom_accent.clone();
-                                                    let cur_custom_empty = cur_custom.is_empty();
-                                                    let preset_hex = platform::accent_preset_hex(appearance().accent.as_str());
-                                                    let picker_val = if cur_custom_empty { preset_hex.to_string() } else { cur_custom.clone() };
-                                                    let custom_bg = if cur_custom_empty {
-                                                        "background: conic-gradient(from 0deg, #FF3B30, #FF9500, #FFCC00, #34C759, #00C7BE, #007AFF, #AF52DE, #FF2D55, #FF3B30);".to_string()
-                                                    } else {
-                                                        format!("background: {cur_custom};")
-                                                    };
-                                                    rsx! {
-                                                        for (val, color, label) in [
-                                                            ("blue", "#2E7CF6", "Blue"),
-                                                            ("violet", "#8B5CF6", "Violet"),
-                                                            ("green", "#10B981", "Green"),
-                                                            ("orange", "#F97316", "Orange"),
-                                                            ("rose", "#F43F7E", "Rose"),
-                                                            ("cyan", "#06B6D4", "Cyan"),
-                                                        ] {
-                                                            {
-                                                                let is_sw_active = cur_custom_empty && appearance().accent == val;
-                                                                rsx! {
-                                                                    button {
-                                                                        key: "{val}",
-                                                                        r#type: "button",
-                                                                        role: "radio",
-                                                                        title: "{label}",
-                                                                        aria_label: "{label}",
-                                                                        aria_checked: "{is_sw_active}",
-                                                                        class: if is_sw_active { "accent-swatch active" } else { "accent-swatch" },
-                                                                        style: "background: {color};",
-                                                                        onclick: move |_| {
-                                                                            if !prefs_ctx.prefs.read().custom_accent.is_empty() {
-                                                                                prefs_ctx.update(|p| p.custom_accent.clear());
-                                                                            }
-                                                                            update_appearance(&|a| a.accent = val.to_string());
-                                                                        },
-                                                                        if is_sw_active { CheckIcon { size: 16 } }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        span {
-                                                            class: if !cur_custom_empty { "accent-swatch accent-swatch-custom active" } else { "accent-swatch accent-swatch-custom" },
-                                                            style: "{custom_bg}",
-                                                            title: "Custom color",
-                                                            input {
-                                                                r#type: "color",
-                                                                class: "accent-swatch-color-input",
-                                                                aria_label: "Accent color",
-                                                                value: "{picker_val}",
-                                                                onchange: move |e| {
-                                                                    let v = e.value().to_uppercase();
-                                                                    prefs_ctx.update(move |p| p.custom_accent = v);
-                                                                },
-                                                            }
-                                                            if !cur_custom_empty { CheckIcon { size: 16 } }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        div { class: "settings-group",
-                                            div { class: "settings-list",
-                                                div { class: "settings-row column-layout",
-                                                    div { class: "settings-row-text",
-                                                        span { class: "settings-label", "Font size" }
-                                                        span { class: "settings-sublabel", "Auto-scale for comfortable reading or choose a size below" }
-                                                    }
-                                                    div { class: "range-row",
-                                                        label { style: "display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap;",
-                                                            input {
-                                                                r#type: "checkbox",
-                                                                checked: appearance().font_size == "auto",
-                                                                onchange: move |e| {
-                                                                    let auto = e.checked();
-                                                                    update_appearance(&|a| a.font_size = if auto { "auto".to_string() } else { "15".to_string() });
-                                                                },
-                                                            }
-                                                            "Auto"
-                                                        }
-                                                        {
-                                                            let cur_font: f32 = if appearance().font_size == "auto" { 15.0 } else { appearance().font_size.parse().unwrap_or(15.0) };
-                                                            let font_pct = (((cur_font - 13.0) / 7.0) * 100.0).clamp(0.0, 100.0).round() as u8;
-                                                            rsx! {
-                                                                input {
-                                                                    r#type: "range",
-                                                                    min: "13",
-                                                                    max: "20",
-                                                                    step: "1",
-                                                                    style: "--range-pct: {font_pct}%;",
-                                                                    aria_label: "Font size",
-                                                                    disabled: appearance().font_size == "auto",
-                                                                    value: if appearance().font_size == "auto" { "15".to_string() } else { appearance().font_size },
-                                                                    oninput: move |e| {
-                                                                        let v = e.value();
-                                                                        update_appearance(&|a| a.font_size = v.clone());
-                                                                    },
-                                                                }
-                                                            }
-                                                        }
-                                                        span { class: "range-value",
-                                                            if appearance().font_size == "auto" { "Auto" } else { "{appearance().font_size}px" }
-                                                        }
-                                                    }
-                                                }
-                                                div { class: "settings-row",
-                                                    div { class: "settings-row-text",
-                                                        span { class: "settings-label", "Display density" }
-                                                        span { class: "settings-sublabel", "Spacing between messages and lists" }
-                                                    }
-                                                    select {
-                                                        class: "cw-dropdown",
-                                                        aria_label: "Display density",
-                                                        value: "{appearance().density}",
-                                                        onchange: move |e| {
-                                                            let v = e.value();
-                                                            update_appearance(&|a| a.density = v.clone());
-                                                        },
-                                                        for (val, label) in [("compact", "Compact"), ("comfortable", "Normal"), ("spacious", "Wide")] {
-                                                            option {
-                                                                key: "{val}",
-                                                                value: "{val}",
-                                                                selected: appearance().density == val,
-                                                                "{label}"
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        AppearanceColorsShapes {}
-                                    }
-
-                                    div { class: "settings-col",
-                                        div { class: "settings-group",
-                                            div { class: "settings-group-title", "Preview" }
-                                            {
-                                                let preview_wp = prefs_ctx.prefs.read().wallpaper.clone();
-                                                let preview_cls = if preview_wp.is_empty() || preview_wp == "none" {
-                                                    "settings-preview-chat".to_string()
-                                                } else {
-                                                    format!("settings-preview-chat wp-{preview_wp}")
-                                                };
-                                                rsx! {
-                                                    div { class: "{preview_cls}",
-                                                        div { class: "message-row received group-start group-end",
-                                                            div { class: "message-content-wrapper",
-                                                                div { class: "message-bubble", "Text and background auto-balance for easy reading." span { class: "bubble-meta", "09:41" } }
-                                                            }
-                                                        }
-                                                        div { class: "message-row sent group-start group-end",
-                                                            div { class: "message-content-wrapper",
-                                                                div { class: "message-bubble", "Crisp and clear in every theme style." span { class: "bubble-meta", "09:42" } }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        AppearanceWallpapersGlass {
-                                            on_reset_appearance: move |_| {
-                                                let d = platform::Appearance::default();
-                                                platform::apply_appearance(&d);
-                                                appearance.set(d);
-                                            },
-                                        }
-                                    }
-                                }
-                            },
-
-                            SettingsTab::Security => rsx! {
-                                div { class: "settings-cols",
-                                    div { class: "settings-col",
-                                        crate::components::accounts::SecuritySettings {}
-                                        div { class: "settings-group",
-                                            div { class: "settings-row cw-brand-row",
-                                                crate::components::brand_logos::E2eeLiveShield { size: 30 }
-                                                div { class: "settings-row-text",
-                                                    span { class: "settings-label", "Protection standard" }
-                                                    span { class: "settings-sublabel", "Highest-grade end-to-end encryption" }
-                                                }
-                                                span { class: "settings-value tag-active",
-                                                    span { class: "cw-live-dot" }
-                                                    if user_keys.is_some() { "Active & secure" } else { "No key yet" }
-                                                }
-                                            }
-                                            if let Some(ref keys) = user_keys {
-                                                div { class: "settings-row column-layout",
-                                                    div { style: "display: flex; justify-content: space-between; width: 100%; align-items: center;",
-                                                        span { class: "settings-label", "Security fingerprint" }
-                                                        button {
-                                                            r#type: "button",
-                                                            class: "btn-secondary",
-                                                            onclick: {
-                                                                let fp = keys.fingerprint_b64.clone();
-                                                                move |_| {
-                                                                    platform::copy_to_clipboard(&fp);
-                                                                    copied_fp.set(true);
-                                                                }
-                                                            },
-                                                            if copied_fp() { "Copied" } else { "Copy" }
-                                                        }
-                                                    }
-                                                    div { class: "fingerprint", "{format_fingerprint(&keys.fingerprint_b64)}" }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    div { class: "settings-col",
-                                        div { class: "settings-group",
-                                            div { class: "settings-group-title", "Backup security key" }
-                                            div { class: "settings-row column-layout",
-                                                div { style: "font-size: 13px; color: var(--text-secondary);",
-                                                    "Your security key is stored only on this device and never sent over the network. You can back it up to transfer to another device."
-                                                }
-                                                if let Some(ref keys) = user_keys {
-                                                    button {
-                                                        r#type: "button",
-                                                        class: "btn-secondary",
-                                                        onclick: {
-                                                            let k = keys.clone();
-                                                            move |_| {
-                                                                let j = export_user_keys_json(&k);
-                                                                platform::copy_to_clipboard(&j);
-                                                                exported_json.set(Some(j));
-                                                            }
-                                                        },
-                                                        KeyIcon { size: 15 }
-                                                        span { "Copy security key" }
-                                                    }
-                                                }
-                                                if let Some(ref exp) = exported_json() {
-                                                    textarea {
-                                                        readonly: true,
-                                                        style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
-                                                        value: "{exp}",
-                                                    }
-                                                }
-                                            }
-
-                                            div { class: "settings-row column-layout",
-                                                label { class: "form-label", "Import security key" }
-                                                textarea {
-                                                    style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
-                                                    placeholder: "Paste security key here",
-                                                    value: "{import_input}",
-                                                    oninput: move |e| import_input.set(e.value()),
+                                                div { class: "settings-profile-info",
+                                                    div { class: "settings-profile-name", "{current_username}" }
+                                                    div { class: "settings-profile-sub", "@{current_username}" }
                                                 }
                                                 button {
                                                     r#type: "button",
                                                     class: "btn-primary",
-                                                    disabled: import_input().trim().is_empty(),
-                                                    onclick: {
-                                                        let uid = current_user_id.clone();
-                                                        move |_| {
-                                                            let raw = import_input();
-                                                            match import_user_keys_json(&uid, &raw) {
-                                                                Ok(restored) => {
-                                                                    let ecdh = restored.ecdh_raw_b64.clone();
-                                                                    let ecdsa = restored.ecdsa_raw_b64.clone();
-                                                                    let restored_clone = restored.clone();
-                                                                    spawn(async move {
-                                                                        let _ = api::keys_register(&ecdh, &ecdsa).await;
-                                                                        on_keys_imported.call(restored_clone);
-                                                                        import_input.set(String::new());
-                                                                        import_status.set(Some((false, "Key restored successfully".into())));
-                                                                    });
-                                                                }
-                                                                Err(_) => {
-                                                                    import_status.set(Some((true, "Invalid key".into())));
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    "Restore key"
+                                                    onclick: move |_| on_open_profile.call(()),
+                                                    "Edit profile"
                                                 }
-                                                if let Some((is_err, msg)) = import_status() {
+                                            }
+                                            div { class: "settings-profile-action", style: "padding: 0 var(--space-5) var(--space-5);",
+                                                label { class: "btn-avatar-upload",
+                                                    input {
+                                                        id: "avatar-file-input",
+                                                        r#type: "file",
+                                                        accept: "image/*",
+                                                        disabled: is_uploading_avatar(),
+                                                        style: "display: none;",
+                                                        onchange: move |_| {
+                                                            is_uploading_avatar.set(true);
+                                                            avatar_error.set(None);
+                                                            spawn(async move {
+                                                                match platform::process_selected_avatar_bytes().await {
+                                                                    Ok(bytes) => match api::users_upload_avatar(bytes).await {
+                                                                        Ok(resp) => on_avatar_updated.call(resp.avatar_url),
+                                                                        Err(_) => avatar_error.set(Some("Unable to update avatar".into())),
+                                                                    },
+                                                                    Err(e) if e == "no_file" => {}
+                                                                    Err(_) => avatar_error.set(Some("Unable to process image file".into())),
+                                                                }
+                                                                is_uploading_avatar.set(false);
+                                                            });
+                                                        },
+                                                    }
+                                                    if is_uploading_avatar() { "Uploading avatar" } else { "Change avatar" }
+                                                }
+                                                label { class: "btn-avatar-upload",
+                                                    input {
+                                                        id: "banner-file-input",
+                                                        r#type: "file",
+                                                        accept: "image/*",
+                                                        disabled: is_uploading_banner(),
+                                                        style: "display: none;",
+                                                        onchange: move |_| {
+                                                            is_uploading_banner.set(true);
+                                                            banner_status.set(None);
+                                                            spawn(async move {
+                                                                match platform::process_selected_banner_bytes().await {
+                                                                    Ok(bytes) => match api::users_upload_banner(bytes).await {
+                                                                        Ok(_) => banner_status.set(Some((false, "Profile banner saved".into()))),
+                                                                        Err(_) => banner_status.set(Some((true, "Unable to upload banner image".into()))),
+                                                                    },
+                                                                    Err(e) if e == "no_file" => {}
+                                                                    Err(_) => banner_status.set(Some((true, "Unable to process banner image".into()))),
+                                                                }
+                                                                is_uploading_banner.set(false);
+                                                            });
+                                                        },
+                                                    }
+                                                    if is_uploading_banner() { "Uploading banner" } else { "Change banner" }
+                                                }
+                                                if let Some(err) = avatar_error() {
+                                                    span { class: "error-text", "{err}" }
+                                                }
+                                                if let Some((is_err, msg)) = banner_status() {
                                                     div {
                                                         class: if is_err { "status-badge error" } else { "status-badge success" },
                                                         "{msg}"
@@ -667,66 +500,632 @@ pub fn SettingsView(
                                                 }
                                             }
                                         }
-                                        crate::components::backup_cloud_ui::AdvancedSecurityExportSection {}
-                                    }
-                                }
-                            },
-
-                            SettingsTab::Customize => rsx! {
-                                div { class: "settings-cols",
-                                    div { class: "settings-col", CustomizationSettings {} }
-                                    div { class: "settings-col", crate::components::settings_more::SyncMotionSettings {} }
-                                }
-                            },
-                            SettingsTab::Inventory => rsx! { crate::components::inventory::Inventory { my_id: current_user_id.clone() } },
-                            SettingsTab::Studio => rsx! { crate::components::studio::StudioHome { my_id: current_user_id.clone() } },
-                            SettingsTab::Demo => rsx! { crate::components::demo_gallery::DemoGallery { my_id: current_user_id.clone(), my_name: current_username.clone(), my_avatar: my_avatar_url.clone() } },
-                            SettingsTab::Chat => rsx! { ChatPrefsSettings {} },
-                            SettingsTab::Notifications => rsx! { NotificationSettings {} },
-                            SettingsTab::Privacy => rsx! { PrivacySettingsPanel {} },
-                            SettingsTab::Lock => rsx! { LockSettings { on_lock_now: move |_| if let Some(h) = on_lock_now { h.call(()) } } },
-                            SettingsTab::AutoReply => rsx! { AutoReplySettings {} },
-                            SettingsTab::Business => rsx! { BusinessSettings {} },
-                            SettingsTab::Bots => rsx! { BotsSettings { my_username: current_username.clone() } },
-                            SettingsTab::Language => rsx! { LanguageSettings {} },
-                            SettingsTab::Stickers => rsx! { LibrarySettings { current_user_id: current_user_id.clone() } },
-                            SettingsTab::Guide => rsx! { GuideSettings { on_replay_tour: move |_| on_replay_tour.call(()) } },
-                            SettingsTab::Storage => rsx! { crate::components::storage_ui::StorageSettingsPanel {} },
-                            SettingsTab::SyncRecovery => rsx! {
-                                crate::components::storage_ui::SyncRecoverySettingsPanel {
-                                    current_user_id: current_user_id.clone(),
-                                    user_keys: user_keys.clone(),
-                                    on_keys_imported: on_keys_imported,
-                                }
-                            },
-                            SettingsTab::Backup => rsx! {
-                                crate::components::backup_cloud_ui::BackupExportRestorePanel {}
-                            },
-                            SettingsTab::Cloud => rsx! {
-                                crate::components::backup_cloud_ui::CloudAccountsPanel {}
-                            },
-                            SettingsTab::Session => rsx! {
-                                div { class: "settings-cols",
-                                    div { class: "settings-col",
-                                        crate::components::storage_ui::DeviceTrustPanel {}
-                                    }
-                                    div { class: "settings-col",
-                                        div { class: "settings-group",
-                                            div { class: "settings-row",
-                                                div { class: "settings-row-text",
-                                                    span { class: "settings-label", "Sign out of account" }
-                                                    span { class: "settings-sublabel", "Sign out of this device. Your messages remain safe." }
-                                                }
-                                                button {
-                                                    r#type: "button",
-                                                    class: "btn-danger-outline",
-                                                    onclick: move |_| on_logout.call(()),
-                                                    LogoutIcon {}
-                                                    span { "Log out" }
+                                        AccountSecurity {
+                                            current_username: current_username.clone(),
+                                            current_user_id: current_user_id.clone(),
+                                            on_username_changed: move |n: String| if let Some(h) = on_username_changed { h.call(n) },
+                                        }
+                                    },
+                                    AccountSub::Devices => rsx! {
+                                        div { class: "settings-cols",
+                                            div { class: "settings-col",
+                                                crate::components::storage_ui::DeviceTrustPanel {}
+                                            }
+                                            div { class: "settings-col",
+                                                div { class: "settings-group",
+                                                    div { class: "settings-row",
+                                                        div { class: "settings-row-text",
+                                                            span { class: "settings-label", "Sign out of account" }
+                                                            span { class: "settings-sublabel", "Sign out of this device. Your messages remain safe." }
+                                                        }
+                                                        button {
+                                                            r#type: "button",
+                                                            class: "btn-danger-outline",
+                                                            onclick: move |_| on_logout.call(()),
+                                                            LogoutIcon {}
+                                                            span { "Log out" }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
+                                    },
+                                    AccountSub::Business => rsx! { BusinessSettings {} },
+                                }
+                            },
+
+                            // 2. Privacy & security (Privacy | App lock | Security — everyday friendly controls)
+                            SettingsTab::PrivacySecurity => rsx! {
+                                SubTabBar {
+                                    items: vec![
+                                        ("privacy", "Privacy"),
+                                        ("applock", "App lock"),
+                                        ("security", "Security"),
+                                    ],
+                                    active: match privacy_sub() {
+                                        PrivacySub::Privacy => "privacy",
+                                        PrivacySub::AppLock => "applock",
+                                        PrivacySub::Security => "security",
+                                    },
+                                    on_select: move |id| match id {
+                                        "applock" => privacy_sub.set(PrivacySub::AppLock),
+                                        "security" => privacy_sub.set(PrivacySub::Security),
+                                        _ => privacy_sub.set(PrivacySub::Privacy),
+                                    },
+                                }
+                                match privacy_sub() {
+                                    PrivacySub::Privacy => rsx! { PrivacySettingsPanel {} },
+                                    PrivacySub::AppLock => rsx! {
+                                        LockSettings { on_lock_now: move |_| if let Some(h) = on_lock_now { h.call(()) } }
+                                    },
+                                    PrivacySub::Security => rsx! {
+                                        div { class: "settings-cols",
+                                            div { class: "settings-col",
+                                                crate::components::accounts::SecuritySettings {}
+                                            }
+                                            div { class: "settings-col",
+                                                div { class: "settings-group",
+                                                    div { class: "settings-group-title", "End-to-end encryption" }
+                                                    div { class: "settings-row cw-brand-row",
+                                                        crate::components::brand_logos::E2eeLiveShield { size: 30 }
+                                                        div { class: "settings-row-text",
+                                                            span { class: "settings-label", "Protection standard" }
+                                                            span { class: "settings-sublabel", "Highest-grade end-to-end encryption" }
+                                                        }
+                                                        span { class: "settings-value tag-active",
+                                                            span { class: "cw-live-dot" }
+                                                            if user_keys.is_some() { "Active & secure" } else { "No key yet" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                }
+                            },
+
+                            // 3. Chat & notifications (Chat | Notifications | Auto reply)
+                            SettingsTab::ChatNotifications => rsx! {
+                                SubTabBar {
+                                    items: vec![
+                                        ("chat", "Chat"),
+                                        ("notifications", "Notifications"),
+                                        ("autoreply", "Auto reply"),
+                                    ],
+                                    active: match chat_sub() {
+                                        ChatSub::Chat => "chat",
+                                        ChatSub::Notifications => "notifications",
+                                        ChatSub::AutoReply => "autoreply",
+                                    },
+                                    on_select: move |id| match id {
+                                        "notifications" => chat_sub.set(ChatSub::Notifications),
+                                        "autoreply" => chat_sub.set(ChatSub::AutoReply),
+                                        _ => chat_sub.set(ChatSub::Chat),
+                                    },
+                                }
+                                match chat_sub() {
+                                    ChatSub::Chat => rsx! { ChatPrefsSettings {} },
+                                    ChatSub::Notifications => rsx! { NotificationSettings {} },
+                                    ChatSub::AutoReply => rsx! { AutoReplySettings {} },
+                                }
+                            },
+
+                            // 4. Appearance (Theme & look | Personalize)
+                            SettingsTab::Appearance => rsx! {
+                                SubTabBar {
+                                    items: vec![
+                                        ("look", "Theme & look"),
+                                        ("personalize", "Personalize"),
+                                    ],
+                                    active: match appearance_sub() {
+                                        AppearanceSub::Look => "look",
+                                        AppearanceSub::Personalize => "personalize",
+                                    },
+                                    on_select: move |id| match id {
+                                        "personalize" => appearance_sub.set(AppearanceSub::Personalize),
+                                        _ => appearance_sub.set(AppearanceSub::Look),
+                                    },
+                                }
+                                match appearance_sub() {
+                                    AppearanceSub::Look => rsx! {
+                                        div { class: "settings-cols",
+                                            div { class: "settings-col",
+                                                div { class: "settings-group",
+                                                    div { class: "settings-group-title", "Theme" }
+                                                    div { class: "theme-preview theme-preview-5", role: "radiogroup", aria_label: "Theme",
+                                                        for (val, label) in [
+                                                            ("light", "Light"),
+                                                            ("ash", "Ash"),
+                                                            ("dark", "Dark"),
+                                                            ("oled", "Obsidian"),
+                                                            ("system", "System"),
+                                                        ] {
+                                                            button {
+                                                                key: "{val}",
+                                                                r#type: "button",
+                                                                role: "radio",
+                                                                aria_checked: "{appearance().theme == val}",
+                                                                class: if appearance().theme == val { "theme-card active" } else { "theme-card" },
+                                                                onclick: move |_| update_appearance(&|a| a.theme = val.to_string()),
+                                                                div {
+                                                                    class: "theme-card-swatch",
+                                                                    style: match val {
+                                                                        "light" => "background: #F4F6FA;",
+                                                                        "ash" => "background: #313338;",
+                                                                        "dark" => "background: #1C1F26;",
+                                                                        "oled" => "background: #06070A;",
+                                                                        _ => "background: linear-gradient(90deg, #F4F6FA 50%, #1C1F26 50%);",
+                                                                    },
+                                                                    i { style: "width: 28%; background: var(--accent);" }
+                                                                    i {
+                                                                        style: match val {
+                                                                            "light" => "flex: 1; background: #D8DEE8;",
+                                                                            "ash" => "flex: 1; background: #434751;",
+                                                                            "dark" => "flex: 1; background: #2B303C;",
+                                                                            "oled" => "flex: 1; background: #161923;",
+                                                                            _ => "flex: 1; background: rgba(127, 134, 148, 0.30);",
+                                                                        },
+                                                                    }
+                                                                }
+                                                                span { style: "display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;",
+                                                                    match val {
+                                                                        "light" => rsx! { SunIcon { size: 14 } },
+                                                                        "ash" | "dark" | "oled" => rsx! { MoonIcon { size: 14 } },
+                                                                        _ => rsx! { MonitorIcon { size: 14 } },
+                                                                    }
+                                                                    "{label}"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                div { class: "settings-group",
+                                                    div { class: "settings-group-title", "Accent color" }
+                                                    div { class: "settings-group-desc", "Applies to primary buttons, sent bubbles, and selected items." }
+                                                    div { class: "accent-swatches", role: "radiogroup", aria_label: "Accent color",
+                                                        {
+                                                            let cur_custom = prefs_ctx.prefs.read().custom_accent.clone();
+                                                            let cur_custom_empty = cur_custom.is_empty();
+                                                            let preset_hex = platform::accent_preset_hex(appearance().accent.as_str());
+                                                            let picker_val = if cur_custom_empty { preset_hex.to_string() } else { cur_custom.clone() };
+                                                            let custom_bg = if cur_custom_empty {
+                                                                "background: conic-gradient(from 0deg, #FF3B30, #FF9500, #FFCC00, #34C759, #00C7BE, #007AFF, #AF52DE, #FF2D55, #FF3B30);".to_string()
+                                                            } else {
+                                                                format!("background: {cur_custom};")
+                                                            };
+                                                            rsx! {
+                                                                for (val, color, label) in [
+                                                                    ("blue", "#2E7CF6", "Blue"),
+                                                                    ("violet", "#8B5CF6", "Violet"),
+                                                                    ("green", "#10B981", "Green"),
+                                                                    ("orange", "#F97316", "Orange"),
+                                                                    ("rose", "#F43F7E", "Rose"),
+                                                                    ("cyan", "#06B6D4", "Cyan"),
+                                                                ] {
+                                                                    {
+                                                                        let is_sw_active = cur_custom_empty && appearance().accent == val;
+                                                                        rsx! {
+                                                                            button {
+                                                                                key: "{val}",
+                                                                                r#type: "button",
+                                                                                role: "radio",
+                                                                                title: "{label}",
+                                                                                aria_label: "{label}",
+                                                                                aria_checked: "{is_sw_active}",
+                                                                                class: if is_sw_active { "accent-swatch active" } else { "accent-swatch" },
+                                                                                style: "background: {color};",
+                                                                                onclick: move |_| {
+                                                                                    if !prefs_ctx.prefs.read().custom_accent.is_empty() {
+                                                                                        prefs_ctx.update(|p| p.custom_accent.clear());
+                                                                                    }
+                                                                                    update_appearance(&|a| a.accent = val.to_string());
+                                                                                },
+                                                                                if is_sw_active { CheckIcon { size: 16 } }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                                span {
+                                                                    class: if !cur_custom_empty { "accent-swatch accent-swatch-custom active" } else { "accent-swatch accent-swatch-custom" },
+                                                                    style: "{custom_bg}",
+                                                                    title: "Custom color",
+                                                                    input {
+                                                                        r#type: "color",
+                                                                        class: "accent-swatch-color-input",
+                                                                        aria_label: "Accent color",
+                                                                        value: "{picker_val}",
+                                                                        onchange: move |e| {
+                                                                            let v = e.value().to_uppercase();
+                                                                            prefs_ctx.update(move |p| p.custom_accent = v);
+                                                                        },
+                                                                    }
+                                                                    if !cur_custom_empty { CheckIcon { size: 16 } }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                div { class: "settings-group",
+                                                    div { class: "settings-list",
+                                                        div { class: "settings-row column-layout",
+                                                            div { class: "settings-row-text",
+                                                                span { class: "settings-label", "Font size" }
+                                                                span { class: "settings-sublabel", "Auto-scale for comfortable reading or choose a size below" }
+                                                            }
+                                                            div { class: "range-row",
+                                                                label { style: "display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap;",
+                                                                    input {
+                                                                        r#type: "checkbox",
+                                                                        checked: appearance().font_size == "auto",
+                                                                        onchange: move |e| {
+                                                                            let auto = e.checked();
+                                                                            update_appearance(&|a| a.font_size = if auto { "auto".to_string() } else { "15".to_string() });
+                                                                        },
+                                                                    }
+                                                                    "Auto"
+                                                                }
+                                                                {
+                                                                    let cur_font: f32 = if appearance().font_size == "auto" { 15.0 } else { appearance().font_size.parse().unwrap_or(15.0) };
+                                                                    let font_pct = (((cur_font - 13.0) / 7.0) * 100.0).clamp(0.0, 100.0).round() as u8;
+                                                                    rsx! {
+                                                                        input {
+                                                                            r#type: "range",
+                                                                            min: "13",
+                                                                            max: "20",
+                                                                            step: "1",
+                                                                            style: "--range-pct: {font_pct}%;",
+                                                                            aria_label: "Font size",
+                                                                            disabled: appearance().font_size == "auto",
+                                                                            value: if appearance().font_size == "auto" { "15".to_string() } else { appearance().font_size },
+                                                                            oninput: move |e| {
+                                                                                let v = e.value();
+                                                                                update_appearance(&|a| a.font_size = v.clone());
+                                                                            },
+                                                                        }
+                                                                    }
+                                                                }
+                                                                span { class: "range-value",
+                                                                    if appearance().font_size == "auto" { "Auto" } else { "{appearance().font_size}px" }
+                                                                }
+                                                            }
+                                                        }
+                                                        div { class: "settings-row",
+                                                            div { class: "settings-row-text",
+                                                                span { class: "settings-label", "Display density" }
+                                                                span { class: "settings-sublabel", "Spacing between messages and lists" }
+                                                            }
+                                                            select {
+                                                                class: "cw-dropdown",
+                                                                aria_label: "Display density",
+                                                                value: "{appearance().density}",
+                                                                onchange: move |e| {
+                                                                    let v = e.value();
+                                                                    update_appearance(&|a| a.density = v.clone());
+                                                                },
+                                                                for (val, label) in [("compact", "Compact"), ("comfortable", "Normal"), ("spacious", "Wide")] {
+                                                                    option {
+                                                                        key: "{val}",
+                                                                        value: "{val}",
+                                                                        selected: appearance().density == val,
+                                                                        "{label}"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                AppearanceColorsShapes {}
+                                            }
+
+                                            div { class: "settings-col",
+                                                div { class: "settings-group",
+                                                    div { class: "settings-group-title", "Preview" }
+                                                    {
+                                                        let preview_wp = prefs_ctx.prefs.read().wallpaper.clone();
+                                                        let preview_cls = if preview_wp.is_empty() || preview_wp == "none" {
+                                                            "settings-preview-chat".to_string()
+                                                        } else {
+                                                            format!("settings-preview-chat wp-{preview_wp}")
+                                                        };
+                                                        rsx! {
+                                                            div { class: "{preview_cls}",
+                                                                div { class: "message-row received group-start group-end",
+                                                                    div { class: "message-content-wrapper",
+                                                                        div { class: "message-bubble", "Text and background auto-balance for easy reading." span { class: "bubble-meta", "09:41" } }
+                                                                    }
+                                                                }
+                                                                div { class: "message-row sent group-start group-end",
+                                                                    div { class: "message-content-wrapper",
+                                                                        div { class: "message-bubble", "Crisp and clear in every theme style." span { class: "bubble-meta", "09:42" } }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                AppearanceWallpapersGlass {
+                                                    on_reset_appearance: move |_| {
+                                                        let d = platform::Appearance::default();
+                                                        platform::apply_appearance(&d);
+                                                        appearance.set(d);
+                                                    },
+                                                }
+                                            }
+                                        }
+                                    },
+                                    AppearanceSub::Personalize => rsx! {
+                                        div { class: "settings-cols",
+                                            div { class: "settings-col", CustomizationSettings {} }
+                                            div { class: "settings-col", SyncMotionSettings {} }
+                                        }
+                                    },
+                                }
+                            },
+
+                            // 5. Language (197 world languages directly)
+                            SettingsTab::Language => rsx! { LanguageSettings {} },
+
+                            // 6. Data & backup (Storage | Backup | Cloud)
+                            SettingsTab::DataBackup => rsx! {
+                                SubTabBar {
+                                    items: vec![
+                                        ("storage", "Storage"),
+                                        ("backup", "Backup"),
+                                        ("cloud", "Cloud"),
+                                    ],
+                                    active: match data_sub() {
+                                        DataSub::Storage => "storage",
+                                        DataSub::Backup => "backup",
+                                        DataSub::Cloud => "cloud",
+                                    },
+                                    on_select: move |id| match id {
+                                        "backup" => data_sub.set(DataSub::Backup),
+                                        "cloud" => data_sub.set(DataSub::Cloud),
+                                        _ => data_sub.set(DataSub::Storage),
+                                    },
+                                }
+                                match data_sub() {
+                                    DataSub::Storage => rsx! { crate::components::storage_ui::StorageSettingsPanel {} },
+                                    DataSub::Backup => rsx! { crate::components::backup_cloud_ui::BackupExportRestorePanel {} },
+                                    DataSub::Cloud => rsx! { crate::components::backup_cloud_ui::CloudAccountsPanel {} },
+                                }
+                            },
+
+                            // 7. Creative (Library | Draw | Inventory | Showcase)
+                            SettingsTab::Creative => rsx! {
+                                SubTabBar {
+                                    items: vec![
+                                        ("library", "Library"),
+                                        ("draw", "Draw"),
+                                        ("inventory", "Inventory"),
+                                        ("showcase", "Showcase"),
+                                    ],
+                                    active: match creative_sub() {
+                                        CreativeSub::Library => "library",
+                                        CreativeSub::Draw => "draw",
+                                        CreativeSub::Inventory => "inventory",
+                                        CreativeSub::Showcase => "showcase",
+                                    },
+                                    on_select: move |id| match id {
+                                        "draw" => creative_sub.set(CreativeSub::Draw),
+                                        "inventory" => creative_sub.set(CreativeSub::Inventory),
+                                        "showcase" => creative_sub.set(CreativeSub::Showcase),
+                                        _ => creative_sub.set(CreativeSub::Library),
+                                    },
+                                }
+                                match creative_sub() {
+                                    CreativeSub::Library => rsx! { LibrarySettings { current_user_id: current_user_id.clone() } },
+                                    CreativeSub::Draw => rsx! { crate::components::studio::StudioHome { my_id: current_user_id.clone() } },
+                                    CreativeSub::Inventory => rsx! { crate::components::inventory::Inventory { my_id: current_user_id.clone() } },
+                                    CreativeSub::Showcase => rsx! {
+                                        crate::components::demo_gallery::DemoGallery {
+                                            my_id: current_user_id.clone(),
+                                            my_name: current_username.clone(),
+                                            my_avatar: my_avatar_url.clone(),
+                                        }
+                                    },
+                                }
+                            },
+
+                            // 8. About (Overview — iOS/Android About + Developer mode toggle | Guide)
+                            SettingsTab::About => rsx! {
+                                SubTabBar {
+                                    items: vec![
+                                        ("overview", "Overview"),
+                                        ("guide", "Guide"),
+                                    ],
+                                    active: match about_sub() {
+                                        AboutSub::Overview => "overview",
+                                        AboutSub::Guide => "guide",
+                                    },
+                                    on_select: move |id| match id {
+                                        "guide" => about_sub.set(AboutSub::Guide),
+                                        _ => about_sub.set(AboutSub::Overview),
+                                    },
+                                }
+                                match about_sub() {
+                                    AboutSub::Overview => rsx! {
+                                        AboutOverviewPanel {
+                                            has_keys: user_keys.is_some(),
+                                            on_open_developer: move |_| {
+                                                tab.set(SettingsTab::Developer);
+                                                dev_sub.set(DevSub::AdvancedExport);
+                                            },
+                                            on_open_guide: move |_| about_sub.set(AboutSub::Guide),
+                                            on_replay_tour: move |_| on_replay_tour.call(()),
+                                        }
+                                    },
+                                    AboutSub::Guide => rsx! { GuideSettings { on_replay_tour: move |_| on_replay_tour.call(()) } },
+                                }
+                            },
+
+                            // 9. Developer (Conditional — ALL advanced/technical/complex features consolidated cleanly)
+                            SettingsTab::Developer => rsx! {
+                                SubTabBar {
+                                    items: vec![
+                                        ("export", "Advanced export"),
+                                        ("keys", "Encryption keys"),
+                                        ("sync", "Sync & recovery"),
+                                        ("extensions", "Extensions"),
+                                        ("diagnostics", "Diagnostics"),
+                                    ],
+                                    active: match dev_sub() {
+                                        DevSub::AdvancedExport => "export",
+                                        DevSub::EncryptionKeys => "keys",
+                                        DevSub::SyncRecovery => "sync",
+                                        DevSub::Extensions => "extensions",
+                                        DevSub::Diagnostics => "diagnostics",
+                                    },
+                                    on_select: move |id| match id {
+                                        "keys" => dev_sub.set(DevSub::EncryptionKeys),
+                                        "sync" => dev_sub.set(DevSub::SyncRecovery),
+                                        "extensions" => dev_sub.set(DevSub::Extensions),
+                                        "diagnostics" => dev_sub.set(DevSub::Diagnostics),
+                                        _ => dev_sub.set(DevSub::AdvancedExport),
+                                    },
+                                }
+                                match dev_sub() {
+                                    DevSub::AdvancedExport => rsx! {
+                                        crate::components::backup_cloud_ui::AdvancedSecurityExportSection {}
+                                    },
+                                    DevSub::EncryptionKeys => rsx! {
+                                        div { class: "settings-cols",
+                                            div { class: "settings-col",
+                                                div { class: "settings-group",
+                                                    div { class: "settings-group-title", "Security fingerprint" }
+                                                    if let Some(ref keys) = user_keys {
+                                                        div { class: "settings-row column-layout",
+                                                            div { style: "display: flex; justify-content: space-between; width: 100%; align-items: center;",
+                                                                span { class: "settings-label", "Security fingerprint" }
+                                                                button {
+                                                                    r#type: "button",
+                                                                    class: "btn-secondary",
+                                                                    onclick: {
+                                                                        let fp = keys.fingerprint_b64.clone();
+                                                                        move |_| {
+                                                                            platform::copy_to_clipboard(&fp);
+                                                                            copied_fp.set(true);
+                                                                        }
+                                                                    },
+                                                                    if copied_fp() { "Copied" } else { "Copy" }
+                                                                }
+                                                            }
+                                                            div { class: "fingerprint", "{format_fingerprint(&keys.fingerprint_b64)}" }
+                                                        }
+                                                    } else {
+                                                        div { class: "sidebar-empty", "No key yet" }
+                                                    }
+                                                }
+                                            }
+                                            div { class: "settings-col",
+                                                div { class: "settings-group",
+                                                    div { class: "settings-group-title", "Backup security key" }
+                                                    div { class: "settings-row column-layout",
+                                                        div { style: "font-size: 13px; color: var(--text-secondary);",
+                                                            "Your security key is stored only on this device and never sent over the network. You can back it up to transfer to another device."
+                                                        }
+                                                        if let Some(ref keys) = user_keys {
+                                                            button {
+                                                                r#type: "button",
+                                                                class: "btn-secondary",
+                                                                onclick: {
+                                                                    let k = keys.clone();
+                                                                    move |_| {
+                                                                        let j = export_user_keys_json(&k);
+                                                                        platform::copy_to_clipboard(&j);
+                                                                        exported_json.set(Some(j));
+                                                                    }
+                                                                },
+                                                                KeyIcon { size: 15 }
+                                                                span { "Copy security key" }
+                                                            }
+                                                        }
+                                                        if let Some(ref exp) = exported_json() {
+                                                            textarea {
+                                                                readonly: true,
+                                                                style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
+                                                                value: "{exp}",
+                                                            }
+                                                        }
+                                                    }
+
+                                                    div { class: "settings-row column-layout",
+                                                        label { class: "form-label", "Import security key" }
+                                                        textarea {
+                                                            style: "width: 100%; height: 68px; font-family: var(--font-mono); font-size: 11px;",
+                                                            placeholder: "Paste security key here",
+                                                            value: "{import_input}",
+                                                            oninput: move |e| import_input.set(e.value()),
+                                                        }
+                                                        button {
+                                                            r#type: "button",
+                                                            class: "btn-primary",
+                                                            disabled: import_input().trim().is_empty(),
+                                                            onclick: {
+                                                                let uid = current_user_id.clone();
+                                                                move |_| {
+                                                                    let raw = import_input();
+                                                                    match import_user_keys_json(&uid, &raw) {
+                                                                        Ok(restored) => {
+                                                                            let ecdh = restored.ecdh_raw_b64.clone();
+                                                                            let ecdsa = restored.ecdsa_raw_b64.clone();
+                                                                            let restored_clone = restored.clone();
+                                                                            spawn(async move {
+                                                                                let _ = api::keys_register(&ecdh, &ecdsa).await;
+                                                                                on_keys_imported.call(restored_clone);
+                                                                                import_input.set(String::new());
+                                                                                import_status.set(Some((false, "Key restored successfully".into())));
+                                                                            });
+                                                                        }
+                                                                        Err(_) => {
+                                                                            import_status.set(Some((true, "Invalid key".into())));
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            "Restore key"
+                                                        }
+                                                        if let Some((is_err, msg)) = import_status() {
+                                                            div {
+                                                                class: if is_err { "status-badge error" } else { "status-badge success" },
+                                                                "{msg}"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    DevSub::SyncRecovery => rsx! {
+                                        crate::components::storage_ui::SyncRecoverySettingsPanel {
+                                            current_user_id: current_user_id.clone(),
+                                            user_keys: user_keys.clone(),
+                                            on_keys_imported: on_keys_imported,
+                                        }
+                                    },
+                                    DevSub::Extensions => rsx! {
+                                        BotsSettings { my_username: current_username.clone() }
+                                    },
+                                    DevSub::Diagnostics => rsx! {
+                                        DeveloperDiagnosticsPanel {
+                                            current_user_id: current_user_id.clone(),
+                                            has_keys: user_keys.is_some(),
+                                            on_reset_appearance: move |_| {
+                                                let d = platform::Appearance::default();
+                                                platform::apply_appearance(&d);
+                                                appearance.set(d);
+                                            },
+                                            on_disable_dev: move |_| {
+                                                prefs_ctx.update(|p| p.developer_mode = false);
+                                                tab.set(SettingsTab::About);
+                                                about_sub.set(AboutSub::Overview);
+                                            },
+                                        }
+                                    },
                                 }
                             },
                         }
@@ -736,4 +1135,3 @@ pub fn SettingsView(
         }
     }
 }
-

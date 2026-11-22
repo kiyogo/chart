@@ -42,6 +42,7 @@ pub mod rich;
 pub mod search_page;
 pub mod server_members_panel;
 pub mod server_settings;
+pub mod settings_about_dev;
 pub mod settings_extra;
 pub mod settings_more;
 pub mod settings_view;

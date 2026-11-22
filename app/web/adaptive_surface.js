@@ -773,6 +773,7 @@
     '.settings-body .settings-page-title',
     '.settings-body .settings-group-title',
     '.settings-body .settings-label',
+    '.settings-body .settings-subtab',
     '.settings-body .settings-profile-name',
     '.settings-body .settings-profile-sub',
     '.settings-body .range-row label',

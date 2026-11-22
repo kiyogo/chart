@@ -96,6 +96,8 @@ pub struct Prefs {
     pub avatar_fx_lists: String,
     /// Sync these preferences to my other devices (the PIN lock never leaves the device).
     pub sync_settings: bool,
+    /// Spec 067: Show the Developer menu in Settings with advanced/technical tools (device-local).
+    pub developer_mode: bool,
 }
 
 impl Default for Prefs {
@@ -151,12 +153,13 @@ impl Default for Prefs {
             fav_emoji: Vec::new(),
             avatar_fx_lists: "hover".to_string(),
             sync_settings: true,
+            developer_mode: false,
         }
     }
 }
 
-/// Never synced: the PIN lock belongs to one device.
-pub const DEVICE_ONLY: [&str; 5] = ["pin_salt", "pin_hash", "lock_enabled", "lock_minutes", "lock_on_start"];
+/// Never synced: device-local security lock and developer mode stay on this device only.
+pub const DEVICE_ONLY: [&str; 6] = ["pin_salt", "pin_hash", "lock_enabled", "lock_minutes", "lock_on_start", "developer_mode"];
 
 fn dedupe(list: &mut Vec<String>) {
     let mut seen = std::collections::HashSet::new();
@@ -326,8 +329,9 @@ mod tests {
         let mut p = Prefs::default();
         p.pin_hash = "h".into();
         p.lock_enabled = true;
+        p.developer_mode = true;
         let payload = p.sync_payload();
-        assert!(!payload.contains_key("pin_hash") && !payload.contains_key("lock_enabled"));
+        assert!(!payload.contains_key("pin_hash") && !payload.contains_key("lock_enabled") && !payload.contains_key("developer_mode"));
         assert!(payload.contains_key("fav_stickers"));
         let mut remote = payload.clone();
         remote.insert("pin_hash".into(), serde_json::json!("evil"));
