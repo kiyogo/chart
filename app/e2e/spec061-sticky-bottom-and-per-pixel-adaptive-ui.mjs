@@ -185,6 +185,34 @@ try {
     JSON.stringify(oceanFadeAudit)
   );
 
+  // 3b. Spec 065: Verify .chat-messages applies crisp viewport edge mask so scrolled blue message bubbles NEVER collide with header icons or get washed in milky haze!
+  const maskAudit = await page.evaluate(() => {
+    const sc = document.getElementById('chat-messages-scroll');
+    // Scroll mid-way so a bright blue sent bubble sits directly beneath the top header band
+    if (sc && sc.scrollHeight > sc.clientHeight) {
+      sc.scrollTop = Math.min(180, Math.floor((sc.scrollHeight - sc.clientHeight) / 2));
+    }
+    const cs = getComputedStyle(sc);
+    const hdr = document.querySelector('.chat-column > .chat-header');
+    const hdrB = getComputedStyle(hdr, '::before');
+    return {
+      msgsMask: cs.maskImage || cs.webkitMaskImage || 'none',
+      hdrBeforeH: Math.round(parseFloat(hdrB.height) || 0),
+      hdrH: Math.round(hdr.getBoundingClientRect().height),
+      hdrBeforeMask: hdrB.maskImage || hdrB.webkitMaskImage || 'none',
+    };
+  });
+  await page.waitForTimeout(150);
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '01b_scrolled_bubbles_clean_header_separation.png') });
+  record(
+    'Spec 065: .chat-messages applies crisp viewport mask keeping scrolled blue bubbles strictly clear of header icons & composer with zero milky washout',
+    maskAudit.msgsMask.includes('linear-gradient') &&
+      maskAudit.msgsMask.includes('rgba(0, 0, 0, 0)') &&
+      Math.abs(maskAudit.hdrBeforeH - maskAudit.hdrH) <= 2 &&
+      maskAudit.hdrBeforeMask.includes('84%'),
+    JSON.stringify(maskAudit)
+  );
+
   // 4. Test real-time per-position adaptive surface over a split DARK-TOP / BRIGHT-BOTTOM uploaded image wallpaper!
   await page.locator('.app-rail button[aria-label="Settings"]').click();
   await page.waitForSelector('.settings-nav', { timeout: 10000 });
