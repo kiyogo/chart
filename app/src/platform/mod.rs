@@ -654,21 +654,21 @@ if (!window.__chatwRecomputeContrast) {
         let domHex = '#64748B', wpChroma = 0.0;
 
         if (c.wpKind === 'preset-night') {
-            meanB = 0.07; railB = 0.07; stdB = 0.04; darkRatio = 0.95; domHex = '#3B82F6'; wpChroma = 0.40;
+            meanB = 0.07; railB = 0.07; stdB = 0.04; darkRatio = 0.95; domHex = '#3B82F6'; wpChroma = 0.42;
         } else if (c.wpKind === 'preset-dots') {
             meanB = baseTheme === 'dark' ? 0.08 : 0.94; railB = meanB; stdB = 0.04; domHex = '#64748B'; wpChroma = 0.0;
         } else if (c.wpKind === 'preset-paper') {
-            meanB = baseTheme === 'dark' ? 0.44 : 0.91; railB = meanB; stdB = 0.02; domHex = '#D4B483'; wpChroma = 0.24;
+            meanB = baseTheme === 'dark' ? 0.44 : 0.91; railB = meanB; stdB = 0.02; domHex = '#C97A2B'; wpChroma = 0.30;
         } else if (c.wpKind === 'preset-bubbles') {
-            meanB = baseTheme === 'dark' ? 0.14 : 0.88; railB = meanB; stdB = 0.08; domHex = '#EC4899'; wpChroma = 0.28;
+            meanB = baseTheme === 'dark' ? 0.14 : 0.88; railB = meanB; stdB = 0.08; domHex = '#D9468F'; wpChroma = 0.32;
         } else if (c.wpKind === 'preset-aurora') {
-            meanB = baseTheme === 'dark' ? 0.20 : 0.94; railB = meanB; stdB = 0.05; domHex = '#8B5CF6'; wpChroma = 0.14;
+            meanB = baseTheme === 'dark' ? 0.20 : 0.94; railB = meanB; stdB = 0.05; domHex = '#7C5CFF'; wpChroma = 0.32;
         } else if (c.wpKind === 'preset-ocean') {
-            meanB = baseTheme === 'dark' ? 0.22 : 0.87; railB = meanB; stdB = 0.05; domHex = '#0EA5E9'; wpChroma = 0.24;
+            meanB = baseTheme === 'dark' ? 0.22 : 0.87; railB = meanB; stdB = 0.05; domHex = '#0EA5E9'; wpChroma = 0.36;
         } else if (c.wpKind === 'preset-mint') {
-            meanB = baseTheme === 'dark' ? 0.23 : 0.91; railB = meanB; stdB = 0.05; domHex = '#10B981'; wpChroma = 0.22;
+            meanB = baseTheme === 'dark' ? 0.23 : 0.91; railB = meanB; stdB = 0.05; domHex = '#10B981'; wpChroma = 0.34;
         } else if (c.wpKind === 'preset-sunset') {
-            meanB = baseTheme === 'dark' ? 0.20 : 0.86; railB = meanB; stdB = 0.06; domHex = '#E15382'; wpChroma = 0.28;
+            meanB = baseTheme === 'dark' ? 0.20 : 0.86; railB = meanB; stdB = 0.06; domHex = '#EC4882'; wpChroma = 0.42;
         } else if (c.wpKind === 'color') {
             const rgb = parseHex(c.wpColor);
             meanB = rgb ? srgbB(rgb[0], rgb[1], rgb[2]) : shellB;
@@ -790,6 +790,18 @@ if (!window.__chatwRecomputeContrast) {
         const isTranslucentWp = c.wpKind !== 'none' && alpha < 0.96;
         const needsLuminousControls = isTranslucentWp;
 
+        // Track wallpaper changes so picking ANY new wallpaper automatically enables Material You Dynamic Wallpaper Theming,
+        // while explicitly clicking a Màu nhấn swatch overrides it until the wallpaper is changed again.
+        const wpSig = `${c.wpKind}|${c.wpColor || ''}|${c.wpImageUrl || ''}`;
+        if (window.__chatwLastWpSig !== undefined && window.__chatwLastWpSig !== wpSig) {
+            window.__chatwAccentManual = false;
+        }
+        window.__chatwLastWpSig = wpSig;
+
+        const hasWpSeed = c.wpKind !== 'none' && c.wpKind !== 'preset-dots' && (wpChroma >= 0.08 || c.wpKind === 'image');
+        const hasCustomAccent = Boolean(c.customAccent && parseHex(c.customAccent));
+        const useWallpaperTheme = hasWpSeed && !hasCustomAccent && !window.__chatwAccentManual;
+
         root.setAttribute('data-surface-tone', surfaceTone);
         root.setAttribute('data-rail-tone', railTone);
         root.setAttribute('data-wp-busy', String(wpBusy));
@@ -798,11 +810,12 @@ if (!window.__chatwRecomputeContrast) {
         root.setAttribute('data-framed-controls', String(needsFramedControls));
         root.setAttribute('data-text-halo', String(needsHalo));
         root.setAttribute('data-luminous-controls', String(needsLuminousControls));
+        root.setAttribute('data-wp-theme-active', String(useWallpaperTheme));
         root.setAttribute('data-apca-lc', String(Math.round(worstLc)));
         root.style.setProperty('--wp-dom-color', domHex);
 
-        // Unified Vivid Translucent Accent & Flat Modern Control Engine (Spec 055):
-        // Active/selected pills ALWAYS display the user's chosen Accent color cleanly & vibrantly (NEVER white-on-white!).
+        // Full-App Material You Dynamic Wallpaper Theme Engine (Spec 056):
+        // Derives a cohesive WCAG-verified tonal palette directly from the active wallpaper (preset, custom color, or uploaded photo).
         const PRESET_ACCENTS = {
             blue: '#2E7CF6',
             cyan: '#06B6D4',
@@ -811,15 +824,17 @@ if (!window.__chatwRecomputeContrast) {
             orange: '#F97316',
             rose: '#F43F7E',
         };
-        const effAccentHex = (c.customAccent && parseHex(c.customAccent))
+        const effAccentHex = hasCustomAccent
             ? c.customAccent
-            : (PRESET_ACCENTS[root.getAttribute('data-accent') || 'blue'] || '#2E7CF6');
+            : (useWallpaperTheme
+                ? domHex
+                : (PRESET_ACCENTS[root.getAttribute('data-accent') || 'blue'] || '#2E7CF6'));
         const makeVibrantRgb = (hex, darkMode) => {
             const raw = parseHex(hex) || [46, 124, 246];
             const [h, s0] = rgbToHsl(raw[0], raw[1], raw[2]);
             if (s0 < 0.08) return raw;
-            const s = Math.min(0.94, Math.max(s0, 0.62));
-            const l = darkMode ? 0.56 : 0.52;
+            const s = Math.min(0.78, Math.max(s0, 0.56));
+            const l = darkMode ? 0.58 : 0.54;
             return hslToRgb(h, s, l);
         };
         const makeCleanTint = (hex, darkMode, weight, alphaOut) => {
@@ -830,7 +845,8 @@ if (!window.__chatwRecomputeContrast) {
             const b = Math.round(base[2] * (1 - weight) + vb * weight);
             return `rgba(${r}, ${g}, ${b}, ${alphaOut.toFixed(2)})`;
         };
-        const domRgb = parseHex(domHex) || [100, 116, 139];
+        const [themeVr, themeVg, themeVb] = makeVibrantRgb(effAccentHex, surfaceTone === 'dark');
+        const tvR = Math.round(themeVr), tvG = Math.round(themeVg), tvB = Math.round(themeVb);
 
         // Progressively deepen text contrast as transparency increases so text stays crisp without needing blurry shadows
         if (c.wpKind !== 'none' && transparency >= 0.20) {
@@ -849,28 +865,49 @@ if (!window.__chatwRecomputeContrast) {
             root.style.removeProperty('--text-muted');
         }
 
-        // Clean borderless flat action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) on smooth surfaces;
-        // subtle frosted glass backing ONLY on genuinely busy uploaded photos so buttons never get lost over textures.
-        if (isTranslucentWp) {
+        // Harmonized flat action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) & switch track
+        if (isTranslucentWp || useWallpaperTheme) {
             if (surfaceTone === 'light') {
-                if (wpBusy) {
+                if (wpBusy && alpha < 0.55) {
                     const btnA = Math.min(0.76, 0.56 + transparency * 0.18);
                     root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${btnA.toFixed(2)})`);
                     root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${Math.min(0.90, btnA + 0.14).toFixed(2)})`);
                     root.style.setProperty('--adaptive-btn-active', `rgba(255, 255, 255, ${Math.min(0.95, btnA + 0.20).toFixed(2)})`);
-                    root.style.setProperty('--adaptive-btn-ring', 'rgba(15, 23, 42, 0.10)');
+                    root.style.setProperty('--adaptive-btn-ring', `rgba(${tvR}, ${tvG}, ${tvB}, 0.16)`);
+                } else if (useWallpaperTheme) {
+                    // Harmonize button fills softly with the wallpaper's theme hue (zero cold grey clash on Sunset/Mint/Paper!)
+                    root.style.setProperty('--adaptive-btn-bg', `rgba(${tvR}, ${tvG}, ${tvB}, 0.085)`);
+                    root.style.setProperty('--adaptive-btn-hover', `rgba(${tvR}, ${tvG}, ${tvB}, 0.14)`);
+                    root.style.setProperty('--adaptive-btn-active', `rgba(${tvR}, ${tvG}, ${tvB}, 0.20)`);
+                    root.style.setProperty('--adaptive-btn-ring', 'transparent');
                 } else {
                     root.style.setProperty('--adaptive-btn-bg', 'rgba(15, 23, 42, 0.055)');
                     root.style.setProperty('--adaptive-btn-hover', 'rgba(15, 23, 42, 0.095)');
                     root.style.setProperty('--adaptive-btn-active', 'rgba(15, 23, 42, 0.14)');
                     root.style.setProperty('--adaptive-btn-ring', 'transparent');
                 }
-                root.style.setProperty('--adaptive-switch-bg', 'rgba(15, 23, 42, 0.17)');
+                if (useWallpaperTheme) {
+                    const swR = Math.round(tvR * 0.42 + 95 * 0.58);
+                    const swG = Math.round(tvG * 0.42 + 100 * 0.58);
+                    const swB = Math.round(tvB * 0.42 + 115 * 0.58);
+                    root.style.setProperty('--adaptive-switch-bg', `rgba(${swR}, ${swG}, ${swB}, 0.30)`);
+                } else {
+                    root.style.setProperty('--adaptive-switch-bg', 'rgba(15, 23, 42, 0.17)');
+                }
             } else {
-                const dBtnA = wpBusy ? Math.min(0.24, 0.14 + transparency * 0.08) : Math.min(0.14, 0.09 + transparency * 0.05);
-                root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${dBtnA.toFixed(2)})`);
-                root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${(dBtnA + 0.07).toFixed(2)})`);
-                root.style.setProperty('--adaptive-btn-active', `rgba(255, 255, 255, ${(dBtnA + 0.13).toFixed(2)})`);
+                const dBtnA = wpBusy ? Math.min(0.24, 0.14 + transparency * 0.08) : Math.min(0.16, 0.10 + transparency * 0.05);
+                if (useWallpaperTheme && !wpBusy) {
+                    const dbR = Math.round(tvR * 0.35 + 255 * 0.65);
+                    const dbG = Math.round(tvG * 0.35 + 255 * 0.65);
+                    const dbB = Math.round(tvB * 0.35 + 255 * 0.65);
+                    root.style.setProperty('--adaptive-btn-bg', `rgba(${dbR}, ${dbG}, ${dbB}, ${dBtnA.toFixed(2)})`);
+                    root.style.setProperty('--adaptive-btn-hover', `rgba(${dbR}, ${dbG}, ${dbB}, ${(dBtnA + 0.07).toFixed(2)})`);
+                    root.style.setProperty('--adaptive-btn-active', `rgba(${dbR}, ${dbG}, ${dbB}, ${(dBtnA + 0.13).toFixed(2)})`);
+                } else {
+                    root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${dBtnA.toFixed(2)})`);
+                    root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${(dBtnA + 0.07).toFixed(2)})`);
+                    root.style.setProperty('--adaptive-btn-active', `rgba(255, 255, 255, ${(dBtnA + 0.13).toFixed(2)})`);
+                }
                 root.style.setProperty('--adaptive-btn-ring', wpBusy ? 'rgba(255, 255, 255, 0.16)' : 'transparent');
                 root.style.setProperty('--adaptive-switch-bg', 'rgba(255, 255, 255, 0.22)');
             }
@@ -885,7 +922,7 @@ if (!window.__chatwRecomputeContrast) {
                 const segA = Math.min(0.60, 0.42 + transparency * 0.16);
                 root.style.setProperty('--adaptive-ctrl-bg', `rgba(255, 255, 255, ${segA.toFixed(2)})`);
                 root.style.setProperty('--adaptive-ctrl-hover', `rgba(255, 255, 255, ${Math.min(0.80, segA + 0.18).toFixed(2)})`);
-                root.style.setProperty('--adaptive-ctrl-ring', 'rgba(15, 23, 42, 0.10)');
+                root.style.setProperty('--adaptive-ctrl-ring', `rgba(${tvR}, ${tvG}, ${tvB}, 0.14)`);
             } else {
                 const dSegA = Math.min(0.22, 0.12 + transparency * 0.08);
                 root.style.setProperty('--adaptive-ctrl-bg', `rgba(15, 23, 42, ${(dSegA + 0.22).toFixed(2)})`);
@@ -920,15 +957,18 @@ if (!window.__chatwRecomputeContrast) {
         const surfaceBgLum = surfaceTone === 'dark' ? 0.014 : 1.0;
 
         let accentInk = null;
-        if (c.customAccent && parseHex(c.customAccent)) {
+        let resolvedDynamicAccent = effAccentHex;
+        if (hasCustomAccent || useWallpaperTheme) {
+            const rawSeed = hasCustomAccent ? c.customAccent : toHex(themeVr, themeVg, themeVb);
             const safeAccent = tuneLightness(
-                c.customAccent,
+                rawSeed,
                 surfaceBgLum,
-                surfaceTone === 'light' ? 4.75 : 4.0,
+                surfaceTone === 'light' ? 4.35 : 4.1,
                 surfaceTone === 'light',
                 true,
             );
-            const safeText = tuneLightness(c.customAccent, surfaceBgLum, 5.4, surfaceTone === 'light', true);
+            resolvedDynamicAccent = safeAccent;
+            const safeText = tuneLightness(rawSeed, surfaceBgLum, 5.2, surfaceTone === 'light', true);
             const aRgb = parseHex(safeAccent);
             accentInk = pickInk(aRgb[0], aRgb[1], aRgb[2]);
             root.style.setProperty('--accent', safeAccent);
@@ -938,49 +978,90 @@ if (!window.__chatwRecomputeContrast) {
             root.style.setProperty('--on-accent', accentInk.text);
             root.style.setProperty('--accent-text', safeText);
             root.style.setProperty('--accent-soft', surfaceTone === 'dark'
-                ? `color-mix(in srgb, ${safeAccent} 18%, transparent)`
-                : `color-mix(in srgb, ${safeAccent} 12%, transparent)`);
+                ? `rgba(${tvR}, ${tvG}, ${tvB}, 0.24)`
+                : `rgba(${tvR}, ${tvG}, ${tvB}, 0.14)`);
             root.style.setProperty('--accent-soft-strong', surfaceTone === 'dark'
-                ? `color-mix(in srgb, ${safeAccent} 26%, transparent)`
-                : `color-mix(in srgb, ${safeAccent} 18%, transparent)`);
+                ? `rgba(${tvR}, ${tvG}, ${tvB}, 0.32)`
+                : `rgba(${tvR}, ${tvG}, ${tvB}, 0.21)`);
         } else {
             ['--accent', '--accent-hover', '--on-accent', '--accent-text', '--accent-soft', '--accent-soft-strong']
                 .forEach((k) => root.style.removeProperty(k));
         }
 
-        // Vivid, unmistakable, translucent Accent active/selected pills & clean neutral hover across ALL wallpapers
-        if (needsLuminousControls) {
+        // Sync any unset accent-preview <input type="color" data-sync-accent="true"> live (including uploaded images!)
+        document.querySelectorAll('input[type="color"][data-sync-accent="true"]').forEach((inp) => {
+            if (resolvedDynamicAccent && inp.value.toLowerCase() !== resolvedDynamicAccent.toLowerCase()) {
+                inp.value = resolvedDynamicAccent;
+            }
+        });
+
+        // Full-App Wallpaper-Harmonized Active, Hover, Input & Surface Tones
+        if (needsLuminousControls || useWallpaperTheme) {
             const isDarkSurf = surfaceTone === 'dark';
             const [vr, vg, vb] = makeVibrantRgb(effAccentHex, isDarkSurf);
+            const rI = Math.round(vr), gI = Math.round(vg), bI = Math.round(vb);
             if (isDarkSurf) {
                 const darkPillA = wpBusy ? (0.32 + transparency * 0.08) : (0.24 + transparency * 0.07);
-                root.style.setProperty('--accent-soft', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${darkPillA.toFixed(2)})`);
-                root.style.setProperty('--accent-soft-strong', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${Math.min(0.46, darkPillA + 0.09).toFixed(2)})`);
+                root.style.setProperty('--accent-soft', `rgba(${rI}, ${gI}, ${bI}, ${darkPillA.toFixed(2)})`);
+                root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${Math.min(0.46, darkPillA + 0.09).toFixed(2)})`);
                 root.style.setProperty('--adaptive-active-ring', wpBusy ? 'rgba(255, 255, 255, 0.14)' : 'transparent');
-                root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.085)');
-                root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.14)');
-                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.075)');
+                if (useWallpaperTheme) {
+                    const hvR = Math.round(rI * 0.38 + 255 * 0.62);
+                    const hvG = Math.round(gI * 0.38 + 255 * 0.62);
+                    const hvB = Math.round(bI * 0.38 + 255 * 0.62);
+                    root.style.setProperty('--bg-hover', `rgba(${hvR}, ${hvG}, ${hvB}, 0.10)`);
+                    root.style.setProperty('--bg-active', `rgba(${hvR}, ${hvG}, ${hvB}, 0.16)`);
+                    root.style.setProperty('--bg-surface-hover', `rgba(${hvR}, ${hvG}, ${hvB}, 0.08)`);
+                } else {
+                    root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.085)');
+                    root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.14)');
+                    root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.075)');
+                }
+                if (useWallpaperTheme && isTranslucentWp) {
+                    root.style.setProperty('--bg-input', 'rgba(255, 255, 255, 0.08)');
+                    root.style.setProperty('--input-border', `rgba(${rI}, ${gI}, ${bI}, 0.24)`);
+                } else {
+                    root.style.removeProperty('--bg-input');
+                    root.style.removeProperty('--input-border');
+                }
             } else if (wpBusy && alpha < 0.55) {
-                // Busy uploaded photo at high transparency: frosted vibrant accent pill so active item pops crisply over photo detail
-                root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, false, 0.24, 0.74));
-                root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, false, 0.30, 0.84));
-                root.style.setProperty('--adaptive-active-ring', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, 0.18)`);
-                root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.42)');
-                root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.58)');
-                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.48)');
+                // Busy uploaded photo at high transparency: frosted harmonious accent pill so active item pops crisply over photo detail
+                root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, false, 0.24, 0.76));
+                root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, false, 0.30, 0.86));
+                root.style.setProperty('--adaptive-active-ring', `rgba(${rI}, ${gI}, ${bI}, 0.18)`);
+                root.style.setProperty('--bg-hover', makeCleanTint(effAccentHex, false, 0.08, 0.44));
+                root.style.setProperty('--bg-active', makeCleanTint(effAccentHex, false, 0.14, 0.60));
+                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.50)');
+                root.style.setProperty('--bg-input', 'rgba(255, 255, 255, 0.78)');
+                root.style.setProperty('--input-border', `rgba(${rI}, ${gI}, ${bI}, 0.18)`);
             } else {
-                // Smooth light / pastel wallpapers (Aurora, Sunset, Ocean, Mint, Paper, Dots, Bubbles, light colors):
-                // Pure, fresh, vibrant translucent Accent tint (NEVER washed-out white!) + clean soft neutral hover.
-                const lightPillA = 0.13 + transparency * 0.05;
-                root.style.setProperty('--accent-soft', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${lightPillA.toFixed(2)})`);
-                root.style.setProperty('--accent-soft-strong', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${(lightPillA + 0.06).toFixed(2)})`);
+                // Smooth light / pastel wallpapers (Sunset -> Rose, Mint -> Emerald, Ocean -> Sky, Aurora -> Violet, Paper -> Amber):
+                // Entire interactive palette (active, hover, buttons, inputs) lives in ONE harmonious color family!
+                const lightPillA = 0.14 + transparency * 0.05;
+                root.style.setProperty('--accent-soft', `rgba(${rI}, ${gI}, ${bI}, ${lightPillA.toFixed(2)})`);
+                root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${(lightPillA + 0.07).toFixed(2)})`);
                 root.style.setProperty('--adaptive-active-ring', 'transparent');
-                root.style.setProperty('--bg-hover', 'rgba(15, 23, 42, 0.055)');
-                root.style.setProperty('--bg-active', 'rgba(15, 23, 42, 0.10)');
-                root.style.setProperty('--bg-surface-hover', 'rgba(15, 23, 42, 0.05)');
+                if (useWallpaperTheme) {
+                    root.style.setProperty('--bg-hover', `rgba(${rI}, ${gI}, ${bI}, 0.075)`);
+                    root.style.setProperty('--bg-active', `rgba(${rI}, ${gI}, ${bI}, 0.125)`);
+                    root.style.setProperty('--bg-surface-hover', `rgba(${rI}, ${gI}, ${bI}, 0.065)`);
+                    if (isTranslucentWp) {
+                        root.style.setProperty('--bg-input', 'rgba(255, 255, 255, 0.66)');
+                        root.style.setProperty('--input-border', `rgba(${rI}, ${gI}, ${bI}, 0.15)`);
+                    } else {
+                        root.style.removeProperty('--bg-input');
+                        root.style.removeProperty('--input-border');
+                    }
+                } else {
+                    root.style.setProperty('--bg-hover', 'rgba(15, 23, 42, 0.055)');
+                    root.style.setProperty('--bg-active', 'rgba(15, 23, 42, 0.10)');
+                    root.style.setProperty('--bg-surface-hover', 'rgba(15, 23, 42, 0.05)');
+                    root.style.removeProperty('--bg-input');
+                    root.style.removeProperty('--input-border');
+                }
             }
         } else {
-            ['--adaptive-active-ring', '--bg-hover', '--bg-active', '--bg-surface-hover']
+            ['--adaptive-active-ring', '--bg-hover', '--bg-active', '--bg-surface-hover', '--bg-input', '--input-border']
                 .forEach((k) => root.style.removeProperty(k));
         }
 
@@ -1011,6 +1092,11 @@ if (!window.__chatwRecomputeContrast) {
             root.style.setProperty('--msg-recv', safeOther);
             root.style.setProperty('--msg-recv-text', ink.text);
             root.style.setProperty('--msg-recv-meta', ink.meta);
+        } else if (useWallpaperTheme && isTranslucentWp) {
+            const recvBg = makeCleanTint(effAccentHex, surfaceTone === 'dark', surfaceTone === 'dark' ? 0.12 : 0.05, surfaceTone === 'dark' ? 0.84 : 0.78);
+            root.style.setProperty('--msg-recv', recvBg);
+            root.style.removeProperty('--msg-recv-text');
+            root.style.removeProperty('--msg-recv-meta');
         } else {
             ['--msg-recv', '--msg-recv-text', '--msg-recv-meta'].forEach((k) => root.style.removeProperty(k));
         }
@@ -1111,6 +1197,31 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
         "#,
         engine = CONTRAST_ENGINE_JS,
     ));
+}
+
+/// Return the Material You dynamic theme seed color for chromatic app wallpapers.
+pub fn wallpaper_seed_hex(app_wp: &str) -> Option<String> {
+    if let Some(hex) = app_wp.strip_prefix("color:") {
+        if hex.len() == 7 && hex.starts_with('#') {
+            return Some(hex.to_uppercase());
+        }
+    }
+    match app_wp {
+        "sunset" => Some("#E13C76".into()),
+        "ocean" => Some("#0284C7".into()),
+        "mint" => Some("#0D9F6E".into()),
+        "aurora" => Some("#704DF7".into()),
+        "paper" => Some("#B8681C".into()),
+        "bubbles" => Some("#D9468F".into()),
+        "night" => Some("#3B82F6".into()),
+        _ => None,
+    }
+}
+
+/// Mark that the user explicitly clicked a manual Màu nhấn swatch so it overrides
+/// dynamic wallpaper theming until the wallpaper is changed again.
+pub fn mark_manual_accent() {
+    let _ = dioxus::document::eval("window.__chatwAccentManual = true;");
 }
 
 pub fn apply_appearance(a: &Appearance) {

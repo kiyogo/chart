@@ -466,6 +466,8 @@ try {
         textHalo: document.documentElement.getAttribute('data-text-halo'),
         framedControls: document.documentElement.getAttribute('data-framed-controls'),
         luminous: document.documentElement.getAttribute('data-luminous-controls'),
+        wpThemeActive: document.documentElement.getAttribute('data-wp-theme-active'),
+        accentVar: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
         segs,
         sec: sec
           ? {
@@ -491,7 +493,7 @@ try {
       };
     });
 
-  // Check Aurora ("Cực quang") at 100% transparency first (exact user screenshot scenario!)
+  // Check Aurora ("Cực quang") at 100% transparency -> dynamically themes ENTIRE app to Aurora Violet!
   await page.locator('.wallpaper-tile', { hasText: 'Cực quang' }).last().click();
   await setTransparency(100);
   const mAurora100 = await measureButtons();
@@ -504,7 +506,20 @@ try {
     await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'aurora_100.png') });
   }
 
-  // Now check Sunset ("Hoàng hôn") at 52% and 72%
+  // Check Mint ("Bạc hà") at 72% -> dynamically themes ENTIRE app to Fresh Emerald Mint!
+  await page.locator('.wallpaper-tile', { hasText: 'Bạc hà' }).last().click();
+  await setTransparency(72);
+  const mMint72 = await measureButtons();
+  if (process.env.SPEC052_SHOT_DIR) {
+    const hoverTarget = page.locator('.settings-nav-item', { hasText: 'Trả lời tự động' }).first();
+    if (await hoverTarget.isVisible().catch(() => false)) {
+      await hoverTarget.hover();
+      await page.waitForTimeout(160);
+    }
+    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'mint_72.png') });
+  }
+
+  // Now check Sunset ("Hoàng hôn") at 52% and 72% -> dynamically themes ENTIRE app to Sakura Rose!
   await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
   await setTransparency(52);
   const m52 = await measureButtons();
@@ -546,9 +561,10 @@ try {
   const idleSegA = mAurora100.segs.find((s) => !s.active);
   const activeIdleHeightDiff = activeSegA && idleSegA ? Math.abs(activeSegA.h - idleSegA.h) : 99;
   const auroraActiveRgba = parseRgba(mAurora100.navActiveBg);
-  const navActiveRgba = parseRgba(m72.navActiveBg);
-  const hoverRgba = parseRgba(m72.hoverToken);
-  const secRgba = parseRgba(mAurora100.sec?.bg);
+  const mintActiveRgba = parseRgba(mMint72.navActiveBg);
+  const sunsetActiveRgba = parseRgba(m72.navActiveBg);
+  const sunsetHoverRgba = parseRgba(m72.hoverToken);
+  const sunsetSecRgba = parseRgba(m72.sec?.bg);
   const gSafe = Boolean(
     m72.labelG &&
       m72.labelG.lineHeight >= m72.labelG.fontSize * 1.45 &&
@@ -557,8 +573,11 @@ try {
   );
 
   record(
-    'Aurora (100%) & Sunset (52%->72%) show vivid translucent Blue active pills (never washed-out white), frameless clean idle segmented controls, compact wallpaper color swatch (<=48px), 0.00px size stability, and ZERO g-descender clipping',
-    mAurora100.framedControls === 'false' &&
+    'Full-App Dynamic Wallpaper Theming (Material You): Aurora -> Violet, Mint -> Emerald, Sunset -> Rose across active pills, hover, buttons & --accent (zero cold blue/purple clash), frameless idle controls, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
+    mAurora100.wpThemeActive === 'true' &&
+      mMint72.wpThemeActive === 'true' &&
+      m72.wpThemeActive === 'true' &&
+      mAurora100.framedControls === 'false' &&
       mAurora100.textHalo === 'false' &&
       m72.framedControls === 'false' &&
       m72.textHalo === 'false' &&
@@ -571,10 +590,14 @@ try {
       idleSegA?.bg === 'rgba(0, 0, 0, 0)' &&
       mAurora100.wpColorWidth > 0 &&
       mAurora100.wpColorWidth <= 48 &&
-      Boolean(auroraActiveRgba && auroraActiveRgba.b >= 220 && auroraActiveRgba.b - auroraActiveRgba.r >= 150 && auroraActiveRgba.a >= 0.14 && auroraActiveRgba.a <= 0.24) &&
-      Boolean(navActiveRgba && navActiveRgba.b >= 220 && navActiveRgba.b - navActiveRgba.r >= 150 && navActiveRgba.a >= 0.13 && navActiveRgba.a <= 0.24) &&
-      Boolean(hoverRgba && hoverRgba.a <= 0.10) &&
-      Boolean(secRgba && secRgba.r <= 30 && secRgba.a >= 0.04 && secRgba.a <= 0.10),
+      // Aurora -> Violet (B >= 210 && R >= 70 && R > G + 20 && B - G >= 120)
+      Boolean(auroraActiveRgba && auroraActiveRgba.b >= 210 && auroraActiveRgba.r >= 70 && auroraActiveRgba.r > auroraActiveRgba.g + 20 && auroraActiveRgba.b - auroraActiveRgba.g >= 120 && auroraActiveRgba.a >= 0.14 && auroraActiveRgba.a <= 0.24) &&
+      // Mint -> Emerald (G > R + 100 && G > B)
+      Boolean(mintActiveRgba && mintActiveRgba.g >= 180 && mintActiveRgba.g - mintActiveRgba.r >= 100 && mintActiveRgba.a >= 0.14 && mintActiveRgba.a <= 0.24) &&
+      // Sunset -> Sakura Rose (R > 210 && R > B && R > G + 100) on BOTH active, hover & secondary buttons!
+      Boolean(sunsetActiveRgba && sunsetActiveRgba.r >= 210 && sunsetActiveRgba.r > sunsetActiveRgba.b && sunsetActiveRgba.r - sunsetActiveRgba.g >= 100 && sunsetActiveRgba.a >= 0.14 && sunsetActiveRgba.a <= 0.24) &&
+      Boolean(sunsetHoverRgba && sunsetHoverRgba.r >= 210 && sunsetHoverRgba.a <= 0.11) &&
+      Boolean(sunsetSecRgba && sunsetSecRgba.r >= 210 && sunsetSecRgba.a >= 0.05 && sunsetSecRgba.a <= 0.14),
     JSON.stringify({
       maxSegDW,
       maxSegDH,
@@ -583,12 +606,14 @@ try {
       activeIdleHeightDiff,
       gSafe,
       wpColorWidth: mAurora100.wpColorWidth,
+      auroraAccent: mAurora100.accentVar,
       auroraActiveBg: mAurora100.navActiveBg,
-      sunset72ActiveBg: m72.navActiveBg,
-      idleSegABg: idleSegA?.bg,
-      hoverToken: m72.hoverToken,
-      secBg: mAurora100.sec?.bg,
-      secShadow: mAurora100.sec?.shadow,
+      mintAccent: mMint72.accentVar,
+      mintActiveBg: mMint72.navActiveBg,
+      sunsetAccent: m72.accentVar,
+      sunsetActiveBg: m72.navActiveBg,
+      sunsetHover: m72.hoverToken,
+      sunsetSecBg: m72.sec?.bg,
     })
   );
 

@@ -125,6 +125,15 @@ pub fn SettingsView(
     let mut has_detail = use_signal(|| false);
     let mut appearance = use_signal(platform::load_appearance);
     let prefs_ctx = use_context::<crate::prefs::PrefsCtx>();
+    let mut manual_accent = use_signal(|| false);
+    let mut last_wp_seen = use_signal(|| prefs_ctx.prefs.read().app_wallpaper.clone());
+    use_effect(move || {
+        let cur_wp = prefs_ctx.prefs.read().app_wallpaper.clone();
+        if cur_wp != *last_wp_seen.peek() {
+            last_wp_seen.set(cur_wp);
+            manual_accent.set(false);
+        }
+    });
     let mut update_appearance = move |f: &dyn Fn(&mut platform::Appearance)| {
         let mut a = appearance();
         f(&mut a);
@@ -378,35 +387,62 @@ pub fn SettingsView(
                                             div { class: "settings-group-title", "Màu nhấn" }
                                             div { class: "settings-group-desc", "Áp dụng cho nút chính, bong bóng tin nhắn đã gửi và mục đang chọn." }
                                             div { class: "accent-swatches", role: "radiogroup", aria_label: "Màu nhấn",
-                                                for (val, color, label) in [
-                                                    ("blue", "#2E7CF6", "Xanh dương"),
-                                                    ("violet", "#8B5CF6", "Tím"),
-                                                    ("green", "#10B981", "Xanh lá"),
-                                                    ("orange", "#F97316", "Cam"),
-                                                    ("rose", "#F43F7E", "Hồng"),
-                                                    ("cyan", "#06B6D4", "Xanh ngọc"),
-                                                ] {
-                                                    button {
-                                                        key: "{val}",
-                                                        r#type: "button",
-                                                        role: "radio",
-                                                        title: "{label}",
-                                                        aria_label: "{label}",
-                                                        aria_checked: "{appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty()}",
-                                                        class: if appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty() { "accent-swatch active" } else { "accent-swatch" },
-                                                        style: "background: {color};",
-                                                        onclick: move |_| {
-                                                            if !prefs_ctx.prefs.read().custom_accent.is_empty() {
-                                                                prefs_ctx.update(|p| p.custom_accent.clear());
+                                                {
+                                                    let cur_wp_for_sw = prefs_ctx.prefs.read().app_wallpaper.clone();
+                                                    let cur_custom_empty = prefs_ctx.prefs.read().custom_accent.is_empty();
+                                                    let wp_matched_accent: Option<&'static str> = match cur_wp_for_sw.as_str() {
+                                                        "sunset" | "bubbles" => Some("rose"),
+                                                        "mint" => Some("green"),
+                                                        "aurora" => Some("violet"),
+                                                        "ocean" => Some("cyan"),
+                                                        "night" => Some("blue"),
+                                                        _ => None,
+                                                    };
+                                                    let wp_overrides_swatch = cur_custom_empty && platform::wallpaper_seed_hex(&cur_wp_for_sw).is_some() && !manual_accent();
+                                                    rsx! {
+                                                        for (val, color, label) in [
+                                                            ("blue", "#2E7CF6", "Xanh dương"),
+                                                            ("violet", "#8B5CF6", "Tím"),
+                                                            ("green", "#10B981", "Xanh lá"),
+                                                            ("orange", "#F97316", "Cam"),
+                                                            ("rose", "#F43F7E", "Hồng"),
+                                                            ("cyan", "#06B6D4", "Xanh ngọc"),
+                                                        ] {
+                                                            {
+                                                                let is_sw_active = cur_custom_empty && if wp_overrides_swatch {
+                                                                    wp_matched_accent == Some(val)
+                                                                } else {
+                                                                    appearance().accent == val
+                                                                };
+                                                                rsx! {
+                                                                    button {
+                                                                        key: "{val}",
+                                                                        r#type: "button",
+                                                                        role: "radio",
+                                                                        title: "{label}",
+                                                                        aria_label: "{label}",
+                                                                        aria_checked: "{is_sw_active}",
+                                                                        class: if is_sw_active { "accent-swatch active" } else { "accent-swatch" },
+                                                                        style: "background: {color};",
+                                                                        onclick: move |_| {
+                                                                            if !prefs_ctx.prefs.read().custom_accent.is_empty() {
+                                                                                prefs_ctx.update(|p| p.custom_accent.clear());
+                                                                            }
+                                                                            manual_accent.set(true);
+                                                                            platform::mark_manual_accent();
+                                                                            update_appearance(&|a| a.accent = val.to_string());
+                                                                        },
+                                                                        if is_sw_active { CheckIcon { size: 16 } }
+                                                                    }
+                                                                }
                                                             }
-                                                            update_appearance(&|a| a.accent = val.to_string());
-                                                        },
-                                                        if appearance().accent == val && prefs_ctx.prefs.read().custom_accent.is_empty() { CheckIcon { size: 16 } }
+                                                        }
                                                     }
                                                 }
                                             }
                                             {
                                                 let cur_custom = prefs_ctx.prefs.read().custom_accent.clone();
+                                                let cur_wp = prefs_ctx.prefs.read().app_wallpaper.clone();
                                                 let preset_hex = match appearance().accent.as_str() {
                                                     "cyan" => "#06B6D4",
                                                     "violet" => "#8B5CF6",
@@ -415,7 +451,12 @@ pub fn SettingsView(
                                                     "rose" => "#F43F7E",
                                                     _ => "#2E7CF6",
                                                 };
-                                                let picker_val = if cur_custom.is_empty() { preset_hex.to_string() } else { cur_custom.clone() };
+                                                let picker_val = if cur_custom.is_empty() {
+                                                    platform::wallpaper_seed_hex(&cur_wp).unwrap_or_else(|| preset_hex.to_string())
+                                                } else {
+                                                    cur_custom.clone()
+                                                };
+                                                let sync_attr = if cur_custom.is_empty() { "true" } else { "false" };
                                                 rsx! {
                                                     div { class: "settings-row accent-custom-row",
                                                         span { class: "grow", span { class: "settings-label", "Màu nhấn tùy chọn" } }
@@ -430,6 +471,7 @@ pub fn SettingsView(
                                                         input {
                                                             r#type: "color",
                                                             aria_label: "Màu nhấn",
+                                                            "data-sync-accent": "{sync_attr}",
                                                             value: "{picker_val}",
                                                             onchange: move |e| {
                                                                 let v = e.value().to_uppercase();
