@@ -208,16 +208,16 @@ try {
   await page.waitForTimeout(150);
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '01b_scrolled_bubbles_soft_cloud_mist_ocean.png') });
   record(
-    'Spec 068: Soft per-pixel cubic cloud mist dissolves scrolled bubbles smoothly at top & bottom with ZERO hard solid bar (no 84%/86% plateau)',
+    'Spec 070: Compact subtle per-pixel cloud mist hugs header (+10px, peak 0.56) & composer (+4px, peak 0.44) without washing out E2EE notice or bubbles above composer',
     maskAudit.msgsMask.includes('linear-gradient') &&
-      maskAudit.msgsMask.includes('0.02') &&
-      maskAudit.msgsMask.includes('0.42') &&
-      maskAudit.hdrBeforeH >= maskAudit.hdrH + 24 &&
-      maskAudit.hdrBeforeMask.includes('0.86') &&
-      maskAudit.hdrBeforeMask.includes('0.4') &&
+      maskAudit.msgsMask.includes('54px') &&
+      maskAudit.msgsMask.includes('52px') &&
+      maskAudit.hdrBeforeH >= maskAudit.hdrH + 6 &&
+      maskAudit.hdrBeforeH <= maskAudit.hdrH + 16 &&
+      maskAudit.hdrBeforeMask.includes('0.56') &&
       !maskAudit.hdrBeforeMask.includes('84%') &&
-      maskAudit.compBeforeMask.includes('0.86') &&
-      !maskAudit.compBeforeMask.includes('86% 0%') &&
+      maskAudit.compBeforeMask.includes('0.44') &&
+      !maskAudit.compBeforeMask.includes('0.86') &&
       !maskAudit.compBeforeMask.includes('rgb(0, 0, 0) 86%'),
     JSON.stringify(maskAudit)
   );

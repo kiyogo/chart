@@ -554,8 +554,8 @@
     const comp = chatCol.querySelector(':scope > .composer');
     const hdrH = hdr ? Math.max(48, hdr.getBoundingClientRect().height) : 56;
     const compRectH = comp ? Math.max(48, comp.getBoundingClientRect().height) : 62;
-    const topMistH = hdrH + 30;
-    const botMistH = compRectH + 30;
+    const topMistH = hdrH + 10;
+    const botMistH = compRectH + 4;
 
     if (chatCol.classList.contains('wp-image')) {
       chatCol.removeAttribute('data-chat-edge-strip');

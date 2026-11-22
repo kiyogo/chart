@@ -176,6 +176,8 @@ pub fn Chat(
     let mut is_emoji_open = use_signal(|| false);
     let mut is_friend_typing = use_signal(|| false);
     let is_sending = use_signal(|| false);
+    let mut in_flight_outbox = use_signal(HashSet::<String>::new);
+    let mut outbox_flushing = use_signal(|| false);
     let mut is_settings_open = use_signal(|| false);
 
     // Avatar & status note state
@@ -712,19 +714,32 @@ pub fn Chat(
                                 if is_for_active {
                                     messages.with_mut(|list| {
                                         if !list.iter().any(|m| m.id == id) {
-                                            list.push(DisplayMessage {
-                                                id: id.clone(),
-                                                seq,
-                                                sender_id: sender_id.clone(),
-                                                recipient_id: recipient_id.clone(),
-                                                text: decrypted.text.clone(),
-                                                created_at: created_at.clone(),
-                                                is_self: is_from_me,
-                                                status: MessageStatus::Sent,
-                                                reply_to_id: reply_to_id.clone(),
-                                                reactions: Vec::new(),
-                                                is_pinned: false,
-                                            });
+                                            if is_from_me
+                                                && let Some(slot) = list.iter_mut().find(|m| {
+                                                    m.is_self
+                                                        && m.status == MessageStatus::Pending
+                                                        && m.text == decrypted.text
+                                                })
+                                            {
+                                                slot.id = id.clone();
+                                                slot.seq = seq;
+                                                slot.created_at = created_at.clone();
+                                                slot.status = MessageStatus::Sent;
+                                            } else {
+                                                list.push(DisplayMessage {
+                                                    id: id.clone(),
+                                                    seq,
+                                                    sender_id: sender_id.clone(),
+                                                    recipient_id: recipient_id.clone(),
+                                                    text: decrypted.text.clone(),
+                                                    created_at: created_at.clone(),
+                                                    is_self: is_from_me,
+                                                    status: MessageStatus::Sent,
+                                                    reply_to_id: reply_to_id.clone(),
+                                                    reactions: Vec::new(),
+                                                    is_pinned: false,
+                                                });
+                                            }
                                         }
                                     });
                                     let snap = messages.peek().clone();
@@ -1383,15 +1398,25 @@ pub fn Chat(
                 "#,
             );
             while eval.recv::<bool>().await.is_ok() {
+                if *outbox_flushing.peek() {
+                    continue;
+                }
                 let pending = crate::storage::list_outbox_items().await;
                 if pending.is_empty() {
                     continue;
                 }
+                outbox_flushing.set(true);
                 for entry in pending {
+                    if in_flight_outbox.peek().contains(&entry.client_id) {
+                        continue;
+                    }
+                    in_flight_outbox.with_mut(|s| { s.insert(entry.client_id.clone()); });
                     let local_id = format!("local-{}", entry.client_id);
+                    let mut should_break = false;
                     match entry.kind.as_str() {
                         "dm" => {
                             if user_keys.peek().is_none() {
+                                in_flight_outbox.with_mut(|s| { s.remove(&entry.client_id); });
                                 continue;
                             }
                             match dm::send_encrypted_dm(
@@ -1450,7 +1475,7 @@ pub fn Chat(
                                 {
                                     crate::storage::remove_outbox_item(&entry.client_id).await;
                                 }
-                                Err(_) => break,
+                                Err(_) => should_break = true,
                             }
                         }
                         "group" => {
@@ -1484,7 +1509,7 @@ pub fn Chat(
                                         crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
                                     }
                                 }
-                                Err(e) if e.status == 0 => break,
+                                Err(e) if e.status == 0 => should_break = true,
                                 Err(_) => {
                                     crate::storage::remove_outbox_item(&entry.client_id).await;
                                 }
@@ -1514,7 +1539,7 @@ pub fn Chat(
                                         crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
                                     }
                                 }
-                                Err(e) if e.status == 0 => break,
+                                Err(e) if e.status == 0 => should_break = true,
                                 Err(_) => {
                                     crate::storage::remove_outbox_item(&entry.client_id).await;
                                 }
@@ -1524,7 +1549,12 @@ pub fn Chat(
                             crate::storage::remove_outbox_item(&entry.client_id).await;
                         }
                     }
+                    in_flight_outbox.with_mut(|s| { s.remove(&entry.client_id); });
+                    if should_break {
+                        break;
+                    }
                 }
+                outbox_flushing.set(false);
             }
         });
     });
@@ -2460,11 +2490,14 @@ pub fn Chat(
         let snap_opt = messages.peek().clone();
         let snap_more = *dm_has_more.peek();
 
+        in_flight_outbox.with_mut(|s| { s.insert(client_id.clone()); });
         spawn(async move {
             crate::storage::enqueue_outbox_item(&outbox_entry).await;
             crate::storage::save_cached_messages(&idb_key, &snap_opt, snap_more).await;
 
-            match dm::send_encrypted_dm(&uid, &active.id, &wire_text, reply_to.as_deref()).await {
+            let send_res = dm::send_encrypted_dm(&uid, &active.id, &wire_text, reply_to.as_deref()).await;
+            in_flight_outbox.with_mut(|s| { s.remove(&client_id); });
+            match send_res {
                 Ok(sent) => {
                     crate::storage::remove_outbox_item(&client_id).await;
                     if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(active.id.as_str()) {
@@ -2907,9 +2940,12 @@ pub fn Chat(
                 attempts: 0,
                 status: "pending".into(),
             };
+            in_flight_outbox.with_mut(|s| { s.insert(client_id.clone()); });
             crate::storage::enqueue_outbox_item(&outbox).await;
             let idb_key = format!("channel:{ch_uid}:{}", ch.id);
-            match api::channels_post_message(&ch.id, &content).await {
+            let ch_res = api::channels_post_message(&ch.id, &content).await;
+            in_flight_outbox.with_mut(|s| { s.remove(&client_id); });
+            match ch_res {
                 Ok(posted) => {
                     crate::storage::remove_outbox_item(&client_id).await;
                     if selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(ch.id.as_str()) {
@@ -3006,9 +3042,12 @@ pub fn Chat(
                 attempts: 0,
                 status: "pending".into(),
             };
+            in_flight_outbox.with_mut(|s| { s.insert(client_id.clone()); });
             crate::storage::enqueue_outbox_item(&outbox).await;
             let idb_key = format!("group:{grp_uid}:{gid}");
-            match groups::groups_send_message(&gid, cid.as_deref(), &text, reply).await {
+            let grp_res = groups::groups_send_message(&gid, cid.as_deref(), &text, reply).await;
+            in_flight_outbox.with_mut(|s| { s.remove(&client_id); });
+            match grp_res {
                 Ok(msg) => {
                     crate::storage::remove_outbox_item(&client_id).await;
                     if active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str()) {

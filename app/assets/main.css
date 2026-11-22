@@ -1831,7 +1831,7 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
 .composer::before {
   content: "";
   position: absolute;
-  top: -30px;
+  top: -4px;
   left: 0;
   right: 0;
   bottom: 0;
@@ -1843,20 +1843,18 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   -webkit-backdrop-filter: none !important;
   mask-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.86) 0%,
-    rgba(0, 0, 0, 0.66) 22%,
-    rgba(0, 0, 0, 0.40) 46%,
-    rgba(0, 0, 0, 0.18) 68%,
-    rgba(0, 0, 0, 0.05) 86%,
+    rgba(0, 0, 0, 0.44) 0%,
+    rgba(0, 0, 0, 0.24) 30%,
+    rgba(0, 0, 0, 0.08) 62%,
+    rgba(0, 0, 0, 0.02) 84%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.86) 0%,
-    rgba(0, 0, 0, 0.66) 22%,
-    rgba(0, 0, 0, 0.40) 46%,
-    rgba(0, 0, 0, 0.18) 68%,
-    rgba(0, 0, 0, 0.05) 86%,
+    rgba(0, 0, 0, 0.44) 0%,
+    rgba(0, 0, 0, 0.24) 30%,
+    rgba(0, 0, 0, 0.08) 62%,
+    rgba(0, 0, 0, 0.02) 84%,
     transparent 100%
   );
 }
@@ -10101,7 +10099,7 @@ input[type="color"]::-moz-color-swatch {
   display: none !important;
   content: none !important;
 }
-/* Soft per-pixel wallpaper-matched cubic cloud mist at top (.chat-header::before) & bottom (.composer::before) — ZERO solid bar (Spec 068) */
+/* Subtle compact per-pixel wallpaper-matched cloud mist at top (.chat-header::before) & bottom (.composer::before) (Spec 070) */
 .chat-column:has(> .chat-messages) > .chat-header::before {
   content: "";
   display: block !important;
@@ -10109,7 +10107,7 @@ input[type="color"]::-moz-color-swatch {
   top: 0;
   left: 0;
   right: 0;
-  height: calc(var(--header-height) + 30px);
+  height: calc(var(--header-height) + 10px);
   bottom: auto;
   pointer-events: none;
   z-index: -1;
@@ -10119,20 +10117,18 @@ input[type="color"]::-moz-color-swatch {
   -webkit-backdrop-filter: none !important;
   mask-image: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.86) 0%,
-    rgba(0, 0, 0, 0.66) 22%,
-    rgba(0, 0, 0, 0.40) 46%,
-    rgba(0, 0, 0, 0.18) 68%,
-    rgba(0, 0, 0, 0.05) 86%,
+    rgba(0, 0, 0, 0.56) 0%,
+    rgba(0, 0, 0, 0.36) 28%,
+    rgba(0, 0, 0, 0.16) 58%,
+    rgba(0, 0, 0, 0.04) 82%,
     transparent 100%
   ) !important;
   -webkit-mask-image: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.86) 0%,
-    rgba(0, 0, 0, 0.66) 22%,
-    rgba(0, 0, 0, 0.40) 46%,
-    rgba(0, 0, 0, 0.18) 68%,
-    rgba(0, 0, 0, 0.05) 86%,
+    rgba(0, 0, 0, 0.56) 0%,
+    rgba(0, 0, 0, 0.36) 28%,
+    rgba(0, 0, 0, 0.16) 58%,
+    rgba(0, 0, 0, 0.04) 82%,
     transparent 100%
   ) !important;
 }
@@ -10334,80 +10330,68 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 .chat-column:has(> .chat-messages) > .chat-header .chat-header-meta {
   text-shadow: none !important;
 }
-/* Full-height message stream with silky multi-stop cubic cloud dissolve at top & bottom — ZERO hard white bar (Spec 068) */
+/* Full-height message stream with compact subtle top & bottom edge dissolve — zero washout on messages (Spec 070) */
 .chat-column:has(> .chat-messages):not(:has(> .pinned-bar, > .chat-banner)) > .chat-messages {
   padding-top: calc(var(--header-height) + var(--space-5)) !important;
 }
 .chat-column:has(> .chat-messages):not(:has(> .pinned-bar, > .chat-banner)) > .chat-messages:not(:has(.lightbox, .modal-overlay)) {
   mask-image: linear-gradient(
     to bottom,
-    transparent 0px,
-    rgba(0, 0, 0, 0.02) 14px,
-    rgba(0, 0, 0, 0.08) 26px,
-    rgba(0, 0, 0, 0.20) 38px,
-    rgba(0, 0, 0, 0.42) 50px,
-    rgba(0, 0, 0, 0.68) 62px,
-    rgba(0, 0, 0, 0.90) 74px,
-    #000 84px,
-    #000 calc(100% - 92px),
-    rgba(0, 0, 0, 0.90) calc(100% - 82px),
-    rgba(0, 0, 0, 0.68) calc(100% - 70px),
-    rgba(0, 0, 0, 0.42) calc(100% - 58px),
-    rgba(0, 0, 0, 0.20) calc(100% - 44px),
-    rgba(0, 0, 0, 0.08) calc(100% - 30px),
-    rgba(0, 0, 0, 0.02) calc(100% - 16px),
-    transparent 100%
+    rgba(0, 0, 0, 0.04) 0px,
+    rgba(0, 0, 0, 0.14) 12px,
+    rgba(0, 0, 0, 0.36) 24px,
+    rgba(0, 0, 0, 0.66) 36px,
+    rgba(0, 0, 0, 0.90) 46px,
+    #000 54px,
+    #000 calc(100% - 52px),
+    rgba(0, 0, 0, 0.88) calc(100% - 42px),
+    rgba(0, 0, 0, 0.66) calc(100% - 30px),
+    rgba(0, 0, 0, 0.38) calc(100% - 18px),
+    rgba(0, 0, 0, 0.14) calc(100% - 8px),
+    rgba(0, 0, 0, 0.04) 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
-    transparent 0px,
-    rgba(0, 0, 0, 0.02) 14px,
-    rgba(0, 0, 0, 0.08) 26px,
-    rgba(0, 0, 0, 0.20) 38px,
-    rgba(0, 0, 0, 0.42) 50px,
-    rgba(0, 0, 0, 0.68) 62px,
-    rgba(0, 0, 0, 0.90) 74px,
-    #000 84px,
-    #000 calc(100% - 92px),
-    rgba(0, 0, 0, 0.90) calc(100% - 82px),
-    rgba(0, 0, 0, 0.68) calc(100% - 70px),
-    rgba(0, 0, 0, 0.42) calc(100% - 58px),
-    rgba(0, 0, 0, 0.20) calc(100% - 44px),
-    rgba(0, 0, 0, 0.08) calc(100% - 30px),
-    rgba(0, 0, 0, 0.02) calc(100% - 16px),
-    transparent 100%
+    rgba(0, 0, 0, 0.04) 0px,
+    rgba(0, 0, 0, 0.14) 12px,
+    rgba(0, 0, 0, 0.36) 24px,
+    rgba(0, 0, 0, 0.66) 36px,
+    rgba(0, 0, 0, 0.90) 46px,
+    #000 54px,
+    #000 calc(100% - 52px),
+    rgba(0, 0, 0, 0.88) calc(100% - 42px),
+    rgba(0, 0, 0, 0.66) calc(100% - 30px),
+    rgba(0, 0, 0, 0.38) calc(100% - 18px),
+    rgba(0, 0, 0, 0.14) calc(100% - 8px),
+    rgba(0, 0, 0, 0.04) 100%
   );
 }
 .chat-column:has(> .chat-messages):has(> .pinned-bar, > .chat-banner) > .chat-messages:not(:has(.lightbox, .modal-overlay)) {
   mask-image: linear-gradient(
     to bottom,
-    transparent 0px,
-    rgba(0, 0, 0, 0.16) 10px,
-    rgba(0, 0, 0, 0.56) 22px,
-    #000 36px,
-    #000 calc(100% - 92px),
-    rgba(0, 0, 0, 0.90) calc(100% - 82px),
-    rgba(0, 0, 0, 0.68) calc(100% - 70px),
-    rgba(0, 0, 0, 0.42) calc(100% - 58px),
-    rgba(0, 0, 0, 0.20) calc(100% - 44px),
-    rgba(0, 0, 0, 0.08) calc(100% - 30px),
-    rgba(0, 0, 0, 0.02) calc(100% - 16px),
-    transparent 100%
+    rgba(0, 0, 0, 0.08) 0px,
+    rgba(0, 0, 0, 0.36) 10px,
+    rgba(0, 0, 0, 0.76) 20px,
+    #000 28px,
+    #000 calc(100% - 52px),
+    rgba(0, 0, 0, 0.88) calc(100% - 42px),
+    rgba(0, 0, 0, 0.66) calc(100% - 30px),
+    rgba(0, 0, 0, 0.38) calc(100% - 18px),
+    rgba(0, 0, 0, 0.14) calc(100% - 8px),
+    rgba(0, 0, 0, 0.04) 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
-    transparent 0px,
-    rgba(0, 0, 0, 0.16) 10px,
-    rgba(0, 0, 0, 0.56) 22px,
-    #000 36px,
-    #000 calc(100% - 92px),
-    rgba(0, 0, 0, 0.90) calc(100% - 82px),
-    rgba(0, 0, 0, 0.68) calc(100% - 70px),
-    rgba(0, 0, 0, 0.42) calc(100% - 58px),
-    rgba(0, 0, 0, 0.20) calc(100% - 44px),
-    rgba(0, 0, 0, 0.08) calc(100% - 30px),
-    rgba(0, 0, 0, 0.02) calc(100% - 16px),
-    transparent 100%
+    rgba(0, 0, 0, 0.08) 0px,
+    rgba(0, 0, 0, 0.36) 10px,
+    rgba(0, 0, 0, 0.76) 20px,
+    #000 28px,
+    #000 calc(100% - 52px),
+    rgba(0, 0, 0, 0.88) calc(100% - 42px),
+    rgba(0, 0, 0, 0.66) calc(100% - 30px),
+    rgba(0, 0, 0, 0.38) calc(100% - 18px),
+    rgba(0, 0, 0, 0.14) calc(100% - 8px),
+    rgba(0, 0, 0, 0.04) 100%
   );
 }
 .chat-column:has(> .chat-messages) > .pinned-bar,
