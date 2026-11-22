@@ -3463,8 +3463,8 @@ html[data-theme="dark"][data-surface-tone="light"] .composer-box:focus-within::b
   --bg-hover: rgba(255, 255, 255, 0.14);
   --bg-active: rgba(255, 255, 255, 0.18);
   --bg-surface-hover: rgba(24, 32, 52, 0.84);
-  --bg-selected: rgba(56, 114, 240, 0.28);
-  --accent-soft: rgba(56, 114, 240, 0.28);
+  --bg-selected: rgba(56, 114, 240, 0.18);
+  --accent-soft: rgba(56, 114, 240, 0.18);
   --accent-text: #A6C8FF;
   --text-selected: #A6C8FF;
   --text-link: #A6C8FF;
@@ -3574,8 +3574,8 @@ html[data-theme="light"][data-surface-tone="dark"] {
   --bg-active: rgba(255, 255, 255, 0.15);
   --bg-input: rgba(24, 30, 42, 0.84);
   --bg-input-focus: rgba(30, 38, 54, 0.94);
-  --accent-soft: color-mix(in srgb, var(--accent) 24%, transparent);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 34%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 22%, transparent);
   --accent-text: color-mix(in srgb, var(--accent) 52%, #FFFFFF);
   --bg-selected: var(--accent-soft);
   --text: #F4F6FA;
@@ -3610,8 +3610,8 @@ html[data-theme="dark"][data-surface-tone="light"] {
   --bg-active: rgba(15, 23, 42, 0.11);
   --bg-input: rgba(255, 255, 255, 0.88);
   --bg-input-focus: #FFFFFF;
-  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 25%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 9%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 14%, transparent);
   --accent-text: color-mix(in srgb, var(--accent) 78%, #000000);
   --bg-selected: var(--accent-soft);
   --text: #111827;

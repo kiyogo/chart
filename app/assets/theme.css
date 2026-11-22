@@ -95,8 +95,8 @@
   --accent-h: 222;
   --accent: #2764E7;
   --accent-hover: #1853D2;
-  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 25%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 9%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 14%, transparent);
   --accent-text: #1B4FC4;
   --on-accent: #FFFFFF;
 
@@ -163,8 +163,8 @@
 /* ---------- Dark theme ---------- */
 [data-theme="dark"] {
   color-scheme: dark;
-  --accent-soft: color-mix(in srgb, var(--accent) 24%, transparent);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 34%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 22%, transparent);
   --accent-text: color-mix(in srgb, var(--accent) 55%, #FFFFFF);
 
   --bg-app: #0C0E12;

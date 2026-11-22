@@ -418,7 +418,7 @@ try {
   const sec72Rgba = parseRgba(m72.sec?.bg);
 
   record(
-    'Frameless (52%) -> Framed (72%) button transition has EXACT 0.00px width/height shift and luminous non-muddy active/secondary colors over Sunset wallpaper',
+    'Frameless (52%) -> Framed (72%) button transition has EXACT 0.00px width/height shift and airy soft luminous active/secondary colors over Sunset wallpaper',
     m52.textHalo === 'false' &&
       m72.textHalo === 'true' &&
       m72.luminous === 'true' &&
@@ -429,7 +429,14 @@ try {
       activeIdleHeightDiff === 0 &&
       idleSeg72?.borderTop === '0px' &&
       idleSeg72?.shadow.includes('inset') &&
-      Boolean(navActiveRgba && navActiveRgba.b >= 240 && navActiveRgba.b - navActiveRgba.r >= 20 && navActiveRgba.a >= 0.78) &&
+      Boolean(
+        navActiveRgba &&
+          navActiveRgba.r >= 228 &&
+          navActiveRgba.g >= 234 &&
+          navActiveRgba.b >= 245 &&
+          navActiveRgba.b - navActiveRgba.r >= 15 &&
+          navActiveRgba.a >= 0.76
+      ) &&
       Boolean(sec52Rgba && sec52Rgba.r === 255 && sec52Rgba.g === 255 && sec52Rgba.b === 255 && sec52Rgba.a >= 0.55) &&
       Boolean(sec72Rgba && sec72Rgba.r === 255 && sec72Rgba.g === 255 && sec72Rgba.b === 255 && sec72Rgba.a >= 0.65),
     JSON.stringify({

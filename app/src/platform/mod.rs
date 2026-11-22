@@ -847,7 +847,7 @@ if (!window.__chatwRecomputeContrast) {
                     const btnA = Math.min(0.80, 0.58 + transparency * 0.22);
                     root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${btnA.toFixed(2)})`);
                     root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${Math.min(0.94, btnA + 0.16).toFixed(2)})`);
-                    root.style.setProperty('--adaptive-btn-active', makeCleanTint(effAccentHex, false, 0.15, Math.min(0.95, btnA + 0.18)));
+                    root.style.setProperty('--adaptive-btn-active', makeCleanTint(effAccentHex, false, 0.08, Math.min(0.92, btnA + 0.16)));
                     root.style.setProperty('--adaptive-btn-ring', `rgba(${hr}, ${hg}, ${hb}, 0.15)`);
                     root.style.setProperty('--adaptive-switch-bg', `rgba(${hr}, ${hg}, ${hb}, 0.28)`);
                 } else {
@@ -931,25 +931,25 @@ if (!window.__chatwRecomputeContrast) {
             root.style.setProperty('--on-accent', accentInk.text);
             root.style.setProperty('--accent-text', safeText);
             root.style.setProperty('--accent-soft', surfaceTone === 'dark'
-                ? `color-mix(in srgb, ${safeAccent} 24%, transparent)`
-                : `color-mix(in srgb, ${safeAccent} 16%, transparent)`);
+                ? `color-mix(in srgb, ${safeAccent} 15%, transparent)`
+                : `color-mix(in srgb, ${safeAccent} 9%, transparent)`);
             root.style.setProperty('--accent-soft-strong', surfaceTone === 'dark'
-                ? `color-mix(in srgb, ${safeAccent} 34%, transparent)`
-                : `color-mix(in srgb, ${safeAccent} 25%, transparent)`);
+                ? `color-mix(in srgb, ${safeAccent} 22%, transparent)`
+                : `color-mix(in srgb, ${safeAccent} 14%, transparent)`);
         } else {
             ['--accent', '--accent-hover', '--on-accent', '--accent-text', '--accent-soft', '--accent-soft-strong']
                 .forEach((k) => root.style.removeProperty(k));
         }
 
-        // Luminance-normalized luminous active/selected/pressed pills & glass hover over translucent wallpapers
+        // Luminance-normalized ultra-light airy active/selected/pressed pills & glass hover over translucent wallpapers
         if (needsLuminousControls) {
             const lumRamp = Math.min(1, Math.max(0, (transparency - 0.28) / 0.72));
             const isDarkSurf = surfaceTone === 'dark';
-            const pillA = isDarkSurf ? (0.78 + lumRamp * 0.14) : (0.80 + lumRamp * 0.13);
+            const pillA = isDarkSurf ? (0.76 + lumRamp * 0.12) : (0.78 + lumRamp * 0.10);
             const [vr, vg, vb] = makeVibrantRgb(effAccentHex, isDarkSurf);
-            root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.34 : 0.18, pillA));
-            root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.44 : 0.26, Math.min(0.96, pillA + 0.06)));
-            root.style.setProperty('--adaptive-active-ring', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${isDarkSurf ? '0.42' : '0.20'})`);
+            root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.18 : 0.10, pillA));
+            root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.26 : 0.14, Math.min(0.94, pillA + 0.06)));
+            root.style.setProperty('--adaptive-active-ring', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${isDarkSurf ? '0.24' : '0.11'})`);
             if (!isDarkSurf && isColoredSurface) {
                 root.style.setProperty('--bg-hover', `rgba(255, 255, 255, ${(0.46 + lumRamp * 0.18).toFixed(2)})`);
                 root.style.setProperty('--bg-active', `rgba(255, 255, 255, ${(0.64 + lumRamp * 0.18).toFixed(2)})`);
