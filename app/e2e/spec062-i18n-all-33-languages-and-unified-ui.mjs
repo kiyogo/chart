@@ -32,9 +32,19 @@ function record(name, pass, detail = '') {
 }
 
 function parseRgb(str) {
-  const m = (str || '').match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/i);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] };
+  const s = str || '';
+  const m = s.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/i);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] };
+  const srgb = s.match(/color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)/i);
+  if (srgb) {
+    return {
+      r: Math.round(+srgb[1] * 255),
+      g: Math.round(+srgb[2] * 255),
+      b: Math.round(+srgb[3] * 255),
+      a: srgb[4] == null ? 1 : +srgb[4],
+    };
+  }
+  return null;
 }
 
 function relLum(c) {
@@ -52,6 +62,16 @@ function contrastRatio(fgStr, bgStr) {
   const l1 = relLum(fg);
   const l2 = relLum(bg);
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
+function isTranslucentAccent(str, hue) {
+  const c = parseRgb(str);
+  if (!c) return false;
+  // Must be strictly low-opacity translucent (0.11 .. 0.34), NEVER heavy 100% solid fill!
+  if (c.a < 0.11 || c.a > 0.34) return false;
+  if (hue === 'blue') return c.b > 190 && c.b > c.r + 100;
+  if (hue === 'violet') return c.b > 200 && c.r > 100 && c.r < 175 && c.g < 120;
+  return true;
 }
 
 const browser = await chromium.launch({
@@ -137,11 +157,11 @@ try {
   });
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '01_language_grid_33_untruncated.png') });
   record(
-    'All 33 language tiles display full native names (Bahasa Indonesia, Português Brasil) with zero "..." truncation & vivid accent active pill',
+    'All 33 language tiles display full native names (Bahasa Indonesia, Português Brasil) with zero "..." truncation & soft low-opacity accent active pill (never 100% solid)',
     langGridAudit.total === 33 &&
       langGridAudit.truncated.length === 0 &&
-      langGridAudit.activeBg === 'rgb(46, 124, 246)' &&
-      langGridAudit.activeColor === 'rgb(255, 255, 255)',
+      isTranslucentAccent(langGridAudit.activeBg, 'blue') &&
+      (langGridAudit.activeColor === 'rgb(23, 28, 38)' || langGridAudit.activeColor === 'rgb(15, 23, 42)'),
     JSON.stringify(langGridAudit)
   );
 
@@ -172,11 +192,14 @@ try {
     hasUploadEn: document.querySelector('.settings-body')?.innerText?.includes('Upload your image') || false,
     hasResetEn: document.querySelector('.settings-body')?.innerText?.includes('Reset default appearance') || false,
     hasTransparencyEn: document.querySelector('.settings-body')?.innerText?.includes('Panel transparency: 0%') || false,
+    opaqueNavActiveBg: getComputedStyle(document.querySelector('.settings-nav-item.active')).backgroundColor,
+    opaqueNavActiveColor: getComputedStyle(document.querySelector('.settings-nav-item.active')).color,
+    opaqueSegActiveBg: getComputedStyle(document.querySelector('.settings-body .segmented button.active')).backgroundColor,
   }));
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '02_appearance_english_opaque.png') });
 
   record(
-    'English (en) immediately translates Settings Nav, Search placeholder, Appearance headings, Themes, Wallpapers, Sliders & Buttons',
+    'English (en) immediately translates Settings Nav, Search placeholder, Appearance headings, Themes, Wallpapers, Sliders & Buttons + opaque active pills stay strictly low-opacity translucent',
     enLangPage.lang === 'en' &&
       enLangPage.dir === 'ltr' &&
       enLangPage.pageTitle === 'Language' &&
@@ -191,7 +214,9 @@ try {
       enAppearance.themeNames.includes('Dark') &&
       enAppearance.hasUploadEn &&
       enAppearance.hasResetEn &&
-      enAppearance.hasTransparencyEn,
+      enAppearance.hasTransparencyEn &&
+      isTranslucentAccent(enAppearance.opaqueNavActiveBg, 'blue') &&
+      isTranslucentAccent(enAppearance.opaqueSegActiveBg, 'blue'),
     JSON.stringify({ enLangPage: { lang: enLangPage.lang, pageTitle: enLangPage.pageTitle, searchPh: enLangPage.searchPh }, enAppearance })
   );
 
@@ -360,9 +385,8 @@ try {
       navActiveColor: navActive ? getComputedStyle(navActive).color : '',
       railActiveBg: railActive ? getComputedStyle(railActive).backgroundColor : '',
       railActiveColor: railActive ? getComputedStyle(railActive).color : '',
-      activeSegsAllBlueWhite: activeSegs.every(
-        (b) => getComputedStyle(b).backgroundColor === 'rgb(46, 124, 246)' && getComputedStyle(b).color === 'rgb(255, 255, 255)'
-      ),
+      activeSegsBgs: activeSegs.map((b) => getComputedStyle(b).backgroundColor),
+      activeSegsColors: activeSegs.map((b) => getComputedStyle(b).color),
       segTrackBg: segTracks[0] ? getComputedStyle(segTracks[0]).backgroundColor : '',
       idleSegAllTransparent: idleSegs.every((b) => getComputedStyle(b).backgroundColor === 'rgba(0, 0, 0, 0)'),
       idleSegColor: idleSegs[0] ? getComputedStyle(idleSegs[0]).color : '',
@@ -385,25 +409,29 @@ try {
   const idleSegCR = contrastRatio(busyUiAudit.idleSegColor, busyUiAudit.segTrackBg);
   const searchCR = contrastRatio(busyUiAudit.searchColor, busyUiAudit.searchBg);
 
+  const activeSegsAllSoftBlue =
+    busyUiAudit.activeSegsBgs.length > 0 &&
+    busyUiAudit.activeSegsBgs.every((bg) => isTranslucentAccent(bg, 'blue')) &&
+    busyUiAudit.activeSegsColors.every((c) => c === 'rgb(255, 255, 255)' || c === 'rgb(15, 23, 42)');
+
   record(
-    'Busy colorful wallpaper @ 100% transparency: ZERO patchy white scrim boxes, 100% Blue accent sync across active pills/rail/theme ring, unified .segmented track, crisp inputs & >=4.5:1 button contrast',
+    'Busy colorful wallpaper @ 100% transparency: ZERO patchy white scrim boxes, soft low-opacity Blue accent pills (never solid 100%), unified .segmented track, crisp inputs & >=4.5:1 button contrast',
     busyUiAudit.scrimNodes === 0 &&
       busyUiAudit.allIdleNavTransparent &&
-      busyUiAudit.navActiveBg === 'rgb(46, 124, 246)' &&
-      busyUiAudit.navActiveColor === 'rgb(255, 255, 255)' &&
-      busyUiAudit.railActiveBg === 'rgb(46, 124, 246)' &&
-      busyUiAudit.activeSegsAllBlueWhite &&
+      isTranslucentAccent(busyUiAudit.navActiveBg, 'blue') &&
+      isTranslucentAccent(busyUiAudit.railActiveBg, 'blue') &&
+      activeSegsAllSoftBlue &&
       busyUiAudit.idleSegAllTransparent &&
-      busyUiAudit.themeActiveShadow.includes('46, 124, 246') &&
+      busyUiAudit.themeActiveShadow.includes('1.5px') &&
       uploadCR >= 7 &&
       resetCR >= 7 &&
       idleSegCR >= 7 &&
       searchCR >= 7 &&
       busyUiAudit.searchFocusBorder === 'rgb(46, 124, 246)',
-    JSON.stringify({ ...busyUiAudit, uploadCR: +uploadCR.toFixed(1), resetCR: +resetCR.toFixed(1), idleSegCR: +idleSegCR.toFixed(1), searchCR: +searchCR.toFixed(1) })
+    JSON.stringify({ ...busyUiAudit, activeSegsAllSoftBlue, uploadCR: +uploadCR.toFixed(1), resetCR: +resetCR.toFixed(1), idleSegCR: +idleSegCR.toFixed(1), searchCR: +searchCR.toFixed(1) })
   );
 
-  // 5. Switch accent to Violet (#8B5CF6 -> rgb(139, 92, 246)) and verify ALL active controls sync instantaneously!
+  // 5. Switch accent to Violet (#8B5CF6) and verify ALL low-opacity active pills sync instantaneously!
   await page.locator('.accent-swatch[aria-label="Tím"]').click();
   await page.waitForTimeout(260);
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '05_busy_colorful_wp_100pct_violet_accent.png') });
@@ -414,10 +442,10 @@ try {
     brandBg: getComputedStyle(document.querySelector('.rail-brand')).backgroundColor,
   }));
   record(
-    'Switching Accent to Violet (#8B5CF6) instantaneously synchronizes nav pill, rail pill, segmented buttons & brand logo',
-    violetSync.navActiveBg === 'rgb(139, 92, 246)' &&
-      violetSync.railActiveBg === 'rgb(139, 92, 246)' &&
-      violetSync.segActiveBg === 'rgb(139, 92, 246)' &&
+    'Switching Accent to Violet (#8B5CF6) instantaneously synchronizes soft low-opacity nav pill, rail pill, segmented buttons & brand logo',
+    isTranslucentAccent(violetSync.navActiveBg, 'violet') &&
+      isTranslucentAccent(violetSync.railActiveBg, 'violet') &&
+      isTranslucentAccent(violetSync.segActiveBg, 'violet') &&
       violetSync.brandBg === 'rgb(139, 92, 246)',
     JSON.stringify(violetSync)
   );

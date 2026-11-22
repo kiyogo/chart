@@ -559,9 +559,19 @@ try {
   await page.waitForTimeout(150);
 
   const parseRgba = (s) => {
-    const m = (s || '').match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)/i);
-    if (!m) return null;
-    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+    const str = s || '';
+    const m = str.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)/i);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+    const srgb = str.match(/color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)/i);
+    if (srgb) {
+      return {
+        r: Math.round(+srgb[1] * 255),
+        g: Math.round(+srgb[2] * 255),
+        b: Math.round(+srgb[3] * 255),
+        a: srgb[4] === undefined ? 1 : +srgb[4],
+      };
+    }
+    return null;
   };
   let maxSegDW = 0;
   let maxSegDH = 0;
@@ -579,7 +589,7 @@ try {
   const sunsetActiveRgba = parseRgba(m72.navActiveBg);
   const sunsetHoverRgba = parseRgba(m72.hoverToken);
   const sunsetSecRgba = parseRgba(m72.sec?.bg);
-  const isBluePill = (c) => Boolean(c && c.b >= 220 && c.b > c.r + 160 && c.a >= 0.95);
+  const isBluePill = (c) => Boolean(c && c.b >= 200 && c.b > c.r + 120 && c.a >= 0.12 && c.a <= 0.28);
   const gSafe = Boolean(
     m72.labelG &&
       m72.labelG.lineHeight >= m72.labelG.fontSize * 1.45 &&
@@ -588,7 +598,7 @@ try {
   );
 
   record(
-    'Spec 060 & 062 No Wallpaper Auto-Recolor: Sunset/Aurora/Mint/Red Photo @ 0%-100% transparency ALWAYS keep user Blue (#2E7CF6), synchronized vivid active pills, crisp buttons, custom accent persists across wallpaper switches, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
+    'Spec 060, 062 & 063 No Wallpaper Auto-Recolor: Sunset/Aurora/Mint/Red Photo @ 0%-100% transparency ALWAYS keep user Blue (#2E7CF6), soft low-opacity translucent active pills, crisp buttons, custom accent persists across wallpaper switches, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
     mSunset0.wpThemeActive === 'false' &&
       mSunset0.accentVar === '#2E7CF6' &&
       mAurora100.wpThemeActive === 'false' &&
@@ -618,7 +628,7 @@ try {
       isBluePill(mintActiveRgba) &&
       isBluePill(sunsetActiveRgba) &&
       Boolean(sunsetHoverRgba && sunsetHoverRgba.r <= 30 && sunsetHoverRgba.a <= 0.10) &&
-      Boolean(sunsetSecRgba && sunsetSecRgba.r >= 230 && sunsetSecRgba.a >= 0.80),
+      Boolean(sunsetSecRgba && sunsetSecRgba.r >= 220 && sunsetSecRgba.a >= 0.40 && sunsetSecRgba.a <= 0.72),
     JSON.stringify({
       maxSegDW,
       maxSegDH,

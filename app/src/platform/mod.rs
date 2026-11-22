@@ -867,18 +867,18 @@ if (!window.__chatwRecomputeContrast) {
             root.style.removeProperty('--text-muted');
         }
 
-        // Spec 062: Unified, crisp action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) & switch track
+        // Spec 063: Soft, airy low-opacity translucent action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) & switch track
         if (isTranslucentWp) {
             if (surfaceTone === 'light') {
-                root.style.setProperty('--adaptive-btn-bg', 'rgba(255, 255, 255, 0.88)');
-                root.style.setProperty('--adaptive-btn-hover', 'rgba(255, 255, 255, 0.96)');
-                root.style.setProperty('--adaptive-btn-active', 'rgba(241, 245, 249, 0.98)');
-                root.style.setProperty('--adaptive-btn-ring', 'rgba(15, 23, 42, 0.11)');
+                root.style.setProperty('--adaptive-btn-bg', 'rgba(255, 255, 255, 0.50)');
+                root.style.setProperty('--adaptive-btn-hover', 'rgba(255, 255, 255, 0.68)');
+                root.style.setProperty('--adaptive-btn-active', 'rgba(255, 255, 255, 0.78)');
+                root.style.setProperty('--adaptive-btn-ring', 'rgba(15, 23, 42, 0.12)');
                 root.style.setProperty('--adaptive-switch-bg', 'rgba(15, 23, 42, 0.20)');
             } else {
-                root.style.setProperty('--adaptive-btn-bg', 'rgba(18, 24, 38, 0.82)');
-                root.style.setProperty('--adaptive-btn-hover', 'rgba(30, 41, 59, 0.92)');
-                root.style.setProperty('--adaptive-btn-active', 'rgba(38, 50, 72, 0.96)');
+                root.style.setProperty('--adaptive-btn-bg', 'rgba(15, 23, 42, 0.50)');
+                root.style.setProperty('--adaptive-btn-hover', 'rgba(24, 34, 54, 0.66)');
+                root.style.setProperty('--adaptive-btn-active', 'rgba(30, 41, 59, 0.76)');
                 root.style.setProperty('--adaptive-btn-ring', 'rgba(255, 255, 255, 0.16)');
                 root.style.setProperty('--adaptive-switch-bg', 'rgba(255, 255, 255, 0.24)');
             }
@@ -952,31 +952,31 @@ if (!window.__chatwRecomputeContrast) {
             }
         });
 
-        // Clean active/hover contrast over translucent wallpapers using strictly the USER'S chosen accent + neutral hover
+        // Clean low-opacity active/hover contrast over translucent wallpapers using strictly the USER'S chosen accent
         if (needsLuminousControls) {
             const isDarkSurf = surfaceTone === 'dark';
             const [vr, vg, vb] = makeVibrantRgb(effAccentHex, isDarkSurf);
             const rI = Math.round(vr), gI = Math.round(vg), bI = Math.round(vb);
             if (isDarkSurf) {
-                const darkPillA = 0.24 + transparency * 0.06;
+                const darkPillA = 0.22 + transparency * 0.04;
                 root.style.setProperty('--accent-soft', `rgba(${rI}, ${gI}, ${bI}, ${darkPillA.toFixed(2)})`);
-                root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${Math.min(0.42, darkPillA + 0.08).toFixed(2)})`);
+                root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${Math.min(0.34, darkPillA + 0.07).toFixed(2)})`);
                 root.style.setProperty('--adaptive-active-ring', 'transparent');
                 root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.09)');
                 root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.15)');
                 root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.08)');
-                root.style.setProperty('--bg-input', 'rgba(15, 23, 42, 0.80)');
-                root.style.setProperty('--input-border', 'rgba(255, 255, 255, 0.16)');
+                root.style.setProperty('--bg-input', 'rgba(15, 23, 42, 0.54)');
+                root.style.setProperty('--input-border', 'rgba(255, 255, 255, 0.18)');
             } else {
-                const lightPillA = 0.15 + transparency * 0.05;
+                const lightPillA = 0.14 + transparency * 0.04;
                 root.style.setProperty('--accent-soft', `rgba(${rI}, ${gI}, ${bI}, ${lightPillA.toFixed(2)})`);
-                root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${(lightPillA + 0.07).toFixed(2)})`);
+                root.style.setProperty('--accent-soft-strong', `rgba(${rI}, ${gI}, ${bI}, ${(lightPillA + 0.06).toFixed(2)})`);
                 root.style.setProperty('--adaptive-active-ring', 'transparent');
                 root.style.setProperty('--bg-hover', 'rgba(15, 23, 42, 0.06)');
                 root.style.setProperty('--bg-active', 'rgba(15, 23, 42, 0.11)');
                 root.style.setProperty('--bg-surface-hover', 'rgba(15, 23, 42, 0.055)');
-                root.style.setProperty('--bg-input', 'rgba(255, 255, 255, 0.88)');
-                root.style.setProperty('--input-border', 'rgba(15, 23, 42, 0.13)');
+                root.style.setProperty('--bg-input', 'rgba(255, 255, 255, 0.56)');
+                root.style.setProperty('--input-border', 'rgba(15, 23, 42, 0.14)');
             }
         } else {
             ['--adaptive-active-ring', '--bg-hover', '--bg-active', '--bg-surface-hover', '--bg-input', '--input-border']

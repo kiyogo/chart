@@ -753,16 +753,16 @@
     taggedElements.clear();
   }
 
-  // Spec 062: Only sample truly transparent idle rows/tiles; NEVER override text polarity on
-  // filled controls (.btn-secondary, .btn-ghost, .segmented button) or .active/.selected pills.
+  // Spec 062 & 063: Sample transparent rows/tiles (including low-opacity translucent active nav/rail/chat pills
+  // so their ink adapts over split light/dark wallpapers), while NEVER overriding filled .btn-secondary/.btn-ghost/.segmented.
   const LOCAL_ROW_SELECTOR = [
-    '.app-rail .rail-item:not(.has-logo):not(.active)',
-    '.settings-nav .settings-nav-item:not(.active)',
-    '.nav-sidebar .chat-item:not(.has-nameplate):not(.selected):not(.active)',
-    '.nav-sidebar .filter-chip:not(.active)',
-    '.nav-sidebar .channel-row:not(.selected)',
-    '.settings-body .wallpaper-tile:not(.active)',
-    '.settings-body .theme-card:not(.active)',
+    '.app-rail .rail-item:not(.has-logo)',
+    '.settings-nav .settings-nav-item',
+    '.nav-sidebar .chat-item:not(.has-nameplate)',
+    '.nav-sidebar .filter-chip',
+    '.nav-sidebar .channel-row',
+    '.settings-body .wallpaper-tile',
+    '.settings-body .theme-card',
   ].join(', ');
 
   const LOCAL_TEXT_SELECTOR = [

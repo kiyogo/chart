@@ -95,8 +95,8 @@
   --accent-h: 217;
   --accent: #2E7CF6;
   --accent-hover: #1D6AE5;
-  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 20%, transparent);
   --accent-text: #1B5FD4;
   --on-accent: #FFFFFF;
 
@@ -163,8 +163,8 @@
 /* ---------- Dark theme (Tối — comfortable deep slate, softer than pitch black) ---------- */
 [data-theme="dark"] {
   color-scheme: dark;
-  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 26%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 30%, transparent);
   --accent-text: color-mix(in srgb, var(--accent) 62%, #FFFFFF);
 
   --bg-app: #111318;

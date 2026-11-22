@@ -3785,10 +3785,9 @@ html[data-rail-scrim="true"][data-rail-tone="dark"] .app-rail {
   background: rgba(15, 19, 28, 0.74);
   border-radius: var(--panel-radius);
 }
-/* Spec 062: Active rail icon uses crisp vivid --accent synchronized across the entire app */
+/* Spec 063: Active rail icon uses soft low-opacity translucent --accent-soft tint (never heavy 100% solid block) */
 html[data-rail-scrim="true"] .app-rail .rail-item.active:not(.has-logo) {
-  background: var(--accent) !important;
-  color: var(--on-accent) !important;
+  background: var(--accent-soft) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   box-shadow: none !important;
@@ -10373,23 +10372,24 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   line-height: 1.35 !important;
 }
 
-/* 12. Spec 061 & 062 — Real-Time Per-Position Adaptive Surface & Contrast (powered by app/web/adaptive_surface.js)
-       Each visible transparent idle row/heading dynamically adapts ink polarity and local hover wash to the
-       EXACT wallpaper pixels directly behind its screen coordinates — NEVER adding patchy white scrim boxes
-       and NEVER overriding ink on active/selected accent pills or filled action buttons. */
-[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) {
+/* 12. Spec 061, 062 & 063 — Real-Time Per-Position Adaptive Surface & Contrast (powered by app/web/adaptive_surface.js)
+       Transparent idle AND low-opacity active rows/headings dynamically adapt ink polarity and local hover wash
+       to the EXACT wallpaper pixels behind their screen coordinates — NEVER adding patchy white scrim boxes
+       and NEVER inverting ink on filled controls (.btn-secondary, .btn-ghost, .segmented button). */
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) {
   color: #FFFFFF !important;
 }
-[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > svg,
-[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > .rail-icon > svg,
-[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
-[data-local-tone="dark"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
-.wallpaper-tile:not(.active)[data-local-tone="dark"] > span:not(.wallpaper-sample),
-.theme-card:not(.active)[data-local-tone="dark"] > span {
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > span,
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > svg,
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > .rail-icon > svg,
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
+.wallpaper-tile[data-local-tone="dark"] > span:not(.wallpaper-sample),
+.theme-card[data-local-tone="dark"] > span {
   color: #FFFFFF !important;
 }
-[data-local-tone="dark"]:not(.active):not(.selected) .chat-item-preview,
-[data-local-tone="dark"]:not(.active):not(.selected) .chat-item-time,
+[data-local-tone="dark"] .chat-item-preview,
+[data-local-tone="dark"] .chat-item-time,
 [data-local-tone="dark"] .chat-header-meta:not(.secure) {
   color: rgba(241, 245, 249, 0.86) !important;
 }
@@ -10397,15 +10397,16 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   color: #4ADE80 !important;
 }
 
-[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) {
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) {
   color: #000000 !important;
 }
-[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > svg,
-[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > .rail-icon > svg,
-[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
-[data-local-tone="light"]:not(.active):not(.selected):not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
-.wallpaper-tile:not(.active)[data-local-tone="light"] > span:not(.wallpaper-sample),
-.theme-card:not(.active)[data-local-tone="light"] > span {
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > span,
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > svg,
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) > .rail-icon > svg,
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
+.wallpaper-tile[data-local-tone="light"] > span:not(.wallpaper-sample),
+.theme-card[data-local-tone="light"] > span {
   color: #000000 !important;
 }
 /* Per-position adaptive composer pill matching bright/dark bottom region of split wallpapers */
@@ -10461,8 +10462,8 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 }
 
 /* ==========================================================================
-   13. Spec 062 — Unified Accent-Synchronized Active Controls, Sleek Segmented
-       Pill Tracks, Crisp Action Buttons, Refined Inputs & Full RTL Support
+   13. Spec 062 & 063 — Low-Opacity Translucent Accent-Synchronized Controls,
+       Soft Segmented Pill Tracks, Crisp Action Buttons, Refined Inputs & RTL
    ========================================================================== */
 
 /* A. Language Grid: full native names with zero "..." truncation */
@@ -10472,7 +10473,8 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   text-overflow: clip !important;
 }
 
-/* B. 100% Accent Synchronization on Active Nav Items, Tabs, Pills, Chips & Rail */
+/* B. Soft Low-Opacity Translucent Accent Tint (14%-26% alpha, NEVER 100% heavy solid block)
+      Synchronized 100% with user's chosen Màu nhấn (--accent) + crisp surface-matched ink */
 .settings-nav-item.active:not(.danger),
 .segmented button.active,
 .lang-tile.active,
@@ -10486,8 +10488,8 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 .channel-row.selected,
 .cw-select-option.selected,
 .icon-btn.active:not(.danger):not(.btn-danger) {
-  background: var(--accent) !important;
-  color: var(--on-accent) !important;
+  background: var(--accent-soft) !important;
+  color: var(--text-primary) !important;
   box-shadow: none !important;
 }
 .settings-nav-item.active:not(.danger):hover,
@@ -10502,8 +10504,8 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 .chat-item.active:not(.has-nameplate):hover,
 .channel-row.selected:hover,
 .icon-btn.active:not(.danger):not(.btn-danger):hover {
-  background: var(--accent-hover) !important;
-  color: var(--on-accent) !important;
+  background: var(--accent-soft-strong) !important;
+  color: var(--text-primary) !important;
 }
 .settings-nav-item.active:not(.danger) > span,
 .settings-nav-item.active:not(.danger) svg,
@@ -10514,65 +10516,71 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 .icon-btn.active:not(.danger):not(.btn-danger) svg,
 .chat-item.selected:not(.has-nameplate) .chat-item-name,
 .chat-item.active:not(.has-nameplate) .chat-item-name {
-  color: var(--on-accent) !important;
+  color: var(--text-primary) !important;
 }
 .chat-item.selected:not(.has-nameplate) .chat-item-preview,
 .chat-item.selected:not(.has-nameplate) .chat-item-time,
 .chat-item.active:not(.has-nameplate) .chat-item-preview,
 .chat-item.active:not(.has-nameplate) .chat-item-time {
-  color: color-mix(in srgb, var(--on-accent) 82%, transparent) !important;
+  color: var(--text-secondary) !important;
 }
 html .app-rail .rail-item.active:not(.has-logo),
 html[data-panel-translucent="true"] .app-rail .rail-item.active:not(.has-logo),
 html[data-panel-scrim="true"] .app-rail .rail-item.active:not(.has-logo),
 html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo),
 html[data-rail-tone="light"] .app-rail .rail-item.active:not(.has-logo) {
-  background: var(--accent) !important;
-  color: var(--on-accent) !important;
+  background: var(--accent-soft) !important;
   box-shadow: none !important;
 }
 html .app-rail .rail-item.active:not(.has-logo):hover,
 html[data-panel-translucent="true"] .app-rail .rail-item.active:not(.has-logo):hover {
-  background: var(--accent-hover) !important;
-  color: var(--on-accent) !important;
+  background: var(--accent-soft-strong) !important;
 }
-html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo) svg,
+html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo),
+html[data-rail-tone="dark"] .app-rail .rail-item.active:not(.has-logo) svg {
+  color: #F8FAFC !important;
+}
+html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo),
 html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .rail-item.active:not(.has-logo) svg {
-  color: var(--on-accent) !important;
+  color: #0F172A !important;
 }
 
-/* Active Theme Card & Wallpaper Tile: crisp 2px --accent ring + matched clean backing + high-contrast caption */
+/* Re-assert per-position adaptive ink for translucent active nav/rail/chat rows on split dark+light wallpapers */
+html[data-app-wp] .settings-nav-item.active[data-local-tone="dark"],
+html[data-app-wp] .settings-nav-item.active[data-local-tone="dark"] > span,
+html[data-app-wp] .settings-nav-item.active[data-local-tone="dark"] svg,
+html[data-app-wp][data-rail-tone] .app-rail .rail-item.active[data-local-tone="dark"]:not(.has-logo),
+html[data-app-wp][data-rail-tone] .app-rail .rail-item.active[data-local-tone="dark"]:not(.has-logo) svg,
+html[data-app-wp] .app-rail .rail-item.active[data-local-tone="dark"]:not(.has-logo),
+html[data-app-wp] .app-rail .rail-item.active[data-local-tone="dark"]:not(.has-logo) svg,
+html[data-app-wp] .chat-item.selected[data-local-tone="dark"]:not(.has-nameplate) .chat-item-name {
+  color: #FFFFFF !important;
+}
+html[data-app-wp] .settings-nav-item.active[data-local-tone="light"],
+html[data-app-wp] .settings-nav-item.active[data-local-tone="light"] > span,
+html[data-app-wp] .settings-nav-item.active[data-local-tone="light"] svg,
+html[data-app-wp][data-rail-tone] .app-rail .rail-item.active[data-local-tone="light"]:not(.has-logo),
+html[data-app-wp][data-rail-tone] .app-rail .rail-item.active[data-local-tone="light"]:not(.has-logo) svg,
+html[data-app-wp] .app-rail .rail-item.active[data-local-tone="light"]:not(.has-logo),
+html[data-app-wp] .app-rail .rail-item.active[data-local-tone="light"]:not(.has-logo) svg,
+html[data-app-wp] .chat-item.selected[data-local-tone="light"]:not(.has-nameplate) .chat-item-name {
+  color: #000000 !important;
+}
+
+/* Active Theme Card & Wallpaper Tile: soft low-opacity accent tint + delicate 1.5px accent hairline */
 .theme-card.active,
 .wallpaper-tile.active {
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface)) !important;
-  box-shadow: inset 0 0 0 2px var(--accent) !important;
+  background: var(--accent-soft) !important;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent) !important;
   color: var(--text-primary) !important;
 }
 .theme-card.active:hover,
 .wallpaper-tile.active:hover {
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg-surface)) !important;
-  box-shadow: inset 0 0 0 2px var(--accent) !important;
-}
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .theme-card.active,
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .wallpaper-tile.active {
-  background: color-mix(in srgb, var(--accent) 14%, rgba(255, 255, 255, 0.90)) !important;
-  color: #0F172A !important;
-}
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .theme-card.active > span,
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .wallpaper-tile.active > span:not(.wallpaper-sample) {
-  color: #0F172A !important;
-}
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .theme-card.active,
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .wallpaper-tile.active {
-  background: color-mix(in srgb, var(--accent) 22%, rgba(18, 24, 38, 0.88)) !important;
-  color: #F8FAFC !important;
-}
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .theme-card.active > span,
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .wallpaper-tile.active > span:not(.wallpaper-sample) {
-  color: #F8FAFC !important;
+  background: var(--accent-soft-strong) !important;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 68%, transparent) !important;
 }
 
-/* C. Unified Sleek Segmented Control Track (replaces disjointed floating boxes; 0.00px size shift) */
+/* C. Soft Low-Opacity Segmented Control Track (tight fit-content, 0.00px size shift, soft active tint) */
 .segmented {
   display: inline-flex;
   align-items: center;
@@ -10583,20 +10591,20 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
   gap: 2px !important;
   padding: 3px !important;
   border-radius: 10px !important;
-  background: #EEF1F6 !important;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.07) !important;
+  background: rgba(15, 23, 42, 0.045) !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06) !important;
 }
 [data-theme="dark"] .segmented {
-  background: rgba(255, 255, 255, 0.07) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .segmented {
-  background: rgba(255, 255, 255, 0.88) !important;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.11) !important;
+  background: rgba(255, 255, 255, 0.44) !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.10) !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented {
-  background: rgba(15, 23, 42, 0.80) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+  background: rgba(15, 23, 42, 0.48) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14) !important;
 }
 .segmented button {
   min-height: 1.95rem;
@@ -10611,7 +10619,16 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
   box-shadow: none !important;
 }
 .segmented button:not(.active):hover {
-  background: rgba(15, 23, 42, 0.07) !important;
+  background: rgba(15, 23, 42, 0.065) !important;
+  color: #0F172A !important;
+}
+.segmented button.active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent) !important;
+  color: #0F172A !important;
+  box-shadow: none !important;
+}
+.segmented button.active:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent) !important;
   color: #0F172A !important;
 }
 [data-theme="dark"] .segmented button:not(.active),
@@ -10620,7 +10637,17 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
 }
 [data-theme="dark"] .segmented button:not(.active):hover,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button:not(.active):hover {
-  background: rgba(255, 255, 255, 0.11) !important;
+  background: rgba(255, 255, 255, 0.10) !important;
+  color: #FFFFFF !important;
+}
+[data-theme="dark"] .segmented button.active,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button.active {
+  background: color-mix(in srgb, var(--accent) 26%, transparent) !important;
+  color: #FFFFFF !important;
+}
+[data-theme="dark"] .segmented button.active:hover,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button.active:hover {
+  background: color-mix(in srgb, var(--accent) 34%, transparent) !important;
   color: #FFFFFF !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .segmented button:not(.active) {
@@ -10630,8 +10657,12 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([
   background: rgba(15, 23, 42, 0.08) !important;
   color: #000000 !important;
 }
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .segmented button.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent) !important;
+  color: #0F172A !important;
+}
 
-/* D. Refined Secondary, Ghost & Primary Action Buttons (guaranteed >= 4.5:1 text & icon contrast) */
+/* D. Refined Secondary, Ghost & Primary Action Buttons (soft low-opacity surfaces, guaranteed contrast) */
 .btn-primary,
 .btn-secondary,
 .btn-ghost,
@@ -10647,17 +10678,17 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([
 .btn-avatar-upload,
 .btn-small-secondary,
 .partner-action-btn {
-  background: #EEF1F6 !important;
+  background: rgba(15, 23, 42, 0.05) !important;
   color: #0F172A !important;
   border: none !important;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08) !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.07) !important;
 }
 .btn-secondary:hover:not(:disabled),
 .btn-ghost:hover:not(:disabled),
 .btn-avatar-upload:hover,
 .btn-small-secondary:hover:not(:disabled),
 .partner-action-btn:hover:not(:disabled) {
-  background: #E4E9F2 !important;
+  background: rgba(15, 23, 42, 0.09) !important;
   color: #0F172A !important;
 }
 .btn-secondary svg,
@@ -10671,38 +10702,38 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([
 [data-theme="dark"] .btn-avatar-upload,
 [data-theme="dark"] .btn-small-secondary,
 [data-theme="dark"] .partner-action-btn {
-  background: rgba(255, 255, 255, 0.085) !important;
+  background: rgba(255, 255, 255, 0.075) !important;
   color: #F1F5F9 !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.11) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10) !important;
 }
 [data-theme="dark"] .btn-secondary:hover:not(:disabled),
 [data-theme="dark"] .btn-ghost:hover:not(:disabled),
 [data-theme="dark"] .btn-avatar-upload:hover,
 [data-theme="dark"] .btn-small-secondary:hover:not(:disabled),
 [data-theme="dark"] .partner-action-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.13) !important;
   color: #FFFFFF !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-avatar-upload,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-small-secondary {
-  background: var(--adaptive-btn-bg, rgba(255, 255, 255, 0.88)) !important;
+  background: var(--adaptive-btn-bg, rgba(255, 255, 255, 0.50)) !important;
   color: #0F172A !important;
-  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(15, 23, 42, 0.11)) !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(15, 23, 42, 0.12)) !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary:hover:not(:disabled),
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost:hover:not(:disabled),
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-avatar-upload:hover,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-small-secondary:hover:not(:disabled) {
-  background: var(--adaptive-btn-hover, rgba(255, 255, 255, 0.96)) !important;
+  background: var(--adaptive-btn-hover, rgba(255, 255, 255, 0.68)) !important;
   color: #0F172A !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-secondary,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-ghost,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-avatar-upload,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-small-secondary {
-  background: var(--adaptive-btn-bg, rgba(18, 24, 38, 0.82)) !important;
+  background: var(--adaptive-btn-bg, rgba(15, 23, 42, 0.50)) !important;
   color: #F8FAFC !important;
   box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(255, 255, 255, 0.16)) !important;
 }
@@ -10710,7 +10741,7 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-ghost:hover:not(:disabled),
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-avatar-upload:hover,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .btn-small-secondary:hover:not(:disabled) {
-  background: var(--adaptive-btn-hover, rgba(30, 41, 59, 0.92)) !important;
+  background: var(--adaptive-btn-hover, rgba(24, 34, 54, 0.66)) !important;
   color: #FFFFFF !important;
 }
 
@@ -10732,7 +10763,7 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 textarea:not(.composer-input):focus,
 select:focus {
   border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent) !important;
 }
 .search-field input {
   padding-left: 2.35rem;
@@ -10744,23 +10775,23 @@ select:focus {
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input),
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) textarea:not(.composer-input),
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select {
-  background-color: rgba(255, 255, 255, 0.88) !important;
+  background-color: rgba(255, 255, 255, 0.56) !important;
   color: #0F172A !important;
-  border-color: rgba(15, 23, 42, 0.13) !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) input:not(.composer-input)::placeholder,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) textarea:not(.composer-input)::placeholder {
-  color: #475569 !important;
+  color: #334155 !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .search-field svg {
-  color: #334155 !important;
+  color: #1E293B !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input),
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] textarea:not(.composer-input),
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select {
-  background-color: rgba(15, 23, 42, 0.82) !important;
+  background-color: rgba(15, 23, 42, 0.54) !important;
   color: #F8FAFC !important;
-  border-color: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] input:not(.composer-input)::placeholder,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] textarea:not(.composer-input)::placeholder {
@@ -10779,7 +10810,7 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) selec
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select:focus,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select:focus {
   border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent) !important;
 }
 .composer-box:focus-within::before {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10), inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, transparent) !important;
