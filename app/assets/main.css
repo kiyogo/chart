@@ -3722,15 +3722,24 @@ html[data-panel-glass="true"] .search-page:not(:has(.modal-overlay, .settings-mo
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }
 /* Spec 047 & 052: Zero nested white card boxes inside translucent / wallpaper / scrim panels.
-   Text shadow is strictly governed by APCA legibility (data-text-halo="true" only when contrast drops). */
+   Action buttons use luminous wallpaper-harmonized frosted glass with zero-shift inset framing. */
 html[data-panel-scrim="true"] .btn-secondary,
-html[data-panel-scrim="true"] .btn-avatar-upload {
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+html[data-panel-scrim="true"] .btn-avatar-upload,
+html[data-panel-scrim="true"] .btn-small-secondary {
+  background: var(--adaptive-btn-bg, var(--bg-surface-hover));
   color: var(--text-primary);
+  border: none;
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(15, 23, 42, 0.10));
 }
 html[data-panel-scrim="true"] .btn-secondary:hover:not(:disabled),
-html[data-panel-scrim="true"] .btn-avatar-upload:hover {
-  background: color-mix(in srgb, var(--text-primary) 16%, transparent);
+html[data-panel-scrim="true"] .btn-avatar-upload:hover,
+html[data-panel-scrim="true"] .btn-small-secondary:hover:not(:disabled) {
+  background: var(--adaptive-btn-hover, var(--bg-hover));
+}
+html[data-panel-scrim="true"] .btn-secondary:active:not(:disabled),
+html[data-panel-scrim="true"] .btn-avatar-upload:active,
+html[data-panel-scrim="true"] .btn-small-secondary:active:not(:disabled) {
+  background: var(--adaptive-btn-active, var(--accent-soft));
 }
 html[data-panel-translucent="true"] .wallpaper-tile.active,
 html[data-panel-scrim="true"] .wallpaper-tile.active,
@@ -9693,19 +9702,118 @@ html[data-text-halo="true"] .settings-label,
 html[data-text-halo="true"] .wallpaper-tile span {
   font-weight: var(--weight-medium);
 }
+
+/* Zero-Size-Shift Inset Button Framing & Harmonious Luminous Controls (Spec 052)
+   Never toggle border-width between frameless and framed states — always keep border: none
+   and paint frames exclusively with box-shadow: inset 0 0 0 1px ... (0.00px size change). */
+.segmented button,
+.btn-secondary,
+.btn-ghost,
+.btn-small-secondary,
+.btn-avatar-upload,
+.partner-action-btn {
+  border: none !important;
+}
+.btn-secondary,
+.partner-action-btn {
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(15, 23, 42, 0.08));
+}
+[data-theme="dark"] .btn-secondary,
+[data-theme="dark"] .partner-action-btn,
+html[data-surface-tone="dark"] .btn-secondary,
+html[data-surface-tone="dark"] .partner-action-btn {
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(255, 255, 255, 0.12));
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-avatar-upload,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-small-secondary,
 html[data-text-halo="true"] .btn-secondary,
 html[data-text-halo="true"] .btn-ghost,
+html[data-text-halo="true"] .btn-avatar-upload,
+html[data-text-halo="true"] .btn-small-secondary {
+  background: var(--adaptive-btn-bg, var(--bg-surface-hover)) !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(15, 23, 42, 0.10)) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary:hover:not(:disabled),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost:hover:not(:disabled),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-avatar-upload:hover,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-small-secondary:hover:not(:disabled),
+html[data-text-halo="true"] .btn-secondary:hover:not(:disabled),
+html[data-text-halo="true"] .btn-ghost:hover:not(:disabled),
+html[data-text-halo="true"] .btn-avatar-upload:hover,
+html[data-text-halo="true"] .btn-small-secondary:hover:not(:disabled) {
+  background: var(--adaptive-btn-hover, var(--bg-hover)) !important;
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary:active:not(:disabled),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost:active:not(:disabled),
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-avatar-upload:active,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-small-secondary:active:not(:disabled),
+html[data-text-halo="true"] .btn-secondary:active:not(:disabled),
+html[data-text-halo="true"] .btn-ghost:active:not(:disabled),
+html[data-text-halo="true"] .btn-avatar-upload:active,
+html[data-text-halo="true"] .btn-small-secondary:active:not(:disabled) {
+  background: var(--adaptive-btn-active, var(--accent-soft)) !important;
+}
+
+/* High-transparency framed segmented buttons: 0.00px size change via inset box-shadow + live hover/press */
 html[data-text-halo="true"] .segmented button:not(.active) {
-  background: var(--adaptive-ctrl-bg, rgba(255, 255, 255, 0.65)) !important;
-  border: 1px solid var(--adaptive-ctrl-border, rgba(15, 23, 42, 0.15)) !important;
+  background: var(--adaptive-ctrl-bg, rgba(255, 255, 255, 0.50)) !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-ctrl-ring, rgba(100, 116, 139, 0.14)) !important;
 }
+html[data-text-halo="true"] .segmented button:not(.active):hover {
+  background: var(--adaptive-ctrl-hover, rgba(255, 255, 255, 0.76)) !important;
+}
+html[data-text-halo="true"] .segmented button:not(.active):active {
+  background: var(--accent-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-active-ring, transparent) !important;
+}
+
+/* Luminous non-muddy active / selected / pressed pills over colored or translucent wallpapers */
+html[data-luminous-controls="true"] .settings-nav-item.active,
+html[data-luminous-controls="true"] .segmented button.active,
+html[data-luminous-controls="true"] .wallpaper-tile.active,
+html[data-luminous-controls="true"] .theme-card.active,
+html[data-luminous-controls="true"] .filter-chip.active,
+html[data-luminous-controls="true"] .section-tab.active,
+html[data-luminous-controls="true"] .media-tab.active,
+html[data-luminous-controls="true"] .picker-tab.active,
+html[data-luminous-controls="true"] .chat-item.selected:not(.has-nameplate),
+html[data-luminous-controls="true"] .chat-item.active:not(.has-nameplate),
+html[data-luminous-controls="true"] .channel-row.selected,
+html[data-luminous-controls="true"] .rail-item.active:not(.has-logo),
+html[data-luminous-controls="true"] .icon-btn.active:not(.danger):not(.btn-danger) {
+  background: var(--accent-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-active-ring, transparent) !important;
+}
+.segmented button:not(.active):active,
+.settings-nav-item:not(.active):not(.danger):active,
+.wallpaper-tile:not(.active):active,
+.theme-card:not(.active):active,
+.filter-chip:not(.active):active,
+.section-tab:not(.active):active {
+  background: var(--accent-soft) !important;
+}
+.segmented button.active:active,
+.settings-nav-item.active:not(.danger):active,
+.wallpaper-tile.active:active,
+.theme-card.active:active,
+.filter-chip.active:active,
+.section-tab.active:active,
+.chat-item.selected:not(.has-nameplate):active,
+.channel-row.selected:active {
+  background: var(--accent-soft-strong) !important;
+}
+
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) input[type="checkbox"].switch:not(:checked),
 html[data-text-halo="true"] input[type="checkbox"].switch:not(:checked) {
-  background: rgba(15, 23, 42, 0.30) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  background: var(--adaptive-switch-bg, rgba(100, 116, 139, 0.28)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.50);
 }
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] input[type="checkbox"].switch:not(:checked),
 html[data-text-halo="true"][data-surface-tone="dark"] input[type="checkbox"].switch:not(:checked) {
-  background: rgba(255, 255, 255, 0.28) !important;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  background: var(--adaptive-switch-bg, rgba(255, 255, 255, 0.24)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 .chat-column[data-chat-header-tone="dark"] .chat-header,
 .chat-column[data-chat-header-tone="dark"] .chat-header .chat-header-title,
@@ -9771,13 +9879,17 @@ input[type="color"]::-moz-color-swatch {
 }
 
 .btn-ghost {
-  background: var(--bg-surface-hover) !important;
-  border: 1px solid var(--input-border, rgba(15, 23, 42, 0.10)) !important;
+  background: var(--adaptive-btn-bg, var(--bg-surface-hover)) !important;
+  border: none !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, var(--input-border, rgba(15, 23, 42, 0.10))) !important;
   color: var(--text-primary) !important;
   border-radius: var(--radius-md);
 }
 .btn-ghost:hover:not(:disabled) {
-  background: var(--bg-hover) !important;
+  background: var(--adaptive-btn-hover, var(--bg-hover)) !important;
+}
+.btn-ghost:active:not(:disabled) {
+  background: var(--adaptive-btn-active, var(--accent-soft)) !important;
 }
 
 /* 7. Hide Guide Banners & Verbose Explanatory Descriptions Across Settings (Image 13 & Sync tab) */

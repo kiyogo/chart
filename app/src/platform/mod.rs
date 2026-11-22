@@ -648,27 +648,33 @@ if (!window.__chatwRecomputeContrast) {
         const shellB = baseTheme === 'dark' ? 0.06 : 0.93;
         const panelBaseB = baseTheme === 'dark' ? 0.12 : 1.0;
         let meanB = shellB, railB = shellB, stdB = 0.0, edgeB = 0.0, darkRatio = 0.0, brightRatio = 0.0;
+        let domHex = '#64748B', wpChroma = 0.0;
 
         if (c.wpKind === 'preset-night') {
-            meanB = 0.07; railB = 0.07; stdB = 0.04; darkRatio = 0.95;
+            meanB = 0.07; railB = 0.07; stdB = 0.04; darkRatio = 0.95; domHex = '#3B82F6'; wpChroma = 0.40;
         } else if (c.wpKind === 'preset-dots') {
-            meanB = baseTheme === 'dark' ? 0.08 : 0.92; railB = meanB; stdB = 0.05;
+            meanB = baseTheme === 'dark' ? 0.08 : 0.94; railB = meanB; stdB = 0.04; domHex = '#64748B'; wpChroma = 0.0;
         } else if (c.wpKind === 'preset-paper') {
-            meanB = baseTheme === 'dark' ? 0.44 : 0.91; railB = meanB; stdB = 0.02;
+            meanB = baseTheme === 'dark' ? 0.44 : 0.91; railB = meanB; stdB = 0.02; domHex = '#D4B483'; wpChroma = 0.24;
         } else if (c.wpKind === 'preset-bubbles') {
-            meanB = baseTheme === 'dark' ? 0.14 : 0.88; railB = meanB; stdB = 0.08;
+            meanB = baseTheme === 'dark' ? 0.14 : 0.88; railB = meanB; stdB = 0.08; domHex = '#EC4899'; wpChroma = 0.28;
         } else if (c.wpKind === 'preset-aurora') {
-            meanB = baseTheme === 'dark' ? 0.20 : 0.84; railB = meanB; stdB = 0.10;
+            meanB = baseTheme === 'dark' ? 0.20 : 0.84; railB = meanB; stdB = 0.10; domHex = '#8B5CF6'; wpChroma = 0.34;
         } else if (c.wpKind === 'preset-ocean') {
-            meanB = baseTheme === 'dark' ? 0.22 : 0.77; railB = meanB; stdB = 0.08;
+            meanB = baseTheme === 'dark' ? 0.22 : 0.77; railB = meanB; stdB = 0.08; domHex = '#0EA5E9'; wpChroma = 0.38;
         } else if (c.wpKind === 'preset-mint') {
-            meanB = baseTheme === 'dark' ? 0.23 : 0.85; railB = meanB; stdB = 0.08;
+            meanB = baseTheme === 'dark' ? 0.23 : 0.85; railB = meanB; stdB = 0.08; domHex = '#10B981'; wpChroma = 0.34;
         } else if (c.wpKind === 'preset-sunset') {
-            meanB = baseTheme === 'dark' ? 0.20 : 0.74; railB = meanB; stdB = 0.09;
+            meanB = baseTheme === 'dark' ? 0.20 : 0.74; railB = meanB; stdB = 0.09; domHex = '#E15382'; wpChroma = 0.40;
         } else if (c.wpKind === 'color') {
             const rgb = parseHex(c.wpColor);
             meanB = rgb ? srgbB(rgb[0], rgb[1], rgb[2]) : shellB;
             railB = meanB; stdB = 0.0;
+            if (rgb) {
+                domHex = c.wpColor;
+                const [, s, l] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+                wpChroma = s * (1 - Math.abs(2 * l - 1));
+            }
         } else if (c.wpKind === 'image') {
             const cached = window.__chatwWpMetrics[c.wpImageUrl];
             if (cached) {
@@ -676,6 +682,14 @@ if (!window.__chatwRecomputeContrast) {
                 edgeB = cached.edgeB || 0.08;
                 darkRatio = cached.darkRatio || 0.25;
                 brightRatio = cached.brightRatio || 0.25;
+                if (cached.domHex) {
+                    domHex = cached.domHex;
+                    const drgb = parseHex(domHex);
+                    if (drgb) {
+                        const [, s, l] = rgbToHsl(drgb[0], drgb[1], drgb[2]);
+                        wpChroma = s * (1 - Math.abs(2 * l - 1));
+                    }
+                }
             } else {
                 sampleImage(c.wpImageUrl);
                 meanB = 0.46; railB = 0.46; stdB = 0.26; edgeB = 0.09;
@@ -763,22 +777,51 @@ if (!window.__chatwRecomputeContrast) {
         const worstLc = Math.abs(calcAPCA(inkRgb, [worstBgV, worstBgV, worstBgV]));
         const needsHalo = c.wpKind !== 'none' && alpha < 0.40 && (worstLc < 68 || wpBusy);
 
+        const isTranslucentWp = c.wpKind !== 'none' && alpha < 0.96;
+        const isColoredSurface = surfaceTone === 'light' && isTranslucentWp && (panelEffectiveB < 0.93 || wpChroma > 0.07);
+        const needsLuminousControls = isTranslucentWp && (surfaceTone === 'dark' || alpha < 0.68 || panelEffectiveB < 0.92);
+
         root.setAttribute('data-surface-tone', surfaceTone);
         root.setAttribute('data-rail-tone', railTone);
         root.setAttribute('data-wp-busy', String(wpBusy));
         root.setAttribute('data-panel-scrim', String(panelScrim));
         root.setAttribute('data-rail-scrim', String(railScrim));
         root.setAttribute('data-text-halo', String(needsHalo));
+        root.setAttribute('data-luminous-controls', String(needsLuminousControls));
         root.setAttribute('data-apca-lc', String(Math.round(worstLc)));
-
-        // Extract dominant wallpaper color for subtle UI harmony
-        let domHex = '#64748B';
-        if (c.wpKind === 'image' && window.__chatwWpMetrics[c.wpImageUrl]?.domHex) {
-            domHex = window.__chatwWpMetrics[c.wpImageUrl].domHex;
-        } else if (c.wpKind === 'color' && parseHex(c.wpColor)) {
-            domHex = c.wpColor;
-        }
         root.style.setProperty('--wp-dom-color', domHex);
+
+        // Perceptual tint generator: prevents complementary alpha-blending mud (e.g. 16% blue over 84% pink -> dull grey-purple)
+        const PRESET_ACCENTS = {
+            blue: '#2764E7',
+            violet: '#6D4AE0',
+            green: '#138A5A',
+            orange: '#D9620F',
+            rose: '#D6336C',
+        };
+        const effAccentHex = (c.customAccent && parseHex(c.customAccent))
+            ? c.customAccent
+            : (PRESET_ACCENTS[root.getAttribute('data-accent') || 'blue'] || '#2764E7');
+        const makeVibrantRgb = (hex, darkMode) => {
+            const raw = parseHex(hex) || [39, 100, 231];
+            const [h, s0] = rgbToHsl(raw[0], raw[1], raw[2]);
+            if (s0 < 0.08) return raw;
+            const s = Math.min(0.92, Math.max(s0, 0.56));
+            const l = darkMode ? 0.54 : 0.52;
+            return hslToRgb(h, s, l);
+        };
+        const makeCleanTint = (hex, darkMode, weight, alphaOut) => {
+            const [vr, vg, vb] = makeVibrantRgb(hex, darkMode);
+            const base = darkMode ? [20, 28, 46] : [255, 255, 255];
+            const r = Math.round(base[0] * (1 - weight) + vr * weight);
+            const g = Math.round(base[1] * (1 - weight) + vg * weight);
+            const b = Math.round(base[2] * (1 - weight) + vb * weight);
+            return `rgba(${r}, ${g}, ${b}, ${alphaOut.toFixed(2)})`;
+        };
+        const domRgb = parseHex(domHex) || [100, 116, 139];
+        const hr = Math.round(domRgb[0] * 0.34 + 100 * 0.66);
+        const hg = Math.round(domRgb[1] * 0.34 + 116 * 0.66);
+        const hb = Math.round(domRgb[2] * 0.34 + 139 * 0.66);
 
         // Progressively deepen text contrast as transparency increases so text stays crisp without needing blurry shadows
         if (c.wpKind !== 'none' && transparency >= 0.20) {
@@ -797,6 +840,36 @@ if (!window.__chatwRecomputeContrast) {
             root.style.removeProperty('--text-muted');
         }
 
+        // Smooth luminous frosted action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) over translucent wallpapers
+        if (isTranslucentWp) {
+            if (surfaceTone === 'light') {
+                if (isColoredSurface) {
+                    const btnA = Math.min(0.80, 0.58 + transparency * 0.22);
+                    root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${btnA.toFixed(2)})`);
+                    root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${Math.min(0.94, btnA + 0.16).toFixed(2)})`);
+                    root.style.setProperty('--adaptive-btn-active', makeCleanTint(effAccentHex, false, 0.15, Math.min(0.95, btnA + 0.18)));
+                    root.style.setProperty('--adaptive-btn-ring', `rgba(${hr}, ${hg}, ${hb}, 0.15)`);
+                    root.style.setProperty('--adaptive-switch-bg', `rgba(${hr}, ${hg}, ${hb}, 0.28)`);
+                } else {
+                    root.style.setProperty('--adaptive-btn-bg', 'rgba(15, 23, 42, 0.048)');
+                    root.style.setProperty('--adaptive-btn-hover', 'rgba(15, 23, 42, 0.085)');
+                    root.style.setProperty('--adaptive-btn-active', 'rgba(15, 23, 42, 0.13)');
+                    root.style.setProperty('--adaptive-btn-ring', 'rgba(15, 23, 42, 0.10)');
+                    root.style.removeProperty('--adaptive-switch-bg');
+                }
+            } else {
+                const dBtnA = Math.min(0.18, 0.10 + transparency * 0.07);
+                root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${dBtnA.toFixed(2)})`);
+                root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${(dBtnA + 0.08).toFixed(2)})`);
+                root.style.setProperty('--adaptive-btn-active', makeCleanTint(effAccentHex, true, 0.30, 0.84));
+                root.style.setProperty('--adaptive-btn-ring', 'rgba(255, 255, 255, 0.16)');
+                root.style.setProperty('--adaptive-switch-bg', 'rgba(255, 255, 255, 0.24)');
+            }
+        } else {
+            ['--adaptive-btn-bg', '--adaptive-btn-hover', '--adaptive-btn-active', '--adaptive-btn-ring', '--adaptive-switch-bg']
+                .forEach((k) => root.style.removeProperty(k));
+        }
+
         if (needsHalo) {
             // Smooth ramp only in the high-transparency zone (alpha < 0.40 -> transparency > 60%)
             const ramp = Math.min(1, Math.max(0, (0.40 - alpha) / 0.40));
@@ -809,6 +882,16 @@ if (!window.__chatwRecomputeContrast) {
                     '--adaptive-text-halo',
                     `0 1px 1.5px rgba(0, 0, 0, ${coreA}), 0 0 3px rgba(0, 0, 0, ${softA})`
                 );
+                if (isColoredSurface) {
+                    const segA = Math.min(0.62, 0.36 + transparency * 0.24);
+                    root.style.setProperty('--adaptive-ctrl-bg', `rgba(255, 255, 255, ${segA.toFixed(2)})`);
+                    root.style.setProperty('--adaptive-ctrl-hover', `rgba(255, 255, 255, ${Math.min(0.86, segA + 0.24).toFixed(2)})`);
+                    root.style.setProperty('--adaptive-ctrl-ring', `rgba(${hr}, ${hg}, ${hb}, 0.14)`);
+                } else {
+                    root.style.setProperty('--adaptive-ctrl-bg', 'rgba(15, 23, 42, 0.045)');
+                    root.style.setProperty('--adaptive-ctrl-hover', 'rgba(15, 23, 42, 0.085)');
+                    root.style.setProperty('--adaptive-ctrl-ring', 'rgba(15, 23, 42, 0.10)');
+                }
             } else {
                 const darkCoreA = (0.75 * strength).toFixed(2);
                 const darkSoftA = (0.45 * strength).toFixed(2);
@@ -816,24 +899,14 @@ if (!window.__chatwRecomputeContrast) {
                     '--adaptive-text-halo',
                     `0 1px 2px rgba(0, 0, 0, ${darkCoreA}), 0 0 4px rgba(0, 0, 0, ${darkSoftA})`
                 );
+                const dSegA = Math.min(0.56, 0.34 + transparency * 0.20);
+                root.style.setProperty('--adaptive-ctrl-bg', `rgba(15, 23, 42, ${dSegA.toFixed(2)})`);
+                root.style.setProperty('--adaptive-ctrl-hover', `rgba(30, 41, 59, ${Math.min(0.76, dSegA + 0.20).toFixed(2)})`);
+                root.style.setProperty('--adaptive-ctrl-ring', 'rgba(255, 255, 255, 0.16)');
             }
-            const ctrlAlpha = Math.min(0.72, Math.max(0.32, transparency * 0.58));
-            root.style.setProperty(
-                '--adaptive-ctrl-bg',
-                surfaceTone === 'light'
-                    ? `color-mix(in srgb, #FFFFFF ${Math.round(ctrlAlpha * 100)}%, transparent)`
-                    : `color-mix(in srgb, #0F172A ${Math.round(ctrlAlpha * 100)}%, transparent)`
-            );
-            root.style.setProperty(
-                '--adaptive-ctrl-border',
-                surfaceTone === 'light'
-                    ? 'rgba(15, 23, 42, 0.18)'
-                    : 'rgba(255, 255, 255, 0.22)'
-            );
         } else {
-            root.style.removeProperty('--adaptive-text-halo');
-            root.style.removeProperty('--adaptive-ctrl-bg');
-            root.style.removeProperty('--adaptive-ctrl-border');
+            ['--adaptive-text-halo', '--adaptive-ctrl-bg', '--adaptive-ctrl-hover', '--adaptive-ctrl-ring']
+                .forEach((k) => root.style.removeProperty(k));
         }
 
         const surfaceBgHex = surfaceTone === 'dark' ? '#171B24' : '#FFFFFF';
@@ -865,6 +938,31 @@ if (!window.__chatwRecomputeContrast) {
                 : `color-mix(in srgb, ${safeAccent} 25%, transparent)`);
         } else {
             ['--accent', '--accent-hover', '--on-accent', '--accent-text', '--accent-soft', '--accent-soft-strong']
+                .forEach((k) => root.style.removeProperty(k));
+        }
+
+        // Luminance-normalized luminous active/selected/pressed pills & glass hover over translucent wallpapers
+        if (needsLuminousControls) {
+            const lumRamp = Math.min(1, Math.max(0, (transparency - 0.28) / 0.72));
+            const isDarkSurf = surfaceTone === 'dark';
+            const pillA = isDarkSurf ? (0.78 + lumRamp * 0.14) : (0.80 + lumRamp * 0.13);
+            const [vr, vg, vb] = makeVibrantRgb(effAccentHex, isDarkSurf);
+            root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.34 : 0.18, pillA));
+            root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.44 : 0.26, Math.min(0.96, pillA + 0.06)));
+            root.style.setProperty('--adaptive-active-ring', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${isDarkSurf ? '0.42' : '0.20'})`);
+            if (!isDarkSurf && isColoredSurface) {
+                root.style.setProperty('--bg-hover', `rgba(255, 255, 255, ${(0.46 + lumRamp * 0.18).toFixed(2)})`);
+                root.style.setProperty('--bg-active', `rgba(255, 255, 255, ${(0.64 + lumRamp * 0.18).toFixed(2)})`);
+                root.style.setProperty('--bg-surface-hover', `rgba(255, 255, 255, ${(0.56 + lumRamp * 0.18).toFixed(2)})`);
+            } else if (isDarkSurf) {
+                root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.13)');
+                root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.21)');
+                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.10)');
+            } else {
+                ['--bg-hover', '--bg-active', '--bg-surface-hover'].forEach((k) => root.style.removeProperty(k));
+            }
+        } else {
+            ['--adaptive-active-ring', '--bg-hover', '--bg-active', '--bg-surface-hover']
                 .forEach((k) => root.style.removeProperty(k));
         }
 

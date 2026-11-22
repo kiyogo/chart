@@ -45,3 +45,14 @@
 
 11. **Meet Panel (`.meet-column`) Bottom Rounded Corners & Viewport Gap**:
     - Ensure `.meet-column` never touches the bottom of the browser viewport: restore `border-radius: var(--panel-radius)` on all 4 corners and `margin-bottom: 0` so it sits spaced away from the bottom edge just like `.app-rail` and normal menu panels.
+
+12. **Zero-Shift Button Framing (`0.00px` Size Stability Across Frameless -> Framed Transitions)**:
+    - When any button (`.segmented button`, `.btn-secondary`, `.btn-ghost`, `.btn-small-secondary`, `.btn-avatar-upload`) transitions between frameless and framed states (e.g., dragging panel transparency across the framing threshold), its width and height MUST NOT change by even `1px` (`0.00px` delta). Never toggle CSS `border-width`; render all button frames strictly via `box-shadow: inset 0 0 0 1px ...` with `border: none`.
+
+13. **Harmonious Luminous Frosted Button & Control Palette Over Customized Wallpapers**:
+    - Eliminate muddy dark-alpha (`10%`–`16%` black) fills on `.btn-secondary`, `.btn-ghost`, and `--bg-hover` over colored or photo wallpapers, and eliminate harsh dark-grey borders (`rgba(15, 23, 42, 0.18)`) on framed segmented options.
+    - Replace them with smooth, wallpaper-harmonized luminous frosted glass surfaces (`--adaptive-btn-bg`, `--adaptive-btn-hover`, `--adaptive-btn-active`, `--adaptive-btn-ring`, `--adaptive-ctrl-bg`, `--adaptive-ctrl-hover`, `--adaptive-ctrl-ring`) computed from the wallpaper's dominant chroma and effective surface luminance.
+
+14. **Crystal-Clear, Non-Muddy Active / Selected / Clicked Pill & Button Colors Over Any Wallpaper**:
+    - Prevent low-alpha complementary hue cancellation (e.g., `16%` blue over `84%` warm pink `Hoàng hôn` collapsing into muddy grey-purple `#CBBED3`) on `.settings-nav-item.active`, `.segmented button.active`, `.wallpaper-tile.active`, `.theme-card.active`, `.chat-item.selected`, `.channel-row.selected`, `.rail-item.active`, and pressed (`:active`) button states.
+    - Pre-normalize the active/pressed accent tint in perceptual space against pure white (light tone) or deep slate (dark tone) at high frosted clarity with a delicate inset accent rim (`--adaptive-active-ring`), while keeping Spec 048 / Spec 050 pure-white opaque and lightly-translucent tokens 100% intact.

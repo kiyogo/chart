@@ -329,6 +329,123 @@ try {
     JSON.stringify(railAndHaloAudit)
   );
 
+  // 4b. Zero Size Shift (0.00px) from Frameless (52%) -> Framed (72%) + Non-Muddy Luminous Active & Secondary Button Colors over Sunset ("Hoàng hôn")
+  await page.evaluate(() => {
+    const colorInput = document.querySelector('.settings-body input[type="color"]');
+    const row = colorInput?.closest('.settings-row');
+    const resetBtn = row && Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Mặc định'));
+    if (resetBtn) resetBtn.click();
+  });
+  await page.waitForTimeout(200);
+  await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
+  await page.waitForTimeout(200);
+
+  const setTransparency = async (pct) => {
+    await page.evaluate((val) => {
+      const slider = document.querySelector('input[aria-label="Độ trong suốt khung trắng"]');
+      const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+      desc.set.call(slider, String(val));
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+    }, pct);
+    await page.waitForTimeout(260);
+  };
+
+  const measureButtons = () =>
+    page.evaluate(() => {
+      const segs = Array.from(document.querySelectorAll('.settings-body .segmented button')).map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          text: el.textContent.trim(),
+          active: el.classList.contains('active'),
+          w: Math.round(r.width * 100) / 100,
+          h: Math.round(r.height * 100) / 100,
+          bg: getComputedStyle(el).backgroundColor,
+          borderTop: getComputedStyle(el).borderTopWidth,
+          shadow: getComputedStyle(el).boxShadow,
+        };
+      });
+      const sec = document.querySelector('.settings-body .btn-secondary');
+      const secR = sec ? sec.getBoundingClientRect() : null;
+      const navActive = document.querySelector('.settings-nav-item.active');
+      return {
+        textHalo: document.documentElement.getAttribute('data-text-halo'),
+        luminous: document.documentElement.getAttribute('data-luminous-controls'),
+        segs,
+        sec: sec
+          ? {
+              w: Math.round(secR.width * 100) / 100,
+              h: Math.round(secR.height * 100) / 100,
+              bg: getComputedStyle(sec).backgroundColor,
+              borderTop: getComputedStyle(sec).borderTopWidth,
+              shadow: getComputedStyle(sec).boxShadow,
+            }
+          : null,
+        navActiveBg: navActive ? getComputedStyle(navActive).backgroundColor : '',
+        navActiveShadow: navActive ? getComputedStyle(navActive).boxShadow : '',
+      };
+    });
+
+  await setTransparency(52);
+  const m52 = await measureButtons();
+  if (process.env.SPEC052_SHOT_DIR) {
+    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'sunset_52.png') });
+  }
+
+  await setTransparency(72);
+  const m72 = await measureButtons();
+  if (process.env.SPEC052_SHOT_DIR) {
+    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'sunset_72.png') });
+  }
+
+  const parseRgba = (s) => {
+    const m = (s || '').match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)/i);
+    if (!m) return null;
+    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+  };
+  let maxSegDW = 0;
+  let maxSegDH = 0;
+  for (let i = 0; i < Math.min(m52.segs.length, m72.segs.length); i++) {
+    maxSegDW = Math.max(maxSegDW, Math.abs(m72.segs[i].w - m52.segs[i].w));
+    maxSegDH = Math.max(maxSegDH, Math.abs(m72.segs[i].h - m52.segs[i].h));
+  }
+  const secDW = m52.sec && m72.sec ? Math.abs(m72.sec.w - m52.sec.w) : 99;
+  const secDH = m52.sec && m72.sec ? Math.abs(m72.sec.h - m52.sec.h) : 99;
+  const activeSeg72 = m72.segs.find((s) => s.active);
+  const idleSeg72 = m72.segs.find((s) => !s.active);
+  const activeIdleHeightDiff = activeSeg72 && idleSeg72 ? Math.abs(activeSeg72.h - idleSeg72.h) : 99;
+  const navActiveRgba = parseRgba(m72.navActiveBg);
+  const sec52Rgba = parseRgba(m52.sec?.bg);
+  const sec72Rgba = parseRgba(m72.sec?.bg);
+
+  record(
+    'Frameless (52%) -> Framed (72%) button transition has EXACT 0.00px width/height shift and luminous non-muddy active/secondary colors over Sunset wallpaper',
+    m52.textHalo === 'false' &&
+      m72.textHalo === 'true' &&
+      m72.luminous === 'true' &&
+      maxSegDW === 0 &&
+      maxSegDH === 0 &&
+      secDW === 0 &&
+      secDH === 0 &&
+      activeIdleHeightDiff === 0 &&
+      idleSeg72?.borderTop === '0px' &&
+      idleSeg72?.shadow.includes('inset') &&
+      Boolean(navActiveRgba && navActiveRgba.b >= 240 && navActiveRgba.b - navActiveRgba.r >= 20 && navActiveRgba.a >= 0.78) &&
+      Boolean(sec52Rgba && sec52Rgba.r === 255 && sec52Rgba.g === 255 && sec52Rgba.b === 255 && sec52Rgba.a >= 0.55) &&
+      Boolean(sec72Rgba && sec72Rgba.r === 255 && sec72Rgba.g === 255 && sec72Rgba.b === 255 && sec72Rgba.a >= 0.65),
+    JSON.stringify({
+      maxSegDW,
+      maxSegDH,
+      secDW,
+      secDH,
+      activeIdleHeightDiff,
+      navActiveBg: m72.navActiveBg,
+      navActiveShadow: m72.navActiveShadow,
+      sec52Bg: m52.sec?.bg,
+      sec72Bg: m72.sec?.bg,
+      idleSeg72: idleSeg72 ? { bg: idleSeg72.bg, borderTop: idleSeg72.borderTop, shadow: idleSeg72.shadow } : null,
+    })
+  );
+
   // 5. Cloud Settings: 3-step guide banner removed, verbose descriptions removed, concise labels, official SVG brand logos present
   await page.locator('.settings-nav-item', { hasText: 'Đám mây' }).click();
   await page.waitForTimeout(300);

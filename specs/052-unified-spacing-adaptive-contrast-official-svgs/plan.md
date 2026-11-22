@@ -28,3 +28,5 @@
    - Remove `position: sticky` from `.date-separator` so date pills never stack/overlap.
    - Float `.chat-header` at the top of `.chat-column` with a top unblurred gradient fade (`backdrop-filter: none`) matching the chat surface.
    - Restore `.meet-column` bottom rounded corners (`border-radius: var(--panel-radius) !important; margin-bottom: 0 !important;`).
+   - Replace all `border: 1px solid` rules on `.btn-ghost` and `html[data-text-halo="true"] .btn-secondary / .btn-ghost / .segmented button:not(.active)` with `border: none !important; box-shadow: inset 0 0 0 1px ... !important;` for `0.00px` size shift.
+   - Replace muddy `html[data-panel-scrim="true"] .btn-secondary` dark alpha with luminous frosted `--adaptive-btn-bg` / `--adaptive-btn-hover` / `--adaptive-btn-active` + harmonized `--adaptive-btn-ring`, and bind translucent active/selected/pressed pills to luminance-normalized `--accent-soft` / `--accent-soft-strong` + `--adaptive-active-ring`.
