@@ -501,65 +501,63 @@ try {
       };
     });
 
-  // Verify Translucent-Only Dynamic Wallpaper Theming (Spec 057):
-  // At 0% transparency (solid opaque white panels) over Sunset ("Hoàng hôn"), the UI MUST stay Blue (data-wp-theme-active="false")!
+  // Verify Spec 060: Wallpapers NEVER recolor the web app at ANY transparency (0%, 52%, 72%, 100%) —
+  // --accent, active pills, neutral hover/buttons, and user's chosen Màu nhấn stay 100% locked!
   await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
   await setTransparency(0);
   const mSunset0 = await measureButtons();
-  if (process.env.SPEC052_SHOT_DIR) {
-    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'sunset_0_solid_keeps_blue.png') });
-  }
 
-  // Check Aurora ("Cực quang") at 100% transparency -> dynamically themes ENTIRE app to Aurora Violet!
   await page.locator('.wallpaper-tile', { hasText: 'Cực quang' }).last().click();
   await setTransparency(100);
   const mAurora100 = await measureButtons();
-  if (process.env.SPEC052_SHOT_DIR) {
-    const hoverTarget = page.locator('.settings-nav-item', { hasText: 'Trả lời tự động' }).first();
-    if (await hoverTarget.isVisible().catch(() => false)) {
-      await hoverTarget.hover();
-      await page.waitForTimeout(160);
-    }
-    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'aurora_100.png') });
-  }
 
-  // Check Mint ("Bạc hà") at 72% -> dynamically themes ENTIRE app to Fresh Emerald Mint!
   await page.locator('.wallpaper-tile', { hasText: 'Bạc hà' }).last().click();
   await setTransparency(72);
   const mMint72 = await measureButtons();
-  if (process.env.SPEC052_SHOT_DIR) {
-    const hoverTarget = page.locator('.settings-nav-item', { hasText: 'Trả lời tự động' }).first();
-    if (await hoverTarget.isVisible().catch(() => false)) {
-      await hoverTarget.hover();
-      await page.waitForTimeout(160);
-    }
-    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'mint_72.png') });
-  }
 
-  // Now check Sunset ("Hoàng hôn") at 52% and 72% -> dynamically themes ENTIRE app to Sakura Rose!
   await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
   await setTransparency(52);
   const m52 = await measureButtons();
-  if (process.env.SPEC052_SHOT_DIR) {
-    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'sunset_52.png') });
-  }
 
   await setTransparency(72);
   const m72 = await measureButtons();
-  if (process.env.SPEC052_SHOT_DIR) {
-    const hoverTarget = page.locator('.settings-nav-item', { hasText: 'Trả lời tự động' }).first();
-    if (await hoverTarget.isVisible().catch(() => false)) {
-      await hoverTarget.hover();
-      await page.waitForTimeout(180);
+
+  // Also test simulating a bright pink/red uploaded photo at 100% transparency -> MUST STILL stay Blue (#2E7CF6)!
+  const mRedPhoto100 = await page.evaluate(() => {
+    const prevCustom = Object.assign({}, window.__chatwCustom || {});
+    window.__chatwWpMetrics = window.__chatwWpMetrics || {};
+    window.__chatwWpMetrics['__pink_anime_test__'] = {
+      meanB: 0.72, p10B: 0.20, p50B: 0.75, p90B: 0.96,
+      railB: 0.72, stdB: 0.26, edgeB: 0.08, darkRatio: 0.22, brightRatio: 0.62, domHex: '#F43F5E',
+    };
+    window.__chatwCustom = Object.assign({}, prevCustom, { wpKind: 'image', wpImageUrl: '__pink_anime_test__', panelOpacity: 0 });
+    window.__chatwRecomputeContrast();
+    const res = {
+      wpThemeActive: document.documentElement.getAttribute('data-wp-theme-active'),
+      accentVar: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+      brandBg: getComputedStyle(document.querySelector('.rail-brand')).backgroundColor,
+    };
+    window.__chatwCustom = prevCustom;
+    window.__chatwRecomputeContrast();
+    return res;
+  });
+
+  // Verify user custom accent persists when switching wallpapers (NEVER cleared!)
+  await page.evaluate(() => {
+    const inp = document.querySelector('.accent-swatch-color-input');
+    if (inp) {
+      const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+      desc.set.call(inp, '#7C3AED');
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'sunset_72.png') });
-    const gLabelLoc = page.locator('.settings-label', { hasText: 'Bong bóng người khác' }).first();
-    if (await gLabelLoc.isVisible().catch(() => false)) {
-      await gLabelLoc.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(150);
-      await gLabelLoc.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'label_g_sunset_72.png') });
-    }
-  }
+  });
+  await page.waitForTimeout(200);
+  await page.locator('.wallpaper-tile', { hasText: 'Bạc hà' }).last().click();
+  await page.waitForTimeout(200);
+  const customPersistAccent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+  // Reset back to preset Blue swatch
+  await page.locator('.accent-swatches button[aria-label="Xanh dương"]').click();
+  await page.waitForTimeout(150);
 
   const parseRgba = (s) => {
     const m = (s || '').match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)/i);
@@ -582,6 +580,7 @@ try {
   const sunsetActiveRgba = parseRgba(m72.navActiveBg);
   const sunsetHoverRgba = parseRgba(m72.hoverToken);
   const sunsetSecRgba = parseRgba(m72.sec?.bg);
+  const isBluePill = (c) => Boolean(c && c.b >= 200 && c.b > c.r + 120 && c.a >= 0.14 && c.a <= 0.24);
   const gSafe = Boolean(
     m72.labelG &&
       m72.labelG.lineHeight >= m72.labelG.fontSize * 1.45 &&
@@ -590,12 +589,19 @@ try {
   );
 
   record(
-    'Translucent-Only Material You Theming: Sunset @ 0% solid white keeps user Blue (data-wp-theme-active=false), while translucent Aurora -> Violet, Mint -> Emerald, Sunset -> Rose with frameless idle controls, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
+    'Spec 060 No Wallpaper Auto-Recolor: Sunset/Aurora/Mint/Red Photo @ 0%-100% transparency ALWAYS keep user Blue (#2E7CF6), neutral hover/buttons, custom accent persists across wallpaper switches, frameless idle controls, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
     mSunset0.wpThemeActive === 'false' &&
       mSunset0.accentVar === '#2E7CF6' &&
-      mAurora100.wpThemeActive === 'true' &&
-      mMint72.wpThemeActive === 'true' &&
-      m72.wpThemeActive === 'true' &&
+      mAurora100.wpThemeActive === 'false' &&
+      mAurora100.accentVar === '#2E7CF6' &&
+      mMint72.wpThemeActive === 'false' &&
+      mMint72.accentVar === '#2E7CF6' &&
+      m72.wpThemeActive === 'false' &&
+      m72.accentVar === '#2E7CF6' &&
+      mRedPhoto100.wpThemeActive === 'false' &&
+      mRedPhoto100.accentVar === '#2E7CF6' &&
+      mRedPhoto100.brandBg === 'rgb(46, 124, 246)' &&
+      customPersistAccent.toUpperCase() === '#7C3AED' &&
       mAurora100.framedControls === 'false' &&
       mAurora100.textHalo === 'false' &&
       m72.framedControls === 'false' &&
@@ -609,14 +615,11 @@ try {
       idleSegA?.bg === 'rgba(0, 0, 0, 0)' &&
       mAurora100.wpColorWidth > 0 &&
       mAurora100.wpColorWidth <= 48 &&
-      // Aurora -> Violet (B >= 210 && R >= 70 && R > G + 20 && B - G >= 120)
-      Boolean(auroraActiveRgba && auroraActiveRgba.b >= 210 && auroraActiveRgba.r >= 70 && auroraActiveRgba.r > auroraActiveRgba.g + 20 && auroraActiveRgba.b - auroraActiveRgba.g >= 120 && auroraActiveRgba.a >= 0.14 && auroraActiveRgba.a <= 0.24) &&
-      // Mint -> Emerald (G > R + 100 && G > B)
-      Boolean(mintActiveRgba && mintActiveRgba.g >= 180 && mintActiveRgba.g - mintActiveRgba.r >= 100 && mintActiveRgba.a >= 0.14 && mintActiveRgba.a <= 0.24) &&
-      // Sunset -> Sakura Rose (R > 210 && R > B && R > G + 100) on BOTH active, hover & secondary buttons!
-      Boolean(sunsetActiveRgba && sunsetActiveRgba.r >= 210 && sunsetActiveRgba.r > sunsetActiveRgba.b && sunsetActiveRgba.r - sunsetActiveRgba.g >= 100 && sunsetActiveRgba.a >= 0.14 && sunsetActiveRgba.a <= 0.24) &&
-      Boolean(sunsetHoverRgba && sunsetHoverRgba.r >= 210 && sunsetHoverRgba.a <= 0.11) &&
-      Boolean(sunsetSecRgba && sunsetSecRgba.r >= 210 && sunsetSecRgba.a >= 0.05 && sunsetSecRgba.a <= 0.14),
+      isBluePill(auroraActiveRgba) &&
+      isBluePill(mintActiveRgba) &&
+      isBluePill(sunsetActiveRgba) &&
+      Boolean(sunsetHoverRgba && sunsetHoverRgba.r <= 30 && sunsetHoverRgba.a <= 0.10) &&
+      Boolean(sunsetSecRgba && sunsetSecRgba.r <= 30 && sunsetSecRgba.a >= 0.04 && sunsetSecRgba.a <= 0.10),
     JSON.stringify({
       maxSegDW,
       maxSegDH,
@@ -633,6 +636,8 @@ try {
       sunsetActiveBg: m72.navActiveBg,
       sunsetHover: m72.hoverToken,
       sunsetSecBg: m72.sec?.bg,
+      mRedPhoto100,
+      customPersistAccent,
     })
   );
 

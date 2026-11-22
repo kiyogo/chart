@@ -458,11 +458,7 @@ pub fn AppearanceColorsShapes() -> Element {
     let c = ctx();
     let pr: Prefs = c.prefs.read().clone();
     let accent_val = if pr.custom_accent.is_empty() {
-        if pr.panel_opacity <= 75 {
-            platform::wallpaper_seed_hex(&pr.app_wallpaper).unwrap_or_else(|| "#2E7CF6".to_string())
-        } else {
-            "#2E7CF6".to_string()
-        }
+        platform::accent_preset_hex(platform::load_appearance().accent.as_str()).to_string()
     } else {
         pr.custom_accent.clone()
     };
@@ -512,7 +508,6 @@ pub fn AppearanceWallpapersGlass(#[props(default)] on_reset_appearance: Option<E
     let mut msg = use_signal(|| Option::<String>::None);
     let wp_color = pr.app_wallpaper.strip_prefix("color:")
         .map(|s| s.to_string())
-        .or_else(|| platform::wallpaper_seed_hex(&pr.app_wallpaper))
         .unwrap_or_else(|| "#60A5FA".to_string());
     let panel_transparency = 100u8.saturating_sub(pr.panel_opacity);
     let panel_transparency_pct = panel_transparency;
@@ -543,26 +538,26 @@ pub fn AppearanceWallpapersGlass(#[props(default)] on_reset_appearance: Option<E
             div { class: "settings-row column-layout",
                 span { class: "settings-label", "Hình nền toàn ứng dụng" }
                 div { class: "wallpaper-grid",
-                    button { r#type: "button", class: if pr.app_wallpaper.is_empty() { "wallpaper-tile active" } else { "wallpaper-tile" }, onclick: move |_| c.update(|p| { p.app_wallpaper.clear(); p.custom_accent.clear(); }),
+                    button { r#type: "button", class: if pr.app_wallpaper.is_empty() { "wallpaper-tile active" } else { "wallpaper-tile" }, onclick: move |_| c.update(|p| p.app_wallpaper.clear()),
                         span { class: "wallpaper-sample wp-none" } span { "Không" }
                     }
                     for (id, name) in WALLPAPER_NAMES.iter().copied().filter(|(id, _)| *id != "none") {
                         button { key: "{id}", r#type: "button", class: if pr.app_wallpaper == id { "wallpaper-tile active" } else { "wallpaper-tile" },
-                            onclick: move |_| c.update(|p| { p.app_wallpaper = id.to_string(); p.custom_accent.clear(); }),
+                            onclick: move |_| c.update(|p| p.app_wallpaper = id.to_string()),
                             span { class: "wallpaper-sample wp-{id}" } span { "{name}" }
                         }
                     }
                 }
             }
             div { class: "inline-form",
-                input { r#type: "color", aria_label: "Màu nền ứng dụng", value: "{wp_color}", onchange: move |e| { let v = format!("color:{}", e.value().to_uppercase()); c.update(move |p| { p.app_wallpaper = v; p.custom_accent.clear(); }) } }
+                input { r#type: "color", aria_label: "Màu nền ứng dụng", value: "{wp_color}", onchange: move |e| { let v = format!("color:{}", e.value().to_uppercase()); c.update(move |p| p.app_wallpaper = v) } }
                 input { id: "app-wp-file", r#type: "file", accept: "image/png,image/jpeg,image/webp,image/avif", style: "display: none;",
                     onchange: move |_| {
                         uploading.set(true);
                         spawn(async move {
                             match platform::process_selected_wallpaper_webp("app-wp-file").await {
                                 Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
-                                    Ok(url) => c.update(move |p| { p.app_wallpaper = url; p.custom_accent.clear(); }),
+                                    Ok(url) => c.update(move |p| p.app_wallpaper = url),
                                     Err(_) => msg.set(Some("Không tải ảnh lên được".into())),
                                 },
                                 Err(e) if e == "too_large" => msg.set(Some("Ảnh lớn hơn 2 MB".into())),
