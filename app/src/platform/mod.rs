@@ -769,36 +769,39 @@ if (!window.__chatwRecomputeContrast) {
             ? baseTheme
             : ((lcWhiteOnPanel > lcBlackOnPanel + 6 || (c.wpKind === 'image' && alpha < 0.50 && darkRatio > 0.56)) ? 'dark' : 'light');
         const railTone = surfaceTone;
-        const wpBusy = (c.wpKind === 'image' && (stdB > 0.13 || edgeB > 0.045 || (darkRatio > 0.15 && brightRatio > 0.15))) || (c.wpKind !== 'none' && transparency > 0.35);
+        const wpBusy = c.wpKind === 'image' && (stdB > 0.14 || edgeB > 0.048 || (darkRatio > 0.16 && brightRatio > 0.16));
         const panelScrim = (c.wpKind !== 'none' || transparency > 0.15) && (alpha < 0.85 || (wpBusy && alpha < 0.94));
         const railScrim = panelScrim;
 
-        // APCA Worst-Case Local Legibility Check (WCAG 3.0 Lc threshold = 68):
-        // When the panel surface is ALREADY easy to read (no wallpaper, OR opacity >= 40%, OR worst-case |Lc| >= 68),
-        // NEVER apply any blurry text-shadow! Only apply tight dark depth glow when transparency genuinely lowers |Lc| below 68.
+        // APCA Worst-Case Local Legibility Check (WCAG 3.0 Lc threshold = 62):
+        // Smooth preset wallpapers (Hoang hon, Dai duong, Bac ha, Giay, Cuc quang, Dem sao) and solid readable colors
+        // NEVER get ugly blurry text-shadow! Only genuinely complex uploaded photos or low-APCA surfaces at extreme transparency do.
         const inkRgb = surfaceTone === 'light' ? [0, 0, 0] : [255, 255, 255];
         const worstBgB = surfaceTone === 'light'
             ? (alpha * panelBaseB + (1 - alpha) * Math.max(0.02, p10B * (1 - effDim)))
             : (alpha * panelBaseB + (1 - alpha) * Math.min(0.98, p90B * (1 - effDim)));
         const worstBgV = Math.round(Math.max(0, Math.min(255, worstBgB * 255)));
         const worstLc = Math.abs(calcAPCA(inkRgb, [worstBgV, worstBgV, worstBgV]));
-        const needsHalo = c.wpKind !== 'none' && alpha < 0.40 && (worstLc < 68 || wpBusy);
+        const needsFramedControls = c.wpKind !== 'none' && alpha < 0.40;
+        const needsHalo = c.wpKind !== 'none' && alpha < 0.36 && (worstLc < 62 || wpBusy);
 
         const isTranslucentWp = c.wpKind !== 'none' && alpha < 0.96;
-        const isColoredSurface = surfaceTone === 'light' && isTranslucentWp && (panelEffectiveB < 0.93 || wpChroma > 0.07);
-        const needsLuminousControls = isTranslucentWp && (surfaceTone === 'dark' || alpha < 0.68 || panelEffectiveB < 0.92);
+        const isColoredSurface = surfaceTone === 'light' && isTranslucentWp && (panelEffectiveB < 0.92 || wpChroma > 0.12);
+        const needsLuminousControls = isTranslucentWp && (surfaceTone === 'dark' || (alpha < 0.72 && (panelEffectiveB < 0.93 || wpChroma > 0.12)));
 
         root.setAttribute('data-surface-tone', surfaceTone);
         root.setAttribute('data-rail-tone', railTone);
         root.setAttribute('data-wp-busy', String(wpBusy));
         root.setAttribute('data-panel-scrim', String(panelScrim));
         root.setAttribute('data-rail-scrim', String(railScrim));
+        root.setAttribute('data-framed-controls', String(needsFramedControls));
         root.setAttribute('data-text-halo', String(needsHalo));
         root.setAttribute('data-luminous-controls', String(needsLuminousControls));
         root.setAttribute('data-apca-lc', String(Math.round(worstLc)));
         root.style.setProperty('--wp-dom-color', domHex);
 
-        // Perceptual tint generator: prevents complementary alpha-blending mud (e.g. 16% blue over 84% pink -> dull grey-purple)
+        // Hue-harmonized Apple Liquid Glass / Arc-caliber tint generator:
+        // Eliminates both muddy complementary blending (blue over pink -> grey-purple) AND clashing 85%-opaque cold stickers.
         const PRESET_ACCENTS = {
             blue: '#2E7CF6',
             cyan: '#06B6D4',
@@ -811,32 +814,40 @@ if (!window.__chatwRecomputeContrast) {
             ? c.customAccent
             : (PRESET_ACCENTS[root.getAttribute('data-accent') || 'blue'] || '#2E7CF6');
         const makeVibrantRgb = (hex, darkMode) => {
-            const raw = parseHex(hex) || [39, 100, 231];
+            const raw = parseHex(hex) || [46, 124, 246];
             const [h, s0] = rgbToHsl(raw[0], raw[1], raw[2]);
             if (s0 < 0.08) return raw;
-            const s = Math.min(0.92, Math.max(s0, 0.56));
-            const l = darkMode ? 0.54 : 0.52;
+            const s = Math.min(0.92, Math.max(s0, 0.58));
+            const l = darkMode ? 0.56 : 0.52;
             return hslToRgb(h, s, l);
         };
         const makeCleanTint = (hex, darkMode, weight, alphaOut) => {
             const [vr, vg, vb] = makeVibrantRgb(hex, darkMode);
-            const base = darkMode ? [20, 28, 46] : [255, 255, 255];
+            const base = darkMode ? [22, 28, 42] : [255, 255, 255];
             const r = Math.round(base[0] * (1 - weight) + vr * weight);
             const g = Math.round(base[1] * (1 - weight) + vg * weight);
             const b = Math.round(base[2] * (1 - weight) + vb * weight);
             return `rgba(${r}, ${g}, ${b}, ${alphaOut.toFixed(2)})`;
         };
+        const hueDiffDeg = (h1, h2) => {
+            const d = Math.abs(((h1 - h2) % 360 + 360) % 360);
+            return Math.min(d, 360 - d);
+        };
+        const accentRawRgb = parseHex(effAccentHex) || [46, 124, 246];
+        const [accentH] = rgbToHsl(accentRawRgb[0], accentRawRgb[1], accentRawRgb[2]);
         const domRgb = parseHex(domHex) || [100, 116, 139];
-        const hr = Math.round(domRgb[0] * 0.34 + 100 * 0.66);
-        const hg = Math.round(domRgb[1] * 0.34 + 116 * 0.66);
-        const hb = Math.round(domRgb[2] * 0.34 + 139 * 0.66);
+        const [wpH] = rgbToHsl(domRgb[0], domRgb[1], domRgb[2]);
+        const isHueHarmonious = wpChroma < 0.14 || hueDiffDeg(accentH, wpH) <= 68;
+        const hr = Math.round(domRgb[0] * 0.30 + 100 * 0.70);
+        const hg = Math.round(domRgb[1] * 0.30 + 116 * 0.70);
+        const hb = Math.round(domRgb[2] * 0.30 + 139 * 0.70);
 
         // Progressively deepen text contrast as transparency increases so text stays crisp without needing blurry shadows
         if (c.wpKind !== 'none' && transparency >= 0.20) {
             if (surfaceTone === 'light') {
                 root.style.setProperty('--text-primary', '#000000');
-                root.style.setProperty('--text-secondary', transparency > 0.50 ? '#090D16' : '#1E293B');
-                root.style.setProperty('--text-muted', transparency > 0.50 ? '#1E293B' : '#334155');
+                root.style.setProperty('--text-secondary', transparency > 0.50 ? '#111827' : '#1E293B');
+                root.style.setProperty('--text-muted', transparency > 0.50 ? '#1F2937' : '#334155');
             } else {
                 root.style.setProperty('--text-primary', '#FFFFFF');
                 root.style.setProperty('--text-secondary', '#F1F5F9');
@@ -848,73 +859,78 @@ if (!window.__chatwRecomputeContrast) {
             root.style.removeProperty('--text-muted');
         }
 
-        // Smooth luminous frosted action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) over translucent wallpapers
+        // Silky translucent glass action buttons (.btn-secondary, .btn-ghost, .btn-avatar-upload) over translucent wallpapers
         if (isTranslucentWp) {
             if (surfaceTone === 'light') {
                 if (isColoredSurface) {
-                    const btnA = Math.min(0.80, 0.58 + transparency * 0.22);
+                    const btnA = Math.min(0.56, 0.38 + transparency * 0.18);
                     root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${btnA.toFixed(2)})`);
-                    root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${Math.min(0.94, btnA + 0.16).toFixed(2)})`);
-                    root.style.setProperty('--adaptive-btn-active', makeCleanTint(effAccentHex, false, 0.08, Math.min(0.92, btnA + 0.16)));
-                    root.style.setProperty('--adaptive-btn-ring', `rgba(${hr}, ${hg}, ${hb}, 0.15)`);
-                    root.style.setProperty('--adaptive-switch-bg', `rgba(${hr}, ${hg}, ${hb}, 0.28)`);
+                    root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${Math.min(0.74, btnA + 0.16).toFixed(2)})`);
+                    root.style.setProperty('--adaptive-btn-active', `rgba(255, 255, 255, ${Math.min(0.84, btnA + 0.26).toFixed(2)})`);
+                    root.style.setProperty('--adaptive-btn-ring', `rgba(${hr}, ${hg}, ${hb}, 0.13)`);
+                    root.style.setProperty('--adaptive-switch-bg', `rgba(${hr}, ${hg}, ${hb}, 0.24)`);
                 } else {
-                    root.style.setProperty('--adaptive-btn-bg', 'rgba(15, 23, 42, 0.048)');
-                    root.style.setProperty('--adaptive-btn-hover', 'rgba(15, 23, 42, 0.085)');
-                    root.style.setProperty('--adaptive-btn-active', 'rgba(15, 23, 42, 0.13)');
-                    root.style.setProperty('--adaptive-btn-ring', 'rgba(15, 23, 42, 0.10)');
+                    root.style.setProperty('--adaptive-btn-bg', 'rgba(15, 23, 42, 0.045)');
+                    root.style.setProperty('--adaptive-btn-hover', 'rgba(15, 23, 42, 0.08)');
+                    root.style.setProperty('--adaptive-btn-active', 'rgba(15, 23, 42, 0.12)');
+                    root.style.setProperty('--adaptive-btn-ring', 'rgba(15, 23, 42, 0.09)');
                     root.style.removeProperty('--adaptive-switch-bg');
                 }
             } else {
-                const dBtnA = Math.min(0.18, 0.10 + transparency * 0.07);
+                const dBtnA = Math.min(0.16, 0.09 + transparency * 0.06);
                 root.style.setProperty('--adaptive-btn-bg', `rgba(255, 255, 255, ${dBtnA.toFixed(2)})`);
-                root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${(dBtnA + 0.08).toFixed(2)})`);
-                root.style.setProperty('--adaptive-btn-active', makeCleanTint(effAccentHex, true, 0.30, 0.84));
-                root.style.setProperty('--adaptive-btn-ring', 'rgba(255, 255, 255, 0.16)');
-                root.style.setProperty('--adaptive-switch-bg', 'rgba(255, 255, 255, 0.24)');
+                root.style.setProperty('--adaptive-btn-hover', `rgba(255, 255, 255, ${(dBtnA + 0.07).toFixed(2)})`);
+                root.style.setProperty('--adaptive-btn-active', `rgba(255, 255, 255, ${(dBtnA + 0.14).toFixed(2)})`);
+                root.style.setProperty('--adaptive-btn-ring', 'rgba(255, 255, 255, 0.14)');
+                root.style.setProperty('--adaptive-switch-bg', 'rgba(255, 255, 255, 0.22)');
             }
         } else {
             ['--adaptive-btn-bg', '--adaptive-btn-hover', '--adaptive-btn-active', '--adaptive-btn-ring', '--adaptive-switch-bg']
                 .forEach((k) => root.style.removeProperty(k));
         }
 
-        if (needsHalo) {
-            // Smooth ramp only in the high-transparency zone (alpha < 0.40 -> transparency > 60%)
-            const ramp = Math.min(1, Math.max(0, (0.40 - alpha) / 0.40));
-            const strength = Math.min(1, 0.30 + ramp * 0.70);
-            // Tight, clean 1px-2px dark shadow (NEVER wide 6px-11px blur that smudges letter counters!)
+        // High-transparency framed segmented buttons (0.00px size shift via inset box-shadow; decoupled from text-shadow!)
+        if (needsFramedControls) {
             if (surfaceTone === 'light') {
-                const coreA = (0.34 * strength).toFixed(2);
-                const softA = (0.18 * strength).toFixed(2);
-                root.style.setProperty(
-                    '--adaptive-text-halo',
-                    `0 1px 1.5px rgba(0, 0, 0, ${coreA}), 0 0 3px rgba(0, 0, 0, ${softA})`
-                );
                 if (isColoredSurface) {
-                    const segA = Math.min(0.62, 0.36 + transparency * 0.24);
+                    const segA = Math.min(0.28, 0.18 + transparency * 0.10);
                     root.style.setProperty('--adaptive-ctrl-bg', `rgba(255, 255, 255, ${segA.toFixed(2)})`);
-                    root.style.setProperty('--adaptive-ctrl-hover', `rgba(255, 255, 255, ${Math.min(0.86, segA + 0.24).toFixed(2)})`);
+                    root.style.setProperty('--adaptive-ctrl-hover', `rgba(255, 255, 255, ${Math.min(0.46, segA + 0.16).toFixed(2)})`);
                     root.style.setProperty('--adaptive-ctrl-ring', `rgba(${hr}, ${hg}, ${hb}, 0.14)`);
                 } else {
-                    root.style.setProperty('--adaptive-ctrl-bg', 'rgba(15, 23, 42, 0.045)');
-                    root.style.setProperty('--adaptive-ctrl-hover', 'rgba(15, 23, 42, 0.085)');
-                    root.style.setProperty('--adaptive-ctrl-ring', 'rgba(15, 23, 42, 0.10)');
+                    root.style.setProperty('--adaptive-ctrl-bg', 'rgba(15, 23, 42, 0.04)');
+                    root.style.setProperty('--adaptive-ctrl-hover', 'rgba(15, 23, 42, 0.08)');
+                    root.style.setProperty('--adaptive-ctrl-ring', 'rgba(15, 23, 42, 0.09)');
                 }
             } else {
-                const darkCoreA = (0.75 * strength).toFixed(2);
-                const darkSoftA = (0.45 * strength).toFixed(2);
+                const dSegA = Math.min(0.14, 0.07 + transparency * 0.06);
+                root.style.setProperty('--adaptive-ctrl-bg', `rgba(255, 255, 255, ${dSegA.toFixed(2)})`);
+                root.style.setProperty('--adaptive-ctrl-hover', `rgba(255, 255, 255, ${(dSegA + 0.07).toFixed(2)})`);
+                root.style.setProperty('--adaptive-ctrl-ring', 'rgba(255, 255, 255, 0.14)');
+            }
+        } else {
+            ['--adaptive-ctrl-bg', '--adaptive-ctrl-hover', '--adaptive-ctrl-ring']
+                .forEach((k) => root.style.removeProperty(k));
+        }
+
+        // Crisp text-contrast shadow ONLY when genuinely busy uploaded image or low APCA legibility demands it
+        if (needsHalo) {
+            const ramp = Math.min(1, Math.max(0, (0.36 - alpha) / 0.36));
+            const strength = Math.min(1, 0.35 + ramp * 0.65);
+            if (surfaceTone === 'light') {
+                // Tight 0-offset ink reinforcement (never a smeared 1.5px drop shadow that blurs letterforms)
+                const coreA = (0.24 * strength).toFixed(2);
+                root.style.setProperty('--adaptive-text-halo', `0 0 1px rgba(0, 0, 0, ${coreA})`);
+            } else {
+                const darkCoreA = (0.64 * strength).toFixed(2);
+                const darkSoftA = (0.34 * strength).toFixed(2);
                 root.style.setProperty(
                     '--adaptive-text-halo',
                     `0 1px 2px rgba(0, 0, 0, ${darkCoreA}), 0 0 4px rgba(0, 0, 0, ${darkSoftA})`
                 );
-                const dSegA = Math.min(0.56, 0.34 + transparency * 0.20);
-                root.style.setProperty('--adaptive-ctrl-bg', `rgba(15, 23, 42, ${dSegA.toFixed(2)})`);
-                root.style.setProperty('--adaptive-ctrl-hover', `rgba(30, 41, 59, ${Math.min(0.76, dSegA + 0.20).toFixed(2)})`);
-                root.style.setProperty('--adaptive-ctrl-ring', 'rgba(255, 255, 255, 0.16)');
             }
         } else {
-            ['--adaptive-text-halo', '--adaptive-ctrl-bg', '--adaptive-ctrl-hover', '--adaptive-ctrl-ring']
-                .forEach((k) => root.style.removeProperty(k));
+            root.style.removeProperty('--adaptive-text-halo');
         }
 
         const surfaceBgHex = surfaceTone === 'dark' ? '#171B24' : '#FFFFFF';
@@ -949,25 +965,33 @@ if (!window.__chatwRecomputeContrast) {
                 .forEach((k) => root.style.removeProperty(k));
         }
 
-        // Luminance-normalized vivid airy active/selected/pressed pills & glass hover over translucent wallpapers
+        // Hue-harmonized Apple Liquid Glass active/selected/hover pills over translucent wallpapers
         if (needsLuminousControls) {
             const lumRamp = Math.min(1, Math.max(0, (transparency - 0.28) / 0.72));
             const isDarkSurf = surfaceTone === 'dark';
-            const pillA = isDarkSurf ? (0.76 + lumRamp * 0.12) : (0.79 + lumRamp * 0.10);
             const [vr, vg, vb] = makeVibrantRgb(effAccentHex, isDarkSurf);
-            root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.22 : 0.13, pillA));
-            root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, isDarkSurf, isDarkSurf ? 0.30 : 0.19, Math.min(0.95, pillA + 0.06)));
-            root.style.setProperty('--adaptive-active-ring', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${isDarkSurf ? '0.28' : '0.14'})`);
-            if (!isDarkSurf && isColoredSurface) {
-                root.style.setProperty('--bg-hover', `rgba(255, 255, 255, ${(0.46 + lumRamp * 0.18).toFixed(2)})`);
-                root.style.setProperty('--bg-active', `rgba(255, 255, 255, ${(0.64 + lumRamp * 0.18).toFixed(2)})`);
-                root.style.setProperty('--bg-surface-hover', `rgba(255, 255, 255, ${(0.56 + lumRamp * 0.18).toFixed(2)})`);
-            } else if (isDarkSurf) {
-                root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.13)');
-                root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.21)');
-                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.10)');
+            if (isDarkSurf) {
+                const darkPillA = 0.26 + lumRamp * 0.08;
+                root.style.setProperty('--accent-soft', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${darkPillA.toFixed(2)})`);
+                root.style.setProperty('--accent-soft-strong', `rgba(${Math.round(vr)}, ${Math.round(vg)}, ${Math.round(vb)}, ${(darkPillA + 0.10).toFixed(2)})`);
+                root.style.setProperty('--adaptive-active-ring', 'rgba(255, 255, 255, 0.13)');
+                root.style.setProperty('--bg-hover', 'rgba(255, 255, 255, 0.09)');
+                root.style.setProperty('--bg-active', 'rgba(255, 255, 255, 0.15)');
+                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.08)');
+            } else if (isColoredSurface) {
+                // Luminous Apple Liquid Glass active pill: bright crisp translucent frost with delicate harmonious tint
+                // so active state ALWAYS pops cleanly above pastel wallpapers AND idle glass controls (zero icy sticker clash!).
+                const pillA = 0.62 + lumRamp * 0.10;
+                const tintW = isHueHarmonious ? 0.07 : 0.02;
+                root.style.setProperty('--accent-soft', makeCleanTint(effAccentHex, false, tintW, pillA));
+                root.style.setProperty('--accent-soft-strong', makeCleanTint(effAccentHex, false, Math.min(0.12, tintW + 0.04), Math.min(0.82, pillA + 0.10)));
+                root.style.setProperty('--adaptive-active-ring', 'rgba(255, 255, 255, 0.72)');
+                // Quiet velvety neutral hover (preserves wallpaper hue & stays crisp at every brightness — zero 56% chalky white slab!)
+                root.style.setProperty('--bg-hover', 'rgba(15, 23, 42, 0.055)');
+                root.style.setProperty('--bg-active', 'rgba(15, 23, 42, 0.10)');
+                root.style.setProperty('--bg-surface-hover', 'rgba(255, 255, 255, 0.34)');
             } else {
-                ['--bg-hover', '--bg-active', '--bg-surface-hover'].forEach((k) => root.style.removeProperty(k));
+                ['--adaptive-active-ring', '--bg-hover', '--bg-active', '--bg-surface-hover'].forEach((k) => root.style.removeProperty(k));
             }
         } else {
             ['--adaptive-active-ring', '--bg-hover', '--bg-active', '--bg-surface-hover']

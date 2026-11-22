@@ -3564,10 +3564,14 @@ html[data-app-wp^="preset-"] .workspace-shell::after {
 /* The shell isolates its own stacking context so the wallpaper layers (z-index -1)
    sit above the shell background but below every panel and popover. */
 .workspace-shell { isolation: isolate; }
-html[data-app-wp="preset-aurora"] .workspace-shell::before { background-image: radial-gradient(60% 50% at 10% 0%, rgba(34, 211, 238, 0.35), transparent 70%), radial-gradient(60% 50% at 90% 10%, rgba(167, 139, 250, 0.35), transparent 70%), radial-gradient(70% 60% at 50% 100%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%); }
-html[data-app-wp="preset-sunset"] .workspace-shell::before { background-image: linear-gradient(160deg, rgba(249, 115, 22, 0.35), rgba(219, 39, 119, 0.3)); }
-html[data-app-wp="preset-ocean"] .workspace-shell::before { background-image: linear-gradient(170deg, rgba(14, 165, 233, 0.35), rgba(37, 99, 235, 0.3)); }
-html[data-app-wp="preset-mint"] .workspace-shell::before { background-image: linear-gradient(160deg, rgba(16, 185, 129, 0.3), rgba(163, 230, 53, 0.25)); }
+html[data-app-wp="preset-aurora"] .workspace-shell::before { background-color: #F7F9FF; background-image: radial-gradient(60% 50% at 10% 0%, rgba(56, 189, 248, 0.30), transparent 70%), radial-gradient(60% 50% at 90% 10%, rgba(192, 132, 252, 0.30), transparent 70%), radial-gradient(70% 60% at 50% 100%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%); }
+html[data-app-wp="preset-sunset"] .workspace-shell::before { background-color: #FFF7F4; background-image: linear-gradient(150deg, rgba(255, 168, 128, 0.42) 0%, rgba(251, 146, 178, 0.38) 55%, rgba(232, 162, 226, 0.32) 100%); }
+html[data-app-wp="preset-ocean"] .workspace-shell::before { background-color: #F3F9FF; background-image: linear-gradient(160deg, rgba(125, 211, 252, 0.40) 0%, rgba(96, 165, 250, 0.30) 100%); }
+html[data-app-wp="preset-mint"] .workspace-shell::before { background-color: #F3FDF8; background-image: linear-gradient(155deg, rgba(110, 231, 183, 0.36) 0%, rgba(190, 242, 100, 0.26) 100%); }
+html[data-theme="dark"][data-app-wp="preset-aurora"] .workspace-shell::before { background-color: var(--bg-app); background-image: radial-gradient(60% 50% at 10% 0%, rgba(34, 211, 238, 0.28), transparent 70%), radial-gradient(60% 50% at 90% 10%, rgba(167, 139, 250, 0.28), transparent 70%), radial-gradient(70% 60% at 50% 100%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 70%); }
+html[data-theme="dark"][data-app-wp="preset-sunset"] .workspace-shell::before { background-color: var(--bg-app); background-image: linear-gradient(160deg, rgba(249, 115, 22, 0.32), rgba(219, 39, 119, 0.28)); }
+html[data-theme="dark"][data-app-wp="preset-ocean"] .workspace-shell::before { background-color: var(--bg-app); background-image: linear-gradient(170deg, rgba(14, 165, 233, 0.32), rgba(37, 99, 235, 0.28)); }
+html[data-theme="dark"][data-app-wp="preset-mint"] .workspace-shell::before { background-color: var(--bg-app); background-image: linear-gradient(160deg, rgba(16, 185, 129, 0.28), rgba(163, 230, 53, 0.22)); }
 html[data-app-wp="preset-night"] .workspace-shell::before {
   background-color: #0B1023;
   background-image:
@@ -9803,14 +9807,18 @@ html[data-text-halo="true"] .btn-small-secondary:active:not(:disabled) {
   background: var(--adaptive-btn-active, var(--accent-soft)) !important;
 }
 
-/* High-transparency framed segmented buttons: 0.00px size change via inset box-shadow + live hover/press */
+/* High-transparency framed segmented buttons: 0.00px size change via inset box-shadow + live hover/press
+   Decoupled from data-text-halo so smooth readable presets get crisp framed buttons WITHOUT ugly blurry text-shadow! */
+html[data-framed-controls="true"] .segmented button:not(.active),
 html[data-text-halo="true"] .segmented button:not(.active) {
-  background: var(--adaptive-ctrl-bg, rgba(255, 255, 255, 0.50)) !important;
-  box-shadow: inset 0 0 0 1px var(--adaptive-ctrl-ring, rgba(100, 116, 139, 0.14)) !important;
+  background: var(--adaptive-ctrl-bg, rgba(255, 255, 255, 0.24)) !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-ctrl-ring, rgba(255, 255, 255, 0.34)) !important;
 }
+html[data-framed-controls="true"] .segmented button:not(.active):hover,
 html[data-text-halo="true"] .segmented button:not(.active):hover {
-  background: var(--adaptive-ctrl-hover, rgba(255, 255, 255, 0.76)) !important;
+  background: var(--adaptive-ctrl-hover, rgba(255, 255, 255, 0.42)) !important;
 }
+html[data-framed-controls="true"] .segmented button:not(.active):active,
 html[data-text-halo="true"] .segmented button:not(.active):active {
   background: var(--accent-soft) !important;
   box-shadow: inset 0 0 0 1px var(--adaptive-active-ring, transparent) !important;
@@ -10155,4 +10163,38 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   border-radius: var(--panel-radius) !important;
   margin-bottom: 0 !important;
 }
+
+/* 11. Spec 054 — Vietnamese Descender & Diacritic Safety (Zero Clipping on g, p, q, y, j, ệ, ọ, ự, ế, ồ)
+       Balances padding-block + negative margin-block so overflow: hidden never chops descender loops or diacritics
+       while keeping exact layout height & single-line horizontal ellipsis unchanged. */
+.settings-label,
+.settings-nav-item > span:not(.chevron),
+.chat-item-name,
+.chat-item-preview,
+.chat-header-title,
+.chat-header-meta,
+.sidebar-title,
+.sidebar-server-name,
+.category-name,
+.channel-row-name,
+.quick-label,
+.account-name,
+.user-status-name,
+.section-tab span:not(.section-badge),
+.section-row .grow,
+.pinned-bar-preview,
+.suggest-sub,
+.result-name,
+.voice-participant-name,
+.composer-context-text,
+.truncate {
+  line-height: 1.5 !important;
+  padding-block: 0.18em !important;
+  margin-block: -0.18em !important;
+}
+.settings-group-title,
+.settings-page-title {
+  line-height: 1.35 !important;
+}
+
 

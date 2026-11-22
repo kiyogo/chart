@@ -320,7 +320,9 @@ try {
     };
   });
 
-  // Now push panel transparency to 80% over Ocean wallpaper -> verify .app-rail background matches .settings-nav, text darkens to #000, tight dark glow activates on transparent text, while buttons/inputs stay text-shadow: none!
+  // Now push panel transparency to 80% over smooth Ocean wallpaper -> verify .app-rail background matches .settings-nav,
+  // text darkens to crisp #000000, smooth Ocean stays text-shadow: none (NO ugly blurry shadow!), while a genuinely busy
+  // high-contrast uploaded image activates data-text-halo="true" and buttons/inputs stay text-shadow: none!
   await page.evaluate(() => {
     const slider = document.querySelector('input[aria-label="Độ trong suốt khung trắng"]');
     const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
@@ -337,29 +339,56 @@ try {
     const railCS = getComputedStyle(rail);
     const navCS = getComputedStyle(nav);
     const bodyCS = getComputedStyle(body);
+    const smoothOceanHalo = document.documentElement.getAttribute('data-text-halo');
+    const smoothOceanFramed = document.documentElement.getAttribute('data-framed-controls');
+    const smoothOceanShadow = bodyCS.textShadow;
+    const textPrimaryColor = bodyCS.color;
+
+    // Simulate a genuinely busy high-contrast uploaded photo behind 80% transparent panels
+    const prevCustom = Object.assign({}, window.__chatwCustom || {});
+    window.__chatwWpMetrics = window.__chatwWpMetrics || {};
+    window.__chatwWpMetrics['__busy_test__'] = {
+      meanB: 0.42, p10B: 0.08, p50B: 0.42, p90B: 0.92,
+      railB: 0.42, stdB: 0.28, edgeB: 0.09, darkRatio: 0.35, brightRatio: 0.35, domHex: '#475569',
+    };
+    window.__chatwCustom = Object.assign({}, prevCustom, { wpKind: 'image', wpImageUrl: '__busy_test__', panelOpacity: 20 });
+    window.__chatwRecomputeContrast();
+    const busyPhotoHalo = document.documentElement.getAttribute('data-text-halo');
+    const busyPhotoShadow = getComputedStyle(body).textShadow;
+    const busyBtnShadow = btn ? getComputedStyle(btn).textShadow : 'none';
+    window.__chatwCustom = prevCustom;
+    window.__chatwRecomputeContrast();
+
     return {
       easyReadNoShadow: easyReadAudit.textHaloAttr === 'false' && easyReadAudit.bodyTextShadow === 'none',
       railBg: railCS.backgroundColor,
       navBg: navCS.backgroundColor,
-      textHaloAttr: document.documentElement.getAttribute('data-text-halo'),
-      bodyTextShadow: bodyCS.textShadow,
-      btnTextShadow: btn ? getComputedStyle(btn).textShadow : 'none',
-      textPrimaryColor: bodyCS.color,
+      smoothOceanHalo,
+      smoothOceanFramed,
+      smoothOceanShadow,
+      busyPhotoHalo,
+      busyPhotoShadow,
+      busyBtnShadow,
+      textPrimaryColor,
     };
   }, easyReadAudit);
   record(
-    'Left Rail (.app-rail) opacity syncs 100%, easy-to-read panels & pills/buttons have ZERO text-shadow, and extreme transparency activates deep black ink + tight dark glow',
+    'Left Rail (.app-rail) opacity syncs 100%, smooth presets stay crisp with ZERO blurry text-shadow even at 80% transparency, and busy high-contrast photos activate tight dark contrast halo while pills/buttons stay text-shadow: none',
     railAndHaloAudit.easyReadNoShadow &&
       railAndHaloAudit.railBg === railAndHaloAudit.navBg &&
-      railAndHaloAudit.textHaloAttr === 'true' &&
+      railAndHaloAudit.smoothOceanHalo === 'false' &&
+      railAndHaloAudit.smoothOceanFramed === 'true' &&
+      railAndHaloAudit.smoothOceanShadow === 'none' &&
       railAndHaloAudit.textPrimaryColor === 'rgb(0, 0, 0)' &&
-      railAndHaloAudit.bodyTextShadow.includes('rgba(0, 0, 0') &&
-      !railAndHaloAudit.bodyTextShadow.includes('255, 255, 255') &&
-      railAndHaloAudit.btnTextShadow === 'none',
+      railAndHaloAudit.busyPhotoHalo === 'true' &&
+      railAndHaloAudit.busyPhotoShadow.includes('rgba(0, 0, 0') &&
+      !railAndHaloAudit.busyPhotoShadow.includes('255, 255, 255') &&
+      railAndHaloAudit.busyBtnShadow === 'none',
     JSON.stringify(railAndHaloAudit)
   );
 
-  // 4b. Zero Size Shift (0.00px) from Frameless (52%) -> Framed (72%) + Non-Muddy Luminous Active & Secondary Button Colors over Sunset ("Hoàng hôn")
+  // 4b. Zero Size Shift (0.00px) from Frameless (52%) -> Framed (72%), Zero g-Descender Clipping on "Bong bóng người khác",
+  // and Harmonious Translucent Glass Active/Hover/Secondary Colors over Sunset ("Hoàng hôn")
   await page.evaluate(() => {
     const colorInput = document.querySelector('.settings-body input[type="color"]');
     const row = colorInput?.closest('.settings-row');
@@ -397,8 +426,14 @@ try {
       const sec = document.querySelector('.settings-body .btn-secondary');
       const secR = sec ? sec.getBoundingClientRect() : null;
       const navActive = document.querySelector('.settings-nav-item.active');
+      const labelG = Array.from(document.querySelectorAll('.settings-label')).find((el) =>
+        el.textContent.includes('Bong bóng người khác')
+      );
+      const labelCS = labelG ? getComputedStyle(labelG) : null;
+      const hoverToken = getComputedStyle(document.documentElement).getPropertyValue('--bg-hover').trim();
       return {
         textHalo: document.documentElement.getAttribute('data-text-halo'),
+        framedControls: document.documentElement.getAttribute('data-framed-controls'),
         luminous: document.documentElement.getAttribute('data-luminous-controls'),
         segs,
         sec: sec
@@ -412,6 +447,15 @@ try {
           : null,
         navActiveBg: navActive ? getComputedStyle(navActive).backgroundColor : '',
         navActiveShadow: navActive ? getComputedStyle(navActive).boxShadow : '',
+        hoverToken,
+        labelG: labelCS
+          ? {
+              fontSize: parseFloat(labelCS.fontSize),
+              lineHeight: parseFloat(labelCS.lineHeight),
+              paddingBottom: parseFloat(labelCS.paddingBottom),
+              textShadow: labelCS.textShadow,
+            }
+          : null,
       };
     });
 
@@ -424,7 +468,26 @@ try {
   await setTransparency(72);
   const m72 = await measureButtons();
   if (process.env.SPEC052_SHOT_DIR) {
+    const hoverTarget = page.locator('.settings-nav-item', { hasText: 'Trả lời tự động' }).first();
+    if (await hoverTarget.isVisible().catch(() => false)) {
+      await hoverTarget.hover();
+      await page.waitForTimeout(180);
+    }
     await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'sunset_72.png') });
+    const gLabelLoc = page.locator('.settings-label', { hasText: 'Bong bóng người khác' }).first();
+    if (await gLabelLoc.isVisible().catch(() => false)) {
+      await gLabelLoc.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(150);
+      await gLabelLoc.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'label_g_sunset_72.png') });
+    }
+    const navLoc = page.locator('.settings-nav').first();
+    if (await navLoc.isVisible().catch(() => false)) {
+      if (await hoverTarget.isVisible().catch(() => false)) {
+        await hoverTarget.hover();
+        await page.waitForTimeout(150);
+      }
+      await navLoc.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'nav_hover_sunset_72.png') });
+    }
   }
 
   const parseRgba = (s) => {
@@ -444,14 +507,23 @@ try {
   const idleSeg72 = m72.segs.find((s) => !s.active);
   const activeIdleHeightDiff = activeSeg72 && idleSeg72 ? Math.abs(activeSeg72.h - idleSeg72.h) : 99;
   const navActiveRgba = parseRgba(m72.navActiveBg);
+  const hoverRgba = parseRgba(m72.hoverToken);
   const sec52Rgba = parseRgba(m52.sec?.bg);
   const sec72Rgba = parseRgba(m72.sec?.bg);
+  const gSafe = Boolean(
+    m72.labelG &&
+      m72.labelG.lineHeight >= m72.labelG.fontSize * 1.45 &&
+      m72.labelG.paddingBottom >= 2 &&
+      m72.labelG.textShadow === 'none'
+  );
 
   record(
-    'Frameless (52%) -> Framed (72%) button transition has EXACT 0.00px width/height shift and airy soft luminous active/secondary colors over Sunset wallpaper',
-    m52.textHalo === 'false' &&
-      m72.textHalo === 'true' &&
+    'Frameless (52%) -> Framed (72%) button transition has EXACT 0.00px size shift, ZERO g-descender clipping/shadow smudge, and harmonious sheer Liquid Glass colors over Sunset wallpaper',
+    m52.framedControls === 'false' &&
+      m72.framedControls === 'true' &&
+      m72.textHalo === 'false' &&
       m72.luminous === 'true' &&
+      gSafe &&
       maxSegDW === 0 &&
       maxSegDH === 0 &&
       secDW === 0 &&
@@ -461,22 +533,26 @@ try {
       idleSeg72?.shadow.includes('inset') &&
       Boolean(
         navActiveRgba &&
-          navActiveRgba.r >= 215 &&
-          navActiveRgba.g >= 225 &&
-          navActiveRgba.b >= 245 &&
-          navActiveRgba.b - navActiveRgba.r >= 18 &&
-          navActiveRgba.a >= 0.76
+          navActiveRgba.r >= 245 &&
+          navActiveRgba.g >= 248 &&
+          navActiveRgba.b >= 252 &&
+          navActiveRgba.a >= 0.50 &&
+          navActiveRgba.a <= 0.72
       ) &&
-      Boolean(sec52Rgba && sec52Rgba.r === 255 && sec52Rgba.g === 255 && sec52Rgba.b === 255 && sec52Rgba.a >= 0.55) &&
-      Boolean(sec72Rgba && sec72Rgba.r === 255 && sec72Rgba.g === 255 && sec72Rgba.b === 255 && sec72Rgba.a >= 0.65),
+      Boolean(hoverRgba && hoverRgba.a <= 0.12) &&
+      Boolean(sec52Rgba && sec52Rgba.r === 255 && sec52Rgba.g === 255 && sec52Rgba.b === 255 && sec52Rgba.a >= 0.40 && sec52Rgba.a <= 0.65) &&
+      Boolean(sec72Rgba && sec72Rgba.r === 255 && sec72Rgba.g === 255 && sec72Rgba.b === 255 && sec72Rgba.a >= 0.44 && sec72Rgba.a <= 0.65),
     JSON.stringify({
       maxSegDW,
       maxSegDH,
       secDW,
       secDH,
       activeIdleHeightDiff,
+      gSafe,
+      labelG: m72.labelG,
       navActiveBg: m72.navActiveBg,
       navActiveShadow: m72.navActiveShadow,
+      hoverToken: m72.hoverToken,
       sec52Bg: m52.sec?.bg,
       sec72Bg: m72.sec?.bg,
       idleSeg72: idleSeg72 ? { bg: idleSeg72.bg, borderTop: idleSeg72.borderTop, shadow: idleSeg72.shadow } : null,
