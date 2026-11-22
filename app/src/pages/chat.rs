@@ -1428,6 +1428,7 @@ pub fn Chat(
                 channel_has_more.set(false);
                 channel_messages.set(Vec::new());
                 channel_loading_initial.set(true);
+                platform::scroll_chat_to_bottom(true);
             }
             let cid = ch.id.clone();
             spawn(async move {
@@ -1561,6 +1562,7 @@ pub fn Chat(
             group_has_more.set(false);
             group_messages.set(Vec::new());
             group_loading_initial.set(true);
+            platform::scroll_chat_to_bottom(true);
         }
 
         let gid = grp.id.clone();
@@ -1776,6 +1778,7 @@ pub fn Chat(
             });
             messages.set(Vec::new());
             dm_loading_initial.set(true);
+            platform::scroll_chat_to_bottom(true);
         }
 
         let uid = uid_for_select.clone();

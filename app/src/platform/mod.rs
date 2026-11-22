@@ -70,12 +70,17 @@ pub fn set_document_title(title: &str) {
     let _ = dioxus::document::eval(&format!("document.title = {escaped};"));
 }
 
-/// Scroll `.chat-messages` (column-reverse: scrollTop = 0 is bottom).
+/// Scroll `.chat-messages` to bottom and arm sticky-bottom ResizeObserver + media-load pinning (Spec 061).
 pub fn scroll_chat_to_bottom(instant: bool) {
     let behavior = if instant { "instant" } else { "smooth" };
+    let instant_js = if instant { "true" } else { "false" };
     let _ = dioxus::document::eval(&format!(
         r#"
         (function() {{
+            if (window.__chatwStickToBottom && typeof window.__chatwStickToBottom.pin === 'function') {{
+                window.__chatwStickToBottom.pin({instant_js});
+                return;
+            }}
             const scroll = () => {{
                 const el = document.getElementById('chat-messages-scroll');
                 if (!el) return;
@@ -98,6 +103,9 @@ pub fn scroll_chat_to_bottom(instant: bool) {
 pub async fn snapshot_chat_scroll_height() {
     let mut ev = dioxus::document::eval(
         r#"
+        if (window.__chatwStickToBottom && typeof window.__chatwStickToBottom.unpin === 'function') {
+            window.__chatwStickToBottom.unpin();
+        }
         const el = document.getElementById('chat-messages-scroll');
         if (el) {
             window.__chatwPrependSnap = { h: el.scrollHeight, t: el.scrollTop };
@@ -704,8 +712,12 @@ if (!window.__chatwRecomputeContrast) {
         const chatCol = document.querySelector('.chat-column');
         if (chatCol) {
             const st = chatCol.getAttribute('style') || '';
-            const mUrl = st.match(/url\(['"]?([^'")]+)['"]?\)/);
-            const mHex = st.match(/--chat-wp-color\s*:\s*(#[0-9a-fA-F]{6})/) || st.match(/background-color\s*:\s*(#[0-9a-fA-F]{6})/);
+            const mUrl = chatCol.classList.contains('wp-image')
+                ? st.match(/--chat-wp-image\s*:\s*url\(['"]?([^'")]+)['"]?\)/)
+                : null;
+            const mHex = chatCol.classList.contains('wp-custom')
+                ? (st.match(/--chat-wp-color\s*:\s*(#[0-9a-fA-F]{6})/) || st.match(/background-color\s*:\s*(#[0-9a-fA-F]{6})/))
+                : null;
             if (mUrl && mUrl[1]) {
                 const chatUrl = mUrl[1];
                 const cm = window.__chatwWpMetrics[chatUrl];
@@ -1034,6 +1046,9 @@ if (!window.__chatwRecomputeContrast) {
             ['--msg-recv', '--msg-recv-text', '--msg-recv-meta'].forEach((k) => root.style.removeProperty(k));
         }
         void useWallpaperTheme;
+        if (window.__chatwAdaptiveSurface && typeof window.__chatwAdaptiveSurface.refresh === 'function') {
+            window.__chatwAdaptiveSurface.refresh();
+        }
     };
 
     // Real-time MutationObserver: whenever the user opens a chat or sets/uploads a per-chat wallpaper,

@@ -380,7 +380,7 @@ pub fn RichImage(data: ImageData) -> Element {
         div { class: "rich-image",
             if let Some(s) = src() {
                 button { r#type: "button", class: "rich-image-btn", aria_label: "Xem ảnh", onclick: move |_| open.set(true),
-                    img { src: "{s}", alt: "Hình ảnh", loading: "lazy" }
+                    img { src: "{s}", alt: "Hình ảnh", decoding: "async" }
                 }
                 if open() {
                     div { class: "lightbox", role: "dialog", aria_label: "Ảnh", onclick: move |_| open.set(false),

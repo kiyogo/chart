@@ -1828,15 +1828,12 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   bottom: 0;
   pointer-events: none;
   z-index: -1;
-  background: linear-gradient(to top,
-    color-mix(in srgb, var(--bg-surface) 75%, transparent) 0%,
-    color-mix(in srgb, var(--bg-surface) 48%, transparent) 45%,
-    transparent 100%
-  );
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 60%, rgba(0, 0, 0, 0) 100%);
-  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 60%, rgba(0, 0, 0, 0) 100%);
+  background-color: color-mix(in srgb, var(--bg-chat) var(--panel-opacity, 100%), transparent);
+  background-repeat: no-repeat;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.99) 0%, rgba(0, 0, 0, 0.84) 56%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.99) 0%, rgba(0, 0, 0, 0.84) 56%, rgba(0, 0, 0, 0) 100%);
 }
 .composer:has(.modal-overlay, .settings-modal-backdrop, .lightbox)::before {
   display: none !important;
@@ -3621,8 +3618,7 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   z-index: -1;
   pointer-events: none;
 }
-.chat-column.wp-image .chat-header { background: transparent !important; z-index: 2; }
-.chat-column.wp-image .chat-header::before { display: none !important; }
+.chat-column.wp-image .chat-header { background: transparent !important; z-index: 12; }
 .wallpaper-tile { align-items: stretch; }
 html[data-app-wp="image"] .workspace-shell::before,
 html[data-app-wp="color"] .workspace-shell::before,
@@ -10142,7 +10138,7 @@ input[type="color"]::-moz-color-swatch {
   display: none !important;
   content: none !important;
 }
-/* Exact wallpaper-matched, unblurred top edge fade (zero blur smudge, zero mismatched white band) */
+/* Exact 1px wallpaper-matched, unblurred top (.chat-header::before) & bottom (.composer::before) edge fades (Spec 053 & 061) */
 .chat-column:has(> .chat-messages) > .chat-header::before {
   content: "";
   display: block !important;
@@ -10154,38 +10150,130 @@ input[type="color"]::-moz-color-swatch {
   bottom: auto;
   pointer-events: none;
   z-index: -1;
-  background: color-mix(in srgb, var(--bg-chat) var(--panel-opacity, 100%), transparent);
+  background-color: color-mix(in srgb, var(--bg-chat) var(--panel-opacity, 100%), transparent);
+  background-repeat: no-repeat;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.80) 54%, rgba(0, 0, 0, 0) 100%) !important;
   -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.80) 54%, rgba(0, 0, 0, 0) 100%) !important;
 }
-.chat-column.wp-paper:has(> .chat-messages) > .chat-header::before {
-  background: color-mix(in srgb, #F5E9D3 22%, var(--bg-chat));
+.chat-column.wp-paper:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-paper > .composer::before {
+  background-color: color-mix(in srgb, #F5E9D3 22%, var(--bg-chat));
+  background-image: none;
 }
-.chat-column.wp-ocean:has(> .chat-messages) > .chat-header::before {
-  background: linear-gradient(170deg, color-mix(in srgb, #0EA5E9 18%, var(--bg-chat)), color-mix(in srgb, #2563EB 14%, var(--bg-chat)));
+.chat-column.wp-dots:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-dots > .composer::before {
+  background-color: var(--bg-chat);
+  background-image: radial-gradient(color-mix(in srgb, var(--text-muted) 22%, transparent) 1.2px, transparent 1.4px);
+  background-size: 18px 18px;
+  background-repeat: repeat;
 }
-.chat-column.wp-sunset:has(> .chat-messages) > .chat-header::before {
-  background: linear-gradient(160deg, color-mix(in srgb, #F97316 18%, var(--bg-chat)), color-mix(in srgb, #DB2777 16%, var(--bg-chat)));
-}
-.chat-column.wp-mint:has(> .chat-messages) > .chat-header::before {
-  background: linear-gradient(160deg, color-mix(in srgb, #10B981 16%, var(--bg-chat)), color-mix(in srgb, #A3E635 12%, var(--bg-chat)));
-}
-.chat-column.wp-aurora:has(> .chat-messages) > .chat-header::before {
+.chat-column.wp-dots:has(> .chat-messages) > .chat-header::before { background-position: 0 0; }
+.chat-column.wp-dots > .composer::before { background-position: 0 bottom; }
+
+.chat-column.wp-bubbles:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-bubbles > .composer::before {
   background-color: var(--bg-chat);
   background-image:
-    radial-gradient(60% 180% at 10% 0%, color-mix(in srgb, #22D3EE 16%, transparent), transparent 70%),
-    radial-gradient(60% 180% at 90% 10%, color-mix(in srgb, #A78BFA 18%, transparent), transparent 70%);
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent) 10%, transparent) 0 42px, transparent 43px),
+    radial-gradient(circle at 82% 30%, color-mix(in srgb, var(--accent) 7%, transparent) 0 64px, transparent 65px),
+    radial-gradient(circle at 30% 82%, color-mix(in srgb, #EC4899 7%, transparent) 0 54px, transparent 55px),
+    radial-gradient(circle at 88% 88%, color-mix(in srgb, #14B8A6 8%, transparent) 0 36px, transparent 37px);
+  background-size: 100% var(--chat-col-h, 100vh);
+  background-repeat: no-repeat;
 }
-.chat-column.wp-night:has(> .chat-messages) > .chat-header::before {
-  background: #101833;
+.chat-column.wp-bubbles:has(> .chat-messages) > .chat-header::before { background-position: 0 0; }
+.chat-column.wp-bubbles > .composer::before { background-position: 0 100%; }
+
+.chat-column.wp-ocean:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-ocean > .composer::before {
+  background-color: var(--bg-chat);
+  background-image: linear-gradient(170deg, color-mix(in srgb, #0EA5E9 18%, var(--bg-chat)), color-mix(in srgb, #2563EB 14%, var(--bg-chat)));
+  background-size: 100% var(--chat-col-h, 100vh);
+  background-repeat: no-repeat;
 }
-.chat-column.wp-custom:has(> .chat-messages) > .chat-header::before {
-  background: var(--chat-wp-color, var(--bg-chat));
+.chat-column.wp-ocean:has(> .chat-messages) > .chat-header::before { background-position: 0 0; }
+.chat-column.wp-ocean > .composer::before { background-position: 0 100%; }
+
+.chat-column.wp-sunset:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-sunset > .composer::before {
+  background-color: var(--bg-chat);
+  background-image: linear-gradient(160deg, color-mix(in srgb, #F97316 18%, var(--bg-chat)), color-mix(in srgb, #DB2777 16%, var(--bg-chat)));
+  background-size: 100% var(--chat-col-h, 100vh);
+  background-repeat: no-repeat;
 }
+.chat-column.wp-sunset:has(> .chat-messages) > .chat-header::before { background-position: 0 0; }
+.chat-column.wp-sunset > .composer::before { background-position: 0 100%; }
+
+.chat-column.wp-mint:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-mint > .composer::before {
+  background-color: var(--bg-chat);
+  background-image: linear-gradient(160deg, color-mix(in srgb, #10B981 16%, var(--bg-chat)), color-mix(in srgb, #A3E635 12%, var(--bg-chat)));
+  background-size: 100% var(--chat-col-h, 100vh);
+  background-repeat: no-repeat;
+}
+.chat-column.wp-mint:has(> .chat-messages) > .chat-header::before { background-position: 0 0; }
+.chat-column.wp-mint > .composer::before { background-position: 0 100%; }
+
+.chat-column.wp-aurora:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-aurora > .composer::before {
+  background-color: var(--bg-chat);
+  background-image:
+    radial-gradient(60% 50% at 10% 0%, color-mix(in srgb, #22D3EE 16%, transparent), transparent 70%),
+    radial-gradient(60% 50% at 90% 10%, color-mix(in srgb, #A78BFA 18%, transparent), transparent 70%),
+    radial-gradient(70% 60% at 50% 100%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%);
+  background-size: 100% var(--chat-col-h, 100vh);
+  background-repeat: no-repeat;
+}
+.chat-column.wp-aurora:has(> .chat-messages) > .chat-header::before { background-position: 0 0; }
+.chat-column.wp-aurora > .composer::before { background-position: 0 100%; }
+
+.chat-column.wp-night:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-night > .composer::before {
+  background-color: #101833;
+  background-image: linear-gradient(165deg, #101833 0%, #090E1F 100%);
+  background-size: 100% var(--chat-col-h, 100vh);
+  background-repeat: no-repeat;
+}
+.chat-column.wp-night:has(> .chat-messages) > .chat-header::before { background-position: 0 0; }
+.chat-column.wp-night > .composer::before { background-position: 0 100%; }
+
+.chat-column.wp-custom:has(> .chat-messages) > .chat-header::before,
+.chat-column.wp-custom > .composer::before {
+  background-color: var(--chat-wp-color, var(--bg-chat));
+  background-image: none;
+}
+
 .chat-column.wp-image:has(> .chat-messages) > .chat-header::before {
-  background: var(--chat-top-fade-color, var(--bg-chat));
+  background-color: var(--chat-top-fade-color, var(--bg-chat));
+  background-image: var(--chat-wp-image);
+  background-repeat: no-repeat;
+  background-size: var(--chat-bg-w, cover) var(--chat-bg-h, auto);
+  background-position: var(--chat-bg-x, center) var(--chat-bg-top-y, top);
+}
+.chat-column.wp-image > .composer::before {
+  background-color: var(--chat-top-fade-color, var(--bg-chat));
+  background-image: var(--chat-wp-image);
+  background-repeat: no-repeat;
+  background-size: var(--chat-bg-w, cover) var(--chat-bg-h, auto);
+  background-position: var(--chat-bg-x, center) var(--chat-bg-bot-y, bottom);
+}
+
+/* 2D per-pixel canvas strips for translucent wp-none chat over app-wide wallpapers (Spec 061) */
+.chat-column[data-chat-edge-strip="true"]:has(> .chat-messages) > .chat-header::before {
+  background-color: transparent !important;
+  background-image: var(--chat-top-fade-strip) !important;
+  background-size: 100% 100% !important;
+  background-position: 0 0 !important;
+  background-repeat: no-repeat !important;
+}
+.chat-column[data-chat-edge-strip="true"] > .composer::before {
+  background-color: transparent !important;
+  background-image: var(--chat-bot-fade-strip) !important;
+  background-size: 100% 100% !important;
+  background-position: 0 0 !important;
+  background-repeat: no-repeat !important;
 }
 .chat-column:has(> .chat-messages) > .chat-header:has(.modal-overlay, .settings-modal-backdrop, .lightbox)::before {
   display: none !important;
@@ -10336,5 +10424,109 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 .settings-page-title {
   line-height: 1.35 !important;
 }
+
+/* 12. Spec 061 — Real-Time Per-Position Adaptive Surface & Contrast (powered by app/web/adaptive_surface.js)
+       Each visible row/item/heading dynamically adapts ink polarity, local hover glass wash, and split-contrast
+       local scrim to the EXACT wallpaper pixels directly behind its screen coordinates as you scroll/resize,
+       while NEVER overriding --accent or adding layout shift / nested backdrop-filter. */
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) {
+  color: #FFFFFF !important;
+}
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) > svg,
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) > .rail-icon > svg,
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
+[data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
+.wallpaper-tile[data-local-tone="dark"] > span:not(.wallpaper-sample),
+.theme-card[data-local-tone="dark"] > span {
+  color: #FFFFFF !important;
+}
+[data-local-tone="dark"] .chat-item-preview,
+[data-local-tone="dark"] .chat-item-time,
+[data-local-tone="dark"] .chat-header-meta:not(.secure) {
+  color: rgba(241, 245, 249, 0.86) !important;
+}
+[data-local-tone="dark"] .chat-header-meta.secure {
+  color: #4ADE80 !important;
+}
+
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) {
+  color: #000000 !important;
+}
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) > svg,
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) > .rail-icon > svg,
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-item-name,
+[data-local-tone="light"]:not(.danger):not(.btn-danger):not(.btn-primary):not(.has-logo) .chat-header-title,
+.wallpaper-tile[data-local-tone="light"] > span:not(.wallpaper-sample),
+.theme-card[data-local-tone="light"] > span {
+  color: #000000 !important;
+}
+/* Per-position adaptive composer pill matching bright/dark bottom region of split wallpapers */
+.composer-box[data-local-tone="light"]::before {
+  background: rgba(255, 255, 255, 0.94) !important;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08), 0 2px 12px rgba(15, 23, 42, 0.04) !important;
+}
+.composer-box[data-local-tone="light"],
+.composer-box[data-local-tone="light"] textarea,
+.composer-box[data-local-tone="light"] input {
+  color: #111827 !important;
+}
+.composer-box[data-local-tone="light"] .icon-btn:not(.danger):not(.btn-danger),
+.composer-box[data-local-tone="light"] .icon-btn:not(.danger):not(.btn-danger) svg {
+  color: #334155 !important;
+}
+.composer-box[data-local-tone="light"] textarea::placeholder,
+.composer-box[data-local-tone="light"] input::placeholder {
+  color: #64748B !important;
+}
+.composer-box[data-local-tone="dark"]::before {
+  background: rgba(24, 32, 48, 0.92) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.30), inset 0 0 0 1px rgba(255, 255, 255, 0.10) !important;
+}
+.composer-box[data-local-tone="dark"],
+.composer-box[data-local-tone="dark"] textarea,
+.composer-box[data-local-tone="dark"] input {
+  color: #F4F6FA !important;
+}
+.composer-box[data-local-tone="dark"] .icon-btn:not(.danger):not(.btn-danger),
+.composer-box[data-local-tone="dark"] .icon-btn:not(.danger):not(.btn-danger) svg {
+  color: #CBD5E1 !important;
+}
+.composer-box[data-local-tone="dark"] textarea::placeholder,
+.composer-box[data-local-tone="dark"] input::placeholder {
+  color: #94A3B8 !important;
+}
+[data-local-tone="light"] .chat-item-preview,
+[data-local-tone="light"] .chat-item-time,
+[data-local-tone="light"] .chat-header-meta:not(.secure) {
+  color: #1E293B !important;
+}
+
+/* Per-position local wallpaper-matched hover highlight (zero --accent hijacking) */
+.settings-nav-item[data-local-tone]:not(.active):not(.danger):hover,
+.chat-item[data-local-tone]:not(.selected):not(.active):not(.has-nameplate):hover,
+.channel-row[data-local-tone]:not(.selected):hover,
+.filter-chip[data-local-tone]:not(.active):hover,
+.rail-item[data-local-tone]:not(.active):not(.has-logo):hover,
+.chat-column:has(> .chat-messages) > .chat-header button.chat-header-identity[data-local-tone]:hover,
+.chat-column:has(> .chat-messages) > .chat-header .chat-header-actions .icon-btn[data-local-tone]:hover {
+  background: var(--local-hover-bg, var(--bg-hover)) !important;
+}
+
+/* Local soft frosted backing ONLY on rows crossing split dark+light high-contrast wallpaper edges */
+.settings-nav-item[data-local-scrim="true"]:not(.active),
+.chat-item[data-local-scrim="true"]:not(.selected):not(.active):not(.has-nameplate),
+.channel-row[data-local-scrim="true"]:not(.selected),
+.filter-chip[data-local-scrim="true"]:not(.active),
+.rail-item[data-local-scrim="true"]:not(.active):not(.has-logo) {
+  background: var(--local-scrim-bg) !important;
+}
+.settings-nav-item[data-local-scrim="true"]:not(.active):hover,
+.chat-item[data-local-scrim="true"]:not(.selected):not(.active):not(.has-nameplate):hover,
+.channel-row[data-local-scrim="true"]:not(.selected):hover,
+.filter-chip[data-local-scrim="true"]:not(.active):hover,
+.rail-item[data-local-scrim="true"]:not(.active):not(.has-logo):hover {
+  background: var(--local-hover-bg, var(--local-scrim-bg)) !important;
+}
+
 
 

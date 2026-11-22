@@ -334,11 +334,11 @@ pub fn MessageList(
             role: "log",
             aria_live: "polite",
             onscroll: move |_| {
-                if (hidden_older_in_memory > 0 || has_more) && !loading_more && !*scroll_checking.peek() {
+                if !loading_initial && (hidden_older_in_memory > 0 || has_more) && !loading_more && !*scroll_checking.peek() {
                     scroll_checking.set(true);
                     spawn(async move {
                         let mut ev = dioxus::document::eval(
-                            "const el = document.getElementById('chat-messages-scroll'); dioxus.send(el ? el.scrollTop <= 180 : false);"
+                            "const el = document.getElementById('chat-messages-scroll'); const pinning = window.__chatwStickToBottom && window.__chatwStickToBottom.isPinning(); dioxus.send(!pinning && el ? el.scrollTop <= 180 : false);"
                         );
                         let near_top = ev.recv::<bool>().await.unwrap_or(false);
                         scroll_checking.set(false);
