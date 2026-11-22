@@ -122,6 +122,7 @@ try {
     const hdr = document.querySelector('.chat-column > .chat-header');
     const msgs = document.querySelector('.chat-column > .chat-messages');
     const hdrCS = getComputedStyle(hdr);
+    const hdrBeforeCS = getComputedStyle(hdr, '::before');
     const hdrAfterCS = getComputedStyle(hdr, '::after');
     const idEl = hdr.querySelector('.chat-header-identity');
     const actEl = hdr.querySelector('.chat-header-actions');
@@ -140,6 +141,9 @@ try {
       hdrPos: hdrCS.position,
       hdrBg: hdrCS.backgroundColor,
       hdrPointer: hdrCS.pointerEvents,
+      beforeDisplay: hdrBeforeCS.display,
+      beforeBgImg: hdrBeforeCS.backgroundImage,
+      beforeBlur: hdrBeforeCS.backdropFilter || hdrBeforeCS.webkitBackdropFilter || 'none',
       afterDisplay: hdrAfterCS.display,
       msgsStartsAtTop: msgsR ? Math.abs(msgsR.top - colR.top) <= 1 : false,
       idRadius: idCS ? parseFloat(idCS.borderTopLeftRadius) : 0,
@@ -152,10 +156,13 @@ try {
     };
   });
   record(
-    'Self-chat header removes top bar & "Thiết bị:", floats Avatar+Name & Actions as frosted capsules over full-height messages, places device pills inline right of title, and fixes date pill format',
+    'Self-chat header floats Avatar+Name & Actions as frosted capsules with progressive top frosted mist mirroring composer, places device pills inline right of title, and fixes date pill format',
     selfChatAudit.hdrPos === 'absolute' &&
       selfChatAudit.hdrBg === 'rgba(0, 0, 0, 0)' &&
       selfChatAudit.hdrPointer === 'none' &&
+      selfChatAudit.beforeDisplay === 'block' &&
+      selfChatAudit.beforeBgImg.includes('linear-gradient') &&
+      selfChatAudit.beforeBlur.includes('blur') &&
       selfChatAudit.afterDisplay === 'none' &&
       selfChatAudit.msgsStartsAtTop &&
       selfChatAudit.idRadius >= 20 &&

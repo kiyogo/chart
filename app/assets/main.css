@@ -9936,10 +9936,43 @@ input[type="color"]::-moz-color-swatch {
   z-index: 12;
   gap: var(--space-2);
 }
-.chat-column:has(> .chat-messages) > .chat-header::before,
 .chat-column:has(> .chat-messages) > .chat-header::after {
   display: none !important;
   content: none !important;
+}
+/* Progressive frosted top mist mirroring bottom .composer::before so scrolled messages/images dissolve softly behind floating capsules */
+.chat-column:has(> .chat-messages) > .chat-header::before {
+  content: "";
+  display: block !important;
+  position: absolute;
+  top: calc(-1 * var(--panel-inset, 8px));
+  left: 0;
+  right: 0;
+  bottom: -1.35rem;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bg-surface) 74%, transparent) 0%,
+    color-mix(in srgb, var(--bg-surface) 44%, transparent) 46%,
+    transparent 100%
+  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 52%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 52%, rgba(0, 0, 0, 0) 100%);
+}
+.chat-column.wp-night:has(> .chat-messages) > .chat-header::before,
+.chat-column[data-chat-header-tone="dark"]:has(> .chat-messages) > .chat-header::before {
+  background: linear-gradient(
+    to bottom,
+    rgba(15, 22, 38, 0.72) 0%,
+    rgba(15, 22, 38, 0.42) 46%,
+    transparent 100%
+  );
+}
+.chat-column:has(> .chat-messages) > .chat-header:has(.modal-overlay, .settings-modal-backdrop, .lightbox)::before {
+  display: none !important;
 }
 .chat-column:has(> .chat-messages) > .chat-header > * {
   pointer-events: auto;
