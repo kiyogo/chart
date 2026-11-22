@@ -8624,7 +8624,7 @@ html[data-surface-tone="dark"] .cw-picker-popover {
 .settings-col .inline-form {
   flex-wrap: wrap;
 }
-.settings-col .inline-form > input,
+.settings-col .inline-form > input:not([type="color"]),
 .settings-col .inline-form > select {
   min-width: 11rem;
   flex: 1 1 11rem;
@@ -9767,13 +9767,13 @@ html[data-text-halo="true"] .wallpaper-tile span {
 }
 .btn-secondary,
 .partner-action-btn {
-  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(15, 23, 42, 0.08));
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, transparent);
 }
 [data-theme="dark"] .btn-secondary,
 [data-theme="dark"] .partner-action-btn,
 html[data-surface-tone="dark"] .btn-secondary,
 html[data-surface-tone="dark"] .partner-action-btn {
-  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, transparent);
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost,
@@ -9784,7 +9784,7 @@ html[data-text-halo="true"] .btn-ghost,
 html[data-text-halo="true"] .btn-avatar-upload,
 html[data-text-halo="true"] .btn-small-secondary {
   background: var(--adaptive-btn-bg, var(--bg-surface-hover)) !important;
-  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, rgba(15, 23, 42, 0.10)) !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, transparent) !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-secondary:hover:not(:disabled),
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .btn-ghost:hover:not(:disabled),
@@ -9862,13 +9862,13 @@ html[data-luminous-controls="true"] .icon-btn.active:not(.danger):not(.btn-dange
 
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) input[type="checkbox"].switch:not(:checked),
 html[data-text-halo="true"] input[type="checkbox"].switch:not(:checked) {
-  background: var(--adaptive-switch-bg, rgba(100, 116, 139, 0.28)) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.50);
+  background: var(--adaptive-switch-bg, rgba(15, 23, 42, 0.17)) !important;
+  box-shadow: none !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] input[type="checkbox"].switch:not(:checked),
 html[data-text-halo="true"][data-surface-tone="dark"] input[type="checkbox"].switch:not(:checked) {
-  background: var(--adaptive-switch-bg, rgba(255, 255, 255, 0.24)) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  background: var(--adaptive-switch-bg, rgba(255, 255, 255, 0.22)) !important;
+  box-shadow: none !important;
 }
 .chat-column.wp-night .chat-header,
 .chat-column.wp-night .chat-header .chat-header-title,
@@ -9944,7 +9944,7 @@ input[type="color"]::-moz-color-swatch {
 .btn-ghost {
   background: var(--adaptive-btn-bg, var(--bg-surface-hover)) !important;
   border: none !important;
-  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, var(--input-border, rgba(15, 23, 42, 0.10))) !important;
+  box-shadow: inset 0 0 0 1px var(--adaptive-btn-ring, transparent) !important;
   color: var(--text-primary) !important;
   border-radius: var(--radius-md);
 }

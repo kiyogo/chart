@@ -501,7 +501,7 @@ pub fn AppearanceWallpapersGlass(#[props(default)] on_reset_appearance: Option<E
     let pr: Prefs = c.prefs.read().clone();
     let mut uploading = use_signal(|| false);
     let mut msg = use_signal(|| Option::<String>::None);
-    let wp_color = pr.app_wallpaper.strip_prefix("color:").unwrap_or("#1F2A44").to_string();
+    let wp_color = pr.app_wallpaper.strip_prefix("color:").unwrap_or("#60A5FA").to_string();
     let panel_transparency = 100u8.saturating_sub(pr.panel_opacity);
     let panel_transparency_pct = panel_transparency;
     let panel_blur_pct = ((pr.panel_blur as f32 / 32.0) * 100.0).round() as u8;

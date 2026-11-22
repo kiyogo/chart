@@ -354,10 +354,31 @@ try {
     window.__chatwCustom = Object.assign({}, prevCustom, { wpKind: 'image', wpImageUrl: '__busy_test__', panelOpacity: 20 });
     window.__chatwRecomputeContrast();
     const busyPhotoHalo = document.documentElement.getAttribute('data-text-halo');
+    const busyPhotoFramed = document.documentElement.getAttribute('data-framed-controls');
     const busyPhotoShadow = getComputedStyle(body).textShadow;
     const busyBtnShadow = btn ? getComputedStyle(btn).textShadow : 'none';
+    const busySegs = Array.from(document.querySelectorAll('.settings-body .segmented button')).map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        active: el.classList.contains('active'),
+        w: Math.round(r.width * 100) / 100,
+        h: Math.round(r.height * 100) / 100,
+        borderTop: getComputedStyle(el).borderTopWidth,
+        shadow: getComputedStyle(el).boxShadow,
+      };
+    });
     window.__chatwCustom = prevCustom;
     window.__chatwRecomputeContrast();
+    const smoothSegs = Array.from(document.querySelectorAll('.settings-body .segmented button')).map((el) => {
+      const r = el.getBoundingClientRect();
+      return { w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 };
+    });
+    let busyMaxDW = 0, busyMaxDH = 0;
+    for (let i = 0; i < Math.min(busySegs.length, smoothSegs.length); i++) {
+      busyMaxDW = Math.max(busyMaxDW, Math.abs(busySegs[i].w - smoothSegs[i].w));
+      busyMaxDH = Math.max(busyMaxDH, Math.abs(busySegs[i].h - smoothSegs[i].h));
+    }
+    const busyIdleSeg = busySegs.find((s) => !s.active);
 
     return {
       easyReadNoShadow: easyReadAudit.textHaloAttr === 'false' && easyReadAudit.bodyTextShadow === 'none',
@@ -367,36 +388,44 @@ try {
       smoothOceanFramed,
       smoothOceanShadow,
       busyPhotoHalo,
+      busyPhotoFramed,
       busyPhotoShadow,
       busyBtnShadow,
+      busyMaxDW,
+      busyMaxDH,
+      busyIdleBorderTop: busyIdleSeg ? busyIdleSeg.borderTop : '',
+      busyIdleShadow: busyIdleSeg ? busyIdleSeg.shadow : '',
       textPrimaryColor,
     };
   }, easyReadAudit);
   record(
-    'Left Rail (.app-rail) opacity syncs 100%, smooth presets stay crisp with ZERO blurry text-shadow even at 80% transparency, and busy high-contrast photos activate tight dark contrast halo while pills/buttons stay text-shadow: none',
+    'Left Rail (.app-rail) opacity syncs 100%, smooth presets stay crisp with ZERO blurry text-shadow & ZERO cluttered idle boxes, and busy high-contrast photos activate tight dark halo + 0.00px inset frames while pills/buttons stay text-shadow: none',
     railAndHaloAudit.easyReadNoShadow &&
       railAndHaloAudit.railBg === railAndHaloAudit.navBg &&
       railAndHaloAudit.smoothOceanHalo === 'false' &&
-      railAndHaloAudit.smoothOceanFramed === 'true' &&
+      railAndHaloAudit.smoothOceanFramed === 'false' &&
       railAndHaloAudit.smoothOceanShadow === 'none' &&
       railAndHaloAudit.textPrimaryColor === 'rgb(0, 0, 0)' &&
       railAndHaloAudit.busyPhotoHalo === 'true' &&
+      railAndHaloAudit.busyPhotoFramed === 'true' &&
+      railAndHaloAudit.busyMaxDW === 0 &&
+      railAndHaloAudit.busyMaxDH === 0 &&
+      railAndHaloAudit.busyIdleBorderTop === '0px' &&
+      railAndHaloAudit.busyIdleShadow.includes('inset') &&
       railAndHaloAudit.busyPhotoShadow.includes('rgba(0, 0, 0') &&
       !railAndHaloAudit.busyPhotoShadow.includes('255, 255, 255') &&
       railAndHaloAudit.busyBtnShadow === 'none',
     JSON.stringify(railAndHaloAudit)
   );
 
-  // 4b. Zero Size Shift (0.00px) from Frameless (52%) -> Framed (72%), Zero g-Descender Clipping on "Bong bóng người khác",
-  // and Harmonious Translucent Glass Active/Hover/Secondary Colors over Sunset ("Hoàng hôn")
+  // 4b. Vivid Unmistakable Translucent Accent Pills, Frameless Clean Idle Controls, Compact Wallpaper Color Swatch,
+  // Zero g-Descender Clipping on "Bong bóng người khác", and Zero Size Shift over Aurora (100%) & Sunset (72%)
   await page.evaluate(() => {
     const colorInput = document.querySelector('.settings-body input[type="color"]');
     const row = colorInput?.closest('.settings-row');
     const resetBtn = row && Array.from(row.querySelectorAll('button')).find((b) => b.textContent.includes('Mặc định'));
     if (resetBtn) resetBtn.click();
   });
-  await page.waitForTimeout(200);
-  await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
   await page.waitForTimeout(200);
 
   const setTransparency = async (pct) => {
@@ -425,6 +454,8 @@ try {
       });
       const sec = document.querySelector('.settings-body .btn-secondary');
       const secR = sec ? sec.getBoundingClientRect() : null;
+      const wpColorInput = document.querySelector('input[aria-label="Màu nền ứng dụng"]');
+      const wpColorR = wpColorInput ? wpColorInput.getBoundingClientRect() : null;
       const navActive = document.querySelector('.settings-nav-item.active');
       const labelG = Array.from(document.querySelectorAll('.settings-label')).find((el) =>
         el.textContent.includes('Bong bóng người khác')
@@ -445,6 +476,7 @@ try {
               shadow: getComputedStyle(sec).boxShadow,
             }
           : null,
+        wpColorWidth: wpColorR ? Math.round(wpColorR.width * 10) / 10 : 0,
         navActiveBg: navActive ? getComputedStyle(navActive).backgroundColor : '',
         navActiveShadow: navActive ? getComputedStyle(navActive).boxShadow : '',
         hoverToken,
@@ -459,6 +491,21 @@ try {
       };
     });
 
+  // Check Aurora ("Cực quang") at 100% transparency first (exact user screenshot scenario!)
+  await page.locator('.wallpaper-tile', { hasText: 'Cực quang' }).last().click();
+  await setTransparency(100);
+  const mAurora100 = await measureButtons();
+  if (process.env.SPEC052_SHOT_DIR) {
+    const hoverTarget = page.locator('.settings-nav-item', { hasText: 'Trả lời tự động' }).first();
+    if (await hoverTarget.isVisible().catch(() => false)) {
+      await hoverTarget.hover();
+      await page.waitForTimeout(160);
+    }
+    await page.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'aurora_100.png') });
+  }
+
+  // Now check Sunset ("Hoàng hôn") at 52% and 72%
+  await page.locator('.wallpaper-tile', { hasText: 'Hoàng hôn' }).last().click();
   await setTransparency(52);
   const m52 = await measureButtons();
   if (process.env.SPEC052_SHOT_DIR) {
@@ -480,14 +527,6 @@ try {
       await page.waitForTimeout(150);
       await gLabelLoc.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'label_g_sunset_72.png') });
     }
-    const navLoc = page.locator('.settings-nav').first();
-    if (await navLoc.isVisible().catch(() => false)) {
-      if (await hoverTarget.isVisible().catch(() => false)) {
-        await hoverTarget.hover();
-        await page.waitForTimeout(150);
-      }
-      await navLoc.screenshot({ path: path.join(process.env.SPEC052_SHOT_DIR, 'nav_hover_sunset_72.png') });
-    }
   }
 
   const parseRgba = (s) => {
@@ -503,13 +542,13 @@ try {
   }
   const secDW = m52.sec && m72.sec ? Math.abs(m72.sec.w - m52.sec.w) : 99;
   const secDH = m52.sec && m72.sec ? Math.abs(m72.sec.h - m52.sec.h) : 99;
-  const activeSeg72 = m72.segs.find((s) => s.active);
-  const idleSeg72 = m72.segs.find((s) => !s.active);
-  const activeIdleHeightDiff = activeSeg72 && idleSeg72 ? Math.abs(activeSeg72.h - idleSeg72.h) : 99;
+  const activeSegA = mAurora100.segs.find((s) => s.active);
+  const idleSegA = mAurora100.segs.find((s) => !s.active);
+  const activeIdleHeightDiff = activeSegA && idleSegA ? Math.abs(activeSegA.h - idleSegA.h) : 99;
+  const auroraActiveRgba = parseRgba(mAurora100.navActiveBg);
   const navActiveRgba = parseRgba(m72.navActiveBg);
   const hoverRgba = parseRgba(m72.hoverToken);
-  const sec52Rgba = parseRgba(m52.sec?.bg);
-  const sec72Rgba = parseRgba(m72.sec?.bg);
+  const secRgba = parseRgba(mAurora100.sec?.bg);
   const gSafe = Boolean(
     m72.labelG &&
       m72.labelG.lineHeight >= m72.labelG.fontSize * 1.45 &&
@@ -518,30 +557,24 @@ try {
   );
 
   record(
-    'Frameless (52%) -> Framed (72%) button transition has EXACT 0.00px size shift, ZERO g-descender clipping/shadow smudge, and harmonious sheer Liquid Glass colors over Sunset wallpaper',
-    m52.framedControls === 'false' &&
-      m72.framedControls === 'true' &&
+    'Aurora (100%) & Sunset (52%->72%) show vivid translucent Blue active pills (never washed-out white), frameless clean idle segmented controls, compact wallpaper color swatch (<=48px), 0.00px size stability, and ZERO g-descender clipping',
+    mAurora100.framedControls === 'false' &&
+      mAurora100.textHalo === 'false' &&
+      m72.framedControls === 'false' &&
       m72.textHalo === 'false' &&
-      m72.luminous === 'true' &&
       gSafe &&
       maxSegDW === 0 &&
       maxSegDH === 0 &&
       secDW === 0 &&
       secDH === 0 &&
       activeIdleHeightDiff === 0 &&
-      idleSeg72?.borderTop === '0px' &&
-      idleSeg72?.shadow.includes('inset') &&
-      Boolean(
-        navActiveRgba &&
-          navActiveRgba.r >= 245 &&
-          navActiveRgba.g >= 248 &&
-          navActiveRgba.b >= 252 &&
-          navActiveRgba.a >= 0.50 &&
-          navActiveRgba.a <= 0.72
-      ) &&
-      Boolean(hoverRgba && hoverRgba.a <= 0.12) &&
-      Boolean(sec52Rgba && sec52Rgba.r === 255 && sec52Rgba.g === 255 && sec52Rgba.b === 255 && sec52Rgba.a >= 0.40 && sec52Rgba.a <= 0.65) &&
-      Boolean(sec72Rgba && sec72Rgba.r === 255 && sec72Rgba.g === 255 && sec72Rgba.b === 255 && sec72Rgba.a >= 0.44 && sec72Rgba.a <= 0.65),
+      idleSegA?.bg === 'rgba(0, 0, 0, 0)' &&
+      mAurora100.wpColorWidth > 0 &&
+      mAurora100.wpColorWidth <= 48 &&
+      Boolean(auroraActiveRgba && auroraActiveRgba.b >= 220 && auroraActiveRgba.b - auroraActiveRgba.r >= 150 && auroraActiveRgba.a >= 0.14 && auroraActiveRgba.a <= 0.24) &&
+      Boolean(navActiveRgba && navActiveRgba.b >= 220 && navActiveRgba.b - navActiveRgba.r >= 150 && navActiveRgba.a >= 0.13 && navActiveRgba.a <= 0.24) &&
+      Boolean(hoverRgba && hoverRgba.a <= 0.10) &&
+      Boolean(secRgba && secRgba.r <= 30 && secRgba.a >= 0.04 && secRgba.a <= 0.10),
     JSON.stringify({
       maxSegDW,
       maxSegDH,
@@ -549,13 +582,13 @@ try {
       secDH,
       activeIdleHeightDiff,
       gSafe,
-      labelG: m72.labelG,
-      navActiveBg: m72.navActiveBg,
-      navActiveShadow: m72.navActiveShadow,
+      wpColorWidth: mAurora100.wpColorWidth,
+      auroraActiveBg: mAurora100.navActiveBg,
+      sunset72ActiveBg: m72.navActiveBg,
+      idleSegABg: idleSegA?.bg,
       hoverToken: m72.hoverToken,
-      sec52Bg: m52.sec?.bg,
-      sec72Bg: m72.sec?.bg,
-      idleSeg72: idleSeg72 ? { bg: idleSeg72.bg, borderTop: idleSeg72.borderTop, shadow: idleSeg72.shadow } : null,
+      secBg: mAurora100.sec?.bg,
+      secShadow: mAurora100.sec?.shadow,
     })
   );
 
