@@ -16,7 +16,6 @@ use crate::{
         ChannelItem, FriendItem, GroupItem, PendingRequestItem, ServerCategoryItem, ServerItem,
         UserSearchResult, VoiceStateItem,
     },
-    platform,
     services::enterprise::{EnterpriseConfig, module_label},
 };
 

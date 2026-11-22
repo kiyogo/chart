@@ -273,8 +273,24 @@ try {
     JSON.stringify(macDinhAudit)
   );
 
-  // Set panel transparency to 80% over Ocean wallpaper -> verify .app-rail background matches .settings-nav and adaptive text halo is active
+  // Set panel transparency to 25% over Ocean wallpaper -> verify that when panel is ALREADY easy to read (75% opaque), NO text-shadow is applied!
   await page.locator('.wallpaper-tile', { hasText: 'Đại dương' }).last().click();
+  await page.evaluate(() => {
+    const slider = document.querySelector('input[aria-label="Độ trong suốt khung trắng"]');
+    const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+    desc.set.call(slider, '25');
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(250);
+  const easyReadAudit = await page.evaluate(() => {
+    const body = document.querySelector('.settings-body');
+    return {
+      textHaloAttr: document.documentElement.getAttribute('data-text-halo'),
+      bodyTextShadow: getComputedStyle(body).textShadow,
+    };
+  });
+
+  // Now push panel transparency to 80% over Ocean wallpaper -> verify .app-rail background matches .settings-nav, text darkens to #000, tight dark glow activates on transparent text, while buttons/inputs stay text-shadow: none!
   await page.evaluate(() => {
     const slider = document.querySelector('input[aria-label="Độ trong suốt khung trắng"]');
     const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
@@ -283,28 +299,33 @@ try {
   });
   await page.waitForTimeout(300);
 
-  const railAndHaloAudit = await page.evaluate(() => {
+  const railAndHaloAudit = await page.evaluate((easyReadAudit) => {
     const rail = document.querySelector('.app-rail');
     const nav = document.querySelector('.settings-nav');
     const body = document.querySelector('.settings-body');
+    const btn = body.querySelector('.btn-secondary');
     const railCS = getComputedStyle(rail);
     const navCS = getComputedStyle(nav);
     const bodyCS = getComputedStyle(body);
     return {
+      easyReadNoShadow: easyReadAudit.textHaloAttr === 'false' && easyReadAudit.bodyTextShadow === 'none',
       railBg: railCS.backgroundColor,
       navBg: navCS.backgroundColor,
       textHaloAttr: document.documentElement.getAttribute('data-text-halo'),
       bodyTextShadow: bodyCS.textShadow,
+      btnTextShadow: btn ? getComputedStyle(btn).textShadow : 'none',
       textPrimaryColor: bodyCS.color,
     };
-  });
+  }, easyReadAudit);
   record(
-    'Left Rail (.app-rail) opacity synchronizes 100% with .settings-nav and Adaptive Contrast Engine activates deep black ink + soft dark glow (zero white haze)',
-    railAndHaloAudit.railBg === railAndHaloAudit.navBg &&
+    'Left Rail (.app-rail) opacity syncs 100%, easy-to-read panels & pills/buttons have ZERO text-shadow, and extreme transparency activates deep black ink + tight dark glow',
+    railAndHaloAudit.easyReadNoShadow &&
+      railAndHaloAudit.railBg === railAndHaloAudit.navBg &&
       railAndHaloAudit.textHaloAttr === 'true' &&
       railAndHaloAudit.textPrimaryColor === 'rgb(0, 0, 0)' &&
       railAndHaloAudit.bodyTextShadow.includes('rgba(0, 0, 0') &&
-      !railAndHaloAudit.bodyTextShadow.includes('255, 255, 255'),
+      !railAndHaloAudit.bodyTextShadow.includes('255, 255, 255') &&
+      railAndHaloAudit.btnTextShadow === 'none',
     JSON.stringify(railAndHaloAudit)
   );
 

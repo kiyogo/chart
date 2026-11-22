@@ -444,6 +444,29 @@ if (!window.__chatwRecomputeContrast) {
         return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
     };
     const contrast = (l1, l2) => (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    // APCA (WCAG 3.0 apca-w3) perceptual lightness contrast (Lc: -108..+106)
+    const apcaY = (r, g, b) => {
+        let y = 0.2126729 * Math.pow(r / 255, 2.4)
+              + 0.7151522 * Math.pow(g / 255, 2.4)
+              + 0.0721750 * Math.pow(b / 255, 2.4);
+        if (y < 0.022) y += Math.pow(0.022 - y, 1.414);
+        return y;
+    };
+    const calcAPCA = (fg, bg) => {
+        const yfg = apcaY(fg[0], fg[1], fg[2]);
+        const ybg = apcaY(bg[0], bg[1], bg[2]);
+        let c = 0;
+        if (ybg > yfg) {
+            c = 1.14 * (Math.pow(ybg, 0.56) - Math.pow(yfg, 0.57));
+            if (Math.abs(c) < 0.1) return 0;
+            c -= 0.027;
+        } else {
+            c = 1.14 * (Math.pow(ybg, 0.65) - Math.pow(yfg, 0.62));
+            if (Math.abs(c) < 0.1) return 0;
+            c += 0.027;
+        }
+        return c * 100;
+    };
     const rgbToHsl = (r, g, b) => {
         r /= 255; g /= 255; b /= 255;
         const max = Math.max(r, g, b), min = Math.min(r, g, b);
@@ -472,12 +495,11 @@ if (!window.__chatwRecomputeContrast) {
         return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
     };
     const pickInk = (r, g, b) => {
-        const lum = wcagLum(r, g, b);
-        const cWhite = contrast(1.0, lum);
-        const cDark = contrast(lum, 0.0085);
-        return cDark > cWhite
-            ? { text: '#0F172A', meta: 'rgba(15, 23, 42, 0.68)' }
-            : { text: '#FFFFFF', meta: 'rgba(255, 255, 255, 0.80)' };
+        const lcDark = Math.abs(calcAPCA([11, 15, 25], [r, g, b]));
+        const lcWhite = Math.abs(calcAPCA([255, 255, 255], [r, g, b]));
+        return lcDark >= lcWhite
+            ? { text: '#0B0F19', meta: 'rgba(11, 15, 25, 0.72)' }
+            : { text: '#FFFFFF', meta: 'rgba(255, 255, 255, 0.84)' };
     };
     const tuneLightness = (hex, bgLum, minRatio, towardDark, capSat) => {
         const rgb = parseHex(hex);
@@ -532,8 +554,12 @@ if (!window.__chatwRecomputeContrast) {
                 const data = ctx.getImageData(0, 0, sz, sz).data;
                 let sum = 0, sumSq = 0, railSum = 0, railN = 0, edgeSum = 0;
                 let leftMainSum = 0, leftMainN = 0, rightMainSum = 0, rightMainN = 0;
+                let topSum = 0, topN = 0, botSum = 0, botN = 0;
                 let darkCount = 0, brightCount = 0;
                 let rSum = 0, gSum = 0, bSum = 0;
+                // Material-You inspired 36-bin hue scoring for vibrant dominant color extraction
+                const hueScore = new Float32Array(36);
+                const hueR = new Float32Array(36), hueG = new Float32Array(36), hueB = new Float32Array(36), hueW = new Float32Array(36);
                 const total = sz * sz;
                 const grid = new Float32Array(total);
                 for (let y = 0; y < sz; y++) {
@@ -551,23 +577,45 @@ if (!window.__chatwRecomputeContrast) {
                         if (x < 7) { railSum += b; railN++; }
                         else if (x < 28) { leftMainSum += b; leftMainN++; }
                         else { rightMainSum += b; rightMainN++; }
+                        if (y < 9) { topSum += b; topN++; }
+                        if (y >= sz - 9) { botSum += b; botN++; }
                         if (x > 0) edgeSum += Math.abs(b - grid[p - 1]);
                         if (y > 0) edgeSum += Math.abs(b - grid[p - sz]);
+                        const [h, s, l] = rgbToHsl(r, g, bl);
+                        if (s > 0.18 && l > 0.12 && l < 0.90) {
+                            const bin = Math.min(35, Math.floor((h % 360) / 10));
+                            const w = s * (0.35 + (1 - Math.abs(l - 0.5) * 1.3));
+                            hueScore[bin] += w;
+                            hueR[bin] += r * w; hueG[bin] += g * w; hueB[bin] += bl * w; hueW[bin] += w;
+                        }
                     }
                 }
+                const sorted = Float32Array.from(grid).sort();
+                const p10B = sorted[Math.floor(total * 0.10)];
+                const p50B = sorted[Math.floor(total * 0.50)];
+                const p90B = sorted[Math.floor(total * 0.90)];
+                let bestBin = -1, bestScore = 0;
+                for (let bi = 0; bi < 36; bi++) {
+                    if (hueScore[bi] > bestScore) { bestScore = hueScore[bi]; bestBin = bi; }
+                }
+                const domHex = (bestBin >= 0 && hueW[bestBin] > 0)
+                    ? toHex(hueR[bestBin] / hueW[bestBin], hueG[bestBin] / hueW[bestBin], hueB[bestBin] / hueW[bestBin])
+                    : toHex(rSum / total, gSum / total, bSum / total);
                 const meanB = sum / total;
                 const variance = Math.max(0, (sumSq / total) - meanB * meanB);
                 const edgeB = edgeSum / (2 * total);
                 window.__chatwWpMetrics[url] = {
-                    meanB,
+                    meanB, p10B, p50B, p90B,
                     railB: railN ? (railSum / railN) : meanB,
                     leftMainB: leftMainN ? (leftMainSum / leftMainN) : meanB,
                     rightMainB: rightMainN ? (rightMainSum / rightMainN) : meanB,
+                    topBandB: topN ? (topSum / topN) : meanB,
+                    botBandB: botN ? (botSum / botN) : meanB,
                     stdB: Math.sqrt(variance),
                     edgeB,
                     darkRatio: darkCount / total,
                     brightRatio: brightCount / total,
-                    domHex: toHex(rSum / total, gSum / total, bSum / total),
+                    domHex,
                 };
             } catch (_) {
                 window.__chatwWpMetrics[url] = {
@@ -635,26 +683,51 @@ if (!window.__chatwRecomputeContrast) {
             }
         }
 
-        // Also sample any active chat wallpaper image on .chat-column
+        // Also sample ANY active chat wallpaper (uploaded image, custom solid color, or preset) on .chat-column
         const chatCol = document.querySelector('.chat-column');
         if (chatCol) {
             const st = chatCol.getAttribute('style') || '';
-            const m = st.match(/url\(['"]?([^'")]+)['"]?\)/);
-            if (m && m[1]) {
-                const chatUrl = m[1];
+            const mUrl = st.match(/url\(['"]?([^'")]+)['"]?\)/);
+            const mHex = st.match(/--chat-wp-color\s*:\s*(#[0-9a-fA-F]{6})/) || st.match(/background-color\s*:\s*(#[0-9a-fA-F]{6})/);
+            if (mUrl && mUrl[1]) {
+                const chatUrl = mUrl[1];
                 const cm = window.__chatwWpMetrics[chatUrl];
                 if (cm) {
-                    chatCol.setAttribute('data-chat-tone', cm.meanB < 0.48 ? 'dark' : 'light');
-                    chatCol.setAttribute('data-chat-busy', String(cm.stdB > 0.14 || (cm.edgeB || 0) > 0.05));
+                    const hdrB = cm.topBandB != null ? cm.topBandB : cm.meanB;
+                    const cTone = cm.meanB < 0.46 ? 'dark' : 'light';
+                    const hdrTone = hdrB < 0.46 ? 'dark' : 'light';
+                    const cBusy = cm.stdB > 0.14 || (cm.edgeB || 0) > 0.05;
+                    const hdrInk = hdrTone === 'light' ? [0, 0, 0] : [255, 255, 255];
+                    const hdrPatchV = Math.round(Math.max(0, Math.min(255, (hdrTone === 'light' ? Math.min(hdrB, cm.p10B ?? hdrB) : Math.max(hdrB, cm.p90B ?? hdrB)) * 255)));
+                    const hdrLc = Math.abs(calcAPCA(hdrInk, [hdrPatchV, hdrPatchV, hdrPatchV]));
+                    chatCol.setAttribute('data-chat-tone', cTone);
+                    chatCol.setAttribute('data-chat-header-tone', hdrTone);
+                    chatCol.setAttribute('data-chat-busy', String(cBusy));
+                    chatCol.setAttribute('data-chat-header-halo', String(hdrLc < 68));
+                    if (cm.domHex) chatCol.style.setProperty('--chat-dom-color', cm.domHex);
                 } else {
                     sampleImage(chatUrl);
                 }
+            } else if (mHex && mHex[1]) {
+                const rgb = parseHex(mHex[1]);
+                const cb = rgb ? srgbB(rgb[0], rgb[1], rgb[2]) : 0.9;
+                const cTone = cb < 0.48 ? 'dark' : 'light';
+                chatCol.setAttribute('data-chat-tone', cTone);
+                chatCol.setAttribute('data-chat-header-tone', cTone);
+                chatCol.setAttribute('data-chat-busy', 'false');
+                chatCol.setAttribute('data-chat-header-halo', 'false');
+                chatCol.style.setProperty('--chat-dom-color', mHex[1]);
             } else if (chatCol.classList.contains('wp-night')) {
                 chatCol.setAttribute('data-chat-tone', 'dark');
+                chatCol.setAttribute('data-chat-header-tone', 'dark');
                 chatCol.setAttribute('data-chat-busy', 'false');
+                chatCol.setAttribute('data-chat-header-halo', 'false');
             } else {
                 chatCol.removeAttribute('data-chat-tone');
+                chatCol.removeAttribute('data-chat-header-tone');
                 chatCol.removeAttribute('data-chat-busy');
+                chatCol.removeAttribute('data-chat-header-halo');
+                chatCol.style.removeProperty('--chat-dom-color');
             }
         }
 
@@ -662,18 +735,33 @@ if (!window.__chatwRecomputeContrast) {
         const alpha = Math.max(0, Math.min(100, c.panelOpacity == null ? 100 : Number(c.panelOpacity))) / 100;
         const transparency = 1 - alpha;
         const backdropB = meanB * (1 - effDim);
-        const railBackdropB = railB * (1 - effDim);
         const panelEffectiveB = (1 - alpha) * backdropB + alpha * panelBaseB;
+        const wpMetrics = c.wpKind === 'image' ? window.__chatwWpMetrics[c.wpImageUrl] : null;
+        const p10B = wpMetrics && wpMetrics.p10B != null ? wpMetrics.p10B : Math.max(0.05, meanB - stdB);
+        const p90B = wpMetrics && wpMetrics.p90B != null ? wpMetrics.p90B : Math.min(0.95, meanB + stdB);
 
+        // APCA-driven surface polarity: compare perceptual Lc of black ink vs white ink on the effective panel surface
+        const effRgbV = Math.round(Math.max(0, Math.min(255, panelEffectiveB * 255)));
+        const lcBlackOnPanel = Math.abs(calcAPCA([0, 0, 0], [effRgbV, effRgbV, effRgbV]));
+        const lcWhiteOnPanel = Math.abs(calcAPCA([255, 255, 255], [effRgbV, effRgbV, effRgbV]));
         const surfaceTone = (c.wpKind === 'none' && alpha >= 0.99)
             ? baseTheme
-            : ((panelEffectiveB < 0.48 || (c.wpKind === 'image' && alpha < 0.55 && darkRatio > 0.52)) ? 'dark' : 'light');
+            : ((lcWhiteOnPanel > lcBlackOnPanel + 6 || (c.wpKind === 'image' && alpha < 0.50 && darkRatio > 0.56)) ? 'dark' : 'light');
         const railTone = surfaceTone;
         const wpBusy = (c.wpKind === 'image' && (stdB > 0.13 || edgeB > 0.045 || (darkRatio > 0.15 && brightRatio > 0.15))) || (c.wpKind !== 'none' && transparency > 0.35);
         const panelScrim = (c.wpKind !== 'none' || transparency > 0.15) && (alpha < 0.85 || (wpBusy && alpha < 0.94));
         const railScrim = panelScrim;
-        // Activate deep black ink + soft dark glow behind text once transparency reaches >= 20%
-        const needsHalo = transparency >= 0.20;
+
+        // APCA Worst-Case Local Legibility Check (WCAG 3.0 Lc threshold = 68):
+        // When the panel surface is ALREADY easy to read (no wallpaper, OR opacity >= 40%, OR worst-case |Lc| >= 68),
+        // NEVER apply any blurry text-shadow! Only apply tight dark depth glow when transparency genuinely lowers |Lc| below 68.
+        const inkRgb = surfaceTone === 'light' ? [0, 0, 0] : [255, 255, 255];
+        const worstBgB = surfaceTone === 'light'
+            ? (alpha * panelBaseB + (1 - alpha) * Math.max(0.02, p10B * (1 - effDim)))
+            : (alpha * panelBaseB + (1 - alpha) * Math.min(0.98, p90B * (1 - effDim)));
+        const worstBgV = Math.round(Math.max(0, Math.min(255, worstBgB * 255)));
+        const worstLc = Math.abs(calcAPCA(inkRgb, [worstBgV, worstBgV, worstBgV]));
+        const needsHalo = c.wpKind !== 'none' && alpha < 0.40 && (worstLc < 68 || wpBusy);
 
         root.setAttribute('data-surface-tone', surfaceTone);
         root.setAttribute('data-rail-tone', railTone);
@@ -681,6 +769,7 @@ if (!window.__chatwRecomputeContrast) {
         root.setAttribute('data-panel-scrim', String(panelScrim));
         root.setAttribute('data-rail-scrim', String(railScrim));
         root.setAttribute('data-text-halo', String(needsHalo));
+        root.setAttribute('data-apca-lc', String(Math.round(worstLc)));
 
         // Extract dominant wallpaper color for subtle UI harmony
         let domHex = '#64748B';
@@ -691,39 +780,44 @@ if (!window.__chatwRecomputeContrast) {
         }
         root.style.setProperty('--wp-dom-color', domHex);
 
-        // For uploaded high-contrast images with dark patches (like black hair / dark dress),
-        // maintain a subtle protective veil floor so deep black text + dark glow never lands on 0%-lifted pitch black.
-        if (c.wpKind === 'image' && (darkRatio > 0.10 || stdB > 0.14)) {
-            const minVeilPct = Math.min(24, Math.max(14, Math.round((darkRatio * 42 + stdB * 30) * 100)));
-            const reqPct = Math.round(alpha * 100);
-            root.style.setProperty('--panel-opacity', `${Math.max(minVeilPct, reqPct)}%`);
-        } else if (c.panelOpacity != null) {
-            root.style.setProperty('--panel-opacity', `${Math.round(alpha * 100)}%`);
+        // Progressively deepen text contrast as transparency increases so text stays crisp without needing blurry shadows
+        if (c.wpKind !== 'none' && transparency >= 0.20) {
+            if (surfaceTone === 'light') {
+                root.style.setProperty('--text-primary', '#000000');
+                root.style.setProperty('--text-secondary', transparency > 0.50 ? '#090D16' : '#1E293B');
+                root.style.setProperty('--text-muted', transparency > 0.50 ? '#1E293B' : '#334155');
+            } else {
+                root.style.setProperty('--text-primary', '#FFFFFF');
+                root.style.setProperty('--text-secondary', '#F1F5F9');
+                root.style.setProperty('--text-muted', '#CBD5E1');
+            }
+        } else {
+            root.style.removeProperty('--text-primary');
+            root.style.removeProperty('--text-secondary');
+            root.style.removeProperty('--text-muted');
         }
 
         if (needsHalo) {
-            // Smooth ramp from 20% transparency (0.0) to 100% transparency (1.0)
-            const ramp = Math.min(1, Math.max(0, (transparency - 0.20) / 0.80));
-            const strength = Math.min(1, 0.25 + ramp * 0.75 + (wpBusy ? 0.12 : 0));
-            // Soft dark/black glow behind text (NEVER white rgba(255,255,255,...) which makes dark text look chalky and washed-out!)
+            // Smooth ramp only in the high-transparency zone (alpha < 0.40 -> transparency > 60%)
+            const ramp = Math.min(1, Math.max(0, (0.40 - alpha) / 0.40));
+            const strength = Math.min(1, 0.30 + ramp * 0.70);
+            // Tight, clean 1px-2px dark shadow (NEVER wide 6px-11px blur that smudges letter counters!)
             if (surfaceTone === 'light') {
-                const coreA = (0.42 * strength).toFixed(2);
-                const glowA = (0.26 * strength).toFixed(2);
-                const outerA = (0.16 * strength).toFixed(2);
+                const coreA = (0.34 * strength).toFixed(2);
+                const softA = (0.18 * strength).toFixed(2);
                 root.style.setProperty(
                     '--adaptive-text-halo',
-                    `0 1px 2px rgba(0, 0, 0, ${coreA}), 0 0 6px rgba(0, 0, 0, ${glowA}), 0 2px 11px rgba(0, 0, 0, ${outerA})`
+                    `0 1px 1.5px rgba(0, 0, 0, ${coreA}), 0 0 3px rgba(0, 0, 0, ${softA})`
                 );
             } else {
-                const darkCoreA = (0.90 * strength).toFixed(2);
-                const darkGlowA = (0.70 * strength).toFixed(2);
-                const darkOuterA = (0.48 * strength).toFixed(2);
+                const darkCoreA = (0.75 * strength).toFixed(2);
+                const darkSoftA = (0.45 * strength).toFixed(2);
                 root.style.setProperty(
                     '--adaptive-text-halo',
-                    `0 1px 2px rgba(0, 0, 0, ${darkCoreA}), 0 0 8px rgba(0, 0, 0, ${darkGlowA}), 0 2px 14px rgba(0, 0, 0, ${darkOuterA})`
+                    `0 1px 2px rgba(0, 0, 0, ${darkCoreA}), 0 0 4px rgba(0, 0, 0, ${darkSoftA})`
                 );
             }
-            const ctrlAlpha = Math.min(0.72, Math.max(0.28, transparency * 0.58));
+            const ctrlAlpha = Math.min(0.72, Math.max(0.32, transparency * 0.58));
             root.style.setProperty(
                 '--adaptive-ctrl-bg',
                 surfaceTone === 'light'
@@ -774,8 +868,10 @@ if (!window.__chatwRecomputeContrast) {
                 .forEach((k) => root.style.removeProperty(k));
         }
 
+        let resolvedSelfHex = null;
         if (c.bubbleSelf && parseHex(c.bubbleSelf)) {
             const safeSelf = ensureSeparation(c.bubbleSelf, surfaceBgHex, 1.18);
+            resolvedSelfHex = safeSelf;
             const rgb = parseHex(safeSelf);
             const ink = pickInk(rgb[0], rgb[1], rgb[2]);
             root.style.setProperty('--msg-sent', safeSelf);
@@ -790,7 +886,10 @@ if (!window.__chatwRecomputeContrast) {
         }
 
         if (c.bubbleOther && parseHex(c.bubbleOther)) {
-            const safeOther = ensureSeparation(c.bubbleOther, surfaceBgHex, 1.18);
+            let safeOther = ensureSeparation(c.bubbleOther, surfaceBgHex, 1.18);
+            if (resolvedSelfHex) {
+                safeOther = ensureSeparation(safeOther, resolvedSelfHex, 1.22);
+            }
             const rgb = parseHex(safeOther);
             const ink = pickInk(rgb[0], rgb[1], rgb[2]);
             root.style.setProperty('--msg-recv', safeOther);
@@ -800,6 +899,38 @@ if (!window.__chatwRecomputeContrast) {
             ['--msg-recv', '--msg-recv-text', '--msg-recv-meta'].forEach((k) => root.style.removeProperty(k));
         }
     };
+
+    // Real-time MutationObserver: whenever the user opens a chat or sets/uploads a per-chat wallpaper,
+    // immediately analyze that chat wallpaper's luminance, top band & dominant color without waiting!
+    if (!window.__chatwContrastObserver && typeof MutationObserver !== 'undefined' && document.body) {
+        let obsTimer = null;
+        window.__chatwContrastObserver = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                if (m.type === 'attributes') {
+                    const el = m.target;
+                    if (el && el.classList && el.classList.contains('chat-column')) {
+                        clearTimeout(obsTimer);
+                        obsTimer = setTimeout(() => window.__chatwRecomputeContrast(), 60);
+                        return;
+                    }
+                } else if (m.addedNodes && m.addedNodes.length) {
+                    for (const n of m.addedNodes) {
+                        if (n.nodeType === 1 && (n.classList?.contains('chat-column') || n.querySelector?.('.chat-column'))) {
+                            clearTimeout(obsTimer);
+                            obsTimer = setTimeout(() => window.__chatwRecomputeContrast(), 60);
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+        window.__chatwContrastObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style'],
+        });
+    }
 }
 "#;
 

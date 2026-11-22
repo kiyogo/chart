@@ -3721,20 +3721,8 @@ html[data-panel-glass="true"] .search-page:not(:has(.modal-overlay, .settings-mo
   backdrop-filter: blur(var(--panel-blur, 12px));
   -webkit-backdrop-filter: blur(var(--panel-blur, 12px));
 }
-/* Spec 047: Zero nested white card boxes inside translucent / wallpaper / scrim panels.
-   Keep clean flat flow directly on the outer panel + subtle adaptive text legibility halo over busy backgrounds. */
-html[data-panel-scrim="true"][data-surface-tone="light"] .settings-body,
-html[data-panel-scrim="true"][data-surface-tone="light"] .settings-nav,
-html[data-panel-scrim="true"][data-surface-tone="light"] .nav-sidebar,
-html[data-panel-scrim="true"][data-surface-tone="light"] .chat-header {
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
-}
-html[data-panel-scrim="true"][data-surface-tone="dark"] .settings-body,
-html[data-panel-scrim="true"][data-surface-tone="dark"] .settings-nav,
-html[data-panel-scrim="true"][data-surface-tone="dark"] .nav-sidebar,
-html[data-panel-scrim="true"][data-surface-tone="dark"] .chat-header {
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
-}
+/* Spec 047 & 052: Zero nested white card boxes inside translucent / wallpaper / scrim panels.
+   Text shadow is strictly governed by APCA legibility (data-text-halo="true" only when contrast drops). */
 html[data-panel-scrim="true"] .btn-secondary,
 html[data-panel-scrim="true"] .btn-avatar-upload {
   background: color-mix(in srgb, var(--text-primary) 10%, transparent);
@@ -9669,7 +9657,37 @@ html[data-text-halo="true"] .plugin-panel,
 html[data-text-halo="true"] .notifications-page,
 html[data-text-halo="true"] .download-page,
 html[data-text-halo="true"] .search-page {
-  text-shadow: var(--adaptive-text-halo) !important;
+  text-shadow: var(--adaptive-text-halo);
+}
+/* Elements that already have their own pill/button/input/bubble surface are ALREADY easy to read -> NEVER apply text-shadow! */
+.chip-privacy,
+.chip-current,
+.status-badge,
+.chat-item-badge,
+.tab-badge,
+.section-badge,
+.lang-code-pill,
+.cw-os-rec-pill,
+.device-chip,
+.message-bubble,
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
+.btn-danger,
+.btn-danger-outline,
+.btn-small-primary,
+.btn-small-secondary,
+.segmented button.active,
+.filter-chip.active,
+.settings-nav-item.active,
+.chat-item.selected,
+.channel-row.selected,
+input,
+select,
+textarea,
+.modal-dialog,
+.cw-picker-popover {
+  text-shadow: none !important;
 }
 html[data-text-halo="true"] .settings-label,
 html[data-text-halo="true"] .wallpaper-tile span {
@@ -9689,6 +9707,12 @@ html[data-text-halo="true"][data-surface-tone="dark"] input[type="checkbox"].swi
   background: rgba(255, 255, 255, 0.28) !important;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
+.chat-column[data-chat-header-tone="dark"] .chat-header,
+.chat-column[data-chat-header-tone="dark"] .chat-header .chat-header-title,
+.chat-column[data-chat-header-tone="dark"] .chat-header .chat-header-meta,
+.chat-column[data-chat-header-tone="dark"] .chat-header .icon-btn,
+.chat-column[data-chat-header-tone="dark"] .chat-header .icon-btn svg,
+.chat-column[data-chat-header-tone="dark"] .chat-header .device-chip,
 .chat-column[data-chat-tone="dark"] .chat-header,
 .chat-column[data-chat-tone="dark"] .chat-header .chat-header-title,
 .chat-column[data-chat-tone="dark"] .chat-header .chat-header-meta,
@@ -9696,12 +9720,20 @@ html[data-text-halo="true"][data-surface-tone="dark"] input[type="checkbox"].swi
 .chat-column[data-chat-tone="dark"] .chat-header .icon-btn svg,
 .chat-column[data-chat-tone="dark"] .chat-header .device-chip {
   color: #F8FAFC !important;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.65);
 }
-.chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header,
-.chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header .chat-header-title,
-.chat-column[data-chat-busy="true"]:not([data-chat-tone="dark"]) .chat-header .chat-header-meta {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42), 0 0 6px rgba(0, 0, 0, 0.24);
+.chat-column[data-chat-header-halo="true"][data-chat-header-tone="dark"] .chat-header,
+.chat-column[data-chat-header-halo="true"][data-chat-header-tone="dark"] .chat-header .chat-header-title,
+.chat-column[data-chat-header-halo="true"][data-chat-header-tone="dark"] .chat-header .chat-header-meta {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.72), 0 0 4px rgba(0, 0, 0, 0.45);
+}
+.chat-column[data-chat-header-halo="true"]:not([data-chat-header-tone="dark"]) .chat-header,
+.chat-column[data-chat-header-halo="true"]:not([data-chat-header-tone="dark"]) .chat-header .chat-header-title,
+.chat-column[data-chat-header-halo="true"]:not([data-chat-header-tone="dark"]) .chat-header .chat-header-meta {
+  color: #000000 !important;
+  text-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.30), 0 0 3px rgba(0, 0, 0, 0.16);
+}
+.chat-column[data-chat-busy="true"] .message-bubble.received {
+  border: 1px solid rgba(15, 23, 42, 0.10);
 }
 
 /* 6. Full-Bleed <input type="color"> Swatch (zero inner black border) & Framed .btn-ghost Everywhere (Images 5, 11, 12) */
