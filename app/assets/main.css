@@ -2486,20 +2486,6 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
 }
-.segmented { display: inline-flex; padding: 3px; border-radius: var(--radius-lg); background: var(--bg-input); gap: 2px; flex-wrap: wrap; }
-.segmented button {
-  min-height: 2rem;
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.segmented button:hover { color: var(--text-primary); }
-.segmented button.active { background: var(--bg-elevated); color: var(--text-primary); box-shadow: var(--shadow-sm); }
 .accent-swatches { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .accent-swatch { width: 2.125rem; height: 2.125rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; border: none !important; box-shadow: none !important; flex-shrink: 0; }
 .accent-swatch.active { box-shadow: none !important; border: none !important; }
@@ -4175,7 +4161,6 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 .motion-name { font-size: 0.72rem; line-height: 1.2; text-align: center; }
 .studio-params { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
 .range-row { display: grid; grid-template-columns: 8.5rem 1fr auto; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
-.range-row .segmented { grid-column: 2 / 4; }
 .range-row select { grid-column: 2 / 4; }
 .range-value { min-width: 4.5rem; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) { .avatar-studio { grid-template-columns: 1fr; } .studio-preview { position: static; } .range-row { grid-template-columns: 6.5rem 1fr auto; } }
@@ -5863,10 +5848,6 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 }
 .ent-search-hit:hover {
   background: var(--bg-hover);
-}
-.ent-segmented {
-  display: flex;
-  gap: 4px;
 }
 .ent-empty {
   padding: var(--space-4);
@@ -8722,12 +8703,6 @@ html[data-surface-tone="dark"] .cw-picker-popover {
    - Hover: soft translucent grey (var(--bg-hover)), synced with any light/dark/blurred/wallpaper surface
    - Active / Selected: identical shape tinted with translucent app accent (var(--accent-soft))
    - 100% ZERO text color change, ZERO icon color/fill change, ZERO bolding on hover/click/active! */
-.segmented {
-  background: transparent !important;
-  padding: 0 !important;
-  gap: 4px;
-}
-.segmented button,
 .section-tab,
 .filter-chip,
 .media-tab,
@@ -8741,7 +8716,6 @@ html[data-surface-tone="dark"] .cw-picker-popover {
 }
 .theme-card:hover,
 .wallpaper-tile:hover,
-.segmented button:hover,
 .section-tab:hover,
 .filter-chip:hover,
 .media-tab:hover,
@@ -8765,7 +8739,6 @@ html[data-surface-tone="dark"] .cw-picker-popover {
 .chat-item.active,
 .channel-row.selected,
 .settings-nav-item.active,
-.segmented button.active,
 .section-tab.active,
 .filter-chip.active,
 .media-tab.active,
@@ -8794,10 +8767,6 @@ html[data-surface-tone="dark"] .cw-picker-popover {
 .settings-nav-item:not(.danger),
 .settings-nav-item:not(.danger):hover,
 .settings-nav-item:not(.danger).active,
-.segmented button,
-.segmented button:hover,
-.segmented button.active,
-.segmented button:active,
 .section-tab,
 .section-tab:hover,
 .section-tab.active,
@@ -8885,10 +8854,6 @@ html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .r
 .btn-small-secondary:active,
 .btn-danger-outline,
 .btn-danger-outline:active,
-.segmented button,
-.segmented button:hover,
-.segmented button:active,
-.segmented button.active,
 .settings-nav-item,
 .settings-nav-item:hover,
 .settings-nav-item:active,
@@ -9877,7 +9842,6 @@ html[data-text-halo="true"] .search-page {
 .btn-danger-outline,
 .btn-small-primary,
 .btn-small-secondary,
-.segmented button.active,
 .filter-chip.active,
 .settings-nav-item.active,
 .chat-item.selected,
@@ -9909,7 +9873,6 @@ html[data-text-halo="true"] .wallpaper-tile span {
 /* Zero-Size-Shift Inset Button Framing & Harmonious Luminous Controls (Spec 052)
    Never toggle border-width between frameless and framed states — always keep border: none
    and paint frames exclusively with box-shadow: inset 0 0 0 1px ... (0.00px size change). */
-.segmented button,
 .btn-secondary,
 .btn-ghost,
 .btn-small-secondary,
@@ -9959,8 +9922,7 @@ html[data-text-halo="true"] .btn-small-secondary:active:not(:disabled) {
   background: var(--adaptive-btn-active, var(--accent-soft)) !important;
 }
 
-/* Spec 062: Legacy per-button framed segmented overrides and pale busy-photo active overrides removed.
-   Unified sleek segmented tracks, accent-synchronized active pills, and crisp action buttons live below. */
+/* Spec 066: All legacy segmented button bars replaced with unified modern web dropdown menus (.cw-dropdown). */
 
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) input[type="checkbox"].switch:not(:checked),
 html[data-text-halo="true"] input[type="checkbox"].switch:not(:checked) {
@@ -10432,7 +10394,7 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 /* 12. Spec 061, 062 & 063 — Real-Time Per-Position Adaptive Surface & Contrast (powered by app/web/adaptive_surface.js)
        Transparent idle AND low-opacity active rows/headings dynamically adapt ink polarity and local hover wash
        to the EXACT wallpaper pixels behind their screen coordinates — NEVER adding patchy white scrim boxes
-       and NEVER inverting ink on filled controls (.btn-secondary, .btn-ghost, .segmented button). */
+       and NEVER inverting ink on filled controls (.btn-secondary, .btn-ghost, .cw-dropdown). */
 [data-local-tone="dark"]:not(.danger):not(.btn-danger):not(.btn-danger-outline):not(.btn-primary):not(.btn-secondary):not(.btn-ghost):not(.btn-avatar-upload):not(.btn-small-secondary):not(.has-logo) {
   color: #FFFFFF !important;
 }
@@ -10533,7 +10495,6 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 /* B. Soft Low-Opacity Translucent Accent Tint (14%-26% alpha, NEVER 100% heavy solid block)
       Synchronized 100% with user's chosen Màu nhấn (--accent) + crisp surface-matched ink */
 .settings-nav-item.active:not(.danger),
-.segmented button.active,
 .lang-tile.active,
 .filter-chip.active,
 .section-tab.active,
@@ -10550,7 +10511,6 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
   box-shadow: none !important;
 }
 .settings-nav-item.active:not(.danger):hover,
-.segmented button.active:hover,
 .lang-tile.active:hover,
 .filter-chip.active:hover,
 .section-tab.active:hover,
@@ -10560,6 +10520,8 @@ html[data-theme="dark"] .chat-column[data-chat-header-tone="light"]:has(> .chat-
 .chat-item.selected:not(.has-nameplate):hover,
 .chat-item.active:not(.has-nameplate):hover,
 .channel-row.selected:hover,
+.cw-select-option.selected:hover,
+.cw-select-option.selected[data-highlighted="true"],
 .icon-btn.active:not(.danger):not(.btn-danger):hover {
   background: var(--accent-soft-strong) !important;
   color: var(--text-primary) !important;
@@ -10637,86 +10599,172 @@ html[data-app-wp] .chat-item.selected[data-local-tone="light"]:not(.has-nameplat
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 68%, transparent) !important;
 }
 
-/* C. Soft Low-Opacity Segmented Control Track (tight fit-content, 0.00px size shift, soft active tint) */
-.segmented {
-  display: inline-flex;
+/* C. Spec 066 Modern Web Dropdown System (.cw-dropdown / select / .settings-select / .cw-select-menu)
+      Inspired by Radix UI Select, Shadcn UI Select & W3C ARIA APG Listbox:
+      - Sleek hairline trigger with custom rotating SVG chevron (light/dark/translucent/RTL aware)
+      - 0.00px size shift across all states (constant 1px solid border)
+      - Elevated floating popover with smooth directional enter motion, accent checkmark & low-opacity tint */
+@keyframes cw-pop-down {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes cw-pop-up {
+  from { opacity: 0; transform: translateY(4px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+select,
+select.cw-dropdown,
+select.settings-select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 2.3rem;
+  height: 2.3rem;
+  padding: 0 2.35rem 0 0.85rem;
+  border-radius: 10px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+  color: #0F172A;
+  background-color: #FFFFFF;
+  border: 1px solid rgba(15, 23, 42, 0.13);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.72rem center;
+  background-size: 15px 15px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  transition: border-color 140ms var(--ease), background-color 140ms var(--ease), box-shadow 140ms var(--ease);
+}
+select:hover:not(:disabled),
+select.cw-dropdown:hover:not(:disabled),
+select.settings-select:hover:not(:disabled) {
+  background-color: #F8FAFC;
+  border-color: color-mix(in srgb, var(--accent) 44%, rgba(15, 23, 42, 0.18));
+}
+select.cw-picker-open,
+select.cw-dropdown.cw-picker-open,
+select.settings-select.cw-picker-open {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230F172A' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'/%3E%3C/svg%3E");
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent) !important;
+}
+html[dir="rtl"] select,
+html[dir="rtl"] select.cw-dropdown,
+html[dir="rtl"] select.settings-select {
+  padding: 0 0.85rem 0 2.35rem;
+  background-position: left 0.72rem center;
+}
+[data-theme="dark"] select,
+[data-theme="dark"] select.cw-dropdown,
+[data-theme="dark"] select.settings-select {
+  color: #F1F5F9;
+  background-color: rgba(255, 255, 255, 0.065);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23CBD5E1' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+[data-theme="dark"] select:hover:not(:disabled),
+[data-theme="dark"] select.cw-dropdown:hover:not(:disabled),
+[data-theme="dark"] select.settings-select:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.105);
+  border-color: color-mix(in srgb, var(--accent) 55%, rgba(255, 255, 255, 0.22));
+}
+[data-theme="dark"] select.cw-picker-open,
+[data-theme="dark"] select.cw-dropdown.cw-picker-open,
+[data-theme="dark"] select.settings-select.cw-picker-open {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'/%3E%3C/svg%3E");
+}
+
+/* Translucent wallpaper contrast parity for dropdown triggers */
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select.cw-dropdown,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select.settings-select {
+  background-color: rgba(255, 255, 255, 0.62) !important;
+  color: #0F172A !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231E293B' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select.cw-picker-open {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230F172A' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'/%3E%3C/svg%3E");
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select.cw-dropdown,
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select.settings-select {
+  background-color: rgba(15, 23, 42, 0.56) !important;
+  color: #F8FAFC !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23E2E8F0' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select.cw-picker-open {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'/%3E%3C/svg%3E");
+}
+
+/* Crisp right-aligned dropdown sizing inside horizontal settings rows & toolbars */
+.settings-row > select,
+.settings-row > select.cw-dropdown,
+.settings-row > select.settings-select {
+  width: auto;
+  min-width: 10.5rem;
+  max-width: 16rem;
+  flex: 0 0 auto;
+}
+.cw-dropdown-bar {
+  display: flex;
   align-items: center;
-  align-self: flex-start;
-  width: fit-content;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+.cw-dropdown-bar > select.cw-dropdown,
+.guide-hero select.cw-dropdown,
+.studio-row > select.cw-dropdown,
+.studio-tween > select.cw-dropdown,
+.ent-inline-bar > select.cw-dropdown,
+.modal-body > select.cw-dropdown {
+  width: auto;
+  min-width: 10.25rem;
   max-width: 100%;
-  flex-wrap: wrap;
-  gap: 2px !important;
-  padding: 3px !important;
-  border-radius: 10px !important;
-  background: rgba(15, 23, 42, 0.045) !important;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06) !important;
+  flex: 0 0 auto;
 }
-[data-theme="dark"] .segmented {
-  background: rgba(255, 255, 255, 0.06) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+
+/* Elevated Floating Select Popover (.cw-picker-popover.cw-select-menu) */
+.cw-picker-popover.cw-select-menu {
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 12px;
+  padding: 5px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
 }
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]) .segmented {
-  background: rgba(255, 255, 255, 0.44) !important;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.10) !important;
+.cw-picker-popover.cw-select-menu.cw-picker-ready[data-side="bottom"] {
+  animation: cw-pop-down 110ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented {
-  background: rgba(15, 23, 42, 0.48) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14) !important;
+.cw-picker-popover.cw-select-menu.cw-picker-ready[data-side="top"] {
+  animation: cw-pop-up 110ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.segmented button {
-  min-height: 1.95rem;
-  padding: 0 0.72rem;
-  border-radius: 7px !important;
-  border: none !important;
-  transition: background-color var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+html[data-theme="dark"]:not([data-surface-tone="light"]) .cw-picker-popover.cw-select-menu,
+html[data-surface-tone="dark"] .cw-picker-popover.cw-select-menu {
+  background: rgba(24, 29, 40, 0.97);
+  color: #F8FAFC;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.54);
 }
-.segmented button:not(.active) {
-  background: transparent !important;
-  color: #1E293B !important;
-  box-shadow: none !important;
+.cw-select-option {
+  min-height: 2.2rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: var(--text-sm);
+  transition: background-color 100ms var(--ease);
 }
-.segmented button:not(.active):hover {
-  background: rgba(15, 23, 42, 0.065) !important;
-  color: #0F172A !important;
+html[dir="rtl"] .cw-select-option {
+  text-align: right;
 }
-.segmented button.active {
-  background: color-mix(in srgb, var(--accent) 16%, transparent) !important;
-  color: #0F172A !important;
-  box-shadow: none !important;
+.cw-select-option[data-highlighted="true"]:not(.selected):not(:disabled) {
+  background: var(--bg-hover) !important;
 }
-.segmented button.active:hover {
-  background: color-mix(in srgb, var(--accent) 22%, transparent) !important;
-  color: #0F172A !important;
-}
-[data-theme="dark"] .segmented button:not(.active),
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button:not(.active) {
-  color: #E2E8F0 !important;
-}
-[data-theme="dark"] .segmented button:not(.active):hover,
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button:not(.active):hover {
-  background: rgba(255, 255, 255, 0.10) !important;
-  color: #FFFFFF !important;
-}
-[data-theme="dark"] .segmented button.active,
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button.active {
-  background: color-mix(in srgb, var(--accent) 26%, transparent) !important;
-  color: #FFFFFF !important;
-}
-[data-theme="dark"] .segmented button.active:hover,
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .segmented button.active:hover {
-  background: color-mix(in srgb, var(--accent) 34%, transparent) !important;
-  color: #FFFFFF !important;
-}
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .segmented button:not(.active) {
-  color: #0F172A !important;
-}
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .segmented button:not(.active):hover {
-  background: rgba(15, 23, 42, 0.08) !important;
-  color: #000000 !important;
-}
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) .segmented button.active {
-  background: color-mix(in srgb, var(--accent) 18%, transparent) !important;
-  color: #0F172A !important;
+.cw-select-option.selected .cw-select-check {
+  color: var(--accent) !important;
 }
 
 /* D. Refined Secondary, Ghost & Primary Action Buttons (soft low-opacity surfaces, guaranteed contrast) */
@@ -10802,18 +10850,16 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
   color: #FFFFFF !important;
 }
 
-/* E. Unified Sleek Inputs (Search Fields, Forms, Selects, Textareas & Composer Focus) */
+/* E. Unified Sleek Inputs (Search Fields, Forms, Textareas & Composer Focus; Selects owned by Section C) */
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input),
-textarea:not(.composer-input),
-select {
+textarea:not(.composer-input) {
   border-radius: 10px;
   border: 1px solid var(--input-border, rgba(15, 23, 42, 0.11));
   background-color: var(--bg-input);
   transition: border-color var(--dur-hover) var(--ease), background-color var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
 }
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input):hover,
-textarea:not(.composer-input):hover,
-select:hover {
+textarea:not(.composer-input):hover {
   border-color: color-mix(in srgb, var(--accent) 44%, var(--input-border, rgba(15, 23, 42, 0.18)));
 }
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input):focus,
@@ -10830,8 +10876,7 @@ select:focus {
   z-index: 1;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input),
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) textarea:not(.composer-input),
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) select {
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([data-surface-tone="dark"]) textarea:not(.composer-input) {
   background-color: rgba(255, 255, 255, 0.56) !important;
   color: #0F172A !important;
   border-color: rgba(15, 23, 42, 0.14) !important;
@@ -10844,8 +10889,7 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"]):not([
   color: #1E293B !important;
 }
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.composer-input),
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] textarea:not(.composer-input),
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] select {
+html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] textarea:not(.composer-input) {
   background-color: rgba(15, 23, 42, 0.54) !important;
   color: #F8FAFC !important;
   border-color: rgba(255, 255, 255, 0.18) !important;

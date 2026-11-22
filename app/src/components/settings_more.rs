@@ -35,19 +35,15 @@ pub fn Toggle(label: String, #[props(default)] desc: String, checked: bool, on_c
 }
 
 #[component]
-pub fn Segmented(options: Vec<(String, String)>, value: String, on_change: EventHandler<String>, #[props(default)] label: String) -> Element {
+pub fn SelectMenu(options: Vec<(String, String)>, value: String, on_change: EventHandler<String>, #[props(default)] label: String) -> Element {
     rsx! {
-        div { class: "segmented", role: "radiogroup", aria_label: "{label}",
+        select {
+            class: "cw-dropdown",
+            aria_label: "{label}",
+            value: "{value}",
+            onchange: move |e| on_change.call(e.value()),
             for (v, l) in options {
-                {
-                    let v2 = v.clone();
-                    rsx! {
-                        button { key: "{v}", r#type: "button", role: "radio", aria_checked: "{value == v}", class: if value == v { "active" } else { "" },
-                            onclick: move |_| on_change.call(v2.clone()),
-                            "{l}"
-                        }
-                    }
-                }
+                option { key: "{v}", value: "{v}", selected: value == v, "{l}" }
             }
         }
     }
@@ -110,9 +106,9 @@ pub fn ChatPrefsSettings() -> Element {
                         on_change: move |v: bool| save_privacy(privacy, err, json!({ "read_receipts": v })) }
                 }
                 div { class: "settings-group",
-                    div { class: "settings-row column-layout",
+                    div { class: "settings-row",
                         span { class: "settings-label", "Spreadsheet paste" }
-                        Segmented { label: "How to paste spreadsheets", value: pr.paste_mode.clone(), options: opts(&[("ask", "Ask first"), ("image", "As image"), ("table", "As table"), ("text", "As text")]), on_change: move |v: String| c.update(|p| p.paste_mode = v) }
+                        SelectMenu { label: "How to paste spreadsheets", value: pr.paste_mode.clone(), options: opts(&[("ask", "Ask first"), ("image", "As image"), ("table", "As table"), ("text", "As text")]), on_change: move |v: String| c.update(|p| p.paste_mode = v) }
                     }
                 }
             }
@@ -157,9 +153,9 @@ pub fn NotificationSettings() -> Element {
             div { class: "settings-col",
                 div { class: "settings-group",
                     Toggle { label: "Play notification sound", checked: pr.sound, on_change: move |v| c.update(|p| p.sound = v) }
-                    div { class: "settings-row column-layout",
+                    div { class: "settings-row",
                         span { class: "settings-label", "Alert tone" }
-                        Segmented { label: "Alert tone", value: pr.sound_name.clone(), options: opts(&[("pop", "Pop"), ("chime", "Chime"), ("soft", "Gentle"), ("bubble", "Bubble")]),
+                        SelectMenu { label: "Alert tone", value: pr.sound_name.clone(), options: opts(&[("pop", "Pop"), ("chime", "Chime"), ("soft", "Gentle"), ("bubble", "Bubble")]),
                             on_change: move |v: String| { platform::play_sound(&v); c.update(|p| p.sound_name = v); },
                         }
                     }
@@ -187,19 +183,19 @@ pub fn PrivacySettingsPanel() -> Element {
         div { class: "settings-cols",
             div { class: "settings-col",
                 div { class: "settings-group",
-                    div { class: "settings-row column-layout",
+                    div { class: "settings-row",
                         span { class: "settings-label", "Who can send friend requests" }
-                        Segmented { label: "Friend requests", value: pv.friend_requests.clone(), options: opts(&[("everyone", "Everyone"), ("nobody", "Nobody")]),
+                        SelectMenu { label: "Friend requests", value: pv.friend_requests.clone(), options: opts(&[("everyone", "Everyone"), ("nobody", "Nobody")]),
                             on_change: move |v: String| save_privacy(privacy, err, json!({ "friend_requests": v })) }
                     }
-                    div { class: "settings-row column-layout",
+                    div { class: "settings-row",
                         span { class: "settings-label", "Who can call you" }
-                        Segmented { label: "Call", value: pv.calls.clone(), options: opts(&[("friends", "Friends"), ("nobody", "Nobody")]),
+                        SelectMenu { label: "Call", value: pv.calls.clone(), options: opts(&[("friends", "Friends"), ("nobody", "Nobody")]),
                             on_change: move |v: String| save_privacy(privacy, err, json!({ "calls": v })) }
                     }
-                    div { class: "settings-row column-layout",
+                    div { class: "settings-row",
                         span { class: "settings-label", "Who can add you to groups" }
-                        Segmented { label: "Add to group", value: pv.group_invites.clone(), options: opts(&[("everyone", "Everyone"), ("friends", "Friends"), ("nobody", "Nobody")]),
+                        SelectMenu { label: "Add to group", value: pv.group_invites.clone(), options: opts(&[("everyone", "Everyone"), ("friends", "Friends"), ("nobody", "Nobody")]),
                             on_change: move |v: String| save_privacy(privacy, err, json!({ "group_invites": v })) }
                     }
                     Toggle { label: "Allow finding me by username", desc: "Others can find you through your account name", checked: pv.discoverable, disabled: privacy().is_none(),
@@ -348,9 +344,9 @@ pub fn LockSettings(on_lock_now: EventHandler<()>) -> Element {
                     if has_pin {
                         Toggle { label: "Enable app lock", checked: pr.lock_enabled, on_change: move |v| c.update(|p| p.lock_enabled = v) }
                         Toggle { label: "Lock every time app opens", checked: pr.lock_on_start, on_change: move |v| c.update(|p| p.lock_on_start = v) }
-                        div { class: "settings-row column-layout",
+                        div { class: "settings-row",
                             span { class: "settings-label", "Lock after inactivity" }
-                            Segmented { label: "Lock time", value: pr.lock_minutes.to_string(), options: opts(&[("1", "1 minute"), ("5", "5 minutes"), ("15", "15 minutes"), ("30", "30 minutes"), ("60", "1 hour")]),
+                            SelectMenu { label: "Lock time", value: pr.lock_minutes.to_string(), options: opts(&[("1", "1 minute"), ("5", "5 minutes"), ("15", "15 minutes"), ("30", "30 minutes"), ("60", "1 hour")]),
                                 on_change: move |v: String| c.update(|p| p.lock_minutes = v.parse().unwrap_or(5)) }
                         }
                         div { class: "inline-form",
@@ -405,15 +401,15 @@ pub fn AutoReplySettings() -> Element {
                 div { class: "settings-group",
                     p { class: "settings-group-desc", "Automatically text back when someone texts while you're busy" }
                     Toggle { label: "Enable auto reply", checked: pr.auto_reply, on_change: move |v| c.update(|p| p.auto_reply = v) }
-                    div { class: "settings-row column-layout",
+                    div { class: "settings-row",
                         span { class: "settings-label", "When to reply" }
-                        Segmented { label: "When to reply", value: pr.auto_reply_mode.clone(), options: opts(&[("away", "When away"), ("hours", "Scheduled hours"), ("always", "Always")]),
+                        SelectMenu { label: "When to reply", value: pr.auto_reply_mode.clone(), options: opts(&[("away", "When away"), ("hours", "Scheduled hours"), ("always", "Always")]),
                             on_change: move |v: String| c.update(|p| p.auto_reply_mode = v) }
-                        if pr.auto_reply_mode == "hours" {
-                            div { class: "inline-form",
-                                label { class: "form-field", span { "From" } input { r#type: "time", value: "{pr.auto_reply_from}", onchange: move |e| { let v = e.value(); c.update(move |p| p.auto_reply_from = v) } } }
-                                label { class: "form-field", span { "To" } input { r#type: "time", value: "{pr.auto_reply_to}", onchange: move |e| { let v = e.value(); c.update(move |p| p.auto_reply_to = v) } } }
-                            }
+                    }
+                    if pr.auto_reply_mode == "hours" {
+                        div { class: "inline-form",
+                            label { class: "form-field", span { "From" } input { r#type: "time", value: "{pr.auto_reply_from}", onchange: move |e| { let v = e.value(); c.update(move |p| p.auto_reply_from = v) } } }
+                            label { class: "form-field", span { "To" } input { r#type: "time", value: "{pr.auto_reply_to}", onchange: move |e| { let v = e.value(); c.update(move |p| p.auto_reply_to = v) } } }
                         }
                     }
                 }
@@ -516,21 +512,21 @@ pub fn AppearanceColorsShapes() -> Element {
             }
         }
         div { class: "settings-group",
-            div { class: "settings-row column-layout",
+            div { class: "settings-row",
                 span { class: "settings-label", "Bubble" }
-                Segmented { label: "Bubble", value: pr.bubble_shape.clone(), options: opts(&[("round", "Round"), ("soft", "Soft"), ("square", "Square"), ("leaf", "Leaf")]), on_change: move |v: String| c.update(|p| p.bubble_shape = v) }
+                SelectMenu { label: "Bubble", value: pr.bubble_shape.clone(), options: opts(&[("round", "Round"), ("soft", "Soft"), ("square", "Square"), ("leaf", "Leaf")]), on_change: move |v: String| c.update(|p| p.bubble_shape = v) }
             }
-            div { class: "settings-row column-layout",
+            div { class: "settings-row",
                 span { class: "settings-label", "Avatar" }
-                Segmented { label: "Avatar", value: pr.avatar_shape.clone(), options: opts(&[("circle", "Round"), ("squircle", "Squircle"), ("square", "Square")]), on_change: move |v: String| c.update(|p| p.avatar_shape = v) }
+                SelectMenu { label: "Avatar", value: pr.avatar_shape.clone(), options: opts(&[("circle", "Round"), ("squircle", "Squircle"), ("square", "Square")]), on_change: move |v: String| c.update(|p| p.avatar_shape = v) }
             }
-            div { class: "settings-row column-layout",
+            div { class: "settings-row",
                 span { class: "settings-label", "Message width" }
-                Segmented { label: "Message width", value: pr.chat_width.clone(), options: opts(&[("narrow", "Narrow"), ("normal", "Normal"), ("wide", "Wide"), ("full", "Full width")]), on_change: move |v: String| c.update(|p| p.chat_width = v) }
+                SelectMenu { label: "Message width", value: pr.chat_width.clone(), options: opts(&[("narrow", "Narrow"), ("normal", "Normal"), ("wide", "Wide"), ("full", "Full width")]), on_change: move |v: String| c.update(|p| p.chat_width = v) }
             }
-            div { class: "settings-row column-layout",
+            div { class: "settings-row",
                 span { class: "settings-label", "Font" }
-                Segmented { label: "Font", value: pr.font_family.clone(), options: opts(&[("system", "System"), ("rounded", "Rounded"), ("serif", "Serif"), ("mono", "Monospace"), ("dyslexic", "Readable")]), on_change: move |v: String| c.update(|p| p.font_family = v) }
+                SelectMenu { label: "Font", value: pr.font_family.clone(), options: opts(&[("system", "System"), ("rounded", "Rounded"), ("serif", "Serif"), ("mono", "Monospace"), ("dyslexic", "Readable")]), on_change: move |v: String| c.update(|p| p.font_family = v) }
             }
             Toggle { label: "Reduce motion", desc: "Turn off animations and transitions", checked: pr.reduce_motion, on_change: move |v| c.update(|p| p.reduce_motion = v) }
         }
@@ -742,12 +738,12 @@ pub fn SyncMotionSettings() -> Element {
             if p.sync_settings && version > 0 {
                 div { class: "settings-row-desc", "Sync version: {version}" }
             }
-            div { class: "settings-row column-layout",
+            div { class: "settings-row",
                 span { class: "grow",
                     span { class: "settings-label", "List avatar animations" }
                     span { class: "settings-row-desc", "Enable motion for avatars in the list" }
                 }
-                Segmented {
+                SelectMenu {
                     label: "Avatar effects in the list",
                     options: vec![("always".into(), "Always".into()), ("hover".into(), "On hover".into()), ("off".into(), "Off".into())],
                     value: p.avatar_fx_lists.clone(),

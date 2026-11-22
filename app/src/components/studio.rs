@@ -686,9 +686,13 @@ pub fn Studio(
                 }
                 if menu() == Some("tween") {
                     div { class: "studio-tween",
-                        div { class: "segmented",
-                            button { r#type: "button", class: if !tween_custom() { "active" } else { "" }, onclick: move |_| tween_custom.set(false), "Motion Presets" }
-                            button { r#type: "button", class: if tween_custom() { "active" } else { "" }, onclick: move |_| tween_custom.set(true), "Keyframes" }
+                        select {
+                            class: "cw-dropdown",
+                            aria_label: "Movement",
+                            value: if tween_custom() { "keyframes" } else { "presets" },
+                            onchange: move |e| tween_custom.set(e.value() == "keyframes"),
+                            option { value: "presets", selected: !tween_custom(), "Motion Presets" }
+                            option { value: "keyframes", selected: tween_custom(), "Keyframes" }
                         }
                         if !tween_custom() {
                             div { class: "studio-presets",

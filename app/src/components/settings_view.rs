@@ -490,15 +490,19 @@ pub fn SettingsView(
                                                         span { class: "settings-label", "Display density" }
                                                         span { class: "settings-sublabel", "Spacing between messages and lists" }
                                                     }
-                                                    div { class: "segmented", role: "radiogroup", aria_label: "Display density",
+                                                    select {
+                                                        class: "cw-dropdown",
+                                                        aria_label: "Display density",
+                                                        value: "{appearance().density}",
+                                                        onchange: move |e| {
+                                                            let v = e.value();
+                                                            update_appearance(&|a| a.density = v.clone());
+                                                        },
                                                         for (val, label) in [("compact", "Compact"), ("comfortable", "Normal"), ("spacious", "Wide")] {
-                                                            button {
+                                                            option {
                                                                 key: "{val}",
-                                                                r#type: "button",
-                                                                role: "radio",
-                                                                aria_checked: "{appearance().density == val}",
-                                                                class: if appearance().density == val { "active" } else { "" },
-                                                                onclick: move |_| update_appearance(&|a| a.density = val.to_string()),
+                                                                value: "{val}",
+                                                                selected: appearance().density == val,
                                                                 "{label}"
                                                             }
                                                         }

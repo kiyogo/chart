@@ -189,13 +189,33 @@ pub fn ProfileModal(
                                 h2 { class: "modal-title", "Edit profile" }
                                 button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon {} }
                             }
-                            div { class: "segmented", style: "margin: 0 var(--space-5);", role: "tablist",
-                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Info { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Info), "Information" }
-                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Motion { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Motion), "Avatar Studio" }
-                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Layout { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Layout), "Layout" }
-                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Style { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Style), "Decoration" }
-                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Effects { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Effects), "Effects" }
-                                button { r#type: "button", role: "tab", class: if tab() == EditTab::Create { "active" } else { "" }, onclick: move |_| tab.set(EditTab::Create), "Self-created" }
+                            div { class: "cw-dropdown-bar", style: "margin: 0 var(--space-5);",
+                                select {
+                                    class: "cw-dropdown",
+                                    aria_label: "Section",
+                                    value: match tab() {
+                                        EditTab::Info => "info",
+                                        EditTab::Motion => "motion",
+                                        EditTab::Layout => "layout",
+                                        EditTab::Style => "style",
+                                        EditTab::Effects => "effects",
+                                        EditTab::Create => "create",
+                                    },
+                                    onchange: move |e| match e.value().as_str() {
+                                        "motion" => tab.set(EditTab::Motion),
+                                        "layout" => tab.set(EditTab::Layout),
+                                        "style" => tab.set(EditTab::Style),
+                                        "effects" => tab.set(EditTab::Effects),
+                                        "create" => tab.set(EditTab::Create),
+                                        _ => tab.set(EditTab::Info),
+                                    },
+                                    option { value: "info", selected: tab() == EditTab::Info, "Information" }
+                                    option { value: "motion", selected: tab() == EditTab::Motion, "Avatar Studio" }
+                                    option { value: "layout", selected: tab() == EditTab::Layout, "Layout" }
+                                    option { value: "style", selected: tab() == EditTab::Style, "Decoration" }
+                                    option { value: "effects", selected: tab() == EditTab::Effects, "Effects" }
+                                    option { value: "create", selected: tab() == EditTab::Create, "Self-created" }
+                                }
                             }
                             div { class: "modal-body",
                                 if tab() == EditTab::Info {

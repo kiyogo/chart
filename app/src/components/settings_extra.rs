@@ -771,10 +771,22 @@ pub fn LibrarySettings(current_user_id: String) -> Element {
             Illustration { kind: "library".to_string() }
             div {
                 div { class: "settings-group-desc", "The stickers, emojis and GIFs you add here can be used in any conversation. The name is always in English." }
-                div { class: "segmented", role: "tablist",
-                    button { r#type: "button", role: "tab", class: if tab() == LibTab::Sticker { "active" } else { "" }, onclick: move |_| tab.set(LibTab::Sticker), "Sticker" }
-                    button { r#type: "button", role: "tab", class: if tab() == LibTab::Emoji { "active" } else { "" }, onclick: move |_| tab.set(LibTab::Emoji), "Emoji" }
-                    button { r#type: "button", role: "tab", class: if tab() == LibTab::Gif { "active" } else { "" }, onclick: move |_| tab.set(LibTab::Gif), "GIF" }
+                select {
+                    class: "cw-dropdown",
+                    aria_label: "Library",
+                    value: match tab() {
+                        LibTab::Sticker => "sticker",
+                        LibTab::Emoji => "emoji",
+                        LibTab::Gif => "gif",
+                    },
+                    onchange: move |e| match e.value().as_str() {
+                        "emoji" => tab.set(LibTab::Emoji),
+                        "gif" => tab.set(LibTab::Gif),
+                        _ => tab.set(LibTab::Sticker),
+                    },
+                    option { value: "sticker", selected: tab() == LibTab::Sticker, "Sticker" }
+                    option { value: "emoji", selected: tab() == LibTab::Emoji, "Emoji" }
+                    option { value: "gif", selected: tab() == LibTab::Gif, "GIF" }
                 }
             }
         }

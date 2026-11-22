@@ -365,10 +365,9 @@ try {
     const busyPhotoFramed = document.documentElement.getAttribute('data-framed-controls');
     const busyPhotoShadow = getComputedStyle(body).textShadow;
     const busyBtnShadow = btn ? getComputedStyle(btn).textShadow : 'none';
-    const busySegs = Array.from(document.querySelectorAll('.settings-body .segmented button')).map((el) => {
+    const busyDrops = Array.from(document.querySelectorAll('.settings-body select.cw-dropdown')).map((el) => {
       const r = el.getBoundingClientRect();
       return {
-        active: el.classList.contains('active'),
         w: Math.round(r.width * 100) / 100,
         h: Math.round(r.height * 100) / 100,
         borderTop: getComputedStyle(el).borderTopWidth,
@@ -377,16 +376,16 @@ try {
     });
     window.__chatwCustom = prevCustom;
     window.__chatwRecomputeContrast();
-    const smoothSegs = Array.from(document.querySelectorAll('.settings-body .segmented button')).map((el) => {
+    const smoothDrops = Array.from(document.querySelectorAll('.settings-body select.cw-dropdown')).map((el) => {
       const r = el.getBoundingClientRect();
       return { w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100 };
     });
     let busyMaxDW = 0, busyMaxDH = 0;
-    for (let i = 0; i < Math.min(busySegs.length, smoothSegs.length); i++) {
-      busyMaxDW = Math.max(busyMaxDW, Math.abs(busySegs[i].w - smoothSegs[i].w));
-      busyMaxDH = Math.max(busyMaxDH, Math.abs(busySegs[i].h - smoothSegs[i].h));
+    for (let i = 0; i < Math.min(busyDrops.length, smoothDrops.length); i++) {
+      busyMaxDW = Math.max(busyMaxDW, Math.abs(busyDrops[i].w - smoothDrops[i].w));
+      busyMaxDH = Math.max(busyMaxDH, Math.abs(busyDrops[i].h - smoothDrops[i].h));
     }
-    const busyIdleSeg = busySegs.find((s) => !s.active);
+    const legacySegCount = document.querySelectorAll('.segmented, .ent-segmented').length;
 
     return {
       easyReadNoShadow: easyReadAudit.textHaloAttr === 'false' && easyReadAudit.bodyTextShadow === 'none',
@@ -401,13 +400,13 @@ try {
       busyBtnShadow,
       busyMaxDW,
       busyMaxDH,
-      busyIdleBorderTop: busyIdleSeg ? busyIdleSeg.borderTop : '',
-      busyIdleShadow: busyIdleSeg ? busyIdleSeg.shadow : '',
+      dropCount: busyDrops.length,
+      legacySegCount,
       textPrimaryColor,
     };
   }, easyReadAudit);
   record(
-    'Left Rail (.app-rail) opacity syncs 100%, smooth presets stay crisp with ZERO blurry text-shadow & ZERO cluttered idle boxes, and busy high-contrast photos activate tight dark halo + 0.00px size stability while pills/buttons stay text-shadow: none',
+    'Left Rail (.app-rail) opacity syncs 100%, smooth presets stay crisp with ZERO blurry text-shadow & ZERO legacy .segmented bars, and busy high-contrast photos activate tight dark halo + 0.00px dropdown size stability while buttons stay text-shadow: none',
     railAndHaloAudit.easyReadNoShadow &&
       railAndHaloAudit.railBg === railAndHaloAudit.navBg &&
       railAndHaloAudit.smoothOceanHalo === 'false' &&
@@ -416,9 +415,10 @@ try {
       railAndHaloAudit.textPrimaryColor === 'rgb(0, 0, 0)' &&
       railAndHaloAudit.busyPhotoHalo === 'true' &&
       railAndHaloAudit.busyPhotoFramed === 'false' &&
+      railAndHaloAudit.legacySegCount === 0 &&
+      railAndHaloAudit.dropCount >= 5 &&
       railAndHaloAudit.busyMaxDW === 0 &&
       railAndHaloAudit.busyMaxDH === 0 &&
-      railAndHaloAudit.busyIdleBorderTop === '0px' &&
       railAndHaloAudit.busyPhotoShadow.includes('rgba(0, 0, 0') &&
       !railAndHaloAudit.busyPhotoShadow.includes('255, 255, 255') &&
       railAndHaloAudit.busyBtnShadow === 'none',
@@ -447,16 +447,16 @@ try {
 
   const measureButtons = () =>
     page.evaluate(() => {
-      const segs = Array.from(document.querySelectorAll('.settings-body .segmented button')).map((el) => {
+      const drops = Array.from(document.querySelectorAll('.settings-body select.cw-dropdown')).map((el) => {
         const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
         return {
-          text: el.textContent.trim(),
-          active: el.classList.contains('active'),
+          label: el.getAttribute('aria-label') || '',
           w: Math.round(r.width * 100) / 100,
           h: Math.round(r.height * 100) / 100,
-          bg: getComputedStyle(el).backgroundColor,
-          borderTop: getComputedStyle(el).borderTopWidth,
-          shadow: getComputedStyle(el).boxShadow,
+          bg: cs.backgroundColor,
+          borderTop: cs.borderTopWidth,
+          bgImg: cs.backgroundImage,
         };
       });
       const sec = document.querySelector('.settings-body .btn-secondary');
@@ -475,7 +475,7 @@ try {
         luminous: document.documentElement.getAttribute('data-luminous-controls'),
         wpThemeActive: document.documentElement.getAttribute('data-wp-theme-active'),
         accentVar: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
-        segs,
+        drops,
         sec: sec
           ? {
               w: Math.round(secR.width * 100) / 100,
@@ -573,17 +573,15 @@ try {
     }
     return null;
   };
-  let maxSegDW = 0;
-  let maxSegDH = 0;
-  for (let i = 0; i < Math.min(m52.segs.length, m72.segs.length); i++) {
-    maxSegDW = Math.max(maxSegDW, Math.abs(m72.segs[i].w - m52.segs[i].w));
-    maxSegDH = Math.max(maxSegDH, Math.abs(m72.segs[i].h - m52.segs[i].h));
+  let maxDropDW = 0;
+  let maxDropDH = 0;
+  for (let i = 0; i < Math.min(m52.drops.length, m72.drops.length); i++) {
+    maxDropDW = Math.max(maxDropDW, Math.abs(m72.drops[i].w - m52.drops[i].w));
+    maxDropDH = Math.max(maxDropDH, Math.abs(m72.drops[i].h - m52.drops[i].h));
   }
   const secDW = m52.sec && m72.sec ? Math.abs(m72.sec.w - m52.sec.w) : 99;
   const secDH = m52.sec && m72.sec ? Math.abs(m72.sec.h - m52.sec.h) : 99;
-  const activeSegA = mAurora100.segs.find((s) => s.active);
-  const idleSegA = mAurora100.segs.find((s) => !s.active);
-  const activeIdleHeightDiff = activeSegA && idleSegA ? Math.abs(activeSegA.h - idleSegA.h) : 99;
+  const allDropsCustomChevron = mAurora100.drops.length >= 5 && mAurora100.drops.every((d) => d.bgImg.includes('data:image/svg+xml'));
   const auroraActiveRgba = parseRgba(mAurora100.navActiveBg);
   const mintActiveRgba = parseRgba(mMint72.navActiveBg);
   const sunsetActiveRgba = parseRgba(m72.navActiveBg);
@@ -598,7 +596,7 @@ try {
   );
 
   record(
-    'Spec 060, 062 & 063 No Wallpaper Auto-Recolor: Sunset/Aurora/Mint/Red Photo @ 0%-100% transparency ALWAYS keep user Blue (#2E7CF6), soft low-opacity translucent active pills, crisp buttons, custom accent persists across wallpaper switches, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
+    'Spec 060, 062, 063 & 066 No Wallpaper Auto-Recolor: Sunset/Aurora/Mint/Red Photo @ 0%-100% transparency ALWAYS keep user Blue (#2E7CF6), soft low-opacity translucent active pills, modern SVG-chevron dropdowns, crisp buttons, custom accent persists across wallpaper switches, compact swatch (<=48px), 0.00px size stability & ZERO g clipping',
     mSunset0.wpThemeActive === 'false' &&
       mSunset0.accentVar === '#2E7CF6' &&
       mAurora100.wpThemeActive === 'false' &&
@@ -616,12 +614,11 @@ try {
       m72.framedControls === 'false' &&
       m72.textHalo === 'false' &&
       gSafe &&
-      maxSegDW === 0 &&
-      maxSegDH === 0 &&
+      maxDropDW === 0 &&
+      maxDropDH === 0 &&
       secDW === 0 &&
       secDH === 0 &&
-      activeIdleHeightDiff === 0 &&
-      idleSegA?.bg === 'rgba(0, 0, 0, 0)' &&
+      allDropsCustomChevron &&
       mAurora100.wpColorWidth > 0 &&
       mAurora100.wpColorWidth <= 48 &&
       isBluePill(auroraActiveRgba) &&
@@ -630,11 +627,11 @@ try {
       Boolean(sunsetHoverRgba && sunsetHoverRgba.r <= 30 && sunsetHoverRgba.a <= 0.10) &&
       Boolean(sunsetSecRgba && sunsetSecRgba.r >= 220 && sunsetSecRgba.a >= 0.40 && sunsetSecRgba.a <= 0.72),
     JSON.stringify({
-      maxSegDW,
-      maxSegDH,
+      maxDropDW,
+      maxDropDH,
       secDW,
       secDH,
-      activeIdleHeightDiff,
+      allDropsCustomChevron,
       gSafe,
       wpColorWidth: mAurora100.wpColorWidth,
       auroraAccent: mAurora100.accentVar,

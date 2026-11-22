@@ -603,9 +603,13 @@ pub fn DepartmentsPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: 
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-inline-bar",
-                    div { class: "ent-segmented",
-                        button { r#type: "button", class: if view_mode() == "grid" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| view_mode.set("grid".into()), "List of departments" }
-                        button { r#type: "button", class: if view_mode() == "orgchart" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| view_mode.set("orgchart".into()), "Organizational chart" }
+                    select {
+                        class: "cw-dropdown",
+                        aria_label: "List of departments",
+                        value: "{view_mode}",
+                        onchange: move |e| view_mode.set(e.value()),
+                        option { value: "grid", selected: view_mode() == "grid", "List of departments" }
+                        option { value: "orgchart", selected: view_mode() == "orgchart", "Organizational chart" }
                     }
                     span { class: "ent-pill ok", "{depts().len()} departments" }
                     span { class: "ent-pill", "{total_assigned} affiliated personnel" }

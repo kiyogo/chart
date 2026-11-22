@@ -794,8 +794,8 @@ if (!window.__chatwRecomputeContrast) {
             : (alpha * panelBaseB + (1 - alpha) * Math.min(0.98, p90B * (1 - effDim)));
         const worstBgV = Math.round(Math.max(0, Math.min(255, worstBgB * 255)));
         const worstLc = Math.abs(calcAPCA(inkRgb, [worstBgV, worstBgV, worstBgV]));
-        // Spec 062: Never clutter idle segmented buttons with disjointed per-button white frames;
-        // .segmented now uses one unified sleek pill track across all transparency states.
+        // Spec 062 & 066: Modern dropdown menus (.cw-dropdown) replace legacy segmented button bars;
+        // never clutter idle controls with disjointed per-button white frames.
         const needsFramedControls = false;
         const needsHalo = c.wpKind !== 'none' && alpha < 0.36 && (worstLc < 62 || wpBusy);
 
@@ -887,7 +887,7 @@ if (!window.__chatwRecomputeContrast) {
                 .forEach((k) => root.style.removeProperty(k));
         }
 
-        // Remove legacy per-button framed segmented control variables (Spec 062 unified pill track replaces them)
+        // Remove legacy per-button framed control variables (Spec 066 modern dropdowns replace them)
         ['--adaptive-ctrl-bg', '--adaptive-ctrl-hover', '--adaptive-ctrl-ring']
             .forEach((k) => root.style.removeProperty(k));
 

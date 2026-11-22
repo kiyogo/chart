@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 
 use crate::{
-    components::icons::{CloseIcon, SparkleIcon},
+    components::icons::CloseIcon,
     services::library,
 };
 
@@ -168,18 +168,24 @@ pub fn DrawStudio(target: String, on_saved: EventHandler<String>, on_close: Even
                     }
                 }
                 div { class: "studio-row",
-                    div { class: "segmented",
-                        for (m, l) in [("pen", "Pen"), ("eraser", "Eraser"), ("star", "Star sign")] {
-                            {
-                                let id = c_id3.clone();
-                                rsx! {
-                                    button { key: "{m}", r#type: "button", class: if mode() == m { "active" } else { "" },
-                                        onclick: move |_| { mode.set(m); cmd(&id, "mode", m); },
-                                        if m == "star" { SparkleIcon { size: 14 } }
-                                        "{l}"
-                                    }
-                                }
+                    select {
+                        class: "cw-dropdown",
+                        aria_label: "Pen",
+                        value: "{mode}",
+                        onchange: {
+                            let id = c_id3.clone();
+                            move |e: FormEvent| {
+                                let next = match e.value().as_str() {
+                                    "eraser" => "eraser",
+                                    "star" => "star",
+                                    _ => "pen",
+                                };
+                                mode.set(next);
+                                cmd(&id, "mode", next);
                             }
+                        },
+                        for (m, l) in [("pen", "Pen"), ("eraser", "Eraser"), ("star", "Star sign")] {
+                            option { key: "{m}", value: "{m}", selected: mode() == m, "{l}" }
                         }
                     }
                     label { class: "range-row", style: "max-width: 14rem;",

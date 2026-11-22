@@ -281,32 +281,38 @@ pub fn AvatarStudio(
                                 oninput: move |e| { let v = e.value().to_uppercase(); set3(&|x: &mut AvatarMotion| x.color = Some(v.clone())) } }
                             button { r#type: "button", class: "btn-small-secondary", onclick: move |_| set4(&|x: &mut AvatarMotion| x.color = None), "According to profile color" }
                         }
-                        div { class: "range-row",
+                        label { class: "range-row",
                             span { "Direction" }
-                            div { class: "segmented", role: "radiogroup", aria_label: "Direction",
-                                button { r#type: "button", role: "radio", aria_checked: "{!m.reverse}", class: if !m.reverse { "active" } else { "" },
-                                    onclick: { let s = set5.clone(); move |_| s(&|x: &mut AvatarMotion| x.reverse = false) }, "Clockwise" }
-                                button { r#type: "button", role: "radio", aria_checked: "{m.reverse}", class: if m.reverse { "active" } else { "" },
-                                    onclick: move |_| set5(&|x: &mut AvatarMotion| x.reverse = true), "Opposite direction" }
+                            select {
+                                class: "cw-dropdown",
+                                aria_label: "Direction",
+                                value: if m.reverse { "reverse" } else { "cw" },
+                                onchange: move |e| {
+                                    let rev = e.value() == "reverse";
+                                    set5(&|x: &mut AvatarMotion| x.reverse = rev);
+                                },
+                                option { value: "cw", selected: !m.reverse, "Clockwise" }
+                                option { value: "reverse", selected: m.reverse, "Opposite direction" }
                             }
                         }
-                        div { class: "range-row",
+                        label { class: "range-row",
                             span { "Activate" }
-                            div { class: "segmented", role: "radiogroup", aria_label: "Activate",
+                            select {
+                                class: "cw-dropdown",
+                                aria_label: "Activate",
+                                value: "{m.trigger}",
+                                onchange: move |e| {
+                                    let v = e.value();
+                                    set6(&|x: &mut AvatarMotion| x.trigger = v.clone());
+                                },
                                 for (tid, tl) in TRIGGERS {
-                                    {
-                                        let s = set6.clone();
-                                        rsx! {
-                                            button { key: "{tid}", r#type: "button", role: "radio", aria_checked: "{m.trigger == tid}", class: if m.trigger == tid { "active" } else { "" },
-                                                onclick: move |_| s(&|x: &mut AvatarMotion| x.trigger = tid.to_string()), "{tl}" }
-                                        }
-                                    }
+                                    option { key: "{tid}", value: "{tid}", selected: m.trigger == tid, "{tl}" }
                                 }
                             }
                         }
                         label { class: "range-row",
                             span { "Movement type" }
-                            select { aria_label: "Movement type", value: "{m.easing}",
+                            select { class: "cw-dropdown", aria_label: "Movement type", value: "{m.easing}",
                                 onchange: move |e| { let v = e.value(); set7(&|x: &mut AvatarMotion| x.easing = v.clone()) },
                                 for (eid, el) in EASINGS { option { key: "{eid}", value: "{eid}", selected: m.easing == eid, "{el}" } }
                             }

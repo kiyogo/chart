@@ -159,10 +159,14 @@ pub fn TasksPanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u64) -
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-inline-bar",
-                    div { class: "ent-segmented",
-                        button { r#type: "button", class: if mode() == "kanban" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("kanban".into()), "Kanban" }
-                        button { r#type: "button", class: if mode() == "list" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("list".into()), "List" }
-                        button { r#type: "button", class: if mode() == "calendar" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| mode.set("calendar".into()), "By term" }
+                    select {
+                        class: "cw-dropdown",
+                        aria_label: "List",
+                        value: "{mode}",
+                        onchange: move |e| mode.set(e.value()),
+                        option { value: "kanban", selected: mode() == "kanban", "Kanban" }
+                        option { value: "list", selected: mode() == "list", "List" }
+                        option { value: "calendar", selected: mode() == "calendar", "By term" }
                     }
                     select { value: "{view}", onchange: move |e| { view.set(e.value()); reload.call(()); },
                         option { value: "all", "All work" }
@@ -734,10 +738,14 @@ pub fn CreateTaskFromMsgDialog(
                     button { r#type: "button", class: "icon-btn", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon {} }
                 }
                 div { class: "modal-body",
-                    div { class: "ent-segmented",
-                        button { r#type: "button", class: if action_kind() == "task" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("task".into()), "Create jobs" }
-                        button { r#type: "button", class: if action_kind() == "document" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("document".into()), "Save to document" }
-                        button { r#type: "button", class: if action_kind() == "announcement" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| action_kind.set("announcement".into()), "Share announcements" }
+                    select {
+                        class: "cw-dropdown",
+                        aria_label: "Action",
+                        value: "{action_kind}",
+                        onchange: move |e| action_kind.set(e.value()),
+                        option { value: "task", selected: action_kind() == "task", "Create jobs" }
+                        option { value: "document", selected: action_kind() == "document", "Save to document" }
+                        option { value: "announcement", selected: action_kind() == "announcement", "Share announcements" }
                     }
                     label { class: "form-field", span { class: "form-label", "Title" }
                         input { r#type: "text", value: "{title}", oninput: move |e| title.set(e.value()) }

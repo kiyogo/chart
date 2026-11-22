@@ -753,8 +753,8 @@
     taggedElements.clear();
   }
 
-  // Spec 062 & 063: Sample transparent rows/tiles (including low-opacity translucent active nav/rail/chat pills
-  // so their ink adapts over split light/dark wallpapers), while NEVER overriding filled .btn-secondary/.btn-ghost/.segmented.
+  // Spec 062, 063 & 066: Sample transparent rows/tiles (including low-opacity translucent active nav/rail/chat pills
+  // so their ink adapts over split light/dark wallpapers), while NEVER overriding filled .btn-secondary/.btn-ghost/.cw-dropdown.
   const LOCAL_ROW_SELECTOR = [
     '.app-rail .rail-item:not(.has-logo)',
     '.settings-nav .settings-nav-item',

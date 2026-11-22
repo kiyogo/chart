@@ -231,22 +231,75 @@ try {
     JSON.stringify({ ...langGridAudit, searchViet, searchSw })
   );
 
-  // Verify English opaque Appearance active pills stay strictly low-opacity translucent
+  // Verify English opaque Appearance has ZERO legacy .segmented bars, renders modern .cw-dropdown selects,
+  // and opening a dropdown displays the modern popover menu with low-opacity translucent selected highlight + keyboard selection!
   await page.locator('.settings-nav-item', { hasText: 'Appearance' }).click();
   await page.mouse.move(10, 10);
   await page.waitForTimeout(300);
-  const enAppearance = await page.evaluate(() => ({
-    pageTitle: document.querySelector('.settings-page-title')?.textContent?.trim(),
-    opaqueNavActiveBg: getComputedStyle(document.querySelector('.settings-nav-item.active')).backgroundColor,
-    opaqueSegActiveBg: getComputedStyle(document.querySelector('.settings-body .segmented button.active')).backgroundColor,
-  }));
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '02_appearance_english_opaque.png') });
+
+  // Open the "Bubble" modern web dropdown via real pointer mousedown/click
+  const bubbleSelect = page.locator('.settings-body select.cw-dropdown[aria-label="Bubble"]');
+  await bubbleSelect.click();
+  await page.waitForSelector('.cw-picker-popover.cw-select-menu[role="listbox"]', { timeout: 5000 });
+  await page.waitForTimeout(160);
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '02b_appearance_dropdown_open_opaque.png') });
+
+  const enAppearance = await page.evaluate(() => {
+    const sel = document.querySelector('.settings-body select.cw-dropdown[aria-label="Bubble"]');
+    const pop = document.querySelector('.cw-picker-popover.cw-select-menu');
+    const selectedOpt = pop?.querySelector('.cw-select-option.selected');
+    const chk = selectedOpt?.querySelector('.cw-select-check svg');
+    const allDrops = Array.from(document.querySelectorAll('.settings-body select.cw-dropdown'));
+    return {
+      pageTitle: document.querySelector('.settings-page-title')?.textContent?.trim(),
+      legacySegmentedCount: document.querySelectorAll('.segmented, .ent-segmented').length,
+      dropdownCount: allDrops.length,
+      allAppearanceNone: allDrops.every((d) => getComputedStyle(d).appearance === 'none'),
+      allCustomChevron: allDrops.every((d) => getComputedStyle(d).backgroundImage.includes('data:image/svg+xml')),
+      opaqueNavActiveBg: getComputedStyle(document.querySelector('.settings-nav-item.active')).backgroundColor,
+      ariaExpanded: sel?.getAttribute('aria-expanded'),
+      popRole: pop?.getAttribute('role'),
+      popTranslate: pop?.getAttribute('translate'),
+      popSelectedBg: selectedOpt ? getComputedStyle(selectedOpt).backgroundColor : '',
+      hasCheckIcon: Boolean(chk),
+      optionLabels: Array.from(pop?.querySelectorAll('.cw-select-option-label') || []).map((n) => n.textContent.trim()),
+    };
+  });
+
+  // Verify W3C APG keyboard navigation (ArrowDown + Enter) switches Bubble from "round" -> "soft"
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(80);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(180);
+  const bubbleAfterKey = await page.evaluate(() => ({
+    value: document.querySelector('.settings-body select.cw-dropdown[aria-label="Bubble"]')?.value,
+    popClosed: !document.querySelector('.cw-picker-popover.cw-select-menu'),
+  }));
+  // Restore Bubble back to "round" via popover click
+  await bubbleSelect.click();
+  await page.waitForSelector('.cw-picker-popover.cw-select-menu', { timeout: 5000 });
+  await page.locator('.cw-select-option', { hasText: 'Round' }).click();
+  await page.waitForTimeout(150);
+
   record(
-    'Canonical English Appearance renders natively with soft low-opacity translucent active pills',
+    'Spec 066: Canonical English Appearance has ZERO .segmented bars, renders modern .cw-dropdown menus with custom chevron, floating listbox popover, soft low-opacity selected highlight & full keyboard navigation',
     enAppearance.pageTitle === 'Appearance' &&
+      enAppearance.legacySegmentedCount === 0 &&
+      enAppearance.dropdownCount >= 5 &&
+      enAppearance.allAppearanceNone &&
+      enAppearance.allCustomChevron &&
       isTranslucentAccent(enAppearance.opaqueNavActiveBg, 'blue') &&
-      isTranslucentAccent(enAppearance.opaqueSegActiveBg, 'blue'),
-    JSON.stringify(enAppearance)
+      enAppearance.ariaExpanded === 'true' &&
+      enAppearance.popRole === 'listbox' &&
+      enAppearance.popTranslate === 'no' &&
+      isTranslucentAccent(enAppearance.popSelectedBg, 'blue') &&
+      enAppearance.hasCheckIcon &&
+      enAppearance.optionLabels.includes('Round') &&
+      enAppearance.optionLabels.includes('Leaf') &&
+      bubbleAfterKey.value === 'soft' &&
+      bubbleAfterKey.popClosed,
+    JSON.stringify({ enAppearance, bubbleAfterKey })
   );
 
   // Helper to switch language cleanly from Language Settings
@@ -296,6 +349,53 @@ try {
       viAccount.bodyText.includes('Tên đăng nhập') &&
       viAccount.bodyText.includes('Chỉnh sửa'),
     JSON.stringify({ lang: viAccount.lang, searchPh: viAccount.searchPh, hasCloud: viAccount.navs.includes('Đám mây'), hasChat: viAccount.navs.includes('Trò chuyện') })
+  );
+
+  // Spec 066: Inspect Vietnamese Privacy, Notifications & Sync tabs — ZERO legacy .segmented bars, modern horizontal .cw-dropdown menus!
+  await page.locator('.settings-nav-item', { hasText: 'Quyền riêng tư' }).click();
+  await page.waitForTimeout(300);
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03b_privacy_dropdowns_vietnamese.png') });
+  const viPrivacyDrops = await page.evaluate(() => ({
+    segCount: document.querySelectorAll('.segmented, .ent-segmented').length,
+    dropCount: document.querySelectorAll('.settings-body select.cw-dropdown').length,
+    optionTexts: Array.from(document.querySelectorAll('.settings-body select.cw-dropdown option')).map((o) => o.textContent.trim()),
+  }));
+
+  await page.locator('.settings-nav-item', { hasText: 'Thông báo' }).click();
+  await page.waitForTimeout(260);
+  const viNotifDrop = page.locator('.settings-body select.cw-dropdown').first();
+  await viNotifDrop.click();
+  await page.waitForSelector('.cw-picker-popover.cw-select-menu', { timeout: 5000 });
+  await page.waitForTimeout(160);
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03c_notifications_dropdown_open_vietnamese.png') });
+  const viNotifAudit = await page.evaluate(() => ({
+    segCount: document.querySelectorAll('.segmented, .ent-segmented').length,
+    popLabels: Array.from(document.querySelectorAll('.cw-picker-popover.cw-select-menu .cw-select-option-label')).map((e) => e.textContent.trim()),
+  }));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+
+  await page.locator('.settings-nav-item', { hasText: 'Tùy chỉnh' }).click();
+  await page.waitForTimeout(260);
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '03d_customize_dropdown_vietnamese.png') });
+  const viCustomizeDrops = await page.evaluate(() => ({
+    segCount: document.querySelectorAll('.segmented, .ent-segmented').length,
+    dropCount: document.querySelectorAll('.settings-body select.cw-dropdown').length,
+    optionTexts: Array.from(document.querySelectorAll('.settings-body select.cw-dropdown option')).map((o) => o.textContent.trim()),
+  }));
+  record(
+    'Spec 066 Vietnamese Settings (Privacy, Notifications, Customize): ZERO .segmented bars, translated modern .cw-dropdown menus & translated floating popover options',
+    viPrivacyDrops.segCount === 0 &&
+      viPrivacyDrops.dropCount === 3 &&
+      viPrivacyDrops.optionTexts.includes('Mọi người') &&
+      viPrivacyDrops.optionTexts.includes('Không ai') &&
+      viNotifAudit.segCount === 0 &&
+      viNotifAudit.popLabels.includes('Pop') &&
+      viNotifAudit.popLabels.length === 4 &&
+      viCustomizeDrops.segCount === 0 &&
+      viCustomizeDrops.dropCount >= 1 &&
+      viCustomizeDrops.optionTexts.includes('Luôn luôn'),
+    JSON.stringify({ viPrivacyDrops, viNotifAudit, viCustomizeDrops })
   );
 
   // Full page reload persistence in Vietnamese + Messages empty state & chat check!
@@ -371,10 +471,32 @@ try {
     if (code === 'he' && SHOT_DIR) {
       await page.screenshot({ path: path.join(SHOT_DIR, '06_language_hebrew_rtl_clean.png') });
     }
-    if (code === 'ar' && SHOT_DIR) {
+    if (code === 'ar') {
       await page.locator('.settings-nav-item', { hasText: 'المظهر' }).click();
-      await page.waitForTimeout(250);
-      await page.screenshot({ path: path.join(SHOT_DIR, '07_appearance_arabic_rtl.png') });
+      await page.waitForTimeout(260);
+      const arDrop = page.locator('.settings-body select.cw-dropdown').first();
+      await arDrop.click();
+      await page.waitForSelector('.cw-picker-popover.cw-select-menu', { timeout: 5000 });
+      await page.waitForTimeout(150);
+      const rtlDropAudit = await page.evaluate(() => {
+        const sel = document.querySelector('.settings-body select.cw-dropdown');
+        const pop = document.querySelector('.cw-picker-popover.cw-select-menu');
+        const cs = sel ? getComputedStyle(sel) : null;
+        return {
+          padLeft: cs ? parseFloat(cs.paddingLeft) : 0,
+          padRight: cs ? parseFloat(cs.paddingRight) : 0,
+          popDir: pop?.getAttribute('dir'),
+          segCount: document.querySelectorAll('.segmented, .ent-segmented').length,
+        };
+      });
+      if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '07_appearance_arabic_rtl.png') });
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(100);
+      record(
+        'Spec 066 Arabic RTL dropdowns mirror chevron padding cleanly (paddingLeft > paddingRight) and popover inherits dir="rtl"',
+        rtlDropAudit.segCount === 0 && rtlDropAudit.padLeft > rtlDropAudit.padRight && rtlDropAudit.popDir === 'rtl',
+        JSON.stringify(rtlDropAudit)
+      );
       await page.locator('.settings-nav-item', { hasText: 'اللغة' }).click();
       await page.waitForSelector('.lang-grid .lang-tile', { timeout: 10000 });
     }
@@ -450,9 +572,8 @@ try {
     const allIdleNavTransparent = idleNavBgs.every((bg) => bg === 'rgba(0, 0, 0, 0)');
     const navActive = document.querySelector('.settings-nav-item.active');
     const railActive = document.querySelector('.app-rail .rail-item.active');
-    const segTracks = Array.from(document.querySelectorAll('.settings-body .segmented'));
-    const activeSegs = Array.from(document.querySelectorAll('.settings-body .segmented button.active'));
-    const idleSegs = Array.from(document.querySelectorAll('.settings-body .segmented button:not(.active)'));
+    const legacySegCount = document.querySelectorAll('.segmented, .ent-segmented').length;
+    const drops = Array.from(document.querySelectorAll('.settings-body select.cw-dropdown'));
     const themeActive = document.querySelector('.theme-card.active');
     const uploadBtn = Array.from(document.querySelectorAll('.settings-body .btn-secondary')).find((el) =>
       el.textContent.includes('Upload your image')
@@ -471,11 +592,10 @@ try {
       allIdleNavTransparent,
       navActiveBg: navActive ? getComputedStyle(navActive).backgroundColor : '',
       railActiveBg: railActive ? getComputedStyle(railActive).backgroundColor : '',
-      activeSegsBgs: activeSegs.map((b) => getComputedStyle(b).backgroundColor),
-      activeSegsColors: activeSegs.map((b) => getComputedStyle(b).color),
-      segTrackBg: segTracks[0] ? getComputedStyle(segTracks[0]).backgroundColor : '',
-      idleSegAllTransparent: idleSegs.every((b) => getComputedStyle(b).backgroundColor === 'rgba(0, 0, 0, 0)'),
-      idleSegColor: idleSegs[0] ? getComputedStyle(idleSegs[0]).color : '',
+      legacySegCount,
+      dropCount: drops.length,
+      dropBg: drops[0] ? getComputedStyle(drops[0]).backgroundColor : '',
+      dropColor: drops[0] ? getComputedStyle(drops[0]).color : '',
       themeActiveShadow: themeActive ? getComputedStyle(themeActive).boxShadow : '',
       uploadBtnBg: uploadBtn ? getComputedStyle(uploadBtn).backgroundColor : '',
       uploadBtnColor: uploadBtn ? getComputedStyle(uploadBtn).color : '',
@@ -489,46 +609,59 @@ try {
 
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '08_busy_wp_low_opacity_blue.png') });
 
+  // Open a modern dropdown over the 100% transparent busy wallpaper to verify popover crispness + soft low-opacity Blue selected highlight
+  await page.locator('.settings-body select.cw-dropdown[aria-label="Font"]').click();
+  await page.waitForSelector('.cw-picker-popover.cw-select-menu', { timeout: 5000 });
+  await page.waitForTimeout(160);
+  if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '08b_busy_wp_dropdown_open_blue.png') });
+  const busyPopBlueBg = await page.evaluate(() => {
+    const sel = document.querySelector('.cw-picker-popover.cw-select-menu .cw-select-option.selected');
+    return sel ? getComputedStyle(sel).backgroundColor : '';
+  });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+
   const uploadCR = contrastRatio(busyUiAudit.uploadBtnColor, busyUiAudit.uploadBtnBg);
   const resetCR = contrastRatio(busyUiAudit.resetBtnColor, busyUiAudit.resetBtnBg);
-  const idleSegCR = contrastRatio(busyUiAudit.idleSegColor, busyUiAudit.segTrackBg);
+  const dropCR = contrastRatio(busyUiAudit.dropColor, busyUiAudit.dropBg);
   const searchCR = contrastRatio(busyUiAudit.searchColor, busyUiAudit.searchBg);
-  const activeSegsAllSoftBlue =
-    busyUiAudit.activeSegsBgs.length > 0 &&
-    busyUiAudit.activeSegsBgs.every((bg) => isTranslucentAccent(bg, 'blue')) &&
-    busyUiAudit.activeSegsColors.every((c) => c === 'rgb(255, 255, 255)' || c === 'rgb(15, 23, 42)');
 
   record(
-    'Busy colorful wallpaper @ 100% transparency: ZERO patchy scrims, soft low-opacity Blue accent pills, unified .segmented track, crisp inputs & >=4.5:1 contrast',
+    'Busy colorful wallpaper @ 100% transparency: ZERO patchy scrims, ZERO legacy .segmented bars, soft low-opacity Blue accent pills & modern .cw-dropdown popover, crisp inputs & >=4.5:1 contrast',
     busyUiAudit.scrimNodes === 0 &&
       busyUiAudit.allIdleNavTransparent &&
+      busyUiAudit.legacySegCount === 0 &&
+      busyUiAudit.dropCount >= 5 &&
       isTranslucentAccent(busyUiAudit.navActiveBg, 'blue') &&
       isTranslucentAccent(busyUiAudit.railActiveBg, 'blue') &&
-      activeSegsAllSoftBlue &&
-      busyUiAudit.idleSegAllTransparent &&
+      isTranslucentAccent(busyPopBlueBg, 'blue') &&
       busyUiAudit.themeActiveShadow.includes('1.5px') &&
       uploadCR >= 7 &&
       resetCR >= 7 &&
-      idleSegCR >= 7 &&
+      dropCR >= 7 &&
       searchCR >= 7 &&
       busyUiAudit.searchFocusBorder === 'rgb(46, 124, 246)',
-    JSON.stringify({ ...busyUiAudit, uploadCR: +uploadCR.toFixed(1), resetCR: +resetCR.toFixed(1), idleSegCR: +idleSegCR.toFixed(1), searchCR: +searchCR.toFixed(1) })
+    JSON.stringify({ ...busyUiAudit, busyPopBlueBg, uploadCR: +uploadCR.toFixed(1), resetCR: +resetCR.toFixed(1), dropCR: +dropCR.toFixed(1), searchCR: +searchCR.toFixed(1) })
   );
 
-  // Violet accent sync check
+  // Violet accent sync check (including open dropdown selected highlight!)
   await page.locator('.accent-swatch[aria-label="Violet"]').click();
   await page.waitForTimeout(260);
+  await page.locator('.settings-body select.cw-dropdown[aria-label="Bubble"]').click();
+  await page.waitForSelector('.cw-picker-popover.cw-select-menu', { timeout: 5000 });
+  await page.waitForTimeout(140);
   const violetSync = await page.evaluate(() => ({
     navActiveBg: getComputedStyle(document.querySelector('.settings-nav-item.active')).backgroundColor,
     railActiveBg: getComputedStyle(document.querySelector('.app-rail .rail-item.active')).backgroundColor,
-    segActiveBg: getComputedStyle(document.querySelector('.settings-body .segmented button.active')).backgroundColor,
+    dropdownSelectedBg: getComputedStyle(document.querySelector('.cw-picker-popover.cw-select-menu .cw-select-option.selected')).backgroundColor,
     brandBg: getComputedStyle(document.querySelector('.rail-brand')).backgroundColor,
   }));
+  await page.keyboard.press('Escape');
   record(
-    'Switching Accent to Violet (#8B5CF6) instantaneously synchronizes soft low-opacity nav pill, rail pill, segmented buttons & brand logo',
+    'Switching Accent to Violet (#8B5CF6) instantaneously synchronizes soft low-opacity nav pill, rail pill, modern dropdown selected option & brand logo',
     isTranslucentAccent(violetSync.navActiveBg, 'violet') &&
       isTranslucentAccent(violetSync.railActiveBg, 'violet') &&
-      isTranslucentAccent(violetSync.segActiveBg, 'violet') &&
+      isTranslucentAccent(violetSync.dropdownSelectedBg, 'violet') &&
       violetSync.brandBg === 'rgb(139, 92, 246)',
     JSON.stringify(violetSync)
   );

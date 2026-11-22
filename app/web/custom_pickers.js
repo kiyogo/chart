@@ -11,6 +11,7 @@
 
   let activePop = null;
   let activeAnchor = null;
+  let activeSelect = null;
 
   function setNativeValue(el, val) {
     const proto = el.tagName === 'SELECT'
@@ -24,12 +25,19 @@
   }
 
   function closePopover() {
+    if (activeSelect && activeSelect.typeTimer) {
+      clearTimeout(activeSelect.typeTimer);
+    }
+    activeSelect = null;
     if (activePop) {
       activePop.remove();
       activePop = null;
     }
     if (activeAnchor) {
       activeAnchor.classList.remove('cw-picker-open');
+      if (activeAnchor.tagName === 'SELECT') {
+        activeAnchor.setAttribute('aria-expanded', 'false');
+      }
       activeAnchor = null;
     }
   }
@@ -37,9 +45,12 @@
   function createPopover(anchor, extraClass) {
     closePopover();
     const r = anchor.getBoundingClientRect();
+    const dir = (document.documentElement.getAttribute('dir') || 'ltr').toLowerCase() === 'rtl' ? 'rtl' : 'ltr';
     const pop = document.createElement('div');
-    pop.className = 'cw-picker-popover ' + extraClass;
+    pop.className = 'cw-picker-popover notranslate ' + extraClass;
     pop.setAttribute('role', 'dialog');
+    pop.setAttribute('translate', 'no');
+    pop.setAttribute('dir', dir);
     // Pre-position directly at anchor while invisible BEFORE attaching to DOM — zero (0,0) top-left flash!
     pop.style.visibility = 'hidden';
     pop.style.opacity = '0';
@@ -51,6 +62,9 @@
     activePop = pop;
     activeAnchor = anchor;
     anchor.classList.add('cw-picker-open');
+    if (anchor.tagName === 'SELECT') {
+      anchor.setAttribute('aria-expanded', 'true');
+    }
     return pop;
   }
 
@@ -58,23 +72,29 @@
     const r = anchor.getBoundingClientRect();
     if (matchWidth) {
       pop.style.minWidth = Math.max(180, Math.round(r.width)) + 'px';
-      pop.style.maxWidth = Math.max(280, Math.round(r.width) + 60) + 'px';
+      pop.style.maxWidth = Math.max(280, Math.round(r.width) + 72) + 'px';
     }
     const pr = pop.getBoundingClientRect();
     const gap = 6;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const isRtl = (document.documentElement.getAttribute('dir') || '').toLowerCase() === 'rtl';
+    let side = 'bottom';
     let top = r.bottom + gap;
     if (top + pr.height > vh - 12 && r.top - gap - pr.height >= 12) {
       top = r.top - gap - pr.height;
+      side = 'top';
     } else if (top + pr.height > vh - 12) {
       top = Math.max(12, vh - 12 - pr.height);
     }
-    let left = r.left;
+    let left = isRtl ? (r.right - pr.width) : r.left;
     if (left + pr.width > vw - 12) {
       left = Math.max(12, r.right - pr.width);
     }
-    if (left < 12) left = 12;
+    if (left < 12) {
+      left = Math.max(12, Math.min(vw - 12 - pr.width, r.left));
+    }
+    pop.setAttribute('data-side', side);
     pop.style.top = Math.round(top) + 'px';
     pop.style.left = Math.round(left) + 'px';
     pop.style.visibility = 'visible';
@@ -83,53 +103,109 @@
     pop.classList.add('cw-picker-ready');
   }
 
-  // ==================== 1. CUSTOM SELECT DROPDOWN ====================
+  // ==================== 1. CUSTOM SELECT DROPDOWN (W3C APG LISTBOX) ====================
   function openSelect(sel) {
     if (sel.disabled || sel.multiple) return;
     if (activeAnchor === sel) { closePopover(); return; }
     const pop = createPopover(sel, 'cw-select-menu');
     pop.setAttribute('role', 'listbox');
+    const ariaLabel = sel.getAttribute('aria-label');
+    if (ariaLabel) pop.setAttribute('aria-label', ariaLabel);
 
     const list = document.createElement('div');
     list.className = 'cw-select-list';
     const opts = Array.from(sel.options);
-    let activeBtn = null;
+    const items = [];
+    let activeIdx = -1;
 
-    opts.forEach((opt) => {
+    function applyHighlight(nextIdx, shouldScroll) {
+      if (!items.length) return;
+      if (activeSelect && activeSelect.highlightIdx >= 0 && items[activeSelect.highlightIdx]) {
+        items[activeSelect.highlightIdx].btn.removeAttribute('data-highlighted');
+      }
+      if (nextIdx >= 0 && nextIdx < items.length && !items[nextIdx].opt.disabled) {
+        if (activeSelect) activeSelect.highlightIdx = nextIdx;
+        const btn = items[nextIdx].btn;
+        btn.setAttribute('data-highlighted', 'true');
+        if (shouldScroll) {
+          const top = btn.offsetTop;
+          const bottom = top + btn.offsetHeight;
+          if (top < list.scrollTop) list.scrollTop = top;
+          else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+        }
+      }
+    }
+
+    function commitOption(opt) {
+      if (!opt || opt.disabled) return;
+      const targetSel = sel;
+      setNativeValue(targetSel, opt.value);
+      closePopover();
+      if (targetSel && typeof targetSel.focus === 'function') {
+        targetSel.focus({ preventScroll: true });
+      }
+    }
+
+    opts.forEach((opt, idx) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'cw-select-option' + (opt.selected ? ' selected' : '');
       btn.setAttribute('role', 'option');
       btn.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
-      if (opt.disabled) btn.disabled = true;
+      if (opt.disabled) {
+        btn.disabled = true;
+        btn.setAttribute('aria-disabled', 'true');
+      }
 
       const label = document.createElement('span');
       label.className = 'cw-select-option-label';
-      label.textContent = opt.textContent || opt.label || opt.value;
+      const txt = (opt.textContent || opt.label || opt.value || '').trim();
+      label.textContent = txt;
       btn.appendChild(label);
 
       if (opt.selected) {
         const chk = document.createElement('span');
         chk.className = 'cw-select-check';
+        chk.setAttribute('aria-hidden', 'true');
         chk.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
         btn.appendChild(chk);
-        activeBtn = btn;
+        activeIdx = idx;
       }
 
+      btn.addEventListener('pointerenter', () => {
+        if (!opt.disabled) applyHighlight(idx, false);
+      });
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!opt.disabled) {
-          setNativeValue(sel, opt.value);
-          closePopover();
-        }
+        commitOption(opt);
       });
+
+      items.push({ btn, opt, text: txt.toLowerCase() });
       list.appendChild(btn);
     });
 
+    if (activeIdx < 0) {
+      activeIdx = items.findIndex((it) => !it.opt.disabled);
+    }
+
+    activeSelect = {
+      sel,
+      pop,
+      list,
+      items,
+      highlightIdx: activeIdx,
+      typeBuf: '',
+      typeTimer: null,
+      applyHighlight,
+      commitOption,
+    };
+
     pop.appendChild(list);
     positionPopover(pop, sel, true);
-    if (activeBtn) {
+    if (activeIdx >= 0 && items[activeIdx]) {
+      items[activeIdx].btn.setAttribute('data-highlighted', 'true');
+      const activeBtn = items[activeIdx].btn;
       list.scrollTop = Math.max(0, activeBtn.offsetTop - list.clientHeight / 2 + activeBtn.offsetHeight / 2);
     }
   }
@@ -516,14 +592,81 @@
     }
   }, true);
 
+  function findEnabledIndex(items, startIdx, step) {
+    const n = items.length;
+    if (!n) return -1;
+    for (let i = 0; i < n; i++) {
+      const idx = (startIdx + step * (i + 1) + n * 4) % n;
+      if (!items[idx].opt.disabled) return idx;
+    }
+    return -1;
+  }
+
   document.addEventListener('keydown', (e) => {
+    if (activeSelect && activePop) {
+      const st = activeSelect;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        const a = st.sel;
+        closePopover();
+        if (a && typeof a.focus === 'function') a.focus({ preventScroll: true });
+        return;
+      }
+      if (e.key === 'Tab') {
+        closePopover();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = findEnabledIndex(st.items, st.highlightIdx < 0 ? -1 : st.highlightIdx, 1);
+        if (next >= 0) st.applyHighlight(next, true);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = findEnabledIndex(st.items, st.highlightIdx < 0 ? 0 : st.highlightIdx, -1);
+        if (prev >= 0) st.applyHighlight(prev, true);
+        return;
+      }
+      if (e.key === 'Home') {
+        e.preventDefault();
+        const first = st.items.findIndex((it) => !it.opt.disabled);
+        if (first >= 0) st.applyHighlight(first, true);
+        return;
+      }
+      if (e.key === 'End') {
+        e.preventDefault();
+        for (let i = st.items.length - 1; i >= 0; i--) {
+          if (!st.items[i].opt.disabled) { st.applyHighlight(i, true); break; }
+        }
+        return;
+      }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const cur = st.items[st.highlightIdx];
+        if (cur && !cur.opt.disabled) st.commitOption(cur.opt);
+        return;
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        st.typeBuf += e.key.toLowerCase();
+        if (st.typeTimer) clearTimeout(st.typeTimer);
+        st.typeTimer = setTimeout(() => { if (activeSelect === st) st.typeBuf = ''; }, 500);
+        const match = st.items.findIndex((it) => !it.opt.disabled && it.text.startsWith(st.typeBuf));
+        if (match >= 0) st.applyHighlight(match, true);
+        return;
+      }
+    }
+
     if (e.key === 'Escape' && activePop) {
       e.preventDefault();
+      const a = activeAnchor;
       closePopover();
+      if (a && typeof a.focus === 'function') a.focus({ preventScroll: true });
       return;
     }
     const t = e.target;
-    if (t && t.tagName === 'SELECT' && !t.disabled && !t.multiple && (e.key === 'Enter' || e.key === ' ')) {
+    if (t && t.tagName === 'SELECT' && !t.disabled && !t.multiple && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
       openSelect(t);
     }

@@ -614,16 +614,24 @@ pub fn CalendarPanel(server_id: String, refresh_tick: u64) -> Element {
         div { class: "ent-section",
             div { class: "ent-toolbar",
                 div { class: "ent-inline-bar",
-                    div { class: "ent-segmented",
-                        button { r#type: "button", class: if horizon() == "day" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("day".into()), "Date" }
-                        button { r#type: "button", class: if horizon() == "week" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("week".into()), "Week" }
-                        button { r#type: "button", class: if horizon() == "month" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| horizon.set("month".into()), "Month" }
+                    select {
+                        class: "cw-dropdown",
+                        aria_label: "Date",
+                        value: "{horizon}",
+                        onchange: move |e| horizon.set(e.value()),
+                        option { value: "day", selected: horizon() == "day", "Date" }
+                        option { value: "week", selected: horizon() == "week", "Week" }
+                        option { value: "month", selected: horizon() == "month", "Month" }
                     }
-                    div { class: "ent-segmented",
-                        button { r#type: "button", class: if filter() == "all" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("all".into()), "All" }
-                        button { r#type: "button", class: if filter() == "meetings" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("meetings".into()), "Meeting ({meetings().len()})" }
-                        button { r#type: "button", class: if filter() == "tasks" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("tasks".into()), "Job term ({due_tasks.len()})" }
-                        button { r#type: "button", class: if filter() == "leave" { "filter-chip active" } else { "filter-chip" }, onclick: move |_| filter.set("leave".into()), "Leave ({leave().requests.len()})" }
+                    select {
+                        class: "cw-dropdown",
+                        aria_label: "All",
+                        value: "{filter}",
+                        onchange: move |e| filter.set(e.value()),
+                        option { value: "all", selected: filter() == "all", "All" }
+                        option { value: "meetings", selected: filter() == "meetings", "Meeting ({meetings().len()})" }
+                        option { value: "tasks", selected: filter() == "tasks", "Job term ({due_tasks.len()})" }
+                        option { value: "leave", selected: filter() == "leave", "Leave ({leave().requests.len()})" }
                     }
                 }
                 button {
