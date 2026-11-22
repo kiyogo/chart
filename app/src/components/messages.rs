@@ -7,7 +7,7 @@ use crate::{
     components::{
         avatar::Avatar,
         emoji_picker::EmojiPicker,
-        icons::{CopyIcon, PinIcon, ReplyIcon, ShieldIcon, SmilePlusIcon},
+        icons::{ClockIcon, CopyIcon, PinIcon, ReplyIcon, ShieldIcon, SmilePlusIcon},
         rich::{Rich, RichContent, VoteTally, parse_rich, rich_preview},
     },
     platform,
@@ -350,8 +350,10 @@ pub fn MessageList(
                         scroll_checking.set(false);
                         if near_top {
                             if hidden_older_in_memory > 0 {
+                                platform::snapshot_chat_scroll_height().await;
                                 let cur = *dom_render_limit.peek();
                                 dom_render_limit.set(cur.saturating_add(MESSAGE_DOM_WINDOW_STEP));
+                                platform::restore_chat_scroll_after_prepend();
                             } else if let Some(h) = on_load_more {
                                 h.call(());
                             }
@@ -371,8 +373,12 @@ pub fn MessageList(
                             r#type: "button",
                             class: "btn-ghost load-older-btn",
                             onclick: move |_| {
-                                let cur = *dom_render_limit.peek();
-                                dom_render_limit.set(cur.saturating_add(MESSAGE_DOM_WINDOW_STEP));
+                                spawn(async move {
+                                    platform::snapshot_chat_scroll_height().await;
+                                    let cur = *dom_render_limit.peek();
+                                    dom_render_limit.set(cur.saturating_add(MESSAGE_DOM_WINDOW_STEP));
+                                    platform::restore_chat_scroll_after_prepend();
+                                });
                             },
                             "Show more previous messages ({hidden_older_in_memory})"
                         }
@@ -431,6 +437,7 @@ pub fn MessageList(
                         let mut row_cls = format!("message-row {side}");
                         if !joins_prev { row_cls.push_str(" group-start"); }
                         if !joins_next { row_cls.push_str(" group-end"); }
+                        if msg.is_pending { row_cls.push_str(" pending"); }
                         if highlight_id.as_deref() == Some(msg.id.as_str()) { row_cls.push_str(" highlight"); }
                         if msg.highlighted { row_cls.push_str(" admin-highlight"); }
                         if !mention_token.is_empty() && !msg.is_self && msg.text.to_lowercase().contains(&mention_token) { row_cls.push_str(" mentions-me"); }
@@ -570,7 +577,7 @@ pub fn MessageList(
                                                     if msg.is_pinned { span { class: "pin-mark", aria_label: "Pinned", "📌" } }
                                                     "{time_str}"
                                                     if msg.is_self && msg.is_pending {
-                                                        span { aria_label: "Sending", "·" }
+                                                        span { class: "pending-clock", title: "Sending", aria_label: "Sending", ClockIcon { size: 12 } }
                                                     }
                                                 }
                                             }
@@ -764,17 +771,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_windowed_message_slice_10000_messages_performance_and_highlight() {
-        let total = 10_000usize;
+    fn test_windowed_message_slice_100000_messages_performance_and_highlight() {
+        let total = 100_000usize;
         let t0 = std::time::Instant::now();
         let (s1, e1) = compute_message_window_bounds(total, MESSAGE_DOM_WINDOW_STEP, None);
-        assert_eq!(e1, 10_000);
+        assert_eq!(e1, 100_000);
         assert_eq!(e1 - s1, MESSAGE_DOM_WINDOW_STEP);
+        assert_eq!(s1, 99_880);
 
         // When jumping to an older message (#420), window expands smoothly to include #420 with 20-message context
         let (s2, e2) = compute_message_window_bounds(total, MESSAGE_DOM_WINDOW_STEP, Some(420));
         assert_eq!(s2, 400);
-        assert_eq!(e2, 10_000);
+        assert_eq!(e2, 100_000);
         assert!(t0.elapsed().as_micros() < 1000, "window bound calculation must be O(1) sub-millisecond");
     }
 

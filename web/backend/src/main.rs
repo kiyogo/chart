@@ -24,7 +24,9 @@ use chatw::{
 };
 
 async fn security_headers_middleware(req: axum::extract::Request, next: Next) -> Response {
-    let is_plugin_sandbox = req.uri().path() == "/plugin-sandbox-frame";
+    let path = req.uri().path().to_string();
+    let is_plugin_sandbox = path == "/plugin-sandbox-frame";
+    let is_service_worker = path == "/sw.js";
     let mut response = next.run(req).await;
     let headers = response.headers_mut();
 
@@ -45,8 +47,14 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
         headers.insert(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' blob:; worker-src 'self' blob:; frame-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://ipc.localhost ipc:; img-src 'self' data: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
+                "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' blob:; worker-src 'self' blob:; frame-src 'self' blob: data:; media-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://ipc.localhost ipc:; img-src 'self' data: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
             ),
+        );
+    }
+    if is_service_worker {
+        headers.insert(
+            header::HeaderName::from_static("service-worker-allowed"),
+            HeaderValue::from_static("/"),
         );
     }
     headers.insert(
@@ -156,6 +164,14 @@ async fn plugin_sandbox_frame_html() -> ([(axum::http::header::HeaderName, &'sta
 </script>
 </body>
 </html>"#,
+    )
+}
+
+async fn deny_direct_stream_fallback() -> (StatusCode, [(axum::http::header::HeaderName, &'static str); 1], &'static str) {
+    (
+        StatusCode::FORBIDDEN,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        "403 Forbidden: Direct access to protected media stream is denied",
     )
 }
 
@@ -311,6 +327,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = Router::new()
         .nest("/api", api_router)
+        .route("/stream/media/{*rest}", axum::routing::any(deny_direct_stream_fallback))
         .route("/plugin-sandbox-frame", axum::routing::get(plugin_sandbox_frame_html))
         .route("/robots.txt", axum::routing::get(robots_txt))
         .route("/llms.txt", axum::routing::get(llms_txt))
@@ -346,8 +363,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             header::ACCEPT,
             header::ORIGIN,
             header::COOKIE,
+            header::RANGE,
             header::HeaderName::from_static("x-export-token"),
             header::HeaderName::from_static("x-backup-password"),
+            header::HeaderName::from_static("x-chatw-stream-token"),
         ]))
         .allow_credentials(true)
         .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _| {

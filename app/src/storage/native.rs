@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Mutex, time::{SystemTime, U
 
 use serde::{Deserialize, Serialize};
 
-use super::{LocalObjectMeta, LocalQuotaInfo, sha256_hex};
+use super::{LocalObjectMeta, LocalQuotaInfo, OutboxEntry, sha256_hex};
 
 static INDEX_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
@@ -234,4 +234,68 @@ pub async fn save_sync_cursors(dm_seq: i64, group_seq: i64, channel_seq: i64) {
         cursors_path(),
         serde_json::json!({ "dm_seq": dm_seq, "group_seq": group_seq, "channel_seq": channel_seq }).to_string(),
     );
+}
+
+fn chat_cache_path(conv_key: &str) -> PathBuf {
+    let safe: String = conv_key
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    cas_root().join("messages").join(format!("{safe}.json"))
+}
+
+fn outbox_path() -> PathBuf {
+    cas_root().join("outbox.json")
+}
+
+pub async fn load_cached_messages_json(conv_key: &str) -> Option<(serde_json::Value, bool)> {
+    let raw = std::fs::read_to_string(chat_cache_path(conv_key)).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let items = v.get("items")?.clone();
+    let has_more = v.get("has_more").and_then(|b| b.as_bool()).unwrap_or(false);
+    Some((items, has_more))
+}
+
+pub async fn save_cached_messages_json(conv_key: &str, items: &serde_json::Value, has_more: bool) {
+    let path = chat_cache_path(conv_key);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let payload = serde_json::json!({ "items": items, "has_more": has_more });
+    let _ = std::fs::write(path, payload.to_string());
+}
+
+pub async fn enqueue_outbox_item(entry: &OutboxEntry) {
+    let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
+    let mut rows: Vec<OutboxEntry> = std::fs::read_to_string(outbox_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    rows.retain(|r| r.client_id != entry.client_id);
+    rows.push(entry.clone());
+    let _ = std::fs::create_dir_all(cas_root());
+    if let Ok(json) = serde_json::to_string(&rows) {
+        let _ = std::fs::write(outbox_path(), json);
+    }
+}
+
+pub async fn list_outbox_items() -> Vec<OutboxEntry> {
+    let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
+    std::fs::read_to_string(outbox_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub async fn remove_outbox_item(client_id: &str) {
+    let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
+    let mut rows: Vec<OutboxEntry> = std::fs::read_to_string(outbox_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    rows.retain(|r| r.client_id != client_id);
+    let _ = std::fs::create_dir_all(cas_root());
+    if let Ok(json) = serde_json::to_string(&rows) {
+        let _ = std::fs::write(outbox_path(), json);
+    }
 }

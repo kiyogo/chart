@@ -25,6 +25,8 @@ sed -i "s|/custom_pickers.js|/custom_pickers.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/living_motion.js|/living_motion.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/adaptive_surface.js|/adaptive_surface.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/storage_engine.js|/storage_engine.js?v=${TS}|g" app/dist/index.html
+sed -i "s|/network_bridge.js|/network_bridge.js?v=${TS}|g" app/dist/index.html
+sed -i "s|/media_stream_bridge.js|/media_stream_bridge.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/media_optimizer.js|/media_optimizer.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/plugin_runtime.js|/plugin_runtime.js?v=${TS}|g" app/dist/index.html
 cp app/web/i18n_runtime.js app/dist/i18n_runtime.js
@@ -36,6 +38,10 @@ cp app/web/custom_pickers.js app/dist/custom_pickers.js
 cp app/web/living_motion.js app/dist/living_motion.js
 cp app/web/adaptive_surface.js app/dist/adaptive_surface.js
 cp app/web/storage_engine.js app/dist/storage_engine.js
+cp app/web/network_worker.js app/dist/network_worker.js
+cp app/web/network_bridge.js app/dist/network_bridge.js
+cp app/web/sw.js app/dist/sw.js
+cp app/web/media_stream_bridge.js app/dist/media_stream_bridge.js
 cp app/web/media_optimizer.js app/dist/media_optimizer.js
 cp app/web/plugin_runtime.js app/dist/plugin_runtime.js
 sed "s|/pkg/chatw_app.js|/pkg/chatw_app.js?v=${TS}|g" app/web/boot.js > app/dist/boot.js

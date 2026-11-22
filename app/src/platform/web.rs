@@ -124,22 +124,83 @@ pub async fn start_google_oauth() -> Result<bool, String> {
     }
 }
 
-/// WebSocket loop with exponential backoff reconnect (`1000ms` -> `*1.5` -> max `10000ms`).
+/// WebSocket loop offloaded to Dedicated Web Worker (`/network_worker.js`) with
+/// ECDH P-256 + AES-256-GCM encrypted binary protocol (`CWBF1`, `/api/ws?proto=bin`).
+/// Gracefully falls back to direct WebSocket only if `Worker` / Web Crypto is unavailable.
 pub async fn run_ws_loop(tx: UnboundedSender<WsEvent>, stop: Arc<AtomicBool>) {
+    let ws_url = match web_sys::window() {
+        Some(w) => {
+            let loc = w.location();
+            let proto = loc.protocol().unwrap_or_else(|_| "http:".into());
+            let host = loc.host().unwrap_or_else(|_| "127.0.0.1:8085".into());
+            let ws_proto = if proto == "https:" { "wss:" } else { "ws:" };
+            format!("{ws_proto}//{host}/api/ws")
+        }
+        None => return,
+    };
+
+    // Prefer Dedicated Web Worker binary encrypted WebSocket bridge (Spec 069)
+    if let Some(win) = web_sys::window()
+        && let Ok(bridge) = js_sys::Reflect::get(&win, &JsValue::from_str("__chatwNetBridge"))
+        && !bridge.is_undefined()
+        && !bridge.is_null()
+    {
+        let is_sup = js_sys::Reflect::get(&bridge, &JsValue::from_str("isSupported"))
+            .ok()
+            .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+            .and_then(|f| f.call0(&bridge).ok())
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        if is_sup {
+            let tx_worker = tx.clone();
+            let cb = Closure::<dyn FnMut(JsValue)>::new(move |val: JsValue| {
+                if let Some(txt) = val.as_string()
+                    && let Ok(parsed) = serde_json::from_str::<WsEvent>(&txt)
+                {
+                    let _ = tx_worker.unbounded_send(parsed);
+                }
+            });
+
+            let unsub_fn = js_sys::Reflect::get(&bridge, &JsValue::from_str("subscribe"))
+                .ok()
+                .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+                .and_then(|f| f.call1(&bridge, cb.as_ref().unchecked_ref()).ok())
+                .and_then(|v| v.dyn_into::<js_sys::Function>().ok());
+
+            let started = js_sys::Reflect::get(&bridge, &JsValue::from_str("start"))
+                .ok()
+                .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+                .and_then(|f| f.call1(&bridge, &JsValue::from_str(&ws_url)).ok())
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            if started {
+                while !stop.load(Ordering::Relaxed) {
+                    sleep_ms(200).await;
+                }
+                if let Some(unsub) = unsub_fn {
+                    let _ = unsub.call0(&JsValue::NULL);
+                }
+                if let Ok(stop_f) = js_sys::Reflect::get(&bridge, &JsValue::from_str("stop"))
+                    && let Ok(f) = stop_f.dyn_into::<js_sys::Function>()
+                {
+                    let _ = f.call0(&bridge);
+                }
+                drop(cb);
+                return;
+            }
+            if let Some(unsub) = unsub_fn {
+                let _ = unsub.call0(&JsValue::NULL);
+            }
+            drop(cb);
+        }
+    }
+
+    // Legacy fallback if Dedicated Web Worker is unavailable
     let mut retry_delay_ms: f64 = 1000.0;
 
     while !stop.load(Ordering::Relaxed) {
-        let ws_url = match web_sys::window() {
-            Some(w) => {
-                let loc = w.location();
-                let proto = loc.protocol().unwrap_or_else(|_| "http:".into());
-                let host = loc.host().unwrap_or_else(|_| "127.0.0.1:8085".into());
-                let ws_proto = if proto == "https:" { "wss:" } else { "ws:" };
-                format!("{ws_proto}//{host}/api/ws")
-            }
-            None => break,
-        };
-
         let ws = match WebSocket::new(&ws_url) {
             Ok(ws) => ws,
             Err(_) => {

@@ -6,8 +6,12 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use serde::Deserialize;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use hmac::{Hmac, Mac};
+use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use sqlx::Row;
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::{
@@ -23,7 +27,134 @@ use crate::{
     },
 };
 
+type HmacSha256 = Hmac<Sha256>;
+
 const MAX_ATTACHMENT_BYTES: usize = 50 * 1024 * 1024; // 50 MB max single-shot upload
+const STREAM_TOKEN_TTL_SECS: i64 = 300; // 5-minute short-lived stream grant token
+
+#[derive(Deserialize)]
+struct StreamTokenRequest {
+    path: String,
+}
+
+#[derive(Serialize)]
+struct StreamTokenResponse {
+    token: String,
+    expires_at: i64,
+}
+
+pub fn sign_stream_token(
+    secret: &[u8],
+    user_id: Uuid,
+    session_id: Option<Uuid>,
+    target_path: &str,
+    expires_at: i64,
+) -> Result<String, &'static str> {
+    let sid = session_id.map(|u| u.to_string()).unwrap_or_else(|| "none".into());
+    let payload = format!("v1:{user_id}:{sid}:{target_path}:{expires_at}");
+    let mut mac = HmacSha256::new_from_slice(secret).map_err(|_| "hmac_init_failed")?;
+    mac.update(payload.as_bytes());
+    let sig = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
+    Ok(format!("{expires_at}.{sig}"))
+}
+
+pub fn verify_stream_token(
+    secret: &[u8],
+    user_id: Uuid,
+    session_id: Option<Uuid>,
+    target_path: &str,
+    token: &str,
+    now_unix: i64,
+) -> bool {
+    let Some((exp_str, sig_str)) = token.split_once('.') else {
+        return false;
+    };
+    let Ok(exp) = exp_str.parse::<i64>() else {
+        return false;
+    };
+    if exp < now_unix || exp > now_unix + STREAM_TOKEN_TTL_SECS + 60 {
+        return false;
+    }
+    let Ok(expected) = sign_stream_token(secret, user_id, session_id, target_path, exp) else {
+        return false;
+    };
+    let Some((_, exp_sig)) = expected.split_once('.') else {
+        return false;
+    };
+    sig_str.as_bytes().ct_eq(exp_sig.as_bytes()).into()
+}
+
+/// Blocks direct browser tab navigation (`Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document`)
+/// and cross-site hotlinking (`Sec-Fetch-Site: cross-site`) with `403 Forbidden`, while allowing
+/// same-origin in-app `fetch()`, `<img>`, `<video>`, `<audio>`, and Service Worker chunk proxies.
+/// Also validates `X-ChatW-Stream-Token` whenever presented.
+pub fn enforce_anti_direct_media_access(
+    headers: &HeaderMap,
+    secret: &[u8],
+    user_id: Uuid,
+    session_id: Option<Uuid>,
+    target_path: &str,
+) -> AppResult<()> {
+    let mode = headers
+        .get("sec-fetch-mode")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_ascii_lowercase());
+    let dest = headers
+        .get("sec-fetch-dest")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_ascii_lowercase());
+    let site = headers
+        .get("sec-fetch-site")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_ascii_lowercase());
+
+    if matches!(mode.as_deref(), Some("navigate"))
+        || matches!(dest.as_deref(), Some("document") | Some("iframe") | Some("object") | Some("embed"))
+        || matches!(site.as_deref(), Some("cross-site"))
+    {
+        return Err(AppError::Forbidden("direct_media_navigation_forbidden"));
+    }
+
+    if let Some(tok_hdr) = headers.get("x-chatw-stream-token").and_then(|v| v.to_str().ok()) {
+        let now = chrono::Utc::now().timestamp();
+        if !verify_stream_token(secret, user_id, session_id, target_path, tok_hdr.trim(), now) {
+            return Err(AppError::Forbidden("invalid_stream_token"));
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_issue_stream_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<StreamTokenRequest>,
+) -> AppResult<Json<StreamTokenResponse>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let clean_path = req.path.split('?').next().unwrap_or("").trim();
+    let allowed = (clean_path.starts_with("/api/attachments/") || clean_path.starts_with("/uploads/media/"))
+        && !clean_path.contains("..")
+        && !clean_path.contains('\\')
+        && clean_path.len() <= 300;
+    if !allowed {
+        return Err(AppError::BadRequest("invalid_stream_path"));
+    }
+
+    let expires_at = chrono::Utc::now().timestamp() + STREAM_TOKEN_TTL_SECS;
+    let token = sign_stream_token(
+        &state.config.session_secret,
+        user.id,
+        user.session_id,
+        clean_path,
+        expires_at,
+    )
+    .map_err(|_| AppError::Internal)?;
+
+    Ok(Json(StreamTokenResponse { token, expires_at }))
+}
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -31,6 +162,7 @@ pub fn routes() -> Router<AppState> {
             "/",
             post(handle_upload_attachment).layer(DefaultBodyLimit::max(MAX_ATTACHMENT_BYTES)),
         )
+        .route("/stream-token", post(handle_issue_stream_token))
         .route(
             "/{id}",
             get(handle_download_attachment).delete(handle_delete_attachment),
@@ -187,6 +319,14 @@ async fn handle_protected_media_file(
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let target_path = format!("/uploads/media/{file_name}");
+    enforce_anti_direct_media_access(
+        &headers,
+        &state.config.session_secret,
+        user.id,
+        user.session_id,
+        &target_path,
+    )?;
     let range_hdr = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
 
     let rel_key = format!("media/{file_name}");
@@ -326,6 +466,14 @@ async fn handle_download_attachment(
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let target_path = format!("/api/attachments/{attachment_id}");
+    enforce_anti_direct_media_access(
+        &headers,
+        &state.config.session_secret,
+        user.id,
+        user.session_id,
+        &target_path,
+    )?;
 
     let range_hdr = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
 
@@ -428,4 +576,47 @@ async fn handle_delete_attachment(
         .await?;
 
     Ok(Json(serde_json::json!({ "deleted": true })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn anti_direct_navigation_blocks_tab_open_and_cross_site_with_403() {
+        let uid = Uuid::new_v4();
+        let sid = Some(Uuid::new_v4());
+        let secret = b"chatw-test-stream-secret-key-32b";
+        let path = "/api/attachments/11111111-1111-1111-1111-111111111111";
+
+        // 1. Direct browser navigation to URL in new tab -> 403 Forbidden
+        let mut nav_hdrs = HeaderMap::new();
+        nav_hdrs.insert("sec-fetch-mode", HeaderValue::from_static("navigate"));
+        nav_hdrs.insert("sec-fetch-dest", HeaderValue::from_static("document"));
+        assert!(enforce_anti_direct_media_access(&nav_hdrs, secret, uid, sid, path).is_err());
+
+        // 2. Cross-site hotlinking -> 403 Forbidden
+        let mut xsite_hdrs = HeaderMap::new();
+        xsite_hdrs.insert("sec-fetch-site", HeaderValue::from_static("cross-site"));
+        xsite_hdrs.insert("sec-fetch-dest", HeaderValue::from_static("video"));
+        assert!(enforce_anti_direct_media_access(&xsite_hdrs, secret, uid, sid, path).is_err());
+
+        // 3. Same-origin SW/fetch with valid short-lived HMAC stream token -> OK
+        let now = chrono::Utc::now().timestamp();
+        let tok = sign_stream_token(secret, uid, sid, path, now + 120).expect("sign");
+        let mut ok_hdrs = HeaderMap::new();
+        ok_hdrs.insert("sec-fetch-mode", HeaderValue::from_static("cors"));
+        ok_hdrs.insert("sec-fetch-dest", HeaderValue::from_static("empty"));
+        ok_hdrs.insert("sec-fetch-site", HeaderValue::from_static("same-origin"));
+        ok_hdrs.insert("x-chatw-stream-token", HeaderValue::from_str(&tok).unwrap());
+        assert!(enforce_anti_direct_media_access(&ok_hdrs, secret, uid, sid, path).is_ok());
+
+        // 4. Token copied for a different path or expired -> 403 Forbidden
+        assert!(enforce_anti_direct_media_access(&ok_hdrs, secret, uid, sid, "/api/attachments/other").is_err());
+        let expired_tok = sign_stream_token(secret, uid, sid, path, now - 10).expect("sign exp");
+        let mut exp_hdrs = HeaderMap::new();
+        exp_hdrs.insert("x-chatw-stream-token", HeaderValue::from_str(&expired_tok).unwrap());
+        assert!(enforce_anti_direct_media_access(&exp_hdrs, secret, uid, sid, path).is_err());
+    }
 }

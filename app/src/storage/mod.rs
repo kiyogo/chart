@@ -73,6 +73,23 @@ pub struct LocalObjectMeta {
     pub availability_state: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OutboxEntry {
+    pub client_id: String,
+    pub kind: String, // "dm" | "group" | "channel"
+    pub target_id: String,
+    #[serde(default)]
+    pub sub_id: Option<String>,
+    pub text: String,
+    #[serde(default)]
+    pub reply_to_id: Option<String>,
+    pub created_at: String,
+    #[serde(default)]
+    pub attempts: u32,
+    #[serde(default)]
+    pub status: String,
+}
+
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(bytes);
@@ -90,17 +107,37 @@ pub fn extract_ref_id(url: &str) -> Option<String> {
 
 #[cfg(target_arch = "wasm32")]
 pub use browser::{
-    clear_safe_cache, delete_local_object, get_client_device_info, get_local_object,
-    get_quota_estimate, init_local_storage, list_local_locations, load_sync_cursors,
-    put_local_object, save_sync_cursors,
+    clear_safe_cache, delete_local_object, enqueue_outbox_item, get_client_device_info,
+    get_local_object, get_quota_estimate, init_local_storage, list_local_locations,
+    list_outbox_items, load_cached_messages_json, load_sync_cursors, put_local_object,
+    remove_outbox_item, save_cached_messages_json, save_sync_cursors,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::{
-    clear_safe_cache, delete_local_object, get_client_device_info, get_local_object,
-    get_quota_estimate, init_local_storage, list_local_locations, load_sync_cursors,
-    put_local_object, save_sync_cursors,
+    clear_safe_cache, delete_local_object, enqueue_outbox_item, get_client_device_info,
+    get_local_object, get_quota_estimate, init_local_storage, list_local_locations,
+    list_outbox_items, load_cached_messages_json, load_sync_cursors, put_local_object,
+    remove_outbox_item, save_cached_messages_json, save_sync_cursors,
 };
+
+pub async fn load_cached_messages<T: serde::de::DeserializeOwned>(
+    conv_key: &str,
+) -> Option<(Vec<T>, bool)> {
+    let (items_val, has_more) = load_cached_messages_json(conv_key).await?;
+    let parsed: Vec<T> = serde_json::from_value(items_val).ok()?;
+    Some((parsed, has_more))
+}
+
+pub async fn save_cached_messages<T: serde::Serialize>(
+    conv_key: &str,
+    items: &[T],
+    has_more: bool,
+) {
+    if let Ok(val) = serde_json::to_value(items) {
+        save_cached_messages_json(conv_key, &val, has_more).await;
+    }
+}
 
 pub fn format_bytes_human(bytes: u64) -> String {
     if bytes < 1024 {

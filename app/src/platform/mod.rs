@@ -1756,6 +1756,74 @@ pub fn revoke_object_url(url: &str) {
     }
 }
 
+/// Register a tab-scoped Service Worker protected media stream (`/stream/media/{grantId}`)
+/// for HTTP `206 Partial Content` streaming (non-E2EE Range + E2EE `CWCH2` chunked AEAD).
+/// Returns `Some((grant_id, stream_url))` when the Service Worker controls this tab.
+pub async fn register_sw_media_stream(
+    url: &str,
+    key_b64: &str,
+    nonce_b64: &str,
+    mime: &str,
+    file_name: &str,
+) -> Option<(String, String)> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let payload = serde_json::json!({
+            "url": url,
+            "keyB64": key_b64,
+            "nonceB64": nonce_b64,
+            "mime": mime,
+            "fileName": file_name,
+        });
+        let payload_json = serde_json::to_string(&payload).ok()?;
+        let js = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (!window.__chatwMediaStream) {{ dioxus.send({{ ok: false }}); return; }}
+                    const res = await window.__chatwMediaStream.registerStream({payload_json});
+                    dioxus.send(res || {{ ok: false }});
+                }} catch (e) {{
+                    dioxus.send({{ ok: false }});
+                }}
+            }})();
+            "#
+        );
+        let mut eval = dioxus::document::eval(&js);
+        let v: serde_json::Value = eval.recv().await.ok()?;
+        if v.get("ok").and_then(|b| b.as_bool()) == Some(true) {
+            let gid = v.get("grantId").and_then(|s| s.as_str())?.to_string();
+            let su = v.get("streamUrl").and_then(|s| s.as_str())?.to_string();
+            return Some((gid, su));
+        }
+        None
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (url, key_b64, nonce_b64, mime, file_name);
+        None
+    }
+}
+
+/// Revoke a previously registered Service Worker media stream grant on component unmount.
+pub fn revoke_sw_media_stream(grant_id: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if grant_id.is_empty() {
+            return;
+        }
+        if let Ok(gid_json) = serde_json::to_string(grant_id) {
+            let _ = dioxus::document::eval(&format!(
+                "if (window.__chatwMediaStream) {{ window.__chatwMediaStream.revokeStream({gid_json}); }}"
+            ));
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = grant_id;
+    }
+}
+
 /// Minutes left until local midnight (custom status "until the end of today").
 pub fn minutes_until_midnight() -> i64 {
     use chrono::Timelike;

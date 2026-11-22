@@ -15,6 +15,12 @@ pub struct OptimizedMediaPayload {
     pub thumb_b64: Option<String>,
     pub thumb_mime: Option<String>,
     pub duration_ms: Option<u64>,
+    #[serde(default)]
+    pub blur_data_url: Option<String>,
+    #[serde(default)]
+    pub width: Option<u32>,
+    #[serde(default)]
+    pub height: Option<u32>,
 }
 
 /// Real magic byte sniffer shared on native & WASM so extension/MIME are always truthful.
@@ -98,6 +104,9 @@ pub async fn pick_and_optimize_from_input(
         thumb_b64: v.get("thumbB64").and_then(|s| s.as_str()).map(str::to_string),
         thumb_mime: v.get("thumbMime").and_then(|s| s.as_str()).map(str::to_string),
         duration_ms: None,
+        blur_data_url: v.get("blurDataUrl").and_then(|s| s.as_str()).map(str::to_string),
+        width: v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
+        height: v.get("height").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
     })
 }
 
@@ -158,5 +167,8 @@ pub async fn stop_voice_recording() -> Result<OptimizedMediaPayload, String> {
         thumb_b64: None,
         thumb_mime: None,
         duration_ms: dur,
+        blur_data_url: None,
+        width: None,
+        height: None,
     })
 }

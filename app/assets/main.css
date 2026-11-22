@@ -1634,6 +1634,18 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   gap: var(--space-3);
   width: 100%;
   min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 68px;
+}
+.message-row.pending .message-bubble {
+  opacity: 0.82;
+}
+.pending-clock {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 3px;
+  vertical-align: middle;
+  opacity: 0.78;
 }
 .message-row.group-start { margin-top: var(--message-group-gap); }
 .message-row.sent { flex-direction: row-reverse; }
@@ -3484,6 +3496,13 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .table-scroll tr:nth-child(even) td { background: color-mix(in srgb, var(--bg-hover) 60%, transparent); }
 .rich-image { max-width: min(22rem, 100%); border-radius: var(--radius-xl); overflow: hidden; background: var(--bg-surface-hover); }
 .rich-image-btn { display: block; padding: 0; width: 100%; }
+.rich-image-stage { position: relative; display: block; width: 100%; overflow: hidden; border-radius: var(--radius-xl); background: var(--bg-surface-hover); }
+.rich-image-blur { display: block; width: 100%; height: 100%; max-height: 22rem; object-fit: cover; filter: blur(18px); transform: scale(1.08); transition: opacity 220ms ease; }
+.rich-image-stage.loaded .rich-image-blur { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.rich-image-full { position: relative; z-index: 1; display: block; width: 100%; max-width: 100%; max-height: 22rem; object-fit: cover; animation: cwMediaFadeIn 220ms ease; }
+.rich-image-blur-spinner { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.14); }
+.rich-video-stage { position: relative; overflow: hidden; border-radius: 8px; }
+@keyframes cwMediaFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .rich-image img { display: block; max-width: 100%; max-height: 22rem; object-fit: cover; }
 .rich-image-loading, .rich-image-error { padding: var(--space-4); font-size: var(--text-sm); color: var(--text-secondary); }
 .lightbox { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(8, 10, 14, 0.86); display: flex; align-items: center; justify-content: center; padding: var(--space-6); }

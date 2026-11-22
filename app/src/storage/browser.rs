@@ -1,6 +1,6 @@
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 
-use super::{LocalObjectMeta, LocalQuotaInfo};
+use super::{LocalObjectMeta, LocalQuotaInfo, OutboxEntry};
 
 pub async fn init_local_storage() -> Result<(String, String, String), String> {
     let js = r#"
@@ -161,6 +161,97 @@ pub async fn save_sync_cursors(dm_seq: i64, group_seq: i64, channel_seq: i64) {
         (async () => {{
             if (window.__chatwStorage) {{
                 await window.__chatwStorage.saveCursors({{ dm_seq: {dm_seq}, group_seq: {group_seq}, channel_seq: {channel_seq} }});
+            }}
+        }})();
+        "#
+    );
+    let _ = dioxus::document::eval(&js);
+}
+
+pub async fn load_cached_messages_json(conv_key: &str) -> Option<(serde_json::Value, bool)> {
+    let key_json = serde_json::to_string(conv_key).ok()?;
+    let js = format!(
+        r#"
+        (async () => {{
+            if (!window.__chatwStorage || !window.__chatwStorage.getChatMessages) {{
+                dioxus.send({{ found: false }});
+                return;
+            }}
+            const res = await window.__chatwStorage.getChatMessages({key_json});
+            dioxus.send(res || {{ found: false }});
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let v: serde_json::Value = eval.recv().await.ok()?;
+    if v.get("found").and_then(|b| b.as_bool()) != Some(true) {
+        return None;
+    }
+    let items = v.get("items")?.clone();
+    let has_more = v.get("has_more").and_then(|b| b.as_bool()).unwrap_or(false);
+    Some((items, has_more))
+}
+
+pub async fn save_cached_messages_json(conv_key: &str, items: &serde_json::Value, has_more: bool) {
+    let Ok(key_json) = serde_json::to_string(conv_key) else {
+        return;
+    };
+    let Ok(items_json) = serde_json::to_string(items) else {
+        return;
+    };
+    let more_js = if has_more { "true" } else { "false" };
+    let js = format!(
+        r#"
+        (async () => {{
+            if (window.__chatwStorage && window.__chatwStorage.putChatMessages) {{
+                await window.__chatwStorage.putChatMessages({key_json}, {items_json}, {more_js});
+            }}
+        }})();
+        "#
+    );
+    let _ = dioxus::document::eval(&js);
+}
+
+pub async fn enqueue_outbox_item(entry: &OutboxEntry) {
+    let Ok(entry_json) = serde_json::to_string(entry) else {
+        return;
+    };
+    let js = format!(
+        r#"
+        (async () => {{
+            if (window.__chatwStorage && window.__chatwStorage.enqueueOutbox) {{
+                await window.__chatwStorage.enqueueOutbox({entry_json});
+            }}
+        }})();
+        "#
+    );
+    let _ = dioxus::document::eval(&js);
+}
+
+pub async fn list_outbox_items() -> Vec<OutboxEntry> {
+    let js = r#"
+    (async () => {
+        if (!window.__chatwStorage || !window.__chatwStorage.listOutbox) {
+            dioxus.send([]);
+            return;
+        }
+        const rows = await window.__chatwStorage.listOutbox();
+        dioxus.send(rows || []);
+    })();
+    "#;
+    let mut eval = dioxus::document::eval(js);
+    eval.recv::<Vec<OutboxEntry>>().await.unwrap_or_default()
+}
+
+pub async fn remove_outbox_item(client_id: &str) {
+    let Ok(id_json) = serde_json::to_string(client_id) else {
+        return;
+    };
+    let js = format!(
+        r#"
+        (async () => {{
+            if (window.__chatwStorage && window.__chatwStorage.removeOutbox) {{
+                await window.__chatwStorage.removeOutbox({id_json});
             }}
         }})();
         "#

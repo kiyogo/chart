@@ -1,7 +1,11 @@
+use aes_gcm::{
+    Aes256Gcm, KeyInit, Nonce,
+    aead::{Aead, Payload},
+};
 use axum::{
     Router,
     extract::{
-        State,
+        Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, header},
@@ -9,7 +13,10 @@ use axum::{
     routing::get,
 };
 use futures_util::{SinkExt, StreamExt};
+use hkdf::Hkdf;
+use p256::{EncodedPoint, PublicKey, SecretKey, ecdh::diffie_hellman};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use std::{
     collections::HashMap,
     sync::{
@@ -31,6 +38,145 @@ use crate::{
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const CLIENT_CHANNEL_CAPACITY: usize = 128;
+
+// ── CWBF1 Encrypted Binary WebSocket Protocol (Spec 069) ────────────────────
+// 28-byte big-endian header:
+//   [0..2]   Magic "CW" (0x43, 0x57)
+//   [2]      Version (0x01)
+//   [3]      Opcode (0x01 HELLO, 0x02 HELLO_ACK, 0x03 EVENT, 0x05 PING, 0x06 PONG)
+//   [4..12]  seq (u64 BE)
+//   [12..24] nonce (12B random CSPRNG for encrypted frames; zeroed for handshake/control)
+//   [24..28] payload_len (u32 BE)
+//   [28..]   payload (for OP_EVENT: AES-256-GCM ciphertext + 16B tag with AAD = header[0..28])
+pub const CWBF_MAGIC: [u8; 2] = *b"CW";
+pub const CWBF_VERSION: u8 = 1;
+pub const CWBF_HEADER_LEN: usize = 28;
+pub const OP_HELLO: u8 = 0x01;
+pub const OP_HELLO_ACK: u8 = 0x02;
+pub const OP_EVENT: u8 = 0x03;
+pub const OP_PING: u8 = 0x05;
+pub const OP_PONG: u8 = 0x06;
+const CWBF_HKDF_INFO: &[u8] = b"chatw-ws-bin-v1";
+const BINARY_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Deserialize, Default)]
+struct WsQuery {
+    proto: Option<String>,
+}
+
+fn build_cwbf_header(op: u8, seq: u64, nonce: &[u8; 12], payload_len: u32) -> [u8; CWBF_HEADER_LEN] {
+    let mut hdr = [0u8; CWBF_HEADER_LEN];
+    hdr[0] = CWBF_MAGIC[0];
+    hdr[1] = CWBF_MAGIC[1];
+    hdr[2] = CWBF_VERSION;
+    hdr[3] = op;
+    hdr[4..12].copy_from_slice(&seq.to_be_bytes());
+    hdr[12..24].copy_from_slice(nonce);
+    hdr[24..28].copy_from_slice(&payload_len.to_be_bytes());
+    hdr
+}
+
+pub fn encode_cwbf_plain_frame(op: u8, seq: u64, payload: &[u8]) -> Vec<u8> {
+    let hdr = build_cwbf_header(op, seq, &[0u8; 12], payload.len() as u32);
+    let mut out = Vec::with_capacity(CWBF_HEADER_LEN + payload.len());
+    out.extend_from_slice(&hdr);
+    out.extend_from_slice(payload);
+    out
+}
+
+pub fn decode_cwbf_header(frame: &[u8]) -> Option<(u8, u64, [u8; 12], &[u8])> {
+    if frame.len() < CWBF_HEADER_LEN {
+        return None;
+    }
+    if frame[0..2] != CWBF_MAGIC || frame[2] != CWBF_VERSION {
+        return None;
+    }
+    let op = frame[3];
+    let seq = u64::from_be_bytes(frame[4..12].try_into().ok()?);
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(&frame[12..24]);
+    let len = u32::from_be_bytes(frame[24..28].try_into().ok()?) as usize;
+    if frame.len() != CWBF_HEADER_LEN + len {
+        return None;
+    }
+    Some((op, seq, nonce, &frame[CWBF_HEADER_LEN..]))
+}
+
+pub fn generate_ephemeral_p256() -> Result<(SecretKey, Vec<u8>), &'static str> {
+    let mut raw = [0u8; 32];
+    for _ in 0..16 {
+        getrandom::fill(&mut raw).map_err(|_| "csprng_failed")?;
+        if let Ok(sk) = SecretKey::from_slice(&raw) {
+            let pk = sk.public_key();
+            let point = EncodedPoint::from(&pk);
+            return Ok((sk, point.as_bytes().to_vec()));
+        }
+    }
+    Err("ecdh_keygen_failed")
+}
+
+#[allow(deprecated)]
+pub fn derive_cwbf_session_key(
+    local_sk: &SecretKey,
+    peer_uncompressed_sec1: &[u8],
+    salt: &[u8; 16],
+) -> Result<[u8; 32], &'static str> {
+    if peer_uncompressed_sec1.len() != 65 || peer_uncompressed_sec1[0] != 0x04 {
+        return Err("invalid_peer_ecdh_key");
+    }
+    let peer_pk = PublicKey::from_sec1_bytes(peer_uncompressed_sec1)
+        .map_err(|_| "invalid_peer_ecdh_point")?;
+    let shared = diffie_hellman(local_sk.to_nonzero_scalar(), peer_pk.as_affine());
+    let hk = Hkdf::<Sha256>::new(Some(salt), shared.raw_secret_bytes().as_slice());
+    let mut key = [0u8; 32];
+    hk.expand(CWBF_HKDF_INFO, &mut key)
+        .map_err(|_| "hkdf_expand_failed")?;
+    Ok(key)
+}
+
+#[allow(deprecated)]
+pub fn encode_cwbf_encrypted_frame(
+    cipher: &Aes256Gcm,
+    op: u8,
+    seq: u64,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, &'static str> {
+    let mut nonce_bytes = [0u8; 12];
+    getrandom::fill(&mut nonce_bytes).map_err(|_| "csprng_failed")?;
+    let ct_len = plaintext
+        .len()
+        .checked_add(16)
+        .and_then(|v| u32::try_from(v).ok())
+        .ok_or("frame_too_large")?;
+    let hdr = build_cwbf_header(op, seq, &nonce_bytes, ct_len);
+    let ct = cipher
+        .encrypt(
+            Nonce::from_slice(&nonce_bytes),
+            Payload {
+                msg: plaintext,
+                aad: &hdr,
+            },
+        )
+        .map_err(|_| "aead_encrypt_failed")?;
+    let mut out = Vec::with_capacity(CWBF_HEADER_LEN + ct.len());
+    out.extend_from_slice(&hdr);
+    out.extend_from_slice(&ct);
+    Ok(out)
+}
+
+#[cfg(test)]
+#[allow(deprecated)]
+pub fn decode_cwbf_encrypted_frame(cipher: &Aes256Gcm, frame: &[u8]) -> Result<(u8, u64, Vec<u8>), &'static str> {
+    let (op, seq, nonce_bytes, ct) = decode_cwbf_header(frame).ok_or("invalid_header")?;
+    let hdr = &frame[..CWBF_HEADER_LEN];
+    let pt = cipher
+        .decrypt(
+            Nonce::from_slice(&nonce_bytes),
+            Payload { msg: ct, aad: hdr },
+        )
+        .map_err(|_| "aead_decrypt_failed")?;
+    Ok((op, seq, pt))
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(tag = "type", content = "data")]
@@ -361,6 +507,7 @@ pub fn routes() -> Router<AppState> {
 
 async fn ws_handler(
     State(state): State<AppState>,
+    Query(query): Query<WsQuery>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> AppResult<Response> {
@@ -389,8 +536,129 @@ async fn ws_handler(
 
     let hub = state.ws_hub.clone();
     let user_id = user.id;
+    let use_binary = query.proto.as_deref() == Some("bin");
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, user_id, conn_id, rx, hub)))
+    Ok(ws.on_upgrade(move |socket| async move {
+        if use_binary {
+            handle_socket_binary(socket, user_id, conn_id, rx, hub).await;
+        } else {
+            handle_socket(socket, user_id, conn_id, rx, hub).await;
+        }
+    }))
+}
+
+async fn handle_socket_binary(
+    socket: WebSocket,
+    user_id: Uuid,
+    conn_id: u64,
+    mut rx: mpsc::Receiver<WsEvent>,
+    hub: Arc<WsHub>,
+) {
+    let (mut sender, mut receiver) = socket.split();
+
+    // 1. Ephemeral P-256 ECDH + 16-byte salt handshake (zero plaintext key on the wire!)
+    let Ok((server_sk, server_pub_sec1)) = generate_ephemeral_p256() else {
+        hub.unregister(&user_id, conn_id).await;
+        return;
+    };
+    let mut salt = [0u8; 16];
+    if getrandom::fill(&mut salt).is_err() {
+        hub.unregister(&user_id, conn_id).await;
+        return;
+    }
+
+    let mut hello_payload = Vec::with_capacity(server_pub_sec1.len() + salt.len());
+    hello_payload.extend_from_slice(&server_pub_sec1);
+    hello_payload.extend_from_slice(&salt);
+    let hello_frame = encode_cwbf_plain_frame(OP_HELLO, 0, &hello_payload);
+    if sender.send(Message::Binary(hello_frame.into())).await.is_err() {
+        hub.unregister(&user_id, conn_id).await;
+        return;
+    }
+
+    // Wait for client's OP_HELLO_ACK containing its 65-byte ephemeral uncompressed P-256 public key.
+    let handshake_res = tokio::time::timeout(BINARY_HANDSHAKE_TIMEOUT, async {
+        while let Some(msg) = receiver.next().await {
+            match msg {
+                Ok(Message::Binary(bytes)) => {
+                    if let Some((op, _seq, _nonce, payload)) = decode_cwbf_header(&bytes)
+                        && op == OP_HELLO_ACK
+                    {
+                        return derive_cwbf_session_key(&server_sk, payload, &salt).ok();
+                    }
+                    return None;
+                }
+                Ok(Message::Ping(p)) => {
+                    let _ = sender.send(Message::Pong(p)).await;
+                }
+                Ok(Message::Pong(_)) => {}
+                _ => return None,
+            }
+        }
+        None
+    })
+    .await;
+
+    let Some(Some(aes_key)) = handshake_res.ok() else {
+        hub.unregister(&user_id, conn_id).await;
+        return;
+    };
+    let Ok(cipher) = Aes256Gcm::new_from_slice(&aes_key) else {
+        hub.unregister(&user_id, conn_id).await;
+        return;
+    };
+
+    let mut out_seq: u64 = 1;
+    let mut ping_interval = tokio::time::interval(PING_INTERVAL);
+    ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            _ = ping_interval.tick() => {
+                if sender.send(Message::Ping(vec![].into())).await.is_err() {
+                    break;
+                }
+            }
+
+            maybe_event = rx.recv() => {
+                match maybe_event {
+                    Some(event) => {
+                        if let Ok(json_bytes) = serde_json::to_vec(&event) {
+                            if let Ok(frame) = encode_cwbf_encrypted_frame(&cipher, OP_EVENT, out_seq, &json_bytes) {
+                                out_seq = out_seq.wrapping_add(1);
+                                if sender.send(Message::Binary(frame.into())).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    None => break,
+                }
+            }
+
+            msg = receiver.next() => {
+                match msg {
+                    Some(Ok(Message::Binary(bytes))) => {
+                        if let Some((op, seq, _nonce, payload)) = decode_cwbf_header(&bytes)
+                            && op == OP_PING
+                            && payload.len() <= 32
+                        {
+                            let pong = encode_cwbf_plain_frame(OP_PONG, seq, payload);
+                            if sender.send(Message::Binary(pong.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Some(Ok(Message::Pong(_))) => {}
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Err(_)) => break,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    hub.unregister(&user_id, conn_id).await;
 }
 
 async fn handle_socket(
@@ -446,4 +714,49 @@ async fn handle_socket(
     }
 
     hub.unregister(&user_id, conn_id).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cwbf1_ecdh_and_aead_roundtrip_and_tamper_detection() {
+        let (server_sk, server_pub) = generate_ephemeral_p256().expect("server ecdh");
+        let (client_sk, client_pub) = generate_ephemeral_p256().expect("client ecdh");
+        assert_eq!(server_pub.len(), 65);
+        assert_eq!(client_pub.len(), 65);
+
+        let salt = [0x42u8; 16];
+        let server_key = derive_cwbf_session_key(&server_sk, &client_pub, &salt).expect("server key");
+        let client_key = derive_cwbf_session_key(&client_sk, &server_pub, &salt).expect("client key");
+        assert_eq!(server_key, client_key, "ECDH + HKDF-SHA256 must match on both peers");
+
+        let server_cipher = Aes256Gcm::new_from_slice(&server_key).unwrap();
+        let client_cipher = Aes256Gcm::new_from_slice(&client_key).unwrap();
+
+        let payload = br#"{"type":"typing.start","data":{"user_id":"00000000-0000-0000-0000-000000000001"}}"#;
+        let frame = encode_cwbf_encrypted_frame(&server_cipher, OP_EVENT, 7, payload).expect("encrypt frame");
+        assert_eq!(&frame[0..2], b"CW");
+        assert_eq!(frame[2], CWBF_VERSION);
+        assert_eq!(frame[3], OP_EVENT);
+        // Plaintext JSON must NOT appear anywhere in the binary frame!
+        assert!(!frame.windows(6).any(|w| w == b"typing"));
+
+        let (op, seq, pt) = decode_cwbf_encrypted_frame(&client_cipher, &frame).expect("decrypt frame");
+        assert_eq!(op, OP_EVENT);
+        assert_eq!(seq, 7);
+        assert_eq!(pt, payload);
+
+        // Tampering with header seq (AAD) must fail AES-GCM authentication!
+        let mut tampered_hdr = frame.clone();
+        tampered_hdr[11] ^= 0x01;
+        assert!(decode_cwbf_encrypted_frame(&client_cipher, &tampered_hdr).is_err());
+
+        // Tampering with ciphertext must fail AES-GCM authentication!
+        let mut tampered_ct = frame.clone();
+        let last = tampered_ct.len() - 1;
+        tampered_ct[last] ^= 0x80;
+        assert!(decode_cwbf_encrypted_frame(&client_cipher, &tampered_ct).is_err());
+    }
 }

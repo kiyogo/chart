@@ -66,6 +66,12 @@ pub struct ImageData {
     pub sha: String,
     #[serde(default)]
     pub scope: String,
+    #[serde(default)]
+    pub blur: String,
+    #[serde(default)]
+    pub w: u32,
+    #[serde(default)]
+    pub h: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -87,6 +93,12 @@ pub struct MediaFileData {
     pub dur_ms: u64,
     #[serde(default)]
     pub scope: String,
+    #[serde(default)]
+    pub blur: String,
+    #[serde(default)]
+    pub w: u32,
+    #[serde(default)]
+    pub h: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -267,6 +279,14 @@ pub fn build_rich_media_wire(
     scope: &str,
     payload: &OptimizedMediaPayload,
 ) -> String {
+    let blur = payload
+        .blur_data_url
+        .as_deref()
+        .filter(|s| s.starts_with("data:image/") && s.len() <= 1600)
+        .unwrap_or("")
+        .to_string();
+    let w = payload.width.unwrap_or(0);
+    let h = payload.height.unwrap_or(0);
     if payload.media_kind == "image" {
         let data = ImageData {
             u: url,
@@ -277,6 +297,9 @@ pub fn build_rich_media_wire(
             size: payload.bytes.len() as u64,
             sha: payload.sha256_plain.clone(),
             scope: scope.to_string(),
+            blur,
+            w,
+            h,
         };
         return format!("img:{}", serde_json::to_string(&data).unwrap_or_default());
     }
@@ -295,6 +318,9 @@ pub fn build_rich_media_wire(
         sha: payload.sha256_plain.clone(),
         dur_ms: payload.duration_ms.unwrap_or(0),
         scope: scope.to_string(),
+        blur,
+        w,
+        h,
     };
     format!("{prefix}{}", serde_json::to_string(&data).unwrap_or_default())
 }
@@ -376,11 +402,21 @@ pub fn RichImage(data: ImageData) -> Element {
         });
     }));
 
+    let has_blur = data.blur.starts_with("data:image/") && data.blur.len() <= 1600;
+    let stage_style = if data.w > 0 && data.h > 0 {
+        format!("aspect-ratio: {} / {};", data.w, data.h)
+    } else {
+        String::new()
+    };
+
     rsx! {
         div { class: "rich-image",
             if let Some(s) = src() {
-                button { r#type: "button", class: "rich-image-btn", aria_label: "See photos", onclick: move |_| open.set(true),
-                    img { src: "{s}", alt: "Image", decoding: "async" }
+                button { r#type: "button", class: "rich-image-btn rich-image-stage loaded", style: "{stage_style}", aria_label: "See photos", onclick: move |_| open.set(true),
+                    if has_blur {
+                        img { class: "rich-image-blur", src: "{data.blur}", alt: "", aria_hidden: "true" }
+                    }
+                    img { class: "rich-image-full", src: "{s}", alt: "Image", decoding: "async" }
                 }
                 if open() {
                     div { class: "lightbox", role: "dialog", aria_label: "Photo", onclick: move |_| open.set(false),
@@ -423,6 +459,11 @@ pub fn RichImage(data: ImageData) -> Element {
                 }
             } else if failed() {
                 div { class: "rich-image-error", "Unable to download or decode images" }
+            } else if has_blur {
+                div { class: "rich-image-stage loading", style: "{stage_style}",
+                    img { class: "rich-image-blur", src: "{data.blur}", alt: "Preview", aria_hidden: "true" }
+                    span { class: "rich-image-blur-spinner", span { class: "spinner" } }
+                }
             } else {
                 div { class: "rich-image-loading", span { class: "spinner" } }
             }
@@ -430,12 +471,13 @@ pub fn RichImage(data: ImageData) -> Element {
     }
 }
 
-/// File, Voice Note (Opus) and Video message renderer with HTTP Range streaming (non-E2EE),
-/// Blob ObjectURL streaming (E2EE, with chunked AEAD support + automatic URL revocation),
-/// playback speed control, and clean watermark-free original download.
+/// File, Voice Note (Opus) and Video message renderer with Service Worker protected HTTP 206
+/// Range streaming (non-E2EE & E2EE `CWCH2` chunked AEAD), automatic tab-bound grant revocation,
+/// blurred poster preview, playback speed control, and clean watermark-free original download.
 #[component]
 pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
     let mut data_url = use_signal(|| Option::<String>::None);
+    let mut sw_grant_id = use_signal(|| Option::<String>::None);
     let mut avail_note = use_signal(|| Option::<(String, String, String)>::None);
     let mut rec_status = use_signal(|| Option::<String>::None);
     let mut playback_rate = use_signal(|| "1".to_string());
@@ -444,29 +486,25 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
     let knd = kind.clone();
 
     use_drop(move || {
+        if let Some(gid) = sw_grant_id.peek().as_deref() {
+            platform::revoke_sw_media_stream(gid);
+        }
         if let Some(u) = data_url.peek().as_deref() {
             platform::revoke_object_url(u);
         }
     });
 
     use_effect(use_reactive!(|d, knd| {
+        if let Some(prev_gid) = sw_grant_id.peek().as_deref() {
+            platform::revoke_sw_media_stream(prev_gid);
+        }
+        sw_grant_id.set(None);
         if let Some(prev) = data_url.peek().as_deref() {
             platform::revoke_object_url(prev);
         }
         data_url.set(None);
         avail_note.set(None);
         spawn(async move {
-            // Non-E2EE video/audio: stream directly from authenticated `/api/attachments/{id}` using
-            // browser-native HTTP `206 Partial Content` Range requests (zero full-file RAM buffering!).
-            if d.k.is_empty() && (knd == "video" || knd == "audio") {
-                data_url.set(Some(platform::resolve_asset_url(&d.u)));
-                return;
-            }
-            let scope = if d.scope.is_empty() {
-                if d.k.is_empty() { "group" } else { "dm" }
-            } else {
-                d.scope.as_str()
-            };
             let fallback_mime = if !d.m.is_empty() {
                 d.m.clone()
             } else if knd == "audio" {
@@ -475,6 +513,35 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
                 "video/mp4".into()
             } else {
                 "application/octet-stream".into()
+            };
+
+            // Video & Audio on Web: prefer Service Worker protected chunked HTTP 206 streaming
+            // (`/stream/media/{grantId}`) — streams both non-E2EE Range and E2EE `CWCH2` chunks
+            // on demand with strict per-tab 403 anti-direct-access enforcement!
+            if (knd == "video" || knd == "audio")
+                && let Some((gid, stream_url)) = platform::register_sw_media_stream(
+                    &d.u,
+                    &d.k,
+                    &d.n,
+                    &fallback_mime,
+                    &d.name,
+                )
+                .await
+            {
+                sw_grant_id.set(Some(gid));
+                data_url.set(Some(stream_url));
+                return;
+            }
+
+            // Fallback when SW not controlling yet: non-E2EE streams direct HTTP Range
+            if d.k.is_empty() && (knd == "video" || knd == "audio") {
+                data_url.set(Some(platform::resolve_asset_url(&d.u)));
+                return;
+            }
+            let scope = if d.scope.is_empty() {
+                if d.k.is_empty() { "group" } else { "dm" }
+            } else {
+                d.scope.as_str()
             };
             match recovery::load_or_fetch_media(&d.u, &d.k, &d.n, &fallback_mime, scope, "original").await {
                 MediaFetchOutcome::Ready { bytes, mime, .. } => {
@@ -503,6 +570,8 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
     };
 
     let pid = player_id();
+    let has_video_blur = kind == "video" && data.blur.starts_with("data:image/") && data.blur.len() <= 1600;
+    let video_poster = if has_video_blur { data.blur.as_str() } else { "" };
 
     rsx! {
         div { class: "rich-card media-attachment-card",
@@ -522,18 +591,67 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
                         style: "width: 100%; max-width: 280px;",
                     }
                 } else if kind == "video" {
-                    video {
-                        id: "{pid}",
-                        controls: true,
-                        preload: "metadata",
-                        playsinline: true,
-                        src: "{u}",
-                        style: "width: 100%; max-width: 340px; border-radius: 8px; background: #000;",
+                    div { class: "rich-video-stage",
+                        if has_video_blur {
+                            video {
+                                id: "{pid}",
+                                controls: true,
+                                preload: "metadata",
+                                playsinline: true,
+                                poster: "{video_poster}",
+                                src: "{u}",
+                                style: "width: 100%; max-width: 340px; border-radius: 8px; background: #000;",
+                            }
+                        } else {
+                            video {
+                                id: "{pid}",
+                                controls: true,
+                                preload: "metadata",
+                                playsinline: true,
+                                src: "{u}",
+                                style: "width: 100%; max-width: 340px; border-radius: 8px; background: #000;",
+                            }
+                        }
                     }
                 }
                 div { style: "margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;",
-                    a { href: "{u}", download: "{fname}", class: "btn-secondary", style: "display: inline-flex; gap: 6px;",
-                        DownloadIcon { size: 14 } "Download the original"
+                    if u.starts_with("/stream/media/") {
+                        {
+                            let dl_url = u.clone();
+                            let dl_name = fname.clone();
+                            rsx! {
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    style: "display: inline-flex; gap: 6px;",
+                                    onclick: move |_| {
+                                        let u_json = serde_json::to_string(&dl_url).unwrap_or_default();
+                                        let n_json = serde_json::to_string(&dl_name).unwrap_or_default();
+                                        let _ = dioxus::document::eval(&format!(
+                                            r#"(async () => {{
+                                                try {{
+                                                    const res = await fetch({u_json}, {{ credentials: 'include' }});
+                                                    if (!res.ok) return;
+                                                    const blob = await res.blob();
+                                                    const ou = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = ou;
+                                                    a.download = {n_json};
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    setTimeout(() => {{ a.remove(); URL.revokeObjectURL(ou); }}, 15000);
+                                                }} catch (_) {{}}
+                                            }})();"#
+                                        ));
+                                    },
+                                    DownloadIcon { size: 14 } "Download the original"
+                                }
+                            }
+                        }
+                    } else {
+                        a { href: "{u}", download: "{fname}", class: "btn-secondary", style: "display: inline-flex; gap: 6px;",
+                            DownloadIcon { size: 14 } "Download the original"
+                        }
                     }
                     if kind == "video" || kind == "audio" {
                         select {

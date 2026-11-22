@@ -243,7 +243,7 @@ pub struct VoiceStateItem {
     pub joined_at: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DisplayMessage {
     pub id: String,
     pub seq: i64,
@@ -259,7 +259,7 @@ pub struct DisplayMessage {
     pub is_pinned: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MessageStatus {
     Sent,
     Pending,

@@ -124,11 +124,67 @@
     return srcCanvas;
   }
 
+  async function makeMicroBlurDataUrl(bitmapOrVideo, srcW, srcH) {
+    try {
+      const bw = Math.max(4, Math.min(20, Math.round((srcW || 16) >= (srcH || 16) ? 16 : 16 * ((srcW || 16) / Math.max(1, srcH || 16)))));
+      const bh = Math.max(4, Math.min(20, Math.round((srcH || 16) > (srcW || 16) ? 16 : 16 * ((srcH || 16) / Math.max(1, srcW || 16)))));
+      const c = document.createElement('canvas');
+      c.width = bw;
+      c.height = bh;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'medium';
+      ctx.drawImage(bitmapOrVideo, 0, 0, bw, bh);
+      const webp = c.toDataURL('image/webp', 0.35);
+      if (webp && webp.startsWith('data:image/webp') && webp.length <= 1200) return webp;
+      const jpg = c.toDataURL('image/jpeg', 0.38);
+      if (jpg && jpg.length <= 1400) return jpg;
+    } catch (_) {}
+    return null;
+  }
+
+  async function extractVideoPosterMeta(file) {
+    return await new Promise((resolve) => {
+      let settled = false;
+      const done = (val) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { URL.revokeObjectURL(objUrl); } catch (_) {}
+        resolve(val);
+      };
+      const objUrl = URL.createObjectURL(file);
+      const v = document.createElement('video');
+      v.muted = true;
+      v.playsInline = true;
+      v.preload = 'metadata';
+      const timer = setTimeout(() => done({ width: 0, height: 0, blurDataUrl: null }), 1500);
+      v.onloadeddata = async () => {
+        const w = v.videoWidth || 0;
+        const h = v.videoHeight || 0;
+        const blurDataUrl = w > 0 && h > 0 ? await makeMicroBlurDataUrl(v, w, h) : null;
+        done({ width: w, height: h, blurDataUrl });
+      };
+      v.onerror = () => done({ width: 0, height: 0, blurDataUrl: null });
+      v.src = objUrl;
+    });
+  }
+
   // Adaptive compression preserving readable text & never inflating small files.
   async function optimizeImageBlob(fileOrBlob, opts = {}) {
     const rawU8 = new Uint8Array(await fileOrBlob.arrayBuffer());
     const rawSniff = await sniffBytesFormat(rawU8);
     if (rawSniff.animated || opts.preserveOriginal) {
+      let w = 0;
+      let h = 0;
+      let blurDataUrl = null;
+      try {
+        const bmp = await createImageBitmap(new Blob([rawU8], { type: rawSniff.mime }));
+        w = bmp.width;
+        h = bmp.height;
+        blurDataUrl = await makeMicroBlurDataUrl(bmp, w, h);
+        bmp.close();
+      } catch (_) {}
       return {
         bytesB64: bytesToB64(rawU8),
         mime: rawSniff.mime !== 'application/octet-stream' ? rawSniff.mime : (fileOrBlob.type || 'application/octet-stream'),
@@ -136,8 +192,9 @@
         originalSize: rawU8.byteLength,
         optimizedSize: rawU8.byteLength,
         isCrispText: false,
-        width: 0,
-        height: 0,
+        width: w,
+        height: h,
+        blurDataUrl,
         thumbB64: null,
         thumbMime: null,
       };
@@ -183,10 +240,12 @@
       }
     }
 
-    // Generate lightweight <= 320px thumbnail for Phase A instant preview
+    // Generate lightweight <= 320px thumbnail AND tiny 16x16 progressive blur-up preview (~250B)
     let thumbB64 = null;
     let thumbMime = null;
+    let blurDataUrl = null;
     try {
+      blurDataUrl = await makeMicroBlurDataUrl(bitmap, tw, th);
       const tScale = Math.min(320 / tw, 320 / th, 1);
       const thumbCanvas = await drawMultiStepResized(bitmap, Math.max(1, Math.round(tw * tScale)), Math.max(1, Math.round(th * tScale)));
       const thRes = await encodeCanvasBestFormat(thumbCanvas, ['image/webp', 'image/jpeg'], 0.68);
@@ -194,9 +253,11 @@
       thumbMime = thRes.sniffed.mime;
     } catch (_) {}
 
+    const origW = bitmap.width;
+    const origH = bitmap.height;
     bitmap.close();
 
-    const useOrig = best.u8.byteLength >= rawU8.byteLength && bitmap.width <= maxDim && bitmap.height <= maxDim;
+    const useOrig = best.u8.byteLength >= rawU8.byteLength && origW <= maxDim && origH <= maxDim;
     const outU8 = useOrig ? rawU8 : best.u8;
     const outSniff = useOrig ? rawSniff : best.sniffed;
 
@@ -209,6 +270,7 @@
       isCrispText: isCrisp,
       width: tw,
       height: th,
+      blurDataUrl,
       thumbB64,
       thumbMime,
     };
@@ -301,6 +363,8 @@
       }
       const raw = new Uint8Array(await file.arrayBuffer());
       const shaHex = window.__chatwStorage ? await window.__chatwStorage.sha256Hex(raw) : '';
+      const mediaKind = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
+      const poster = mediaKind === 'video' ? await extractVideoPosterMeta(file) : { width: 0, height: 0, blurDataUrl: null };
       return {
         bytesB64: bytesToB64(raw),
         mime: file.type || 'application/octet-stream',
@@ -309,7 +373,10 @@
         originalSize: raw.byteLength,
         optimizedSize: raw.byteLength,
         sha256: shaHex,
-        mediaKind: file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file',
+        width: poster.width,
+        height: poster.height,
+        blurDataUrl: poster.blurDataUrl,
+        mediaKind,
       };
     },
     async startVoiceRecording() {

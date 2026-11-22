@@ -175,7 +175,7 @@ pub fn Chat(
     let mut input_text = use_signal(String::new);
     let mut is_emoji_open = use_signal(|| false);
     let mut is_friend_typing = use_signal(|| false);
-    let mut is_sending = use_signal(|| false);
+    let is_sending = use_signal(|| false);
     let mut is_settings_open = use_signal(|| false);
 
     // Avatar & status note state
@@ -726,6 +726,12 @@ pub fn Chat(
                                                 is_pinned: false,
                                             });
                                         }
+                                    });
+                                    let snap = messages.peek().clone();
+                                    let snap_more = *dm_has_more.peek();
+                                    let idb_k = format!("dm:{uid}:{partner_id}");
+                                    spawn(async move {
+                                        crate::storage::save_cached_messages(&idb_k, &snap, snap_more).await;
                                     });
                                     platform::scroll_chat_to_bottom(false);
 
@@ -1358,6 +1364,171 @@ pub fn Chat(
         });
     });
 
+    // Offline-First Persistent Outbox Auto-Flusher (Spec 069):
+    // Drains queued IndexedDB `chat_outbox` entries on boot, browser `online`, and WS reconnect.
+    let uid_for_outbox = current_user_id.clone();
+    use_effect(move || {
+        let uid = uid_for_outbox.clone();
+        spawn(async move {
+            let mut eval = dioxus::document::eval(
+                r#"
+                window.__chatwOutboxSend = () => { try { dioxus.send(true); } catch (_) {} };
+                if (!window.__chatwOutboxListenerBound) {
+                    window.__chatwOutboxListenerBound = true;
+                    window.addEventListener('chatw:online-flush', () => {
+                        if (window.__chatwOutboxSend) window.__chatwOutboxSend();
+                    });
+                }
+                setTimeout(() => { if (window.__chatwOutboxSend) window.__chatwOutboxSend(); }, 1200);
+                "#,
+            );
+            while eval.recv::<bool>().await.is_ok() {
+                let pending = crate::storage::list_outbox_items().await;
+                if pending.is_empty() {
+                    continue;
+                }
+                for entry in pending {
+                    let local_id = format!("local-{}", entry.client_id);
+                    match entry.kind.as_str() {
+                        "dm" => {
+                            if user_keys.peek().is_none() {
+                                continue;
+                            }
+                            match dm::send_encrypted_dm(
+                                &uid,
+                                &entry.target_id,
+                                &entry.text,
+                                entry.reply_to_id.as_deref(),
+                            )
+                            .await
+                            {
+                                Ok(sent) => {
+                                    crate::storage::remove_outbox_item(&entry.client_id).await;
+                                    if active_friend.peek().as_ref().map(|f| f.id.as_str())
+                                        == Some(entry.target_id.as_str())
+                                    {
+                                        messages.with_mut(|list| {
+                                            if list.iter().any(|m| m.id == sent.id) {
+                                                list.retain(|m| m.id != local_id);
+                                            } else if let Some(slot) =
+                                                list.iter_mut().find(|m| m.id == local_id)
+                                            {
+                                                slot.id = sent.id.clone();
+                                                slot.seq = sent.seq;
+                                                slot.created_at = sent.created_at.clone();
+                                                slot.status = MessageStatus::Sent;
+                                            } else {
+                                                list.push(DisplayMessage {
+                                                    id: sent.id.clone(),
+                                                    seq: sent.seq,
+                                                    sender_id: uid.clone(),
+                                                    recipient_id: entry.target_id.clone(),
+                                                    text: entry.text.clone(),
+                                                    created_at: sent.created_at.clone(),
+                                                    is_self: true,
+                                                    status: MessageStatus::Sent,
+                                                    reply_to_id: entry.reply_to_id.clone(),
+                                                    reactions: Vec::new(),
+                                                    is_pinned: false,
+                                                });
+                                            }
+                                        });
+                                        let snap = messages.peek().clone();
+                                        let more_now = *dm_has_more.peek();
+                                        let idb_key = format!("dm:{uid}:{}", entry.target_id);
+                                        crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
+                                    }
+                                }
+                                Err(code)
+                                    if matches!(
+                                        code.as_str(),
+                                        "blocked"
+                                            | "not_friends"
+                                            | "self_chat_disabled"
+                                            | "missing_local_keys"
+                                    ) =>
+                                {
+                                    crate::storage::remove_outbox_item(&entry.client_id).await;
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        "group" => {
+                            match groups::groups_send_message(
+                                &entry.target_id,
+                                entry.sub_id.as_deref(),
+                                &entry.text,
+                                entry.reply_to_id.clone(),
+                            )
+                            .await
+                            {
+                                Ok(msg) => {
+                                    crate::storage::remove_outbox_item(&entry.client_id).await;
+                                    if active_group.peek().as_ref().map(|g| g.id.as_str())
+                                        == Some(entry.target_id.as_str())
+                                    {
+                                        group_messages.with_mut(|list| {
+                                            if list.iter().any(|m| m.id == msg.id) {
+                                                list.retain(|m| m.id != local_id);
+                                            } else if let Some(slot) =
+                                                list.iter_mut().find(|m| m.id == local_id)
+                                            {
+                                                *slot = msg;
+                                            } else {
+                                                list.push(msg);
+                                            }
+                                        });
+                                        let snap = group_messages.peek().clone();
+                                        let more_now = *group_has_more.peek();
+                                        let idb_key = format!("group:{uid}:{}", entry.target_id);
+                                        crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
+                                    }
+                                }
+                                Err(e) if e.status == 0 => break,
+                                Err(_) => {
+                                    crate::storage::remove_outbox_item(&entry.client_id).await;
+                                }
+                            }
+                        }
+                        "channel" => {
+                            match api::channels_post_message(&entry.target_id, &entry.text).await {
+                                Ok(posted) => {
+                                    crate::storage::remove_outbox_item(&entry.client_id).await;
+                                    if selected_channel.peek().as_ref().map(|c| c.id.as_str())
+                                        == Some(entry.target_id.as_str())
+                                    {
+                                        channel_messages.with_mut(|list| {
+                                            if list.iter().any(|m| m.id == posted.id) {
+                                                list.retain(|m| m.id != local_id);
+                                            } else if let Some(slot) =
+                                                list.iter_mut().find(|m| m.id == local_id)
+                                            {
+                                                *slot = posted;
+                                            } else {
+                                                list.push(posted);
+                                            }
+                                        });
+                                        let snap = channel_messages.peek().clone();
+                                        let more_now = *channel_has_more.peek();
+                                        let idb_key = format!("channel:{uid}:{}", entry.target_id);
+                                        crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
+                                    }
+                                }
+                                Err(e) if e.status == 0 => break,
+                                Err(_) => {
+                                    crate::storage::remove_outbox_item(&entry.client_id).await;
+                                }
+                            }
+                        }
+                        _ => {
+                            crate::storage::remove_outbox_item(&entry.client_id).await;
+                        }
+                    }
+                }
+            }
+        });
+    });
+
     // Global keyboard shortcut: Ctrl/Cmd + K opens the quick switcher.
     use_effect(move || {
         spawn(async move {
@@ -1431,12 +1602,27 @@ pub fn Chat(
                 platform::scroll_chat_to_bottom(true);
             }
             let cid = ch.id.clone();
+            let uid_ch = my_id_sig.peek().clone();
             spawn(async move {
+                let mut had_local = had_cache;
+                let idb_key = format!("channel:{uid_ch}:{cid}");
+                if !had_local
+                    && let Some((idb_msgs, idb_more)) =
+                        crate::storage::load_cached_messages::<ChannelMessageItem>(&idb_key).await
+                    && !idb_msgs.is_empty()
+                    && selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(cid.as_str())
+                {
+                    channel_has_more.set(idb_more);
+                    channel_messages.set(idb_msgs);
+                    channel_loading_initial.set(false);
+                    had_local = true;
+                    platform::scroll_chat_to_bottom(true);
+                }
                 if let Ok(mut msgs) = api::channels_get_messages(&cid, 30, None).await {
                     let has_more = msgs.len() >= 30;
                     msgs.sort_by_key(|m| m.seq);
                     if selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(cid.as_str()) {
-                        if had_cache {
+                        if had_local {
                             // Silently merge any newly arrived messages without clearing older loaded history
                             let mut changed = false;
                             channel_messages.with_mut(|list| {
@@ -1451,14 +1637,18 @@ pub fn Chat(
                                     list.sort_by_key(|m| m.seq);
                                 }
                             });
-                            channel_cache.write().insert(cid.clone(), (channel_messages.peek().clone(), *channel_has_more.peek()));
+                            let snap = channel_messages.peek().clone();
+                            let more_now = *channel_has_more.peek();
+                            channel_cache.write().insert(cid.clone(), (snap.clone(), more_now));
+                            crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
                             if changed {
                                 platform::scroll_chat_to_bottom(true);
                             }
                         } else {
                             channel_has_more.set(has_more);
                             channel_messages.set(msgs.clone());
-                            channel_cache.write().insert(cid.clone(), (msgs, has_more));
+                            channel_cache.write().insert(cid.clone(), (msgs.clone(), has_more));
+                            crate::storage::save_cached_messages(&idb_key, &msgs, has_more).await;
                             platform::scroll_chat_to_bottom(true);
                         }
                         channel_loading_initial.set(false);
@@ -1578,7 +1768,22 @@ pub fn Chat(
                 chat_wallpaper.set(w);
             }
         });
+        let uid_grp = my_id_sig.peek().clone();
         spawn(async move {
+            let mut had_local = had_cache;
+            let idb_key = format!("group:{uid_grp}:{gid}");
+            if !had_local
+                && let Some((idb_msgs, idb_more)) =
+                    crate::storage::load_cached_messages::<GroupMessageItem>(&idb_key).await
+                && !idb_msgs.is_empty()
+                && active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str())
+            {
+                group_has_more.set(idb_more);
+                group_messages.set(idb_msgs);
+                group_loading_initial.set(false);
+                had_local = true;
+                platform::scroll_chat_to_bottom(true);
+            }
             let _ = groups::groups_list_categories(&gid).await.map(|cats| group_categories.set(cats));
             let fetched = if let Ok(chs) = groups::groups_list_channels(&gid).await {
                 let first = chs.first().cloned();
@@ -1593,7 +1798,7 @@ pub fn Chat(
                 let has_more = msgs.len() >= 30;
                 msgs.sort_by_key(|m| m.seq);
                 if active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str()) {
-                    if had_cache {
+                    if had_local {
                         let mut changed = false;
                         group_messages.with_mut(|list| {
                             let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
@@ -1607,14 +1812,18 @@ pub fn Chat(
                                 list.sort_by_key(|m| m.seq);
                             }
                         });
-                        group_cache.write().insert(gid.clone(), (group_messages.peek().clone(), *group_has_more.peek()));
+                        let snap = group_messages.peek().clone();
+                        let more_now = *group_has_more.peek();
+                        group_cache.write().insert(gid.clone(), (snap.clone(), more_now));
+                        crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
                         if changed {
                             platform::scroll_chat_to_bottom(true);
                         }
                     } else {
                         group_has_more.set(has_more);
                         group_messages.set(msgs.clone());
-                        group_cache.write().insert(gid.clone(), (msgs, has_more));
+                        group_cache.write().insert(gid.clone(), (msgs.clone(), has_more));
+                        crate::storage::save_cached_messages(&idb_key, &msgs, has_more).await;
                         platform::scroll_chat_to_bottom(true);
                     }
                     let gname = groups.peek().iter().find(|g| g.id == gid).map(|g| g.name.clone()).unwrap_or_default();
@@ -1784,6 +1993,22 @@ pub fn Chat(
         let uid = uid_for_select.clone();
         let pkey = pkey_for_select.clone();
         spawn(async move {
+            // 0ms Offline-First IndexedDB hydration BEFORE waiting for keys/network (Spec 069)
+            let mut had_local = had_cache;
+            let idb_key = format!("dm:{uid}:{}", friend.id);
+            if !had_local
+                && let Some((idb_msgs, idb_more)) =
+                    crate::storage::load_cached_messages::<DisplayMessage>(&idb_key).await
+                && !idb_msgs.is_empty()
+                && active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str())
+            {
+                dm_has_more.set(idb_more);
+                messages.set(idb_msgs);
+                dm_loading_initial.set(false);
+                had_local = true;
+                platform::scroll_chat_to_bottom(true);
+            }
+
             // Wait briefly if E2EE keys are still loading on initial boot
             let mut keys_opt = user_keys.peek().clone();
             if keys_opt.is_none() {
@@ -1907,7 +2132,7 @@ pub fn Chat(
                 let texts: Vec<(String, String)> = decrypted_list.iter().map(|m| (split_device_prefix(&m.text).1, place.clone())).collect();
                 register_reminders(&uid, &texts);
                 let last_partner_seq = decrypted_list.iter().filter(|m| !m.is_self).map(|m| m.seq).max();
-                if had_cache {
+                if had_local {
                     let mut changed = false;
                     messages.with_mut(|list| {
                         let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
@@ -1927,10 +2152,13 @@ pub fn Chat(
                     if *chat_wallpaper.peek() != wp_res {
                         chat_wallpaper.set(wp_res.clone());
                     }
+                    let snap = messages.peek().clone();
+                    let more_now = *dm_has_more.peek();
                     dm_cache.write().insert(
                         friend.id.clone(),
-                        (messages.peek().clone(), *dm_has_more.peek(), read_res, wp_res),
+                        (snap.clone(), more_now, read_res, wp_res),
                     );
+                    crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
                     if changed {
                         platform::scroll_chat_to_bottom(true);
                     }
@@ -1941,8 +2169,9 @@ pub fn Chat(
                     messages.set(decrypted_list.clone());
                     dm_cache.write().insert(
                         friend.id.clone(),
-                        (decrypted_list, has_more, read_res, wp_res),
+                        (decrypted_list.clone(), has_more, read_res, wp_res),
                     );
+                    crate::storage::save_cached_messages(&idb_key, &decrypted_list, has_more).await;
                     platform::scroll_chat_to_bottom(true);
                 }
                 dm_loading_initial.set(false);
@@ -2188,61 +2417,120 @@ pub fn Chat(
         } else {
             raw_text.clone()
         };
-        is_sending.set(true);
+
+        // 0ms Optimistic UI: render pending bubble with ClockIcon immediately + enqueue IndexedDB outbox (Spec 069)
+        let client_id = Uuid::new_v4().to_string();
+        let local_id = format!("local-{client_id}");
+        let now_iso = chrono::Utc::now().to_rfc3339();
+        let temp_seq = messages.peek().iter().map(|m| m.seq).max().unwrap_or(0).saturating_add(1);
+        messages.with_mut(|list| {
+            list.push(DisplayMessage {
+                id: local_id.clone(),
+                seq: temp_seq,
+                sender_id: uid.clone(),
+                recipient_id: active.id.clone(),
+                text: wire_text.clone(),
+                created_at: now_iso.clone(),
+                is_self: true,
+                status: MessageStatus::Pending,
+                reply_to_id: reply_to.clone(),
+                reactions: Vec::new(),
+                is_pinned: false,
+            });
+        });
+        last_previews.with_mut(|m| {
+            m.insert(active.id.clone(), wire_text.clone());
+            persist_previews(&pkey, m);
+        });
+        platform::scroll_chat_to_bottom(false);
+        platform::focus_chat_input();
+
+        let outbox_entry = crate::storage::OutboxEntry {
+            client_id: client_id.clone(),
+            kind: "dm".into(),
+            target_id: active.id.clone(),
+            sub_id: None,
+            text: wire_text.clone(),
+            reply_to_id: reply_to.clone(),
+            created_at: now_iso.clone(),
+            attempts: 0,
+            status: "pending".into(),
+        };
+        let idb_key = format!("dm:{uid}:{}", active.id);
+        let snap_opt = messages.peek().clone();
+        let snap_more = *dm_has_more.peek();
+
         spawn(async move {
+            crate::storage::enqueue_outbox_item(&outbox_entry).await;
+            crate::storage::save_cached_messages(&idb_key, &snap_opt, snap_more).await;
+
             match dm::send_encrypted_dm(&uid, &active.id, &wire_text, reply_to.as_deref()).await {
                 Ok(sent) => {
-                    messages.with_mut(|list| {
-                        if !list.iter().any(|m| m.id == sent.id) {
-                            list.push(DisplayMessage {
-                                id: sent.id.clone(),
-                                seq: sent.seq,
-                                sender_id: uid.clone(),
-                                recipient_id: active.id.clone(),
-                                text: wire_text.clone(),
-                                created_at: sent.created_at.clone(),
-                                is_self: true,
-                                status: MessageStatus::Sent,
-                                reply_to_id: reply_to.clone(),
-                                reactions: Vec::new(),
-                                is_pinned: false,
-                            });
-                        }
-                    });
-                    last_previews.with_mut(|m| {
-                        m.insert(active.id.clone(), wire_text.clone());
-                        persist_previews(&pkey, m);
-                    });
+                    crate::storage::remove_outbox_item(&client_id).await;
+                    if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(active.id.as_str()) {
+                        messages.with_mut(|list| {
+                            let ws_already_has = list.iter().any(|m| m.id == sent.id);
+                            if ws_already_has {
+                                list.retain(|m| m.id != local_id);
+                            } else if let Some(slot) = list.iter_mut().find(|m| m.id == local_id) {
+                                slot.id = sent.id.clone();
+                                slot.seq = sent.seq;
+                                slot.created_at = sent.created_at.clone();
+                                slot.status = MessageStatus::Sent;
+                            } else {
+                                list.push(DisplayMessage {
+                                    id: sent.id.clone(),
+                                    seq: sent.seq,
+                                    sender_id: uid.clone(),
+                                    recipient_id: active.id.clone(),
+                                    text: wire_text.clone(),
+                                    created_at: sent.created_at.clone(),
+                                    is_self: true,
+                                    status: MessageStatus::Sent,
+                                    reply_to_id: reply_to.clone(),
+                                    reactions: Vec::new(),
+                                    is_pinned: false,
+                                });
+                            }
+                        });
+                        let snap = messages.peek().clone();
+                        let more_now = *dm_has_more.peek();
+                        let read_now = *partner_read_seq.peek();
+                        let wp_now = chat_wallpaper.peek().clone();
+                        dm_cache.write().insert(active.id.clone(), (snap.clone(), more_now, read_now, wp_now));
+                        crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
+                    }
                     register_reminders(&uid, &[(raw_text.clone(), active.username.clone())]);
                     platform::scroll_chat_to_bottom(false);
                 }
                 Err(code) => {
-                    let msg = match code.as_str() {
-                        "blocked" => "Unable to send: one of you has blocked the other",
-                        "not_friends" => "Unable to send: you two are not friends yet",
-                        "self_chat_disabled" => "\"Myself\" has been deleted. Create again to continue taking notes",
-                        "missing_local_keys" => "This device does not yet have an encryption key",
-                        _ => "Unable to send",
-                    };
-                    messages.with_mut(|list| {
-                        list.push(DisplayMessage {
-                            id: Uuid::new_v4().to_string(),
-                            seq: 0,
-                            sender_id: uid.clone(),
-                            recipient_id: active.id.clone(),
-                            text: msg.to_string(),
-                            created_at: chrono::Utc::now().to_rfc3339(),
-                            is_self: true,
-                            status: MessageStatus::Error,
-                            reply_to_id: None,
-                            reactions: Vec::new(),
-                            is_pinned: false,
-                        });
-                    });
+                    let is_hard_reject = matches!(
+                        code.as_str(),
+                        "blocked" | "not_friends" | "self_chat_disabled" | "missing_local_keys"
+                    );
+                    if is_hard_reject {
+                        crate::storage::remove_outbox_item(&client_id).await;
+                        let msg = match code.as_str() {
+                            "blocked" => "Unable to send: one of you has blocked the other",
+                            "not_friends" => "Unable to send: you two are not friends yet",
+                            "self_chat_disabled" => "\"Myself\" has been deleted. Create again to continue taking notes",
+                            "missing_local_keys" => "This device does not yet have an encryption key",
+                            _ => "Unable to send",
+                        };
+                        if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(active.id.as_str()) {
+                            messages.with_mut(|list| {
+                                if let Some(slot) = list.iter_mut().find(|m| m.id == local_id) {
+                                    slot.text = msg.to_string();
+                                    slot.status = MessageStatus::Error;
+                                }
+                            });
+                        }
+                    } else {
+                        // Offline or transient network error: keep Optimistic Pending bubble & IndexedDB outbox for auto-retry!
+                        toast.set(Some("Offline: message queued and will send automatically when reconnected".into()));
+                    }
                 }
             }
-            is_sending.set(false);
-            platform::focus_chat_input();
         });
     });
 
@@ -2382,6 +2670,9 @@ pub fn Chat(
             thumb_b64: None,
             thumb_mime: None,
             duration_ms: None,
+            blur_data_url: None,
+            width: None,
+            height: None,
         });
     });
 
@@ -2569,6 +2860,9 @@ pub fn Chat(
         }
         let _ = &uname_for_ch_cmd;
         channel_input.set(String::new());
+        let ch_uid = my_id_sig.peek().clone();
+        let ch_uname = uname_for_ch_cmd.clone();
+        let ch_avatar = my_avatar_url.peek().clone();
         spawn(async move {
             let content = if raw_content.starts_with('/') {
                 let mut parts = raw_content.splitn(2, char::is_whitespace);
@@ -2584,12 +2878,63 @@ pub fn Chat(
             } else {
                 raw_content
             };
-            if let Ok(posted) = api::channels_post_message(&ch.id, &content).await {
-                channel_messages.with_mut(|list| {
-                    if !list.iter().any(|m| m.id == posted.id) {
-                        list.push(posted);
-                    }
+            let client_id = Uuid::new_v4().to_string();
+            let local_id = format!("local-{client_id}");
+            let now_iso = chrono::Utc::now().to_rfc3339();
+            let temp_seq = channel_messages.peek().iter().map(|m| m.seq).max().unwrap_or(0).saturating_add(1);
+            channel_messages.with_mut(|list| {
+                list.push(ChannelMessageItem {
+                    id: local_id.clone(),
+                    seq: temp_seq,
+                    channel_id: ch.id.clone(),
+                    sender_id: ch_uid.clone(),
+                    sender_username: ch_uname.clone(),
+                    sender_avatar_url: ch_avatar.clone(),
+                    content: content.clone(),
+                    reply_to_id: None,
+                    created_at: now_iso.clone(),
                 });
+            });
+            platform::scroll_chat_to_bottom(false);
+            let outbox = crate::storage::OutboxEntry {
+                client_id: client_id.clone(),
+                kind: "channel".into(),
+                target_id: ch.id.clone(),
+                sub_id: None,
+                text: content.clone(),
+                reply_to_id: None,
+                created_at: now_iso,
+                attempts: 0,
+                status: "pending".into(),
+            };
+            crate::storage::enqueue_outbox_item(&outbox).await;
+            let idb_key = format!("channel:{ch_uid}:{}", ch.id);
+            match api::channels_post_message(&ch.id, &content).await {
+                Ok(posted) => {
+                    crate::storage::remove_outbox_item(&client_id).await;
+                    if selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(ch.id.as_str()) {
+                        channel_messages.with_mut(|list| {
+                            if list.iter().any(|m| m.id == posted.id) {
+                                list.retain(|m| m.id != local_id);
+                            } else if let Some(slot) = list.iter_mut().find(|m| m.id == local_id) {
+                                *slot = posted;
+                            } else {
+                                list.push(posted);
+                            }
+                        });
+                        let snap = channel_messages.peek().clone();
+                        let more_now = *channel_has_more.peek();
+                        channel_cache.write().insert(ch.id.clone(), (snap.clone(), more_now));
+                        crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
+                    }
+                }
+                Err(e) if e.status == 0 => {
+                    toast.set(Some("Offline: message queued and will send automatically when reconnected".into()));
+                }
+                Err(_) => {
+                    crate::storage::remove_outbox_item(&client_id).await;
+                    channel_messages.with_mut(|list| list.retain(|m| m.id != local_id));
+                }
             }
         });
     });
@@ -2604,7 +2949,9 @@ pub fn Chat(
         if raw_text.is_empty() {
             return;
         }
-        let _ = &uname_for_grp_cmd;
+        let grp_uname = uname_for_grp_cmd.clone();
+        let grp_uid = my_id_sig.peek().clone();
+        let grp_avatar = my_avatar_url.peek().clone();
         group_input.set(String::new());
         let reply = group_reply_to().map(|(id, _)| id);
         group_reply_to.set(None);
@@ -2625,13 +2972,69 @@ pub fn Chat(
             } else {
                 raw_text
             };
-            if let Ok(msg) = groups::groups_send_message(&gid, cid.as_deref(), &text, reply).await {
-                group_messages.with_mut(|list| {
-                    if !list.iter().any(|m| m.id == msg.id) {
-                        list.push(msg);
-                    }
+            let client_id = Uuid::new_v4().to_string();
+            let local_id = format!("local-{client_id}");
+            let now_iso = chrono::Utc::now().to_rfc3339();
+            let temp_seq = group_messages.peek().iter().map(|m| m.seq).max().unwrap_or(0).saturating_add(1);
+            group_messages.with_mut(|list| {
+                list.push(GroupMessageItem {
+                    id: local_id.clone(),
+                    seq: temp_seq,
+                    group_id: gid.clone(),
+                    channel_id: cid.clone(),
+                    sender_id: grp_uid.clone(),
+                    sender_username: grp_uname.clone(),
+                    sender_avatar_url: grp_avatar.clone(),
+                    content: text.clone(),
+                    reply_to_id: reply.clone(),
+                    is_pinned: false,
+                    is_edited: false,
+                    reactions: Vec::new(),
+                    is_bot: false,
+                    created_at: now_iso.clone(),
                 });
-                platform::scroll_chat_to_bottom(false);
+            });
+            platform::scroll_chat_to_bottom(false);
+            let outbox = crate::storage::OutboxEntry {
+                client_id: client_id.clone(),
+                kind: "group".into(),
+                target_id: gid.clone(),
+                sub_id: cid.clone(),
+                text: text.clone(),
+                reply_to_id: reply.clone(),
+                created_at: now_iso,
+                attempts: 0,
+                status: "pending".into(),
+            };
+            crate::storage::enqueue_outbox_item(&outbox).await;
+            let idb_key = format!("group:{grp_uid}:{gid}");
+            match groups::groups_send_message(&gid, cid.as_deref(), &text, reply).await {
+                Ok(msg) => {
+                    crate::storage::remove_outbox_item(&client_id).await;
+                    if active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str()) {
+                        group_messages.with_mut(|list| {
+                            if list.iter().any(|m| m.id == msg.id) {
+                                list.retain(|m| m.id != local_id);
+                            } else if let Some(slot) = list.iter_mut().find(|m| m.id == local_id) {
+                                *slot = msg;
+                            } else {
+                                list.push(msg);
+                            }
+                        });
+                        let snap = group_messages.peek().clone();
+                        let more_now = *group_has_more.peek();
+                        group_cache.write().insert(gid.clone(), (snap.clone(), more_now));
+                        crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
+                        platform::scroll_chat_to_bottom(false);
+                    }
+                }
+                Err(e) if e.status == 0 => {
+                    toast.set(Some("Offline: message queued and will send automatically when reconnected".into()));
+                }
+                Err(_) => {
+                    crate::storage::remove_outbox_item(&client_id).await;
+                    group_messages.with_mut(|list| list.retain(|m| m.id != local_id));
+                }
             }
         });
     });
@@ -2722,6 +3125,9 @@ pub fn Chat(
             thumb_b64: None,
             thumb_mime: None,
             duration_ms: None,
+            blur_data_url: None,
+            width: None,
+            height: None,
         });
     });
 
@@ -2893,7 +3299,7 @@ pub fn Chat(
                         created_at: m.created_at.clone(),
                         is_self: mine,
                         is_error: m.status == MessageStatus::Error,
-                        is_pending: false,
+                        is_pending: m.status == MessageStatus::Pending || m.id.starts_with("local-"),
                         reply_text: m.reply_to_id.as_ref().map(|rid| {
                             list.iter()
                                 .find(|x| &x.id == rid)
@@ -3069,7 +3475,7 @@ pub fn Chat(
                     created_at: m.created_at.clone(),
                     is_self: m.sender_id == current_user_id,
                     is_error: false,
-                    is_pending: false,
+                    is_pending: m.id.starts_with("local-"),
                     reply_text: m.reply_to_id.as_ref().map(|rid| {
                         list.iter()
                             .find(|x| &x.id == rid)
@@ -3103,7 +3509,7 @@ pub fn Chat(
             created_at: m.created_at.clone(),
             is_self: m.sender_id == current_user_id,
             is_error: false,
-            is_pending: false,
+            is_pending: m.id.starts_with("local-"),
             reply_text: None,
             reactions: Vec::new(),
             is_pinned: false,

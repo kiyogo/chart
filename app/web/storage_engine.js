@@ -3,9 +3,11 @@
 // and safe cache-vs-source eviction protecting unique unbacked `local_only` DM media.
 (() => {
   const DB_NAME = 'chatw_storage_v1';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const OPFS_DIR = 'chatw_cas';
   const CACHE_NAME = 'chatw_media_cache_v1';
+  const MAX_CACHED_MESSAGES_PER_CONV = 500;
+  const MAX_CACHED_CONVS = 120;
 
   let dbPromise = null;
 
@@ -33,6 +35,14 @@
         }
         if (!db.objectStoreNames.contains('passkeys')) {
           db.createObjectStore('passkeys', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('chat_messages')) {
+          const cm = db.createObjectStore('chat_messages', { keyPath: 'conv_key' });
+          cm.createIndex('updated_at', 'updated_at', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('chat_outbox')) {
+          const co = db.createObjectStore('chat_outbox', { keyPath: 'client_id' });
+          co.createIndex('created_at', 'created_at', { unique: false });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -577,6 +587,96 @@
     async hasLocalPasskey() {
       const rec = await idbTx('passkeys', 'readonly', (s) => s.get('default')).catch(() => null);
       return Boolean(rec && rec.credential_id && rec.privateKey);
+    },
+
+    // ── Offline-First Message Cache & Persistent Outbox (Spec 069) ───────────
+    async putChatMessages(convKey, items, hasMore = false) {
+      if (!convKey || !Array.isArray(items)) return false;
+      const trimmed = items.length > MAX_CACHED_MESSAGES_PER_CONV
+        ? items.slice(items.length - MAX_CACHED_MESSAGES_PER_CONV)
+        : items;
+      try {
+        await idbTx('chat_messages', 'readwrite', (s) =>
+          s.put({
+            conv_key: String(convKey),
+            items: trimmed,
+            has_more: Boolean(hasMore),
+            updated_at: Date.now(),
+          }),
+        );
+        // Lazy LRU cap on total cached conversations
+        const all = await idbGetAll('chat_messages').catch(() => []);
+        if (all.length > MAX_CACHED_CONVS) {
+          all.sort((a, b) => (a.updated_at || 0) - (b.updated_at || 0));
+          const excess = all.slice(0, all.length - MAX_CACHED_CONVS);
+          for (const row of excess) {
+            await idbTx('chat_messages', 'readwrite', (s) => s.delete(row.conv_key)).catch(() => {});
+          }
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
+    async getChatMessages(convKey) {
+      if (!convKey) return { found: false, items: [], has_more: false };
+      try {
+        const rec = await idbTx('chat_messages', 'readonly', (s) => s.get(String(convKey)));
+        if (!rec || !Array.isArray(rec.items)) {
+          return { found: false, items: [], has_more: false };
+        }
+        return {
+          found: true,
+          items: rec.items,
+          has_more: Boolean(rec.has_more),
+          updated_at: rec.updated_at || 0,
+        };
+      } catch (_) {
+        return { found: false, items: [], has_more: false };
+      }
+    },
+
+    async enqueueOutbox(entry) {
+      if (!entry || !entry.client_id) return false;
+      try {
+        await idbTx('chat_outbox', 'readwrite', (s) =>
+          s.put({
+            client_id: String(entry.client_id),
+            kind: String(entry.kind || 'dm'),
+            target_id: String(entry.target_id || ''),
+            sub_id: entry.sub_id ? String(entry.sub_id) : null,
+            text: String(entry.text || ''),
+            reply_to_id: entry.reply_to_id ? String(entry.reply_to_id) : null,
+            created_at: entry.created_at || new Date().toISOString(),
+            attempts: Number(entry.attempts || 0),
+            status: String(entry.status || 'pending'),
+          }),
+        );
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
+    async listOutbox() {
+      try {
+        const rows = await idbGetAll('chat_outbox');
+        rows.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+        return rows;
+      } catch (_) {
+        return [];
+      }
+    },
+
+    async removeOutbox(clientId) {
+      if (!clientId) return false;
+      try {
+        await idbTx('chat_outbox', 'readwrite', (s) => s.delete(String(clientId)));
+        return true;
+      } catch (_) {
+        return false;
+      }
     },
   };
 })();
