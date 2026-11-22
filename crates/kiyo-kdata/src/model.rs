@@ -157,6 +157,9 @@ pub struct ExportedMessageRecord {
     pub reactions: Vec<serde_json::Value>,
     /// E2EE base64/text envelope or plaintext group/channel message body as stored canonically
     pub content_payload: String,
+    /// Optional counterpart E2EE envelope (`recipient_envelope` when sender exported, or `sender_envelope` when recipient exported)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counterpart_envelope: Option<String>,
     pub is_e2ee: bool,
     #[serde(default)]
     pub attachment_refs: Vec<Uuid>,

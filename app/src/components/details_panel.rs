@@ -57,6 +57,7 @@ pub fn DmDetailsPanel(
     let mut security_open = use_signal(|| false);
     let mut search = use_signal(String::new);
     let mut copied = use_signal(|| false);
+    let mut ack_tick = use_signal(|| 0u32);
 
     let mut loaded_uid = use_signal(String::new);
     if *loaded_uid.peek() != user_id {
@@ -248,12 +249,58 @@ pub fn DmDetailsPanel(
                     }
                     if security_open() {
                         div { class: "security-note",
-                            "Tin nhắn trực tiếp được mã hóa bằng ECDH P-256 + AES-256-GCM và ký bằng ECDSA P-256. "
-                            "Để xác minh danh tính, hãy so sánh vân tay khóa dưới đây với {username} qua một kênh khác."
+                            "Tin nhắn trực tiếp được mã hóa đầu cuối giao thức v2 (ECDH P-256 + HKDF Ratchet + AES-256-GCM + chữ ký ECDSA P-256). "
+                            "So sánh mã an toàn dưới đây với {username} qua kênh ngoài băng để phát hiện tấn công thay khóa."
+                        }
+                        {
+                            let my_uid = crate::services::api::auth_me_cached_id();
+                            let _ = ack_tick();
+                            let alert_now = crate::crypto::e2ee::get_peer_key_change_alert(my_uid.as_deref(), &user_id);
+                            let uid_ack = user_id.clone();
+                            let my_uid_ack = my_uid.clone();
+                            rsx! {
+                                if let Some(alert) = alert_now {
+                                    div { class: "status-badge error", style: "margin: 8px 0; display: flex; flex-direction: column; gap: 6px;",
+                                        strong { "Cảnh báo thay đổi khóa danh tính (TOFU)" }
+                                        span { "Khóa mã hóa của {username} đã thay đổi so với phiên trước. Hãy đối chiếu trực tiếp mã an toàn trước khi gửi thông tin nhạy cảm." }
+                                        span { style: "font-family: monospace; font-size: 11px;", "Cũ: {format_fingerprint(&alert.previous_identity_fingerprint)}" }
+                                        span { style: "font-family: monospace; font-size: 11px;", "Mới: {format_fingerprint(&alert.new_identity_fingerprint)}" }
+                                        button {
+                                            r#type: "button",
+                                            class: "btn-secondary",
+                                            onclick: move |_| {
+                                                crate::crypto::e2ee::acknowledge_peer_key_change(my_uid_ack.as_deref(), &uid_ack);
+                                                ack_tick.set(ack_tick() + 1);
+                                            },
+                                            "Đã xác minh khóa mới"
+                                        }
+                                    }
+                                }
+                            }
                         }
                         if let Some(fp) = fingerprint.clone() {
                             div { class: "details-section-title", "Vân tay khóa của {username}" }
                             div { class: "fingerprint", "{format_fingerprint(&fp)}" }
+                            {
+                                let qr_svg = qrcode::QrCode::new(format!("chatw-e2ee-v2:{user_id}:{fp}").as_bytes())
+                                    .ok()
+                                    .map(|code| {
+                                        code.render::<qrcode::render::svg::Color>()
+                                            .min_dimensions(132, 132)
+                                            .dark_color(qrcode::render::svg::Color("#111827"))
+                                            .light_color(qrcode::render::svg::Color("#ffffff"))
+                                            .build()
+                                    });
+                                rsx! {
+                                    if let Some(svg) = qr_svg {
+                                        div {
+                                            class: "e2ee-verify-qr",
+                                            style: "margin: 8px 0; padding: 8px; background: #fff; border-radius: 10px; display: inline-block;",
+                                            dangerous_inner_html: "{svg}",
+                                        }
+                                    }
+                                }
+                            }
                             button {
                                 r#type: "button",
                                 class: "btn-secondary",

@@ -430,28 +430,55 @@ pub fn RichImage(data: ImageData) -> Element {
     }
 }
 
-/// File, Voice Note (Opus) and Video message renderer using local OPFS/IndexedDB cache first + Peer Recovery.
+/// File, Voice Note (Opus) and Video message renderer with HTTP Range streaming (non-E2EE),
+/// Blob ObjectURL streaming (E2EE, with chunked AEAD support + automatic URL revocation),
+/// playback speed control, and clean watermark-free original download.
 #[component]
 pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
     let mut data_url = use_signal(|| Option::<String>::None);
     let mut avail_note = use_signal(|| Option::<(String, String, String)>::None);
     let mut rec_status = use_signal(|| Option::<String>::None);
+    let mut playback_rate = use_signal(|| "1".to_string());
+    let player_id = use_signal(|| format!("cw-media-{}", uuid::Uuid::new_v4().simple()));
     let d = data.clone();
     let knd = kind.clone();
 
+    use_drop(move || {
+        if let Some(u) = data_url.peek().as_deref() {
+            platform::revoke_object_url(u);
+        }
+    });
+
     use_effect(use_reactive!(|d, knd| {
+        if let Some(prev) = data_url.peek().as_deref() {
+            platform::revoke_object_url(prev);
+        }
         data_url.set(None);
         avail_note.set(None);
         spawn(async move {
+            // Non-E2EE video/audio: stream directly from authenticated `/api/attachments/{id}` using
+            // browser-native HTTP `206 Partial Content` Range requests (zero full-file RAM buffering!).
+            if d.k.is_empty() && (knd == "video" || knd == "audio") {
+                data_url.set(Some(platform::resolve_asset_url(&d.u)));
+                return;
+            }
             let scope = if d.scope.is_empty() {
                 if d.k.is_empty() { "group" } else { "dm" }
             } else {
                 d.scope.as_str()
             };
-            let fallback_mime = if !d.m.is_empty() { d.m.clone() } else if knd == "audio" { "audio/webm".into() } else if knd == "video" { "video/mp4".into() } else { "application/octet-stream".into() };
+            let fallback_mime = if !d.m.is_empty() {
+                d.m.clone()
+            } else if knd == "audio" {
+                "audio/webm".into()
+            } else if knd == "video" {
+                "video/mp4".into()
+            } else {
+                "application/octet-stream".into()
+            };
             match recovery::load_or_fetch_media(&d.u, &d.k, &d.n, &fallback_mime, scope, "original").await {
                 MediaFetchOutcome::Ready { bytes, mime, .. } => {
-                    data_url.set(Some(platform::image_bytes_to_data_url(&bytes, &mime).await));
+                    data_url.set(Some(platform::media_bytes_to_object_url(&bytes, &mime).await));
                 }
                 MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
                     avail_note.set(Some((ref_id, availability_state, reason)));
@@ -475,21 +502,65 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
         data.name.clone()
     };
 
+    let pid = player_id();
+
     rsx! {
         div { class: "rich-card media-attachment-card",
             div { class: "rich-kind",
                 if kind == "audio" { "Tin nhắn thoại" } else if kind == "video" { "Video" } else { "Tệp đính kèm" }
+                if !data.k.is_empty() { " · E2EE" }
                 if data.size > 0 { " · {format_bytes_human(data.size)}" }
             }
             div { class: "rich-title", "{fname}" }
             if let Some(u) = data_url() {
                 if kind == "audio" {
-                    audio { controls: true, src: "{u}", style: "width: 100%; max-width: 280px;" }
+                    audio {
+                        id: "{pid}",
+                        controls: true,
+                        preload: "metadata",
+                        src: "{u}",
+                        style: "width: 100%; max-width: 280px;",
+                    }
                 } else if kind == "video" {
-                    video { controls: true, src: "{u}", style: "width: 100%; max-width: 320px; border-radius: 8px;" }
+                    video {
+                        id: "{pid}",
+                        controls: true,
+                        preload: "metadata",
+                        playsinline: true,
+                        src: "{u}",
+                        style: "width: 100%; max-width: 340px; border-radius: 8px; background: #000;",
+                    }
                 }
-                a { href: "{u}", download: "{fname}", class: "btn-secondary", style: "margin-top: 6px; display: inline-flex; gap: 6px;",
-                    DownloadIcon { size: 14 } "Tải xuống bản gốc"
+                div { style: "margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;",
+                    a { href: "{u}", download: "{fname}", class: "btn-secondary", style: "display: inline-flex; gap: 6px;",
+                        DownloadIcon { size: 14 } "Tải xuống bản gốc"
+                    }
+                    if kind == "video" || kind == "audio" {
+                        select {
+                            class: "settings-select",
+                            aria_label: "Tốc độ phát",
+                            style: "width: auto; min-width: 66px; padding: 4px 8px; font-size: 12px;",
+                            value: "{playback_rate}",
+                            onchange: {
+                                let el_id = pid.clone();
+                                move |e| {
+                                    let rate = e.value();
+                                    playback_rate.set(rate.clone());
+                                    if let Ok(r) = rate.parse::<f64>() {
+                                        let id_json = serde_json::to_string(&el_id).unwrap_or_default();
+                                        let _ = dioxus::document::eval(&format!(
+                                            "(() => {{ const el = document.getElementById({id_json}); if (el) el.playbackRate = {r}; }})()"
+                                        ));
+                                    }
+                                }
+                            },
+                            option { value: "0.75", "0.75x" }
+                            option { value: "1", "1x" }
+                            option { value: "1.25", "1.25x" }
+                            option { value: "1.5", "1.5x" }
+                            option { value: "2", "2x" }
+                        }
+                    }
                 }
             } else if let Some((rid, avail, reason)) = avail_note() {
                 div { class: "rich-body muted", "{availability_badge_label(&avail)} · {reason}" }

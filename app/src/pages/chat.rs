@@ -41,7 +41,7 @@ use crate::{
     },
     prefs::{Prefs, PrefsCtx},
     crypto::e2ee::{
-        PeerKeys, decrypt_chat_message, get_or_verify_peer_keys,
+        PeerKeys, decrypt_chat_message,
         get_user_keys,
     },
     media,
@@ -74,12 +74,19 @@ fn in_hours(from: &str, to: &str) -> bool {
     if a <= b { n >= a && n < b } else { n >= a || n < b }
 }
 
-/// Reminder registry kept on this device so reminders fire even when their
-/// conversation is not open: (id, local "YYYY-MM-DDTHH:MM", title, where).
+/// Reminder registry kept on this device (AEAD encrypted with Account Root Key subkey)
+/// so reminders fire even when their conversation is not open: (id, local "YYYY-MM-DDTHH:MM", title, where).
+fn load_reminders_encrypted(me: &str) -> Vec<(String, String, String, String)> {
+    let key = format!("chatw_reminders_{me}");
+    platform::storage_get(&key)
+        .and_then(|r| crate::crypto::e2ee::decrypt_account_local_data(me, "reminders", &r).ok())
+        .and_then(|plain| serde_json::from_str(&plain).ok())
+        .unwrap_or_default()
+}
+
 fn register_reminders(me: &str, texts: &[(String, String)]) {
     let key = format!("chatw_reminders_{me}");
-    let mut list: Vec<(String, String, String, String)> =
-        platform::storage_get(&key).and_then(|r| serde_json::from_str(&r).ok()).unwrap_or_default();
+    let mut list = load_reminders_encrypted(me);
     let mut changed = false;
     for (text, place) in texts {
         if let Some(Rich::Reminder(r)) = parse_rich(text) {
@@ -93,7 +100,11 @@ fn register_reminders(me: &str, texts: &[(String, String)]) {
         if list.len() > 300 {
             list.drain(0..list.len() - 300);
         }
-        platform::storage_set(&key, &serde_json::to_string(&list).unwrap_or_default());
+        if let Ok(json) = serde_json::to_string(&list)
+            && let Ok(enc) = crate::crypto::e2ee::encrypt_account_local_data(me, "reminders", &json)
+        {
+            platform::storage_set(&key, &enc);
+        }
     }
 }
 
@@ -104,14 +115,30 @@ struct AddFriendStatus {
 }
 
 fn load_saved_previews(storage_key: &str) -> HashMap<String, String> {
+    let uid = storage_key.strip_prefix("chatw_previews_").unwrap_or("");
     platform::storage_get(storage_key)
-        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .and_then(|raw| {
+            if uid.is_empty() {
+                Some(raw)
+            } else {
+                crate::crypto::e2ee::decrypt_account_local_data(uid, "previews", &raw).ok()
+            }
+        })
+        .and_then(|plain| serde_json::from_str(&plain).ok())
         .unwrap_or_default()
 }
 
 fn persist_previews(storage_key: &str, map: &HashMap<String, String>) {
+    let uid = storage_key.strip_prefix("chatw_previews_").unwrap_or("");
     if let Ok(json) = serde_json::to_string(map) {
-        platform::storage_set(storage_key, &json);
+        if !uid.is_empty() {
+            // Never persist plaintext E2EE message previews in browser localStorage.
+            if let Ok(enc) = crate::crypto::e2ee::encrypt_account_local_data(uid, "previews", &json) {
+                platform::storage_set(storage_key, &enc);
+            }
+        } else {
+            platform::storage_set(storage_key, &json);
+        }
     }
 }
 
@@ -495,10 +522,8 @@ pub fn Chat(
         loop {
             platform::sleep_ms(20_000).await;
             let me = my_id_sig.peek().clone();
-            let key = format!("chatw_reminders_{me}");
             let fired_key = format!("chatw_reminders_fired_{me}");
-            let list: Vec<(String, String, String, String)> =
-                platform::storage_get(&key).and_then(|r| serde_json::from_str(&r).ok()).unwrap_or_default();
+            let list = load_reminders_encrypted(&me);
             let mut fired: Vec<String> = platform::storage_get(&fired_key).and_then(|r| serde_json::from_str(&r).ok()).unwrap_or_default();
             let now = chrono::Local::now();
             let mut changed = false;
@@ -561,8 +586,13 @@ pub fn Chat(
         spawn(async move {
             user_keys.set(get_user_keys(Some(&uid)));
             let uk = user_keys.peek().clone();
+            let uid_sync = uid.clone();
             spawn(async move {
-                crate::storage::sync_manager::bootstrap_device_and_sync(uk).await;
+                if let Some(recovered) = crate::storage::sync_manager::bootstrap_device_and_sync_for_user(&uid_sync, uk).await {
+                    if user_keys.peek().is_none() {
+                        user_keys.set(Some(recovered));
+                    }
+                }
             });
             if let Ok(list) = api::friends_list().await {
                 friends.set(list);
@@ -628,13 +658,17 @@ pub fn Chat(
                             match cached {
                                 Some(pk) => Some(pk.ecdsa_raw),
                                 None => match api::keys_get(&sender_id).await {
-                                    Ok(pk_resp) => match get_or_verify_peer_keys(
+                                    Ok(pk_resp) => match crate::crypto::e2ee::get_or_verify_peer_keys_scoped(
+                                        Some(&uid),
                                         &pk_resp.user_id,
                                         &pk_resp.ecdh_public,
                                         &pk_resp.ecdsa_public,
                                         &pk_resp.fingerprint,
                                     ) {
                                         Ok(peer_k) => {
+                                            if peer_k.key_changed_warning.is_some() {
+                                                toast.set(Some("Cảnh báo bảo mật: khóa mã hóa của đối tác vừa thay đổi. Mở Thông tin để xác minh mã an toàn.".into()));
+                                            }
                                             let raw = peer_k.ecdsa_raw;
                                             peer_keys_cache
                                                 .write()
@@ -1225,6 +1259,7 @@ pub fn Chat(
                         let dname = v.get("device_name").and_then(|s| s.as_str()).unwrap_or("Thiết bị mới").to_string();
                         let plat = v.get("platform").and_then(|s| s.as_str()).unwrap_or("web").to_string();
                         let code = v.get("verification_code").and_then(|s| s.as_str()).unwrap_or("000000").to_string();
+                        let ecdh_pub = v.get("ecdh_public_b64").and_then(|s| s.as_str()).map(str::to_string);
                         let can_approve = crate::storage::DEVICE_TRUST_STATE
                             .peek()
                             .as_ref()
@@ -1236,6 +1271,7 @@ pub fn Chat(
                                 device_name: dname.clone(),
                                 platform: plat,
                                 verification_code: code.clone(),
+                                ecdh_public_b64: ecdh_pub,
                             });
                             toast.set(Some(format!("Thiết bị mới {dname} đang chờ duyệt (mã {code})")));
                         }
@@ -1243,6 +1279,8 @@ pub fn Chat(
                     WsEvent::DeviceApprovalResolved(v) => {
                         let approved = v.get("approved").and_then(|b| b.as_bool()).unwrap_or(false);
                         let req_did = v.get("requesting_device_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let req_id = v.get("request_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
+                        let wrapped_sync = v.get("wrapped_sync_key").and_then(|s| s.as_str()).map(str::to_string);
                         let is_me = crate::storage::DEVICE_TRUST_STATE.peek().as_ref().is_some_and(|d| d.device_id == req_did);
                         if is_me {
                             if approved {
@@ -1251,11 +1289,30 @@ pub fn Chat(
                                         d.trust_state = "trusted".into();
                                     }
                                 });
+                                let uid_unwrap = uid.clone();
                                 spawn(async move {
+                                    if let Some(ref wsk) = wrapped_sync
+                                        && !wsk.is_empty()
+                                    {
+                                        let expected_ecdsa = api::keys_get(&uid_unwrap)
+                                            .await
+                                            .ok()
+                                            .map(|k| k.ecdsa_public);
+                                        if let Ok(recovered) = crate::crypto::e2ee::unwrap_sync_key_on_device(
+                                            &uid_unwrap,
+                                            wsk,
+                                            &req_id,
+                                            expected_ecdsa.as_deref(),
+                                        ) {
+                                            user_keys.set(Some(recovered));
+                                            *crate::storage::E2EE_RECOVERY_REQUIRED.write() = None;
+                                        }
+                                    }
                                     let _ = crate::storage::sync_manager::run_incremental_delta_sync().await;
                                 });
-                                toast.set(Some("Thiết bị đã được phê duyệt đồng bộ".into()));
+                                toast.set(Some("Thiết bị đã được phê duyệt và đồng bộ khóa E2EE".into()));
                             } else {
+                                crate::crypto::e2ee::lock_and_wipe_session_keys(Some(&uid));
                                 on_logout.call(());
                             }
                         }
@@ -1263,6 +1320,7 @@ pub fn Chat(
                     WsEvent::DeviceRevoked(v) => {
                         let revoked_did = v.get("device_id").and_then(|s| s.as_str()).unwrap_or_default().to_string();
                         if crate::storage::DEVICE_TRUST_STATE.peek().as_ref().is_some_and(|d| d.device_id == revoked_did) {
+                            crate::crypto::e2ee::lock_and_wipe_session_keys(Some(&uid));
                             on_logout.call(());
                         }
                     }
@@ -1755,7 +1813,8 @@ pub fn Chat(
                         return;
                     };
                     partner_fingerprint.set(Some(pk_resp.fingerprint.clone()));
-                    let Ok(pk) = get_or_verify_peer_keys(
+                    let Ok(pk) = crate::crypto::e2ee::get_or_verify_peer_keys_scoped(
+                        Some(&uid),
                         &pk_resp.user_id,
                         &pk_resp.ecdh_public,
                         &pk_resp.ecdsa_public,
@@ -1766,6 +1825,9 @@ pub fn Chat(
                         }
                         return;
                     };
+                    if pk.key_changed_warning.is_some() {
+                        toast.set(Some("Cảnh báo bảo mật: khóa mã hóa của người này đã thay đổi. Kiểm tra mã an toàn trong Thông tin.".into()));
+                    }
                     peer_keys_cache.write().insert(friend.id.clone(), pk.clone());
                     pk
                 }
@@ -1911,7 +1973,8 @@ pub fn Chat(
                         dm_loading_more.set(false);
                         return;
                     };
-                    let Ok(pk) = get_or_verify_peer_keys(
+                    let Ok(pk) = crate::crypto::e2ee::get_or_verify_peer_keys_scoped(
+                        Some(&uid),
                         &pk_resp.user_id,
                         &pk_resp.ecdh_public,
                         &pk_resp.ecdsa_public,
@@ -2203,25 +2266,22 @@ pub fn Chat(
         let reply = dm_reply_to().map(|(id, _)| id);
         dm_reply_to.set(None);
         if raw_text.starts_with('/') {
-            if let Some(legacy_out) = crate::components::plugins_view::try_run_plugin_command(&raw_text, &uname_for_dm_cmd) {
-                send_dm_text.call((legacy_out, reply));
-            } else {
-                let send_cb = send_dm_text;
-                let aid = active.id.clone();
-                spawn(async move {
-                    let mut parts = raw_text.splitn(2, char::is_whitespace);
-                    let trig = parts.next().unwrap_or("");
-                    let args = parts.next().unwrap_or("").trim();
-                    let final_text = crate::services::plugin_api::host_run_command(
-                        trig,
-                        args,
-                        serde_json::json!({ "scope": "dm", "conversationId": aid }),
-                    )
-                    .await
-                    .unwrap_or(raw_text);
-                    send_cb.call((final_text, reply));
-                });
-            }
+            let _ = &uname_for_dm_cmd;
+            let send_cb = send_dm_text;
+            let aid = active.id.clone();
+            spawn(async move {
+                let mut parts = raw_text.splitn(2, char::is_whitespace);
+                let trig = parts.next().unwrap_or("");
+                let args = parts.next().unwrap_or("").trim();
+                let final_text = crate::services::plugin_api::host_run_command(
+                    trig,
+                    args,
+                    serde_json::json!({ "scope": "dm", "conversationId": aid }),
+                )
+                .await
+                .unwrap_or(raw_text);
+                send_cb.call((final_text, reply));
+            });
         } else {
             send_dm_text.call((raw_text, reply));
         }
@@ -2504,16 +2564,10 @@ pub fn Chat(
                 }
             }
         }
-        let legacy_cmd_out = if raw_content.starts_with('/') {
-            crate::components::plugins_view::try_run_plugin_command(&raw_content, &uname_for_ch_cmd)
-        } else {
-            None
-        };
+        let _ = &uname_for_ch_cmd;
         channel_input.set(String::new());
         spawn(async move {
-            let content = if let Some(out) = legacy_cmd_out {
-                out
-            } else if raw_content.starts_with('/') {
+            let content = if raw_content.starts_with('/') {
                 let mut parts = raw_content.splitn(2, char::is_whitespace);
                 let trig = parts.next().unwrap_or("");
                 let args = parts.next().unwrap_or("").trim();
@@ -2547,20 +2601,14 @@ pub fn Chat(
         if raw_text.is_empty() {
             return;
         }
-        let legacy_cmd_out = if raw_text.starts_with('/') {
-            crate::components::plugins_view::try_run_plugin_command(&raw_text, &uname_for_grp_cmd)
-        } else {
-            None
-        };
+        let _ = &uname_for_grp_cmd;
         group_input.set(String::new());
         let reply = group_reply_to().map(|(id, _)| id);
         group_reply_to.set(None);
         let gid = grp.id.clone();
         let cid = active_group_channel().map(|c| c.id);
         spawn(async move {
-            let text = if let Some(out) = legacy_cmd_out {
-                out
-            } else if raw_text.starts_with('/') {
+            let text = if raw_text.starts_with('/') {
                 let mut parts = raw_text.splitn(2, char::is_whitespace);
                 let trig = parts.next().unwrap_or("");
                 let args = parts.next().unwrap_or("").trim();
@@ -3061,7 +3109,7 @@ pub fn Chat(
         })
         .collect();
 
-    let my_fingerprint = user_keys().map(|k| k.fingerprint_b64);
+    let my_fingerprint = user_keys().map(|k| k.fingerprint_b64.clone());
     let feedback = add_friend_status().map(|s| (s.is_error, s.message));
 
     rsx! {
@@ -4849,6 +4897,13 @@ pub fn Chat(
         }
 
         crate::components::storage_ui::IncomingDeviceApprovalModal {}
+        crate::components::storage_ui::E2eeUnlockRecoveryModal {
+            current_user_id: current_user_id.clone(),
+            on_unlocked: move |keys| {
+                user_keys.set(Some(keys));
+                toast.set(Some("Đã mở khóa mã hóa đầu cuối".into()));
+            },
+        }
 
         if let Some(uid) = viewing_profile_user_id() {
             {

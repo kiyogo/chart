@@ -781,6 +781,7 @@ name = "chatw-app"
 version = "0.1.0"
 dependencies = [
  "aes-gcm 0.10.3",
+ "argon2",
  "base64 0.22.1",
  "chrono",
  "dioxus",
@@ -789,6 +790,7 @@ dependencies = [
  "getrandom 0.2.17",
  "gif",
  "hkdf 0.12.4",
+ "hmac 0.12.1",
  "js-sys",
  "openssl",
  "p256 0.13.2",
@@ -798,6 +800,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "subtle",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "tracing",
@@ -806,6 +809,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "zeroize",
 ]
 
 [[package]]

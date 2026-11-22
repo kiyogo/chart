@@ -42,6 +42,7 @@ enum HubTab {
 pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
     let mut tab = use_signal(|| HubTab::Marketplace);
     let mut status_msg = use_signal(|| Option::<(bool, String)>::None);
+    let mut archive_tick = use_signal(|| 0u32);
 
     // Marketplace state
     let mut query = use_signal(String::new);
@@ -182,6 +183,42 @@ pub fn PluginHubPanel(my_user_id: String, my_username: String) -> Element {
                     role: "status",
                     style: "margin-bottom: 10px;",
                     "{text}"
+                }
+            }
+
+            {
+                let _ = archive_tick();
+                let archive_opt = crate::components::plugins_view::get_legacy_plugin_archive_json(&my_user_id);
+                let uid_clear = my_user_id.clone();
+                rsx! {
+                    if let Some(archive_json) = archive_opt {
+                        div {
+                            class: "plugin-hub-card",
+                            style: "margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;",
+                            div {
+                                strong { "Dữ liệu tiện ích cũ đã được lưu trữ an toàn" }
+                                div { class: "plugin-hub-meta", "Ghi chú, việc làm hoặc bản vẽ từ tiện ích cũ đã được giữ nguyên để bạn xuất tệp JSON bất cứ lúc nào." }
+                            }
+                            div { style: "display: flex; gap: 8px; align-items: center;",
+                                a {
+                                    class: "btn-secondary",
+                                    href: format!("data:application/json;charset=utf-8,{}", urlencoding::encode(&archive_json)),
+                                    download: "chatw-legacy-plugin-data.json",
+                                    DownloadIcon { size: 14 }
+                                    "Xuất dữ liệu tiện ích cũ (.json)"
+                                }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-ghost",
+                                    onclick: move |_| {
+                                        crate::components::plugins_view::clear_legacy_plugin_archive(&uid_clear);
+                                        archive_tick.set(archive_tick() + 1);
+                                    },
+                                    "Ẩn thông báo"
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

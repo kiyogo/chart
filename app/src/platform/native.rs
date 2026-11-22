@@ -105,28 +105,46 @@ fn vault_key_path() -> PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join(".chatw_vault.key"))
 }
 
-fn load_or_create_vault_master_key() -> [u8; 32] {
+fn atomic_write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("tmp");
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(&tmp)?;
+    f.write_all(bytes)?;
+    f.sync_all()?;
+    drop(f);
+    std::fs::rename(&tmp, path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+fn load_or_create_vault_master_key() -> Result<[u8; 32], String> {
     use p256::elliptic_curve::rand_core::{OsRng, RngCore};
     let path = vault_key_path();
     if let Ok(bytes) = std::fs::read(&path) {
         if bytes.len() == 32 {
             let mut key = [0u8; 32];
             key.copy_from_slice(&bytes);
-            return key;
+            return Ok(key);
         }
     }
     let mut key = [0u8; 32];
     OsRng.fill_bytes(&mut key);
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(&path, key);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    }
-    key
+    atomic_write_private(&path, &key).map_err(|e| format!("vault_key_write_failed: {e}"))?;
+    Ok(key)
 }
 
 fn is_sensitive_storage_key(key: &str) -> bool {
@@ -134,6 +152,11 @@ fn is_sensitive_storage_key(key: &str) -> bool {
         || key == "chatw_device_passkey_v1"
         || key == "__chatw_device_kwrap_v1"
         || key.starts_with("chatw_e2ee_keys_")
+        || key.starts_with("chatw_e2ee_root_")
+        || key.starts_with("chatw_e2ee_ratchet_")
+        || key.starts_with("chatw_e2ee_transport_")
+        || key.starts_with("chatw_previews_")
+        || key.starts_with("chatw_reminders_")
 }
 
 #[allow(deprecated)]
@@ -146,12 +169,19 @@ fn encrypt_vault_value(key: &str, plaintext: &str) -> Option<String> {
     use hkdf::Hkdf;
     use p256::elliptic_curve::rand_core::{OsRng, RngCore};
     use sha2::Sha256;
+    use zeroize::Zeroize;
 
-    let master = load_or_create_vault_master_key();
+    let mut master = load_or_create_vault_master_key().ok()?;
     let hk = Hkdf::<Sha256>::new(Some(b"chatw-native-vault-v1"), &master);
+    master.zeroize();
     let mut subkey = [0u8; 32];
-    hk.expand(key.as_bytes(), &mut subkey).ok()?;
-    let cipher = Aes256Gcm::new_from_slice(&subkey).ok()?;
+    if hk.expand(key.as_bytes(), &mut subkey).is_err() {
+        subkey.zeroize();
+        return None;
+    }
+    let cipher = Aes256Gcm::new_from_slice(&subkey).ok();
+    subkey.zeroize();
+    let cipher = cipher?;
     let mut nonce = [0u8; 12];
     OsRng.fill_bytes(&mut nonce);
     let ct = cipher
@@ -179,6 +209,7 @@ fn decrypt_vault_value(key: &str, wrapped: &str) -> Option<String> {
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     use hkdf::Hkdf;
     use sha2::Sha256;
+    use zeroize::Zeroize;
 
     let rest = wrapped.strip_prefix("vault:v1:")?;
     let (nonce_b64, ct_b64) = rest.split_once(':')?;
@@ -187,11 +218,17 @@ fn decrypt_vault_value(key: &str, wrapped: &str) -> Option<String> {
         return None;
     }
     let ct = URL_SAFE_NO_PAD.decode(ct_b64).ok()?;
-    let master = load_or_create_vault_master_key();
+    let mut master = load_or_create_vault_master_key().ok()?;
     let hk = Hkdf::<Sha256>::new(Some(b"chatw-native-vault-v1"), &master);
+    master.zeroize();
     let mut subkey = [0u8; 32];
-    hk.expand(key.as_bytes(), &mut subkey).ok()?;
-    let cipher = Aes256Gcm::new_from_slice(&subkey).ok()?;
+    if hk.expand(key.as_bytes(), &mut subkey).is_err() {
+        subkey.zeroize();
+        return None;
+    }
+    let cipher = Aes256Gcm::new_from_slice(&subkey).ok();
+    subkey.zeroize();
+    let cipher = cipher?;
     let pt = cipher
         .decrypt(
             Nonce::from_slice(&nonce),
@@ -214,16 +251,8 @@ fn load_storage_map() -> HashMap<String, String> {
 
 fn save_storage_map(map: &HashMap<String, String>) {
     let path = storage_file_path();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
     if let Ok(json) = serde_json::to_string(map) {
-        let _ = std::fs::write(&path, json);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-        }
+        let _ = atomic_write_private(&path, json.as_bytes());
     }
 }
 
@@ -248,7 +277,16 @@ pub fn storage_set(key: &str, value: &str) {
     let _g = STORAGE_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
     let mut map = load_storage_map();
     let stored_val = if !value.is_empty() && is_sensitive_storage_key(key) && !value.starts_with("vault:v1:") {
-        encrypt_vault_value(key, value).unwrap_or_else(|| value.to_string())
+        match encrypt_vault_value(key, value) {
+            Some(enc) => enc,
+            None => {
+                tracing::error!(
+                    key = key,
+                    "refusing to persist sensitive storage key as plaintext after vault encryption failure"
+                );
+                return;
+            }
+        }
     } else {
         value.to_string()
     };

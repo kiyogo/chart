@@ -559,13 +559,16 @@ async fn handle_delete_other_sessions(
         return Err(AppError::Unauthorized);
     }
     let token_hash = session::hash_session_token(&state.config.session_secret, &token_bytes);
-    let res = sqlx::query!(
-        "DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2",
-        user.id,
-        &token_hash[..]
+    let revoked_ids: Vec<Uuid> = sqlx::query_scalar(
+        "DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2 RETURNING id",
     )
-    .execute(&state.db)
+    .bind(user.id)
+    .bind(&token_hash[..])
+    .fetch_all(&state.db)
     .await?;
+    for sid in &revoked_ids {
+        state.ws_hub.disconnect_session(&user.id, *sid).await;
+    }
     let _ = crate::audit::log_audit_event(
         &state.db,
         user.id,
@@ -577,7 +580,7 @@ async fn handle_delete_other_sessions(
         None,
     )
     .await;
-    Ok(Json(serde_json::json!({ "revoked": res.rows_affected() })))
+    Ok(Json(serde_json::json!({ "revoked": revoked_ids.len() })))
 }
 
 async fn handle_delete_session(
@@ -596,6 +599,7 @@ async fn handle_delete_session(
     )
     .execute(&state.db)
     .await?;
+    state.ws_hub.disconnect_session(&user.id, session_id).await;
 
     let _ = crate::audit::log_audit_event(
         &state.db,

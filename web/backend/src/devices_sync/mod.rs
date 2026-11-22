@@ -4,9 +4,12 @@ use axum::{
     http::HeaderMap,
     routing::{delete, get, post},
 };
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use getrandom::fill as random_fill;
+use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use serde::Deserialize;
 use sqlx::{PgPool, Row};
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::{
@@ -233,6 +236,7 @@ async fn handle_register_device(
                         "device_name": req.device_name.as_deref().unwrap_or(platform),
                         "platform": platform,
                         "verification_code": code,
+                        "ecdh_public_b64": req.ecdh_public_b64,
                     })),
                 )
                 .await;
@@ -328,35 +332,59 @@ async fn handle_list_devices(
         })
         .collect();
 
-    let reqs = sqlx::query(
-        r#"
-        SELECT r.id, r.requesting_device_id, r.verification_code, r.user_agent, r.status, r.expires_at, r.created_at,
-               d.device_label, d.platform, encode(d.ecdh_public, 'base64') AS ecdh_b64
-        FROM device_login_requests r
-        JOIN devices d ON d.id = r.requesting_device_id
-        WHERE r.user_id = $1 AND r.status = 'pending' AND r.expires_at > now()
-        ORDER BY r.created_at DESC
-        "#,
-    )
-    .bind(user.id)
-    .fetch_all(&state.db)
-    .await?;
+    let caller_is_trusted = if let Some(did) = user.device_id {
+        sqlx::query_scalar::<_, String>(
+            "SELECT trust_state FROM devices WHERE id = $1 AND user_id = $2",
+        )
+        .bind(did)
+        .bind(user.id)
+        .fetch_optional(&state.db)
+        .await?
+        .as_deref()
+            == Some("trusted")
+    } else {
+        false
+    };
 
-    let reqs_json: Vec<serde_json::Value> = reqs
-        .into_iter()
-        .map(|r| {
-            serde_json::json!({
-                "id": r.try_get::<Uuid, _>("id").ok(),
-                "requesting_device_id": r.try_get::<Uuid, _>("requesting_device_id").ok(),
-                "device_label": r.try_get::<Option<String>, _>("device_label").ok().flatten(),
-                "platform": r.try_get::<String, _>("platform").unwrap_or_default(),
-                "verification_code": r.try_get::<String, _>("verification_code").unwrap_or_default(),
-                "user_agent": r.try_get::<Option<String>, _>("user_agent").ok().flatten(),
-                "expires_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("expires_at").ok(),
-                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
+    let reqs_json: Vec<serde_json::Value> = if caller_is_trusted {
+        let reqs = sqlx::query(
+            r#"
+            SELECT r.id, r.requesting_device_id, r.verification_code, r.user_agent, r.status, r.expires_at, r.created_at,
+                   d.device_label, d.platform, d.ecdh_public
+            FROM device_login_requests r
+            JOIN devices d ON d.id = r.requesting_device_id
+            WHERE r.user_id = $1 AND r.status = 'pending' AND r.expires_at > now()
+            ORDER BY r.created_at DESC
+            "#,
+        )
+        .bind(user.id)
+        .fetch_all(&state.db)
+        .await?;
+
+        reqs.into_iter()
+            .map(|r| {
+                let ecdh_b64 = r
+                    .try_get::<Option<Vec<u8>>, _>("ecdh_public")
+                    .ok()
+                    .flatten()
+                    .map(|b| URL_SAFE_NO_PAD.encode(b));
+                serde_json::json!({
+                    "id": r.try_get::<Uuid, _>("id").ok(),
+                    "requesting_device_id": r.try_get::<Uuid, _>("requesting_device_id").ok(),
+                    "device_label": r.try_get::<Option<String>, _>("device_label").ok().flatten(),
+                    "platform": r.try_get::<String, _>("platform").unwrap_or_default(),
+                    "verification_code": r.try_get::<String, _>("verification_code").unwrap_or_default(),
+                    "ecdh_public_b64": ecdh_b64,
+                    "user_agent": r.try_get::<Option<String>, _>("user_agent").ok().flatten(),
+                    "expires_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("expires_at").ok(),
+                    "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
+                })
             })
-        })
-        .collect();
+            .collect()
+    } else {
+        // Untrusted/pending sessions must never harvest verification codes or pending requests of other sessions.
+        Vec::new()
+    };
 
     Ok(Json(serde_json::json!({
         "devices": devices_json,
@@ -415,10 +443,19 @@ async fn handle_approve_request(
     if req_did == approver_did {
         return Err(AppError::BadRequest("device_cannot_self_approve"));
     }
-    if let Some(ref code) = p.verification_code {
-        if code.trim() != expected_code {
-            return Err(AppError::BadRequest("invalid_verification_code"));
-        }
+    let supplied_code = p
+        .verification_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or(AppError::BadRequest("verification_code_required"))?;
+    if !bool::from(supplied_code.as_bytes().ct_eq(expected_code.as_bytes())) {
+        return Err(AppError::BadRequest("invalid_verification_code"));
+    }
+    if let Some(ref wsk) = p.wrapped_sync_key
+        && wsk.len() > 32768
+    {
+        return Err(AppError::BadRequest("wrapped_sync_key_too_large"));
     }
 
     let mut tx = state.db.begin().await?;
@@ -439,6 +476,7 @@ async fn handle_approve_request(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    crate::security::log_event(&state, user.id, "device_approved", &headers).await;
 
     state
         .ws_hub
@@ -523,6 +561,8 @@ async fn handle_reject_request(
             WsEvent::DeviceRevoked(serde_json::json!({ "device_id": req_did })),
         )
         .await;
+    state.ws_hub.disconnect_device(&user.id, req_did).await;
+    crate::security::log_event(&state, user.id, "device_rejected", &headers).await;
 
     Ok(Json(serde_json::json!({ "rejected": true, "device_id": req_did })))
 }
@@ -531,6 +571,13 @@ async fn handle_reject_request(
 struct RecoverLostReq {
     pub totp_or_backup_code: Option<String>,
     pub revoke_unreachable_devices: Option<bool>,
+    /// Cryptographic proof of E2EE identity key ownership: 64-byte ECDSA signature (base64url)
+    /// over `b"chatw-recover-device-v1:" || current_device_id.as_bytes()`.
+    #[serde(default)]
+    pub recovery_proof_b64: Option<String>,
+    /// Explicit confirmation when no 2FA and no E2EE key backup exist and all prior devices are lost.
+    #[serde(default)]
+    pub confirm_emergency_reset: bool,
 }
 
 async fn handle_recover_lost_devices(
@@ -541,6 +588,17 @@ async fn handle_recover_lost_devices(
     let user = caller(&state, &headers).await?;
     let current_did = user.device_id.ok_or(AppError::BadRequest("device_not_registered"))?;
 
+    let current_trust: Option<String> = sqlx::query_scalar(
+        "SELECT trust_state FROM devices WHERE id = $1 AND user_id = $2",
+    )
+    .bind(current_did)
+    .bind(user.id)
+    .fetch_optional(&state.db)
+    .await?;
+    if current_trust.as_deref() == Some("revoked") {
+        return Err(AppError::Forbidden("device_revoked"));
+    }
+
     // Require 2FA code if TOTP is enabled for this account.
     crate::security::require_second_factor(
         &state,
@@ -549,6 +607,62 @@ async fn handle_recover_lost_devices(
         &headers,
     )
     .await?;
+
+    let other_trusted_ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM devices WHERE user_id = $1 AND trust_state = 'trusted' AND id <> $2",
+    )
+    .bind(user.id)
+    .bind(current_did)
+    .fetch_all(&state.db)
+    .await?;
+
+    let totp_enabled: bool = sqlx::query_scalar(
+        "SELECT totp_enabled_at IS NOT NULL FROM users WHERE id = $1",
+    )
+    .bind(user.id)
+    .fetch_optional(&state.db)
+    .await?
+    .unwrap_or(false);
+
+    // Prevent zero-credential self-promotion of a pending device when 2FA is disabled and other trusted devices exist.
+    if !other_trusted_ids.is_empty() && current_trust.as_deref() != Some("trusted") && !totp_enabled {
+        let mut proof_verified = false;
+        if let Some(ref sig_b64) = req.recovery_proof_b64 {
+            let sig_bytes = URL_SAFE_NO_PAD
+                .decode(sig_b64)
+                .map_err(|_| AppError::BadRequest("invalid_recovery_proof_encoding"))?;
+            let id_ecdsa: Option<Vec<u8>> = sqlx::query_scalar(
+                "SELECT ecdsa_public FROM device_keys WHERE user_id = $1",
+            )
+            .bind(user.id)
+            .fetch_optional(&state.db)
+            .await?;
+            if let Some(ecdsa_pub) = id_ecdsa {
+                let vk = VerifyingKey::from_sec1_bytes(&ecdsa_pub)
+                    .map_err(|_| AppError::BadRequest("invalid_identity_ecdsa_key"))?;
+                let sig = Signature::from_slice(&sig_bytes)
+                    .map_err(|_| AppError::BadRequest("invalid_recovery_proof_format"))?;
+                let mut msg = Vec::with_capacity(24 + 16);
+                msg.extend_from_slice(b"chatw-recover-device-v1:");
+                msg.extend_from_slice(current_did.as_bytes());
+                vk.verify(&msg, &sig)
+                    .map_err(|_| AppError::Forbidden("invalid_recovery_proof_signature"))?;
+                proof_verified = true;
+            }
+        }
+
+        if !proof_verified {
+            let has_backup: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM user_key_backups WHERE user_id = $1)",
+            )
+            .bind(user.id)
+            .fetch_one(&state.db)
+            .await?;
+            if has_backup || !req.confirm_emergency_reset {
+                return Err(AppError::Forbidden("recovery_proof_or_2fa_required"));
+            }
+        }
+    }
 
     let mut tx = state.db.begin().await?;
     sqlx::query(
@@ -582,8 +696,22 @@ async fn handle_recover_lost_devices(
     }
     tx.commit().await?;
 
+    if req.revoke_unreachable_devices.unwrap_or(false) {
+        for revoked_did in other_trusted_ids {
+            state
+                .ws_hub
+                .send_to_user(
+                    &user.id,
+                    WsEvent::DeviceRevoked(serde_json::json!({ "device_id": revoked_did })),
+                )
+                .await;
+            state.ws_hub.disconnect_device(&user.id, revoked_did).await;
+        }
+    }
+    crate::security::log_event(&state, user.id, "device_recovered", &headers).await;
+
     let backup = sqlx::query(
-        "SELECT wrapped_keys_b64, kdf_salt_b64, kdf_iterations, encode(key_fingerprint, 'base64') AS fp_b64 FROM user_key_backups WHERE user_id = $1",
+        "SELECT wrapped_keys_b64, kdf_salt_b64, kdf_iterations, kdf_alg, kdf_mem_kib, kdf_time_cost, kdf_parallelism, root_key_wrapped_b64, encode(key_fingerprint, 'base64') AS fp_b64 FROM user_key_backups WHERE user_id = $1",
     )
     .bind(user.id)
     .fetch_optional(&state.db)
@@ -597,6 +725,11 @@ async fn handle_recover_lost_devices(
             "wrapped_keys_b64": b.try_get::<String, _>("wrapped_keys_b64").ok(),
             "kdf_salt_b64": b.try_get::<String, _>("kdf_salt_b64").ok(),
             "kdf_iterations": b.try_get::<i32, _>("kdf_iterations").ok(),
+            "kdf_alg": b.try_get::<String, _>("kdf_alg").ok(),
+            "kdf_mem_kib": b.try_get::<i32, _>("kdf_mem_kib").ok(),
+            "kdf_time_cost": b.try_get::<i32, _>("kdf_time_cost").ok(),
+            "kdf_parallelism": b.try_get::<i32, _>("kdf_parallelism").ok(),
+            "root_key_wrapped_b64": b.try_get::<Option<String>, _>("root_key_wrapped_b64").ok().flatten(),
         })),
         "honest_notice": "Tin nhắn văn bản trên máy chủ, lịch sử nhóm và máy chủ vẫn nguyên vẹn. File chat riêng chưa sao lưu sẽ kiểm tra từ thiết bị của đối phương nếu họ trực tuyến."
     })))
@@ -608,6 +741,9 @@ async fn handle_revoke_device(
     Path(device_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
     let user = caller(&state, &headers).await?;
+    // Only a trusted device may revoke another device (prevents pending device from revoking trusted ones).
+    let _trusted_did = require_trusted_device(&state.db, user.id, user.device_id).await?;
+
     let res = sqlx::query(
         "UPDATE devices SET trust_state = 'revoked', revoked_at = now() WHERE id = $1 AND user_id = $2",
     )
@@ -637,6 +773,8 @@ async fn handle_revoke_device(
             WsEvent::DeviceRevoked(serde_json::json!({ "device_id": device_id })),
         )
         .await;
+    state.ws_hub.disconnect_device(&user.id, device_id).await;
+    crate::security::log_event(&state, user.id, "device_revoked", &headers).await;
 
     Ok(Json(serde_json::json!({ "revoked": true, "device_id": device_id })))
 }
@@ -647,6 +785,16 @@ struct PutKeyBackupReq {
     pub kdf_salt_b64: String,
     pub kdf_iterations: Option<i32>,
     pub key_fingerprint_b64: String,
+    #[serde(default)]
+    pub kdf_alg: Option<String>,
+    #[serde(default)]
+    pub kdf_mem_kib: Option<i32>,
+    #[serde(default)]
+    pub kdf_time_cost: Option<i32>,
+    #[serde(default)]
+    pub kdf_parallelism: Option<i32>,
+    #[serde(default)]
+    pub root_key_wrapped_b64: Option<String>,
 }
 
 async fn handle_put_key_backup(
@@ -655,21 +803,54 @@ async fn handle_put_key_backup(
     Json(req): Json<PutKeyBackupReq>,
 ) -> AppResult<Json<serde_json::Value>> {
     let user = caller(&state, &headers).await?;
+    // Prevent an untrusted/pending device from overwriting the user's encrypted E2EE key backup.
+    let has_any_trusted: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM devices WHERE user_id = $1 AND trust_state = 'trusted')",
+    )
+    .bind(user.id)
+    .fetch_one(&state.db)
+    .await?;
+    if has_any_trusted || user.device_id.is_some() {
+        let _ = require_trusted_device(&state.db, user.id, user.device_id).await?;
+    }
+
     let fp = decode_b64_opt(Some(&req.key_fingerprint_b64), 32)
         .ok_or(AppError::BadRequest("invalid_key_fingerprint"))?;
     let iters = req.kdf_iterations.unwrap_or(210_000).clamp(10_000, 2_000_000);
-    if req.wrapped_keys_b64.len() > 16384 || req.kdf_salt_b64.len() > 256 {
+    let kdf_alg = req
+        .kdf_alg
+        .as_deref()
+        .filter(|a| matches!(*a, "argon2id-v1" | "pbkdf2-sha256-v1"))
+        .unwrap_or("argon2id-v1");
+    let kdf_mem_kib = req.kdf_mem_kib.unwrap_or(19456).clamp(8192, 262144);
+    let kdf_time_cost = req.kdf_time_cost.unwrap_or(2).clamp(1, 16);
+    let kdf_parallelism = req.kdf_parallelism.unwrap_or(1).clamp(1, 8);
+
+    if req.wrapped_keys_b64.len() > 32768 || req.kdf_salt_b64.len() > 256 {
         return Err(AppError::BadRequest("invalid_backup_payload"));
     }
+    if let Some(ref rk) = req.root_key_wrapped_b64
+        && rk.len() > 4096
+    {
+        return Err(AppError::BadRequest("invalid_root_key_payload"));
+    }
+
     sqlx::query(
         r#"
-        INSERT INTO user_key_backups (user_id, wrapped_keys_b64, kdf_salt_b64, kdf_iterations, key_fingerprint, updated_at)
-        VALUES ($1, $2, $3, $4, $5, now())
+        INSERT INTO user_key_backups
+            (user_id, wrapped_keys_b64, kdf_salt_b64, kdf_iterations, key_fingerprint,
+             kdf_alg, kdf_mem_kib, kdf_time_cost, kdf_parallelism, root_key_wrapped_b64, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
         ON CONFLICT (user_id) DO UPDATE SET
             wrapped_keys_b64 = EXCLUDED.wrapped_keys_b64,
             kdf_salt_b64 = EXCLUDED.kdf_salt_b64,
             kdf_iterations = EXCLUDED.kdf_iterations,
             key_fingerprint = EXCLUDED.key_fingerprint,
+            kdf_alg = EXCLUDED.kdf_alg,
+            kdf_mem_kib = EXCLUDED.kdf_mem_kib,
+            kdf_time_cost = EXCLUDED.kdf_time_cost,
+            kdf_parallelism = EXCLUDED.kdf_parallelism,
+            root_key_wrapped_b64 = EXCLUDED.root_key_wrapped_b64,
             updated_at = now()
         "#,
     )
@@ -678,10 +859,16 @@ async fn handle_put_key_backup(
     .bind(&req.kdf_salt_b64)
     .bind(iters)
     .bind(&fp[..])
+    .bind(kdf_alg)
+    .bind(kdf_mem_kib)
+    .bind(kdf_time_cost)
+    .bind(kdf_parallelism)
+    .bind(req.root_key_wrapped_b64.as_deref())
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "saved": true })))
+    crate::security::log_event(&state, user.id, "e2ee_key_backup_saved", &headers).await;
+    Ok(Json(serde_json::json!({ "saved": true, "kdf_alg": kdf_alg })))
 }
 
 async fn handle_get_key_backup(
@@ -690,7 +877,7 @@ async fn handle_get_key_backup(
 ) -> AppResult<Json<serde_json::Value>> {
     let user = caller(&state, &headers).await?;
     let row = sqlx::query(
-        "SELECT wrapped_keys_b64, kdf_salt_b64, kdf_iterations, updated_at FROM user_key_backups WHERE user_id = $1",
+        "SELECT wrapped_keys_b64, kdf_salt_b64, kdf_iterations, kdf_alg, kdf_mem_kib, kdf_time_cost, kdf_parallelism, root_key_wrapped_b64, updated_at FROM user_key_backups WHERE user_id = $1",
     )
     .bind(user.id)
     .fetch_optional(&state.db)
@@ -702,6 +889,11 @@ async fn handle_get_key_backup(
             "wrapped_keys_b64": r.try_get::<String, _>("wrapped_keys_b64").ok(),
             "kdf_salt_b64": r.try_get::<String, _>("kdf_salt_b64").ok(),
             "kdf_iterations": r.try_get::<i32, _>("kdf_iterations").ok(),
+            "kdf_alg": r.try_get::<String, _>("kdf_alg").ok(),
+            "kdf_mem_kib": r.try_get::<i32, _>("kdf_mem_kib").ok(),
+            "kdf_time_cost": r.try_get::<i32, _>("kdf_time_cost").ok(),
+            "kdf_parallelism": r.try_get::<i32, _>("kdf_parallelism").ok(),
+            "root_key_wrapped_b64": r.try_get::<Option<String>, _>("root_key_wrapped_b64").ok().flatten(),
             "updated_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at").ok(),
         })),
     })))

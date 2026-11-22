@@ -12,10 +12,14 @@ pub mod storage;
 use dioxus::prelude::*;
 
 use crate::{
-    crypto::e2ee::{clear_legacy_active_key, create_and_store_user_keys, get_user_keys},
+    crypto::e2ee::{
+        clear_legacy_active_key, create_and_store_user_keys, get_user_keys,
+        has_locked_passphrase_vault, lock_and_wipe_session_keys,
+    },
     models::CurrentUser,
     pages::{chat::Chat, login::Login, setup_username::SetupUsername},
     services::api,
+    storage::E2EE_RECOVERY_REQUIRED,
 };
 
 const THEME_CSS: &str = include_str!("../assets/theme.css");
@@ -51,23 +55,33 @@ pub fn App() -> Element {
                         }
                     };
 
-                    let (keys, newly_generated) = match get_user_keys(Some(&me.id)) {
-                        Some(k) => (k, false),
-                        None => (create_and_store_user_keys(Some(&me.id)), true),
-                    };
-
-                    // Verify server key matches local active key so peers encrypt to this device's key
-                    let server_key_matches = if me.has_keys && !newly_generated {
-                        api::keys_get(&me.id)
-                            .await
-                            .map(|srv| srv.fingerprint == keys.fingerprint_b64)
-                            .unwrap_or(false)
+                    // Safe E2EE identity key lifecycle:
+                    // 1. If account has NO E2EE keys on server yet (`!me.has_keys`), enroll this first device.
+                    // 2. If account ALREADY has E2EE keys on server (`me.has_keys`), NEVER auto-generate a new
+                    //    keypair and silently overwrite `device_keys`! Instead signal recovery/approval/unlock.
+                    *E2EE_RECOVERY_REQUIRED.write() = None;
+                    if !me.has_keys {
+                        let keys_res = match get_user_keys(Some(&me.id)) {
+                            Some(k) => Ok(k),
+                            None => create_and_store_user_keys(Some(&me.id)),
+                        };
+                        if let Ok(keys) = keys_res {
+                            let _ = api::keys_register(&keys.ecdh_raw_b64, &keys.ecdsa_raw_b64).await;
+                        }
+                    } else if has_locked_passphrase_vault(&me.id) {
+                        *E2EE_RECOVERY_REQUIRED.write() = Some("locked_vault".to_string());
+                    } else if let Some(local_keys) = get_user_keys(Some(&me.id)) {
+                        if let Ok(srv) = api::keys_get(&me.id).await {
+                            let matches_srv = srv.fingerprint == local_keys.fingerprint_b64
+                                || srv.fingerprint == local_keys.identity_fingerprint_b64;
+                            if !matches_srv {
+                                *E2EE_RECOVERY_REQUIRED.write() =
+                                    Some("server_key_mismatch".to_string());
+                            }
+                        }
                     } else {
-                        false
-                    };
-
-                    if !me.has_keys || newly_generated || !server_key_matches {
-                        let _ = api::keys_register(&keys.ecdh_raw_b64, &keys.ecdsa_raw_b64).await;
+                        // Existing account on a fresh browser/device: await trusted-device sync or backup passphrase.
+                        *E2EE_RECOVERY_REQUIRED.write() = Some("missing_local_keys".to_string());
                     }
 
                     current_user.set(Some(CurrentUser {
@@ -90,9 +104,12 @@ pub fn App() -> Element {
     });
 
     let handle_logout = move |_| {
+        let uid = current_user().map(|u| u.id);
         spawn(async move {
             let _ = api::auth_logout().await;
+            lock_and_wipe_session_keys(uid.as_deref());
             clear_legacy_active_key();
+            *E2EE_RECOVERY_REQUIRED.write() = None;
             current_user.set(None);
             status.set(AuthStatus::Unauthenticated);
         });

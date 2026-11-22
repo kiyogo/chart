@@ -162,27 +162,37 @@ async fn handle_send_message(
 
     // 7. Look up recipient's registered device key
     let recipient_keys = sqlx::query!(
-        "SELECT fingerprint FROM device_keys WHERE user_id = $1",
+        "SELECT ecdh_public, ecdsa_public, fingerprint FROM device_keys WHERE user_id = $1",
         recipient_id
     )
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::BadRequest("recipient_has_no_keys"))?;
 
-    if recipient_env.recipient_key_fingerprint.as_slice() != recipient_keys.fingerprint.as_slice() {
+    if !crate::crypto::matches_key_fingerprint(
+        recipient_env.recipient_key_fingerprint.as_slice(),
+        recipient_keys.fingerprint.as_slice(),
+        recipient_keys.ecdh_public.as_slice(),
+        recipient_keys.ecdsa_public.as_slice(),
+    ) {
         return Err(AppError::BadRequest("recipient_fingerprint_mismatch"));
     }
 
     // 8. Look up sender's registered device key
     let sender_keys = sqlx::query!(
-        "SELECT ecdsa_public, fingerprint FROM device_keys WHERE user_id = $1",
+        "SELECT ecdh_public, ecdsa_public, fingerprint FROM device_keys WHERE user_id = $1",
         sender.id
     )
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::BadRequest("sender_has_no_keys"))?;
 
-    if sender_env.recipient_key_fingerprint.as_slice() != sender_keys.fingerprint.as_slice() {
+    if !crate::crypto::matches_key_fingerprint(
+        sender_env.recipient_key_fingerprint.as_slice(),
+        sender_keys.fingerprint.as_slice(),
+        sender_keys.ecdh_public.as_slice(),
+        sender_keys.ecdsa_public.as_slice(),
+    ) {
         return Err(AppError::BadRequest("sender_fingerprint_mismatch"));
     }
 
@@ -432,7 +442,20 @@ async fn handle_get_reactions(
 ) -> AppResult<Json<Vec<ReactionSummaryItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    // Close IDOR: verify caller is a participant of this DM message.
+    let msg = sqlx::query!(
+        "SELECT sender_id, receiver_id FROM messages WHERE id = $1",
+        message_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
+
+    if msg.sender_id != user.id && msg.receiver_id != user.id {
+        return Err(AppError::Forbidden("not_message_participant"));
+    }
 
     let reactions = fetch_reactions_for_message(&state.db, message_id).await?;
     Ok(Json(reactions))
@@ -653,14 +676,46 @@ async fn handle_edit_message(
     if recipient_env.sender_id != user.id || sender_env.sender_id != user.id {
         return Err(AppError::BadRequest("sender_id_mismatch"));
     }
+    if recipient_env.recipient_id != msg.receiver_id {
+        return Err(AppError::BadRequest("recipient_id_mismatch"));
+    }
+    if sender_env.recipient_id != user.id {
+        return Err(AppError::BadRequest("sender_envelope_recipient_must_be_sender"));
+    }
+
+    let recipient_keys = sqlx::query!(
+        "SELECT ecdh_public, ecdsa_public, fingerprint FROM device_keys WHERE user_id = $1",
+        msg.receiver_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::BadRequest("recipient_has_no_keys"))?;
+
+    if !crate::crypto::matches_key_fingerprint(
+        recipient_env.recipient_key_fingerprint.as_slice(),
+        recipient_keys.fingerprint.as_slice(),
+        recipient_keys.ecdh_public.as_slice(),
+        recipient_keys.ecdsa_public.as_slice(),
+    ) {
+        return Err(AppError::BadRequest("recipient_fingerprint_mismatch"));
+    }
 
     let sender_keys = sqlx::query!(
-        "SELECT ecdsa_public FROM device_keys WHERE user_id = $1",
+        "SELECT ecdh_public, ecdsa_public, fingerprint FROM device_keys WHERE user_id = $1",
         user.id
     )
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::BadRequest("sender_has_no_keys"))?;
+
+    if !crate::crypto::matches_key_fingerprint(
+        sender_env.recipient_key_fingerprint.as_slice(),
+        sender_keys.fingerprint.as_slice(),
+        sender_keys.ecdh_public.as_slice(),
+        sender_keys.ecdsa_public.as_slice(),
+    ) {
+        return Err(AppError::BadRequest("sender_fingerprint_mismatch"));
+    }
 
     recipient_env.verify_signature(&sender_keys.ecdsa_public)?;
     sender_env.verify_signature(&sender_keys.ecdsa_public)?;

@@ -27,11 +27,21 @@ pub fn SetupUsername(on_complete: EventHandler<()>) -> Element {
         spawn(async move {
             match api::users_set_name(&trimmed).await {
                 Ok(user_resp) => {
-                    let keys = get_user_keys(Some(&user_resp.id))
-                        .unwrap_or_else(|| create_and_store_user_keys(Some(&user_resp.id)));
+                    let keys_res = match get_user_keys(Some(&user_resp.id)) {
+                        Some(k) => Ok(k),
+                        None => create_and_store_user_keys(Some(&user_resp.id)),
+                    };
+                    let Ok(keys) = keys_res else {
+                        error.set("Không thể tạo kho khóa mã hóa an toàn trên thiết bị này".to_string());
+                        loading.set(false);
+                        return;
+                    };
                     match api::keys_register(&keys.ecdh_raw_b64, &keys.ecdsa_raw_b64).await {
                         Ok(_) => on_complete.call(()),
-                        Err(err) if err.code == "keys_already_registered" => {
+                        Err(err)
+                            if err.code == "keys_already_registered"
+                                || err.code == "identity_key_already_exists_require_recovery_or_rotation" =>
+                        {
                             on_complete.call(())
                         }
                         Err(_) => {

@@ -27,7 +27,15 @@ fn cas_root() -> PathBuf {
                 .map(|h| PathBuf::from(h).join(".local").join("share"))
                 .unwrap_or_else(|_| std::env::temp_dir())
         });
-    base.join("chatw").join("cas")
+    let account_part: String = crate::services::api::auth_me_cached_id()
+        .map(|uid| {
+            uid.chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                .collect()
+        })
+        .filter(|s: &String| !s.is_empty())
+        .unwrap_or_else(|| "default".to_string());
+    base.join("chatw").join("cas").join(account_part)
 }
 
 fn index_path() -> PathBuf {

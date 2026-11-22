@@ -1087,7 +1087,7 @@ chatw.onReady(load);
     let ver_id = Uuid::new_v4();
     let _ = sqlx::query(
         "INSERT INTO plugin_packages (id, plugin_key, publisher_id, name, summary, description, category, icon_url, platforms, is_public, is_builtin, latest_version)
-         VALUES ($1, $2, $3, $4, $5, $6, 'productivity', 'logo:notes', '[\"web\",\"linux\",\"windows\",\"macos\"]'::jsonb, true, true, '1.0.0')",
+         VALUES ($1, $2, $3, $4, $5, $6, 'productivity', 'logo:notes', '[\"web\",\"linux\",\"windows\",\"macos\"]'::jsonb, true, false, '1.0.0')",
     )
     .bind(pkg_id)
     .bind(sample_key)

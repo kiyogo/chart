@@ -237,8 +237,14 @@ pub enum WsEvent {
     PluginSync(serde_json::Value),
 }
 
+struct WsClientConn {
+    session_id: Option<Uuid>,
+    device_id: Option<Uuid>,
+    tx: mpsc::Sender<WsEvent>,
+}
+
 pub struct WsHub {
-    clients: RwLock<HashMap<Uuid, HashMap<u64, mpsc::Sender<WsEvent>>>>,
+    clients: RwLock<HashMap<Uuid, HashMap<u64, WsClientConn>>>,
     next_id: AtomicU64,
     total_connections: AtomicUsize,
     max_connections: usize,
@@ -254,7 +260,12 @@ impl WsHub {
         }
     }
 
-    pub async fn register(&self, user_id: Uuid) -> Option<(u64, mpsc::Receiver<WsEvent>)> {
+    pub async fn register(
+        &self,
+        user_id: Uuid,
+        session_id: Option<Uuid>,
+        device_id: Option<Uuid>,
+    ) -> Option<(u64, mpsc::Receiver<WsEvent>)> {
         if self.total_connections.load(Ordering::Relaxed) >= self.max_connections {
             return None;
         }
@@ -263,7 +274,14 @@ impl WsHub {
         let (tx, rx) = mpsc::channel(CLIENT_CHANNEL_CAPACITY);
 
         let mut clients = self.clients.write().await;
-        clients.entry(user_id).or_default().insert(conn_id, tx);
+        clients.entry(user_id).or_default().insert(
+            conn_id,
+            WsClientConn {
+                session_id,
+                device_id,
+                tx,
+            },
+        );
         self.total_connections.fetch_add(1, Ordering::Relaxed);
 
         Some((conn_id, rx))
@@ -271,8 +289,9 @@ impl WsHub {
 
     pub async fn unregister(&self, user_id: &Uuid, conn_id: u64) {
         let mut clients = self.clients.write().await;
-        if let Some(user_conns) = clients.get_mut(user_id) {
-            user_conns.remove(&conn_id);
+        if let Some(user_conns) = clients.get_mut(user_id)
+            && user_conns.remove(&conn_id).is_some()
+        {
             if user_conns.is_empty() {
                 clients.remove(user_id);
             }
@@ -280,12 +299,41 @@ impl WsHub {
         }
     }
 
+    pub async fn disconnect_device(&self, user_id: &Uuid, target_device_id: Uuid) {
+        let mut clients = self.clients.write().await;
+        if let Some(user_conns) = clients.get_mut(user_id) {
+            let before = user_conns.len();
+            user_conns.retain(|_, c| c.device_id != Some(target_device_id));
+            let removed = before.saturating_sub(user_conns.len());
+            if removed > 0 {
+                self.total_connections.fetch_sub(removed, Ordering::Relaxed);
+            }
+            if user_conns.is_empty() {
+                clients.remove(user_id);
+            }
+        }
+    }
+
+    pub async fn disconnect_session(&self, user_id: &Uuid, target_session_id: Uuid) {
+        let mut clients = self.clients.write().await;
+        if let Some(user_conns) = clients.get_mut(user_id) {
+            let before = user_conns.len();
+            user_conns.retain(|_, c| c.session_id != Some(target_session_id));
+            let removed = before.saturating_sub(user_conns.len());
+            if removed > 0 {
+                self.total_connections.fetch_sub(removed, Ordering::Relaxed);
+            }
+            if user_conns.is_empty() {
+                clients.remove(user_id);
+            }
+        }
+    }
+
     pub async fn send_to_user(&self, user_id: &Uuid, event: WsEvent) {
         let clients = self.clients.read().await;
         if let Some(user_conns) = clients.get(user_id) {
-            for tx in user_conns.values() {
-                // If channel is full or receiver is slow/closed, try_send drops or cleans up
-                let _ = tx.try_send(event.clone());
+            for c in user_conns.values() {
+                let _ = c.tx.try_send(event.clone());
             }
         }
     }
@@ -294,8 +342,8 @@ impl WsHub {
         let clients = self.clients.read().await;
         for uid in user_ids {
             if let Some(user_conns) = clients.get(uid) {
-                for tx in user_conns.values() {
-                    let _ = tx.try_send(event.clone());
+                for c in user_conns.values() {
+                    let _ = c.tx.try_send(event.clone());
                 }
             }
         }
@@ -335,7 +383,7 @@ async fn ws_handler(
     // 3. Register connection in hub
     let (conn_id, rx) = state
         .ws_hub
-        .register(user.id)
+        .register(user.id, user.session_id, user.device_id)
         .await
         .ok_or(AppError::TooManyRequests)?;
 

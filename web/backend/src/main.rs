@@ -269,7 +269,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state.clone());
     profile_ext::spawn_status_expiry(state.clone());
     plugins::webhooks::spawn_webhook_retry_worker(state.clone());
-    plugins::marketplace::seed_official_catalog(&state.db).await;
+    if std::env::var("CHATW_SEED_SAMPLE_PLUGINS").as_deref() == Ok("1") {
+        plugins::marketplace::seed_official_catalog(&state.db).await;
+    }
     {
         let cloud_bg = state.clone();
         tokio::spawn(async move {
@@ -313,7 +315,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/robots.txt", axum::routing::get(robots_txt))
         .route("/llms.txt", axum::routing::get(llms_txt))
         .merge(public_pages)
-        .nest_service("/uploads", ServeDir::new(&config.uploads_dir));
+        .nest_service("/uploads/avatars", ServeDir::new(config.uploads_dir.join("avatars")))
+        .nest("/uploads", attachments::protected_uploads_routes().with_state(state.clone()));
 
     // 7. Static file serving (if frontend dist exists)
     if let Some(ref static_dir) = config.static_dir

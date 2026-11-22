@@ -374,19 +374,13 @@ try {
     JSON.stringify({ afterDisableA, afterDisableB })
   );
 
-  // 9. Verify Cyber Neon's "Kiểm tra E2EE" runs REAL P-256 + AES-256-GCM cryptographic check (not old hardcoded string!)
-  await pageA.locator('.mod-card', { hasText: 'Cyber Neon' }).locator('button:has-text("Cài đặt"), button:has-text("Tùy chỉnh")').first().click();
-  await pageA.waitForTimeout(300);
-  const customBtn = pageA.locator('.mod-card', { hasText: 'Cyber Neon' }).locator('button:has-text("Tùy chỉnh")');
-  if (await customBtn.isVisible().catch(() => false)) await customBtn.click();
-  await pageA.waitForSelector('button:has-text("Kiểm tra E2EE")', { timeout: 8000 });
-  await pageA.locator('button:has-text("Kiểm tra E2EE")').click();
-  await pageA.waitForTimeout(250);
-  const e2eeOut = await pageA.locator('.plugin-calc-result').first().innerText();
+  // 9. Verify legacy built-in plugin system (Cyber Neon, Tiện ích tích hợp) is completely removed (Spec 058)
+  const hubFullText = await pageA.locator('[data-plugin-hub="v2"]').innerText();
+  const legacyCardCount = await pageA.locator('.mod-card').count();
   record(
-    'Cyber Neon "Kiểm tra E2EE" executes real P-256 fingerprint & AES-256-GCM check',
-    e2eeOut.includes('vân tay ') && e2eeOut.includes('AES-256-GCM'),
-    e2eeOut
+    'Single Plugin Platform has zero legacy built-in .mod-card / Cyber Neon / Tiện ích tích hợp',
+    legacyCardCount === 0 && !hubFullText.includes('Cyber Neon') && !hubFullText.includes('Tiện ích tích hợp'),
+    `legacyCardCount=${legacyCardCount}`
   );
 
   record('Zero unhandled page errors during entire E2E flow', errors.length === 0, errors.join(' | '));

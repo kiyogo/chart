@@ -194,13 +194,7 @@ pub fn ConversationList(
             order: 8000 + i,
         });
     }
-    let mut all_bots = bots.clone();
-    for lb in crate::components::plugins_view::enabled_bot_plugins_as_items() {
-        if !all_bots.iter().any(|x| x.id == lb.id || x.username == lb.username) {
-            all_bots.push(lb);
-        }
-    }
-    for (i, b) in all_bots.iter().enumerate() {
+    for (i, b) in bots.iter().enumerate() {
         let p = pref_of("bot", &b.id);
         rows.push(Row {
             key: format!("bot:{}", b.id),

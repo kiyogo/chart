@@ -1818,6 +1818,42 @@ pub async fn image_bytes_to_data_url(bytes: &[u8], mime: &str) -> String {
     format!("data:{};base64,{}", mime, base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
+/// Convert decrypted media bytes (video/audio/files) into a low-memory `blob:` ObjectURL on Web
+/// (avoiding base64 RAM inflation and enabling native `<video>` seek/PiP/speed/download),
+/// or a data URI on non-WASM platforms.
+pub async fn media_bytes_to_object_url(bytes: &[u8], mime: &str) -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsValue;
+        let arr = js_sys::Uint8Array::from(bytes);
+        let parts = js_sys::Array::new();
+        parts.push(&arr.buffer());
+        let opts = web_sys::BlobPropertyBag::new();
+        opts.set_type(mime);
+        if let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &opts)
+            && let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob)
+        {
+            return url;
+        }
+        let _ = JsValue::NULL;
+    }
+    image_bytes_to_data_url(bytes, mime).await
+}
+
+/// Revoke a previously created `blob:` ObjectURL to free memory cleanly on unmount or logout.
+pub fn revoke_object_url(url: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if url.starts_with("blob:") {
+            let _ = web_sys::Url::revoke_object_url(url);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = url;
+    }
+}
+
 /// Minutes left until local midnight (custom status "until the end of today").
 pub fn minutes_until_midnight() -> i64 {
     use chrono::Timelike;

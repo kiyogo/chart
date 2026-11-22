@@ -57,6 +57,8 @@ pub struct DeviceApprovalPending {
     pub platform: String,
     pub verification_code: String,
     #[serde(default)]
+    pub ecdh_public_b64: Option<String>,
+    #[serde(default)]
     pub user_agent: Option<String>,
     #[serde(default)]
     pub expires_at: Option<String>,
@@ -275,12 +277,23 @@ pub async fn revoke_device(device_id: &str) -> Result<serde_json::Value, ApiErro
 }
 
 pub async fn recover_lost_devices(code: Option<&str>, revoke_others: bool) -> Result<serde_json::Value, ApiError> {
+    recover_lost_devices_with_proof(code, revoke_others, None, false).await
+}
+
+pub async fn recover_lost_devices_with_proof(
+    code: Option<&str>,
+    revoke_others: bool,
+    recovery_proof_b64: Option<&str>,
+    confirm_emergency_reset: bool,
+) -> Result<serde_json::Value, ApiError> {
     req_json(
         "POST",
         "/api/devices/recover-lost",
         Some(json!({
             "totp_or_backup_code": code,
             "revoke_unreachable_devices": revoke_others,
+            "recovery_proof_b64": recovery_proof_b64,
+            "confirm_emergency_reset": confirm_emergency_reset,
         })),
     )
     .await
@@ -292,12 +305,40 @@ pub async fn put_key_backup(
     kdf_iterations: i32,
     key_fingerprint_b64: &str,
 ) -> Result<serde_json::Value, ApiError> {
+    put_key_backup_v2(
+        wrapped_keys_b64,
+        kdf_salt_b64,
+        "argon2id-v1",
+        19_456,
+        2,
+        1,
+        kdf_iterations,
+        key_fingerprint_b64,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn put_key_backup_v2(
+    wrapped_keys_b64: &str,
+    kdf_salt_b64: &str,
+    kdf_alg: &str,
+    kdf_mem_kib: i32,
+    kdf_time_cost: i32,
+    kdf_parallelism: i32,
+    kdf_iterations: i32,
+    key_fingerprint_b64: &str,
+) -> Result<serde_json::Value, ApiError> {
     req_json(
         "PUT",
         "/api/keys/backup",
         Some(json!({
             "wrapped_keys_b64": wrapped_keys_b64,
             "kdf_salt_b64": kdf_salt_b64,
+            "kdf_alg": kdf_alg,
+            "kdf_mem_kib": kdf_mem_kib,
+            "kdf_time_cost": kdf_time_cost,
+            "kdf_parallelism": kdf_parallelism,
             "kdf_iterations": kdf_iterations,
             "key_fingerprint_b64": key_fingerprint_b64,
         })),

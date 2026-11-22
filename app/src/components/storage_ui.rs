@@ -1,13 +1,20 @@
 use dioxus::prelude::*;
 
 use crate::{
-    crypto::e2ee::{UserKeys, import_user_keys_json},
+    crypto::e2ee::{
+        UserKeys, create_and_store_user_keys, enable_passphrase_vault, get_user_keys,
+        is_passphrase_vault_enabled, sign_device_recovery_proof, unlock_passphrase_vault,
+        wrap_sync_key_for_device,
+    },
     platform,
-    services::storage_sync::{self, DevicesListResponse, RecoveryListResponse, StoragePolicy},
+    services::{
+        api,
+        storage_sync::{self, DevicesListResponse, RecoveryListResponse, StoragePolicy},
+    },
     storage::{
-        DEVICE_TRUST_STATE, PENDING_APPROVAL_ALERT, SYNC_PROGRESS, LocalQuotaInfo,
-        clear_safe_cache, format_bytes_human, get_quota_estimate,
-        recovery, sync_manager,
+        DEVICE_TRUST_STATE, E2EE_RECOVERY_REQUIRED, PENDING_APPROVAL_ALERT, SYNC_PROGRESS,
+        LocalQuotaInfo, clear_safe_cache, format_bytes_human, get_quota_estimate, recovery,
+        sync_manager,
     },
 };
 
@@ -454,26 +461,74 @@ pub fn SyncRecoverySettingsPanel(
                                     button {
                                         r#type: "button",
                                         class: "btn-primary",
-                                        onclick: move |_| {
-                                            let keys = k.clone();
-                                            let pass = passphrase();
-                                            spawn(async move {
-                                                match sync_manager::encrypt_keys_for_backup(&keys, &pass) {
-                                                    Ok((wrapped, salt, iters)) => {
-                                                        match storage_sync::put_key_backup(&wrapped, &salt, iters, &keys.fingerprint_b64).await {
-                                                            Ok(_) => {
-                                                                passphrase.set(String::new());
-                                                                has_backup.set(true);
-                                                                status_msg.set(Some((false, "Đã lưu bản sao khóa".into())));
+                                        onclick: {
+                                            let keys_for_backup = k.clone();
+                                            move |_| {
+                                                let keys = keys_for_backup.clone();
+                                                let pass = passphrase();
+                                                spawn(async move {
+                                                    match sync_manager::encrypt_keys_for_backup(&keys, &pass) {
+                                                        Ok((wrapped, salt, iters)) => {
+                                                            match storage_sync::put_key_backup_v2(
+                                                                &wrapped,
+                                                                &salt,
+                                                                "argon2id-v1",
+                                                                sync_manager::BACKUP_ARGON2_MEM_KIB as i32,
+                                                                sync_manager::BACKUP_ARGON2_TIME_COST as i32,
+                                                                sync_manager::BACKUP_ARGON2_PARALLELISM as i32,
+                                                                iters,
+                                                                &keys.fingerprint_b64,
+                                                            )
+                                                            .await
+                                                            {
+                                                                Ok(_) => {
+                                                                    passphrase.set(String::new());
+                                                                    has_backup.set(true);
+                                                                    status_msg.set(Some((false, "Đã lưu bản sao khóa Argon2id".into())));
+                                                                }
+                                                                Err(e) => status_msg.set(Some((true, format!("Lỗi sao lưu: {}", e.code)))),
                                                             }
-                                                            Err(e) => status_msg.set(Some((true, format!("Lỗi sao lưu: {}", e.code)))),
                                                         }
+                                                        Err(e) => status_msg.set(Some((true, e))),
+                                                    }
+                                                });
+                                            }
+                                        },
+                                        "Lưu khóa"
+                                    }
+                                }
+                            }
+                            div { class: "settings-row column-layout",
+                                div { class: "settings-label",
+                                    if is_passphrase_vault_enabled(&current_user_id) {
+                                        "Kho khóa máy này đã bảo vệ bằng Argon2id"
+                                    } else {
+                                        "Bảo vệ kho khóa máy này bằng mật khẩu E2EE (Argon2id)"
+                                    }
+                                }
+                                div { class: "inline-form",
+                                    button {
+                                        r#type: "button",
+                                        class: "btn-secondary",
+                                        onclick: {
+                                            let uid = current_user_id.clone();
+                                            let keys_for_vault = k.clone();
+                                            move |_| {
+                                                let pass = passphrase();
+                                                if pass.chars().count() < 8 {
+                                                    status_msg.set(Some((true, "Nhập mật khẩu ít nhất 8 ký tự ở ô trên trước khi khóa kho cục bộ".into())));
+                                                    return;
+                                                }
+                                                match enable_passphrase_vault(&uid, &keys_for_vault, &pass) {
+                                                    Ok(()) => {
+                                                        passphrase.set(String::new());
+                                                        status_msg.set(Some((false, "Đã mã hóa kho khóa cục bộ bằng Argon2id".into())));
                                                     }
                                                     Err(e) => status_msg.set(Some((true, e))),
                                                 }
-                                            });
+                                            }
                                         },
-                                        "Lưu khóa"
+                                        "Khóa kho máy này"
                                     }
                                 }
                             }
@@ -504,14 +559,63 @@ pub fn SyncRecoverySettingsPanel(
                                         let pass = restore_passphrase();
                                         spawn(async move {
                                             let c = if code.trim().is_empty() { None } else { Some(code.trim()) };
-                                            match storage_sync::recover_lost_devices(c, false).await {
+                                            // First attempt to decrypt the Argon2id server key backup so we can produce
+                                            // a cryptographic ECDSA ownership proof (`recovery_proof_b64`) before calling recover-lost.
+                                            let mut recovered_keys: Option<UserKeys> = None;
+                                            let mut recovery_proof: Option<String> = None;
+                                            if !pass.trim().is_empty() {
+                                                if let Ok(bk) = storage_sync::get_key_backup().await
+                                                    && let Some(kb) = bk.get("backup").filter(|v| !v.is_null())
+                                                {
+                                                    let wrapped = kb["wrapped_keys_b64"].as_str().unwrap_or("");
+                                                    let salt = kb["kdf_salt_b64"].as_str().unwrap_or("");
+                                                    let kdf_alg = kb["kdf_alg"].as_str();
+                                                    let mem = kb["kdf_mem_kib"].as_i64().map(|n| n as i32);
+                                                    let time = kb["kdf_time_cost"].as_i64().map(|n| n as i32);
+                                                    let par = kb["kdf_parallelism"].as_i64().map(|n| n as i32);
+                                                    let iters = kb["kdf_iterations"].as_i64().unwrap_or(50000) as i32;
+                                                    match sync_manager::decrypt_keys_from_backup_v2(
+                                                        &uid, wrapped, salt, kdf_alg, mem, time, par, iters, &pass,
+                                                    ) {
+                                                        Ok(restored) => {
+                                                            if let Some(did) = DEVICE_TRUST_STATE().map(|d| d.device_id) {
+                                                                recovery_proof = sign_device_recovery_proof(&restored, &did).ok();
+                                                            }
+                                                            recovered_keys = Some(restored);
+                                                        }
+                                                        Err(e) => {
+                                                            status_msg.set(Some((true, e)));
+                                                            return;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            match storage_sync::recover_lost_devices_with_proof(
+                                                c,
+                                                false,
+                                                recovery_proof.as_deref(),
+                                                false,
+                                            )
+                                            .await
+                                            {
                                                 Ok(resp) => {
-                                                    if let Some(kb) = resp.get("key_backup").filter(|v| !v.is_null()) {
+                                                    if let Some(restored) = recovered_keys {
+                                                        *E2EE_RECOVERY_REQUIRED.write() = None;
+                                                        on_keys_imported.call(restored);
+                                                        status_msg.set(Some((false, "Đã mở khóa tin nhắn và xác thực thiết bị".into())));
+                                                    } else if let Some(kb) = resp.get("key_backup").filter(|v| !v.is_null()) {
                                                         let wrapped = kb["wrapped_keys_b64"].as_str().unwrap_or("");
                                                         let salt = kb["kdf_salt_b64"].as_str().unwrap_or("");
+                                                        let kdf_alg = kb["kdf_alg"].as_str();
+                                                        let mem = kb["kdf_mem_kib"].as_i64().map(|n| n as i32);
+                                                        let time = kb["kdf_time_cost"].as_i64().map(|n| n as i32);
+                                                        let par = kb["kdf_parallelism"].as_i64().map(|n| n as i32);
                                                         let iters = kb["kdf_iterations"].as_i64().unwrap_or(50000) as i32;
-                                                        match sync_manager::decrypt_keys_from_backup(&uid, wrapped, salt, iters, &pass) {
+                                                        match sync_manager::decrypt_keys_from_backup_v2(
+                                                            &uid, wrapped, salt, kdf_alg, mem, time, par, iters, &pass,
+                                                        ) {
                                                             Ok(restored) => {
+                                                                *E2EE_RECOVERY_REQUIRED.write() = None;
                                                                 on_keys_imported.call(restored);
                                                                 status_msg.set(Some((false, "Đã mở khóa tin nhắn".into())));
                                                             }
@@ -520,7 +624,6 @@ pub fn SyncRecoverySettingsPanel(
                                                     } else {
                                                         status_msg.set(Some((false, resp["honest_notice"].as_str().unwrap_or("Đã xác nhận máy khôi phục").into())));
                                                     }
-                                                    let _ = import_user_keys_json;
                                                     reload();
                                                 }
                                                 Err(e) => status_msg.set(Some((true, format!("Không khôi phục được: {}", e.code)))),
@@ -585,13 +688,31 @@ pub fn DeviceTrustPanel() -> Element {
                                     class: "btn-primary",
                                     onclick: {
                                         let id = req.id.clone();
+                                        let expected_code = req.verification_code.clone();
+                                        let target_ecdh = req.ecdh_public_b64.clone();
                                         move |_| {
                                             let id = id.clone();
-                                            let code = code_input();
+                                            let target_ecdh = target_ecdh.clone();
+                                            let entered = code_input();
+                                            let code_to_send = if entered.trim().is_empty() {
+                                                expected_code.clone()
+                                            } else {
+                                                entered.trim().to_string()
+                                            };
                                             spawn(async move {
-                                                let c = if code.trim().is_empty() { None } else { Some(code.trim()) };
-                                                match storage_sync::approve_device_request(&id, c, None).await {
-                                                    Ok(_) => notice.set(Some((false, "Đã phê duyệt thiết bị mới".into()))),
+                                                let wrapped = target_ecdh.as_deref().and_then(|pub_b64| {
+                                                    let uid = api::auth_me_cached_id();
+                                                    let my_keys = get_user_keys(uid.as_deref())?;
+                                                    wrap_sync_key_for_device(&my_keys, pub_b64, &id).ok()
+                                                });
+                                                match storage_sync::approve_device_request(
+                                                    &id,
+                                                    Some(&code_to_send),
+                                                    wrapped.as_deref(),
+                                                )
+                                                .await
+                                                {
+                                                    Ok(_) => notice.set(Some((false, "Đã phê duyệt và truyền khóa E2EE an toàn cho thiết bị mới".into()))),
                                                     Err(e) => notice.set(Some((true, format!("Mã không khớp hoặc hết hạn: {}", e.code)))),
                                                 }
                                                 code_input.set(String::new());
@@ -691,10 +812,10 @@ pub fn DeviceTrustPanel() -> Element {
 #[component]
 pub fn IncomingDeviceApprovalModal() -> Element {
     let alert = PENDING_APPROVAL_ALERT();
+    let mut msg = use_signal(|| Option::<String>::None);
     let Some(req) = alert else {
         return rsx! {};
     };
-    let mut msg = use_signal(|| Option::<String>::None);
 
     rsx! {
         div { class: "modal-overlay",
@@ -731,11 +852,24 @@ pub fn IncomingDeviceApprovalModal() -> Element {
                         onclick: {
                             let id = req.request_id.clone();
                             let code = req.verification_code.clone();
+                            let target_ecdh = req.ecdh_public_b64.clone();
                             move |_| {
                                 let id = id.clone();
                                 let code = code.clone();
+                                let target_ecdh = target_ecdh.clone();
                                 spawn(async move {
-                                    match storage_sync::approve_device_request(&id, Some(&code), None).await {
+                                    let wrapped = target_ecdh.as_deref().and_then(|pub_b64| {
+                                        let uid = api::auth_me_cached_id();
+                                        let my_keys = get_user_keys(uid.as_deref())?;
+                                        wrap_sync_key_for_device(&my_keys, pub_b64, &id).ok()
+                                    });
+                                    match storage_sync::approve_device_request(
+                                        &id,
+                                        Some(&code),
+                                        wrapped.as_deref(),
+                                    )
+                                    .await
+                                    {
                                         Ok(_) => *PENDING_APPROVAL_ALERT.write() = None,
                                         Err(e) => msg.set(Some(e.code)),
                                     }
@@ -749,3 +883,224 @@ pub fn IncomingDeviceApprovalModal() -> Element {
         }
     }
 }
+
+/// Modal displayed when an existing account (`me.has_keys == true`) signs in on a device whose local
+/// E2EE vault is locked with Argon2id or missing keys — preventing silent identity key overwrite.
+#[component]
+pub fn E2eeUnlockRecoveryModal(
+    current_user_id: String,
+    on_unlocked: EventHandler<UserKeys>,
+) -> Element {
+    let reason = E2EE_RECOVERY_REQUIRED();
+    let mut pass = use_signal(String::new);
+    let mut err = use_signal(|| Option::<String>::None);
+    let mut confirm_reset = use_signal(|| false);
+    let trust_info = DEVICE_TRUST_STATE();
+
+    // Race-free background sync watcher: if a trusted device approves this device and delivers
+    // `wrapped_sync_key` (even before WS connects or across reloads), automatically unwrap & unlock!
+    let kind_opt = reason.clone();
+    let uid_poll = current_user_id.clone();
+    use_effect(use_reactive!(|kind_opt, uid_poll| {
+        let Some(k) = kind_opt else {
+            return;
+        };
+        if k == "locked_vault" || uid_poll.is_empty() {
+            return;
+        }
+        let uid = uid_poll.clone();
+        spawn(async move {
+            for _ in 0..120 {
+                platform::sleep_ms(1200).await;
+                if E2EE_RECOVERY_REQUIRED.peek().is_none() {
+                    break;
+                }
+                if let Ok(cur) = storage_sync::current_device_status().await
+                    && let Some(lr) = cur.get("latest_request")
+                    && lr.get("status").and_then(|v| v.as_str()) == Some("approved")
+                    && let Some(wsk) = lr.get("wrapped_sync_key").and_then(|v| v.as_str())
+                    && !wsk.is_empty()
+                {
+                    let req_id = lr.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let expected_ecdsa = api::keys_get(&uid).await.ok().map(|k| k.ecdsa_public);
+                    if let Ok(recovered) = crate::crypto::e2ee::unwrap_sync_key_on_device(
+                        &uid,
+                        wsk,
+                        req_id,
+                        expected_ecdsa.as_deref(),
+                    ) {
+                        DEVICE_TRUST_STATE.with_mut(|st| {
+                            if let Some(d) = st.as_mut() {
+                                d.trust_state = "trusted".into();
+                            }
+                        });
+                        *E2EE_RECOVERY_REQUIRED.write() = None;
+                        on_unlocked.call(recovered);
+                        break;
+                    }
+                }
+            }
+        });
+    }));
+
+    let Some(kind) = reason else {
+        return rsx! {};
+    };
+    let is_locked_vault = kind == "locked_vault";
+    let uid_unlock = current_user_id.clone();
+    let uid_reset = current_user_id.clone();
+
+    rsx! {
+        div { class: "modal-overlay",
+            div { class: "modal-dialog", role: "dialog", aria_modal: "true", aria_label: "Mở khóa mã hóa đầu cuối",
+                div { class: "modal-header",
+                    h2 { class: "modal-title",
+                        if is_locked_vault {
+                            "Mở khóa kho E2EE (Argon2id)"
+                        } else {
+                            "Đồng bộ hoặc khôi phục khóa E2EE"
+                        }
+                    }
+                }
+                div { class: "modal-body",
+                    if is_locked_vault {
+                        p { "Khóa riêng E2EE trên thiết bị này được bảo vệ bằng mật khẩu Argon2id. Nhập mật khẩu để giải mã tin nhắn." }
+                    } else {
+                        p { "Tài khoản này đã kích hoạt mã hóa đầu cuối trên thiết bị khác. ChatW không tự ghi đè khóa để bảo vệ toàn bộ lịch sử tin nhắn." }
+                        if let Some(st) = trust_info.clone() {
+                            if let Some(code) = st.verification_code {
+                                p { "Cách 1 — Phê duyệt trên thiết bị cũ đang đăng nhập với mã xác nhận: ", strong { "{code}" } }
+                            }
+                        }
+                        p { "Cách 2 — Nhập mật khẩu sao lưu khóa E2EE (Argon2id) để giải mã trực tiếp trên máy này:" }
+                    }
+                    input {
+                        r#type: "password",
+                        placeholder: if is_locked_vault { "Nhập mật khẩu mở khóa E2EE" } else { "Nhập mật khẩu sao lưu khóa E2EE" },
+                        aria_label: "Mật khẩu mở khóa E2EE",
+                        value: "{pass}",
+                        oninput: move |e| {
+                            pass.set(e.value());
+                            err.set(None);
+                        },
+                    }
+                    if let Some(m) = err() {
+                        div { class: "status-badge error", "{m}" }
+                    }
+                    if !is_locked_vault && confirm_reset() {
+                        div { class: "status-badge error",
+                            "Cảnh báo: Tạo khóa E2EE mới sẽ không thể giải mã lại các tin nhắn cũ nếu bạn không còn thiết bị cũ hoặc bản sao lưu."
+                        }
+                    }
+                }
+                div { class: "modal-footer",
+                    if !is_locked_vault {
+                        button {
+                            r#type: "button",
+                            class: "btn-ghost",
+                            onclick: move |_| *E2EE_RECOVERY_REQUIRED.write() = None,
+                            "Để sau"
+                        }
+                        if confirm_reset() {
+                            button {
+                                r#type: "button",
+                                class: "btn-danger",
+                                onclick: move |_| {
+                                    let uid = uid_reset.clone();
+                                    spawn(async move {
+                                        match create_and_store_user_keys(Some(&uid)) {
+                                            Ok(new_keys) => {
+                                                match api::keys_register_rotated(
+                                                    &new_keys.ecdh_raw_b64,
+                                                    &new_keys.ecdsa_raw_b64,
+                                                    true,
+                                                    None,
+                                                )
+                                                .await
+                                                {
+                                                    Ok(_) => {
+                                                        *E2EE_RECOVERY_REQUIRED.write() = None;
+                                                        on_unlocked.call(new_keys);
+                                                    }
+                                                    Err(e) => err.set(Some(format!("Máy chủ từ chối đặt lại khóa: {}", e.code))),
+                                                }
+                                            }
+                                            Err(e) => err.set(Some(e)),
+                                        }
+                                    });
+                                },
+                                "Xác nhận tạo khóa mới"
+                            }
+                        } else {
+                            button {
+                                r#type: "button",
+                                class: "btn-danger-outline",
+                                onclick: move |_| confirm_reset.set(true),
+                                "Mất hết thiết bị · Tạo khóa mới"
+                            }
+                        }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn-primary",
+                        onclick: move |_| {
+                            let uid = uid_unlock.clone();
+                            let p = pass();
+                            let locked = is_locked_vault;
+                            spawn(async move {
+                                if locked {
+                                    match unlock_passphrase_vault(&uid, &p) {
+                                        Ok(k) => {
+                                            *E2EE_RECOVERY_REQUIRED.write() = None;
+                                            on_unlocked.call(k);
+                                        }
+                                        Err(e) => err.set(Some(e)),
+                                    }
+                                } else {
+                                    match storage_sync::get_key_backup().await {
+                                        Ok(bk) => {
+                                            if let Some(kb) = bk.get("backup").filter(|v| !v.is_null()) {
+                                                let wrapped = kb["wrapped_keys_b64"].as_str().unwrap_or("");
+                                                let salt = kb["kdf_salt_b64"].as_str().unwrap_or("");
+                                                let kdf_alg = kb["kdf_alg"].as_str();
+                                                let mem = kb["kdf_mem_kib"].as_i64().map(|n| n as i32);
+                                                let time = kb["kdf_time_cost"].as_i64().map(|n| n as i32);
+                                                let par = kb["kdf_parallelism"].as_i64().map(|n| n as i32);
+                                                let iters = kb["kdf_iterations"].as_i64().unwrap_or(50000) as i32;
+                                                match sync_manager::decrypt_keys_from_backup_v2(
+                                                    &uid, wrapped, salt, kdf_alg, mem, time, par, iters, &p,
+                                                ) {
+                                                    Ok(restored) => {
+                                                        if let Some(did) = DEVICE_TRUST_STATE().map(|d| d.device_id) {
+                                                            if let Ok(proof) = sign_device_recovery_proof(&restored, &did) {
+                                                                let _ = storage_sync::recover_lost_devices_with_proof(
+                                                                    None,
+                                                                    false,
+                                                                    Some(&proof),
+                                                                    false,
+                                                                )
+                                                                .await;
+                                                            }
+                                                        }
+                                                        *E2EE_RECOVERY_REQUIRED.write() = None;
+                                                        on_unlocked.call(restored);
+                                                    }
+                                                    Err(e) => err.set(Some(e)),
+                                                }
+                                            } else {
+                                                err.set(Some("Tài khoản chưa lưu bản sao khóa trên máy chủ. Hãy phê duyệt từ thiết bị cũ.".into()));
+                                            }
+                                        }
+                                        Err(e) => err.set(Some(format!("Không tải được bản sao khóa: {}", e.code))),
+                                    }
+                                }
+                            });
+                        },
+                        "Mở khóa"
+                    }
+                }
+            }
+        }
+    }
+}
+

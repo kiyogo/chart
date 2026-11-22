@@ -365,7 +365,6 @@ pub fn Composer(
     });
 
     let mut plugin_cmds = extra_commands;
-    plugin_cmds.extend(crate::components::plugins_view::enabled_slash_commands());
     for inst in crate::components::plugin_hub::PLUGIN_INSTALLATIONS().iter().filter(|i| i.enabled) {
         if let Some(cmds) = inst.manifest.get("commands").and_then(|c| c.as_array()) {
             for cmd in cmds {

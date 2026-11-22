@@ -181,6 +181,9 @@ pub async fn set_export_password(
             log_event(state, user_id, "backup_reauth_fail", headers).await;
             return Err(AppError::Unauthorized);
         }
+    } else {
+        // First-time export password setup must still enforce 2FA if TOTP is enabled on the account.
+        crate::security::require_second_factor(state, user_id, totp_or_backup, headers).await?;
     }
 
     let mut salt_bytes = [0u8; 16];

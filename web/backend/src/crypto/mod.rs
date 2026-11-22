@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 
 pub const PROTOCOL_VERSION: u8 = 1;
+pub const PROTOCOL_VERSION_V2: u8 = 2;
 pub const HEADER_LEN: usize = 174;
 pub const SIGNATURE_LEN: usize = 64;
 pub const MIN_CIPHERTEXT_LEN: usize = 17; // 1 byte UTF-8 + 16 byte AES-GCM tag
@@ -32,11 +33,42 @@ pub struct Envelope<'a> {
     pub signature: &'a [u8; 64],
 }
 
-/// Compute 32-byte SHA-256 fingerprint of a public key (usually the 65-byte uncompressed ECDH key).
+/// Compute 32-byte SHA-256 fingerprint of a public key (legacy v1: 65-byte uncompressed ECDH key).
 pub fn compute_fingerprint(public_key_bytes: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(public_key_bytes);
     hasher.finalize().into()
+}
+
+/// Compute v2 identity fingerprint binding BOTH the 65-byte ECDH public key and 65-byte ECDSA public key.
+pub fn compute_identity_fingerprint(ecdh_public_bytes: &[u8], ecdsa_public_bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(b"chatw-id-v2:");
+    hasher.update(ecdh_public_bytes);
+    hasher.update(b":");
+    hasher.update(ecdsa_public_bytes);
+    hasher.finalize().into()
+}
+
+/// Verify whether a 32-byte fingerprint in an envelope matches a user's registered key pair (v2 composite or v1 legacy).
+pub fn matches_key_fingerprint(
+    candidate: &[u8],
+    stored_fp: &[u8],
+    ecdh_public: &[u8],
+    ecdsa_public: &[u8],
+) -> bool {
+    if candidate.len() != 32 {
+        return false;
+    }
+    if candidate == stored_fp {
+        return true;
+    }
+    let fp_v1 = compute_fingerprint(ecdh_public);
+    if candidate == &fp_v1[..] {
+        return true;
+    }
+    let fp_v2 = compute_identity_fingerprint(ecdh_public, ecdsa_public);
+    candidate == &fp_v2[..]
 }
 
 /// Validate that a byte slice is a valid uncompressed P-256 point (65 bytes, 0x04 prefix, on curve).
@@ -59,7 +91,7 @@ impl<'a> Envelope<'a> {
         }
 
         let version = raw[0];
-        if version != PROTOCOL_VERSION {
+        if version != PROTOCOL_VERSION && version != PROTOCOL_VERSION_V2 {
             return Err(AppError::BadRequest("unsupported_protocol_version"));
         }
 
@@ -119,9 +151,15 @@ impl<'a> Envelope<'a> {
         &self.raw[..self.raw.len() - SIGNATURE_LEN]
     }
 
-    /// AAD used for AES-GCM: binds version, message_id, sender_id, recipient_id, recipient_key_fingerprint.
+    /// AAD used for AES-GCM:
+    /// - v1 binds version, message_id, sender_id, recipient_id, recipient_key_fingerprint (`raw[..81]`).
+    /// - v2 additionally binds ephemeral_public_key and ratchet step/salt (`raw[..162]`).
     pub fn aad(&self) -> &'a [u8] {
-        &self.raw[..81]
+        if self.version == PROTOCOL_VERSION_V2 {
+            &self.raw[..162]
+        } else {
+            &self.raw[..81]
+        }
     }
 
     /// Verify signature using the sender's registered ECDSA public key (65 bytes uncompressed SEC1).

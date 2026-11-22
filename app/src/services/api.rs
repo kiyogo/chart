@@ -1,5 +1,23 @@
+use std::sync::{Mutex, OnceLock};
+
 use serde::de::DeserializeOwned;
 use serde_json::json;
+
+static CACHED_AUTH_USER_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+pub fn auth_me_cached_id() -> Option<String> {
+    CACHED_AUTH_USER_ID
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
+}
+
+pub fn set_cached_auth_user_id(uid: Option<String>) {
+    if let Ok(mut g) = CACHED_AUTH_USER_ID.get_or_init(|| Mutex::new(None)).lock() {
+        *g = uid;
+    }
+}
 
 use crate::{
     models::{
@@ -39,7 +57,9 @@ async fn post_empty(path: &str, payload: Option<serde_json::Value>) -> Result<()
 // --- Auth ---
 
 pub async fn auth_me() -> Result<MeResponse, ApiError> {
-    get_json("/api/auth/me").await
+    let me: MeResponse = get_json("/api/auth/me").await?;
+    set_cached_auth_user_id(Some(me.id.clone()));
+    Ok(me)
 }
 
 pub async fn auth_providers() -> Result<ProvidersResponse, ApiError> {
@@ -47,6 +67,7 @@ pub async fn auth_providers() -> Result<ProvidersResponse, ApiError> {
 }
 
 pub async fn auth_logout() -> Result<(), ApiError> {
+    set_cached_auth_user_id(None);
     post_empty("/api/auth/logout", None).await
 }
 
@@ -124,6 +145,51 @@ pub async fn keys_register(
         }),
     )
     .await
+}
+
+pub async fn keys_register_rotated(
+    ecdh_public: &str,
+    ecdsa_public: &str,
+    allow_rotation: bool,
+    previous_key_signature: Option<&str>,
+) -> Result<PublicKeysResponse, ApiError> {
+    post_json(
+        "/api/keys",
+        json!({
+            "ecdh_public": ecdh_public,
+            "ecdsa_public": ecdsa_public,
+            "allow_rotation": allow_rotation,
+            "previous_key_signature": previous_key_signature,
+        }),
+    )
+    .await
+}
+
+pub async fn keys_upload_prekeys(
+    signed_prekey_id: i32,
+    signed_prekey_pub: &str,
+    signed_prekey_sig: &str,
+    one_time_prekeys: &[String],
+) -> Result<serde_json::Value, ApiError> {
+    let (_, body) = platform::http_request(
+        "PUT",
+        "/api/keys/prekeys",
+        Some(
+            json!({
+                "signed_prekey_id": signed_prekey_id,
+                "signed_prekey_pub": signed_prekey_pub,
+                "signed_prekey_sig": signed_prekey_sig,
+                "one_time_prekeys": one_time_prekeys,
+            })
+            .to_string(),
+        ),
+        None,
+    )
+    .await?;
+    serde_json::from_str(&body).map_err(|_| ApiError {
+        code: "invalid_json".into(),
+        status: 200,
+    })
 }
 
 pub async fn keys_get(user_id: &str) -> Result<PublicKeysResponse, ApiError> {

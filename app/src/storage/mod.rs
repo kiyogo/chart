@@ -16,6 +16,9 @@ pub static DEVICE_TRUST_STATE: GlobalSignal<Option<DeviceTrustInfo>> = GlobalSig
 pub static PENDING_APPROVAL_ALERT: GlobalSignal<Option<IncomingDeviceApproval>> = GlobalSignal::new(|| None);
 /// Live two-phase sync progress summary.
 pub static SYNC_PROGRESS: GlobalSignal<SyncProgressState> = GlobalSignal::new(SyncProgressState::default);
+/// Non-None when the current account already has server E2EE keys (`me.has_keys == true`)
+/// and this device needs passphrase unlock or trusted-device key sync instead of overwriting keys.
+pub static E2EE_RECOVERY_REQUIRED: GlobalSignal<Option<String>> = GlobalSignal::new(|| None);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DeviceTrustInfo {
@@ -33,6 +36,8 @@ pub struct IncomingDeviceApproval {
     pub device_name: String,
     pub platform: String,
     pub verification_code: String,
+    #[serde(default)]
+    pub ecdh_public_b64: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

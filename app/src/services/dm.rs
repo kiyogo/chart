@@ -2,7 +2,7 @@
 //! (composer, auto-reply, business greeting, invite cards, polls, images).
 
 use crate::{
-    crypto::e2ee::{PeerKeys, encrypt_chat_message, get_or_verify_peer_keys, get_user_keys},
+    crypto::e2ee::{PeerKeys, encrypt_chat_message, get_or_verify_peer_keys_scoped, get_user_keys},
     services::api,
 };
 
@@ -19,13 +19,20 @@ thread_local! {
 
 pub async fn send_encrypted_dm(my_id: &str, partner_id: &str, text: &str, reply_to: Option<&str>) -> Result<SentDm, String> {
     let keys = get_user_keys(Some(my_id)).ok_or("missing_local_keys")?;
-    let cached = PEERS.with(|p| p.borrow().get(partner_id).cloned());
+    let cache_key = format!("{my_id}:{partner_id}");
+    let cached = PEERS.with(|p| p.borrow().get(&cache_key).cloned());
     let peer = match cached {
         Some(p) => p,
         None => {
             let pk = api::keys_get(partner_id).await.map_err(|e| e.code)?;
-            let peer = get_or_verify_peer_keys(&pk.user_id, &pk.ecdh_public, &pk.ecdsa_public, &pk.fingerprint)?;
-            PEERS.with(|p| p.borrow_mut().insert(partner_id.to_string(), peer.clone()));
+            let peer = get_or_verify_peer_keys_scoped(
+                Some(my_id),
+                &pk.user_id,
+                &pk.ecdh_public,
+                &pk.ecdsa_public,
+                &pk.fingerprint,
+            )?;
+            PEERS.with(|p| p.borrow_mut().insert(cache_key, peer.clone()));
             peer
         }
     };

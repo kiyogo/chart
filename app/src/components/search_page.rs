@@ -258,52 +258,14 @@ pub fn SearchPage(
                 }
                 if show(Tab::Bots) {
                     {
-                        let mut plugin_entries = d.bots.clone();
-                        for pm in crate::components::plugins_view::PLUGINS.read().iter() {
-                            if q.is_empty() || fold(&pm.display_name).contains(&q) || fold(&pm.username).contains(&q) || fold(&pm.description).contains(&q) {
-                                if !plugin_entries.iter().any(|x| x.username.as_deref() == Some(pm.username.as_str())) {
-                                    plugin_entries.push(DirectoryEntry {
-                                        id: Some(pm.id.clone()),
-                                        username: Some(pm.username.clone()),
-                                        display_name: Some(format!("{} {}", pm.icon, pm.display_name)),
-                                        name: Some(pm.display_name.clone()),
-                                        handle: None,
-                                        description: Some(pm.description.clone()),
-                                        category: None,
-                                        avatar_url: None,
-                                        banner_url: None,
-                                        cover_url: None,
-                                        member_count: 0,
-                                        require_approval: false,
-                                        joined: pm.enabled,
-                                    });
-                                }
-                            }
-                        }
+                        let plugin_entries = d.bots.clone();
                         rsx! {
-                            DirSection { title: "Plugin công khai", icon: "plugin", entries: plugin_entries, empty: if q.is_empty() { "Chưa có plugin công khai đã xác minh" } else { "Không có plugin phù hợp" },
+                            DirSection { title: "Bot công khai", icon: "plugin", entries: plugin_entries, empty: if q.is_empty() { "Chưa có bot công khai đã xác minh" } else { "Không có bot phù hợp" },
                                 on_action: move |e: DirectoryEntry| {
-                                    let id = e.id.clone().unwrap_or_default();
                                     let name = e.username.clone().unwrap_or_default();
-                                    if id.starts_with("mod:") {
-                                        on_open_bot.call(BotItem {
-                                            id,
-                                            owner_id: "local".into(),
-                                            username: name,
-                                            display_name: e.display_name.unwrap_or_default(),
-                                            description: e.description,
-                                            avatar_url: e.avatar_url,
-                                            is_public: true,
-                                            verification_status: "verified".into(),
-                                            token_hint: None,
-                                            token: None,
-                                            last_text: None,
-                                        });
-                                    } else {
-                                        spawn(async move {
-                                            if let Ok(b) = social::bot_by_name(&name).await { on_open_bot.call(b); }
-                                        });
-                                    }
+                                    spawn(async move {
+                                        if let Ok(b) = social::bot_by_name(&name).await { on_open_bot.call(b); }
+                                    });
                                 },
                             }
                         }

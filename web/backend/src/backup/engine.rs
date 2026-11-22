@@ -417,10 +417,12 @@ pub(crate) async fn prepare_backup_dataset(
                     continue;
                 }
             }
-            let env_bytes: Vec<u8> = if sender_id == user_id {
-                r.try_get("sender_envelope")?
+            let sender_env_bytes: Vec<u8> = r.try_get("sender_envelope")?;
+            let recipient_env_bytes: Vec<u8> = r.try_get("recipient_envelope")?;
+            let (my_env, other_env) = if sender_id == user_id {
+                (sender_env_bytes, recipient_env_bytes)
             } else {
-                r.try_get("recipient_envelope")?
+                (recipient_env_bytes, sender_env_bytes)
             };
             let created_at: chrono::DateTime<Utc> = r.try_get("created_at")?;
             let is_edited: bool = r.try_get("is_edited")?;
@@ -436,7 +438,8 @@ pub(crate) async fn prepare_backup_dataset(
                 deleted_for_all: false,
                 reply_to_id: r.try_get("reply_to_id")?,
                 reactions: Vec::new(),
-                content_payload: B64.encode(env_bytes),
+                content_payload: B64.encode(my_env),
+                counterpart_envelope: Some(B64.encode(other_env)),
                 is_e2ee: true,
                 attachment_refs: Vec::new(),
             });
@@ -479,6 +482,7 @@ pub(crate) async fn prepare_backup_dataset(
                 reply_to_id: r.try_get("reply_to_id")?,
                 reactions: Vec::new(),
                 content_payload: r.try_get("content")?,
+                counterpart_envelope: None,
                 is_e2ee: false,
                 attachment_refs: Vec::new(),
             });
@@ -522,6 +526,7 @@ pub(crate) async fn prepare_backup_dataset(
                     reply_to_id: r.try_get("reply_to_id")?,
                     reactions: Vec::new(),
                     content_payload: r.try_get("content")?,
+                    counterpart_envelope: None,
                     is_e2ee: false,
                     attachment_refs: Vec::new(),
                 });
@@ -1136,31 +1141,88 @@ pub async fn restore_backup_archive(
                         skipped_duplicate_messages += 1;
                         continue;
                     }
-                    if m.sender_id != user_id {
-                        // Server is authoritative for other people's messages; do not fabricate messages on server on behalf of another sender.
-                        skipped_unauthorized_messages += 1;
-                        continue;
-                    }
-                    let Ok(env) = B64.decode(&m.content_payload) else {
+                    let Ok(primary_env_bytes) = B64.decode(&m.content_payload) else {
                         skipped_unauthorized_messages += 1;
                         continue;
                     };
-                    if !(255..=10000).contains(&env.len()) {
+                    let counterpart_env_bytes = m
+                        .counterpart_envelope
+                        .as_deref()
+                        .and_then(|b| B64.decode(b).ok());
+
+                    // Determine sender/receiver and respective envelopes, verifying ECDSA signature to prevent forgery.
+                    let (msg_sender_id, msg_receiver_id, recipient_env_raw, sender_env_raw) =
+                        if m.sender_id == user_id {
+                            let s_env = primary_env_bytes;
+                            let r_env = counterpart_env_bytes.unwrap_or_else(|| s_env.clone());
+                            (user_id, partner_id, r_env, s_env)
+                        } else if m.sender_id == partner_id {
+                            let r_env = primary_env_bytes;
+                            let s_env = counterpart_env_bytes.unwrap_or_else(|| r_env.clone());
+                            (partner_id, user_id, r_env, s_env)
+                        } else {
+                            skipped_unauthorized_messages += 1;
+                            continue;
+                        };
+
+                    let Ok(parsed_primary) = crate::crypto::Envelope::parse(if m.sender_id == user_id {
+                        &sender_env_raw
+                    } else {
+                        &recipient_env_raw
+                    }) else {
+                        skipped_unauthorized_messages += 1;
+                        continue;
+                    };
+                    if parsed_primary.message_id != m.id || parsed_primary.sender_id != msg_sender_id {
                         skipped_unauthorized_messages += 1;
                         continue;
                     }
+                    // For incoming messages authored by another user, strictly verify ECDSA signature against sender's key (current or historical).
+                    if msg_sender_id != user_id {
+                        let mut sig_ok = false;
+                        if let Ok(Some(ecdsa_pub)) = sqlx::query_scalar::<_, Vec<u8>>(
+                            "SELECT ecdsa_public FROM device_keys WHERE user_id = $1",
+                        )
+                        .bind(msg_sender_id)
+                        .fetch_optional(pool)
+                        .await
+                        {
+                            if parsed_primary.verify_signature(&ecdsa_pub).is_ok() {
+                                sig_ok = true;
+                            }
+                        }
+                        if !sig_ok {
+                            if let Ok(hist_keys) = sqlx::query_scalar::<_, Vec<u8>>(
+                                "SELECT ecdsa_public FROM identity_key_history WHERE user_id = $1",
+                            )
+                            .bind(msg_sender_id)
+                            .fetch_all(pool)
+                            .await
+                            {
+                                sig_ok = hist_keys
+                                    .iter()
+                                    .any(|k| parsed_primary.verify_signature(k).is_ok());
+                            }
+                        }
+                        if !sig_ok {
+                            skipped_unauthorized_messages += 1;
+                            continue;
+                        }
+                    }
+
                     let created_at = chrono::DateTime::parse_from_rfc3339(&m.created_at)
                         .map(|d| d.with_timezone(&Utc))
                         .unwrap_or_else(|_| Utc::now());
                     let res = sqlx::query(
                         "INSERT INTO messages (id, sender_id, receiver_id, recipient_envelope, sender_envelope, reply_to_id, is_edited, created_at)
-                         VALUES ($1, $2, $3, $4, $4, $5, $6, $7)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                          ON CONFLICT (id) DO NOTHING",
                     )
                     .bind(m.id)
-                    .bind(user_id)
-                    .bind(partner_id)
-                    .bind(&env)
+                    .bind(msg_sender_id)
+                    .bind(msg_receiver_id)
+                    .bind(&recipient_env_raw)
+                    .bind(&sender_env_raw)
                     .bind(m.reply_to_id)
                     .bind(m.edited_at.is_some())
                     .bind(created_at)

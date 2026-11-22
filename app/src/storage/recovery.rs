@@ -1,8 +1,72 @@
-use crate::{crypto::blob, platform, services::storage_sync};
+use aes_gcm::{
+    Aes256Gcm, KeyInit, Nonce,
+    aead::{Aead, Payload},
+};
+use p256::elliptic_curve::rand_core::{OsRng, RngCore};
+use zeroize::Zeroize;
+
+use crate::{
+    crypto::{blob, e2ee},
+    platform,
+    services::{api, storage_sync},
+};
 
 use super::{
     LocalObjectMeta, extract_ref_id, get_local_object, put_local_object, sha256_hex,
 };
+
+const LOCAL_CACHE_MAGIC: &[u8; 5] = b"CWLC1";
+
+#[allow(deprecated)]
+fn wrap_local_e2ee_cache(ref_id: &str, plain_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let uid = api::auth_me_cached_id().ok_or_else(|| "no_active_user".to_string())?;
+    let keys = e2ee::get_user_keys(Some(&uid)).ok_or_else(|| "e2ee_keys_locked".to_string())?;
+    let mut subkey = keys.derive_subkey(&format!("local-media-cache-v1:{uid}:{ref_id}"))?;
+    let cipher = Aes256Gcm::new_from_slice(&subkey).map_err(|_| "aes_init_failed".to_string());
+    subkey.zeroize();
+    let mut nonce = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce);
+    let aad = format!("CWLC1:{uid}:{ref_id}");
+    let ct = cipher?
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: plain_bytes,
+                aad: aad.as_bytes(),
+            },
+        )
+        .map_err(|_| "local_cache_encrypt_failed".to_string())?;
+    let mut out = Vec::with_capacity(5 + 12 + ct.len());
+    out.extend_from_slice(LOCAL_CACHE_MAGIC);
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&ct);
+    Ok(out)
+}
+
+#[allow(deprecated)]
+fn unwrap_local_e2ee_cache(ref_id: &str, stored_bytes: Vec<u8>) -> Option<Vec<u8>> {
+    if stored_bytes.len() < 5 + 12 + 16 || &stored_bytes[0..5] != LOCAL_CACHE_MAGIC {
+        // Legacy unencrypted cache item (non-E2EE or pre-Spec 058): return as-is.
+        return Some(stored_bytes);
+    }
+    let uid = api::auth_me_cached_id()?;
+    let keys = e2ee::get_user_keys(Some(&uid))?;
+    let mut subkey = keys.derive_subkey(&format!("local-media-cache-v1:{uid}:{ref_id}")).ok()?;
+    let cipher = Aes256Gcm::new_from_slice(&subkey).ok();
+    subkey.zeroize();
+    let nonce = &stored_bytes[5..17];
+    let ct = &stored_bytes[17..];
+    let aad = format!("CWLC1:{uid}:{ref_id}");
+    cipher?
+        .decrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: ct,
+                aad: aad.as_bytes(),
+            },
+        )
+        .ok()
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MediaFetchOutcome {
@@ -32,17 +96,19 @@ pub async fn load_or_fetch_media(
 
     // 1. Check local OPFS / IndexedDB / Native CAS first! Zero network traffic on hit.
     if let Some(ref rid) = ref_id {
-        if let Some((plain_bytes, cached_mime, _sha)) = get_local_object(rid).await {
-            let mime = if cached_mime != "application/octet-stream" {
-                cached_mime
-            } else {
-                fallback_mime.to_string()
-            };
-            return MediaFetchOutcome::Ready {
-                bytes: plain_bytes,
-                mime,
-                source: "local_cache".into(),
-            };
+        if let Some((cached_bytes, cached_mime, _sha)) = get_local_object(rid).await {
+            if let Some(plain_bytes) = unwrap_local_e2ee_cache(rid, cached_bytes) {
+                let mime = if cached_mime != "application/octet-stream" {
+                    cached_mime
+                } else {
+                    fallback_mime.to_string()
+                };
+                return MediaFetchOutcome::Ready {
+                    bytes: plain_bytes,
+                    mime,
+                    source: "local_cache".into(),
+                };
+            }
         }
     }
 
@@ -70,16 +136,25 @@ pub async fn load_or_fetch_media(
 
             let sha = sha256_hex(&plain_bytes);
             if let Some(ref rid) = ref_id {
-                let meta = LocalObjectMeta {
-                    ref_id: rid.clone(),
-                    scope_type: scope_type.to_string(),
-                    file_name: format!("media_{rid}"),
-                    mime_type: fallback_mime.to_string(),
-                    sha256_plain: Some(sha.clone()),
-                    availability_state: if scope_type == "dm" { "replicated_multi_device".into() } else { "server_durable".into() },
+                // Encrypt E2EE/DM media at rest in local OPFS/IndexedDB/Native CAS so plaintext never sits on disk.
+                let bytes_to_cache = if !key_b64.is_empty() || scope_type == "dm" {
+                    wrap_local_e2ee_cache(rid, &plain_bytes).ok()
+                } else {
+                    Some(plain_bytes.clone())
                 };
-                if let Ok(local_tier) = put_local_object(&meta, &plain_bytes).await {
-                    let _ = storage_sync::ack_relay_copy(rid, &local_tier, &sha, variant == "original").await;
+                if let Some(to_store) = bytes_to_cache {
+                    let stored_sha = sha256_hex(&to_store);
+                    let meta = LocalObjectMeta {
+                        ref_id: rid.clone(),
+                        scope_type: scope_type.to_string(),
+                        file_name: format!("media_{rid}"),
+                        mime_type: fallback_mime.to_string(),
+                        sha256_plain: Some(stored_sha),
+                        availability_state: if scope_type == "dm" { "replicated_multi_device".into() } else { "server_durable".into() },
+                    };
+                    if let Ok(local_tier) = put_local_object(&meta, &to_store).await {
+                        let _ = storage_sync::ack_relay_copy(rid, &local_tier, &sha, variant == "original").await;
+                    }
                 }
             }
 
@@ -116,7 +191,7 @@ pub async fn load_or_fetch_media(
 /// Handle an incoming WebRTC / Encrypted Relay recovery request from peer/own device.
 pub async fn respond_to_incoming_recovery(request_id: &str, ref_id: &str, transport_mode: &str) {
     // Check if THIS device holds a verified local copy inside OPFS / IndexedDB / Native CAS!
-    let Some((plain_bytes, mime, _sha)) = get_local_object(ref_id).await else {
+    let Some((plain_bytes, _mime, _sha)) = get_local_object(ref_id).await else {
         // Honestly report when this device does NOT have the file; never pretend!
         let _ = storage_sync::respond_recovery_request(
             request_id,
@@ -153,16 +228,24 @@ pub async fn respond_to_incoming_recovery(request_id: &str, ref_id: &str, transp
         return;
     }
 
-    // Encrypted Server Relay fallback: seal fresh E2EE relay payload or re-upload ciphertext & hand ref back.
+    // Encrypted Server Relay fallback: ALWAYS seal payload with AEAD (`is_e2ee = true`) before uploading.
+    // Never leak plaintext bytes through the server relay.
+    let plain_for_relay = unwrap_local_e2ee_cache(ref_id, plain_bytes).unwrap_or_default();
+    if plain_for_relay.is_empty() {
+        return;
+    }
+    let Ok(sealed) = blob::seal(&plain_for_relay) else {
+        return;
+    };
     if let Ok(res) = storage_sync::upload_attachment_scoped(
-        plain_bytes,
-        &mime,
+        sealed.cipher,
+        "application/octet-stream",
         "dm",
         None,
-        Some(&format!("recovery_{ref_id}")),
-        Some(&mime),
+        Some(&format!("recovery_{ref_id}.enc")),
+        Some("application/octet-stream"),
         None,
-        false,
+        true,
         true,
     )
     .await
