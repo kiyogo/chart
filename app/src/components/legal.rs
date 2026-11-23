@@ -33,43 +33,43 @@ pub fn get_legal_items(kind: LegalDocKind) -> Vec<LegalItem> {
     match kind {
         LegalDocKind::Terms => vec![
             LegalItem {
-                title: "Thứ nhất. Quyền riêng tư là tuyệt đối vĩnh viễn và không thể đảo ngược!",
+                title: "Quyền riêng tư là tuyệt đối vĩnh viễn và không thể đảo ngược!",
                 detail: "Mọi quyền lợi và sự riêng tư của người dùng là tối thượng, bất khả xâm phạm dưới mọi hình thức và hoàn cảnh.",
             },
             LegalItem {
-                title: "Thứ hai. Từ chối cung cấp bất kì thông tin cho bên thứ ba nào.",
+                title: "Từ chối cung cấp bất kì thông tin cho bên thứ ba nào",
                 detail: "Không hợp tác, không mua bán, không chuyển giao bất kỳ dữ liệu nào cho bất kỳ cá nhân, tổ chức hay bên thứ ba nào.",
             },
             LegalItem {
-                title: "Thứ ba. Ẩn danh tuyệt đối.",
+                title: "Ẩn danh tuyệt đối",
                 detail: "Không thu thập số điện thoại, họ tên thật, định vị GPS, danh bạ hay bất kỳ dấu vết định danh cá nhân nào.",
             },
             LegalItem {
-                title: "Thứ tư. Mã hóa đầu cuối thực chất.",
+                title: "Mã hóa đầu cuối thực chất",
                 detail: "Chỉ người gửi và người nhận mới có chìa khóa giải mã nội dung. Máy chủ hoàn toàn mù và không thể đọc tin nhắn.",
             },
             LegalItem {
-                title: "Thứ năm. Toàn bộ dữ liệu máy chủ luôn được mã hóa, chỉ người có mật khẩu mới mở được, khi bị tấn công hệ thống sẽ tự động ngăn chặn và bảo vệ dữ liệu.",
+                title: "Toàn bộ dữ liệu máy chủ luôn được mã hóa, chỉ người có mật khẩu mới mở được, khi bị tấn công hệ thống sẽ tự động ngăn chặn và bảo vệ dữ liệu",
                 detail: "Hệ thống bảo vệ chủ động, cách ly vùng nguy hiểm và phong tỏa kho lưu trữ ngay khi phát hiện dấu hiệu can thiệp bất hợp pháp.",
             },
             LegalItem {
-                title: "Thứ sáu. Zero-logs tuyệt đối.",
+                title: "Zero-logs tuyệt đối",
                 detail: "Không ghi nhật ký truy cập, không lưu lịch sử cuộc gọi, tin nhắn hay hành vi. Dữ liệu khi xóa là biến mất vĩnh viễn không thể phục hồi.",
             },
             LegalItem {
-                title: "Thứ bảy. Quyền sở hữu thuộc trọn về người dùng.",
+                title: "Quyền sở hữu thuộc trọn về người dùng",
                 detail: "Khóa mật mã được lưu trên thiết bị của bạn. Bạn là chủ nhân duy nhất nắm giữ quyền truy cập và định đoạt dữ liệu của chính mình.",
             },
             LegalItem {
-                title: "Thứ tám. Mã nguồn mở và minh bạch.",
+                title: "Mã nguồn mở và minh bạch",
                 detail: "Cam kết không cửa sau, không mã độc ngầm, kiến trúc mở sẵn sàng cho cộng đồng kiểm toán bảo mật độc lập.",
             },
             LegalItem {
-                title: "Thứ chín. Phi thương mại hóa và không thao túng.",
+                title: "Phi thương mại hóa và không thao túng",
                 detail: "Không hiển thị quảng cáo, không bán dữ liệu hành vi, không sử dụng thuật toán can thiệp hay dẫn dắt tâm lý người dùng.",
             },
             LegalItem {
-                title: "Thứ mười. Không khoan nhượng với phá hoại.",
+                title: "Không khoan nhượng với phá hoại",
                 detail: "Mọi hành vi tấn công hạ tầng, cố tình phát tán mã độc, đánh cắp khóa mã hóa hoặc xâm phạm hệ thống đều bị chặn đứng và loại bỏ vĩnh viễn.",
             },
         ],
