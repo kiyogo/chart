@@ -10561,21 +10561,6 @@ input[type="color"]::-moz-color-swatch {
   background-position: var(--chat-bg-x, center) var(--chat-bg-bot-y, bottom);
 }
 
-/* 2D per-pixel canvas strips for translucent wp-none chat over app-wide wallpapers (Spec 061) */
-.chat-column[data-chat-edge-strip="true"]:has(> .chat-messages) > .chat-header::before {
-  background-color: transparent !important;
-  background-image: var(--chat-top-fade-strip) !important;
-  background-size: 100% 100% !important;
-  background-position: 0 0 !important;
-  background-repeat: no-repeat !important;
-}
-.chat-column[data-chat-edge-strip="true"] > .composer::before {
-  background-color: transparent !important;
-  background-image: var(--chat-bot-fade-strip) !important;
-  background-size: 100% 100% !important;
-  background-position: 0 0 !important;
-  background-repeat: no-repeat !important;
-}
 .chat-column:has(> .chat-messages) > .chat-header:has(.modal-overlay, .settings-modal-backdrop, .lightbox)::before {
   display: none !important;
 }

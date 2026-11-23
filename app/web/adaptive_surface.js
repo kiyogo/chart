@@ -244,11 +244,6 @@
   panelCanvas.height = BH;
   const panelCtx = panelCanvas.getContext('2d', { willReadFrequently: true });
 
-  const stripCanvas = document.createElement('canvas');
-  stripCanvas.width = 160;
-  stripCanvas.height = 18;
-  const stripCtx = stripCanvas.getContext('2d');
-
   const chatImgCanvas = document.createElement('canvas');
   chatImgCanvas.width = 128;
   chatImgCanvas.height = 72;
@@ -548,35 +543,6 @@
     );
   }
 
-  let lastTopStripBlobUrl = '';
-  let lastBotStripBlobUrl = '';
-  let stripRenderSeq = 0;
-
-  function revokeStripBlobs() {
-    if (lastTopStripBlobUrl) {
-      try { URL.revokeObjectURL(lastTopStripBlobUrl); } catch (_) {}
-      lastTopStripBlobUrl = '';
-    }
-    if (lastBotStripBlobUrl) {
-      try { URL.revokeObjectURL(lastBotStripBlobUrl); } catch (_) {}
-      lastBotStripBlobUrl = '';
-    }
-  }
-
-  function cropPanelStripBlobUrl(rx, ry, rw, rh, vw, vh) {
-    const sx = Math.max(0, Math.min(BW - 1, (rx / vw) * BW));
-    const sy = Math.max(0, Math.min(BH - 1, (ry / vh) * BH));
-    const sw = Math.max(1, Math.min(BW - sx, (rw / vw) * BW));
-    const sh = Math.max(1, Math.min(BH - sy, (rh / vh) * BH));
-    stripCtx.clearRect(0, 0, stripCanvas.width, stripCanvas.height);
-    stripCtx.drawImage(panelCanvas, sx, sy, sw, sh, 0, 0, stripCanvas.width, stripCanvas.height);
-    return new Promise((resolve) => {
-      stripCanvas.toBlob((blob) => {
-        resolve(blob ? URL.createObjectURL(blob) : '');
-      }, 'image/png');
-    });
-  }
-
   function syncChatEdgeFades() {
     const chatCol = document.querySelector('.chat-column');
     if (!chatCol) return;
@@ -592,7 +558,6 @@
     const comp = chatCol.querySelector(':scope > .composer');
     const hdrH = hdr ? Math.max(48, hdr.getBoundingClientRect().height) : 56;
     const compRectH = comp ? Math.max(48, comp.getBoundingClientRect().height) : 62;
-    const topMistH = hdrH + 10;
     const botMistH = compRectH + 4;
 
     if (chatCol.classList.contains('wp-image')) {
@@ -646,42 +611,11 @@
     chatPixels = null;
     lastChatWpUrl = '';
 
-    const root = document.documentElement;
-    const wpKind = root.getAttribute('data-app-wp') || 'none';
-    const c = window.__chatwCustom || {};
-    const panelOpacity = c.panelOpacity == null ? 100 : Number(c.panelOpacity);
-
-    if (!hasExplicitChatWallpaper(chatCol) && wpKind !== 'none' && panelOpacity < 99 && panelPixels) {
-      const vw = Math.max(1, window.innerWidth || 1440);
-      const vh = Math.max(1, window.innerHeight || 900);
-      const edgeKey = `${lastBackdropKey}|${Math.round(colRect.left)},${Math.round(colRect.top)},${Math.round(colRect.width)},${Math.round(colRect.height)},${Math.round(topMistH)},${Math.round(botMistH)}`;
-      if (edgeKey !== lastEdgeKey) {
-        lastEdgeKey = edgeKey;
-        const seq = ++stripRenderSeq;
-        Promise.all([
-          cropPanelStripBlobUrl(colRect.left, colRect.top, colRect.width, topMistH, vw, vh),
-          cropPanelStripBlobUrl(colRect.left, colRect.bottom - botMistH, colRect.width, botMistH, vw, vh),
-        ]).then(([topUrl, botUrl]) => {
-          if (seq !== stripRenderSeq || !topUrl || !botUrl) {
-            if (topUrl) try { URL.revokeObjectURL(topUrl); } catch (_) {}
-            if (botUrl) try { URL.revokeObjectURL(botUrl); } catch (_) {}
-            return;
-          }
-          revokeStripBlobs();
-          lastTopStripBlobUrl = topUrl;
-          lastBotStripBlobUrl = botUrl;
-          chatCol.style.setProperty('--chat-top-fade-strip', `url("${topUrl}")`);
-          chatCol.style.setProperty('--chat-bot-fade-strip', `url("${botUrl}")`);
-          chatCol.setAttribute('data-chat-edge-strip', 'true');
-        }).catch(() => {});
-      }
-    } else {
-      chatCol.removeAttribute('data-chat-edge-strip');
-      chatCol.style.removeProperty('--chat-top-fade-strip');
-      chatCol.style.removeProperty('--chat-bot-fade-strip');
-      revokeStripBlobs();
-      lastEdgeKey = '';
-    }
+    chatCol.removeAttribute('data-chat-edge-strip');
+    chatCol.style.removeProperty('--chat-top-fade-strip');
+    chatCol.style.removeProperty('--chat-bot-fade-strip');
+    lastEdgeKey = '';
+  }
   }
 
   // =========================================================================
