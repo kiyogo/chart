@@ -118,8 +118,8 @@ pub fn SkeletonChannels(#[props(default = 5)] count: usize) -> Element {
 #[component]
 pub fn SkeletonDetails() -> Element {
     rsx! {
-        div {
-            class: "skeleton-details-wrap",
+        aside {
+            class: "details-panel skeleton-details-wrap",
             role: "status",
             aria_label: "Loading details",
             div { class: "skeleton-box skeleton-details-banner" }

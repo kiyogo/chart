@@ -117,6 +117,20 @@ pub fn Avatar(
             };
         }
 
+    if url_clean.is_some() && blob_src().is_none() && !img_failed() {
+        let style = format!(
+            "width: {size}px; height: {size}px; min-width: {size}px; min-height: {size}px; border-radius: 50%;"
+        );
+        return rsx! {
+            div {
+                class: "{cls} skeleton-circle skeleton-shimmer",
+                style: "{style}",
+                role: "status",
+                aria_label: "Loading avatar",
+            }
+        };
+    }
+
     let bg = avatar_bg_color(&effective_name);
     let fs = avatar_font_size(size);
     let initial = avatar_initial(&effective_name);

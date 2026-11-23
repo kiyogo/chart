@@ -24,7 +24,6 @@ use crate::{
         group_manage::GroupManageDialog,
         invite::{InviteDialog, InviteFriendsDialog},
         navigation::conversations::{ConvOpen, ConversationList, PoppedChannel, split_device_prefix},
-        skeleton::SkeletonDetails,
         rich::{Rich, parse_rich, reminder_due},
         navigation::{
             modals::{CommunityModal, CreateCategoryModal, CreateChannelModal},
@@ -4639,9 +4638,7 @@ pub fn Chat(
                                 "data-resizer": "details",
                                 title: "Drag to resize the detail",
                             }
-                            if dm_loading_initial() {
-                                SkeletonDetails {}
-                            } else if self_mode {
+                            if self_mode {
                                 SelfDetailsPanel {
                                     user_id: current_user_id.clone(),
                                     username: active.username.clone(),
