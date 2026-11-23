@@ -166,13 +166,12 @@ pub fn App() -> Element {
             style: "position:fixed;width:0;height:0;overflow:hidden;pointer-events:none;",
             defs {
                 linearGradient { id: "cw-lgbt-icon-grad", x1: "0%", y1: "0%", x2: "100%", y2: "100%",
-                    stop { offset: "0%", stop_color: "#FF2E63" }
-                    stop { offset: "16.6%", stop_color: "#FF7B00" }
-                    stop { offset: "33.3%", stop_color: "#FFBE00" }
-                    stop { offset: "50%", stop_color: "#00CE67" }
-                    stop { offset: "66.6%", stop_color: "#00B4FF" }
-                    stop { offset: "83.3%", stop_color: "#3B82F6" }
-                    stop { offset: "100%", stop_color: "#B833FF" }
+                    stop { offset: "0%", stop_color: "#F41F5E" }
+                    stop { offset: "20%", stop_color: "#FF6B00" }
+                    stop { offset: "40%", stop_color: "#00B865" }
+                    stop { offset: "62%", stop_color: "#0095F6" }
+                    stop { offset: "82%", stop_color: "#5B50F0" }
+                    stop { offset: "100%", stop_color: "#B026FF" }
                 }
             }
         }

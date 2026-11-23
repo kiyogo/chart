@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """
-Spec 084 — Original `ChatW LGBT` Multi-Script Pride Typeface Compiler
-Sculpts a brand-new celebratory Pride display-humanist WOFF2 typeface (`ChatW LGBT`)
+Spec 087 — Original `ChatW LGBT` v2.0 Multi-Script Pride Typeface Compiler
+Builds a crisp, razor-clean, 100% upright sculptural geometric-rounded Pride WOFF2
+typeface (`ChatW LGBT` Regular=SemiBold optical weight + Bold=ExtraBold display weight)
 across Latin, Vietnamese, Cyrillic, Arabic, Devanagari, Thai, Hebrew, Bengali, Tamil,
 Telugu, Kannada, Malayalam, Gurmukhi, and Gujarati scripts:
-  1. Replaces plain dots/tittles on `i`, `j`, `ï`, `ị`, Cyrillic `і`/`ј`/`ї`, `!`, `?`, `¡`, `¿`
-     with hand-crafted quadratic Bézier Pride Hearts (`♥`) matched to each glyph's optical weight.
-  2. Applies continuous celebratory Pride ribbon buoyancy (`x' = x + f(y)`) preserving baseline
-     alignment, Arabic cursive joins (invariant in x at equal y!), and composite diacritic centering.
+  1. ZERO crooked slant or wobbly sin() stem warping — vertical stems stay 100% crisp,
+     architectural, and razor-legible at 12px..48px UI sizes!
+  2. Replaces dots/tittles on `i`, `j`, `ị`, Cyrillic `і`/`ј`/`ї`, Latin `ï`, `!`, `?`, `¡`, `¿`
+     with perfectly upright, symmetric, sculpted Bézier Pride Hearts (`♥`) with clean air gaps.
   3. Expands vertical ascender/descender metrics so tall Vietnamese double diacritics and
      Thai/Arabic/Devanagari marks never clip under 7-color `background-clip: text`.
-  4. Emits lightweight `unicode-range` WOFF2 files in `app/public/fonts/` + `@font-face` CSS.
 """
 import json
-import math
 import os
-import sys
 
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import GlyphCoordinates
@@ -24,15 +22,14 @@ OUT_DIR = "app/public/fonts"
 SCRATCH_BASES = "/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/scratch/lgbt_bases"
 MANIFEST_PATH = os.path.join(SCRATCH_BASES, "manifest.json")
 
-# Codepoints whose dot/tittle contour gets sculpted into a Pride Heart ♥
 TOP_DOT_CODEPOINTS = {
     0x0069,  # i
     0x006A,  # j
-    0x1ECB,  # Vietnamese ị (dot above + dot below)
+    0x1ECB,  # Vietnamese ị
     0x0456,  # Cyrillic і
     0x0458,  # Cyrillic ј
-    0x00A1,  # ¡ (top dot)
-    0x00BF,  # ¿ (top dot)
+    0x00A1,  # ¡
+    0x00BF,  # ¿
 }
 TWIN_TOP_DOT_CODEPOINTS = {
     0x00EF,  # ï
@@ -45,7 +42,6 @@ BOTTOM_DOT_CODEPOINTS = {
 
 
 def contour_signed_area(pts):
-    """Shoelace signed area: in y-up TrueType coords, >0 = clockwise (outer), <0 = CCW (hole)."""
     area = 0.0
     n = len(pts)
     for i in range(n):
@@ -56,29 +52,23 @@ def contour_signed_area(pts):
 
 
 def build_pride_heart(cx, cy, w, h):
-    """
-    Hand-crafted plump quadratic Bézier Pride Heart contour centered at (cx, cy).
-    Returns (coords_list, flags_list) in clockwise outer TrueType winding.
-    flag 1 = on-curve, flag 0 = quadratic off-curve control point.
-    """
-    # Normalized clockwise outline (y-up): bottom tip -> left lobe -> cleft -> right lobe -> bottom tip
+    """Perfectly upright, symmetric, sculpted quadratic Bézier Pride Heart (clockwise TrueType)."""
     template = [
-        (0.00, -0.52, 1),   # bottom tip
-        (-0.28, -0.30, 0),  # lower-left control
-        (-0.52, 0.05, 1),   # left widest shoulder
-        (-0.58, 0.36, 0),   # upper-left control
-        (-0.28, 0.50, 1),   # left crest
-        (-0.08, 0.52, 0),   # left cleft entry
-        (0.00, 0.24, 1),    # center cleft
-        (0.08, 0.52, 0),    # right cleft exit
-        (0.28, 0.50, 1),    # right crest
-        (0.58, 0.36, 0),    # upper-right control
-        (0.52, 0.05, 1),    # right widest shoulder
-        (0.28, -0.30, 0),   # lower-right control
+        (0.00, -0.50, 1),   # crisp bottom tip
+        (-0.27, -0.28, 0),  # lower-left curve
+        (-0.50, 0.06, 1),   # left widest shoulder
+        (-0.55, 0.35, 0),   # upper-left arch
+        (-0.27, 0.49, 1),   # left lobe peak
+        (-0.08, 0.51, 0),   # left cleft curve
+        (0.00, 0.25, 1),    # refined center cleft
+        (0.08, 0.51, 0),    # right cleft curve
+        (0.27, 0.49, 1),    # right lobe peak
+        (0.55, 0.35, 0),    # upper-right arch
+        (0.50, 0.06, 1),    # right widest shoulder
+        (0.27, -0.28, 0),   # lower-right curve
     ]
     pts = [(int(round(cx + nx * w)), int(round(cy + ny * h))) for nx, ny, _ in template]
     flags = [f for _, _, f in template]
-    # Guarantee clockwise winding (outer solid in TrueType)
     if contour_signed_area(pts) < 0:
         pts.reverse()
         flags.reverse()
@@ -86,7 +76,6 @@ def build_pride_heart(cx, cy, w, h):
 
 
 def split_glyph_contours(glyph):
-    """Extract list of (pts, flags) per contour for a simple TrueType glyph."""
     if glyph.numberOfContours <= 0:
         return []
     coords = list(glyph.coordinates)
@@ -101,7 +90,6 @@ def split_glyph_contours(glyph):
 
 
 def write_glyph_contours(glyph, contours):
-    """Rebuild coordinates, flags, endPtsOfContours on a simple TrueType glyph."""
     all_pts = []
     all_flags = []
     ends = []
@@ -113,7 +101,7 @@ def write_glyph_contours(glyph, contours):
     glyph.flags = bytearray(all_flags)
     glyph.endPtsOfContours = ends
     glyph.numberOfContours = len(contours)
-    glyph.program = glyph.program.__class__()  # strip stale TT bytecode hints after sculpting
+    glyph.program = glyph.program.__class__()
     glyph.recalcBounds(None)
 
 
@@ -123,27 +111,12 @@ def contour_bbox(pts):
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def pride_x_shift(y: float, upm: float, is_arabic: bool) -> float:
-    """
-    Continuous horizontal celebratory buoyancy transform depending strictly on y:
-    - Keeps baseline y=0 anchored (dx(0) == 0).
-    - Preserves Arabic cursive joins seamlessly (identical y => identical dx!).
-    - Adds joyful spirited slant + soft ribbon wave.
-    """
-    slant = 0.022 if is_arabic else 0.036
-    amp = (0.005 if is_arabic else 0.011) * upm
-    norm_y = max(-0.35, min(1.15, y / upm))
-    return y * slant + math.sin(norm_y * math.pi) * amp
-
-
 def sculpt_font_subset(src_path: str, dst_path: str, css_weight: int, subset_name: str):
     font = TTFont(src_path)
     upm = float(font["head"].unitsPerEm)
-    is_arabic = subset_name == "arabic"
     glyf = font["glyf"]
     cmap = font.getBestCmap() or {}
 
-    # Identify glyph names for heart-tittle sculpting
     top_dot_gnames = {cmap[cp] for cp in TOP_DOT_CODEPOINTS if cp in cmap}
     twin_top_gnames = {cmap[cp] for cp in TWIN_TOP_DOT_CODEPOINTS if cp in cmap}
     bot_dot_gnames = {cmap[cp] for cp in BOTTOM_DOT_CODEPOINTS if cp in cmap}
@@ -152,91 +125,79 @@ def sculpt_font_subset(src_path: str, dst_path: str, css_weight: int, subset_nam
 
     for gname in font.getGlyphOrder():
         g = glyf[gname]
-        if g.numberOfContours == 0:
+        if g.numberOfContours <= 0 or g.isComposite():
             continue
 
-        if g.isComposite():
-            # Shift composite component x-offsets proportionally to their y-offset
-            # so stacked Vietnamese diacritics stay perfectly centered over slanted bases!
-            for comp in g.components:
-                if hasattr(comp, "x") and hasattr(comp, "y") and comp.y != 0:
-                    comp.x = int(round(comp.x + pride_x_shift(float(comp.y), upm, is_arabic)))
-            continue
-
-        # Simple glyph
         contours = split_glyph_contours(g)
         if not contours:
             continue
 
-        # 1. Replace dots with hand-crafted Pride Hearts BEFORE global Pride slant
+        modified = False
+
         if gname in top_dot_gnames and len(contours) >= 2:
-            # Find highest small outer contour (the tittle dot)
             scored = []
             for idx, (pts, _) in enumerate(contours):
                 x0, y0, x1, y1 = contour_bbox(pts)
                 bw, bh = x1 - x0, y1 - y0
-                if contour_signed_area(pts) >= 0 and bh < upm * 0.32 and bw < upm * 0.35:
+                if contour_signed_area(pts) >= 0 and bh < upm * 0.30 and bw < upm * 0.34:
                     scored.append((y0, idx, x0, y0, x1, y1))
             if scored:
                 scored.sort(reverse=True)
                 _, target_idx, x0, y0, x1, y1 = scored[0]
                 cx = (x0 + x1) * 0.5
-                cy = (y0 + y1) * 0.5 + (y1 - y0) * 0.30
-                hw = max((x1 - x0) * 1.56, upm * 0.165)
-                hh = max((y1 - y0) * 1.42, upm * 0.150)
+                cy = (y0 + y1) * 0.5 + (y1 - y0) * 0.24
+                hw = max((x1 - x0) * 1.48, upm * 0.155)
+                hh = max((y1 - y0) * 1.36, upm * 0.145)
                 contours[target_idx] = build_pride_heart(cx, cy, hw, hh)
                 hearts_sculpted += 1
+                modified = True
 
         elif gname in twin_top_gnames and len(contours) >= 3:
             scored = []
             for idx, (pts, _) in enumerate(contours):
                 x0, y0, x1, y1 = contour_bbox(pts)
                 bw, bh = x1 - x0, y1 - y0
-                if contour_signed_area(pts) >= 0 and bh < upm * 0.30 and bw < upm * 0.32:
+                if contour_signed_area(pts) >= 0 and bh < upm * 0.28 and bw < upm * 0.30:
                     scored.append((y0, idx, x0, y0, x1, y1))
             scored.sort(reverse=True)
             for _, target_idx, x0, y0, x1, y1 in scored[:2]:
                 cx = (x0 + x1) * 0.5
-                cy = (y0 + y1) * 0.5 + (y1 - y0) * 0.10
-                hw = max((x1 - x0) * 1.42, upm * 0.14)
-                hh = max((y1 - y0) * 1.38, upm * 0.13)
+                cy = (y0 + y1) * 0.5 + (y1 - y0) * 0.14
+                hw = max((x1 - x0) * 1.36, upm * 0.13)
+                hh = max((y1 - y0) * 1.28, upm * 0.12)
                 contours[target_idx] = build_pride_heart(cx, cy, hw, hh)
                 hearts_sculpted += 1
+                modified = True
 
         elif gname in bot_dot_gnames and len(contours) >= 2:
             scored = []
             for idx, (pts, _) in enumerate(contours):
                 x0, y0, x1, y1 = contour_bbox(pts)
                 bw, bh = x1 - x0, y1 - y0
-                if contour_signed_area(pts) >= 0 and bh < upm * 0.30 and bw < upm * 0.35:
+                if contour_signed_area(pts) >= 0 and bh < upm * 0.28 and bw < upm * 0.34:
                     scored.append((y1, idx, x0, y0, x1, y1))
             if scored:
-                scored.sort()  # lowest yMax is the bottom dot on ! and ?
+                scored.sort()
                 _, target_idx, x0, y0, x1, y1 = scored[0]
                 cx = (x0 + x1) * 0.5
-                cy = (y0 + y1) * 0.5 - (y1 - y0) * 0.10
-                hw = max((x1 - x0) * 1.40, upm * 0.15)
-                hh = max((y1 - y0) * 1.32, upm * 0.14)
+                cy = (y0 + y1) * 0.5 - (y1 - y0) * 0.08
+                hw = max((x1 - x0) * 1.38, upm * 0.145)
+                hh = max((y1 - y0) * 1.28, upm * 0.135)
                 contours[target_idx] = build_pride_heart(cx, cy, hw, hh)
                 hearts_sculpted += 1
+                modified = True
 
-        # 2. Apply smooth original Pride celebratory buoyancy transform
-        new_contours = []
-        for pts, fls in contours:
-            tpts = [(int(round(x + pride_x_shift(float(y), upm, is_arabic))), int(y)) for x, y in pts]
-            new_contours.append((tpts, fls))
+        if modified:
+            write_glyph_contours(g, contours)
 
-        write_glyph_contours(g, new_contours)
-
-    # Recalc composite glyph bounds cleanly
     for gname in font.getGlyphOrder():
         g = glyf[gname]
         if g.isComposite():
             g.recalcBounds(glyf)
 
-    # 3. Generous vertical metrics so Vietnamese/Thai/Arabic/Indic accents never clip
-    pad_top = int(round(upm * 0.08))
-    pad_bot = int(round(upm * 0.06))
+    # Generous vertical metrics so Vietnamese/Thai/Arabic/Indic accents never clip
+    pad_top = int(round(upm * 0.07))
+    pad_bot = int(round(upm * 0.05))
     font["hhea"].ascent += pad_top
     font["hhea"].descent -= pad_bot
     if "OS/2" in font:
@@ -247,18 +208,17 @@ def sculpt_font_subset(src_path: str, dst_path: str, css_weight: int, subset_nam
         os2.usWinDescent += pad_bot
         os2.usWeightClass = css_weight
 
-    # 4. Brand original ChatW LGBT metadata
     style = "Bold" if css_weight >= 700 else "Regular"
     name_tbl = font["name"]
     for nid, val in [
         (1, "ChatW LGBT"),
         (2, style),
-        (3, f"ChatW-LGBT-{style}-{subset_name}-1.0"),
+        (3, f"ChatW-LGBT-{style}-{subset_name}-2.0"),
         (4, f"ChatW LGBT {style}"),
-        (5, "Version 1.000 Spec084"),
+        (5, "Version 2.000 Spec087"),
         (6, f"ChatWLGBT-{style}"),
         (9, "ChatW Pride Type Studio"),
-        (10, "Original 197-Language Celebratory LGBT Pride Typeface for ChatW"),
+        (10, "Original 197-Language Crisp Upright LGBT Pride Typeface for ChatW"),
         (16, "ChatW LGBT"),
         (17, style),
     ]:
@@ -272,7 +232,7 @@ def sculpt_font_subset(src_path: str, dst_path: str, css_weight: int, subset_nam
 def main():
     manifest = json.load(open(MANIFEST_PATH, encoding="utf-8"))
     css_rules = [
-        "/* Auto-generated by scripts/build_chatw_lgbt_font.py (Spec 084 — Original ChatW LGBT Pride Typeface) */"
+        "/* Auto-generated by scripts/build_chatw_lgbt_font.py (Spec 087 — ChatW LGBT v2.0 Crisp Upright Typeface) */"
     ]
 
     total_bytes = 0
@@ -301,7 +261,7 @@ def main():
             "  font-style: normal;",
             "  font-display: swap;",
             f"  font-weight: {css_w};",
-            f"  src: url('/fonts/{out_name}') format('woff2');",
+            f"  src: url('/fonts/{out_name}?v=2') format('woff2');",
         ]
         if entry.get("unicode_range"):
             rule.append(f"  unicode-range: {entry['unicode_range']};")
@@ -312,7 +272,7 @@ def main():
     with open(out_css, "w", encoding="utf-8") as fp:
         fp.write("\n".join(css_rules) + "\n")
 
-    print(f"SUCCESS: Compiled {len(seen)} ChatW LGBT WOFF2 script subsets ({total_bytes / 1024:.1f} KB, {total_hearts} sculpted ♥ heart-tittles).")
+    print(f"SUCCESS: Compiled {len(seen)} ChatW LGBT v2.0 WOFF2 subsets ({total_bytes / 1024:.1f} KB, {total_hearts} sculpted ♥ hearts).")
 
 
 if __name__ == "__main__":

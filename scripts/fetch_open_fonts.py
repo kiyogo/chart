@@ -81,20 +81,20 @@ FONTSOURCE_FAMILIES = [
     ("lexend", "ChatW Readable", [400, 600], ["latin", "latin-ext", "vietnamese"]),
 ]
 
-# Multi-script joyful rounded bases for compiling our bespoke original `ChatW LGBT` font
+# Multi-script crisp upright rounded SemiBold/Bold bases for compiling our bespoke original `ChatW LGBT` v2.0 font
 LGBT_BASE_SPECS = [
-    ("baloo-2", [500, 700], ["latin", "latin-ext", "vietnamese", "devanagari"]),
-    ("nunito", [600, 800], ["cyrillic", "cyrillic-ext"]),
-    ("baloo-bhaijaan-2", [500, 700], ["arabic"]),
-    ("mali", [500, 700], ["thai"]),
-    ("fredoka", [500, 700], ["hebrew"]),
-    ("baloo-da-2", [500, 700], ["bengali"]),
-    ("baloo-thambi-2", [500, 700], ["tamil"]),
-    ("baloo-tamma-2", [500, 700], ["kannada"]),
-    ("baloo-chettan-2", [500, 700], ["malayalam"]),
-    ("baloo-paaji-2", [500, 700], ["gurmukhi"]),
-    ("baloo-bhai-2", [500, 700], ["gujarati"]),
-    ("baloo-tammudu-2", [500, 700], ["telugu"]),
+    ("nunito", [600, 800], ["latin", "latin-ext", "vietnamese", "cyrillic", "cyrillic-ext"]),
+    ("baloo-2", [600, 700], ["devanagari"]),
+    ("baloo-bhaijaan-2", [600, 700], ["arabic"]),
+    ("mali", [600, 700], ["thai"]),
+    ("fredoka", [600, 700], ["hebrew"]),
+    ("baloo-da-2", [600, 700], ["bengali"]),
+    ("baloo-thambi-2", [600, 700], ["tamil"]),
+    ("baloo-tamma-2", [600, 700], ["kannada"]),
+    ("baloo-chettan-2", [600, 700], ["malayalam"]),
+    ("baloo-paaji-2", [600, 700], ["gurmukhi"]),
+    ("baloo-bhai-2", [600, 700], ["gujarati"]),
+    ("baloo-tammudu-2", [600, 700], ["telugu"]),
 ]
 
 

@@ -145,8 +145,8 @@ try {
 
   record(
     '1. Vibrant bright 7-color LGBT covers ALL text (headings, themes, dropdowns, previews) AND ALL UI SVG icons',
-    settingsAudit.sampleBg.includes('rgb(255, 46, 99)') &&
-      settingsAudit.sampleBg.includes('rgb(0, 206, 103)') &&
+    settingsAudit.sampleBg.includes('rgb(244, 31, 94)') &&
+      settingsAudit.sampleBg.includes('rgb(0, 179, 89)') &&
       settingsAudit.themeLblBg.includes('linear-gradient') &&
       settingsAudit.dropAnim.includes('cwLgbtTextColorFlow') &&
       settingsAudit.railIconStroke.includes('cw-lgbt-icon-grad') &&
