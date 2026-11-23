@@ -14,7 +14,7 @@ use crate::{
         meet_view::MeetView,
         groups::{AddMemberModal, CreateGroupModal, GroupInfoPanel},
         icons::{
-            BackIcon, BlockIcon, CompassIcon, DevicesIcon, GroupIcon, HashIcon, LockIcon, MessageIcon, MicIcon, MicOffIcon, MoreIcon,
+            BackIcon, BlockIcon, CompassIcon, GroupIcon, HashIcon, LockIcon, MessageIcon, MicIcon, MicOffIcon, MoreIcon,
             PaletteIcon, PanelRightIcon, PhoneIcon, PhoneOffIcon, SelfChatPrideAvatar, ShieldIcon, SparkleIcon, UserPlusIcon, VideoIcon, VolumeIcon,
         },
         messages::{Composer, MentionCandidate, MessageList, ViewMessage, preview_text},
@@ -4324,24 +4324,6 @@ pub fn Chat(
                                         div { class: "chat-header-info",
                                             h2 { class: "chat-header-title", "{t(\"chat.self\")}" }
                                             span { class: "chat-header-meta secure", ShieldIcon { size: 12 } "Only you · {sessions_now.len()} devices" }
-                                        }
-                                    }
-                                    div { class: "device-strip header-inline-devices", aria_label: "Your device",
-                                        for sess in sessions_now.iter().cloned() {
-                                            {
-                                                let label = sess.device_label.clone().or(sess.device_name.clone()).unwrap_or_else(|| "Devices".into());
-                                                let sid = sess.id.clone();
-                                                let l2 = label.clone();
-                                                rsx! {
-                                                    button { key: "{sess.id}", r#type: "button", class: if sess.is_current { "device-chip current" } else { "device-chip" },
-                                                        title: "Click to rename the device",
-                                                        onclick: move |_| rename_device.set(Some((sid.clone(), l2.clone()))),
-                                                        DevicesIcon { size: 14 }
-                                                        "{label}"
-                                                        if sess.is_current { span { class: "device-chip-tag", "this device" } }
-                                                    }
-                                                }
-                                            }
                                         }
                                     }
                                 } else {

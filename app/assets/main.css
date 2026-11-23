@@ -1699,7 +1699,7 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   max-width: 100%;
 }
 .message-row.sent .message-bubble { background: var(--msg-sent); color: var(--msg-sent-text); }
-.message-row.received .message-bubble { background: var(--msg-recv); color: var(--msg-recv-text); }
+.message-row.received .message-bubble { background: #FFFFFF !important; color: var(--msg-recv-text, #111827); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05); }
 /* grouped corner shaping */
 .message-row.sent:not(.group-end) .message-bubble { border-bottom-right-radius: var(--radius-bubble-tail); }
 .message-row.sent:not(.group-start) .message-bubble { border-top-right-radius: var(--radius-bubble-tail); }
@@ -1723,19 +1723,21 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   top: 0.125rem;
 }
 .message-row.sent .bubble-meta { color: var(--msg-sent-meta); }
-.message-row.received .bubble-meta { color: var(--msg-recv-meta); }
-.message-bubble.error-bubble {
-  background: var(--bg-warning);
-  color: var(--text-primary);
+.message-row.received .bubble-meta { color: var(--msg-recv-meta, #64748B); }
+.message-bubble.error-bubble,
+.message-row.sent .message-bubble.error-bubble,
+.message-row.received .message-bubble.error-bubble {
+  background: #FFFFFF !important;
+  color: var(--text-primary, #111827) !important;
   font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
-.message-row.sent .message-bubble.error-bubble { background: var(--bg-error); color: var(--danger); }
 .message-row.sent .message-bubble.error-bubble .bubble-meta,
 .message-row.received .message-bubble.error-bubble .bubble-meta {
-  color: color-mix(in srgb, var(--danger) 76%, var(--text-muted));
+  color: var(--msg-recv-meta, #64748B) !important;
 }
 .message-bubble.deleted { font-style: italic; opacity: 0.75; }
 
@@ -3925,9 +3927,9 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   --bg-hover: rgba(15, 23, 42, 0.065);
   --bg-active: rgba(15, 23, 42, 0.11);
   --bg-surface-hover: rgba(15, 23, 42, 0.045);
-  --msg-recv: rgba(244, 246, 250, 0.94);
+  --msg-recv: #FFFFFF;
   --msg-recv-text: #111827;
-  --msg-recv-meta: #525C6E;
+  --msg-recv-meta: #64748B;
   color: #111827;
 }
 .chat-column.wp-night .e2ee-notice,
@@ -4080,9 +4082,9 @@ html[data-theme="dark"][data-surface-tone="light"] {
   --text-muted: #5C6678;
   --text-selected: var(--accent-text);
   --text-link: var(--accent-text);
-  --msg-recv: rgba(244, 246, 250, 0.94);
+  --msg-recv: #FFFFFF;
   --msg-recv-text: #111827;
-  --msg-recv-meta: #525C6E;
+  --msg-recv-meta: #64748B;
   --bg-error: #FDEDEE;
   --bg-success: #E7F6EE;
   --bg-warning: #FDF4E3;
@@ -11825,8 +11827,8 @@ html[data-surface-tone="dark"] .self-details-banner {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  max-height: 15.5rem;
-  overflow-y: auto;
+  max-height: none !important;
+  overflow-y: visible !important;
 }
 .self-vault-row-wrap {
   display: flex;
