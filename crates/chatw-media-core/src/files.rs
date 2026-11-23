@@ -13,6 +13,10 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
+#[cfg(feature = "lossless-files")]
+#[allow(unused_imports)]
+use ruzstd as _;
+
 pub const COMP_ENVELOPE_MAGIC: &[u8; 6] = b"CWCMP1";
 /// Header: magic(6) + codec_id(1) + orig_len(8) + orig_blake3(32) = 47 bytes
 pub const COMP_HEADER_LEN: usize = 47;
