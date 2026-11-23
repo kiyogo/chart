@@ -490,6 +490,17 @@ pub fn MessageList(
     let mention_token = if my_username.is_empty() { String::new() } else { format!("@{}", my_username.to_lowercase()) };
     let count = messages.len();
     let parsed: Vec<Option<DateTime<Local>>> = messages.iter().map(|m| parse_local(&m.created_at)).collect();
+    let mut day_groups: Vec<(Option<NaiveDate>, Vec<usize>)> = Vec::new();
+    for (i, &t) in parsed.iter().enumerate() {
+        let d = t.map(|dt| dt.date_naive());
+        if let Some(last) = day_groups.last_mut() {
+            if last.0 == d {
+                last.1.push(i);
+                continue;
+            }
+        }
+        day_groups.push((d, vec![i]));
+    }
 
     rsx! {
         div {
@@ -591,57 +602,60 @@ pub fn MessageList(
                         }
                     }
                 }
-                for (i, msg) in messages.iter().enumerate() {
-                    {
-                        let prev = if i > 0 { messages.get(i - 1) } else { None };
-                        let next = messages.get(i + 1);
-                        let t = parsed[i];
-                        let day = t.map(|d| d.date_naive());
-                        let prev_day = if i > 0 { parsed[i - 1].map(|d| d.date_naive()) } else { None };
-                        let new_day = day.is_some() && (i == 0 || day != prev_day);
-                        let close = |a: Option<DateTime<Local>>, b: Option<DateTime<Local>>| match (a, b) {
-                            (Some(a), Some(b)) => (b - a).num_seconds().abs() <= GROUP_WINDOW_SECS && a.date_naive() == b.date_naive(),
-                            _ => false,
-                        };
-                        let joins_prev = !new_day
-                            && prev.map(|p| p.sender_id == msg.sender_id && !p.is_error).unwrap_or(false)
-                            && close(if i > 0 { parsed[i - 1] } else { None }, t);
-                        let joins_next = next.map(|n| n.sender_id == msg.sender_id && !n.is_error).unwrap_or(false)
-                            && close(t, parsed.get(i + 1).copied().flatten())
-                            && parsed.get(i + 1).copied().flatten().map(|d| Some(d.date_naive()) == day).unwrap_or(false);
-                        let side = if msg.is_self { "sent" } else { "received" };
-                        let mut row_cls = format!("message-row {side}");
-                        if !joins_prev { row_cls.push_str(" group-start"); }
-                        if !joins_next { row_cls.push_str(" group-end"); }
-                        if msg.is_pending && !msg.is_error { row_cls.push_str(" pending"); }
-                        if highlight_id.as_deref() == Some(msg.id.as_str()) { row_cls.push_str(" highlight"); }
-                        if msg.highlighted { row_cls.push_str(" admin-highlight"); }
-                        if !mention_token.is_empty() && !msg.is_self && msg.text.to_lowercase().contains(&mention_token) { row_cls.push_str(" mentions-me"); }
-                        let rich = if msg.is_error { None } else { parse_rich(&msg.text) };
-                        let time_str = t.map(|d| d.format("%H:%M").to_string()).unwrap_or_default();
-                        let full_time = t.map(|d| d.format("%H:%M, %d/%m/%Y").to_string()).unwrap_or_default();
-                        let gif = if msg.is_error { None } else { gif_url_of(&msg.text) };
-                        let sticker = if msg.is_error || gif.is_some() { None } else { sticker_url_of(&msg.text) };
-                        let show_name = show_sender_names && !msg.is_self && !joins_prev;
-                        let show_avatar = !msg.is_self && !joins_next;
-                        let sender_for_avatar = msg.sender_id.clone();
-                        let sender_for_name = msg.sender_id.clone();
-                        let m_reply = msg.clone();
-                        let m_reply2 = msg.clone();
-                        let pin_id = msg.id.clone();
-                        let pinned_now = msg.is_pinned;
-                        let is_seen = seen_id.as_deref() == Some(msg.id.as_str());
-                        let tally_for = tally.clone();
-                        let m_copy = msg.text.clone();
-                        let mid = msg.id.clone();
-                        rsx! {
-                          div { key: "{msg.id}", style: "display: contents;",
-                            if new_day {
-                                if let Some(d) = day {
-                                    div { class: "date-separator", span { "{day_label(d)}" } }
-                                }
-                            }
-                            div { id: "msg-{msg.id}", class: "{row_cls}",
+                for (g_idx, (day_opt, msg_indices)) in day_groups.iter().enumerate() {
+                    div {
+                        key: "dg-{g_idx}",
+                        class: "date-group",
+                        if let Some(d) = day_opt {
+                            div { class: "date-separator", span { "{day_label(*d)}" } }
+                        }
+                        for &i in msg_indices.iter() {
+                            {
+                                let msg = &messages[i];
+                                let prev = if i > 0 { messages.get(i - 1) } else { None };
+                                let next = messages.get(i + 1);
+                                let t = parsed[i];
+                                let day = t.map(|d| d.date_naive());
+                                let prev_day = if i > 0 { parsed[i - 1].map(|d| d.date_naive()) } else { None };
+                                let new_day = day.is_some() && (i == 0 || day != prev_day);
+                                let close = |a: Option<DateTime<Local>>, b: Option<DateTime<Local>>| match (a, b) {
+                                    (Some(a), Some(b)) => (b - a).num_seconds().abs() <= GROUP_WINDOW_SECS && a.date_naive() == b.date_naive(),
+                                    _ => false,
+                                };
+                                let joins_prev = !new_day
+                                    && prev.map(|p| p.sender_id == msg.sender_id && !p.is_error).unwrap_or(false)
+                                    && close(if i > 0 { parsed[i - 1] } else { None }, t);
+                                let joins_next = next.map(|n| n.sender_id == msg.sender_id && !n.is_error).unwrap_or(false)
+                                    && close(t, parsed.get(i + 1).copied().flatten())
+                                    && parsed.get(i + 1).copied().flatten().map(|d| Some(d.date_naive()) == day).unwrap_or(false);
+                                let side = if msg.is_self { "sent" } else { "received" };
+                                let mut row_cls = format!("message-row {side}");
+                                if !joins_prev { row_cls.push_str(" group-start"); }
+                                if !joins_next { row_cls.push_str(" group-end"); }
+                                if msg.is_pending && !msg.is_error { row_cls.push_str(" pending"); }
+                                if highlight_id.as_deref() == Some(msg.id.as_str()) { row_cls.push_str(" highlight"); }
+                                if msg.highlighted { row_cls.push_str(" admin-highlight"); }
+                                if !mention_token.is_empty() && !msg.is_self && msg.text.to_lowercase().contains(&mention_token) { row_cls.push_str(" mentions-me"); }
+                                let rich = if msg.is_error { None } else { parse_rich(&msg.text) };
+                                let time_str = t.map(|d| d.format("%H:%M").to_string()).unwrap_or_default();
+                                let full_time = t.map(|d| d.format("%H:%M, %d/%m/%Y").to_string()).unwrap_or_default();
+                                let gif = if msg.is_error { None } else { gif_url_of(&msg.text) };
+                                let sticker = if msg.is_error || gif.is_some() { None } else { sticker_url_of(&msg.text) };
+                                let show_name = show_sender_names && !msg.is_self && !joins_prev;
+                                let show_avatar = !msg.is_self && !joins_next;
+                                let sender_for_avatar = msg.sender_id.clone();
+                                let sender_for_name = msg.sender_id.clone();
+                                let m_reply = msg.clone();
+                                let m_reply2 = msg.clone();
+                                let pin_id = msg.id.clone();
+                                let pinned_now = msg.is_pinned;
+                                let is_seen = seen_id.as_deref() == Some(msg.id.as_str());
+                                let tally_for = tally.clone();
+                                let m_copy = msg.text.clone();
+                                let mid = msg.id.clone();
+                                rsx! {
+                                  div { key: "{msg.id}", style: "display: contents;",
+                                    div { id: "msg-{msg.id}", class: "{row_cls}",
                                 div { class: "message-avatar-slot",
                                     if show_avatar {
                                         button {
@@ -931,7 +945,9 @@ pub fn MessageList(
                           }
                         }
                     }
+                  }
                 }
+              }
                 if bot_spacer_px > 0.5 {
                     div { class: "virtual-spacer", style: "height: {bot_spacer_px:.0}px;", aria_hidden: "true" }
                 }
