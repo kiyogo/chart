@@ -220,9 +220,10 @@ impl Prefs {
         pick(
             &mut self.font_family,
             &[
-                "system", "lgbt", "minecraft", "modern", "rounded", "geometric",
+                "system", "minecraft", "modern", "rounded", "geometric",
                 "humanist", "expressive", "serif", "classic", "slab", "mono",
                 "pixel", "futuristic", "handwriting", "calligraphy", "dyslexic",
+                "lgbt",
             ],
             "system",
         );

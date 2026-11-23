@@ -539,7 +539,6 @@ pub fn AppearanceColorsShapes() -> Element {
                     value: pr.font_family.clone(),
                     options: opts(&[
                         ("system", "System"),
-                        ("lgbt", "LGBT"),
                         ("minecraft", "Minecraft"),
                         ("modern", "Modern Sans"),
                         ("rounded", "Rounded"),
@@ -555,6 +554,7 @@ pub fn AppearanceColorsShapes() -> Element {
                         ("handwriting", "Handwriting"),
                         ("calligraphy", "Calligraphy"),
                         ("dyslexic", "Readable"),
+                        ("lgbt", "LGBT"),
                     ]),
                     on_change: move |v: String| c.update(|p| p.font_family = v),
                 }

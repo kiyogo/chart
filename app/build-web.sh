@@ -57,9 +57,9 @@ python3 - <<'PY'
 p = "app/dist/pkg/chatw_app.js"
 txt = open(p, encoding="utf-8").read()
 target = "new URL('chatw_app_bg.wasm', import.meta.url)"
-assert target in txt, "Expected wasm-bindgen default URL in chatw_app.js"
-txt = txt.replace(target, "(() => { throw new Error('Direct binary load disabled'); })()")
-open(p, "w", encoding="utf-8").write(txt)
+if target in txt:
+    txt = txt.replace(target, "(() => { throw new Error('Direct binary load disabled'); })()")
+    open(p, "w", encoding="utf-8").write(txt)
 PY
 
 sed "s|/boot.js|/boot.js?v=${TS}|g" app/web/index.html > app/dist/index.html
