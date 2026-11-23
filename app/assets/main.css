@@ -11607,7 +11607,7 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
 .nav-sidebar .sidebar-scrollable,
 .nav-sidebar .friends-scroll {
   padding: 0 var(--panel-inset, 5px) 6px !important;
-  gap: 1px !important;
+  gap: 2px !important;
 }
 /* Spec 090: Messages conversation list ("khung chat") rows touch flush with 0px gap */
 .nav-sidebar .sidebar-scrollable.conv-list-scroll,
@@ -11618,7 +11618,7 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
   margin-bottom: 4px !important;
 }
 .nav-sidebar .category-block {
-  gap: 1px !important;
+  gap: 2px !important;
 }
 .nav-sidebar .conv-row,
 .nav-sidebar .chat-item,
@@ -11636,11 +11636,11 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
 .settings-nav,
 .server-settings-stage .settings-nav {
   padding: 8px var(--panel-inset, 5px) !important;
-  gap: 1px !important;
+  gap: 2px !important;
 }
 .settings-nav-footer,
 .server-settings-stage .settings-nav-footer {
-  gap: 1px !important;
+  gap: 2px !important;
 }
 .settings-nav .settings-search,
 .server-settings-stage .settings-nav .settings-search {

@@ -121,7 +121,7 @@ try {
       rightInset,
       itemCount: items.length,
       gaps,
-      allOnePxGaps: gaps.every((g) => Math.abs(g - 1) <= 0.5),
+      allTwoPxGaps: gaps.every((g) => Math.abs(g - 2) <= 0.5),
       hasDevItem: Boolean(devItem),
       devMarginTop,
       railIconStroke: railCs?.stroke || '',
@@ -185,10 +185,10 @@ try {
   );
 
   record(
-    '2. Settings nav has balanced 5px equal left/right inset, exact 1px gaps & 100% uniform Developer spacing',
+    '2. Settings nav has balanced 5px equal left/right inset, exact 2px gaps & 100% uniform Developer spacing',
     settingsAudit.leftInset === 5 &&
       settingsAudit.rightInset === 5 &&
-      settingsAudit.allOnePxGaps &&
+      settingsAudit.allTwoPxGaps &&
       (!settingsAudit.hasDevItem || settingsAudit.devMarginTop === '0px'),
     JSON.stringify({
       leftInset: settingsAudit.leftInset,
@@ -273,13 +273,13 @@ try {
   await page.screenshot({ path: path.join(SHOT_DIR, '05_communities_tight_flush_lgbt.png'), clip: { x: 0, y: 0, width: 420, height: 600 } });
 
   record(
-    '5. Friends & Communities sidebars use identical 5px left/right inset, 1px gap & localized Vietnamese labels',
+    '5. Friends & Communities sidebars use identical 5px left/right inset, 2px gap & localized Vietnamese labels',
     friendsAudit.padLeft === '5px' &&
       friendsAudit.padRight === '5px' &&
-      friendsAudit.gap === '1px' &&
+      friendsAudit.gap === '2px' &&
       commAudit.padLeft === '5px' &&
       commAudit.padRight === '5px' &&
-      commAudit.gap === '1px' &&
+      commAudit.gap === '2px' &&
       commAudit.localizedCreateBtn,
     JSON.stringify({ friends: friendsAudit, communities: commAudit })
   );
