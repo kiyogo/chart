@@ -364,10 +364,21 @@ impl ModelRegistry {
     }
 
     pub fn get(&self, model_id: &str) -> MediaResult<&ModelDescriptor> {
+        let clean = model_id.trim();
+        // Resolve Upscayl architecture aliases to permissive open models rewritten in Rust
+        if clean.eq_ignore_ascii_case("upscayl-standard") || clean.eq_ignore_ascii_case("upscayl-photo") {
+            return self.get("realesrgan-x2plus-fp16");
+        }
+        if clean.eq_ignore_ascii_case("upscayl-digital-art") || clean.eq_ignore_ascii_case("upscayl-anime") {
+            return self.get("real-cugan-anime-x2");
+        }
+        if clean.eq_ignore_ascii_case("upscayl-lite") || clean.eq_ignore_ascii_case("upscayl-fast") {
+            return self.get("span-x2-int8");
+        }
         if let Some((_, lic, _)) = self
             .blocked_noncommercial
             .iter()
-            .find(|(id, _, _)| id.eq_ignore_ascii_case(model_id))
+            .find(|(id, _, _)| id.eq_ignore_ascii_case(clean))
         {
             return Err(MediaError::LicenseViolation {
                 model_id: model_id.to_string(),
@@ -376,7 +387,7 @@ impl ModelRegistry {
         }
         self.models
             .iter()
-            .find(|m| m.model_id == model_id)
+            .find(|m| m.model_id == clean)
             .ok_or_else(|| MediaError::ModelNotFound(model_id.to_string()))
     }
 

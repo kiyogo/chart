@@ -121,14 +121,14 @@
       const { isCrisp } = detectCrispTextOrAlpha(pctx, probeCanvas.width, probeCanvas.height);
 
       const blurDataUrl = await makeMicroBlur(bitmap, origW, origH);
-      if (opts.preserveOriginal || opts.qualityMode === 'original') {
+      if (rawSniff.ext === 'avif' || opts.preserveOriginal || opts.qualityMode === 'original') {
         bitmap.close();
         self.postMessage({
           id,
           ok: true,
           bytesB64: bytesToB64(rawU8),
-          mime: rawSniff.mime,
-          ext: rawSniff.ext,
+          mime: 'image/avif',
+          ext: 'avif',
           originalSize: rawU8.byteLength,
           optimizedSize: rawU8.byteLength,
           isCrispText: isCrisp,
@@ -139,7 +139,9 @@
           thumbMime: null,
           exifStripped: false,
           workerUsed: true,
-          codec: 'original_passthrough',
+          codec: rawSniff.ext === 'avif' ? 'already_avif_passthrough' : 'original_passthrough',
+          estimatedSsim: 1.0,
+          aiRecommended: false,
         });
         return;
       }

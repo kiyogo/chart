@@ -186,6 +186,29 @@ pub async fn get_client_device_info() -> (String, String, String) {
     (cid, platform, format!("Desktop · {os_label}"))
 }
 
+#[cfg(unix)]
+fn get_real_available_disk_space(dir: &std::path::Path) -> u64 {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    if let Ok(c_path) = CString::new(dir.as_os_str().as_bytes()) {
+        unsafe {
+            let mut stat: libc::statvfs = std::mem::zeroed();
+            if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
+                let free = (stat.f_bavail as u64) * (stat.f_frsize as u64);
+                if free > 0 {
+                    return free;
+                }
+            }
+        }
+    }
+    16 * 1024 * 1024 * 1024
+}
+
+#[cfg(not(unix))]
+fn get_real_available_disk_space(_dir: &std::path::Path) -> u64 {
+    16 * 1024 * 1024 * 1024
+}
+
 pub async fn put_local_object(meta: &LocalObjectMeta, bytes: &[u8]) -> Result<String, String> {
     let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
     let sha = sha256_hex(bytes);
@@ -213,10 +236,10 @@ pub async fn put_local_object(meta: &LocalObjectMeta, bytes: &[u8]) -> Result<St
         protected_segment: false,
     };
 
-    // Adaptive W-TinyLFU + Cost-Aware & Size-Aware eviction protecting unique `local_only` files!
+    // Adaptive W-TinyLFU + Cost-Aware & Size-Aware eviction dynamically querying real free disk space!
     let lim_mb = configured_limit_mb().max(0) as u64;
-    let assumed_free = 16 * 1024 * 1024 * 1024u64;
-    let budget = compute_adaptive_cache_budget(assumed_free, Some(lim_mb));
+    let free_disk = get_real_available_disk_space(&cas_root());
+    let budget = compute_adaptive_cache_budget(free_disk, Some(lim_mb));
     let evicted_keys = state.smart_index.put_and_plan_evictions(item_meta, &budget, now);
     for ek in evicted_keys {
         if ek != meta.ref_id {
@@ -314,9 +337,10 @@ pub async fn get_quota_estimate() -> LocalQuotaInfo {
             disposable += e.byte_size;
         }
     }
+    let real_free = get_real_available_disk_space(&cas_root());
     LocalQuotaInfo {
         limit_mb,
-        browser_quota_bytes: (limit_mb.max(0) as u64) * 1024 * 1024,
+        browser_quota_bytes: real_free + total,
         browser_usage_bytes: total,
         persisted: true,
         opfs_supported: false,

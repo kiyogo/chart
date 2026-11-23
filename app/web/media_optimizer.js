@@ -314,6 +314,37 @@
   async function optimizeImageBlob(fileOrBlob, opts = {}) {
     const rawU8 = new Uint8Array(await fileOrBlob.arrayBuffer());
     const rawSniff = await sniffBytesFormat(rawU8);
+    // If input is ALREADY genuine AVIF or animated AVIF (avis), NEVER re-compress!
+    // Re-encoding AVIF only wastes CPU and cannot reduce file size further.
+    if (rawSniff.ext === 'avif') {
+      let w = 0;
+      let h = 0;
+      let blurDataUrl = null;
+      try {
+        const bmp = await createImageBitmap(new Blob([rawU8], { type: rawSniff.mime || 'image/avif' }));
+        w = bmp.width;
+        h = bmp.height;
+        blurDataUrl = await makeMicroBlurDataUrl(bmp, w, h);
+        bmp.close();
+      } catch (_) {}
+      return {
+        bytesB64: bytesToB64(rawU8),
+        mime: rawSniff.mime || 'image/avif',
+        ext: 'avif',
+        originalSize: rawU8.byteLength,
+        optimizedSize: rawU8.byteLength,
+        isCrispText: false,
+        width: w,
+        height: h,
+        blurDataUrl,
+        thumbB64: null,
+        thumbMime: null,
+        codec: 'already_avif_passthrough',
+        estimatedSsim: 1.0,
+        aiRecommended: false,
+      };
+    }
+
     const qualityMode = opts.qualityMode || getUserMediaQualityMode(Boolean(opts.preserveOriginal));
     const effectiveOpts = { ...opts, qualityMode, preserveOriginal: Boolean(opts.preserveOriginal) || qualityMode === 'original' };
 

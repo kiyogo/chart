@@ -80,6 +80,7 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+libc = "0.2"
 chatw-media-core = { path = "../crates/chatw-media-core", features = ["native-fast"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 openssl = { version = "0.10", features = ["vendored"] }

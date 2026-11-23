@@ -900,6 +900,7 @@ dependencies = [
  "hkdf 0.12.4",
  "hmac 0.12.1",
  "js-sys",
+ "libc",
  "openssl",
  "p256 0.13.2",
  "qrcode",

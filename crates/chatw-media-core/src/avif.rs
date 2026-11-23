@@ -378,8 +378,11 @@ mod impl_codec {
                 }
             }
         } else {
-            // Single-pass calibrated selection (pick middle/highest candidate for guaranteed visual clarity)
-            let pick = if candidates.len() >= 2 {
+            // Calibrated selection: in UltraAdaptive mode, pick the smallest candidate for maximum compression
+            // (on-device AI restorer sharpens fine details on the receiver side!).
+            let pick = if matches!(opts.mode, AvifCompressionMode::UltraAdaptive) {
+                candidates[0]
+            } else if candidates.len() >= 2 {
                 candidates[candidates.len() / 2]
             } else {
                 candidates[0]
@@ -460,6 +463,22 @@ mod impl_codec {
         })
     }
 
+    /// Parse dimensions from the ISOBMFF `ispe` (image spatial extents) box in genuine AVIF bytes.
+    pub fn parse_avif_ispe_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+        let mut i = 0;
+        while i + 16 <= bytes.len() {
+            if &bytes[i..i + 4] == b"ispe" {
+                let w = u32::from_be_bytes([bytes[i + 8], bytes[i + 9], bytes[i + 10], bytes[i + 11]]);
+                let h = u32::from_be_bytes([bytes[i + 12], bytes[i + 13], bytes[i + 14], bytes[i + 15]]);
+                if w > 0 && h > 0 && w < 65536 && h < 65536 {
+                    return Some((w, h));
+                }
+            }
+            i += 1;
+        }
+        None
+    }
+
     /// Encode any input image file (PNG, JPEG, WebP, AVIF, GIF) into genuine Adaptive Ultra AVIF.
     /// For animated GIF/WebP, extracts all frames and encodes an Animated AVIF (`avis`) sequence using `rav1e` + fMP4/avis container
     /// (preserving 100% of frames without silently flattening to a single frame!).
@@ -478,34 +497,29 @@ mod impl_codec {
             )));
         }
 
-        // If already a tiny AVIF and no resize needed, avoid destructive re-encoding
-        if sniff.ext == "avif" && bytes.len() <= 64 * 1024 {
-            if let Ok(img) = image::load_from_memory_with_format(bytes, image::ImageFormat::Avif) {
-                let rgba = img.to_rgba8();
-                let (w, h) = rgba.dimensions();
-                let analysis = analyze_rgba_image(rgba.as_raw(), w, h, bytes.len(), Some(bytes));
-                if opts.max_edge_override.is_none() && analysis.recommended_max_edge.is_none() {
-                    return Ok(AdaptiveAvifOutput {
-                        avif_bytes: bytes.to_vec(),
-                        mime: "image/avif",
-                        ext: "avif",
-                        width: w,
-                        height: h,
-                        original_size: bytes.len(),
-                        optimized_size: bytes.len(),
-                        compression_ratio: 1.0,
-                        chosen_quality: 80.0,
-                        chosen_speed: 6,
-                        bit_depth: 8,
-                        is_animated: false,
-                        frame_count: 1,
-                        analysis,
-                        estimated_ssim: Some(1.0),
-                        thumb_avif_bytes: None,
-                        ai_restoration_recommended: false,
-                    });
-                }
-            }
+        // If already encoded in genuine AVIF/AVIS, NEVER re-compress!
+        // Re-encoding AVIF only wastes CPU and degrades quality without further reduction.
+        if sniff.ext == "avif" {
+            let (w, h) = parse_avif_ispe_dimensions(bytes).unwrap_or((0, 0));
+            return Ok(AdaptiveAvifOutput {
+                avif_bytes: bytes.to_vec(),
+                mime: "image/avif",
+                ext: "avif",
+                width: w,
+                height: h,
+                original_size: bytes.len(),
+                optimized_size: bytes.len(),
+                compression_ratio: 1.0,
+                chosen_quality: 80.0,
+                chosen_speed: 6,
+                bit_depth: 8,
+                is_animated: sniff.kind == MediaKind::AnimatedImage,
+                frame_count: 1,
+                analysis: analyze_rgba_image(&[], w, h, bytes.len(), Some(bytes)),
+                estimated_ssim: Some(1.0),
+                thumb_avif_bytes: None,
+                ai_restoration_recommended: false,
+            });
         }
 
         let img = image::load_from_memory(bytes)
@@ -781,5 +795,17 @@ mod tests {
         assert_eq!(res.frame_count, 4);
         assert_eq!(sniff_media_bytes(&res.avif_bytes).ext, "avif");
         assert_eq!(sniff_media_bytes(&res.avif_bytes).kind, MediaKind::AnimatedImage);
+    }
+
+    #[test]
+    fn already_avif_image_bypasses_reencoding_intact() {
+        let png = make_test_photo_png(128, 128);
+        let first = optimize_image_to_avif(&png, &AvifEncodeOptions::default()).expect("first encode");
+        assert_eq!(first.ext, "avif");
+        let avif_input = first.avif_bytes.clone();
+        let second = optimize_image_to_avif(&avif_input, &AvifEncodeOptions::default()).expect("second pass");
+        assert_eq!(second.ext, "avif");
+        assert_eq!(second.avif_bytes, avif_input, "Must not re-encode already valid AVIF!");
+        assert_eq!(second.compression_ratio, 1.0);
     }
 }

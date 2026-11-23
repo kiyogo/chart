@@ -61,12 +61,27 @@
 
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
 
+  function resolveModelDescriptor(modelId) {
+    const raw = String(modelId || '').toLowerCase().trim();
+    if (BLOCKED_LICENSES_MODELS.some(bad => raw.includes(bad))) return null;
+    if (raw.includes('cugan') || raw.includes('anime') || raw.includes('digital_art')) {
+      return APPROVED_MODELS.realcugan_2x;
+    }
+    if (raw.includes('esrgan') || raw.includes('photo')) {
+      return APPROVED_MODELS.realesrgan_x2plus;
+    }
+    if (raw.includes('span')) {
+      return APPROVED_MODELS.span_x2_s;
+    }
+    return APPROVED_MODELS[raw] || APPROVED_MODELS.spab_lite_builtin;
+  }
+
   function isModelLicenseAllowed(modelId) {
-    const low = String(modelId || '').toLowerCase();
+    const low = String(modelId || '').toLowerCase().trim();
     for (const bad of BLOCKED_LICENSES_MODELS) {
       if (low.includes(bad)) return false;
     }
-    return Boolean(APPROVED_MODELS[low]);
+    return Boolean(APPROVED_MODELS[low] || resolveModelDescriptor(modelId));
   }
 
   // Real WGSL Compute Shader implementing SPAB-Lite spatial-attention bilateral deblocking + edge-aware residual detail restoration
@@ -579,7 +594,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       return { enhanced: false, skipped: true, reason: 'model_license_blocked', url: imageUrl };
     }
 
-    const model = APPROVED_MODELS[modelId];
+    const model = resolveModelDescriptor(modelId) || APPROVED_MODELS.spab_lite_builtin;
     const mediaId = String(meta.mediaId || meta.refId || imageUrl).slice(0, 128);
     const contentHash = String(meta.contentHash || meta.sha256 || 'v1').slice(0, 32);
     const paramsHash = meta.textSafe ? 'text_safe' : 'balanced_v2';
