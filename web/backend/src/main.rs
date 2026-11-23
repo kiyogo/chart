@@ -229,6 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     let storage_registry = Arc::new(storage::StorageRegistry::from_uploads_dir(&config.uploads_dir));
     let sfu = Arc::new(calls::sfu::SfuHandle::new());
+    let rpc_router = Arc::new(std::sync::OnceLock::new());
 
     let state = AppState {
         config: Arc::new(config.clone()),
@@ -239,6 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         oauth_tickets,
         storage: storage_registry,
         sfu,
+        rpc_router: rpc_router.clone(),
     };
 
     // 6. Build API router
@@ -327,7 +329,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = Router::new()
         .nest("/api", api_router)
-        .route("/stream/media/{*rest}", axum::routing::any(deny_direct_stream_fallback))
+        .route("/stream/{*rest}", axum::routing::any(deny_direct_stream_fallback))
         .route("/plugin-sandbox-frame", axum::routing::get(plugin_sandbox_frame_html))
         .route("/robots.txt", axum::routing::get(robots_txt))
         .route("/llms.txt", axum::routing::get(llms_txt))
@@ -345,6 +347,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         app = app.fallback_service(serve_dir);
         tracing::info!(dir = ?static_dir, "serving static frontend assets");
     }
+
+    // Bind in-process router handle for CWBF2 Binary WebSocket RPC Multiplexing (Spec 071)
+    let _ = rpc_router.set(app.clone());
 
     // 7b. CORS layer for web development and same-origin requests
     let public_origin_for_cors = config.public_origin.clone();

@@ -170,10 +170,91 @@
     });
   }
 
-  // Adaptive compression preserving readable text & never inflating small files.
+  let mediaWorker = null;
+  let mediaWorkerReqId = 1;
+  const mediaWorkerPending = new Map();
+
+  function optimizeInMediaWorker(rawU8, mime, opts) {
+    if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+      return Promise.resolve(null);
+    }
+    try {
+      if (!mediaWorker) {
+        mediaWorker = new Worker('/media_worker.js');
+        mediaWorker.onmessage = (ev) => {
+          const d = ev.data;
+          if (!d || !d.id) return;
+          const entry = mediaWorkerPending.get(d.id);
+          if (entry) {
+            clearTimeout(entry.timer);
+            mediaWorkerPending.delete(d.id);
+            entry.resolve(d.ok ? d : null);
+          }
+        };
+        mediaWorker.onerror = () => {
+          for (const [id, entry] of mediaWorkerPending.entries()) {
+            clearTimeout(entry.timer);
+            entry.resolve(null);
+            mediaWorkerPending.delete(id);
+          }
+          mediaWorker = null;
+        };
+      }
+      const id = mediaWorkerReqId++;
+      const copy = new Uint8Array(rawU8);
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          mediaWorkerPending.delete(id);
+          resolve(null);
+        }, 8000);
+        mediaWorkerPending.set(id, { resolve, timer });
+        mediaWorker.postMessage({ id, buffer: copy.buffer, mime, opts }, [copy.buffer]);
+      });
+    } catch (_) {
+      return Promise.resolve(null);
+    }
+  }
+
+  async function extractVoiceWaveform(audioBytes, bars = 48) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return [];
+      const ac = new AC();
+      const copy = audioBytes.slice(0).buffer;
+      const decoded = await ac.decodeAudioData(copy);
+      const ch = decoded.getChannelData(0);
+      const step = Math.max(1, Math.floor(ch.length / bars));
+      const peaks = [];
+      let maxPeak = 0.001;
+      for (let i = 0; i < bars; i++) {
+        let peak = 0;
+        const start = i * step;
+        const end = Math.min(ch.length, start + step);
+        for (let j = start; j < end; j++) {
+          const v = Math.abs(ch[j]);
+          if (v > peak) peak = v;
+        }
+        peaks.push(peak);
+        if (peak > maxPeak) maxPeak = peak;
+      }
+      try { await ac.close(); } catch (_) {}
+      // Quantize to compact 5-bit integers (0..31) matching Telegram voice waveform format
+      return peaks.map((p) => Math.max(1, Math.min(31, Math.round((p / maxPeak) * 31))));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Adaptive compression preserving readable text, stripping EXIF/GPS, & offloading to Media Worker.
   async function optimizeImageBlob(fileOrBlob, opts = {}) {
     const rawU8 = new Uint8Array(await fileOrBlob.arrayBuffer());
     const rawSniff = await sniffBytesFormat(rawU8);
+    if (!rawSniff.animated) {
+      const workerRes = await optimizeInMediaWorker(rawU8, rawSniff.mime || fileOrBlob.type, opts);
+      if (workerRes && workerRes.bytesB64) {
+        return workerRes;
+      }
+    }
     if (rawSniff.animated || opts.preserveOriginal) {
       let w = 0;
       let h = 0;
@@ -398,24 +479,31 @@
       rec.stream.getTracks().forEach((t) => t.stop());
       const blob = new Blob(activeVoiceChunks, { type: rec.mimeType || 'audio/webm' });
       const u8 = new Uint8Array(await blob.arrayBuffer());
+      const waveform = await extractVoiceWaveform(u8, 48);
       return {
         bytesB64: bytesToB64(u8),
         mime: blob.type || 'audio/webm',
         durationMs: Date.now() - activeVoiceStartedAt,
         byteSize: u8.byteLength,
+        waveform,
       };
     },
   };
 
   window.__chatwPeerTransfer = {
     async initiateOffer(requestId) {
-      const sendSig = (rid, signalType, data) =>
-        fetch(`/api/recovery/requests/${rid}/signal`, {
+      const sendSig = (rid, signalType, data) => {
+        const body = JSON.stringify({ signal_type: signalType, data });
+        if (window.__chatwCore && window.__chatwCore.isConnected()) {
+          return window.__chatwCore.rpc('POST', `/api/recovery/requests/${rid}/signal`, body, 'application/json').catch(() => {});
+        }
+        return fetch(`/api/recovery/requests/${rid}/signal`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ signal_type: signalType, data }),
+          body,
         }).catch(() => {});
+      };
       const entry = getOrCreatePeer(requestId, null, sendSig);
       const dc = entry.pc.createDataChannel('chatw-file', { ordered: true });
       attachDataChannel(requestId, entry, dc);
@@ -425,13 +513,18 @@
       return { ok: true };
     },
     async handleSignal(requestId, signalType, data) {
-      const sendSig = (rid, st, d) =>
-        fetch(`/api/recovery/requests/${rid}/signal`, {
+      const sendSig = (rid, st, d) => {
+        const body = JSON.stringify({ signal_type: st, data: d });
+        if (window.__chatwCore && window.__chatwCore.isConnected()) {
+          return window.__chatwCore.rpc('POST', `/api/recovery/requests/${rid}/signal`, body, 'application/json').catch(() => {});
+        }
+        return fetch(`/api/recovery/requests/${rid}/signal`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ signal_type: st, data: d }),
+          body,
         }).catch(() => {});
+      };
       const entry = getOrCreatePeer(requestId, null, sendSig);
       if (signalType === 'offer') {
         await entry.pc.setRemoteDescription(new RTCSessionDescription(data));

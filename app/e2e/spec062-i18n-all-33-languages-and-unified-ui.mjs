@@ -485,7 +485,7 @@ try {
   );
 
   // Full page reload persistence in Vietnamese + Messages empty state & chat check!
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('.app-rail', { timeout: 25000 });
   await page.waitForTimeout(700);
   if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, '04_messages_empty_vietnamese_reload.png') });

@@ -131,9 +131,9 @@ try {
   if (frJson?.id) {
     await ctxB.request.post(`${BASE}/api/friends/requests/${frJson.id}/accept`, { data: {} });
   }
-  await pageA.reload({ waitUntil: 'networkidle' });
+  await pageA.reload({ waitUntil: 'load' });
   await pageA.waitForSelector('.app-rail', { timeout: 25000 });
-  await pageB.reload({ waitUntil: 'networkidle' });
+  await pageB.reload({ waitUntil: 'load' });
   await pageB.waitForSelector('.app-rail', { timeout: 25000 });
   await pageA.waitForTimeout(1000);
   await pageB.waitForTimeout(1000);
@@ -163,7 +163,7 @@ try {
   const swStatus = await pageA.evaluate(() => window.__chatwMediaStream.getStatus());
   record(
     'Service Worker (/sw.js) registered and controlling root scope',
-    Boolean(swStatus?.ok && swStatus?.controlling && swStatus?.version === 'chatw-sw-v1'),
+    Boolean(swStatus?.ok && swStatus?.controlling && String(swStatus?.version || '').startsWith('chatw-sw-')),
     JSON.stringify(swStatus)
   );
 
@@ -192,7 +192,7 @@ try {
       fileName: 'demo_stream.mp4',
     });
   }, { url: attUrl, keyB64, nonceB64 });
-  record('Registered tab-bound SW stream grant (/stream/media/{grantId})', Boolean(grantRes?.ok && grantRes?.streamUrl?.startsWith('/stream/media/')), JSON.stringify(grantRes));
+  record('Registered tab-bound SW stream grant (/stream/{grantId})', Boolean(grantRes?.ok && grantRes?.streamUrl?.startsWith('/stream/')), JSON.stringify(grantRes));
 
   // Range 1: Head bytes [0..65535] (Chunk 0)
   const range1 = await pageA.evaluate(async (streamUrl) => {
@@ -249,7 +249,7 @@ try {
   );
 
   // Strict 403 Test B: Subresource fetch() to /stream/media/{grantId} from a DIFFERENT tab (foreign clientId) -> 403 Forbidden!
-  await tab2.goto(BASE + '/', { waitUntil: 'networkidle' });
+  await tab2.goto(BASE + '/', { waitUntil: 'load' });
   const foreignFetch = await tab2.evaluate(async (streamUrl) => {
     const r = await fetch(streamUrl, { headers: { Range: 'bytes=0-1023' } });
     return { status: r.status, reason: r.headers.get('x-chatw-deny-reason') };
@@ -299,16 +299,9 @@ try {
     JSON.stringify(idbCheck)
   );
 
-  // Simulate offline send: abort POST /api/messages -> Optimistic UI renders pending ClockIcon + queues in chat_outbox!
+  // Simulate offline send via SharedWorker offline disconnect -> Optimistic UI renders pending ClockIcon + queues in chat_outbox!
   const offlineMsg = `Offline queued optimistic message ${tag}`;
-  const blockPost = async (route) => {
-    if (route.request().method() === 'POST') {
-      await route.abort('internetdisconnected');
-    } else {
-      await route.continue();
-    }
-  };
-  await pageA.route('**/api/messages', blockPost);
+  await pageA.evaluate(() => window.__chatwCore.setSimulatedOffline(true));
   await pageA.locator('#dm-chat-input').fill(offlineMsg);
   await pageA.keyboard.press('Enter');
   await pageA.waitForTimeout(600);
@@ -324,9 +317,8 @@ try {
   );
   await pageA.screenshot({ path: path.join(SHOT_DIR, '01_optimistic_pending_clock_offline.png') });
 
-  // Restore connectivity & dispatch online event -> outbox auto-flushes and clears pending ClockIcon!
-  await pageA.unroute('**/api/messages', blockPost);
-  await pageA.evaluate(() => window.dispatchEvent(new Event('online')));
+  // Restore connectivity -> SharedWorker reconnects & outbox auto-flushes, confirming bubble Sent!
+  await pageA.evaluate(() => window.__chatwCore.setSimulatedOffline(false));
   await pageB.locator('.message-bubble', { hasText: offlineMsg }).first().waitFor({ timeout: 12000 });
   await pageA.waitForTimeout(700);
   const outboxAfterOnline = await pageA.evaluate(() => window.__chatwStorage.listOutbox());
@@ -345,7 +337,7 @@ try {
     await new Promise((r) => setTimeout(r, 1800));
     await route.continue();
   });
-  await pageA.reload({ waitUntil: 'networkidle' });
+  await pageA.reload({ waitUntil: 'load' });
   await pageA.waitForSelector('.nav-sidebar .chat-item', { timeout: 25000 });
   await pageA.locator('.nav-sidebar .chat-item', { hasText: BOB }).first().click();
   const t0 = Date.now();

@@ -40,6 +40,24 @@ pub fn App() -> Element {
 
     let check_auth = move || {
         spawn(async move {
+            // 0ms Offline-First Hydration (Spec 071): if a cached session profile exists in IndexedDB,
+            // render the Chat shell immediately before network verification (survives complete offline boot!).
+            let mut hydrated_offline = false;
+            if let Some(cached_me) = platform::load_dialogs_cache("me_profile").await {
+                let cid = cached_me.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let cuname = cached_me.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let cav = cached_me.get("avatar_url").and_then(|v| v.as_str()).map(str::to_string);
+                if !cid.is_empty() && !cuname.is_empty() {
+                    current_user.set(Some(CurrentUser {
+                        id: cid,
+                        username: cuname,
+                        avatar_url: cav,
+                    }));
+                    status.set(AuthStatus::Ready);
+                    hydrated_offline = true;
+                }
+            }
+
             match api::auth_me().await {
                 Ok(me) => {
                     let uname = match me.username {
@@ -84,6 +102,15 @@ pub fn App() -> Element {
                         *E2EE_RECOVERY_REQUIRED.write() = Some("missing_local_keys".to_string());
                     }
 
+                    platform::save_dialogs_cache(
+                        "me_profile",
+                        &serde_json::json!({
+                            "id": me.id,
+                            "username": uname,
+                            "avatar_url": me.avatar_url,
+                        }),
+                    )
+                    .await;
                     current_user.set(Some(CurrentUser {
                         id: me.id,
                         username: uname,
@@ -91,7 +118,15 @@ pub fn App() -> Element {
                     }));
                     status.set(AuthStatus::Ready);
                 }
-                Err(_) => {
+                Err(err) => {
+                    if hydrated_offline && err.status == 0 {
+                        // Offline boot: stay in Ready offline mode with IndexedDB dialogs, messages & outbox!
+                        return;
+                    }
+                    if err.status == 401 || err.status == 403 {
+                        platform::wipe_client_session_on_logout().await;
+                    }
+                    current_user.set(None);
                     status.set(AuthStatus::Unauthenticated);
                 }
             }
@@ -108,6 +143,7 @@ pub fn App() -> Element {
         let uid = current_user().map(|u| u.id);
         spawn(async move {
             let _ = api::auth_logout().await;
+            platform::wipe_client_session_on_logout().await;
             lock_and_wipe_session_keys(uid.as_deref());
             clear_legacy_active_key();
             *E2EE_RECOVERY_REQUIRED.write() = None;

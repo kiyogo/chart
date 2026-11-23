@@ -44,12 +44,138 @@ pub async fn sleep_ms(ms: u32) {
     let _ = JsFuture::from(promise).await;
 }
 
+fn is_cookie_mutating_auth_path(path: &str) -> bool {
+    let bare = path.split('?').next().unwrap_or(path);
+    matches!(
+        bare,
+        "/api/auth/dev-login"
+            | "/api/auth/logout"
+            | "/api/auth/logout-all"
+            | "/api/auth/google"
+            | "/api/auth/google/callback"
+            | "/api/auth/providers"
+            | "/api/auth/oauth-ticket"
+    ) || bare.starts_with("/api/auth/oauth-ticket/")
+}
+
+async fn try_core_worker_rpc(
+    method: &str,
+    path: &str,
+    json_body: Option<&str>,
+    raw_body: Option<(&[u8], &str)>,
+) -> Option<Result<(u16, String), ApiError>> {
+    if is_cookie_mutating_auth_path(path) {
+        return None;
+    }
+    let m_json = serde_json::to_string(method).ok()?;
+    let p_json = serde_json::to_string(path).ok()?;
+    let j_json = match json_body {
+        Some(s) => serde_json::to_string(s).ok()?,
+        None => "null".to_string(),
+    };
+    let (r_b64_json, r_ct_json) = match raw_body {
+        Some((bytes, ct)) => {
+            use base64::Engine;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+            (
+                serde_json::to_string(&b64).ok()?,
+                serde_json::to_string(ct).ok()?,
+            )
+        }
+        None => ("null".to_string(), "\"\"".to_string()),
+    };
+    let wait_ms: u32 = if path.starts_with("/api/auth/me") { 550 } else { 2200 };
+    let is_static_cacheable = method.eq_ignore_ascii_case("GET")
+        && (path.starts_with("/stickers/openmoji/catalog.json") || path.starts_with("/locales/"));
+    let static_flag = if is_static_cacheable { "true" } else { "false" };
+
+    let js = format!(
+        r#"
+        (async () => {{
+            try {{
+                if ({static_flag} && window.__chatwStorage && window.__chatwStorage.getStaticCache) {{
+                    const hit = await window.__chatwStorage.getStaticCache('static:' + {p_json});
+                    if (hit && typeof hit.data === 'string') {{
+                        dioxus.send({{ handled: true, ok: true, status: 200, text: hit.data }});
+                        return;
+                    }}
+                }}
+                const core = window.__chatwCore;
+                if (!core || !core.isSupported || !core.isSupported()) {{
+                    dioxus.send({{ handled: false }});
+                    return;
+                }}
+                if ((core.isSimulatedOffline && core.isSimulatedOffline()) || navigator.onLine === false) {{
+                    dioxus.send({{ handled: true, ok: false, status: 0, error: 'network_error', text: '' }});
+                    return;
+                }}
+                if (!core.isConnected() && core.hasAuthHint && !core.hasAuthHint()) {{
+                    dioxus.send({{ handled: false }});
+                    return;
+                }}
+                if (!core.isConnected()) {{
+                    await core.waitUntilReady({wait_ms});
+                }}
+                if (!core.isConnected()) {{
+                    if (navigator.onLine === false) {{
+                        dioxus.send({{ handled: true, ok: false, status: 0, error: 'network_error', text: '' }});
+                        return;
+                    }}
+                    dioxus.send({{ handled: false }});
+                    return;
+                }}
+                const res = await core.rpcFromRust({m_json}, {p_json}, {j_json}, {r_b64_json}, {r_ct_json});
+                if ({static_flag} && res && res.ok && res.status === 200 && res.text && window.__chatwStorage && window.__chatwStorage.putStaticCache) {{
+                    window.__chatwStorage.putStaticCache('static:' + {p_json}, 'v2', res.text).catch(() => {{}});
+                }}
+                dioxus.send({{ handled: true, ...res }});
+            }} catch (e) {{
+                dioxus.send({{ handled: false }});
+            }}
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let v: serde_json::Value = eval.recv().await.ok()?;
+    if v.get("handled").and_then(|b| b.as_bool()) != Some(true) {
+        return None;
+    }
+    let ok = v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false);
+    let status = v.get("status").and_then(|n| n.as_u64()).unwrap_or(0) as u16;
+    let text = v.get("text").and_then(|s| s.as_str()).unwrap_or("").to_string();
+    if !ok || status == 0 {
+        let code = v
+            .get("error")
+            .and_then(|s| s.as_str())
+            .unwrap_or("network_error")
+            .to_string();
+        return Some(Err(ApiError { code, status: 0 }));
+    }
+    if !(200..300).contains(&status) {
+        let mut code = "request_failed".to_string();
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text)
+            && let Some(e) = parsed.get("error").and_then(|s| s.as_str())
+        {
+            code = e.to_string();
+        }
+        return Some(Err(ApiError { code, status }));
+    }
+    Some(Ok((status, text)))
+}
+
 pub async fn http_request(
     method: &str,
     path: &str,
     json_body: Option<String>,
     raw_body: Option<(Vec<u8>, &str)>,
 ) -> Result<(u16, String), ApiError> {
+    // 1. Prefer SharedWorker CWBF2 Encrypted Binary RPC Multiplexer (0 Fetch/XHR on F12!)
+    let raw_ref = raw_body.as_ref().map(|(b, ct)| (b.as_slice(), *ct));
+    if let Some(rpc_res) = try_core_worker_rpc(method, path, json_body.as_deref(), raw_ref).await {
+        return rpc_res;
+    }
+
+    // 2. HTTP fetch fallback (used ONLY for HttpOnly cookie-setting login/logout or pre-auth boot)
     let window = web_sys::window().ok_or_else(|| ApiError {
         code: "no_window".into(),
         status: 0,
@@ -110,6 +236,29 @@ pub async fn http_request(
             code = e.to_string();
         }
         return Err(ApiError { code, status });
+    }
+
+    // Immediately connect SharedWorker Binary RPC right after login or auth_me confirms session cookie,
+    // so 100% of subsequent app requests have 0 Fetch/XHR on F12!
+    if path.starts_with("/api/auth/dev-login") || path.starts_with("/api/auth/me") {
+        let mut ev = dioxus::document::eval(
+            r#"
+            (async () => {
+                try {
+                    if (window.__chatwCore) {
+                        if (window.__chatwCore.setAuthHint) window.__chatwCore.setAuthHint(true);
+                        if (!window.__chatwCore.isConnected()) {
+                            window.__chatwCore.reconnectNow();
+                            await window.__chatwCore.waitUntilReady(2500);
+                        }
+                        await window.__chatwCore.bridgeServiceWorkerPort();
+                    }
+                } catch (_) {}
+                dioxus.send(true);
+            })();
+            "#,
+        );
+        let _ = ev.recv::<bool>().await;
     }
 
     Ok((status, text))
@@ -281,13 +430,23 @@ pub async fn run_ws_loop(tx: UnboundedSender<WsEvent>, stop: Arc<AtomicBool>) {
     }
 }
 
-/// Download raw bytes from an API path (used for encrypted attachments).
+/// Download raw bytes via SharedWorker Binary WS (`OP_MEDIA_CHUNK_REQ`) with HTTP fallback.
 pub async fn fetch_bytes(path: &str) -> Result<Vec<u8>, String> {
     let url_json = serde_json::to_string(path).unwrap_or_default();
     let js = format!(
         r#"
         (async () => {{
             try {{
+                if (window.__chatwCore && window.__chatwCore.isSupported && window.__chatwCore.isSupported()) {{
+                    if (!window.__chatwCore.isConnected()) await window.__chatwCore.waitUntilReady(1800);
+                    if (window.__chatwCore.isConnected()) {{
+                        const dl = await window.__chatwCore.downloadBytes({url_json}, {{ priority: 'HIGH' }});
+                        if (dl && dl.ok && dl.b64) {{
+                            dioxus.send({{ b64: dl.b64 }});
+                            return;
+                        }}
+                    }}
+                }}
                 const res = await fetch({url_json}, {{ credentials: 'include' }});
                 if (!res.ok) {{ dioxus.send({{ error: 'http_' + res.status }}); return; }}
                 const buf = new Uint8Array(await res.arrayBuffer());

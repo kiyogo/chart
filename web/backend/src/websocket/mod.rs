@@ -1,3 +1,5 @@
+pub mod rpc_bin;
+
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
     aead::{Aead, Payload},
@@ -536,10 +538,14 @@ async fn ws_handler(
 
     let hub = state.ws_hub.clone();
     let user_id = user.id;
-    let use_binary = query.proto.as_deref() == Some("bin");
+    let proto_mode = query.proto.unwrap_or_default();
+    let session_tok_owned = session_token.to_string();
+    let state_clone = state.clone();
 
     Ok(ws.on_upgrade(move |socket| async move {
-        if use_binary {
+        if proto_mode == "rpc-bin" {
+            rpc_bin::handle_socket_rpc_bin(socket, state_clone, user_id, session_tok_owned, conn_id, rx, hub).await;
+        } else if proto_mode == "bin" {
             handle_socket_binary(socket, user_id, conn_id, rx, hub).await;
         } else {
             handle_socket(socket, user_id, conn_id, rx, hub).await;

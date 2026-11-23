@@ -99,6 +99,8 @@ pub struct MediaFileData {
     pub w: u32,
     #[serde(default)]
     pub h: u32,
+    #[serde(default)]
+    pub waveform: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -321,6 +323,7 @@ pub fn build_rich_media_wire(
         blur,
         w,
         h,
+        waveform: payload.waveform.clone(),
     };
     format!("{prefix}{}", serde_json::to_string(&data).unwrap_or_default())
 }
@@ -366,24 +369,44 @@ pub fn reminder_due(r: &ReminderData) -> Option<DateTime<Local>> {
 /// Votes per poll: poll_id -> (voter -> option index). The latest vote wins.
 pub type VoteTally = std::collections::HashMap<String, std::collections::HashMap<String, usize>>;
 
-/// Image message (local OPFS/IndexedDB cache first, transparent E2EE decrypt, and two-way peer recovery).
+/// Image message (SharedWorker Priority DownloadManager -> `blob:` URL ONLY, 0 raw URLs in DOM,
+/// local OPFS/IndexedDB cache first, transparent E2EE decrypt, and two-way peer recovery).
 #[component]
 pub fn RichImage(data: ImageData) -> Element {
     let mut src = use_signal(|| Option::<String>::None);
+    let mut owned_blob = use_signal(|| false);
     let mut missing = use_signal(|| Option::<(String, String, String)>::None);
     let mut rec_status = use_signal(|| Option::<String>::None);
     let mut failed = use_signal(|| false);
     let mut open = use_signal(|| false);
     let d = data.clone();
+
+    use_drop(move || {
+        if *owned_blob.peek()
+            && let Some(u) = src.peek().as_deref()
+        {
+            platform::revoke_object_url(u);
+        }
+    });
+
     use_effect(use_reactive!(|d| {
+        if *owned_blob.peek()
+            && let Some(prev) = src.peek().as_deref()
+        {
+            platform::revoke_object_url(prev);
+        }
+        owned_blob.set(false);
         src.set(None);
         missing.set(None);
         failed.set(false);
         spawn(async move {
             let mime = if d.m.starts_with("image/") { d.m.clone() } else { "image/png".into() };
+            // Non-E2EE image: pull through SharedWorker Priority DownloadManager -> `blob:` URL (0 raw `/uploads/` in DOM!)
             if d.k.is_empty() && d.u.starts_with("/uploads/") {
-                src.set(Some(platform::resolve_asset_url(&d.u)));
-                return;
+                if let Some(burl) = platform::resolve_blob_media_url(&d.u, "HIGH").await {
+                    src.set(Some(burl));
+                    return;
+                }
             }
             let scope = if d.scope.is_empty() {
                 if d.k.is_empty() { "group" } else { "dm" }
@@ -392,7 +415,9 @@ pub fn RichImage(data: ImageData) -> Element {
             };
             match recovery::load_or_fetch_media(&d.u, &d.k, &d.n, &mime, scope, "original").await {
                 MediaFetchOutcome::Ready { bytes, mime: m, .. } => {
-                    src.set(Some(platform::image_bytes_to_data_url(&bytes, &m).await));
+                    let burl = platform::media_bytes_to_object_url(&bytes, &m).await;
+                    owned_blob.set(burl.starts_with("blob:"));
+                    src.set(Some(burl));
                 }
                 MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
                     missing.set(Some((ref_id, availability_state, reason)));
@@ -583,6 +608,42 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
             div { class: "rich-title", "{fname}" }
             if let Some(u) = data_url() {
                 if kind == "audio" {
+                    {
+                        let bars: Vec<u8> = if !data.waveform.is_empty() {
+                            data.waveform.iter().copied().take(48).collect()
+                        } else {
+                            // Deterministic subtle waveform preview for legacy voice notes without embedded samples
+                            let seed = data.sha.as_bytes().iter().fold(17u32, |a, &b| a.wrapping_mul(31).wrapping_add(b as u32));
+                            (0..36u32).map(|i| (((seed.wrapping_mul(i + 7) ^ (i * 13)) % 24) + 6) as u8).collect()
+                        };
+                        let total_bars = bars.len().max(1);
+                        rsx! {
+                            div { class: "voice-waveform", role: "slider", aria_label: "Seek voice message",
+                                for (idx, amp) in bars.into_iter().enumerate() {
+                                    {
+                                        let h_pct = ((amp as f32 / 31.0) * 100.0).clamp(16.0, 100.0);
+                                        let el_id = pid.clone();
+                                        let ratio = (idx as f64 + 0.5) / (total_bars as f64);
+                                        rsx! {
+                                            button {
+                                                key: "{idx}",
+                                                r#type: "button",
+                                                class: "voice-wave-bar",
+                                                style: "height: {h_pct:.0}%;",
+                                                aria_label: "Seek voice position",
+                                                onclick: move |_| {
+                                                    let id_json = serde_json::to_string(&el_id).unwrap_or_default();
+                                                    let _ = dioxus::document::eval(&format!(
+                                                        "(() => {{ const el = document.getElementById({id_json}); if (el && Number.isFinite(el.duration) && el.duration > 0) {{ el.currentTime = el.duration * {ratio}; el.play().catch(()=>{{}}); }} }})()"
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     audio {
                         id: "{pid}",
                         controls: true,
@@ -615,7 +676,7 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
                     }
                 }
                 div { style: "margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;",
-                    if u.starts_with("/stream/media/") {
+                    if u.starts_with("/stream/") {
                         {
                             let dl_url = u.clone();
                             let dl_name = fname.clone();

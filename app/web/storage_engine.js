@@ -3,7 +3,7 @@
 // and safe cache-vs-source eviction protecting unique unbacked `local_only` DM media.
 (() => {
   const DB_NAME = 'chatw_storage_v1';
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
   const OPFS_DIR = 'chatw_cas';
   const CACHE_NAME = 'chatw_media_cache_v1';
   const MAX_CACHED_MESSAGES_PER_CONV = 500;
@@ -43,6 +43,24 @@
         if (!db.objectStoreNames.contains('chat_outbox')) {
           const co = db.createObjectStore('chat_outbox', { keyPath: 'client_id' });
           co.createIndex('created_at', 'created_at', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('dialogs')) {
+          db.createObjectStore('dialogs', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('users_peers')) {
+          db.createObjectStore('users_peers', { keyPath: 'user_id' });
+        }
+        if (!db.objectStoreNames.contains('sync_state')) {
+          db.createObjectStore('sync_state', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('drafts')) {
+          db.createObjectStore('drafts', { keyPath: 'conv_key' });
+        }
+        if (!db.objectStoreNames.contains('static_cache')) {
+          db.createObjectStore('static_cache', { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains('crypto_keys')) {
+          db.createObjectStore('crypto_keys', { keyPath: 'id' });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -673,6 +691,110 @@
       if (!clientId) return false;
       try {
         await idbTx('chat_outbox', 'readwrite', (s) => s.delete(String(clientId)));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
+    // ── Spec 071: Dialogs, Peers, Drafts, Static Cache & Non-Extractable CryptoKey Vault ──
+    async putDialogs(uid, payload) {
+      if (!uid || !payload) return false;
+      try {
+        await idbTx('dialogs', 'readwrite', (s) =>
+          s.put({ id: `dialogs:${uid}`, payload, updated_at: Date.now() }),
+        );
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
+    async getDialogs(uid) {
+      if (!uid) return { found: false, payload: null };
+      try {
+        const rec = await idbTx('dialogs', 'readonly', (s) => s.get(`dialogs:${uid}`));
+        if (!rec || !rec.payload) return { found: false, payload: null };
+        return { found: true, payload: rec.payload, updated_at: rec.updated_at || 0 };
+      } catch (_) {
+        return { found: false, payload: null };
+      }
+    },
+
+    async putDraft(convKey, text) {
+      if (!convKey) return false;
+      try {
+        if (!text || !String(text).trim()) {
+          await idbTx('drafts', 'readwrite', (s) => s.delete(String(convKey)));
+        } else {
+          await idbTx('drafts', 'readwrite', (s) =>
+            s.put({ conv_key: String(convKey), text: String(text), updated_at: Date.now() }),
+          );
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
+    async getDraft(convKey) {
+      if (!convKey) return '';
+      try {
+        const rec = await idbTx('drafts', 'readonly', (s) => s.get(String(convKey)));
+        return rec && typeof rec.text === 'string' ? rec.text : '';
+      } catch (_) {
+        return '';
+      }
+    },
+
+    async putStaticCache(key, version, data) {
+      if (!key) return false;
+      try {
+        await idbTx('static_cache', 'readwrite', (s) =>
+          s.put({ key: String(key), version: String(version || 'v1'), data, updated_at: Date.now() }),
+        );
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
+    async getStaticCache(key) {
+      if (!key) return null;
+      try {
+        const rec = await idbTx('static_cache', 'readonly', (s) => s.get(String(key)));
+        return rec || null;
+      } catch (_) {
+        return null;
+      }
+    },
+
+    async ensureNonExtractableVaultKey() {
+      if (!crypto || !crypto.subtle) return { ok: false };
+      try {
+        let rec = await idbTx('crypto_keys', 'readonly', (s) => s.get('device_vault_aes'));
+        if (rec && rec.key && rec.key.extractable === false) {
+          return { ok: true, extractable: false, algorithm: rec.key.algorithm.name };
+        }
+        const key = await crypto.subtle.generateKey(
+          { name: 'AES-GCM', length: 256 },
+          false, // NEVER extractable — F12 Console cannot export raw key bytes!
+          ['encrypt', 'decrypt'],
+        );
+        await idbTx('crypto_keys', 'readwrite', (s) =>
+          s.put({ id: 'device_vault_aes', key, created_at: Date.now() }),
+        );
+        return { ok: true, extractable: key.extractable, algorithm: key.algorithm.name };
+      } catch (e) {
+        return { ok: false, error: String(e && e.message ? e.message : e) };
+      }
+    },
+
+    async clearSessionSecrets() {
+      try {
+        for (const storeName of ['dialogs', 'chat_messages', 'chat_outbox', 'drafts', 'users_peers']) {
+          await idbTx(storeName, 'readwrite', (s) => s.clear()).catch(() => {});
+        }
         return true;
       } catch (_) {
         return false;

@@ -1824,6 +1824,210 @@ pub fn revoke_sw_media_stream(grant_id: &str) {
     }
 }
 
+/// Resolve any image/avatar/sticker URL through the SharedWorker Priority DownloadManager into a `blob:` URL
+/// so raw `/uploads/...` and `/api/attachments/...` URLs never appear in DOM `<img>` tags (Spec 071).
+pub async fn resolve_blob_media_url(url: &str, priority: &str) -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if url.is_empty() || url.starts_with("blob:") || url.starts_with("data:") {
+            return Some(url.to_string());
+        }
+        let u_json = serde_json::to_string(url).ok()?;
+        let p_json = serde_json::to_string(priority).ok()?;
+        let js = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (window.__chatwCore && window.__chatwCore.downloadMediaBlobUrl) {{
+                        if (!window.__chatwCore.isConnected()) await window.__chatwCore.waitUntilReady(1500);
+                        const b = await window.__chatwCore.downloadMediaBlobUrl({u_json}, {{ priority: {p_json} }});
+                        dioxus.send(b || '');
+                        return;
+                    }}
+                }} catch (_) {{}}
+                dioxus.send('');
+            }})();
+            "#
+        );
+        let mut eval = dioxus::document::eval(&js);
+        let res = eval.recv::<String>().await.ok()?;
+        if res.starts_with("blob:") || res.starts_with("data:") {
+            Some(res)
+        } else {
+            None
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = priority;
+        Some(resolve_asset_url(url))
+    }
+}
+
+/// Initialize the non-extractable Web Crypto `CryptoKey` vault in IndexedDB (Spec 071).
+pub async fn ensure_non_extractable_vault_key() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = dioxus::document::eval(
+            "if (window.__chatwStorage && window.__chatwStorage.ensureNonExtractableVaultKey) { window.__chatwStorage.ensureNonExtractableVaultKey(); }",
+        );
+    }
+}
+
+/// Wipe SharedWorker socket, SW media grants, `blob:` URL pool & session caches across all tabs on logout/lock.
+pub async fn wipe_client_session_on_logout() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mut ev = dioxus::document::eval(
+            r#"
+            (async () => {
+                try {
+                    if (window.__chatwCore && window.__chatwCore.wipeSessionOnLogout) {
+                        await window.__chatwCore.wipeSessionOnLogout();
+                    }
+                } catch (_) {}
+                dioxus.send(true);
+            })();
+            "#,
+        );
+        let _ = ev.recv::<bool>().await;
+    }
+}
+
+/// Broadcast an instant (<5ms) multi-tab sync notification through SharedWorker.
+pub fn broadcast_tab_sync(topic: &str, payload: serde_json::Value) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let (Ok(t_json), Ok(p_json)) = (serde_json::to_string(topic), serde_json::to_string(&payload)) {
+            let _ = dioxus::document::eval(&format!(
+                "if (window.__chatwCore && window.__chatwCore.broadcastTabSync) {{ window.__chatwCore.broadcastTabSync({t_json}, {p_json}); }}"
+            ));
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (topic, payload);
+    }
+}
+
+/// Save/load per-conversation unsent composer drafts in IndexedDB `drafts` store.
+pub async fn save_draft(conv_key: &str, text: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let (Ok(k_json), Ok(t_json)) = (serde_json::to_string(conv_key), serde_json::to_string(text)) {
+            let _ = dioxus::document::eval(&format!(
+                "if (window.__chatwStorage && window.__chatwStorage.putDraft) {{ window.__chatwStorage.putDraft({k_json}, {t_json}); }}"
+            ));
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (conv_key, text);
+    }
+}
+
+pub async fn load_draft(conv_key: &str) -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let Ok(k_json) = serde_json::to_string(conv_key) else {
+            return String::new();
+        };
+        let js = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (window.__chatwStorage && window.__chatwStorage.getDraft) {{
+                        const t = await window.__chatwStorage.getDraft({k_json});
+                        dioxus.send(t || '');
+                        return;
+                    }}
+                }} catch (_) {{}}
+                dioxus.send('');
+            }})();
+            "#
+        );
+        let mut ev = dioxus::document::eval(&js);
+        ev.recv::<String>().await.unwrap_or_default()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = conv_key;
+        String::new()
+    }
+}
+
+/// Save/load offline-first dialogs snapshot (`friends`, `groups`, `servers`) in IndexedDB `dialogs`.
+pub async fn save_dialogs_cache(uid: &str, payload: &serde_json::Value) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let (Ok(u_json), Ok(p_json)) = (serde_json::to_string(uid), serde_json::to_string(payload)) {
+            let _ = dioxus::document::eval(&format!(
+                "if (window.__chatwStorage && window.__chatwStorage.putDialogs) {{ window.__chatwStorage.putDialogs({u_json}, {p_json}); }}"
+            ));
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (uid, payload);
+    }
+}
+
+pub async fn load_dialogs_cache(uid: &str) -> Option<serde_json::Value> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let u_json = serde_json::to_string(uid).ok()?;
+        let js = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (window.__chatwStorage && window.__chatwStorage.getDialogs) {{
+                        const r = await window.__chatwStorage.getDialogs({u_json});
+                        if (r && r.found && r.payload) {{ dioxus.send(r.payload); return; }}
+                    }}
+                }} catch (_) {{}}
+                dioxus.send(null);
+            }})();
+            "#
+        );
+        let mut ev = dioxus::document::eval(&js);
+        let v: serde_json::Value = ev.recv().await.ok()?;
+        if v.is_null() { None } else { Some(v) }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = uid;
+        None
+    }
+}
+
+/// Perform PTS cursor delta sync over Binary WS (`OP_DELTA_SYNC_REQ`).
+pub async fn delta_sync_pts(dm_pts: i64, group_pts: i64, channel_pts: i64) -> Option<serde_json::Value> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let js = format!(
+            r#"
+            (async () => {{
+                try {{
+                    if (window.__chatwCore && window.__chatwCore.isConnected && window.__chatwCore.isConnected()) {{
+                        const r = await window.__chatwCore.deltaSync({dm_pts}, {group_pts}, {channel_pts});
+                        if (r && r.ok && r.text) {{ dioxus.send(JSON.parse(r.text)); return; }}
+                    }}
+                }} catch (_) {{}}
+                dioxus.send(null);
+            }})();
+            "#
+        );
+        let mut ev = dioxus::document::eval(&js);
+        let v: serde_json::Value = ev.recv().await.ok()?;
+        if v.is_null() { None } else { Some(v) }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (dm_pts, group_pts, channel_pts);
+        None
+    }
+}
+
 /// Minutes left until local midnight (custom status "until the end of today").
 pub fn minutes_until_midnight() -> i64 {
     use chrono::Timelike;

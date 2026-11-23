@@ -1,4 +1,4 @@
-// Main-thread Service Worker registration & protected media stream grant bridge (Spec 069)
+// Main-thread Service Worker registration, SharedWorker direct-port bridge & `/stream/{grantId}` grant manager (Spec 071)
 (() => {
   let regPromise = null;
 
@@ -15,6 +15,9 @@
       .register('/sw.js', { scope: '/' })
       .then(async (reg) => {
         try { await navigator.serviceWorker.ready; } catch (_) {}
+        if (window.__chatwCore && typeof window.__chatwCore.bridgeServiceWorkerPort === 'function') {
+          window.__chatwCore.bridgeServiceWorkerPort();
+        }
         return reg;
       })
       .catch(() => null);
@@ -49,14 +52,22 @@
   async function ensureController(timeoutMs = 2500) {
     if (!('serviceWorker' in navigator)) return false;
     await registerSw();
-    if (navigator.serviceWorker.controller) return true;
+    if (navigator.serviceWorker.controller) {
+      if (window.__chatwCore && typeof window.__chatwCore.bridgeServiceWorkerPort === 'function') {
+        await window.__chatwCore.bridgeServiceWorkerPort();
+      }
+      return true;
+    }
     return await new Promise((resolve) => {
       let done = false;
-      const finish = (v) => {
+      const finish = async (v) => {
         if (done) return;
         done = true;
         navigator.serviceWorker.removeEventListener('controllerchange', onCtrl);
         clearTimeout(timer);
+        if (v && window.__chatwCore && typeof window.__chatwCore.bridgeServiceWorkerPort === 'function') {
+          await window.__chatwCore.bridgeServiceWorkerPort();
+        }
         resolve(v);
       };
       const onCtrl = () => finish(Boolean(navigator.serviceWorker.controller));
@@ -65,24 +76,6 @@
     });
   }
 
-  async function fetchShortLivedStreamToken(url) {
-    try {
-      const cleanPath = String(url || '').split('?')[0];
-      const res = await fetch('/api/attachments/stream-token', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: cleanPath }),
-      });
-      if (!res.ok) return '';
-      const json = await res.json();
-      return (json && typeof json.token === 'string') ? json.token : '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  // Register Service Worker eagerly on boot so clients.claim() takes over promptly.
   if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     registerSw();
   }
@@ -95,7 +88,8 @@
     async registerStream({ url, keyB64 = '', nonceB64 = '', mime = 'application/octet-stream', fileName = 'media' }) {
       const ready = await ensureController(2000);
       if (!ready) return { ok: false, error: 'sw_not_controlling' };
-      const streamToken = await fetchShortLivedStreamToken(url);
+      // When SharedWorker direct MessagePort is bridged, SW pulls chunks over encrypted CWBF2 Binary WS
+      // with ZERO `/api/attachments/stream-token` HTTP fetch!
       const grantId = randomGrantId();
       const resp = await sendSwMessage({
         type: 'REGISTER_MEDIA_GRANT',
@@ -105,7 +99,7 @@
         nonceB64,
         mime,
         fileName,
-        streamToken,
+        streamToken: '',
       });
       return resp;
     },
@@ -113,6 +107,10 @@
     async revokeStream(grantId) {
       if (!grantId) return { ok: true };
       return await sendSwMessage({ type: 'REVOKE_MEDIA_GRANT', grantId }, 1000);
+    },
+
+    async revokeAll() {
+      return await sendSwMessage({ type: 'REVOKE_ALL_GRANTS' }, 1000);
     },
 
     async getStatus() {

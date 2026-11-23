@@ -18,6 +18,18 @@ thread_local! {
 }
 
 pub async fn send_encrypted_dm(my_id: &str, partner_id: &str, text: &str, reply_to: Option<&str>) -> Result<SentDm, String> {
+    send_encrypted_dm_with_id(my_id, partner_id, text, reply_to, None).await
+}
+
+/// Idempotent E2EE DM send using a caller-supplied deterministic `client_msg_id` (`random_id`),
+/// ensuring network retries / offline outbox flushes NEVER create duplicate messages in PostgreSQL.
+pub async fn send_encrypted_dm_with_id(
+    my_id: &str,
+    partner_id: &str,
+    text: &str,
+    reply_to: Option<&str>,
+    client_msg_id: Option<&str>,
+) -> Result<SentDm, String> {
     let keys = get_user_keys(Some(my_id)).ok_or("missing_local_keys")?;
     let cache_key = format!("{my_id}:{partner_id}");
     let cached = PEERS.with(|p| p.borrow().get(&cache_key).cloned());
@@ -36,7 +48,10 @@ pub async fn send_encrypted_dm(my_id: &str, partner_id: &str, text: &str, reply_
             peer
         }
     };
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = client_msg_id
+        .filter(|s| uuid::Uuid::parse_str(s).is_ok())
+        .map(str::to_string)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let (recipient_env, sender_env) = encrypt_chat_message(&id, my_id, partner_id, &keys, &peer, text)?;
     let resp = api::messages_send_reply(&id, partner_id, &recipient_env, &sender_env, reply_to).await.map_err(|e| e.code)?;
     Ok(SentDm { id, seq: resp.seq, created_at: resp.created_at })

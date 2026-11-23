@@ -102,6 +102,22 @@
   }
 
   async function apiJson(method, path, body) {
+    if (window.__chatwCore && window.__chatwCore.isConnected && window.__chatwCore.isConnected()) {
+      const payload = body !== undefined ? JSON.stringify(body) : null;
+      const r = await window.__chatwCore.rpc(method, path, payload, payload !== null ? 'application/json' : '');
+      if (r && r.ok) {
+        let parsed = null;
+        try { parsed = r.text ? JSON.parse(r.text) : null; } catch (_) { parsed = r.text; }
+        if (r.status < 200 || r.status >= 300) {
+          const code = (parsed && parsed.error) || `http_${r.status}`;
+          const err = new Error(code);
+          err.status = r.status;
+          err.code = code;
+          throw err;
+        }
+        return parsed;
+      }
+    }
     const opts = {
       method,
       credentials: 'include',

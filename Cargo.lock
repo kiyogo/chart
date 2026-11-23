@@ -746,6 +746,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dotenvy",
+ "flate2",
  "futures-util",
  "getrandom 0.4.3",
  "hex",

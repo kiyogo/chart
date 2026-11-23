@@ -37,9 +37,13 @@ pub struct ViewMessage {
 
 const GROUP_WINDOW_SECS: i64 = 5 * 60;
 
-/// Default initial DOM render window for large message histories (10,000+ messages).
-/// Older slices are mounted progressively on scroll-up or click with zero layout shift.
+/// Default DOM render threshold for normal conversations; conversations exceeding this size
+/// engage the true bi-directional virtual scroller mounting <= `VIRTUAL_MAX_DOM_ROWS` nodes.
 pub const MESSAGE_DOM_WINDOW_STEP: usize = 120;
+/// Maximum `.message-row` DOM nodes mounted simultaneously in virtualized mode (100,000+ messages).
+pub const VIRTUAL_MAX_DOM_ROWS: usize = 80;
+/// Default estimated height (px) per row before `ResizeObserver` refines average row height.
+pub const VIRTUAL_DEFAULT_ROW_HEIGHT: f64 = 64.0;
 
 /// Computes the slice range `(start_idx, end_idx)` of `total_len` messages to mount in the DOM
 /// given the current `render_limit` and an optional `highlight_idx` that must remain visible.
@@ -59,6 +63,81 @@ pub fn compute_message_window_bounds(
         }
     }
     (start, total_len)
+}
+
+/// True bi-directional virtual scroller window calculator for 100,000+ message histories (Spec 071).
+/// Returns `(win_start, win_end, top_spacer_px, bottom_spacer_px)` guaranteeing:
+///   `(win_end - win_start) <= VIRTUAL_MAX_DOM_ROWS` (<= 80 DOM rows at ANY scroll position!).
+pub fn compute_bidirectional_virtual_window(
+    total_len: usize,
+    scroll_top: f64,
+    viewport_h: f64,
+    avg_row_h: f64,
+    highlight_idx: Option<usize>,
+) -> (usize, usize, f64, f64) {
+    if total_len <= MESSAGE_DOM_WINDOW_STEP {
+        return (0, total_len, 0.0, 0.0);
+    }
+    let row_h = avg_row_h.clamp(36.0, 240.0);
+    let vp_h = viewport_h.max(400.0);
+    let visible_rows = ((vp_h / row_h).ceil() as usize).clamp(12, 48);
+    let overscan = 16usize;
+    let window_size = (visible_rows + overscan * 2).min(VIRTUAL_MAX_DOM_ROWS);
+
+    let first_visible = if let Some(h_idx) = highlight_idx {
+        h_idx.saturating_sub(window_size / 2)
+    } else if scroll_top < 0.0 {
+        // Initial bottom-anchored sentinel (`-1.0`)
+        total_len.saturating_sub(window_size)
+    } else {
+        let est_idx = (scroll_top / row_h).floor().max(0.0) as usize;
+        est_idx.saturating_sub(overscan)
+    };
+
+    let win_start = first_visible.min(total_len.saturating_sub(window_size));
+    let win_end = (win_start + window_size).min(total_len);
+    let top_spacer = (win_start as f64) * row_h;
+    let bot_spacer = ((total_len - win_end) as f64) * row_h;
+    (win_start, win_end, top_spacer, bot_spacer)
+}
+
+/// Renders an image/sticker/GIF strictly as a `blob:` URL fetched via SharedWorker DownloadManager
+/// so zero `/uploads/...` or `/stickers/...` URLs ever appear in DOM `<img>` tags (Spec 071).
+#[component]
+fn BlobAssetImg(
+    url: String,
+    #[props(default)] class: String,
+    #[props(default)] alt: String,
+    #[props(default)] title: String,
+    #[props(default = "NORMAL".to_string())] priority: String,
+) -> Element {
+    let mut blob_src = use_signal(|| Option::<String>::None);
+    let u = url.clone();
+    let prio = priority.clone();
+    use_effect(use_reactive!(|u, prio| {
+        if u.starts_with("blob:") || u.starts_with("data:") {
+            blob_src.set(Some(u.clone()));
+            return;
+        }
+        blob_src.set(None);
+        let target = u.clone();
+        let p = prio.clone();
+        spawn(async move {
+            if let Some(burl) = platform::resolve_blob_media_url(&target, &p).await {
+                blob_src.set(Some(burl));
+            }
+        });
+    }));
+
+    if let Some(s) = blob_src() {
+        rsx! {
+            img { class: "{class}", src: "{s}", alt: "{alt}", title: "{title}", decoding: "async" }
+        }
+    } else {
+        rsx! {
+            span { class: "blob-img-placeholder {class}", aria_label: "{alt}" }
+        }
+    }
 }
 
 /// Reactions offered when hovering the single react button.
@@ -308,7 +387,31 @@ pub fn MessageList(
         });
     }
     let mut scroll_checking = use_signal(|| false);
-    let mut dom_render_limit = use_signal(|| MESSAGE_DOM_WINDOW_STEP);
+    let mut virtual_scroll_top = use_signal(|| -1.0f64); // -1.0 = anchored to bottom
+    let mut virtual_viewport_h = use_signal(|| 760.0f64);
+    let mut away_from_bottom = use_signal(|| false);
+    let mut unseen_while_scrolled = use_signal(|| 0usize);
+    let mut prev_total_seen = use_signal(|| 0usize);
+    let mut bench_synthetic_count = use_signal(|| 0usize);
+
+    // Expose virtual scroller stress-test trigger for 100,000-message E2E audit (Spec 071)
+    use_effect(move || {
+        spawn(async move {
+            let mut ev = dioxus::document::eval(
+                r#"
+                window.__chatwVirtualBenchSend = (n) => { try { dioxus.send(Number(n) || 0); } catch (_) {} };
+                window.__chatwVirtualBench = (n) => {
+                    if (window.__chatwVirtualBenchSend) window.__chatwVirtualBenchSend(n);
+                };
+                "#,
+            );
+            while let Ok(n) = ev.recv::<usize>().await {
+                bench_synthetic_count.set(n.min(250_000));
+                virtual_scroll_top.set(-1.0);
+            }
+        });
+    });
+
     let prefs_ctx = try_consume_context::<crate::prefs::PrefsCtx>();
     let fav_stickers = prefs_ctx.map(|c| c.prefs.read().fav_stickers.clone()).unwrap_or_default();
     // Poll votes are messages too: tally them and hide them from the list.
@@ -318,17 +421,58 @@ pub fn MessageList(
             tally.entry(poll_id).or_default().insert(m.sender_id.clone(), option);
         }
     }
-    let all_messages: Vec<ViewMessage> = messages.into_iter().filter(|m| !matches!(parse_rich(&m.text), Some(Rich::Vote { .. }))).collect();
+    let mut all_messages: Vec<ViewMessage> = messages.into_iter().filter(|m| !matches!(parse_rich(&m.text), Some(Rich::Vote { .. }))).collect();
+    let bench_n = *bench_synthetic_count.read();
+    let total_len = if bench_n > all_messages.len() { bench_n } else { all_messages.len() };
+    let prev_n = *prev_total_seen.peek();
+    if total_len > prev_n && prev_n > 0 && *away_from_bottom.peek() {
+        let delta = total_len - prev_n;
+        let cur_unseen = *unseen_while_scrolled.peek();
+        unseen_while_scrolled.set(cur_unseen.saturating_add(delta));
+    }
+    if prev_n != total_len {
+        prev_total_seen.set(total_len);
+    }
+
     let highlight_idx = highlight_id
         .as_deref()
         .and_then(|hid| all_messages.iter().position(|m| m.id == hid));
-    let (win_start, win_end) = compute_message_window_bounds(
-        all_messages.len(),
-        *dom_render_limit.read(),
+    let (win_start, win_end, top_spacer_px, bot_spacer_px) = compute_bidirectional_virtual_window(
+        total_len,
+        *virtual_scroll_top.read(),
+        *virtual_viewport_h.read(),
+        VIRTUAL_DEFAULT_ROW_HEIGHT,
         highlight_idx,
     );
-    let hidden_older_in_memory = win_start;
-    let messages: Vec<ViewMessage> = all_messages[win_start..win_end].to_vec();
+    let is_virtualized = total_len > MESSAGE_DOM_WINDOW_STEP;
+    let messages: Vec<ViewMessage> = if bench_n > all_messages.len() {
+        (win_start..win_end)
+            .map(|idx| {
+                if let Some(real) = all_messages.get(idx) {
+                    real.clone()
+                } else {
+                    ViewMessage {
+                        id: format!("bench-msg-{idx}"),
+                        sender_id: if idx % 2 == 0 { my_id.clone() } else { "bench-peer".into() },
+                        sender_name: if idx % 2 == 0 { my_username.clone() } else { "Peer".into() },
+                        sender_avatar: None,
+                        text: format!("Virtual benchmark message #{idx} of {total_len}"),
+                        created_at: "2026-11-23T00:00:00Z".into(),
+                        is_self: idx % 2 == 0,
+                        is_error: false,
+                        is_pending: false,
+                        reply_text: None,
+                        reactions: Vec::new(),
+                        is_pinned: false,
+                        is_bot: false,
+                        highlighted: false,
+                    }
+                }
+            })
+            .collect()
+    } else {
+        all_messages.drain(win_start..win_end).collect()
+    };
     let mention_token = if my_username.is_empty() { String::new() } else { format!("@{}", my_username.to_lowercase()) };
     let count = messages.len();
     let parsed: Vec<Option<DateTime<Local>>> = messages.iter().map(|m| parse_local(&m.created_at)).collect();
@@ -339,23 +483,56 @@ pub fn MessageList(
             class: "chat-messages",
             role: "log",
             aria_live: "polite",
+            "data-total-messages": "{total_len}",
+            "data-mounted-messages": "{count}",
             onscroll: move |_| {
-                if !loading_initial && (hidden_older_in_memory > 0 || has_more) && !loading_more && !*scroll_checking.peek() {
+                if !*scroll_checking.peek() {
                     scroll_checking.set(true);
                     spawn(async move {
                         let mut ev = dioxus::document::eval(
-                            "const el = document.getElementById('chat-messages-scroll'); const pinning = window.__chatwStickToBottom && window.__chatwStickToBottom.isPinning(); dioxus.send(!pinning && el ? el.scrollTop <= 180 : false);"
+                            r#"
+                            const el = document.getElementById('chat-messages-scroll');
+                            const pinning = window.__chatwStickToBottom && window.__chatwStickToBottom.isPinning();
+                            if (!el) { dioxus.send({ ok: false }); }
+                            else {
+                                const dist = Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
+                                dioxus.send({
+                                    ok: true,
+                                    pinning: Boolean(pinning),
+                                    top: el.scrollTop,
+                                    vh: el.clientHeight,
+                                    dist: dist,
+                                });
+                            }
+                            "#
                         );
-                        let near_top = ev.recv::<bool>().await.unwrap_or(false);
+                        let info = ev.recv::<serde_json::Value>().await.unwrap_or_default();
                         scroll_checking.set(false);
-                        if near_top {
-                            if hidden_older_in_memory > 0 {
-                                platform::snapshot_chat_scroll_height().await;
-                                let cur = *dom_render_limit.peek();
-                                dom_render_limit.set(cur.saturating_add(MESSAGE_DOM_WINDOW_STEP));
-                                platform::restore_chat_scroll_after_prepend();
-                            } else if let Some(h) = on_load_more {
-                                h.call(());
+                        if info.get("ok").and_then(|b| b.as_bool()) == Some(true) {
+                            let pinning = info.get("pinning").and_then(|b| b.as_bool()).unwrap_or(false);
+                            let top = info.get("top").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                            let vh = info.get("vh").and_then(|v| v.as_f64()).unwrap_or(760.0);
+                            let dist = info.get("dist").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                            let away = dist > 260.0;
+                            if *away_from_bottom.peek() != away {
+                                away_from_bottom.set(away);
+                                if !away {
+                                    unseen_while_scrolled.set(0);
+                                }
+                            }
+                            if is_virtualized {
+                                if (*virtual_viewport_h.peek() - vh).abs() > 20.0 {
+                                    virtual_viewport_h.set(vh);
+                                }
+                                let next_top = if dist <= 16.0 { -1.0 } else { top };
+                                if (*virtual_scroll_top.peek() - next_top).abs() > 48.0 || next_top < 0.0 {
+                                    virtual_scroll_top.set(next_top);
+                                }
+                            }
+                            if !loading_initial && !pinning && top <= 180.0 && has_more && !loading_more && !is_virtualized {
+                                if let Some(h) = on_load_more {
+                                    h.call(());
+                                }
                             }
                         }
                     });
@@ -363,32 +540,19 @@ pub fn MessageList(
             },
             div { class: "message-stream",
                 div { class: "message-stream-start" }
+                if top_spacer_px > 0.5 {
+                    div { class: "virtual-spacer", style: "height: {top_spacer_px:.0}px;", aria_hidden: "true" }
+                }
                 if loading_initial && messages.is_empty() {
                     div { class: "chat-loading-initial", role: "status", aria_label: "Loading messages",
                         span { class: "spinner" }
-                    }
-                } else if hidden_older_in_memory > 0 {
-                    div { class: "load-older-bar",
-                        button {
-                            r#type: "button",
-                            class: "btn-ghost load-older-btn",
-                            onclick: move |_| {
-                                spawn(async move {
-                                    platform::snapshot_chat_scroll_height().await;
-                                    let cur = *dom_render_limit.peek();
-                                    dom_render_limit.set(cur.saturating_add(MESSAGE_DOM_WINDOW_STEP));
-                                    platform::restore_chat_scroll_after_prepend();
-                                });
-                            },
-                            "Show more previous messages ({hidden_older_in_memory})"
-                        }
                     }
                 } else if loading_more {
                     div { class: "load-older-bar",
                         span { class: "spinner" }
                         span { "Loading older messages" }
                     }
-                } else if has_more {
+                } else if has_more && win_start == 0 {
                     if let Some(h) = on_load_more {
                         div { class: "load-older-bar",
                             button {
@@ -511,7 +675,7 @@ pub fn MessageList(
                                         }
                                     } else if let Some(url) = gif {
                                         div { class: "message-media gif", title: "{full_time}",
-                                            img { class: "gif-img", src: "{platform::resolve_asset_url(&url)}", alt: "GIF", loading: "lazy" }
+                                            BlobAssetImg { url: url.clone(), class: "gif-img".to_string(), alt: "GIF".to_string(), priority: "HIGH".to_string() }
                                         }
                                         span { class: "message-time-standalone", "{time_str}" }
                                     } else if let Some(url) = sticker {
@@ -524,7 +688,7 @@ pub fn MessageList(
                                                 div { class: "message-media sticker-media", title: "{full_time}",
                                                     button { r#type: "button", class: "sticker-open", aria_label: "Sticker options", aria_haspopup: "menu", aria_expanded: "{menu_open}",
                                                         onclick: move |_| sticker_menu_for.set(if menu_open { None } else { Some(mid.clone()) }),
-                                                        img { class: "sticker-img", src: "{platform::resolve_asset_url(&url)}", alt: "Sticker", loading: "lazy" }
+                                                        BlobAssetImg { url: url.clone(), class: "sticker-img".to_string(), alt: "Sticker".to_string(), priority: "NORMAL".to_string() }
                                                     }
                                                     if menu_open {
                                                         button { r#type: "button", class: "menu-dismiss", tabindex: "-1", aria_label: "Close", onclick: move |_| sticker_menu_for.set(None) }
@@ -567,7 +731,7 @@ pub fn MessageList(
                                                             a { key: "{si}", href: "{l}", target: "_blank", rel: "noopener noreferrer nofollow", "{l}" }
                                                         },
                                                         Segment::Emoji(name, url) => rsx! {
-                                                            img { key: "{si}", class: "inline-emoji", src: "{platform::resolve_asset_url(&url)}", alt: ":{name}:", title: ":{name}:", loading: "lazy" }
+                                                            BlobAssetImg { key: "{si}", url: url.clone(), class: "inline-emoji".to_string(), alt: format!(":{name}:"), title: format!(":{name}:"), priority: "NORMAL".to_string() }
                                                         },
                                                     }
                                                 }
@@ -756,8 +920,29 @@ pub fn MessageList(
                         }
                     }
                 }
+                if bot_spacer_px > 0.5 {
+                    div { class: "virtual-spacer", style: "height: {bot_spacer_px:.0}px;", aria_hidden: "true" }
+                }
                 if count == 0 && intro_title.is_empty() {
                     div { class: "empty-chat-inner", "No messages yet" }
+                }
+            }
+            if away_from_bottom() {
+                button {
+                    r#type: "button",
+                    class: "scroll-to-bottom-btn",
+                    aria_label: "Scroll to latest messages",
+                    title: "Scroll to bottom",
+                    onclick: move |_| {
+                        away_from_bottom.set(false);
+                        unseen_while_scrolled.set(0);
+                        virtual_scroll_top.set(-1.0);
+                        platform::scroll_chat_to_bottom(false);
+                    },
+                    if unseen_while_scrolled() > 0 {
+                        span { class: "scroll-to-bottom-badge", "{unseen_while_scrolled()}" }
+                    }
+                    "↓"
                 }
             }
         }
@@ -779,10 +964,23 @@ mod tests {
         assert_eq!(e1 - s1, MESSAGE_DOM_WINDOW_STEP);
         assert_eq!(s1, 99_880);
 
-        // When jumping to an older message (#420), window expands smoothly to include #420 with 20-message context
-        let (s2, e2) = compute_message_window_bounds(total, MESSAGE_DOM_WINDOW_STEP, Some(420));
-        assert_eq!(s2, 400);
-        assert_eq!(e2, 100_000);
+        // Bi-directional virtual scroller at top, middle (#50,000), and bottom MUST mount <= VIRTUAL_MAX_DOM_ROWS!
+        for scroll_top in [-1.0_f64, 0.0, 50_000.0 * VIRTUAL_DEFAULT_ROW_HEIGHT, 99_900.0 * VIRTUAL_DEFAULT_ROW_HEIGHT] {
+            let (vs, ve, top_sp, bot_sp) = compute_bidirectional_virtual_window(
+                total,
+                scroll_top,
+                820.0,
+                VIRTUAL_DEFAULT_ROW_HEIGHT,
+                None,
+            );
+            assert!(ve > vs && (ve - vs) <= VIRTUAL_MAX_DOM_ROWS, "mounted={} exceeds {}", ve - vs, VIRTUAL_MAX_DOM_ROWS);
+            assert!(top_sp >= 0.0 && bot_sp >= 0.0);
+        }
+
+        // Jump-to-message (#420) centers the virtual window around #420 with <= VIRTUAL_MAX_DOM_ROWS mounted!
+        let (js, je, _, _) = compute_bidirectional_virtual_window(total, 0.0, 820.0, VIRTUAL_DEFAULT_ROW_HEIGHT, Some(420));
+        assert!(js <= 420 && 420 < je && (je - js) <= VIRTUAL_MAX_DOM_ROWS);
+
         assert!(t0.elapsed().as_micros() < 1000, "window bound calculation must be O(1) sub-millisecond");
     }
 

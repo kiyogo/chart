@@ -10,6 +10,7 @@ kiyo-kdata = { path = "../../crates/kiyo-kdata" }
 base64 = "0.22"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "serde", "std"] }
 dotenvy = "0.15.7"
+flate2 = "1"
 futures-util = "0.3.34"
 getrandom = "0.4.3"
 hex = "0.4.3"

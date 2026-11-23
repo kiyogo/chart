@@ -188,14 +188,51 @@
     }
   }
 
+  async function loadLocaleJson(url, cacheKey) {
+    // 1. IndexedDB static_cache hit (0ms, 0 Fetch/XHR)
+    try {
+      if (window.__chatwStorage && window.__chatwStorage.getStaticCache) {
+        const hit = await window.__chatwStorage.getStaticCache(cacheKey);
+        if (hit && hit.data) return hit.data;
+      }
+    } catch (_) {}
+
+    // 2. SharedWorker CWBF2 Binary RPC tunnel (0 Fetch/XHR on F12!)
+    try {
+      if (window.__chatwCore) {
+        const hasAuth = !window.__chatwCore.hasAuthHint || window.__chatwCore.hasAuthHint();
+        if (hasAuth && !window.__chatwCore.isConnected() && window.__chatwCore.waitUntilReady) {
+          await window.__chatwCore.waitUntilReady(600);
+        }
+        if (window.__chatwCore.isConnected && window.__chatwCore.isConnected()) {
+          const r = await window.__chatwCore.rpc('GET', url);
+          if (r && r.ok && r.status === 200 && r.text) {
+            const parsed = JSON.parse(r.text);
+            if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
+              window.__chatwStorage.putStaticCache(cacheKey, 'v2', parsed).catch(() => {});
+            }
+            return parsed;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 3. Cold-boot pre-auth fallback (cached by SW + saved to IndexedDB for 0 requests next time)
+    const res = await fetch(url, { cache: 'force-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const parsed = await res.json();
+    try {
+      if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
+        window.__chatwStorage.putStaticCache(cacheKey, 'v2', parsed).catch(() => {});
+      }
+    } catch (_) {}
+    return parsed;
+  }
+
   function fetchKeys() {
     if (keysData) return Promise.resolve(keysData);
     if (keysPromise) return keysPromise;
-    keysPromise = fetch('/locales/_keys.json', { cache: 'force-cache' })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
+    keysPromise = loadLocaleJson('/locales/_keys.json', 'i18n:_keys:v2')
       .then((data) => {
         keysData = {
           exact: (data && data.exact) || [],
@@ -219,10 +256,7 @@
 
     const p = Promise.all([
       fetchKeys(),
-      fetch(`/locales/${encodeURIComponent(code)}.json`, { cache: 'force-cache' }).then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      }),
+      loadLocaleJson(`/locales/${encodeURIComponent(code)}.json`, `i18n:pack:${code}:v2`),
     ])
       .then(([keys, data]) => {
         if (!keys || !data) throw new Error('Invalid locale payload');

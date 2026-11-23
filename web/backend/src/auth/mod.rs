@@ -49,6 +49,7 @@ pub struct AppState {
     pub oauth_tickets: OAuthTicketStore,
     pub storage: Arc<crate::storage::StorageRegistry>,
     pub sfu: Arc<crate::calls::sfu::SfuHandle>,
+    pub rpc_router: Arc<std::sync::OnceLock<axum::Router>>,
 }
 
 #[derive(Serialize)]

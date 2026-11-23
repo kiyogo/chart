@@ -587,6 +587,28 @@ pub fn Chat(
         let pkey = pkey_for_mount.clone();
         spawn(async move {
             user_keys.set(get_user_keys(Some(&uid)));
+            // Initialize non-extractable Web Crypto CryptoKey vault & 0ms offline dialogs cache (Spec 071)
+            platform::ensure_non_extractable_vault_key().await;
+            if let Some(cached_dialogs) = platform::load_dialogs_cache(&uid).await {
+                if let Some(f_arr) = cached_dialogs.get("friends")
+                    && let Ok(parsed_f) = serde_json::from_value::<Vec<FriendItem>>(f_arr.clone())
+                    && friends.peek().is_empty()
+                {
+                    friends.set(parsed_f);
+                }
+                if let Some(g_arr) = cached_dialogs.get("groups")
+                    && let Ok(parsed_g) = serde_json::from_value::<Vec<GroupItem>>(g_arr.clone())
+                    && groups.peek().is_empty()
+                {
+                    groups.set(parsed_g);
+                }
+                if let Some(s_arr) = cached_dialogs.get("servers")
+                    && let Ok(parsed_s) = serde_json::from_value::<Vec<ServerItem>>(s_arr.clone())
+                    && servers.peek().is_empty()
+                {
+                    servers.set(parsed_s);
+                }
+            }
             let uk = user_keys.peek().clone();
             let uid_sync = uid.clone();
             spawn(async move {
@@ -596,17 +618,29 @@ pub fn Chat(
                     }
                 }
             });
+            let mut dialogs_updated = false;
             if let Ok(list) = api::friends_list().await {
                 friends.set(list);
+                dialogs_updated = true;
             }
             if let Ok(reqs) = api::friends_get_requests().await {
                 pending_requests.set(reqs);
             }
             if let Ok(srvs) = api::servers_list().await {
                 servers.set(srvs);
+                dialogs_updated = true;
             }
             if let Ok(grps) = groups::groups_list().await {
                 groups.set(grps);
+                dialogs_updated = true;
+            }
+            if dialogs_updated {
+                let snap = serde_json::json!({
+                    "friends": friends.peek().clone(),
+                    "groups": groups.peek().clone(),
+                    "servers": servers.peek().clone(),
+                });
+                platform::save_dialogs_cache(&uid, &snap).await;
             }
             reload_social.call(());
 
@@ -1419,11 +1453,12 @@ pub fn Chat(
                                 in_flight_outbox.with_mut(|s| { s.remove(&entry.client_id); });
                                 continue;
                             }
-                            match dm::send_encrypted_dm(
+                            match dm::send_encrypted_dm_with_id(
                                 &uid,
                                 &entry.target_id,
                                 &entry.text,
                                 entry.reply_to_id.as_deref(),
+                                Some(&entry.client_id),
                             )
                             .await
                             {
@@ -1555,6 +1590,28 @@ pub fn Chat(
                     }
                 }
                 outbox_flushing.set(false);
+            }
+        });
+    });
+
+    // Multi-Tab Instant Sync Listener via SharedWorker (Spec 071: <5ms cross-tab logout & sync)
+    use_effect(move || {
+        spawn(async move {
+            let mut ev = dioxus::document::eval(
+                r#"
+                window.__chatwTabSyncSend = (detail) => { try { dioxus.send(detail || {}); } catch (_) {} };
+                if (!window.__chatwTabSyncBound) {
+                    window.__chatwTabSyncBound = true;
+                    window.addEventListener('chatw:tab-sync', (e) => {
+                        if (window.__chatwTabSyncSend) window.__chatwTabSyncSend(e.detail || {});
+                    });
+                }
+                "#,
+            );
+            while let Ok(detail) = ev.recv::<serde_json::Value>().await {
+                if detail.get("topic").and_then(|s| s.as_str()) == Some("logout") {
+                    on_logout.call(());
+                }
             }
         });
     });
@@ -1962,11 +2019,18 @@ pub fn Chat(
         let same = active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str())
             && (!messages.peek().is_empty() || dm_cache.peek().contains_key(&friend.id));
         if let Some(prev_f) = active_friend.peek().clone() {
-            if prev_f.id != friend.id && !*dm_loading_initial.peek() {
-                dm_cache.write().insert(
-                    prev_f.id,
-                    (messages.peek().clone(), *dm_has_more.peek(), *partner_read_seq.peek(), chat_wallpaper.peek().clone()),
-                );
+            if prev_f.id != friend.id {
+                let draft_txt = input_text.peek().clone();
+                let dk = format!("dm:{}:{}", uid_for_select, prev_f.id);
+                spawn(async move {
+                    platform::save_draft(&dk, &draft_txt).await;
+                });
+                if !*dm_loading_initial.peek() {
+                    dm_cache.write().insert(
+                        prev_f.id,
+                        (messages.peek().clone(), *dm_has_more.peek(), *partner_read_seq.peek(), chat_wallpaper.peek().clone()),
+                    );
+                }
             }
         }
         if let Some(prev_g) = active_group.peek().clone() {
@@ -2023,6 +2087,13 @@ pub fn Chat(
         let uid = uid_for_select.clone();
         let pkey = pkey_for_select.clone();
         spawn(async move {
+            // Restore any unsent IndexedDB draft for this conversation (Spec 071)
+            let draft_key = format!("dm:{uid}:{}", friend.id);
+            let saved_draft = platform::load_draft(&draft_key).await;
+            if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str()) {
+                input_text.set(saved_draft);
+            }
+
             // 0ms Offline-First IndexedDB hydration BEFORE waiting for keys/network (Spec 069)
             let mut had_local = had_cache;
             let idb_key = format!("dm:{uid}:{}", friend.id);
@@ -2495,11 +2566,13 @@ pub fn Chat(
             crate::storage::enqueue_outbox_item(&outbox_entry).await;
             crate::storage::save_cached_messages(&idb_key, &snap_opt, snap_more).await;
 
-            let send_res = dm::send_encrypted_dm(&uid, &active.id, &wire_text, reply_to.as_deref()).await;
+            let send_res = dm::send_encrypted_dm_with_id(&uid, &active.id, &wire_text, reply_to.as_deref(), Some(&client_id)).await;
             in_flight_outbox.with_mut(|s| { s.remove(&client_id); });
             match send_res {
                 Ok(sent) => {
                     crate::storage::remove_outbox_item(&client_id).await;
+                    platform::save_draft(&idb_key, "").await;
+                    platform::broadcast_tab_sync("dm_sent", serde_json::json!({ "partner_id": active.id, "id": sent.id }));
                     if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(active.id.as_str()) {
                         messages.with_mut(|list| {
                             let ws_already_has = list.iter().any(|m| m.id == sent.id);
@@ -2706,6 +2779,7 @@ pub fn Chat(
             blur_data_url: None,
             width: None,
             height: None,
+            waveform: Vec::new(),
         });
     });
 
@@ -3167,6 +3241,7 @@ pub fn Chat(
             blur_data_url: None,
             width: None,
             height: None,
+            waveform: Vec::new(),
         });
     });
 
@@ -4242,6 +4317,11 @@ pub fn Chat(
                                 on_input: move |val: String| {
                                     input_text.set(val.clone());
                                     if let Some(af) = active_friend() {
+                                        let draft_key = format!("dm:{}:{}", my_id_sig.peek(), af.id);
+                                        let draft_val = val.clone();
+                                        spawn(async move {
+                                            platform::save_draft(&draft_key, &draft_val).await;
+                                        });
                                         if af.id == *my_id_sig.peek() || !privacy.peek().typing {
                                             return;
                                         }

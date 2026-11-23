@@ -61,11 +61,32 @@ pub fn Avatar(
         username.unwrap_or_default()
     };
     let mut img_failed = use_signal(|| false);
-    let mut last_url = use_signal(|| avatar_url.clone());
+    let mut blob_src = use_signal(|| Option::<String>::None);
+    let mut last_url = use_signal(|| Option::<String>::None);
 
-    if *last_url.read() != avatar_url {
-        last_url.set(avatar_url.clone());
+    let url_clean = avatar_url.clone().filter(|u| !u.is_empty());
+    if *last_url.read() != url_clean {
+        last_url.set(url_clean.clone());
         img_failed.set(false);
+        if let Some(ref u) = url_clean {
+            if u.starts_with("blob:") || u.starts_with("data:") || u.starts_with("https://") || u.starts_with("http://") {
+                blob_src.set(Some(u.clone()));
+            } else {
+                blob_src.set(None);
+                let target = u.clone();
+                spawn(async move {
+                    if let Some(burl) = platform::resolve_blob_media_url(&target, "NORMAL").await {
+                        if last_url.peek().as_deref() == Some(target.as_str()) {
+                            blob_src.set(Some(burl));
+                        }
+                    } else if last_url.peek().as_deref() == Some(target.as_str()) {
+                        img_failed.set(true);
+                    }
+                });
+            }
+        } else {
+            blob_src.set(None);
+        }
     }
 
     let cls = if class.is_empty() {
@@ -74,9 +95,8 @@ pub fn Avatar(
         format!("user-avatar {class}")
     };
 
-    if let Some(url) = avatar_url.filter(|u| !u.is_empty())
+    if let Some(resolved) = blob_src()
         && !img_failed() {
-            let resolved = platform::resolve_asset_url(&url);
             let style = format!(
                 "width: {size}px; height: {size}px; min-width: {size}px; min-height: {size}px; object-fit: cover;"
             );

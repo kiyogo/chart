@@ -21,6 +21,8 @@ pub struct OptimizedMediaPayload {
     pub width: Option<u32>,
     #[serde(default)]
     pub height: Option<u32>,
+    #[serde(default)]
+    pub waveform: Vec<u8>,
 }
 
 /// Real magic byte sniffer shared on native & WASM so extension/MIME are always truthful.
@@ -107,6 +109,7 @@ pub async fn pick_and_optimize_from_input(
         blur_data_url: v.get("blurDataUrl").and_then(|s| s.as_str()).map(str::to_string),
         width: v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
         height: v.get("height").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
+        waveform: Vec::new(),
     })
 }
 
@@ -154,6 +157,17 @@ pub async fn stop_voice_recording() -> Result<OptimizedMediaPayload, String> {
     let mime = v.get("mime").and_then(|s| s.as_str()).unwrap_or("audio/webm").to_string();
     let ext = if mime.contains("ogg") { "ogg" } else { "webm" }.to_string();
     let dur = v.get("durationMs").and_then(|n| n.as_u64());
+    let waveform: Vec<u8> = v
+        .get("waveform")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_u64())
+                .map(|x| x.min(31) as u8)
+                .take(64)
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(OptimizedMediaPayload {
         bytes,
         mime,
@@ -170,5 +184,6 @@ pub async fn stop_voice_recording() -> Result<OptimizedMediaPayload, String> {
         blur_data_url: None,
         width: None,
         height: None,
+        waveform,
     })
 }
