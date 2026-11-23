@@ -159,7 +159,10 @@ try {
   await zoomOutBtn.click();
   await zoomOutBtn.click();
   await zoomOutBtn.click();
-  await page.waitForTimeout(350);
+  await page.waitForFunction((baseW) => {
+    const img = document.querySelector('.lightbox-img');
+    return img && img.getBoundingClientRect().width < baseW * 0.82;
+  }, centerAudit.imgW, { timeout: 2500 }).catch(() => {});
   const zoomedOut = await page.evaluate(() => {
     const img = document.querySelector('.lightbox-img');
     return {

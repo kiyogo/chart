@@ -936,6 +936,17 @@ pub async fn reset_device_encryption_key(
         });
     }
 
+    let finalize_self_peer = |uid: &str, keys: &UserKeys| {
+        crate::crypto::e2ee::acknowledge_peer_key_change(Some(uid), uid);
+        let _ = crate::crypto::e2ee::get_or_verify_peer_keys_scoped(
+            Some(uid),
+            uid,
+            &keys.ecdh_raw_b64,
+            &keys.ecdsa_raw_b64,
+            &keys.fingerprint_b64,
+        );
+    };
+
     let new_keys = create_and_store_user_keys(Some(uid))?;
     match api::keys_register_rotated(
         &new_keys.ecdh_raw_b64,
@@ -947,6 +958,7 @@ pub async fn reset_device_encryption_key(
     {
         Ok(_) => {
             *E2EE_RECOVERY_REQUIRED.write() = None;
+            finalize_self_peer(uid, &new_keys);
             Ok(new_keys)
         }
         Err(e) if e.code == "cannot_overwrite_identity_key_from_untrusted_device" => {
@@ -967,6 +979,7 @@ pub async fn reset_device_encryption_key(
             .await
             .map_err(|re| format!("Unable to reset device key ({})", re.code))?;
             *E2EE_RECOVERY_REQUIRED.write() = None;
+            finalize_self_peer(uid, &new_keys);
             Ok(new_keys)
         }
         Err(e) => Err(format!("Unable to reset device key ({})", e.code)),

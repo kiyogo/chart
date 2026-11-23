@@ -45,6 +45,8 @@ pub fn DmDetailsPanel(
     avatar_url: Option<String>,
     fingerprint: Option<String>,
     my_fingerprint: Option<String>,
+    #[props(default)] my_user_id: String,
+    #[props(default)] on_key_verified: Option<EventHandler<String>>,
     messages: Vec<ViewMessage>,
     on_close: EventHandler<()>,
     on_focus_composer: EventHandler<()>,
@@ -59,11 +61,19 @@ pub fn DmDetailsPanel(
     let mut copied = use_signal(|| false);
     let mut ack_tick = use_signal(|| 0u32);
 
+    let effective_my_uid: Option<String> = if !my_user_id.trim().is_empty() {
+        Some(my_user_id.clone())
+    } else {
+        crate::services::api::auth_me_cached_id()
+    };
+
     let mut loaded_uid = use_signal(String::new);
+    let mut auto_expanded_for = use_signal(String::new);
     if *loaded_uid.peek() != user_id {
         let uid = user_id.clone();
         loaded_uid.set(uid.clone());
         profile.set(None);
+        security_open.set(false);
         spawn(async move {
             if let Ok(p) = api::get_user_profile(&uid).await {
                 if *loaded_uid.peek() == uid {
@@ -71,6 +81,14 @@ pub fn DmDetailsPanel(
                 }
             }
         });
+    }
+    if fingerprint.is_some() && *auto_expanded_for.peek() != user_id {
+        let has_peer_alert = effective_my_uid.as_deref() != Some(user_id.as_str())
+            && crate::crypto::e2ee::get_peer_key_change_alert(effective_my_uid.as_deref(), &user_id).is_some();
+        if has_peer_alert {
+            auto_expanded_for.set(user_id.clone());
+            security_open.set(true);
+        }
     }
 
     let p = profile();
@@ -253,9 +271,13 @@ pub fn DmDetailsPanel(
                             "Compare the security code below with {username} over the out-of-band channel to detect a key substitution attack."
                         }
                         {
-                            let my_uid = crate::services::api::auth_me_cached_id();
+                            let my_uid = effective_my_uid.clone();
                             let _ = ack_tick();
-                            let alert_now = crate::crypto::e2ee::get_peer_key_change_alert(my_uid.as_deref(), &user_id);
+                            let alert_now = if my_uid.as_deref() == Some(user_id.as_str()) {
+                                None
+                            } else {
+                                crate::crypto::e2ee::get_peer_key_change_alert(my_uid.as_deref(), &user_id)
+                            };
                             let uid_ack = user_id.clone();
                             let my_uid_ack = my_uid.clone();
                             rsx! {
@@ -271,6 +293,9 @@ pub fn DmDetailsPanel(
                                             onclick: move |_| {
                                                 crate::crypto::e2ee::acknowledge_peer_key_change(my_uid_ack.as_deref(), &uid_ack);
                                                 ack_tick.set(ack_tick() + 1);
+                                                if let Some(h) = on_key_verified {
+                                                    h.call(uid_ack.clone());
+                                                }
                                             },
                                             "New key verified"
                                         }

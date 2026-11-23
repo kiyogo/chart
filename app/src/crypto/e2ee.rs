@@ -945,6 +945,11 @@ pub fn acknowledge_peer_key_change(my_user_id: Option<&str>, peer_id: &str) {
         _ => format!("chatw_e2ee_peer_alert_{peer_id}"),
     };
     platform::storage_set(&alert_slot, "");
+    // Also clear legacy unscoped alert slot so old fallback entries can never resurrect the warning.
+    let legacy_alert_slot = format!("chatw_e2ee_peer_alert_{peer_id}");
+    if legacy_alert_slot != alert_slot {
+        platform::storage_set(&legacy_alert_slot, "");
+    }
     let peer_slot = match my_user_id {
         Some(uid) if !uid.is_empty() => format!("chatw_e2ee_peer_{uid}_{peer_id}"),
         _ => format!("chatw_e2ee_peer_{peer_id}"),
@@ -1061,9 +1066,23 @@ pub fn get_or_verify_peer_keys_scoped(
             }
         });
 
-    let mut key_changed_warning = get_peer_key_change_alert(my_user_id, peer_id);
+    let is_self_peer = my_user_id.is_some_and(|uid| !uid.is_empty() && uid == peer_id);
 
-    if let Some(prev_json) = existing_raw
+    let mut key_changed_warning = if is_self_peer {
+        // Note to self ("Chính mình"): user's own key is verified against local vault;
+        // never emit or keep a third-party TOFU key-change warning for self-chat (Spec 079).
+        platform::storage_set(&alert_slot, "");
+        let legacy_alert_slot = format!("chatw_e2ee_peer_alert_{peer_id}");
+        if legacy_alert_slot != alert_slot {
+            platform::storage_set(&legacy_alert_slot, "");
+        }
+        None
+    } else {
+        get_peer_key_change_alert(my_user_id, peer_id)
+    };
+
+    if !is_self_peer
+        && let Some(prev_json) = existing_raw
         && let Ok(prev) = serde_json::from_str::<StoredPeerKeys>(&prev_json)
     {
         let prev_id_fp = if prev.identity_fingerprint_b64.is_empty() {
@@ -1886,6 +1905,41 @@ mod tests {
 
         acknowledge_peer_key_change(Some(&my_uid), &peer_uid);
         assert!(get_peer_key_change_alert(Some(&my_uid), &peer_uid).is_none());
+    }
+
+    #[test]
+    fn test_self_chat_key_rotation_never_triggers_tofu_alert() {
+        let my_uid = format!("self_{}", Uuid::new_v4());
+        let k1 = UserKeys::generate();
+        let k2 = UserKeys::generate();
+
+        let p1 = get_or_verify_peer_keys_scoped(
+            Some(&my_uid),
+            &my_uid,
+            &k1.ecdh_raw_b64,
+            &k1.ecdsa_raw_b64,
+            &k1.fingerprint_b64,
+        )
+        .unwrap();
+        assert!(p1.key_changed_warning.is_none());
+
+        // Seed a legacy stale self-alert (simulating pre-Spec-079 storage)
+        platform::storage_set(
+            &format!("chatw_e2ee_peer_alert_{my_uid}_{my_uid}"),
+            r#"{"peer_id":"self","previous_fingerprint":"a","new_fingerprint":"b","previous_identity_fingerprint":"a","new_identity_fingerprint":"b"}"#,
+        );
+
+        // Rotating own key in Note-to-self must NEVER trigger a peer-key-change alert and must clean stale self alerts
+        let p2 = get_or_verify_peer_keys_scoped(
+            Some(&my_uid),
+            &my_uid,
+            &k2.ecdh_raw_b64,
+            &k2.ecdsa_raw_b64,
+            &k2.fingerprint_b64,
+        )
+        .unwrap();
+        assert!(p2.key_changed_warning.is_none());
+        assert!(get_peer_key_change_alert(Some(&my_uid), &my_uid).is_none());
     }
 
     #[test]

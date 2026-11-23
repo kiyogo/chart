@@ -189,6 +189,7 @@ pub fn Chat(
     // Partner Info Sidebar (responsive auto-open on >= 1024px)
     let mut is_partner_info_open = use_signal(|| platform::initial_window_width() >= 1280);
     let mut partner_fingerprint = use_signal(|| Option::<String>::None);
+    let mut key_ack_tick = use_signal(|| 0u32);
 
     // Sidebar Tabs
     let mut nav_section = use_signal(|| NavSection::DirectMessages);
@@ -702,7 +703,7 @@ pub fn Chat(
                                         &pk_resp.fingerprint,
                                     ) {
                                         Ok(peer_k) => {
-                                            if peer_k.key_changed_warning.is_some() {
+                                            if sender_id != uid && peer_k.key_changed_warning.is_some() {
                                                 toast.set(Some("Security alert: partner's encryption key just changed. Open Info to verify the security code.".into()));
                                             }
                                             let raw = peer_k.ecdsa_raw;
@@ -2215,8 +2216,8 @@ pub fn Chat(
                         }
                         return;
                     };
-                    if pk.key_changed_warning.is_some() {
-                        toast.set(Some("Security alert: this person's encryption key has changed. Check the security code in Information.".into()));
+                    if friend.id != uid && pk.key_changed_warning.is_some() {
+                        key_ack_tick.set(key_ack_tick() + 1);
                     }
                     peer_keys_cache.write().insert(friend.id.clone(), pk.clone());
                     pk
@@ -4343,6 +4344,42 @@ pub fn Chat(
                                     button { r#type: "button", class: "btn-secondary", onclick: { let pid = active.id.clone(); move |_| do_block((pid.clone(), false)) }, "Unblock" }
                                 }
                             }
+                            {
+                                let _ = key_ack_tick();
+                                let _ = partner_fingerprint();
+                                let peer_alert = if self_mode {
+                                    None
+                                } else {
+                                    crate::crypto::e2ee::get_peer_key_change_alert(Some(&current_user_id), &active.id)
+                                };
+                                let my_uid_ack = current_user_id.clone();
+                                let pid_ack = active.id.clone();
+                                rsx! {
+                                    if peer_alert.is_some() {
+                                        div { class: "chat-banner danger", role: "status",
+                                            ShieldIcon { size: 16 }
+                                            span { "Security alert: this person's encryption key has changed. Check the security code in Information." }
+                                            button {
+                                                r#type: "button",
+                                                class: "btn-secondary",
+                                                onclick: move |_| is_partner_info_open.set(true),
+                                                "Security"
+                                            }
+                                            button {
+                                                r#type: "button",
+                                                class: "btn-primary",
+                                                onclick: move |_| {
+                                                    crate::crypto::e2ee::acknowledge_peer_key_change(Some(&my_uid_ack), &pid_ack);
+                                                    peer_keys_cache.write().remove(&pid_ack);
+                                                    key_ack_tick.set(key_ack_tick() + 1);
+                                                    toast.set(None);
+                                                },
+                                                "New key verified"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             MessageList {
                                 messages: dm_view.clone(),
@@ -4480,6 +4517,12 @@ pub fn Chat(
                                 avatar_url: active.avatar_url.clone(),
                                 fingerprint: partner_fingerprint(),
                                 my_fingerprint: my_fingerprint.clone(),
+                                my_user_id: current_user_id.clone(),
+                                on_key_verified: move |pid: String| {
+                                    peer_keys_cache.write().remove(&pid);
+                                    key_ack_tick.set(key_ack_tick() + 1);
+                                    toast.set(None);
+                                },
                                 messages: dm_view.clone(),
                                 on_close: move |_| is_partner_info_open.set(false),
                                 on_focus_composer: move |_| platform::focus_chat_input(),
