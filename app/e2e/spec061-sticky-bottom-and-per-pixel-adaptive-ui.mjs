@@ -354,10 +354,10 @@ try {
     'Translucent chat over multi-color app wallpaper renders exact 2D per-pixel canvas strips for BOTH top header fade & bottom composer fade, adapts header ink to dark top half, and adapts composer pill to bright bottom half',
     stripAudit.edgeStripAttr === 'true' &&
       stripAudit.chatToneAttr === null &&
-      stripAudit.topStripVar.startsWith('url("data:image/png') &&
-      stripAudit.botStripVar.startsWith('url("data:image/png') &&
-      stripAudit.hdrBgImg.startsWith('url("data:image/png') &&
-      stripAudit.compBgImg.startsWith('url("data:image/png') &&
+      stripAudit.topStripVar.startsWith('url("blob:') &&
+      stripAudit.botStripVar.startsWith('url("blob:') &&
+      stripAudit.hdrBgImg.startsWith('url("blob:') &&
+      stripAudit.compBgImg.startsWith('url("blob:') &&
       stripAudit.hdrIdTone === 'dark' &&
       stripAudit.compBoxTone === 'light',
     JSON.stringify(stripAudit)

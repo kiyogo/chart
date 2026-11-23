@@ -407,12 +407,45 @@
       return { ok: true, status: res.status, contentType: res.contentType, bytes: u8, b64: bytesToB64(u8) };
     },
 
+    makeBlobCacheKey(url, keyB64 = '', nonceB64 = '') {
+      const k = keyB64 ? `e2ee:${String(keyB64).slice(0, 10)}:${String(nonceB64 || '').slice(0, 10)}` : 'plain';
+      return `${String(url || '')}|${k}`;
+    },
+
+    getCachedBlobUrlSync(url, keyB64 = '', nonceB64 = '') {
+      if (!url || typeof url !== 'string') return null;
+      if (url.startsWith('blob:')) return url;
+      const cacheKey = this.makeBlobCacheKey(url, keyB64, nonceB64);
+      const hit = blobPool.get(cacheKey);
+      if (!hit) return null;
+      blobPool.delete(cacheKey);
+      hit.lastUsed = Date.now();
+      blobPool.set(cacheKey, hit);
+      return hit.blobUrl;
+    },
+
+    registerCachedBlobUrl(url, keyB64, nonceB64, bytes, mime) {
+      if (!url || !bytes) return null;
+      const cacheKey = this.makeBlobCacheKey(url, keyB64, nonceB64);
+      const existing = blobPool.get(cacheKey);
+      if (existing) {
+        existing.lastUsed = Date.now();
+        return existing.blobUrl;
+      }
+      evictBlobPoolIfNeeded();
+      const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      const finalMime = (mime && mime !== 'application/octet-stream') ? mime : 'application/octet-stream';
+      const blobUrl = URL.createObjectURL(new Blob([u8], { type: finalMime }));
+      blobPool.set(cacheKey, { blobUrl, mime: finalMime, size: u8.byteLength, lastUsed: Date.now() });
+      return blobUrl;
+    },
+
     // Returns a `blob:` URL backed by SharedWorker Priority DownloadManager + LRU pool.
-    // Guarantees ZERO `/uploads/...` or `/api/attachments/...` URLs ever leak into DOM `<img>`.
+    // Guarantees ZERO `/uploads/...` or `/api/attachments/...` URLs ever leak into DOM `<img>` or CSS.
     async downloadMediaBlobUrl(url, opts = {}) {
       if (!url || typeof url !== 'string') return null;
-      if (url.startsWith('blob:') || url.startsWith('data:')) return url;
-      const cacheKey = `${url}|${opts.keyB64 ? 'e2ee' : 'plain'}`;
+      if (url.startsWith('blob:')) return url;
+      const cacheKey = this.makeBlobCacheKey(url, opts.keyB64 || '', opts.nonceB64 || '');
       const hit = blobPool.get(cacheKey);
       if (hit) {
         blobPool.delete(cacheKey);
@@ -425,8 +458,15 @@
       }
 
       const promise = (async () => {
+        // Ensure SharedWorker is ready when authenticated before pulling bytes
+        if (!this.isConnected() && this.hasAuthHint()) {
+          await this.waitUntilReady(2000).catch(() => {});
+        }
         const res = await this.downloadBytes(url, opts);
         if (!res.ok || !res.bytes || res.bytes.byteLength === 0) return null;
+        // Double-check pool in case another path registered it while in flight
+        const again = blobPool.get(cacheKey);
+        if (again) return again.blobUrl;
         evictBlobPoolIfNeeded();
         const mime = (opts.mime && opts.mime !== 'application/octet-stream')
           ? opts.mime
@@ -441,6 +481,10 @@
 
       blobInFlight.set(cacheKey, promise);
       return await promise;
+    },
+
+    async resolveMediaBlobUrl(url, opts = {}) {
+      return await this.downloadMediaBlobUrl(url, opts);
     },
 
     abortDownload(taskId, scope) {
@@ -561,4 +605,181 @@
   window.__chatwCore = coreApi;
   // Backward-compatible alias for Spec 069 tooling & diagnostics
   window.__chatwNetBridge = coreApi;
+
+  // ── Global Zero-Leak DOM/CSS Blob Enforcer + Zero-Data-URI Blur Canvas Painter (Spec 073) ──
+  // Guarantees ZERO `/uploads/...`, `/api/attachments/...`, `/stickers/...`, `/wallpapers/...`
+  // requests or `data:image/*` network rows leak from ANY component or inline CSS wallpaper.
+  const PROTECTED_PATH_RE = /^\/(?:uploads|api\/attachments|stickers|wallpapers)\//;
+  const CSS_RAW_URL_RE = /url\(\s*['"]?((?:https?:\/\/[^'")\s]+)?\/(?:uploads|api\/attachments|stickers|wallpapers)\/[^'")\s]+)['"]?\s*\)/g;
+
+  function normalizeProtectedPath(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('blob:') || trimmed.startsWith('data:')) return null;
+    if (PROTECTED_PATH_RE.test(trimmed)) return trimmed;
+    try {
+      const u = new URL(trimmed, location.origin);
+      if (u.origin === location.origin && PROTECTED_PATH_RE.test(u.pathname)) {
+        return u.pathname + u.search;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // Paint `<canvas data-blur-b64="..." data-blur-mime="...">` directly via createImageBitmap
+  // so progressive blur-up NEVER emits `data:image/webp;base64,...` in DevTools Network tab!
+  function paintBlurCanvas(canvas) {
+    if (!canvas || canvas.tagName !== 'CANVAS') return;
+    const b64 = canvas.getAttribute('data-blur-b64');
+    if (!b64 || canvas.__chatwBlurPainted === b64) return;
+    canvas.__chatwBlurPainted = b64;
+    const mime = canvas.getAttribute('data-blur-mime') || 'image/webp';
+    try {
+      const bytes = b64ToBytes(b64);
+      const blob = new Blob([bytes], { type: mime });
+      if (typeof createImageBitmap === 'function') {
+        createImageBitmap(blob).then((bmp) => {
+          try {
+            const w = bmp.width || 16;
+            const h = bmp.height || 16;
+            if (canvas.width !== w) canvas.width = w;
+            if (canvas.height !== h) canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (ctx) ctx.drawImage(bmp, 0, 0, w, h);
+          } finally {
+            bmp.close();
+          }
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  const origSetAttr = Element.prototype.setAttribute;
+  const imgSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+
+  function rewriteStyleAndResolveAsync(el, styleStr) {
+    if (!styleStr || typeof styleStr !== 'string' || !styleStr.includes('url(')) return styleStr;
+    const pendingPaths = [];
+    const replaced = styleStr.replace(CSS_RAW_URL_RE, (fullMatch, capturedUrl) => {
+      const norm = normalizeProtectedPath(capturedUrl);
+      if (!norm) return fullMatch;
+      const cached = coreApi.getCachedBlobUrlSync(norm);
+      if (cached) return `url('${cached}')`;
+      pendingPaths.push({ norm, raw: capturedUrl });
+      return 'none';
+    });
+    if (pendingPaths.length > 0 && coreApi.isSupported()) {
+      el.__chatwPendingStyle = styleStr;
+      Promise.all(
+        pendingPaths.map(async ({ norm }) => {
+          const burl = await coreApi.downloadMediaBlobUrl(norm, { priority: 'HIGH' });
+          return [norm, burl];
+        }),
+      ).then((pairs) => {
+        if (el.__chatwPendingStyle !== styleStr) return;
+        const map = new Map(pairs.filter(([, b]) => Boolean(b)));
+        if (map.size === 0) return;
+        const finalStyle = styleStr.replace(CSS_RAW_URL_RE, (fullMatch, capturedUrl) => {
+          const norm = normalizeProtectedPath(capturedUrl);
+          const burl = norm && map.get(norm);
+          return burl ? `url('${burl}')` : fullMatch;
+        });
+        origSetAttr.call(el, 'style', finalStyle);
+        if (window.__chatwAdaptiveSurface && typeof window.__chatwAdaptiveSurface.refresh === 'function') {
+          window.__chatwAdaptiveSurface.refresh();
+        }
+      }).catch(() => {});
+    }
+    return replaced;
+  }
+
+  Element.prototype.setAttribute = function patchedSetAttribute(name, value) {
+    const low = typeof name === 'string' ? name.toLowerCase() : '';
+    if (this.tagName === 'IMG' && low === 'src' && typeof value === 'string') {
+      const norm = normalizeProtectedPath(value);
+      if (norm && coreApi.isSupported() && (coreApi.hasAuthHint() || coreApi.isConnected())) {
+        const cached = coreApi.getCachedBlobUrlSync(norm);
+        if (cached) {
+          this.__chatwPendingImgSrc = norm;
+          return origSetAttr.call(this, name, cached);
+        }
+        this.__chatwPendingImgSrc = norm;
+        const imgEl = this;
+        coreApi.downloadMediaBlobUrl(norm, { priority: 'NORMAL' }).then((burl) => {
+          if (burl && imgEl.__chatwPendingImgSrc === norm) {
+            origSetAttr.call(imgEl, 'src', burl);
+          }
+        }).catch(() => {});
+        return;
+      }
+      this.__chatwPendingImgSrc = null;
+    }
+    if (low === 'style' && typeof value === 'string' && value.includes('url(')) {
+      const rewritten = rewriteStyleAndResolveAsync(this, value);
+      return origSetAttr.call(this, name, rewritten);
+    }
+    const res = origSetAttr.call(this, name, value);
+    if (this.tagName === 'CANVAS' && (low === 'data-blur-b64' || low === 'data-blur-mime')) {
+      paintBlurCanvas(this);
+    }
+    return res;
+  };
+
+  if (imgSrcDesc && imgSrcDesc.set) {
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      enumerable: imgSrcDesc.enumerable,
+      get() {
+        return imgSrcDesc.get.call(this);
+      },
+      set(value) {
+        if (typeof value === 'string') {
+          const norm = normalizeProtectedPath(value);
+          if (norm && coreApi.isSupported() && (coreApi.hasAuthHint() || coreApi.isConnected())) {
+            const cached = coreApi.getCachedBlobUrlSync(norm);
+            if (cached) {
+              this.__chatwPendingImgSrc = norm;
+              return imgSrcDesc.set.call(this, cached);
+            }
+            this.__chatwPendingImgSrc = norm;
+            const imgEl = this;
+            coreApi.downloadMediaBlobUrl(norm, { priority: 'NORMAL' }).then((burl) => {
+              if (burl && imgEl.__chatwPendingImgSrc === norm) {
+                imgSrcDesc.set.call(imgEl, burl);
+              }
+            }).catch(() => {});
+            return;
+          }
+        }
+        this.__chatwPendingImgSrc = null;
+        return imgSrcDesc.set.call(this, value);
+      },
+    });
+  }
+
+  // Also observe newly appended `<canvas data-blur-b64>` nodes (e.g. from innerHTML or Dioxus templates)
+  if (typeof MutationObserver !== 'undefined') {
+    const startBlurObserver = () => {
+      if (!document.body) return;
+      document.querySelectorAll('canvas[data-blur-b64]').forEach(paintBlurCanvas);
+      const mo = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (node.nodeType !== 1) continue;
+            if (node.tagName === 'CANVAS' && node.hasAttribute('data-blur-b64')) {
+              paintBlurCanvas(node);
+            } else if (node.querySelectorAll) {
+              node.querySelectorAll('canvas[data-blur-b64]').forEach(paintBlurCanvas);
+            }
+          }
+        }
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startBlurObserver, { once: true });
+    } else {
+      startBlurObserver();
+    }
+  }
 })();

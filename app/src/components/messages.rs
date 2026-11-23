@@ -111,11 +111,23 @@ fn BlobAssetImg(
     #[props(default)] title: String,
     #[props(default = "NORMAL".to_string())] priority: String,
 ) -> Element {
-    let mut blob_src = use_signal(|| Option::<String>::None);
+    let init_cached = platform::get_cached_blob_url_sync(&url, "", "");
+    let init_loaded = if init_cached.is_some() { Some(url.clone()) } else { None };
+    let mut blob_src = use_signal(move || init_cached);
+    let mut loaded_url = use_signal(move || init_loaded);
     let u = url.clone();
     let prio = priority.clone();
     use_effect(use_reactive!(|u, prio| {
-        if u.starts_with("blob:") || u.starts_with("data:") {
+        if loaded_url.peek().as_deref() == Some(u.as_str()) && blob_src.peek().is_some() {
+            return;
+        }
+        if let Some(hit) = platform::get_cached_blob_url_sync(&u, "", "") {
+            loaded_url.set(Some(u.clone()));
+            blob_src.set(Some(hit));
+            return;
+        }
+        if u.starts_with("blob:") {
+            loaded_url.set(Some(u.clone()));
             blob_src.set(Some(u.clone()));
             return;
         }
@@ -124,6 +136,7 @@ fn BlobAssetImg(
         let p = prio.clone();
         spawn(async move {
             if let Some(burl) = platform::resolve_blob_media_url(&target, &p).await {
+                loaded_url.set(Some(target));
                 blob_src.set(Some(burl));
             }
         });

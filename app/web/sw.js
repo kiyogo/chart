@@ -7,7 +7,7 @@
 //    `/stickers/*`, SVG/CSS/JS/WASM assets so repeat boots make 0 redundant Fetch/XHR requests.
 
 const STREAM_PREFIXES = ['/stream/media/', '/stream/'];
-const STATIC_CACHE_NAME = 'chatw-static-v2';
+const STATIC_CACHE_NAME = 'chatw-static-v3';
 const DEFAULT_GRANT_TTL_MS = 15 * 60 * 1000;
 const MAX_CHUNK_CACHE_ENTRIES = 64;
 const MAX_STREAM_SPAN = 1024 * 1024;
@@ -583,20 +583,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. App Shell & Static Assets Offline Cache (Cache-First + Stale-While-Revalidate)
+  // 2. App Shell & Static Assets Offline Cache (Pure Cache-First — 0 duplicate background re-fetches!)
   if (event.request.method === 'GET' && isCacheableStaticAsset(reqUrl.pathname)) {
     event.respondWith((async () => {
       try {
         const cache = await caches.open(STATIC_CACHE_NAME);
         const cached = await cache.match(event.request);
         if (cached) {
-          event.waitUntil(
-            fetch(event.request)
-              .then((fresh) => {
-                if (fresh && fresh.ok) cache.put(event.request, fresh.clone());
-              })
-              .catch(() => {}),
-          );
           return cached;
         }
         const net = await fetch(event.request);

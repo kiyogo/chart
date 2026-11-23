@@ -371,52 +371,72 @@ pub type VoteTally = std::collections::HashMap<String, std::collections::HashMap
 
 /// Image message (SharedWorker Priority DownloadManager -> `blob:` URL ONLY, 0 raw URLs in DOM,
 /// local OPFS/IndexedDB cache first, transparent E2EE decrypt, and two-way peer recovery).
+fn parse_blur_data_uri(raw: &str) -> Option<(&str, &str)> {
+    if raw.len() > 1600 || !raw.starts_with("data:image/") {
+        return None;
+    }
+    let rest = raw.strip_prefix("data:")?;
+    let (mime, b64) = rest.split_once(";base64,")?;
+    if !mime.starts_with("image/") || b64.is_empty() {
+        return None;
+    }
+    Some((mime, b64))
+}
+
 #[component]
 pub fn RichImage(data: ImageData) -> Element {
-    let mut src = use_signal(|| Option::<String>::None);
-    let mut owned_blob = use_signal(|| false);
+    let init_key = (data.u.clone(), data.k.clone(), data.n.clone());
+    let init_cached = platform::get_cached_blob_url_sync(&data.u, &data.k, &data.n);
+    let mut src = use_signal(move || init_cached);
+    let mut loaded_key = use_signal(move || {
+        if src.peek().is_some() { Some(init_key) } else { None }
+    });
     let mut missing = use_signal(|| Option::<(String, String, String)>::None);
     let mut rec_status = use_signal(|| Option::<String>::None);
     let mut failed = use_signal(|| false);
     let mut open = use_signal(|| false);
-    let d = data.clone();
 
-    use_drop(move || {
-        if *owned_blob.peek()
-            && let Some(u) = src.peek().as_deref()
-        {
-            platform::revoke_object_url(u);
-        }
-    });
+    let key_now = (data.u.clone(), data.k.clone(), data.n.clone());
+    let mime_now = data.m.clone();
+    let scope_now = data.scope.clone();
 
-    use_effect(use_reactive!(|d| {
-        if *owned_blob.peek()
-            && let Some(prev) = src.peek().as_deref()
-        {
-            platform::revoke_object_url(prev);
+    use_effect(use_reactive!(|key_now| {
+        if loaded_key.peek().as_ref() == Some(&key_now) && src.peek().is_some() {
+            return;
         }
-        owned_blob.set(false);
+        let (u, k, n) = key_now.clone();
+        if let Some(hit) = platform::get_cached_blob_url_sync(&u, &k, &n) {
+            loaded_key.set(Some(key_now));
+            missing.set(None);
+            failed.set(false);
+            src.set(Some(hit));
+            return;
+        }
         src.set(None);
         missing.set(None);
         failed.set(false);
+        let m_in = mime_now.clone();
+        let sc_in = scope_now.clone();
+        let target_key = key_now.clone();
         spawn(async move {
-            let mime = if d.m.starts_with("image/") { d.m.clone() } else { "image/png".into() };
-            // Non-E2EE image: pull through SharedWorker Priority DownloadManager -> `blob:` URL (0 raw `/uploads/` in DOM!)
-            if d.k.is_empty() && d.u.starts_with("/uploads/") {
-                if let Some(burl) = platform::resolve_blob_media_url(&d.u, "HIGH").await {
-                    src.set(Some(burl));
-                    return;
-                }
+            let mime = if m_in.starts_with("image/") { m_in } else { "image/png".into() };
+            // 1. Primary path for BOTH E2EE & non-E2EE images: SharedWorker Priority DownloadManager +
+            //    deduplicated LRU `blobPool` (1 single `blob:` URL, 0 raw `/uploads/` or duplicate loads!).
+            if let Some(burl) = platform::resolve_e2ee_blob_media_url(&u, &k, &n, &mime, "HIGH").await {
+                loaded_key.set(Some(target_key));
+                src.set(Some(burl));
+                return;
             }
-            let scope = if d.scope.is_empty() {
-                if d.k.is_empty() { "group" } else { "dm" }
+            // 2. Fallback when server copy expired / requires local IndexedDB or WebRTC P2P recovery.
+            let scope = if sc_in.is_empty() {
+                if k.is_empty() { "group" } else { "dm" }
             } else {
-                d.scope.as_str()
+                sc_in.as_str()
             };
-            match recovery::load_or_fetch_media(&d.u, &d.k, &d.n, &mime, scope, "original").await {
+            match recovery::load_or_fetch_media(&u, &k, &n, &mime, scope, "original").await {
                 MediaFetchOutcome::Ready { bytes, mime: m, .. } => {
-                    let burl = platform::media_bytes_to_object_url(&bytes, &m).await;
-                    owned_blob.set(burl.starts_with("blob:"));
+                    let burl = platform::register_cached_blob_url(&u, &k, &n, &bytes, &m).await;
+                    loaded_key.set(Some(target_key));
                     src.set(Some(burl));
                 }
                 MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
@@ -427,7 +447,7 @@ pub fn RichImage(data: ImageData) -> Element {
         });
     }));
 
-    let has_blur = data.blur.starts_with("data:image/") && data.blur.len() <= 1600;
+    let blur_parts = parse_blur_data_uri(&data.blur);
     let stage_style = if data.w > 0 && data.h > 0 {
         format!("aspect-ratio: {} / {};", data.w, data.h)
     } else {
@@ -438,9 +458,6 @@ pub fn RichImage(data: ImageData) -> Element {
         div { class: "rich-image",
             if let Some(s) = src() {
                 button { r#type: "button", class: "rich-image-btn rich-image-stage loaded", style: "{stage_style}", aria_label: "See photos", onclick: move |_| open.set(true),
-                    if has_blur {
-                        img { class: "rich-image-blur", src: "{data.blur}", alt: "", aria_hidden: "true" }
-                    }
                     img { class: "rich-image-full", src: "{s}", alt: "Image", decoding: "async" }
                 }
                 if open() {
@@ -484,9 +501,16 @@ pub fn RichImage(data: ImageData) -> Element {
                 }
             } else if failed() {
                 div { class: "rich-image-error", "Unable to download or decode images" }
-            } else if has_blur {
+            } else if let Some((bm, bb)) = blur_parts {
                 div { class: "rich-image-stage loading", style: "{stage_style}",
-                    img { class: "rich-image-blur", src: "{data.blur}", alt: "Preview", aria_hidden: "true" }
+                    canvas {
+                        class: "rich-image-blur",
+                        width: "16",
+                        height: "16",
+                        "data-blur-mime": "{bm}",
+                        "data-blur-b64": "{bb}",
+                        aria_hidden: "true",
+                    }
                     span { class: "rich-image-blur-spinner", span { class: "spinner" } }
                 }
             } else {
@@ -595,8 +619,6 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
     };
 
     let pid = player_id();
-    let has_video_blur = kind == "video" && data.blur.starts_with("data:image/") && data.blur.len() <= 1600;
-    let video_poster = if has_video_blur { data.blur.as_str() } else { "" };
 
     rsx! {
         div { class: "rich-card media-attachment-card",
@@ -653,25 +675,13 @@ pub fn RichMediaAttachment(data: MediaFileData, kind: String) -> Element {
                     }
                 } else if kind == "video" {
                     div { class: "rich-video-stage",
-                        if has_video_blur {
-                            video {
-                                id: "{pid}",
-                                controls: true,
-                                preload: "metadata",
-                                playsinline: true,
-                                poster: "{video_poster}",
-                                src: "{u}",
-                                style: "width: 100%; max-width: 340px; border-radius: 8px; background: #000;",
-                            }
-                        } else {
-                            video {
-                                id: "{pid}",
-                                controls: true,
-                                preload: "metadata",
-                                playsinline: true,
-                                src: "{u}",
-                                style: "width: 100%; max-width: 340px; border-radius: 8px; background: #000;",
-                            }
+                        video {
+                            id: "{pid}",
+                            controls: true,
+                            preload: "metadata",
+                            playsinline: true,
+                            src: "{u}",
+                            style: "width: 100%; max-width: 340px; border-radius: 8px; background: #000;",
                         }
                     }
                 }

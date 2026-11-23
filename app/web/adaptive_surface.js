@@ -314,6 +314,25 @@
     img.onerror = () => {
       rec.failed = true;
     };
+    // Never trigger a direct HTTP fetch for protected /uploads/ or /wallpapers/ URLs —
+    // reuse the single deduplicated SharedWorker blob: URL!
+    const isProtected =
+      typeof url === 'string' &&
+      !url.startsWith('blob:') &&
+      !url.startsWith('data:') &&
+      (url.startsWith('/uploads/') || url.startsWith('/api/attachments/') || url.startsWith('/wallpapers/'));
+    if (isProtected && window.__chatwCore && typeof window.__chatwCore.downloadMediaBlobUrl === 'function') {
+      const cached = window.__chatwCore.getCachedBlobUrlSync && window.__chatwCore.getCachedBlobUrlSync(url);
+      if (cached) {
+        img.src = cached;
+      } else {
+        window.__chatwCore.downloadMediaBlobUrl(url, { priority: 'HIGH' }).then((burl) => {
+          if (burl) img.src = burl;
+          else rec.failed = true;
+        }).catch(() => { rec.failed = true; });
+      }
+      return null;
+    }
     img.src = url;
     return null;
   }
@@ -529,14 +548,33 @@
     );
   }
 
-  function cropPanelStripDataUrl(rx, ry, rw, rh, vw, vh) {
+  let lastTopStripBlobUrl = '';
+  let lastBotStripBlobUrl = '';
+  let stripRenderSeq = 0;
+
+  function revokeStripBlobs() {
+    if (lastTopStripBlobUrl) {
+      try { URL.revokeObjectURL(lastTopStripBlobUrl); } catch (_) {}
+      lastTopStripBlobUrl = '';
+    }
+    if (lastBotStripBlobUrl) {
+      try { URL.revokeObjectURL(lastBotStripBlobUrl); } catch (_) {}
+      lastBotStripBlobUrl = '';
+    }
+  }
+
+  function cropPanelStripBlobUrl(rx, ry, rw, rh, vw, vh) {
     const sx = Math.max(0, Math.min(BW - 1, (rx / vw) * BW));
     const sy = Math.max(0, Math.min(BH - 1, (ry / vh) * BH));
     const sw = Math.max(1, Math.min(BW - sx, (rw / vw) * BW));
     const sh = Math.max(1, Math.min(BH - sy, (rh / vh) * BH));
     stripCtx.clearRect(0, 0, stripCanvas.width, stripCanvas.height);
     stripCtx.drawImage(panelCanvas, sx, sy, sw, sh, 0, 0, stripCanvas.width, stripCanvas.height);
-    return stripCanvas.toDataURL('image/png');
+    return new Promise((resolve) => {
+      stripCanvas.toBlob((blob) => {
+        resolve(blob ? URL.createObjectURL(blob) : '');
+      }, 'image/png');
+    });
   }
 
   function syncChatEdgeFades() {
@@ -618,19 +656,30 @@
       const vh = Math.max(1, window.innerHeight || 900);
       const edgeKey = `${lastBackdropKey}|${Math.round(colRect.left)},${Math.round(colRect.top)},${Math.round(colRect.width)},${Math.round(colRect.height)},${Math.round(topMistH)},${Math.round(botMistH)}`;
       if (edgeKey !== lastEdgeKey) {
-        try {
-          const topUrl = cropPanelStripDataUrl(colRect.left, colRect.top, colRect.width, topMistH, vw, vh);
-          const botUrl = cropPanelStripDataUrl(colRect.left, colRect.bottom - botMistH, colRect.width, botMistH, vw, vh);
+        lastEdgeKey = edgeKey;
+        const seq = ++stripRenderSeq;
+        Promise.all([
+          cropPanelStripBlobUrl(colRect.left, colRect.top, colRect.width, topMistH, vw, vh),
+          cropPanelStripBlobUrl(colRect.left, colRect.bottom - botMistH, colRect.width, botMistH, vw, vh),
+        ]).then(([topUrl, botUrl]) => {
+          if (seq !== stripRenderSeq || !topUrl || !botUrl) {
+            if (topUrl) try { URL.revokeObjectURL(topUrl); } catch (_) {}
+            if (botUrl) try { URL.revokeObjectURL(botUrl); } catch (_) {}
+            return;
+          }
+          revokeStripBlobs();
+          lastTopStripBlobUrl = topUrl;
+          lastBotStripBlobUrl = botUrl;
           chatCol.style.setProperty('--chat-top-fade-strip', `url("${topUrl}")`);
           chatCol.style.setProperty('--chat-bot-fade-strip', `url("${botUrl}")`);
           chatCol.setAttribute('data-chat-edge-strip', 'true');
-          lastEdgeKey = edgeKey;
-        } catch (_) {}
+        }).catch(() => {});
       }
     } else {
       chatCol.removeAttribute('data-chat-edge-strip');
       chatCol.style.removeProperty('--chat-top-fade-strip');
       chatCol.style.removeProperty('--chat-bot-fade-strip');
+      revokeStripBlobs();
       lastEdgeKey = '';
     }
   }

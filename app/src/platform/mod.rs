@@ -1061,14 +1061,12 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
     } else if let Some(c) = p.app_wallpaper.strip_prefix("color:") {
         ("color".to_string(), c.to_string(), String::new())
     } else if p.app_wallpaper.starts_with("/uploads/media/") {
-        let resolved = resolve_asset_url(&p.app_wallpaper);
-        ("image".to_string(), format!("url('{}')", resolved), resolved)
+        ("image".to_string(), String::new(), p.app_wallpaper.clone())
     } else {
         (format!("preset-{}", p.app_wallpaper), String::new(), String::new())
     };
     let vars = serde_json::json!({
         "--app-wp-color": if wp_kind == "color" { wp_value.clone() } else { String::new() },
-        "--app-wp-image": if wp_kind == "image" { wp_value.clone() } else { String::new() },
         "--app-wp-dim": format!("{}", p.app_wallpaper_dim as f32 / 100.0),
         "--app-wp-blur": format!("{}px", p.app_wallpaper_blur),
         "--panel-opacity": format!("{}%", p.panel_opacity),
@@ -1086,10 +1084,12 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
         "data-panel-translucent": (p.panel_opacity < 100).to_string(),
         "data-custom-accent": (!p.custom_accent.is_empty()).to_string(),
     });
+    let wp_raw_json = serde_json::to_string(&wp_raw_url).unwrap_or_else(|_| "\"\"".into());
     let custom_state = serde_json::json!({
         "wpKind": wp_kind,
         "wpColor": if wp_kind == "color" { wp_value } else { String::new() },
-        "wpImageUrl": wp_raw_url,
+        "wpImageUrl": "",
+        "wpRawUrl": wp_raw_url,
         "dim": p.app_wallpaper_dim,
         "panelOpacity": p.panel_opacity,
         "panelGlass": p.panel_glass,
@@ -1108,8 +1108,34 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
             }}
             const attrs = {attrs};
             for (const [k, v] of Object.entries(attrs)) root.setAttribute(k, v);
-            window.__chatwCustom = {custom_state};
-            window.__chatwRecomputeContrast();
+            const st = {custom_state};
+            window.__chatwCustom = st;
+            const rawWp = {wp_raw_json};
+            if (!rawWp) {{
+                root.style.removeProperty('--app-wp-image');
+                window.__chatwRecomputeContrast();
+            }} else {{
+                const core = window.__chatwCore;
+                const cached = core && core.getCachedBlobUrlSync ? core.getCachedBlobUrlSync(rawWp) : null;
+                if (cached) {{
+                    st.wpImageUrl = cached;
+                    root.style.setProperty('--app-wp-image', `url('${{cached}}')`);
+                    window.__chatwRecomputeContrast();
+                }} else if (core && core.downloadMediaBlobUrl) {{
+                    window.__chatwWpResolveTarget = rawWp;
+                    core.downloadMediaBlobUrl(rawWp, {{ priority: 'HIGH' }}).then((burl) => {{
+                        if (!burl || window.__chatwWpResolveTarget !== rawWp) return;
+                        if (window.__chatwCustom && window.__chatwCustom.wpRawUrl === rawWp) {{
+                            window.__chatwCustom.wpImageUrl = burl;
+                        }}
+                        root.style.setProperty('--app-wp-image', `url('${{burl}}')`);
+                        window.__chatwRecomputeContrast();
+                        if (window.__chatwAdaptiveSurface && window.__chatwAdaptiveSurface.refresh) {{
+                            window.__chatwAdaptiveSurface.refresh();
+                        }}
+                    }}).catch(() => {{}});
+                }}
+            }}
         }})();
         "#,
         engine = CONTRAST_ENGINE_JS,
@@ -1824,23 +1850,75 @@ pub fn revoke_sw_media_stream(grant_id: &str) {
     }
 }
 
-/// Resolve any image/avatar/sticker URL through the SharedWorker Priority DownloadManager into a `blob:` URL
-/// so raw `/uploads/...` and `/api/attachments/...` URLs never appear in DOM `<img>` tags (Spec 071).
-pub async fn resolve_blob_media_url(url: &str, priority: &str) -> Option<String> {
+/// Synchronous O(1) lookup in the shared `blobPool` (Spec 073) so re-mounted components
+/// reuse the exact same `blob:` URL in 0ms with zero duplicate loads or flicker.
+pub fn get_cached_blob_url_sync(url: &str, key_b64: &str, nonce_b64: &str) -> Option<String> {
+    if url.is_empty() {
+        return None;
+    }
+    if url.starts_with("blob:") {
+        return Some(url.to_string());
+    }
     #[cfg(target_arch = "wasm32")]
     {
-        if url.is_empty() || url.starts_with("blob:") || url.starts_with("data:") {
-            return Some(url.to_string());
+        use wasm_bindgen::{JsCast, JsValue};
+        let win = web_sys::window()?;
+        let core = js_sys::Reflect::get(&win, &JsValue::from_str("__chatwCore")).ok()?;
+        let func = js_sys::Reflect::get(&core, &JsValue::from_str("getCachedBlobUrlSync"))
+            .ok()?
+            .dyn_into::<js_sys::Function>()
+            .ok()?;
+        let val = func
+            .call3(
+                &core,
+                &JsValue::from_str(url),
+                &JsValue::from_str(key_b64),
+                &JsValue::from_str(nonce_b64),
+            )
+            .ok()?;
+        val.as_string().filter(|s| s.starts_with("blob:"))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (key_b64, nonce_b64);
+        None
+    }
+}
+
+/// Resolve any plain OR E2EE media URL through the SharedWorker Priority DownloadManager into a
+/// single deduplicated `blob:` URL (Spec 071 + Spec 073).
+pub async fn resolve_e2ee_blob_media_url(
+    url: &str,
+    key_b64: &str,
+    nonce_b64: &str,
+    mime: &str,
+    priority: &str,
+) -> Option<String> {
+    if let Some(hit) = get_cached_blob_url_sync(url, key_b64, nonce_b64) {
+        return Some(hit);
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        if url.is_empty() {
+            return None;
         }
         let u_json = serde_json::to_string(url).ok()?;
+        let k_json = serde_json::to_string(key_b64).ok()?;
+        let n_json = serde_json::to_string(nonce_b64).ok()?;
+        let m_json = serde_json::to_string(mime).ok()?;
         let p_json = serde_json::to_string(priority).ok()?;
         let js = format!(
             r#"
             (async () => {{
                 try {{
                     if (window.__chatwCore && window.__chatwCore.downloadMediaBlobUrl) {{
-                        if (!window.__chatwCore.isConnected()) await window.__chatwCore.waitUntilReady(1500);
-                        const b = await window.__chatwCore.downloadMediaBlobUrl({u_json}, {{ priority: {p_json} }});
+                        if (!window.__chatwCore.isConnected()) await window.__chatwCore.waitUntilReady(2000);
+                        const b = await window.__chatwCore.downloadMediaBlobUrl({u_json}, {{
+                            keyB64: {k_json},
+                            nonceB64: {n_json},
+                            mime: {m_json},
+                            priority: {p_json},
+                        }});
                         dioxus.send(b || '');
                         return;
                     }}
@@ -1851,7 +1929,7 @@ pub async fn resolve_blob_media_url(url: &str, priority: &str) -> Option<String>
         );
         let mut eval = dioxus::document::eval(&js);
         let res = eval.recv::<String>().await.ok()?;
-        if res.starts_with("blob:") || res.starts_with("data:") {
+        if res.starts_with("blob:") {
             Some(res)
         } else {
             None
@@ -1859,9 +1937,53 @@ pub async fn resolve_blob_media_url(url: &str, priority: &str) -> Option<String>
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = priority;
+        let _ = (key_b64, nonce_b64, mime, priority);
         Some(resolve_asset_url(url))
     }
+}
+
+/// Register already-decrypted bytes into the shared deduplicated `blobPool` (prevents duplicate `blob:` URLs).
+pub async fn register_cached_blob_url(
+    url: &str,
+    key_b64: &str,
+    nonce_b64: &str,
+    bytes: &[u8],
+    mime: &str,
+) -> String {
+    if let Some(hit) = get_cached_blob_url_sync(url, key_b64, nonce_b64) {
+        return hit;
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::{JsCast, JsValue};
+        if let Some(win) = web_sys::window()
+            && let Ok(core) = js_sys::Reflect::get(&win, &JsValue::from_str("__chatwCore"))
+            && let Ok(func) = js_sys::Reflect::get(&core, &JsValue::from_str("registerCachedBlobUrl"))
+                .and_then(|v| v.dyn_into::<js_sys::Function>())
+        {
+            let u8arr = js_sys::Uint8Array::from(bytes);
+            let args = js_sys::Array::of5(
+                &JsValue::from_str(url),
+                &JsValue::from_str(key_b64),
+                &JsValue::from_str(nonce_b64),
+                &u8arr.into(),
+                &JsValue::from_str(mime),
+            );
+            if let Ok(val) = func.apply(&core, &args)
+                && let Some(b) = val.as_string()
+                && b.starts_with("blob:")
+            {
+                return b;
+            }
+        }
+    }
+    media_bytes_to_object_url(bytes, mime).await
+}
+
+/// Resolve any image/avatar/sticker URL through the SharedWorker Priority DownloadManager into a `blob:` URL
+/// so raw `/uploads/...` and `/api/attachments/...` URLs never appear in DOM `<img>` tags (Spec 071).
+pub async fn resolve_blob_media_url(url: &str, priority: &str) -> Option<String> {
+    resolve_e2ee_blob_media_url(url, "", "", "", priority).await
 }
 
 /// Initialize the non-extractable Web Crypto `CryptoKey` vault in IndexedDB (Spec 071).

@@ -60,16 +60,22 @@ pub fn Avatar(
     } else {
         username.unwrap_or_default()
     };
-    let mut img_failed = use_signal(|| false);
-    let mut blob_src = use_signal(|| Option::<String>::None);
-    let mut last_url = use_signal(|| Option::<String>::None);
-
     let url_clean = avatar_url.clone().filter(|u| !u.is_empty());
+    let init_blob = url_clean
+        .as_deref()
+        .and_then(|u| platform::get_cached_blob_url_sync(u, "", ""));
+    let init_last = if init_blob.is_some() { url_clean.clone() } else { None };
+    let mut img_failed = use_signal(|| false);
+    let mut blob_src = use_signal(move || init_blob);
+    let mut last_url = use_signal(move || init_last);
+
     if *last_url.read() != url_clean {
         last_url.set(url_clean.clone());
         img_failed.set(false);
         if let Some(ref u) = url_clean {
-            if u.starts_with("blob:") || u.starts_with("data:") || u.starts_with("https://") || u.starts_with("http://") {
+            if let Some(hit) = platform::get_cached_blob_url_sync(u, "", "") {
+                blob_src.set(Some(hit));
+            } else if u.starts_with("blob:") || u.starts_with("https://") || u.starts_with("http://") {
                 blob_src.set(Some(u.clone()));
             } else {
                 blob_src.set(None);
