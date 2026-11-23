@@ -46,16 +46,44 @@
     return `${proto}//${location.host}/api/ws?proto=rpc-bin`;
   }
 
+  function isLoopbackHost() {
+    const h = (location && location.hostname) || '';
+    return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+  }
+
+  function isEffectivelyOffline() {
+    if (simulatedOffline) return true;
+    // Never falsely block an already-open WebSocket or local loopback server due to flaky OS `navigator.onLine`
+    if (lastStats.connected && lastStats.handshakeCompleted) return false;
+    if (isLoopbackHost()) return false;
+    return navigator.onLine === false;
+  }
+
   function ensureWorkerPort() {
     if (port) return port;
     if (typeof SharedWorker !== 'undefined') {
       try {
         const sw = new SharedWorker('/core_worker.js', { name: 'chatw-core-v2' });
         port = sw.port;
-        port.start();
         workerMode = 'shared';
         lastStats.workerActive = true;
         lastStats.isSharedWorker = true;
+        sw.onerror = () => {
+          // If SharedWorker script ever fails to load, gracefully fall back to Dedicated Worker
+          if (workerMode === 'shared' && !lastStats.handshakeCompleted && typeof Worker !== 'undefined') {
+            port = null;
+            workerMode = 'none';
+            try {
+              const w = new Worker('/core_worker.js');
+              port = w;
+              workerMode = 'dedicated';
+              lastStats.workerActive = true;
+              lastStats.isSharedWorker = false;
+              attachPortHandlers(port);
+              port.postMessage({ type: 'start', wsUrl: activeWsUrl || defaultWsUrl() });
+            } catch (_) {}
+          }
+        };
       } catch (_) {
         port = null;
       }
@@ -74,7 +102,12 @@
     }
     if (!port) return null;
 
-    port.onmessage = (ev) => {
+    attachPortHandlers(port);
+    return port;
+  }
+
+  function attachPortHandlers(p) {
+    p.onmessage = (ev) => {
       const d = ev.data;
       if (!d || typeof d !== 'object') return;
       if (d.type === 'ws_event' && typeof d.rawJson === 'string') {
@@ -110,11 +143,11 @@
       }
     };
 
-    window.addEventListener('beforeunload', () => {
-      try { port.postMessage({ type: 'tab_close' }); } catch (_) {}
-    });
+    if (typeof p.start === 'function') p.start();
 
-    return port;
+    window.addEventListener('beforeunload', () => {
+      try { p.postMessage({ type: 'tab_close' }); } catch (_) {}
+    });
   }
 
   function callWorker(msg, transfer = [], timeoutMs = 20000) {
@@ -257,6 +290,10 @@
       return simulatedOffline;
     },
 
+    isEffectivelyOffline() {
+      return isEffectivelyOffline();
+    },
+
     async waitUntilReady(timeoutMs = 2500) {
       if (simulatedOffline) return false;
       if (this.isConnected()) return true;
@@ -325,7 +362,7 @@
     bridgeServiceWorkerPort,
 
     async rpc(method, path, body = null, contentType = '', extraHeaders = {}) {
-      if (simulatedOffline || navigator.onLine === false) {
+      if (isEffectivelyOffline()) {
         return { ok: false, status: 0, error: 'network_error', text: '' };
       }
       let transfer = [];
@@ -355,6 +392,9 @@
         18000,
       );
       if (!res.ok) {
+        if (!simulatedOffline) {
+          console.warn('[chatw-core] rpc failed:', method, path, res.error || 'network_error', { connected: lastStats.connected, workerMode });
+        }
         return { ok: false, status: 0, error: res.error || 'network_error', text: '' };
       }
       const u8 = new Uint8Array(res.bodyBuffer || 0);
@@ -385,7 +425,7 @@
     },
 
     async downloadBytes(url, opts = {}) {
-      if (simulatedOffline || navigator.onLine === false) {
+      if (isEffectivelyOffline()) {
         return { ok: false, error: 'network_error' };
       }
       const res = await callWorker(

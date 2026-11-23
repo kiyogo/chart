@@ -657,6 +657,10 @@ pub async fn handle_socket_rpc_bin(
                             let resp_bytes = if let Some((method, path, ct, hdrs, body)) = parse_rpc_call_payload(&payload) {
                                 let (status, resp_ct, resp_body, _) =
                                     invoke_internal_router(&st, &ck, method, &path, &ct, &hdrs, body).await;
+                                if status >= 400 && path.starts_with("/api/messages") {
+                                    let preview = std::str::from_utf8(&resp_body).unwrap_or("");
+                                    tracing::warn!(%path, status, body = %preview, "cwbf2 rpc /api/messages rejected");
+                                }
                                 encode_rpc_response(status, &resp_ct, &resp_body)
                             } else {
                                 encode_rpc_response(400, "application/json", br#"{"error":"malformed_rpc_frame"}"#)

@@ -1499,18 +1499,33 @@ pub fn Chat(
                                         crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
                                     }
                                 }
-                                Err(code)
-                                    if matches!(
+                                Err(code) => {
+                                    let is_transient_offline = matches!(
                                         code.as_str(),
-                                        "blocked"
-                                            | "not_friends"
-                                            | "self_chat_disabled"
-                                            | "missing_local_keys"
-                                    ) =>
-                                {
-                                    crate::storage::remove_outbox_item(&entry.client_id).await;
+                                        "network_error"
+                                            | "offline"
+                                            | "ws_offline"
+                                            | "ws_disconnected"
+                                            | "ws_not_ready"
+                                            | "ws_closed"
+                                            | "ws_handshake_timeout"
+                                            | "rpc_timeout"
+                                    );
+                                    if is_transient_offline {
+                                        should_break = true;
+                                    } else {
+                                        // Hard 4xx/crypto rejection (e.g. sender_fingerprint_mismatch):
+                                        // purge poisoned outbox item so it never stays stuck as a clock bubble forever.
+                                        crate::storage::remove_outbox_item(&entry.client_id).await;
+                                        if active_friend.peek().as_ref().map(|f| f.id.as_str())
+                                            == Some(entry.target_id.as_str())
+                                        {
+                                            messages.with_mut(|list| {
+                                                list.retain(|m| m.id != local_id);
+                                            });
+                                        }
+                                    }
                                 }
-                                Err(_) => should_break = true,
                             }
                         }
                         "group" => {
@@ -2623,6 +2638,10 @@ pub fn Chat(
                     );
                     if is_transient_offline {
                         // Offline or transient network error: keep Optimistic Pending bubble & IndexedDB outbox for auto-retry!
+                        let _ = dioxus::document::eval(&format!(
+                            "console.warn('[chatw-send-dm] queued offline:', {}, window.__chatwCore && window.__chatwCore.getStats && window.__chatwCore.getStats());",
+                            serde_json::to_string(&code).unwrap_or_else(|_| "\"unknown\"".into())
+                        ));
                         toast.set(Some("Offline: message queued and will send automatically when reconnected".into()));
                     } else {
                         crate::storage::remove_outbox_item(&client_id).await;
@@ -2632,12 +2651,21 @@ pub fn Chat(
                             "self_chat_disabled" => "\"Myself\" has been deleted. Create again to continue taking notes".to_string(),
                             "missing_local_keys" => "This device does not yet have an encryption key".to_string(),
                             "unauthorized" => "Session expired. Please sign in again".to_string(),
-                            "not_found" | "keys_not_found" => "Recipient has not set up an encryption key yet".to_string(),
+                            "not_found" | "keys_not_found" | "recipient_has_no_keys" => {
+                                "Recipient has not set up an encryption key yet".to_string()
+                            }
+                            "sender_fingerprint_mismatch" | "sender_has_no_keys" | "invalid_signature" => {
+                                "This device's encryption key does not match your account. Sync from your trusted device or reset keys in Settings > Security".to_string()
+                            }
                             other if other.contains("fingerprint") || other.contains("key_changed") => {
                                 "Recipient encryption key changed. Please verify their safety number".to_string()
                             }
                             other => format!("Unable to send ({other})"),
                         };
+                        let _ = dioxus::document::eval(&format!(
+                            "console.warn('[chatw-send-dm] rejected:', {});",
+                            serde_json::to_string(&code).unwrap_or_else(|_| "\"unknown\"".into())
+                        ));
                         if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(active.id.as_str()) {
                             messages.with_mut(|list| {
                                 if let Some(slot) = list.iter_mut().find(|m| m.id == local_id) {

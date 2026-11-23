@@ -105,7 +105,7 @@ async fn try_core_worker_rpc(
                     dioxus.send({{ handled: false }});
                     return;
                 }}
-                if ((core.isSimulatedOffline && core.isSimulatedOffline()) || navigator.onLine === false) {{
+                if (core.isEffectivelyOffline ? core.isEffectivelyOffline() : (core.isSimulatedOffline && core.isSimulatedOffline())) {{
                     dioxus.send({{ handled: true, ok: false, status: 0, error: 'network_error', text: '' }});
                     return;
                 }}
@@ -117,7 +117,7 @@ async fn try_core_worker_rpc(
                     await core.waitUntilReady({wait_ms});
                 }}
                 if (!core.isConnected()) {{
-                    if (navigator.onLine === false) {{
+                    if (core.isEffectivelyOffline && core.isEffectivelyOffline()) {{
                         dioxus.send({{ handled: true, ok: false, status: 0, error: 'network_error', text: '' }});
                         return;
                     }}
@@ -125,7 +125,7 @@ async fn try_core_worker_rpc(
                     return;
                 }}
                 let res = await core.rpcFromRust({m_json}, {p_json}, {j_json}, {r_b64_json}, {r_ct_json});
-                if ((!res || !res.ok || res.status === 0) && !(core.isSimulatedOffline && core.isSimulatedOffline()) && navigator.onLine !== false) {{
+                if ((!res || !res.ok || res.status === 0) && !(core.isEffectivelyOffline && core.isEffectivelyOffline())) {{
                     try {{
                         core.reconnectNow();
                         const ready = await core.waitUntilReady(2000);
