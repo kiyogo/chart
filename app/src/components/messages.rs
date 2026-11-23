@@ -168,6 +168,14 @@ const ENGLISH_MONTHS: [&str; 12] = [
 
 fn day_label(date: NaiveDate) -> String {
     let today = Local::now().date_naive();
+    if date == today {
+        return "Today".to_string();
+    }
+    if let Some(yesterday) = today.pred_opt() {
+        if date == yesterday {
+            return "Yesterday".to_string();
+        }
+    }
     let month_name = ENGLISH_MONTHS[(date.month().saturating_sub(1) as usize).min(11)];
     if date.year() == today.year() {
         format!("{month_name} {}", date.day())
@@ -970,7 +978,20 @@ pub fn MessageList(
                     if unseen_while_scrolled() > 0 {
                         span { class: "scroll-to-bottom-badge", "{unseen_while_scrolled()}" }
                     }
-                    "↓"
+                    svg {
+                        class: "scroll-down-svg",
+                        width: "18",
+                        height: "18",
+                        view_box: "0 0 24 24",
+                        fill: "none",
+                        stroke: "currentColor",
+                        stroke_width: "2.2",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        "aria-hidden": "true",
+                        path { d: "M12 4v13.5" }
+                        path { d: "m18 12-6 6-6-6" }
+                    }
                 }
             }
         }
@@ -1014,12 +1035,19 @@ mod tests {
 
     #[test]
     fn test_day_label_current_year_and_previous_year() {
-        let cur_year = Local::now().date_naive().year();
-        let d_cur = NaiveDate::from_ymd_opt(cur_year, 11, 20).unwrap();
-        assert_eq!(day_label(d_cur), "November 20");
-        let d_old = NaiveDate::from_ymd_opt(2025, 11, 22).unwrap();
+        let today = Local::now().date_naive();
+        assert_eq!(day_label(today), "Today");
+        if let Some(yesterday) = today.pred_opt() {
+            assert_eq!(day_label(yesterday), "Yesterday");
+        }
+        let cur_year = today.year();
+        let d_cur = NaiveDate::from_ymd_opt(cur_year, 1, 15).unwrap();
+        if d_cur != today && Some(d_cur) != today.pred_opt() {
+            assert_eq!(day_label(d_cur), "January 15");
+        }
+        let d_old = NaiveDate::from_ymd_opt(2025, 5, 12).unwrap();
         if cur_year != 2025 {
-            assert_eq!(day_label(d_old), "November 22, 2025");
+            assert_eq!(day_label(d_old), "May 12, 2025");
         }
     }
 }

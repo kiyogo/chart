@@ -287,12 +287,36 @@
   }
 
   function formatLocalizedDate(str, lang) {
+    if (str === 'Today') {
+      if (lang === 'vi') return 'Hôm nay';
+      try {
+        const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+        const res = rtf.format(0, 'day');
+        return res ? res.charAt(0).toUpperCase() + res.slice(1) : 'Today';
+      } catch (_) {
+        return 'Today';
+      }
+    }
+    if (str === 'Yesterday') {
+      if (lang === 'vi') return 'Hôm qua';
+      try {
+        const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+        const res = rtf.format(-1, 'day');
+        return res ? res.charAt(0).toUpperCase() + res.slice(1) : 'Yesterday';
+      } catch (_) {
+        return 'Yesterday';
+      }
+    }
     let m = str.match(EN_DATE_FULL_RE);
     if (m) {
       const mon = EN_MONTH_MAP[m[1]];
       const day = Number(m[2]);
       const year = Number(m[3]);
-      if (lang === 'vi') return `${day} tháng ${mon} năm ${year}`;
+      if (lang === 'vi') {
+        const padDay = day < 10 ? `0${day}` : `${day}`;
+        const padMon = mon < 10 ? `0${mon}` : `${mon}`;
+        return `${padDay} tháng ${padMon} năm ${year}`;
+      }
       try {
         return new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'long', day: 'numeric' }).format(
           new Date(year, mon - 1, day)
