@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <clipPath id="cw-pride-clip">
+      <circle cx="64" cy="64" r="64"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#cw-pride-clip)">
+    <!-- 6-Stripe LGBTQ+ Pride Rainbow Flag -->
+    <rect x="0" y="0" width="128" height="21.6" fill="#E40303"/>
+    <rect x="0" y="21.3" width="128" height="21.6" fill="#FF8C00"/>
+    <rect x="0" y="42.6" width="128" height="21.6" fill="#FFED00"/>
+    <rect x="0" y="64.0" width="128" height="21.6" fill="#008026"/>
+    <rect x="0" y="85.3" width="128" height="21.6" fill="#004DFF"/>
+    <rect x="0" y="106.6" width="128" height="21.6" fill="#750787"/>
+
+    <!-- Soft ambient ground shadow beneath voxel bunny -->
+    <polygon points="64.0,64.57 107.26,86.2 64.0,107.83 20.74,86.2" fill="#0F172A" fill-opacity="0.22"/>
+
+    <!-- 3 Visible Voxel Legs (back-to-front painter order) -->
+    <polygon points="85.63,86.78 94.9,91.41 94.9,80.48 85.63,75.85" fill="#6FA4BC"/>
+    <polygon points="94.9,91.41 104.17,86.78 104.17,75.85 94.9,80.48" fill="#4F748F"/>
+    <polygon points="94.9,71.21 104.17,75.85 94.9,80.48 85.63,75.85" fill="#89B7D4"/>
+    <polygon points="85.63,86.78 94.9,91.41 94.9,85.66 85.63,81.03" fill="#82B9CC"/>
+    <polygon points="94.9,91.41 104.17,86.78 104.17,81.03 94.9,85.66" fill="#5E8CA3"/>
+    <polygon points="23.83,86.78 33.1,91.41 33.1,80.48 23.83,75.85" fill="#7BB0C7"/>
+    <polygon points="33.1,91.41 42.37,86.78 42.37,75.85 33.1,80.48" fill="#537994"/>
+    <polygon points="33.1,71.21 42.37,75.85 33.1,80.48 23.83,75.85" fill="#89B7D4"/>
+    <polygon points="23.83,86.78 33.1,91.41 33.1,85.66 23.83,81.03" fill="#8EC3D6"/>
+    <polygon points="33.1,91.41 42.37,86.78 42.37,81.03 33.1,85.66" fill="#608EA6"/>
+    <polygon points="54.73,102.23 64.0,106.86 64.0,95.94 54.73,91.3" fill="#78AEC6"/>
+    <polygon points="64.0,106.86 73.27,102.23 73.27,91.3 64.0,95.94" fill="#517792"/>
+    <polygon points="64.0,86.66 73.27,91.3 64.0,95.94 54.73,91.3" fill="#89B7D4"/>
+    <polygon points="54.73,102.23 64.0,106.86 64.0,101.11 54.73,96.48" fill="#8BC1D4"/>
+    <polygon points="64.0,106.86 73.27,102.23 73.27,96.48 64.0,101.11" fill="#5E8DA4"/>
+
+    <!-- Main Voxel Bunny Cube Body -->
+    <polygon points="22.8,77.0 64.0,97.6 64.0,64.25 22.8,43.65" fill="#78A4C2"/>
+    <polygon points="64.0,97.6 105.2,77.0 105.2,43.65 64.0,64.25" fill="#557D9B"/>
+    <polygon points="64.0,23.05 105.2,43.65 64.0,64.25 22.8,43.65" fill="#9CC8E2"/>
+    <polygon points="64.0,27.17 96.96,43.65 64.0,60.13 31.04,43.65" fill="#88B8D6"/>
+    <polygon points="64.0,30.77 89.75,43.65 64.0,56.52 38.25,43.65" fill="#7FB1D1"/>
+    <polygon points="39.8,39.27 48.55,43.65 39.8,48.03 31.04,43.65" fill="#A9D3EB"/>
+    <polygon points="86.14,38.76 95.93,43.65 86.14,48.54 76.36,43.65" fill="#94C3DF"/>
+    <polygon points="26.92,41.59 68.12,62.19 64.0,64.25 22.8,43.65" fill="#B4DAF0"/>
+    <polygon points="101.08,41.59 105.2,43.65 64.0,64.25 59.88,62.19" fill="#A5D0E9"/>
+    <polygon points="26.41,74.78 60.39,91.77 60.39,66.47 26.41,49.48" fill="#6C98B8"/>
+    <polygon points="31.04,72.5 55.76,84.86 55.76,67.61 31.04,55.25" fill="#6490B0"/>
+    <polygon points="22.8,47.67 64.0,68.27 64.0,64.25 22.8,43.65" fill="#9BC6E0"/>
+    <polygon points="22.8,77.0 26.41,78.8 26.41,45.45 22.8,43.65" fill="#8FBCD8"/>
+    <polygon points="60.39,95.8 64.0,97.6 64.0,64.25 60.39,62.45" fill="#85B4D1"/>
+    <polygon points="22.8,77.0 64.0,97.6 64.0,93.29 22.8,72.69" fill="#7DB6CC"/>
+    <polygon points="67.61,91.77 101.59,74.78 101.59,49.48 67.61,66.47" fill="#4E7593"/>
+    <polygon points="73.27,83.77 95.93,72.44 95.93,56.91 73.27,68.24" fill="#476D8A"/>
+    <polygon points="64.0,68.27 105.2,47.67 105.2,43.65 64.0,64.25" fill="#6C97B5"/>
+    <polygon points="64.0,97.6 105.2,77.0 105.2,72.69 64.0,93.29" fill="#5D8FA6"/>
+    <polygon points="64.0,97.6 67.61,95.8 67.61,62.45 64.0,64.25" fill="#638DAB"/>
+
+    <!-- Kawaii Voxel Face (Eyes + Nose) -->
+    <polygon points="25.89,69.92 35.16,74.56 35.16,68.52 25.89,63.88" fill="#424666"/>
+    <polygon points="25.89,66.18 29.49,67.98 29.49,65.69 25.89,63.88" fill="#5A6084"/>
+    <polygon points="51.64,82.8 60.91,87.43 60.91,81.39 51.64,76.76" fill="#424666"/>
+    <polygon points="51.64,79.06 55.24,80.86 55.24,78.56 51.64,76.76" fill="#5A6084"/>
+    <polygon points="39.02,80.22 47.78,84.6 47.78,79.43 39.02,75.05" fill="#515679"/>
+    <polygon points="39.02,76.77 47.78,81.15 47.78,79.43 39.02,75.05" fill="#676E96"/>
+
+    <!-- Two Upright 3D Voxel Bunny Ears (back-left then front-right) -->
+    <polygon points="51.64,35.41 61.42,40.3 61.42,20.75 51.64,15.86" fill="#95C2DD"/>
+    <polygon points="61.42,40.3 68.64,36.7 68.64,17.15 61.42,20.75" fill="#5E86A3"/>
+    <polygon points="58.85,12.26 68.64,17.15 61.42,20.75 51.64,15.86" fill="#C2E1F3"/>
+    <polygon points="54.47,34.53 58.59,36.59 58.59,24.51 54.47,22.45" fill="#6F9EB9"/>
+    <polygon points="51.64,19.02 61.42,23.91 61.42,20.75 51.64,15.86" fill="#AED7EE"/>
+    <polygon points="69.15,44.16 78.94,49.06 78.94,29.51 69.15,24.62" fill="#95C2DD"/>
+    <polygon points="78.94,49.06 86.14,45.45 86.14,25.9 78.94,29.51" fill="#5E86A3"/>
+    <polygon points="76.36,21.01 86.14,25.9 78.94,29.51 69.15,24.62" fill="#C2E1F3"/>
+    <polygon points="71.98,43.28 76.1,45.34 76.1,33.27 71.98,31.21" fill="#6F9EB9"/>
+    <polygon points="69.15,27.78 78.94,32.67 78.94,29.51 69.15,24.62" fill="#AED7EE"/>
+  </g>
+</svg>

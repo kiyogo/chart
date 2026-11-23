@@ -12,8 +12,9 @@ use crate::{
     components::{
         avatar::Avatar,
         icons::{
-            BellOffIcon, CheckIcon, ChevronDownIcon, CloseIcon, DevicesIcon, HashIcon, ImageIcon,
-            MoreIcon, PinIcon, PluginIcon, PlusIcon, SearchIcon, SendIcon, TagIcon, TrashIcon,
+            BellOffIcon, CheckIcon, ChevronDownIcon, CloseIcon, HashIcon, ImageIcon,
+            MoreIcon, PinIcon, PluginIcon, PlusIcon, SearchIcon, SelfChatPrideAvatar, SendIcon,
+            TagIcon, TrashIcon,
         },
         messages::preview_text,
         profile_card::{name_effect_class, nameplate_style},
@@ -255,7 +256,7 @@ pub fn ConversationList(
                     "data-conv": "{r.key}",
                     onclick: move |_| on_open.call(open.clone()),
                     match &r.open {
-                        ConvOpen::SelfChat => rsx! { span { class: "self-chat-avatar", aria_hidden: "true", DevicesIcon { size: 24 } } },
+                        ConvOpen::SelfChat => rsx! { span { class: "self-chat-avatar pride-voxel", aria_hidden: "true", SelfChatPrideAvatar {} } },
                         ConvOpen::Channel(_) => rsx! { span { class: "self-chat-avatar channel", aria_hidden: "true", HashIcon { size: 22 } } },
                         ConvOpen::Dm(f) => rsx! {
                             crate::components::profile_card::DecoratedAvatar {

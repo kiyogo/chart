@@ -15,7 +15,7 @@ use crate::{
         groups::{AddMemberModal, CreateGroupModal, GroupInfoPanel},
         icons::{
             BackIcon, BlockIcon, CompassIcon, DevicesIcon, GroupIcon, HashIcon, LockIcon, MessageIcon, MicIcon, MicOffIcon, MoreIcon,
-            PaletteIcon, PanelRightIcon, PhoneIcon, PhoneOffIcon, ShieldIcon, SparkleIcon, UserPlusIcon, VideoIcon, VolumeIcon,
+            PaletteIcon, PanelRightIcon, PhoneIcon, PhoneOffIcon, SelfChatPrideAvatar, ShieldIcon, SparkleIcon, UserPlusIcon, VideoIcon, VolumeIcon,
         },
         messages::{Composer, MentionCandidate, MessageList, ViewMessage, preview_text},
         search_page::SearchPage,
@@ -4213,7 +4213,7 @@ pub fn Chat(
                                 }
                                 if self_mode {
                                     div { class: "chat-header-identity self-header-identity",
-                                        span { class: "self-chat-avatar", aria_hidden: "true", DevicesIcon { size: 20 } }
+                                        span { class: "self-chat-avatar pride-voxel", aria_hidden: "true", SelfChatPrideAvatar {} }
                                         div { class: "chat-header-info",
                                             h2 { class: "chat-header-title", "{t(\"chat.self\")}" }
                                             span { class: "chat-header-meta secure", ShieldIcon { size: 12 } "Only you · {sessions_now.len()} devices" }
