@@ -1281,18 +1281,6 @@ pub fn clamp_lightbox_pan(
     (px.clamp(-mx, mx), py.clamp(-my, my))
 }
 
-/// Soft elastic resistance when dragging past the corner bound (caps overscroll at 40px).
-fn rubber_band_axis(val: f64, limit: f64) -> f64 {
-    const MAX_PULL: f64 = 40.0;
-    if val > limit {
-        limit + ((val - limit) * 0.22).min(MAX_PULL)
-    } else if val < -limit {
-        -limit - ((-limit - val) * 0.22).min(MAX_PULL)
-    } else {
-        val
-    }
-}
-
 async fn measure_lightbox_bounds() -> Option<(f64, f64, f64, f64)> {
     let mut ev = dioxus::document::eval(
         r#"
@@ -1434,16 +1422,11 @@ pub fn GlobalImageLightbox() -> Element {
     let py = pan_y();
     let rot = rotation();
     let is_dragging = dragging();
-    let (bw, bh, vw, vh) = bounds();
-    let (lim_x, lim_y) = lightbox_pan_limits(z, rot, bw, bh, vw, vh);
-    let can_pan = z > 1.01 && (lim_x > 0.5 || lim_y > 0.5);
     let pct = (z * 100.0).round() as i32;
     let stage_cls = if is_dragging {
         "lightbox-stage is-panning"
-    } else if can_pan {
-        "lightbox-stage can-pan"
     } else {
-        "lightbox-stage"
+        "lightbox-stage can-pan"
     };
     let img_style = format!("transform: translate3d({px:.1}px, {py:.1}px, 0) scale({z:.3}) rotate({rot}deg);");
     let dl_name = if media.name.is_empty() {
@@ -1518,6 +1501,12 @@ pub fn GlobalImageLightbox() -> Element {
                     }
                     close_lightbox();
                 },
+                onmousedown: move |e| {
+                    let c = e.client_coordinates();
+                    dragging.set(true);
+                    did_drag.set(false);
+                    drag_origin.set((c.x, c.y, *pan_x.peek(), *pan_y.peek()));
+                },
                 onmousemove: move |e| {
                     if !dragging() {
                         return;
@@ -1529,10 +1518,8 @@ pub fn GlobalImageLightbox() -> Element {
                     if dx.abs() > 3.0 || dy.abs() > 3.0 {
                         did_drag.set(true);
                     }
-                    let (cbw, cbh, cvw, cvh) = *bounds.peek();
-                    let (mx, my) = lightbox_pan_limits(*zoom.peek(), *rotation.peek(), cbw, cbh, cvw, cvh);
-                    pan_x.set(rubber_band_axis(opx + dx, mx));
-                    pan_y.set(rubber_band_axis(opy + dy, my));
+                    pan_x.set(opx + dx);
+                    pan_y.set(opy + dy);
                 },
                 onmouseup: move |_| finish_drag_and_snap(),
                 onmouseleave: move |_| finish_drag_and_snap(),
@@ -1560,23 +1547,12 @@ pub fn GlobalImageLightbox() -> Element {
                         }
                     },
                     onmousedown: move |e| {
-                        let (cbw, cbh, cvw, cvh) = *bounds.peek();
-                        let (mx, my) = lightbox_pan_limits(*zoom.peek(), *rotation.peek(), cbw, cbh, cvw, cvh);
-                        if zoom() > 1.01 && (mx > 0.5 || my > 0.5) {
-                            e.prevent_default();
-                            e.stop_propagation();
-                            let c = e.client_coordinates();
-                            dragging.set(true);
-                            did_drag.set(false);
-                            drag_origin.set((c.x, c.y, pan_x(), pan_y()));
-                        } else if zoom() > 1.01 {
-                            // Refresh bounds lazily if not measured yet
-                            spawn(async move {
-                                if let Some(b) = measure_lightbox_bounds().await {
-                                    bounds.set(b);
-                                }
-                            });
-                        }
+                        e.prevent_default();
+                        e.stop_propagation();
+                        let c = e.client_coordinates();
+                        dragging.set(true);
+                        did_drag.set(false);
+                        drag_origin.set((c.x, c.y, *pan_x.peek(), *pan_y.peek()));
                     },
                 }
             }

@@ -3673,12 +3673,12 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   object-fit: contain;
   margin: 0;
   border: none !important;
-  border-radius: 6px;
+  border-radius: 0 !important;
   box-shadow: 0 24px 72px rgba(0, 0, 0, 0.50);
   transform-origin: center center;
-  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
   -webkit-user-drag: none;
-  cursor: zoom-in;
+  cursor: grab;
 }
 .lightbox-stage.can-pan .lightbox-img { cursor: grab; }
 .lightbox-stage.is-panning .lightbox-img {
