@@ -28,6 +28,7 @@ pub mod guide;
 pub mod inventory;
 pub mod invite;
 pub mod icons;
+pub mod legal;
 pub mod media_picker;
 pub mod meet_view;
 pub mod messages;

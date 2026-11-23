@@ -15,6 +15,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
     let mut providers = use_signal(|| Option::<ProvidersResponse>::None);
     // Spec 011: the second step (TOTP / backup code) after Google or test sign-in.
     let mut twofa = use_signal(|| false);
+    let mut active_legal_modal = use_signal(|| Option::<crate::components::legal::LegalDocKind>::None);
 
     use_effect(move || {
         spawn(async move {
@@ -182,11 +183,39 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                         }
                     }
 
-                    p { class: "auth-legal",
-                        "When you continue, your encryption key is generated and saved on this device. The server only receives the public key."
+                    div { class: "auth-legal-container",
+                        p { class: "auth-legal",
+                            "When you continue, your encryption key is generated and saved on this device. The server only receives the public key."
+                        }
+                        div { class: "auth-legal-links",
+                            button {
+                                r#type: "button",
+                                class: "auth-legal-btn",
+                                onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Terms)),
+                                "Điều khoản dịch vụ"
+                            }
+                            span { class: "auth-legal-sep", "•" }
+                            button {
+                                r#type: "button",
+                                class: "auth-legal-btn",
+                                onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Privacy)),
+                                "Chính sách bảo mật"
+                            }
+                            span { class: "auth-legal-sep", "•" }
+                            button {
+                                r#type: "button",
+                                class: "auth-legal-btn",
+                                onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Community)),
+                                "Tiêu chuẩn cộng đồng"
+                            }
+                        }
                     }
                 }
                 }
+            }
+            crate::components::legal::LegalModal {
+                doc: active_legal_modal(),
+                on_close: move |_| active_legal_modal.set(None),
             }
         }
     }

@@ -83,6 +83,9 @@ enum CreativeSub {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AboutSub {
     Overview,
+    Terms,
+    Privacy,
+    Community,
     Guide,
 }
 
@@ -122,7 +125,7 @@ fn tab_keywords(t: SettingsTab) -> &'static str {
         SettingsTab::Language => "language locale ngon ngu tieng viet tieng anh english",
         SettingsTab::DataBackup => "data storage cache luu tru bo nho dem quota backup export import restore sao luu khoi phuc kdata cloud dam may google drive onedrive dropbox nextcloud webdav s3 minio nas snapshot",
         SettingsTab::Creative => "creative sang tao library sticker emoji gif upload thu vien draw studio ve hoat anh animation layer khung hinh inventory kho do vat pham thanh tich huy hieu showcase preview demo xem thu hieu ung nameplate",
-        SettingsTab::About => "about gioi thieu version phien ban build system he thong license giay phep guide help faq huong dan phim tat tro giup developer mode che do nha phat trien",
+        SettingsTab::About => "about gioi thieu version phien ban build system he thong license giay phep terms dieu khoan thoa thuan privacy chinh sach bao mat community tieu chuan cong dong guide help faq huong dan phim tat tro giup developer mode che do nha phat trien",
         SettingsTab::Developer => "developer nha phat trien advanced export xuat du lieu nang cao zip aes-256 encryption keys khoa ma hoa e2ee van tay fingerprint backup json sync recovery dong bo khoi phuc da thiet bi webrtc extensions plugins bot tien ich mo rong diagnostics chan doan",
     }
 }
@@ -266,7 +269,13 @@ pub fn SettingsView(
                 }
             }
             SettingsTab::About => {
-                if q.contains("guide") || q.contains("huong dan") || q.contains("phim tat") || q.contains("faq") {
+                if q.contains("terms") || q.contains("dieu khoan") || q.contains("thoa thuan") {
+                    about_sub.set(AboutSub::Terms);
+                } else if q.contains("privacy") || q.contains("chinh sach") || q.contains("bao mat") {
+                    about_sub.set(AboutSub::Privacy);
+                } else if q.contains("community") || q.contains("tieu chuan") || q.contains("cong dong") {
+                    about_sub.set(AboutSub::Community);
+                } else if q.contains("guide") || q.contains("huong dan") || q.contains("phim tat") || q.contains("faq") {
                     about_sub.set(AboutSub::Guide);
                 } else {
                     about_sub.set(AboutSub::Overview);
@@ -922,18 +931,27 @@ pub fn SettingsView(
                                 }
                             },
 
-                            // 8. About (Overview — iOS/Android About + Developer mode toggle | Guide)
+                            // 8. About (Overview — iOS/Android About + Developer mode toggle | Terms | Privacy | Community | Guide)
                             SettingsTab::About => rsx! {
                                 SubTabBar {
                                     items: vec![
                                         ("overview", "Overview"),
+                                        ("terms", "Điều khoản dịch vụ"),
+                                        ("privacy", "Chính sách bảo mật"),
+                                        ("community", "Tiêu chuẩn cộng đồng"),
                                         ("guide", "Guide"),
                                     ],
                                     active: match about_sub() {
                                         AboutSub::Overview => "overview",
+                                        AboutSub::Terms => "terms",
+                                        AboutSub::Privacy => "privacy",
+                                        AboutSub::Community => "community",
                                         AboutSub::Guide => "guide",
                                     },
                                     on_select: move |id| match id {
+                                        "terms" => about_sub.set(AboutSub::Terms),
+                                        "privacy" => about_sub.set(AboutSub::Privacy),
+                                        "community" => about_sub.set(AboutSub::Community),
                                         "guide" => about_sub.set(AboutSub::Guide),
                                         _ => about_sub.set(AboutSub::Overview),
                                     },
@@ -948,7 +966,19 @@ pub fn SettingsView(
                                             },
                                             on_open_guide: move |_| about_sub.set(AboutSub::Guide),
                                             on_replay_tour: move |_| on_replay_tour.call(()),
+                                            on_open_terms: move |_| about_sub.set(AboutSub::Terms),
+                                            on_open_privacy: move |_| about_sub.set(AboutSub::Privacy),
+                                            on_open_community: move |_| about_sub.set(AboutSub::Community),
                                         }
+                                    },
+                                    AboutSub::Terms => rsx! {
+                                        crate::components::legal::LegalPanel { kind: crate::components::legal::LegalDocKind::Terms }
+                                    },
+                                    AboutSub::Privacy => rsx! {
+                                        crate::components::legal::LegalPanel { kind: crate::components::legal::LegalDocKind::Privacy }
+                                    },
+                                    AboutSub::Community => rsx! {
+                                        crate::components::legal::LegalPanel { kind: crate::components::legal::LegalDocKind::Community }
                                     },
                                     AboutSub::Guide => rsx! { GuideSettings { on_replay_tour: move |_| on_replay_tour.call(()) } },
                                 }

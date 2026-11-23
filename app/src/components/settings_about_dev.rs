@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 
 use crate::{
-    components::icons::{BookIcon, BoltIcon, CopyIcon, LogoIcon, ShieldIcon, SparkleIcon},
+    components::icons::{BookIcon, BoltIcon, CopyIcon, FileTextIcon, LockIcon, LogoIcon, ShieldIcon, SparkleIcon},
     platform,
     prefs::PrefsCtx,
 };
@@ -34,6 +34,9 @@ pub fn AboutOverviewPanel(
     on_open_developer: EventHandler<()>,
     on_open_guide: EventHandler<()>,
     on_replay_tour: EventHandler<()>,
+    #[props(default)] on_open_terms: EventHandler<()>,
+    #[props(default)] on_open_privacy: EventHandler<()>,
+    #[props(default)] on_open_community: EventHandler<()>,
 ) -> Element {
     let prefs_ctx = use_context::<PrefsCtx>();
     let prefs = prefs_ctx.prefs.read().clone();
@@ -212,6 +215,43 @@ pub fn AboutOverviewPanel(
                                 },
                                 CopyIcon { size: 15 }
                                 span { if copied_diag() { "Copied" } else { "Copy diagnostics" } }
+                            }
+                        }
+                    }
+                }
+
+                // Legal, Privacy & Community standards card
+                div { class: "settings-group",
+                    div { class: "settings-group-title", "Legal & policies" }
+                    div { class: "about-card",
+                        div { class: "about-row",
+                            span { class: "about-row-label", "Điều khoản dịch vụ" }
+                            button {
+                                r#type: "button",
+                                class: "btn-secondary",
+                                onclick: move |_| on_open_terms.call(()),
+                                FileTextIcon { size: 15 }
+                                span { "Xem điều khoản" }
+                            }
+                        }
+                        div { class: "about-row",
+                            span { class: "about-row-label", "Chính sách bảo mật" }
+                            button {
+                                r#type: "button",
+                                class: "btn-secondary",
+                                onclick: move |_| on_open_privacy.call(()),
+                                ShieldIcon { size: 15 }
+                                span { "Xem chính sách" }
+                            }
+                        }
+                        div { class: "about-row",
+                            span { class: "about-row-label", "Tiêu chuẩn cộng đồng" }
+                            button {
+                                r#type: "button",
+                                class: "btn-secondary",
+                                onclick: move |_| on_open_community.call(()),
+                                LockIcon { size: 15 }
+                                span { "Xem tiêu chuẩn" }
                             }
                         }
                     }
