@@ -3639,17 +3639,17 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .lightbox-stage.is-panning { cursor: grabbing; }
 .lightbox-img {
   display: block;
-  max-width: min(88vw, 1360px);
-  max-height: 80vh;
+  max-width: min(92vw, 1440px);
+  max-height: 86vh;
   width: auto;
   height: auto;
   object-fit: contain;
   margin: 0;
-  border-radius: 12px;
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.55);
+  border: none !important;
+  border-radius: 6px;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.50);
   transform-origin: center center;
-  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
   -webkit-user-drag: none;
   cursor: zoom-in;
 }
@@ -3663,13 +3663,13 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   top: 0;
   left: 0;
   right: 0;
-  height: 68px;
-  padding: 0 20px;
+  height: 60px;
+  padding: 0 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: linear-gradient(180deg, rgba(6, 8, 12, 0.62) 0%, rgba(6, 8, 12, 0) 100%);
+  background: linear-gradient(180deg, rgba(6, 8, 12, 0.58) 0%, rgba(6, 8, 12, 0) 100%);
   pointer-events: none;
   z-index: 10001;
 }
@@ -3682,120 +3682,84 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   color: rgba(255, 255, 255, 0.92);
   font-size: 0.875rem;
   font-weight: 500;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
 }
 .lightbox-filename {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 42vw;
+  max-width: 40vw;
 }
 .lightbox-dims {
-  color: rgba(255, 255, 255, 0.60);
+  color: rgba(255, 255, 255, 0.65);
   font-size: 0.8125rem;
   font-weight: 400;
   white-space: nowrap;
 }
 .lightbox-actions {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   pointer-events: auto;
   flex-shrink: 0;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
 }
-.lightbox-actions .btn-secondary {
-  height: 38px;
-  padding: 0 14px;
-  border-radius: 999px;
-  background: rgba(18, 21, 28, 0.68) !important;
-  color: #fff !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  text-decoration: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-  transition: background 140ms ease, transform 140ms ease;
-}
-.lightbox-actions .btn-secondary:hover {
-  background: rgba(30, 35, 46, 0.86) !important;
-  color: #fff !important;
-}
+/* 100% uniform borderless top-right Telegram-style icon buttons (Spec 080) */
+.lightbox-tool-btn,
+.lightbox-actions .btn-secondary,
 .lightbox-close {
   position: static !important;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: rgba(18, 21, 28, 0.68) !important;
-  color: #fff !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  display: inline-flex;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: none !important;
+  outline: none;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-  transition: background 140ms ease;
+  text-decoration: none;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.45));
+  transition: background 140ms ease, opacity 140ms ease, color 140ms ease;
 }
+.lightbox-tool-btn svg,
+.lightbox-actions .btn-secondary svg,
 .lightbox-close svg {
   color: #fff !important;
   stroke: #fff !important;
 }
+.lightbox-tool-btn:hover:not(:disabled),
+.lightbox-actions .btn-secondary:hover,
 .lightbox-close:hover {
-  background: rgba(30, 35, 46, 0.86) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
   color: #fff !important;
+  border: none !important;
+  box-shadow: none !important;
 }
-.lightbox-dock {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border-radius: 999px;
-  background: rgba(20, 23, 30, 0.78);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
-  z-index: 10001;
-}
-.lightbox-dock-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.90);
-  border: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease, opacity 140ms ease;
-}
-.lightbox-dock-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
-}
-.lightbox-dock-btn:disabled {
-  opacity: 0.34;
-  cursor: default;
+.lightbox-tool-btn:disabled {
+  opacity: 0.32 !important;
+  cursor: default !important;
 }
 .lightbox-zoom-readout {
-  min-width: 54px;
-  height: 32px;
-  padding: 0 10px;
+  min-width: 48px;
+  height: 34px;
+  padding: 0 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.94);
-  border: none;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  border: none !important;
+  box-shadow: none !important;
   font-size: 0.8125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -3803,17 +3767,12 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 140ms ease;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  transition: background 140ms ease, color 140ms ease;
 }
 .lightbox-zoom-readout:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-}
-.lightbox-dock-sep {
-  width: 1px;
-  height: 18px;
-  background: rgba(255, 255, 255, 0.16);
-  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
 }
 .chat-column:has(.lightbox, .modal-overlay),
 .chat-messages:has(.lightbox, .modal-overlay) {

@@ -1,0 +1,7 @@
+# Spec 080 — Tasks
+
+- [x] **T1**: Implement pure `lightbox_pan_limits`, `clamp_lightbox_pan`, and `rubber_band_axis` math helpers + 3 unit tests in `app/src/components/rich.rs`, lock zoom range to `1.0..=4.0` (`100%–400%`), measure real live `(offsetWidth, offsetHeight, innerWidth, innerHeight)` of `.lightbox-img` across mount/load/resize, and apply rubber-band drag + automatic spring snap-back on release/zoom/rotate.
+- [x] **T2**: Unify all 6 Lightbox controls (`Zoom out`, `100%`, `Zoom in`, `Rotate`, `Download`, `Close`) into the single borderless top-right `.lightbox-actions` menu in `app/src/components/rich.rs` and remove `.lightbox-dock`.
+- [x] **T3**: Remove ALL borders and frames from `.lightbox` controls in `app/assets/main.css` so every icon button in the top-right bar shares 100% identical borderless ghost styling, with crisp spring snap-back transition (`240ms cubic-bezier(0.22, 1, 0.36, 1)`).
+- [x] **T4**: Update `app/e2e/spec078-global-lightbox-centered-zoom-pan.mjs` to verify zero borders, unified top-right menu, `100%` min zoom floor, and extreme drag snapping cleanly back to the exact image corner without losing the photo.
+- [x] **T5**: Run Rust unit tests (36/36 pass), build release bundle (`./app/build-web.sh release`), run Playwright verification (`spec078`/080 7/7, `spec073` 7/7, `spec077` 9/9, `spec079` 4/4), visually inspect screenshots, mark tasks `[x]`, and commit + push to `origin main` (`https://github.com/kiyogo/chart`).

@@ -1242,9 +1242,78 @@ pub fn ComposerTools(
     }
 }
 
-/// Root-mounted Telegram/Preview-grade global image lightbox viewer (Spec 078).
-/// Mounted at the root of `ChatPage` so zero ancestor layout, padding, scroll containment,
-/// or `.rich-image img` CSS cascade can ever shift or clip the image off-center.
+/// Pure pan limit calculation for Spec 080 corner-clamped lightbox panning.
+/// Ensures zoomed images stop flush at the viewport edges/corners and never disappear off-screen.
+pub fn lightbox_pan_limits(
+    zoom: f64,
+    rotation_deg: i32,
+    base_w: f64,
+    base_h: f64,
+    vw: f64,
+    vh: f64,
+) -> (f64, f64) {
+    if base_w <= 0.0 || base_h <= 0.0 || vw <= 0.0 || vh <= 0.0 || zoom <= 1.001 {
+        return (0.0, 0.0);
+    }
+    let quarter = ((rotation_deg % 360) + 360) % 360;
+    let (w0, h0) = if quarter == 90 || quarter == 270 {
+        (base_h, base_w)
+    } else {
+        (base_w, base_h)
+    };
+    let max_x = ((w0 * zoom - vw) * 0.5).max(0.0);
+    let max_y = ((h0 * zoom - vh) * 0.5).max(0.0);
+    (max_x, max_y)
+}
+
+/// Hard-clamps `(px, py)` so image edges never pull inside the viewport (max is the exact corner).
+pub fn clamp_lightbox_pan(
+    px: f64,
+    py: f64,
+    zoom: f64,
+    rotation_deg: i32,
+    base_w: f64,
+    base_h: f64,
+    vw: f64,
+    vh: f64,
+) -> (f64, f64) {
+    let (mx, my) = lightbox_pan_limits(zoom, rotation_deg, base_w, base_h, vw, vh);
+    (px.clamp(-mx, mx), py.clamp(-my, my))
+}
+
+/// Soft elastic resistance when dragging past the corner bound (caps overscroll at 40px).
+fn rubber_band_axis(val: f64, limit: f64) -> f64 {
+    const MAX_PULL: f64 = 40.0;
+    if val > limit {
+        limit + ((val - limit) * 0.22).min(MAX_PULL)
+    } else if val < -limit {
+        -limit - ((-limit - val) * 0.22).min(MAX_PULL)
+    } else {
+        val
+    }
+}
+
+async fn measure_lightbox_bounds() -> Option<(f64, f64, f64, f64)> {
+    let mut ev = dioxus::document::eval(
+        r#"
+        const img = document.querySelector('.lightbox-img');
+        if (img && img.offsetWidth > 0 && img.offsetHeight > 0) {
+            dioxus.send([img.offsetWidth, img.offsetHeight, window.innerWidth, window.innerHeight]);
+        } else {
+            dioxus.send(null);
+        }
+        "#,
+    );
+    ev.recv::<Option<[f64; 4]>>()
+        .await
+        .ok()
+        .flatten()
+        .map(|a| (a[0], a[1], a[2], a[3]))
+}
+
+/// Root-mounted Telegram Web K style global image lightbox viewer (Specs 078 & 080).
+/// Mounted at the root of `ChatPage` with 100% borderless top-right unified toolbar,
+/// 100%..=400% zoom range, and elastic corner-clamped pan with automatic spring snap-back.
 #[component]
 pub fn GlobalImageLightbox() -> Element {
     let media_opt = GLOBAL_LIGHTBOX();
@@ -1256,29 +1325,86 @@ pub fn GlobalImageLightbox() -> Element {
     let mut drag_origin = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
     let mut did_drag = use_signal(|| false);
     let mut active_src = use_signal(String::new);
+    // Live layout (base_w, base_h, vw, vh) measured from `.lightbox-img` offsetWidth/offsetHeight
+    let mut bounds = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
 
     let cur_src = media_opt.as_ref().map(|m| m.src.clone()).unwrap_or_default();
     if *active_src.peek() != cur_src {
-        active_src.set(cur_src);
+        active_src.set(cur_src.clone());
         zoom.set(1.0);
         pan_x.set(0.0);
         pan_y.set(0.0);
         rotation.set(0);
         dragging.set(false);
         did_drag.set(false);
+        bounds.set((0.0, 0.0, 0.0, 0.0));
     }
+
+    // Keep layout bounds synced across window resizes / DevTools open-close while open.
+    use_effect(use_reactive!(|cur_src| {
+        if cur_src.is_empty() {
+            return;
+        }
+        spawn(async move {
+            let mut ev = dioxus::document::eval(
+                r#"
+                const sendBounds = () => {
+                    const img = document.querySelector('.lightbox-img');
+                    if (img && img.offsetWidth > 0 && img.offsetHeight > 0) {
+                        try { dioxus.send([img.offsetWidth, img.offsetHeight, window.innerWidth, window.innerHeight]); } catch (_) {}
+                    }
+                };
+                sendBounds();
+                setTimeout(sendBounds, 80);
+                if (window.__chatwLbResize) {
+                    window.removeEventListener('resize', window.__chatwLbResize);
+                }
+                window.__chatwLbResize = sendBounds;
+                window.addEventListener('resize', sendBounds);
+                "#,
+            );
+            while let Ok(arr) = ev.recv::<[f64; 4]>().await {
+                let (bw, bh, vw, vh) = (arr[0], arr[1], arr[2], arr[3]);
+                bounds.set((bw, bh, vw, vh));
+                let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), *zoom.peek(), *rotation.peek(), bw, bh, vw, vh);
+                pan_x.set(cx);
+                pan_y.set(cy);
+            }
+        });
+    }));
 
     let Some(media) = media_opt else {
         return rsx! {};
     };
 
+    let mut snap_pan_to_bounds = move |next_zoom: f64, next_rot: i32| {
+        let (bw, bh, vw, vh) = *bounds.peek();
+        let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), next_zoom, next_rot, bw, bh, vw, vh);
+        pan_x.set(cx);
+        pan_y.set(cy);
+    };
+
     let mut set_zoom_clamped = move |next: f64| {
-        let clamped = (next.clamp(0.25, 6.0) * 100.0).round() / 100.0;
+        // Spec 080: Min zoom locked at 100% (1.0x) so photo never shrinks too tiny; max 400% (4.0x).
+        let clamped = (next.clamp(1.0, 4.0) * 100.0).round() / 100.0;
         zoom.set(clamped);
-        if clamped <= 1.01 {
-            pan_x.set(0.0);
-            pan_y.set(0.0);
-        }
+        let rot_now = *rotation.peek();
+        snap_pan_to_bounds(clamped, rot_now);
+        spawn(async move {
+            if let Some((bw, bh, vw, vh)) = measure_lightbox_bounds().await {
+                bounds.set((bw, bh, vw, vh));
+                let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), *zoom.peek(), *rotation.peek(), bw, bh, vw, vh);
+                pan_x.set(cx);
+                pan_y.set(cy);
+            }
+        });
+    };
+
+    let mut apply_rotate = move || {
+        let next_rot = (*rotation.peek() + 90) % 360;
+        rotation.set(next_rot);
+        let z_now = *zoom.peek();
+        snap_pan_to_bounds(z_now, next_rot);
     };
 
     let mut reset_view = move || {
@@ -1290,6 +1416,15 @@ pub fn GlobalImageLightbox() -> Element {
         did_drag.set(false);
     };
 
+    let mut finish_drag_and_snap = move || {
+        if dragging() {
+            dragging.set(false);
+            let z_now = *zoom.peek();
+            let r_now = *rotation.peek();
+            snap_pan_to_bounds(z_now, r_now);
+        }
+    };
+
     let close_lightbox = move || {
         *GLOBAL_LIGHTBOX.write() = None;
     };
@@ -1299,7 +1434,9 @@ pub fn GlobalImageLightbox() -> Element {
     let py = pan_y();
     let rot = rotation();
     let is_dragging = dragging();
-    let can_pan = z > 1.01;
+    let (bw, bh, vw, vh) = bounds();
+    let (lim_x, lim_y) = lightbox_pan_limits(z, rot, bw, bh, vw, vh);
+    let can_pan = z > 1.01 && (lim_x > 0.5 || lim_y > 0.5);
     let pct = (z * 100.0).round() as i32;
     let stage_cls = if is_dragging {
         "lightbox-stage is-panning"
@@ -1331,6 +1468,9 @@ pub fn GlobalImageLightbox() -> Element {
             onmounted: move |ev| {
                 spawn(async move {
                     let _ = ev.set_focus(true).await;
+                    if let Some(b) = measure_lightbox_bounds().await {
+                        bounds.set(b);
+                    }
                 });
             },
             onkeydown: move |e| {
@@ -1353,7 +1493,7 @@ pub fn GlobalImageLightbox() -> Element {
                     }
                     Key::Character(ref ch) if ch == "r" || ch == "R" => {
                         e.prevent_default();
-                        rotation.set((rotation() + 90) % 360);
+                        apply_rotate();
                     }
                     _ => {}
                 }
@@ -1389,11 +1529,13 @@ pub fn GlobalImageLightbox() -> Element {
                     if dx.abs() > 3.0 || dy.abs() > 3.0 {
                         did_drag.set(true);
                     }
-                    pan_x.set(opx + dx);
-                    pan_y.set(opy + dy);
+                    let (cbw, cbh, cvw, cvh) = *bounds.peek();
+                    let (mx, my) = lightbox_pan_limits(*zoom.peek(), *rotation.peek(), cbw, cbh, cvw, cvh);
+                    pan_x.set(rubber_band_axis(opx + dx, mx));
+                    pan_y.set(rubber_band_axis(opy + dy, my));
                 },
-                onmouseup: move |_| dragging.set(false),
-                onmouseleave: move |_| dragging.set(false),
+                onmouseup: move |_| finish_drag_and_snap(),
+                onmouseleave: move |_| finish_drag_and_snap(),
 
                 img {
                     class: "lightbox-img",
@@ -1401,6 +1543,13 @@ pub fn GlobalImageLightbox() -> Element {
                     alt: "Image",
                     draggable: "false",
                     style: "{img_style}",
+                    onload: move |_| {
+                        spawn(async move {
+                            if let Some(b) = measure_lightbox_bounds().await {
+                                bounds.set(b);
+                            }
+                        });
+                    },
                     onclick: move |e| e.stop_propagation(),
                     ondoubleclick: move |e| {
                         e.stop_propagation();
@@ -1411,19 +1560,28 @@ pub fn GlobalImageLightbox() -> Element {
                         }
                     },
                     onmousedown: move |e| {
-                        if zoom() > 1.01 {
+                        let (cbw, cbh, cvw, cvh) = *bounds.peek();
+                        let (mx, my) = lightbox_pan_limits(*zoom.peek(), *rotation.peek(), cbw, cbh, cvw, cvh);
+                        if zoom() > 1.01 && (mx > 0.5 || my > 0.5) {
                             e.prevent_default();
                             e.stop_propagation();
                             let c = e.client_coordinates();
                             dragging.set(true);
                             did_drag.set(false);
                             drag_origin.set((c.x, c.y, pan_x(), pan_y()));
+                        } else if zoom() > 1.01 {
+                            // Refresh bounds lazily if not measured yet
+                            spawn(async move {
+                                if let Some(b) = measure_lightbox_bounds().await {
+                                    bounds.set(b);
+                                }
+                            });
                         }
                     },
                 }
             }
 
-            // Minimalist top gradient bar with file meta + frosted glass actions
+            // Single borderless Telegram-style topbar housing 100% of controls in the top-right corner
             div { class: "lightbox-topbar",
                 div { class: "lightbox-meta", onclick: move |e| e.stop_propagation(),
                     if !media.name.is_empty() {
@@ -1433,63 +1591,84 @@ pub fn GlobalImageLightbox() -> Element {
                         span { class: "lightbox-dims", "{dims_label}" }
                     }
                 }
-                div { class: "lightbox-actions", onclick: move |e| e.stop_propagation(),
-                    a {
-                        href: "{media.src}",
-                        download: "{dl_name}",
-                        class: "btn-secondary",
-                        DownloadIcon { size: 15 }
-                        span { "Download original" }
+                div { class: "lightbox-actions", role: "toolbar", aria_label: "Photo", onclick: move |e| e.stop_propagation(),
+                    button {
+                        r#type: "button",
+                        class: "lightbox-tool-btn",
+                        aria_label: "Zoom out",
+                        title: "Zoom out",
+                        disabled: z <= 1.01,
+                        onclick: move |_| set_zoom_clamped(zoom() - 0.25),
+                        ZoomOutIcon { size: 19 }
                     }
                     button {
                         r#type: "button",
-                        class: "lightbox-close",
+                        class: "lightbox-zoom-readout",
+                        aria_label: "Reset zoom",
+                        title: "Reset zoom",
+                        onclick: move |_| reset_view(),
+                        "{pct}%"
+                    }
+                    button {
+                        r#type: "button",
+                        class: "lightbox-tool-btn",
+                        aria_label: "Zoom in",
+                        title: "Zoom in",
+                        disabled: z >= 3.99,
+                        onclick: move |_| set_zoom_clamped(zoom() + 0.25),
+                        ZoomInIcon { size: 19 }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "lightbox-tool-btn",
+                        aria_label: "Rotate image",
+                        title: "Rotate image",
+                        onclick: move |_| apply_rotate(),
+                        RotateCwIcon { size: 19 }
+                    }
+                    a {
+                        href: "{media.src}",
+                        download: "{dl_name}",
+                        class: "lightbox-tool-btn btn-secondary",
+                        aria_label: "Download original",
+                        title: "Download original",
+                        DownloadIcon { size: 19 }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "lightbox-tool-btn lightbox-close",
                         aria_label: "Close",
                         title: "Close",
                         onclick: move |_| close_lightbox(),
-                        CloseIcon { size: 18 }
+                        CloseIcon { size: 20 }
                     }
                 }
             }
-
-            // Centered floating frosted-glass Zoom & Rotate dock
-            div { class: "lightbox-dock", role: "toolbar", aria_label: "Photo", onclick: move |e| e.stop_propagation(),
-                button {
-                    r#type: "button",
-                    class: "lightbox-dock-btn",
-                    aria_label: "Zoom out",
-                    title: "Zoom out",
-                    disabled: z <= 0.26,
-                    onclick: move |_| set_zoom_clamped(zoom() - 0.25),
-                    ZoomOutIcon { size: 17 }
-                }
-                button {
-                    r#type: "button",
-                    class: "lightbox-zoom-readout",
-                    aria_label: "Reset zoom",
-                    title: "Reset zoom",
-                    onclick: move |_| reset_view(),
-                    "{pct}%"
-                }
-                button {
-                    r#type: "button",
-                    class: "lightbox-dock-btn",
-                    aria_label: "Zoom in",
-                    title: "Zoom in",
-                    disabled: z >= 5.99,
-                    onclick: move |_| set_zoom_clamped(zoom() + 0.25),
-                    ZoomInIcon { size: 17 }
-                }
-                span { class: "lightbox-dock-sep", aria_hidden: "true" }
-                button {
-                    r#type: "button",
-                    class: "lightbox-dock-btn",
-                    aria_label: "Rotate image",
-                    title: "Rotate image",
-                    onclick: move |_| rotation.set((rotation() + 90) % 360),
-                    RotateCwIcon { size: 17 }
-                }
-            }
         }
+    }
+}
+
+#[cfg(test)]
+mod spec080_lightbox_clamp_tests {
+    use super::*;
+
+    #[test]
+    fn pan_locks_at_center_when_image_fits_viewport() {
+        assert_eq!(clamp_lightbox_pan(300.0, -250.0, 1.0, 0, 960.0, 540.0, 1600.0, 960.0), (0.0, 0.0));
+        // 150% of 960x540 = 1440x810, still fits inside 1600x960 -> must stay centered
+        assert_eq!(clamp_lightbox_pan(500.0, 500.0, 1.5, 0, 960.0, 540.0, 1600.0, 960.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn pan_clamps_to_exact_image_corners_when_zoomed() {
+        // 200% of 960x540 = 1920x1080 in 1600x960 -> max pan = (160, 60)
+        assert_eq!(clamp_lightbox_pan(2000.0, -2000.0, 2.0, 0, 960.0, 540.0, 1600.0, 960.0), (160.0, -60.0));
+        assert_eq!(clamp_lightbox_pan(-2000.0, 2000.0, 2.0, 0, 960.0, 540.0, 1600.0, 960.0), (-160.0, 60.0));
+    }
+
+    #[test]
+    fn pan_swaps_axes_on_90_degree_rotation() {
+        // Rotated 90deg at 200%: effective 1080x1920 in 1600x960 -> max_x = 0, max_y = (1920 - 960)/2 = 480
+        assert_eq!(clamp_lightbox_pan(500.0, 1000.0, 2.0, 90, 960.0, 540.0, 1600.0, 960.0), (0.0, 480.0));
     }
 }

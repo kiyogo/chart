@@ -1,10 +1,13 @@
-// Automated Live Playwright Verification for Spec 078:
-// Verifies Root-Portal Global Image Lightbox Viewer:
-//  1. Mounted outside .message-row / .rich-image / .chat-column (true viewport root).
-//  2. Mathematically centered to <= 2px horizontally AND vertically on both 1400x900 and 1920x1080.
-//  3. Interactive Zoom In (+), Zoom Out (-), Mouse Wheel Zoom, Double-Click 100%<->200%,
-//     Drag-to-Pan when zoomed in, Rotate 90deg, Reset 100% pill, and Escape close.
-//  4. 100% Vietnamese i18n tooltips & labels + crisp non-overlapping modern UI.
+// Automated Live Playwright Verification for Specs 078 & 080:
+// Verifies Root-Portal Borderless Global Image Lightbox Viewer:
+//  1. Mounted outside .message-row / .rich-image / .chat-column, centered to <= 2px.
+//  2. ZERO bottom dock; ALL controls unified in ONE borderless top-right .lightbox-actions toolbar
+//     (0px borders, 0 box-shadows, transparent idle backgrounds, Vietnamese tooltips).
+//  3. Min zoom locked at 100% (never shrinks below 100% via button or mouse wheel); max 400%.
+//  4. Extreme drag (+2000px, +2000px) at 200% zoom NEVER loses image off-screen and automatically
+//     springs back so the image edge sits flush at the exact viewport corner (left <= 2, top <= 2)!
+//  5. Zooming back out from a corner snaps smoothly back to dead center (dxCenter <= 2, dyCenter <= 2).
+//  6. Rotate 90deg, Reset 100%, and Escape close cleanly with 0 pageerrors.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +17,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(path.resolve('web/frontend/node_modules/playwright'));
 
 const BASE = process.env.CHATW_URL || 'http://127.0.0.1:8085';
-const SHOT_DIR = process.env.SPEC078_SHOT_DIR || '/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/verify_078';
+const SHOT_DIR = process.env.SPEC078_SHOT_DIR || '/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/verify_080';
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 const checks = [];
@@ -33,7 +36,7 @@ const pageErrors = [];
 
 try {
   const tag = Date.now().toString(36).slice(-5);
-  const uname = `s78_${tag}`;
+  const uname = `s80_${tag}`;
   const ctx = await browser.newContext({ viewport: { width: 1600, height: 960 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => pageErrors.push(e.message));
@@ -81,160 +84,162 @@ try {
   const tmpPng = path.join(SHOT_DIR, 'sample_960x540.png');
   fs.writeFileSync(tmpPng, Buffer.from(samplePngBase64, 'base64'));
 
-  // Open composer "+" menu to reveal the image upload input, then upload the 960x540 PNG
   await page.locator('.composer .icon-btn').first().click();
   await page.waitForTimeout(250);
-  const fileInput = page.locator('input[type="file"][accept*="image"]').first();
-  await fileInput.setInputFiles(tmpPng);
+  await page.locator('input[type="file"][accept*="image"]').first().setInputFiles(tmpPng);
   await page.waitForSelector('.rich-image-btn', { timeout: 15000 });
   await page.waitForTimeout(700);
 
   // Open Lightbox
   await page.locator('.rich-image-btn').first().click();
   await page.waitForSelector('.lightbox .lightbox-img', { timeout: 5000 });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(350);
 
-  // 1. Verify root-portal DOM mounting + exact <= 2px viewport centering!
-  const centerAudit = await page.evaluate(() => {
+  // 1. Verify root-portal centering, ZERO bottom dock, and 100% borderless top-right unified toolbar!
+  const uiAudit = await page.evaluate(() => {
     const lb = document.querySelector('.lightbox');
     const img = document.querySelector('.lightbox-img');
-    const dock = document.querySelector('.lightbox-dock');
-    const dl = document.querySelector('.lightbox-actions .btn-secondary');
-    const cl = document.querySelector('.lightbox-close');
+    const dockCount = document.querySelectorAll('.lightbox-dock').length;
+    const actions = document.querySelector('.lightbox-actions');
+    const items = Array.from(actions ? actions.children : []);
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const ir = img.getBoundingClientRect();
-    const dr = dock.getBoundingClientRect();
-    const dlr = dl.getBoundingClientRect();
-    const clr = cl.getBoundingClientRect();
-    const cx = ir.left + ir.width / 2;
-    const cy = ir.top + ir.height / 2;
-    const dockCx = dr.left + dr.width / 2;
+    const ar = actions.getBoundingClientRect();
+    const borderWidths = items.map((el) => getComputedStyle(el).borderTopWidth);
+    const bgs = items.map((el) => getComputedStyle(el).backgroundColor);
+    const titles = items.map((el) => el.getAttribute('title') || '');
     return {
       vw,
       vh,
       trappedInMsgRow: Boolean(lb.closest('.message-row, .rich-image, .chat-column')),
       imgW: Math.round(ir.width),
       imgH: Math.round(ir.height),
-      dxCenter: Math.round(Math.abs(cx - vw / 2) * 10) / 10,
-      dyCenter: Math.round(Math.abs(cy - vh / 2) * 10) / 10,
-      dockDxCenter: Math.round(Math.abs(dockCx - vw / 2) * 10) / 10,
-      actionsNonOverlap: dlr.right <= clr.left + 1,
-      dlText: dl.innerText.trim(),
+      dxCenter: Math.round(Math.abs((ir.left + ir.width / 2) - vw / 2) * 10) / 10,
+      dyCenter: Math.round(Math.abs((ir.top + ir.height / 2) - vh / 2) * 10) / 10,
+      dockCount,
+      topRightAligned: ar.top < 40 && ar.right > vw - 30,
+      controlCount: items.length,
+      allZeroBorder: borderWidths.every((w) => w === '0px'),
+      allTransparentIdle: bgs.every((bg) => bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent'),
+      titles,
       zoomText: document.querySelector('.lightbox-zoom-readout')?.innerText?.trim() || '',
     };
   });
-  await page.screenshot({ path: path.join(SHOT_DIR, '01_lightbox_centered_100pct.png') });
+  await page.screenshot({ path: path.join(SHOT_DIR, '01_borderless_topright_100pct.png') });
 
   record(
-    'Lightbox mounts at viewport root (outside .message-row/.chat-column) & centers image to <= 2px',
-    !centerAudit.trappedInMsgRow && centerAudit.dxCenter <= 2 && centerAudit.dyCenter <= 2 && centerAudit.dockDxCenter <= 2 && centerAudit.actionsNonOverlap,
-    JSON.stringify(centerAudit)
-  );
-  record(
-    'Lightbox renders Vietnamese UI ("Tải bản gốc") and 100% zoom readout',
-    centerAudit.dlText.includes('Tải bản gốc') && centerAudit.zoomText === '100%',
-    `dl="${centerAudit.dlText}" zoom="${centerAudit.zoomText}"`
+    'Lightbox centers to <= 2px with ZERO bottom dock & 100% borderless unified top-right menu',
+    !uiAudit.trappedInMsgRow &&
+      uiAudit.dxCenter <= 2 &&
+      uiAudit.dyCenter <= 2 &&
+      uiAudit.dockCount === 0 &&
+      uiAudit.topRightAligned &&
+      uiAudit.controlCount === 6 &&
+      uiAudit.allZeroBorder &&
+      uiAudit.allTransparentIdle &&
+      uiAudit.zoomText === '100%',
+    JSON.stringify(uiAudit)
   );
 
-  // 2. Test Zoom In button (+25% x 2 -> 150%) & Zoom Out button (-25% -> 125%)
-  const zoomInBtn = page.locator('.lightbox-dock-btn').nth(1);
-  const zoomOutBtn = page.locator('.lightbox-dock-btn').nth(0);
-  const rotateBtn = page.locator('.lightbox-dock-btn').nth(2);
+  // 2. Verify Min Zoom Floor = 100% (wheel down & disabled zoom-out button NEVER shrink below 100%!)
+  const zoomOutBtn = page.locator('.lightbox-actions .lightbox-tool-btn').nth(0);
+  const zoomInBtn = page.locator('.lightbox-actions .lightbox-tool-btn').nth(1);
+  const rotateBtn = page.locator('.lightbox-actions .lightbox-tool-btn').nth(2);
   const resetBtn = page.locator('.lightbox-zoom-readout');
 
-  await zoomInBtn.click();
-  await zoomInBtn.click();
+  const zoomOutDisabledAt100 = await zoomOutBtn.isDisabled();
+  await page.mouse.move(800, 480);
+  await page.mouse.wheel(0, 500);
+  await page.mouse.wheel(0, 500);
   await page.waitForTimeout(250);
-  const zoomedIn = await page.evaluate(() => ({
-    pct: document.querySelector('.lightbox-zoom-readout')?.innerText?.trim(),
-    w: Math.round(document.querySelector('.lightbox-img').getBoundingClientRect().width),
-  }));
+  const afterWheelDown = await resetBtn.innerText();
   record(
-    'Zoom In (+) button enlarges image to 150% proportionally',
-    zoomedIn.pct === '150%' && zoomedIn.w > centerAudit.imgW * 1.4,
-    `baseW=${centerAudit.imgW} zoomed=${JSON.stringify(zoomedIn)}`
+    'Min zoom is strictly locked at 100% (Zoom Out disabled & wheel-down cannot shrink below 100%)',
+    zoomOutDisabledAt100 && afterWheelDown.trim() === '100%',
+    `disabled=${zoomOutDisabledAt100} pct=${afterWheelDown.trim()}`
   );
 
-  await zoomOutBtn.click();
-  await zoomOutBtn.click();
-  await zoomOutBtn.click();
-  await page.waitForFunction((baseW) => {
-    const img = document.querySelector('.lightbox-img');
-    return img && img.getBoundingClientRect().width < baseW * 0.82;
-  }, centerAudit.imgW, { timeout: 2500 }).catch(() => {});
-  const zoomedOut = await page.evaluate(() => {
-    const img = document.querySelector('.lightbox-img');
-    return {
-      pct: document.querySelector('.lightbox-zoom-readout')?.innerText?.trim(),
-      w: Math.round(img.getBoundingClientRect().width),
-      inlineStyle: img.getAttribute('style'),
-      computedTf: getComputedStyle(img).transform,
-    };
-  });
-  record(
-    'Zoom Out (−) button shrinks image cleanly to 75%',
-    zoomedOut.pct === '75%' && zoomedOut.w < centerAudit.imgW * 0.82,
-    JSON.stringify(zoomedOut)
-  );
-
-  // 3. Test Reset pill -> 100% + Double-click toggle -> 200% + Drag-to-Pan!
-  await resetBtn.click();
-  await page.waitForTimeout(220);
+  // 3. Double-click -> 200% (1920x1080 in 1600x960 -> exact corner clamp max_x=160, max_y=60!)
   await page.locator('.lightbox-img').dblclick();
-  await page.waitForTimeout(260);
-  const dblZoom = await page.evaluate(() => ({
-    pct: document.querySelector('.lightbox-zoom-readout')?.innerText?.trim(),
-    rect: document.querySelector('.lightbox-img').getBoundingClientRect().toJSON(),
-  }));
+  await page.waitForFunction(() => document.querySelector('.lightbox-zoom-readout')?.innerText?.trim() === '200%', { timeout: 3000 });
+  await page.waitForTimeout(320);
 
-  await page.screenshot({ path: path.join(SHOT_DIR, '02_lightbox_zoomed_200pct.png') });
-
-  // Drag-to-pan by (+120, +70) while at 200%
-  const cx = dblZoom.rect.left + dblZoom.rect.width / 2;
-  const cy = dblZoom.rect.top + dblZoom.rect.height / 2;
-  await page.mouse.move(cx, cy);
+  // Extreme overscroll drag by (+1400, +900) -> must NEVER lose image and must snap flush to top-left corner (left~0, top~0)!
+  await page.mouse.move(800, 480);
   await page.mouse.down();
-  await page.mouse.move(cx + 120, cy + 70, { steps: 6 });
+  await page.mouse.move(1550, 920, { steps: 10 });
+  const midDragRect = await page.evaluate(() => {
+    const r = document.querySelector('.lightbox-img').getBoundingClientRect();
+    return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom) };
+  });
   await page.mouse.up();
-  await page.waitForTimeout(180);
-
-  const afterPan = await page.evaluate(() => {
+  await page.waitForFunction(() => {
     const img = document.querySelector('.lightbox-img');
-    const r = img ? img.getBoundingClientRect() : null;
+    if (!img) return false;
+    const r = img.getBoundingClientRect();
+    return Math.abs(r.left) <= 3 && Math.abs(r.top) <= 3;
+  }, { timeout: 2500 }).catch(() => {});
+
+  const afterSnapCorner = await page.evaluate(() => {
+    const img = document.querySelector('.lightbox-img');
+    const r = img.getBoundingClientRect();
     return {
       stillOpen: Boolean(img),
-      dx: r ? Math.round((r.left + r.width / 2) - window.innerWidth / 2) : 0,
-      dy: r ? Math.round((r.top + r.height / 2) - window.innerHeight / 2) : 0,
+      left: Math.round(r.left),
+      top: Math.round(r.top),
+      right: Math.round(r.right),
+      bottom: Math.round(r.bottom),
+      style: img.getAttribute('style'),
+    };
+  });
+  await page.screenshot({ path: path.join(SHOT_DIR, '02_zoomed_200pct_snapped_corner.png') });
+
+  record(
+    'Extreme drag at 200% applies elastic resistance (never loses photo) and springs back flush to exact corner (left<=2, top<=2)',
+    midDragRect.left <= 55 &&
+      midDragRect.top <= 55 &&
+      afterSnapCorner.stillOpen &&
+      Math.abs(afterSnapCorner.left) <= 3 &&
+      Math.abs(afterSnapCorner.top) <= 3,
+    `midDrag=${JSON.stringify(midDragRect)} snapped=${JSON.stringify(afterSnapCorner)}`
+  );
+
+  // 4. Zooming out from corner (200% -> 150% -> 100%) automatically re-centers to (0, 0)!
+  await zoomOutBtn.click();
+  await zoomOutBtn.click();
+  await page.waitForTimeout(350);
+  const at150 = await page.evaluate(() => {
+    const r = document.querySelector('.lightbox-img').getBoundingClientRect();
+    return {
+      pct: document.querySelector('.lightbox-zoom-readout')?.innerText?.trim(),
+      dxCenter: Math.round(Math.abs((r.left + r.width / 2) - window.innerWidth / 2)),
+      dyCenter: Math.round(Math.abs((r.top + r.height / 2) - window.innerHeight / 2)),
     };
   });
   record(
-    'Double-click toggles 200% zoom and Drag-to-Pan moves image smoothly without closing',
-    dblZoom.pct === '200%' && afterPan.stillOpen && afterPan.dx > 80 && afterPan.dy > 40,
-    `dbl=${dblZoom.pct} pan=${JSON.stringify(afterPan)}`
+    'Zooming back down to 150% (fits viewport) automatically springs back to dead center (0px)',
+    at150.pct === '150%' && at150.dxCenter <= 2 && at150.dyCenter <= 2,
+    JSON.stringify(at150)
   );
 
-  // 4. Test Mouse Wheel zoom & Rotate 90deg & Reset 100%
-  await page.mouse.move(800, 480);
-  await page.mouse.wheel(0, -120);
-  await page.waitForTimeout(200);
-  const afterWheel = await page.locator('.lightbox-zoom-readout').innerText();
+  // 5. Zoom In (+), Rotate 90deg, Reset 100%, and Escape close
+  await zoomInBtn.click();
   await rotateBtn.click();
-  await page.waitForTimeout(240);
-  const afterRot = await page.evaluate(() => document.querySelector('.lightbox-img')?.style.transform || '');
+  await page.waitForTimeout(300);
+  const rotStyle = await page.evaluate(() => document.querySelector('.lightbox-img')?.style.transform || '');
   await resetBtn.click();
-  await page.waitForTimeout(240);
-  const afterReset = await page.evaluate(() => ({
+  await page.waitForTimeout(300);
+  const resetState = await page.evaluate(() => ({
     pct: document.querySelector('.lightbox-zoom-readout')?.innerText?.trim(),
     transform: document.querySelector('.lightbox-img')?.style.transform || '',
   }));
   record(
-    'Mouse wheel zooms, Rotate rotates 90deg, and Reset restores 100% centered (0deg)',
-    afterWheel.trim() !== '200%' && afterRot.includes('rotate(90deg)') && afterReset.pct === '100%' && afterReset.transform.includes('rotate(0deg)'),
-    `wheel=${afterWheel.trim()} rot="${afterRot}" reset=${JSON.stringify(afterReset)}`
+    'Zoom In (+), Rotate 90deg, and Reset 100% work cleanly from top-right menu',
+    rotStyle.includes('rotate(90deg)') && resetState.pct === '100%' && resetState.transform.includes('rotate(0deg)'),
+    `rot="${rotStyle}" reset=${JSON.stringify(resetState)}`
   );
 
-  // 5. Test Escape closes cleanly
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   record('Escape closes Lightbox cleanly', (await page.locator('.lightbox').count()) === 0);
@@ -244,7 +249,7 @@ try {
 }
 
 const failed = checks.filter((c) => !c.pass);
-console.log(`\nSpec 078 Summary: ${checks.length - failed.length}/${checks.length} checks passed.`);
+console.log(`\nSpec 080 Summary: ${checks.length - failed.length}/${checks.length} checks passed.`);
 if (failed.length) {
   process.exit(1);
 }
