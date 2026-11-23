@@ -32,9 +32,10 @@
   const EN_DATE_FULL_RE = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(\d{4})$/;
   const EN_DATE_SHORT_RE = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})$/;
 
-  // Containers holding user-generated content or native language names — NEVER translate text inside
+  // Containers holding user-generated content or native language names — NEVER translate text inside.
+  // System error bubbles (.message-bubble.error-bubble) ARE translated so E2EE/send alerts stay localized.
   const PROTECTED_SELECTOR = [
-    '.message-text',
+    '.message-bubble:not(.error-bubble) .message-text',
     '.settings-profile-name',
     '.settings-profile-sub',
     '.account-name',
@@ -209,7 +210,7 @@
           if (r && r.ok && r.status === 200 && r.text) {
             const parsed = JSON.parse(r.text);
             if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
-              window.__chatwStorage.putStaticCache(cacheKey, 'v2', parsed).catch(() => {});
+              window.__chatwStorage.putStaticCache(cacheKey, 'v3', parsed).catch(() => {});
             }
             return parsed;
           }
@@ -223,7 +224,7 @@
     const parsed = await res.json();
     try {
       if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
-        window.__chatwStorage.putStaticCache(cacheKey, 'v2', parsed).catch(() => {});
+        window.__chatwStorage.putStaticCache(cacheKey, 'v3', parsed).catch(() => {});
       }
     } catch (_) {}
     return parsed;
@@ -232,7 +233,7 @@
   function fetchKeys() {
     if (keysData) return Promise.resolve(keysData);
     if (keysPromise) return keysPromise;
-    keysPromise = loadLocaleJson('/locales/_keys.json', 'i18n:_keys:v2')
+    keysPromise = loadLocaleJson('/locales/_keys.json', 'i18n:_keys:v3')
       .then((data) => {
         keysData = {
           exact: (data && data.exact) || [],
@@ -256,7 +257,7 @@
 
     const p = Promise.all([
       fetchKeys(),
-      loadLocaleJson(`/locales/${encodeURIComponent(code)}.json`, `i18n:pack:${code}:v2`),
+      loadLocaleJson(`/locales/${encodeURIComponent(code)}.json`, `i18n:pack:${code}:v3`),
     ])
       .then(([keys, data]) => {
         if (!keys || !data) throw new Error('Invalid locale payload');
@@ -371,9 +372,9 @@
     if (!el) return true;
     if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return true;
     if (el.closest(PROTECTED_SELECTOR)) return true;
-    // Allow preview chat bubbles inside Appearance preview, skip real chat messages
+    // Allow preview chat bubbles inside Appearance preview and system error bubbles, skip user chat messages
     const bubble = el.closest('.message-bubble');
-    if (bubble && !bubble.closest('.settings-preview-chat')) return true;
+    if (bubble && !bubble.classList.contains('error-bubble') && !bubble.closest('.settings-preview-chat')) return true;
     // Allow "Note to self" system name in chat-item-name / header, skip arbitrary usernames
     const chatName = el.closest('.chat-item-name, .chat-header-title');
     if (chatName) {

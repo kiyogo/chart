@@ -884,6 +884,95 @@ pub fn IncomingDeviceApprovalModal() -> Element {
     }
 }
 
+/// Shared recovery-aware E2EE key reset helper (Spec 076).
+/// When the current browser/device is `pending` (untrusted), safely promotes it via
+/// `POST /api/devices/recover-lost` (`confirm_emergency_reset = true`) BEFORE overwriting
+/// local keys, then generates and registers a fresh keypair via `POST /api/keys` (`allow_rotation = true`).
+pub async fn reset_device_encryption_key(
+    uid: &str,
+    totp_code: Option<&str>,
+) -> Result<UserKeys, String> {
+    let clean_totp = totp_code.map(str::trim).filter(|s| !s.is_empty());
+
+    let mut is_pending = DEVICE_TRUST_STATE
+        .peek()
+        .as_ref()
+        .is_some_and(|d| d.trust_state == "pending");
+
+    if !is_pending {
+        if let Ok(cur) = storage_sync::current_device_status().await {
+            let st = cur
+                .get("device")
+                .and_then(|d| d.get("trust_state"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if st == "pending" {
+                is_pending = true;
+            }
+        }
+    }
+
+    let map_recover_err = |code: &str| -> String {
+        match code {
+            "totp_required" | "invalid_totp_code" => {
+                "Two-factor code required to reset keys on this device".to_string()
+            }
+            "recovery_proof_or_2fa_required" => {
+                "An encrypted key backup exists on your account. Sync from your trusted device or enter your backup password to unlock.".to_string()
+            }
+            "device_revoked" => "This device was revoked. Please sign in again.".to_string(),
+            other => format!("Unable to reset device key ({other})"),
+        }
+    };
+
+    if is_pending {
+        storage_sync::recover_lost_devices_with_proof(clean_totp, false, None, true)
+            .await
+            .map_err(|e| map_recover_err(&e.code))?;
+        DEVICE_TRUST_STATE.with_mut(|st| {
+            if let Some(d) = st.as_mut() {
+                d.trust_state = "trusted".into();
+            }
+        });
+    }
+
+    let new_keys = create_and_store_user_keys(Some(uid))?;
+    match api::keys_register_rotated(
+        &new_keys.ecdh_raw_b64,
+        &new_keys.ecdsa_raw_b64,
+        true,
+        None,
+    )
+    .await
+    {
+        Ok(_) => {
+            *E2EE_RECOVERY_REQUIRED.write() = None;
+            Ok(new_keys)
+        }
+        Err(e) if e.code == "cannot_overwrite_identity_key_from_untrusted_device" => {
+            storage_sync::recover_lost_devices_with_proof(clean_totp, false, None, true)
+                .await
+                .map_err(|re| map_recover_err(&re.code))?;
+            DEVICE_TRUST_STATE.with_mut(|st| {
+                if let Some(d) = st.as_mut() {
+                    d.trust_state = "trusted".into();
+                }
+            });
+            api::keys_register_rotated(
+                &new_keys.ecdh_raw_b64,
+                &new_keys.ecdsa_raw_b64,
+                true,
+                None,
+            )
+            .await
+            .map_err(|re| format!("Unable to reset device key ({})", re.code))?;
+            *E2EE_RECOVERY_REQUIRED.write() = None;
+            Ok(new_keys)
+        }
+        Err(e) => Err(format!("Unable to reset device key ({})", e.code)),
+    }
+}
+
 /// Modal displayed when an existing account (`me.has_keys == true`) signs in on a device whose local
 /// E2EE vault is locked with Argon2id or missing keys — preventing silent identity key overwrite.
 #[component]
@@ -1008,22 +1097,9 @@ pub fn E2eeUnlockRecoveryModal(
                                 onclick: move |_| {
                                     let uid = uid_reset.clone();
                                     spawn(async move {
-                                        match create_and_store_user_keys(Some(&uid)) {
+                                        match reset_device_encryption_key(&uid, None).await {
                                             Ok(new_keys) => {
-                                                match api::keys_register_rotated(
-                                                    &new_keys.ecdh_raw_b64,
-                                                    &new_keys.ecdsa_raw_b64,
-                                                    true,
-                                                    None,
-                                                )
-                                                .await
-                                                {
-                                                    Ok(_) => {
-                                                        *E2EE_RECOVERY_REQUIRED.write() = None;
-                                                        on_unlocked.call(new_keys);
-                                                    }
-                                                    Err(e) => err.set(Some(format!("Server refused to reset key: {}", e.code))),
-                                                }
+                                                on_unlocked.call(new_keys);
                                             }
                                             Err(e) => err.set(Some(e)),
                                         }

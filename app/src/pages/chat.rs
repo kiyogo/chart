@@ -1515,14 +1515,26 @@ pub fn Chat(
                                         should_break = true;
                                     } else {
                                         // Hard 4xx/crypto rejection (e.g. sender_fingerprint_mismatch):
-                                        // purge poisoned outbox item so it never stays stuck as a clock bubble forever.
+                                        // purge poisoned outbox item & cached local bubble so it never stays stuck as a clock bubble forever.
                                         crate::storage::remove_outbox_item(&entry.client_id).await;
+                                        let idb_key = format!("dm:{uid}:{}", entry.target_id);
                                         if active_friend.peek().as_ref().map(|f| f.id.as_str())
                                             == Some(entry.target_id.as_str())
                                         {
                                             messages.with_mut(|list| {
                                                 list.retain(|m| m.id != local_id);
                                             });
+                                            let snap = messages.peek().clone();
+                                            let more_now = *dm_has_more.peek();
+                                            crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
+                                        } else if let Some((mut cached_msgs, cached_more)) =
+                                            crate::storage::load_cached_messages::<DisplayMessage>(&idb_key).await
+                                        {
+                                            let before = cached_msgs.len();
+                                            cached_msgs.retain(|m| m.id != local_id);
+                                            if cached_msgs.len() != before {
+                                                crate::storage::save_cached_messages(&idb_key, &cached_msgs, cached_more).await;
+                                            }
                                         }
                                     }
                                 }
@@ -1708,17 +1720,28 @@ pub fn Chat(
             spawn(async move {
                 let mut had_local = had_cache;
                 let idb_key = format!("channel:{uid_ch}:{cid}");
+                let active_outbox_ids: HashSet<String> = crate::storage::list_outbox_items()
+                    .await
+                    .into_iter()
+                    .filter(|e| e.kind == "channel" && e.target_id == cid)
+                    .map(|e| e.client_id)
+                    .collect();
+                let inflight_snap = in_flight_outbox.peek().clone();
                 if !had_local
-                    && let Some((idb_msgs, idb_more)) =
+                    && let Some((mut idb_msgs, idb_more)) =
                         crate::storage::load_cached_messages::<ChannelMessageItem>(&idb_key).await
-                    && !idb_msgs.is_empty()
                     && selected_channel.peek().as_ref().map(|c| c.id.as_str()) == Some(cid.as_str())
                 {
-                    channel_has_more.set(idb_more);
-                    channel_messages.set(idb_msgs);
-                    channel_loading_initial.set(false);
-                    had_local = true;
-                    platform::scroll_chat_to_bottom(true);
+                    if prune_orphaned_local_by_id(&mut idb_msgs, |m| m.id.as_str(), &active_outbox_ids, &inflight_snap) {
+                        crate::storage::save_cached_messages(&idb_key, &idb_msgs, idb_more).await;
+                    }
+                    if !idb_msgs.is_empty() {
+                        channel_has_more.set(idb_more);
+                        channel_messages.set(idb_msgs);
+                        channel_loading_initial.set(false);
+                        had_local = true;
+                        platform::scroll_chat_to_bottom(true);
+                    }
                 }
                 if let Ok(mut msgs) = api::channels_get_messages(&cid, 30, None).await {
                     let has_more = msgs.len() >= 30;
@@ -1874,17 +1897,28 @@ pub fn Chat(
         spawn(async move {
             let mut had_local = had_cache;
             let idb_key = format!("group:{uid_grp}:{gid}");
+            let active_outbox_ids: HashSet<String> = crate::storage::list_outbox_items()
+                .await
+                .into_iter()
+                .filter(|e| e.kind == "group" && e.target_id == gid)
+                .map(|e| e.client_id)
+                .collect();
+            let inflight_snap = in_flight_outbox.peek().clone();
             if !had_local
-                && let Some((idb_msgs, idb_more)) =
+                && let Some((mut idb_msgs, idb_more)) =
                     crate::storage::load_cached_messages::<GroupMessageItem>(&idb_key).await
-                && !idb_msgs.is_empty()
                 && active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str())
             {
-                group_has_more.set(idb_more);
-                group_messages.set(idb_msgs);
-                group_loading_initial.set(false);
-                had_local = true;
-                platform::scroll_chat_to_bottom(true);
+                if prune_orphaned_local_by_id(&mut idb_msgs, |m| m.id.as_str(), &active_outbox_ids, &inflight_snap) {
+                    crate::storage::save_cached_messages(&idb_key, &idb_msgs, idb_more).await;
+                }
+                if !idb_msgs.is_empty() {
+                    group_has_more.set(idb_more);
+                    group_messages.set(idb_msgs);
+                    group_loading_initial.set(false);
+                    had_local = true;
+                    platform::scroll_chat_to_bottom(true);
+                }
             }
             let _ = groups::groups_list_categories(&gid).await.map(|cats| group_categories.set(cats));
             let fetched = if let Ok(chs) = groups::groups_list_channels(&gid).await {
@@ -2110,19 +2144,31 @@ pub fn Chat(
             }
 
             // 0ms Offline-First IndexedDB hydration BEFORE waiting for keys/network (Spec 069)
+            // Strip any orphaned `local-*` pending/error bubbles not backed by chat_outbox (Spec 076).
             let mut had_local = had_cache;
             let idb_key = format!("dm:{uid}:{}", friend.id);
+            let active_outbox_ids: HashSet<String> = crate::storage::list_outbox_items()
+                .await
+                .into_iter()
+                .filter(|e| e.kind == "dm" && e.target_id == friend.id)
+                .map(|e| e.client_id)
+                .collect();
+            let inflight_snap = in_flight_outbox.peek().clone();
             if !had_local
-                && let Some((idb_msgs, idb_more)) =
+                && let Some((mut idb_msgs, idb_more)) =
                     crate::storage::load_cached_messages::<DisplayMessage>(&idb_key).await
-                && !idb_msgs.is_empty()
                 && active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(friend.id.as_str())
             {
-                dm_has_more.set(idb_more);
-                messages.set(idb_msgs);
-                dm_loading_initial.set(false);
-                had_local = true;
-                platform::scroll_chat_to_bottom(true);
+                if prune_orphaned_local_dm(&mut idb_msgs, &active_outbox_ids, &inflight_snap) {
+                    crate::storage::save_cached_messages(&idb_key, &idb_msgs, idb_more).await;
+                }
+                if !idb_msgs.is_empty() {
+                    dm_has_more.set(idb_more);
+                    messages.set(idb_msgs);
+                    dm_loading_initial.set(false);
+                    had_local = true;
+                    platform::scroll_chat_to_bottom(true);
+                }
             }
 
             // Wait briefly if E2EE keys are still loading on initial boot
@@ -2249,8 +2295,18 @@ pub fn Chat(
                 register_reminders(&uid, &texts);
                 let last_partner_seq = decrypted_list.iter().filter(|m| !m.is_self).map(|m| m.seq).max();
                 if had_local {
+                    let live_outbox_ids: HashSet<String> = crate::storage::list_outbox_items()
+                        .await
+                        .into_iter()
+                        .filter(|e| e.kind == "dm" && e.target_id == friend.id)
+                        .map(|e| e.client_id)
+                        .collect();
+                    let live_inflight = in_flight_outbox.peek().clone();
                     let mut changed = false;
                     messages.with_mut(|list| {
+                        if prune_orphaned_local_dm(list, &live_outbox_ids, &live_inflight) {
+                            changed = true;
+                        }
                         let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
                         for m in decrypted_list {
                             if !existing.contains(&m.id) {
@@ -2655,7 +2711,7 @@ pub fn Chat(
                                 "Recipient has not set up an encryption key yet".to_string()
                             }
                             "sender_fingerprint_mismatch" | "sender_has_no_keys" | "invalid_signature" => {
-                                "This device's encryption key does not match your account. Sync from your trusted device or reset keys in Settings > Security".to_string()
+                                "This device's encryption key does not match your account. Sync from your trusted device or reset keys in Settings > Privacy & security > Security".to_string()
                             }
                             other if other.contains("fingerprint") || other.contains("key_changed") => {
                                 "Recipient encryption key changed. Please verify their safety number".to_string()
@@ -2673,6 +2729,14 @@ pub fn Chat(
                                     slot.status = MessageStatus::Error;
                                 }
                             });
+                            let snap_clean: Vec<DisplayMessage> = messages
+                                .peek()
+                                .iter()
+                                .filter(|m| !(m.id == local_id || (m.id.starts_with("local-") && m.status == MessageStatus::Error)))
+                                .cloned()
+                                .collect();
+                            let more_now = *dm_has_more.peek();
+                            crate::storage::save_cached_messages(&idb_key, &snap_clean, more_now).await;
                         }
                         toast.set(Some(msg));
                     }
@@ -3454,7 +3518,8 @@ pub fn Chat(
                         created_at: m.created_at.clone(),
                         is_self: mine,
                         is_error: m.status == MessageStatus::Error,
-                        is_pending: m.status == MessageStatus::Pending || m.id.starts_with("local-"),
+                        is_pending: m.status == MessageStatus::Pending
+                            || (m.status != MessageStatus::Error && m.id.starts_with("local-")),
                         reply_text: m.reply_to_id.as_ref().map(|rid| {
                             list.iter()
                                 .find(|x| &x.id == rid)
@@ -3966,7 +4031,14 @@ pub fn Chat(
                             my_avatar_url.set(Some(url.clone()));
                             on_avatar_updated.call(url);
                         },
-                        on_keys_imported: move |k| user_keys.set(Some(k)),
+                        on_keys_imported: move |k| {
+                            user_keys.set(Some(k));
+                            dm_cache.write().clear();
+                            peer_keys_cache.write().clear();
+                            messages.with_mut(|list| {
+                                list.retain(|m| !(m.id.starts_with("local-") && m.status == MessageStatus::Error));
+                            });
+                        },
                         on_username_changed: move |n: String| if let Some(h) = on_username_changed { h.call(n) },
                         on_replay_tour: move |_| tour_open.set(true),
                         on_lock_now: move |_| locked.set(true),
@@ -5470,6 +5542,11 @@ pub fn Chat(
             current_user_id: current_user_id.clone(),
             on_unlocked: move |keys| {
                 user_keys.set(Some(keys));
+                dm_cache.write().clear();
+                peer_keys_cache.write().clear();
+                messages.with_mut(|list| {
+                    list.retain(|m| !(m.id.starts_with("local-") && m.status == MessageStatus::Error));
+                });
                 toast.set(Some("End-to-end encryption unlocked".into()));
             },
         }
@@ -5498,5 +5575,79 @@ pub fn Chat(
                 }
             }
         }
+    }
+}
+
+/// Removes orphaned `local-*` optimistic DM messages (and transient local error rows) that are no
+/// longer backed by IndexedDB `chat_outbox` or currently in flight (Spec 076).
+fn prune_orphaned_local_dm(
+    msgs: &mut Vec<DisplayMessage>,
+    active_outbox_ids: &HashSet<String>,
+    in_flight_ids: &HashSet<String>,
+) -> bool {
+    let before = msgs.len();
+    msgs.retain(|m| {
+        if let Some(cid) = m.id.strip_prefix("local-") {
+            m.status != MessageStatus::Error
+                && (active_outbox_ids.contains(cid) || in_flight_ids.contains(cid))
+        } else {
+            true
+        }
+    });
+    msgs.len() != before
+}
+
+/// Removes orphaned `local-*` optimistic rows from any message vector by ID extractor (Spec 076).
+fn prune_orphaned_local_by_id<T>(
+    msgs: &mut Vec<T>,
+    id_of: impl Fn(&T) -> &str,
+    active_outbox_ids: &HashSet<String>,
+    in_flight_ids: &HashSet<String>,
+) -> bool {
+    let before = msgs.len();
+    msgs.retain(|m| {
+        if let Some(cid) = id_of(m).strip_prefix("local-") {
+            active_outbox_ids.contains(cid) || in_flight_ids.contains(cid)
+        } else {
+            true
+        }
+    });
+    msgs.len() != before
+}
+
+#[cfg(test)]
+mod spec076_orphan_tests {
+    use super::*;
+
+    fn mk_dm(id: &str, status: MessageStatus) -> DisplayMessage {
+        DisplayMessage {
+            id: id.into(),
+            seq: 1,
+            sender_id: "u1".into(),
+            recipient_id: "u2".into(),
+            text: "hi".into(),
+            created_at: "2026-11-23T00:00:00Z".into(),
+            is_self: true,
+            status,
+            reply_to_id: None,
+            reactions: Vec::new(),
+            is_pinned: false,
+        }
+    }
+
+    #[test]
+    fn prunes_stale_and_error_local_bubbles_while_preserving_active_outbox_and_server() {
+        let mut msgs = vec![
+            mk_dm("srv-1", MessageStatus::Sent),
+            mk_dm("local-stale", MessageStatus::Pending),
+            mk_dm("local-err", MessageStatus::Error),
+            mk_dm("local-queued", MessageStatus::Pending),
+            mk_dm("local-inflight", MessageStatus::Pending),
+        ];
+        let outbox: HashSet<String> = ["queued".into()].into_iter().collect();
+        let inflight: HashSet<String> = ["inflight".into()].into_iter().collect();
+        assert!(prune_orphaned_local_dm(&mut msgs, &outbox, &inflight));
+        let ids: Vec<&str> = msgs.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["srv-1", "local-queued", "local-inflight"]);
     }
 }

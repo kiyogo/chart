@@ -614,7 +614,7 @@ pub fn MessageList(
                         let mut row_cls = format!("message-row {side}");
                         if !joins_prev { row_cls.push_str(" group-start"); }
                         if !joins_next { row_cls.push_str(" group-end"); }
-                        if msg.is_pending { row_cls.push_str(" pending"); }
+                        if msg.is_pending && !msg.is_error { row_cls.push_str(" pending"); }
                         if highlight_id.as_deref() == Some(msg.id.as_str()) { row_cls.push_str(" highlight"); }
                         if msg.highlighted { row_cls.push_str(" admin-highlight"); }
                         if !mention_token.is_empty() && !msg.is_self && msg.text.to_lowercase().contains(&mention_token) { row_cls.push_str(" mentions-me"); }
@@ -753,7 +753,7 @@ pub fn MessageList(
                                                 span { class: "bubble-meta",
                                                     if msg.is_pinned { span { class: "pin-mark", aria_label: "Pinned", "📌" } }
                                                     "{time_str}"
-                                                    if msg.is_self && msg.is_pending {
+                                                    if msg.is_self && msg.is_pending && !msg.is_error {
                                                         span { class: "pending-clock", title: "Sending", aria_label: "Sending", ClockIcon { size: 12 } }
                                                     }
                                                 }

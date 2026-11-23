@@ -564,19 +564,10 @@ pub fn SettingsView(
                                                 crate::components::accounts::SecuritySettings {}
                                             }
                                             div { class: "settings-col",
-                                                div { class: "settings-group",
-                                                    div { class: "settings-group-title", "End-to-end encryption" }
-                                                    div { class: "settings-row cw-brand-row",
-                                                        crate::components::brand_logos::E2eeLiveShield { size: 30 }
-                                                        div { class: "settings-row-text",
-                                                            span { class: "settings-label", "Protection standard" }
-                                                            span { class: "settings-sublabel", "Highest-grade end-to-end encryption" }
-                                                        }
-                                                        span { class: "settings-value tag-active",
-                                                            span { class: "cw-live-dot" }
-                                                            if user_keys.is_some() { "Active & secure" } else { "No key yet" }
-                                                        }
-                                                    }
+                                                DeviceEncryptionKeyCard {
+                                                    current_user_id: current_user_id.clone(),
+                                                    user_keys: user_keys.clone(),
+                                                    on_keys_imported: on_keys_imported,
                                                 }
                                             }
                                         }
@@ -1128,6 +1119,190 @@ pub fn SettingsView(
                                     },
                                 }
                             },
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Live E2EE device key status & 1-click sync/reset card rendered inside
+/// Settings > Privacy & security > Security (Spec 076).
+#[component]
+fn DeviceEncryptionKeyCard(
+    current_user_id: String,
+    user_keys: Option<UserKeys>,
+    on_keys_imported: EventHandler<UserKeys>,
+) -> Element {
+    let mut server_fp = use_signal(|| Option::<String>::None);
+    let mut device_trust = use_signal(|| Option::<String>::None);
+    let mut checked = use_signal(|| false);
+    let mut confirm_reset = use_signal(|| false);
+    let mut need_totp = use_signal(|| false);
+    let mut totp_input = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let mut notice = use_signal(|| Option::<(bool, String)>::None);
+
+    let uid_eff = current_user_id.clone();
+    let local_fp_key = user_keys.as_ref().map(|k| k.fingerprint_b64.clone()).unwrap_or_default();
+    use_effect(use_reactive!(|uid_eff, local_fp_key| {
+        let uid = uid_eff.clone();
+        let _ = &local_fp_key;
+        spawn(async move {
+            let (srv_res, dev_res) = futures_util::join!(
+                api::keys_get(&uid),
+                crate::services::storage_sync::current_device_status()
+            );
+            server_fp.set(srv_res.ok().map(|k| k.fingerprint));
+            let st = dev_res
+                .ok()
+                .and_then(|v| {
+                    v.get("device")
+                        .and_then(|d| d.get("trust_state"))
+                        .and_then(|s| s.as_str())
+                        .map(str::to_string)
+                })
+                .or_else(|| crate::storage::DEVICE_TRUST_STATE.peek().as_ref().map(|d| d.trust_state.clone()));
+            device_trust.set(st);
+            checked.set(true);
+        });
+    }));
+
+    let local_matches_server = match (&user_keys, server_fp()) {
+        (Some(k), Some(sfp)) => k.fingerprint_b64 == sfp || k.identity_fingerprint_b64 == sfp,
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    let is_pending_device = device_trust().as_deref() == Some("pending")
+        || crate::storage::DEVICE_TRUST_STATE()
+            .as_ref()
+            .is_some_and(|d| d.trust_state == "pending");
+    let has_mismatch = checked() && (user_keys.is_none() || !local_matches_server || is_pending_device);
+    let uid_reset = current_user_id.clone();
+
+    rsx! {
+        div { class: "settings-group",
+            div { class: "settings-group-title", "End-to-end encryption" }
+            div { class: "settings-row cw-brand-row",
+                crate::components::brand_logos::E2eeLiveShield { size: 30 }
+                div { class: "settings-row-text",
+                    span { class: "settings-label", "Protection standard" }
+                    span { class: "settings-sublabel", "Highest-grade end-to-end encryption" }
+                }
+                if has_mismatch {
+                    span { class: "settings-value tag-danger", "Key mismatch" }
+                } else if user_keys.is_some() {
+                    span { class: "settings-value tag-active",
+                        span { class: "cw-live-dot" }
+                        "Active & secure"
+                    }
+                } else {
+                    span { class: "settings-value tag-active",
+                        span { class: "cw-live-dot" }
+                        "No key yet"
+                    }
+                }
+            }
+
+            if has_mismatch && !confirm_reset() {
+                div { class: "status-badge error",
+                    "This device's encryption key does not match your account. Sync from your trusted device or reset this device's key to resume messaging."
+                }
+            }
+
+            if let Some((is_err, text)) = notice() {
+                div {
+                    class: if is_err { "status-badge error" } else { "status-badge success" },
+                    role: "status",
+                    "{text}"
+                }
+            }
+
+            if !confirm_reset() {
+                div { class: "inline-form", style: "margin-top: var(--space-2); flex-wrap: wrap;",
+                    if has_mismatch {
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            onclick: move |_| {
+                                *crate::storage::E2EE_RECOVERY_REQUIRED.write() = Some("server_key_mismatch".to_string());
+                            },
+                            "Sync from trusted device"
+                        }
+                    }
+                    button {
+                        r#type: "button",
+                        class: if has_mismatch { "btn-danger-outline" } else { "btn-secondary" },
+                        onclick: move |_| {
+                            notice.set(None);
+                            confirm_reset.set(true);
+                        },
+                        "Reset device key"
+                    }
+                }
+            } else {
+                div { style: "margin-top: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2);",
+                    div { class: "status-badge error",
+                        "Generating a new key lets this device send and receive new messages immediately. Old messages encrypted with a previous key cannot be decrypted without that key or a backup."
+                    }
+                    if need_totp() {
+                        input {
+                            r#type: "text",
+                            maxlength: "12",
+                            placeholder: "6-digit code or backup code",
+                            aria_label: "Current code or backup code",
+                            value: "{totp_input}",
+                            oninput: move |e| totp_input.set(e.value()),
+                        }
+                    }
+                    div { class: "inline-form",
+                        button {
+                            r#type: "button",
+                            class: "btn-danger",
+                            disabled: busy(),
+                            onclick: move |_| {
+                                if busy() {
+                                    return;
+                                }
+                                let uid = uid_reset.clone();
+                                let code_now = totp_input();
+                                busy.set(true);
+                                notice.set(None);
+                                spawn(async move {
+                                    let code_opt = if code_now.trim().is_empty() { None } else { Some(code_now.trim()) };
+                                    match crate::components::storage_ui::reset_device_encryption_key(&uid, code_opt).await {
+                                        Ok(new_keys) => {
+                                            server_fp.set(Some(new_keys.fingerprint_b64.clone()));
+                                            device_trust.set(Some("trusted".into()));
+                                            confirm_reset.set(false);
+                                            need_totp.set(false);
+                                            totp_input.set(String::new());
+                                            notice.set(Some((false, "Device encryption key reset. You can send messages now.".into())));
+                                            on_keys_imported.call(new_keys);
+                                        }
+                                        Err(e) => {
+                                            if e.contains("Two-factor code required") {
+                                                need_totp.set(true);
+                                            }
+                                            notice.set(Some((true, e)));
+                                        }
+                                    }
+                                    busy.set(false);
+                                });
+                            },
+                            "Confirm reset key"
+                        }
+                        button {
+                            r#type: "button",
+                            class: "btn-secondary",
+                            disabled: busy(),
+                            onclick: move |_| {
+                                confirm_reset.set(false);
+                                need_totp.set(false);
+                                notice.set(None);
+                            },
+                            "Cancel"
                         }
                     }
                 }

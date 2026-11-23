@@ -1733,6 +1733,10 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   gap: var(--space-2);
 }
 .message-row.sent .message-bubble.error-bubble { background: var(--bg-error); color: var(--danger); }
+.message-row.sent .message-bubble.error-bubble .bubble-meta,
+.message-row.received .message-bubble.error-bubble .bubble-meta {
+  color: color-mix(in srgb, var(--danger) 76%, var(--text-muted));
+}
 .message-bubble.deleted { font-style: italic; opacity: 0.75; }
 
 .reply-quote {
@@ -2514,6 +2518,14 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .settings-value.tag-active {
   color: var(--status-success);
   background: var(--bg-success);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+.settings-value.tag-danger {
+  color: var(--danger);
+  background: var(--bg-error);
   padding: 2px var(--space-3);
   border-radius: var(--radius-full);
   font-size: var(--text-sm);
