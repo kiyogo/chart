@@ -1,78 +1,94 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="ChatW Pride Mascot Self-Chat Avatar">
   <defs>
-    <clipPath id="cw-pride-clip">
-      <circle cx="64" cy="64" r="64"/>
+    <clipPath id="cw-pride-circle">
+      <circle cx="64" cy="64" r="64" />
     </clipPath>
+    <linearGradient id="cw-mascot-body" x1="0.08" y1="0.02" x2="0.87" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="56%" stop-color="#F2F6FF" />
+      <stop offset="100%" stop-color="#D4E3FF" />
+    </linearGradient>
+    <linearGradient id="cw-mascot-ear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FBCFE8" />
+      <stop offset="100%" stop-color="#F472B6" />
+    </linearGradient>
+    <linearGradient id="cw-sparkle-fill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#FEF08A" />
+    </linearGradient>
   </defs>
-  <g clip-path="url(#cw-pride-clip)">
-    <!-- 6-Stripe LGBTQ+ Pride Rainbow Flag -->
-    <rect x="0" y="0" width="128" height="21.6" fill="#E40303"/>
-    <rect x="0" y="21.3" width="128" height="21.6" fill="#FF8C00"/>
-    <rect x="0" y="42.6" width="128" height="21.6" fill="#FFED00"/>
-    <rect x="0" y="64.0" width="128" height="21.6" fill="#008026"/>
-    <rect x="0" y="85.3" width="128" height="21.6" fill="#004DFF"/>
-    <rect x="0" y="106.6" width="128" height="21.6" fill="#750787"/>
 
-    <!-- Soft ambient ground shadow beneath voxel bunny -->
-    <polygon points="64.0,64.57 107.26,86.2 64.0,107.83 20.74,86.2" fill="#0F172A" fill-opacity="0.22"/>
+  <g clip-path="url(#cw-pride-circle)">
+    <!-- 6-Stripe LGBTQ+ Pride Rainbow Flag Background -->
+    <rect x="0" y="0" width="128" height="21.8" fill="#E40303" />
+    <rect x="0" y="21.3" width="128" height="21.8" fill="#FF8C00" />
+    <rect x="0" y="42.6" width="128" height="21.8" fill="#FFED00" />
+    <rect x="0" y="64.0" width="128" height="21.8" fill="#008026" />
+    <rect x="0" y="85.3" width="128" height="21.8" fill="#004DFF" />
+    <rect x="0" y="106.6" width="128" height="21.8" fill="#750787" />
 
-    <!-- 3 Visible Voxel Legs (back-to-front painter order) -->
-    <polygon points="85.63,86.78 94.9,91.41 94.9,80.48 85.63,75.85" fill="#6FA4BC"/>
-    <polygon points="94.9,91.41 104.17,86.78 104.17,75.85 94.9,80.48" fill="#4F748F"/>
-    <polygon points="94.9,71.21 104.17,75.85 94.9,80.48 85.63,75.85" fill="#89B7D4"/>
-    <polygon points="85.63,86.78 94.9,91.41 94.9,85.66 85.63,81.03" fill="#82B9CC"/>
-    <polygon points="94.9,91.41 104.17,86.78 104.17,81.03 94.9,85.66" fill="#5E8CA3"/>
-    <polygon points="23.83,86.78 33.1,91.41 33.1,80.48 23.83,75.85" fill="#7BB0C7"/>
-    <polygon points="33.1,91.41 42.37,86.78 42.37,75.85 33.1,80.48" fill="#537994"/>
-    <polygon points="33.1,71.21 42.37,75.85 33.1,80.48 23.83,75.85" fill="#89B7D4"/>
-    <polygon points="23.83,86.78 33.1,91.41 33.1,85.66 23.83,81.03" fill="#8EC3D6"/>
-    <polygon points="33.1,91.41 42.37,86.78 42.37,81.03 33.1,85.66" fill="#608EA6"/>
-    <polygon points="54.73,102.23 64.0,106.86 64.0,95.94 54.73,91.3" fill="#78AEC6"/>
-    <polygon points="64.0,106.86 73.27,102.23 73.27,91.3 64.0,95.94" fill="#517792"/>
-    <polygon points="64.0,86.66 73.27,91.3 64.0,95.94 54.73,91.3" fill="#89B7D4"/>
-    <polygon points="54.73,102.23 64.0,106.86 64.0,101.11 54.73,96.48" fill="#8BC1D4"/>
-    <polygon points="64.0,106.86 73.27,102.23 73.27,96.48 64.0,101.11" fill="#5E8DA4"/>
+    <!-- Subtle tint veil so the flag colors stay rich and cohesive -->
+    <rect x="0" y="0" width="128" height="128" fill="#0F172A" opacity="0.03" />
 
-    <!-- Main Voxel Bunny Cube Body -->
-    <polygon points="22.8,77.0 64.0,97.6 64.0,64.25 22.8,43.65" fill="#78A4C2"/>
-    <polygon points="64.0,97.6 105.2,77.0 105.2,43.65 64.0,64.25" fill="#557D9B"/>
-    <polygon points="64.0,23.05 105.2,43.65 64.0,64.25 22.8,43.65" fill="#9CC8E2"/>
-    <polygon points="64.0,27.17 96.96,43.65 64.0,60.13 31.04,43.65" fill="#88B8D6"/>
-    <polygon points="64.0,30.77 89.75,43.65 64.0,56.52 38.25,43.65" fill="#7FB1D1"/>
-    <polygon points="39.8,39.27 48.55,43.65 39.8,48.03 31.04,43.65" fill="#A9D3EB"/>
-    <polygon points="86.14,38.76 95.93,43.65 86.14,48.54 76.36,43.65" fill="#94C3DF"/>
-    <polygon points="26.92,41.59 68.12,62.19 64.0,64.25 22.8,43.65" fill="#B4DAF0"/>
-    <polygon points="101.08,41.59 105.2,43.65 64.0,64.25 59.88,62.19" fill="#A5D0E9"/>
-    <polygon points="26.41,74.78 60.39,91.77 60.39,66.47 26.41,49.48" fill="#6C98B8"/>
-    <polygon points="31.04,72.5 55.76,84.86 55.76,67.61 31.04,55.25" fill="#6490B0"/>
-    <polygon points="22.8,47.67 64.0,68.27 64.0,64.25 22.8,43.65" fill="#9BC6E0"/>
-    <polygon points="22.8,77.0 26.41,78.8 26.41,45.45 22.8,43.65" fill="#8FBCD8"/>
-    <polygon points="60.39,95.8 64.0,97.6 64.0,64.25 60.39,62.45" fill="#85B4D1"/>
-    <polygon points="22.8,77.0 64.0,97.6 64.0,93.29 22.8,72.69" fill="#7DB6CC"/>
-    <polygon points="67.61,91.77 101.59,74.78 101.59,49.48 67.61,66.47" fill="#4E7593"/>
-    <polygon points="73.27,83.77 95.93,72.44 95.93,56.91 73.27,68.24" fill="#476D8A"/>
-    <polygon points="64.0,68.27 105.2,47.67 105.2,43.65 64.0,64.25" fill="#6C97B5"/>
-    <polygon points="64.0,97.6 105.2,77.0 105.2,72.69 64.0,93.29" fill="#5D8FA6"/>
-    <polygon points="64.0,97.6 67.61,95.8 67.61,62.45 64.0,64.25" fill="#638DAB"/>
+    <!-- Soft drop shadow behind original ChatW Bubble-Spirit Mascot -->
+    <g transform="translate(0, 4.6)" opacity="0.27">
+      <path d="M 52 35.5 C 59 33.8 69 33.8 76 35.5 C 82.5 23.5 90.5 18.5 96 22 C 101 25.2 100.5 35.5 97.5 44.5 C 104.5 51.5 107.8 60.5 106.2 71.5 C 104.2 86.2 91.5 98 70.5 99.6 C 60 100.4 50.5 99.2 43.2 96.2 C 36.2 101.2 28.8 105.2 25 103.2 C 21.5 101.4 24.8 93.5 28.4 87 C 22.5 79.5 20.4 69.8 21.9 59.5 C 23.2 51.4 26.2 47 30.5 44.5 C 27.5 35.5 27 25.2 32 22 C 37.5 18.5 45.5 23.5 52 35.5 Z" fill="#0F172A" />
+    </g>
 
-    <!-- Kawaii Voxel Face (Eyes + Nose) -->
-    <polygon points="25.89,69.92 35.16,74.56 35.16,68.52 25.89,63.88" fill="#424666"/>
-    <polygon points="25.89,66.18 29.49,67.98 29.49,65.69 25.89,63.88" fill="#5A6084"/>
-    <polygon points="51.64,82.8 60.91,87.43 60.91,81.39 51.64,76.76" fill="#424666"/>
-    <polygon points="51.64,79.06 55.24,80.86 55.24,78.56 51.64,76.76" fill="#5A6084"/>
-    <polygon points="39.02,80.22 47.78,84.6 47.78,79.43 39.02,75.05" fill="#515679"/>
-    <polygon points="39.02,76.77 47.78,81.15 47.78,79.43 39.02,75.05" fill="#676E96"/>
+    <!-- Original ChatW Bubble-Spirit Mascot Body (Smooth Speech-Bubble Silhouette + Soft Ears + Bottom-Left Tail) -->
+    <path d="M 52 35.5 C 59 33.8 69 33.8 76 35.5 C 82.5 23.5 90.5 18.5 96 22 C 101 25.2 100.5 35.5 97.5 44.5 C 104.5 51.5 107.8 60.5 106.2 71.5 C 104.2 86.2 91.5 98 70.5 99.6 C 60 100.4 50.5 99.2 43.2 96.2 C 36.2 101.2 28.8 105.2 25 103.2 C 21.5 101.4 24.8 93.5 28.4 87 C 22.5 79.5 20.4 69.8 21.9 59.5 C 23.2 51.4 26.2 47 30.5 44.5 C 27.5 35.5 27 25.2 32 22 C 37.5 18.5 45.5 23.5 52 35.5 Z"
+          fill="url(#cw-mascot-body)"
+          stroke="#1E293B"
+          stroke-width="3.4"
+          stroke-linejoin="round" />
 
-    <!-- Two Upright 3D Voxel Bunny Ears (back-left then front-right) -->
-    <polygon points="51.64,35.41 61.42,40.3 61.42,20.75 51.64,15.86" fill="#95C2DD"/>
-    <polygon points="61.42,40.3 68.64,36.7 68.64,17.15 61.42,20.75" fill="#5E86A3"/>
-    <polygon points="58.85,12.26 68.64,17.15 61.42,20.75 51.64,15.86" fill="#C2E1F3"/>
-    <polygon points="54.47,34.53 58.59,36.59 58.59,24.51 54.47,22.45" fill="#6F9EB9"/>
-    <polygon points="51.64,19.02 61.42,23.91 61.42,20.75 51.64,15.86" fill="#AED7EE"/>
-    <polygon points="69.15,44.16 78.94,49.06 78.94,29.51 69.15,24.62" fill="#95C2DD"/>
-    <polygon points="78.94,49.06 86.14,45.45 86.14,25.9 78.94,29.51" fill="#5E86A3"/>
-    <polygon points="76.36,21.01 86.14,25.9 78.94,29.51 69.15,24.62" fill="#C2E1F3"/>
-    <polygon points="71.98,43.28 76.1,45.34 76.1,33.27 71.98,31.21" fill="#6F9EB9"/>
-    <polygon points="69.15,27.78 78.94,32.67 78.94,29.51 69.15,24.62" fill="#AED7EE"/>
+    <!-- Soft lower-right plump inner shading -->
+    <path d="M 98.8 54 C 103.5 63.5 102.5 78 92 88.2 C 82.5 96.8 66 98.5 50.5 96.2 C 67 95.5 81.5 91.5 90 82.5 C 97.2 74.8 100 64.5 98.8 54 Z"
+          fill="#BBD1FF"
+          opacity="0.65" />
+
+    <!-- Soft glossy top-left forehead highlight -->
+    <ellipse cx="49" cy="43.8" rx="11.5" ry="4.4" transform="rotate(-14 49 43.8)" fill="#FFFFFF" opacity="0.92" />
+
+    <!-- Pastel Pink Inner Ears -->
+    <path d="M 35.2 27.6 C 32.8 30.2 33.6 36.6 37.2 39.2 C 41.2 37.8 44.8 34.0 44.0 30.8 C 42.2 27.8 38.0 26.2 35.2 27.6 Z"
+          fill="url(#cw-mascot-ear)" />
+    <path d="M 92.8 27.6 C 95.2 30.2 94.4 36.6 90.8 39.2 C 86.8 37.8 83.2 34.0 84.0 30.8 C 85.8 27.8 90.0 26.2 92.8 27.6 Z"
+          fill="url(#cw-mascot-ear)" />
+
+    <!-- Glossy Deep-Slate Kawaii Eyes with Dual Catchlights -->
+    <ellipse cx="48.5" cy="63.8" rx="5.2" ry="6.2" fill="#1E293B" />
+    <circle cx="46.8" cy="61.4" r="2.1" fill="#FFFFFF" />
+    <circle cx="50.4" cy="66.4" r="1.0" fill="#FFFFFF" opacity="0.9" />
+
+    <ellipse cx="79.5" cy="63.8" rx="5.2" ry="6.2" fill="#1E293B" />
+    <circle cx="77.8" cy="61.4" r="2.1" fill="#FFFFFF" />
+    <circle cx="81.4" cy="66.4" r="1.0" fill="#FFFFFF" opacity="0.9" />
+
+    <!-- Soft Rosy Blush Cheeks -->
+    <ellipse cx="37.2" cy="73.2" rx="5.8" ry="3.4" fill="#FB7185" opacity="0.54" />
+    <ellipse cx="90.8" cy="73.2" rx="5.8" ry="3.4" fill="#FB7185" opacity="0.54" />
+
+    <!-- Playful Cat-Spirit Happy Smile -->
+    <path d="M 56.5 72.0 Q 60.2 76.8 64 72.8 Q 67.8 76.8 71.5 72.0"
+          fill="none"
+          stroke="#1E293B"
+          stroke-width="3.0"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+    <!-- Signature Note-to-Self Floating 4-Point Sparkle Star (Top-Right, clean gap from ear) -->
+    <path d="M 110.2 31.8 Q 110.8 37.8 116.8 38.4 Q 110.8 39.0 110.2 45.0 Q 109.6 39.0 103.6 38.4 Q 109.6 37.8 110.2 31.8 Z"
+          fill="url(#cw-sparkle-fill)"
+          stroke="#1E293B"
+          stroke-width="1.9"
+          stroke-linejoin="round" />
+
+    <!-- Companion Mini 4-Point Sparkle (Upper-Left) -->
+    <path d="M 17.8 37.5 Q 18.2 41.3 22.0 41.7 Q 18.2 42.1 17.8 45.9 Q 17.4 42.1 13.6 41.7 Q 17.4 41.3 17.8 37.5 Z"
+          fill="url(#cw-sparkle-fill)"
+          stroke="#1E293B"
+          stroke-width="1.6"
+          stroke-linejoin="round" />
   </g>
 </svg>
