@@ -208,6 +208,13 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                                 onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Community)),
                                 "Tiêu chuẩn cộng đồng"
                             }
+                            span { class: "auth-legal-sep", "•" }
+                            button {
+                                r#type: "button",
+                                class: "auth-legal-btn",
+                                onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Vision)),
+                                "Tầm nhìn sản phẩm"
+                            }
                         }
                     }
                 }

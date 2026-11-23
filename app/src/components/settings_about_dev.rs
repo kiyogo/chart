@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 
 use crate::{
-    components::icons::{BookIcon, BoltIcon, CopyIcon, FileTextIcon, LockIcon, LogoIcon, ShieldIcon, SparkleIcon},
+    components::icons::{BookIcon, BoltIcon, CompassIcon, CopyIcon, FileTextIcon, LockIcon, LogoIcon, ShieldIcon, SparkleIcon},
     platform,
     prefs::PrefsCtx,
 };
@@ -37,6 +37,7 @@ pub fn AboutOverviewPanel(
     #[props(default)] on_open_terms: EventHandler<()>,
     #[props(default)] on_open_privacy: EventHandler<()>,
     #[props(default)] on_open_community: EventHandler<()>,
+    #[props(default)] on_open_vision: EventHandler<()>,
 ) -> Element {
     let prefs_ctx = use_context::<PrefsCtx>();
     let prefs = prefs_ctx.prefs.read().clone();
@@ -252,6 +253,16 @@ pub fn AboutOverviewPanel(
                                 onclick: move |_| on_open_community.call(()),
                                 LockIcon { size: 15 }
                                 span { "Xem tiêu chuẩn" }
+                            }
+                        }
+                        div { class: "about-row",
+                            span { class: "about-row-label", "Tầm nhìn sản phẩm" }
+                            button {
+                                r#type: "button",
+                                class: "btn-secondary",
+                                onclick: move |_| on_open_vision.call(()),
+                                CompassIcon { size: 15 }
+                                span { "Xem tầm nhìn" }
                             }
                         }
                     }
