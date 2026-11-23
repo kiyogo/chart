@@ -11324,7 +11324,7 @@ html[dir="rtl"] .rail-bottom [data-tip]:hover::after {
   display: flex;
   align-items: center;
   gap: 4px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.09);
+  border-bottom: none !important;
   margin: -4px 0 var(--space-2);
   padding-bottom: 0;
   overflow-x: auto;
@@ -11335,7 +11335,7 @@ html[dir="rtl"] .rail-bottom [data-tip]:hover::after {
 }
 [data-theme="dark"] .settings-subtabs,
 html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .settings-subtabs {
-  border-bottom-color: rgba(255, 255, 255, 0.12);
+  border-bottom: none !important;
 }
 .settings-subtab {
   position: relative;
