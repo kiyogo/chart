@@ -11921,3 +11921,235 @@ html[data-surface-tone="dark"] .self-details-banner {
 
 
 
+
+/* ==========================================================================
+   Spec 095: Unified Shimmer Skeleton Loading System Across All Views
+   ========================================================================== */
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer,
+.skeleton-box,
+.skeleton-circle,
+.skeleton-text,
+.skeleton-avatar {
+  background: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0.06) 25%,
+    rgba(15, 23, 42, 0.13) 37%,
+    rgba(15, 23, 42, 0.06) 63%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .skeleton-shimmer,
+[data-theme="dark"] .skeleton-box,
+[data-theme="dark"] .skeleton-circle,
+[data-theme="dark"] .skeleton-text,
+[data-theme="dark"] .skeleton-avatar,
+html[data-surface-tone="dark"] .skeleton-shimmer,
+html[data-surface-tone="dark"] .skeleton-box,
+html[data-surface-tone="dark"] .skeleton-circle,
+html[data-surface-tone="dark"] .skeleton-text,
+html[data-surface-tone="dark"] .skeleton-avatar {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 25%,
+    rgba(255, 255, 255, 0.15) 37%,
+    rgba(255, 255, 255, 0.06) 63%
+  );
+  background-size: 200% 100%;
+}
+
+/* 1. Stories Strip Skeleton */
+.skeleton-notes-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  overflow: hidden;
+  width: 100%;
+}
+.skeleton-story-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.skeleton-story-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+}
+.skeleton-story-name {
+  width: 44px;
+  height: 10px;
+  border-radius: 4px;
+}
+
+/* 2. Conversation / Sidebar Row Skeleton */
+.skeleton-conversations {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--panel-inset, 5px);
+  width: 100%;
+}
+.skeleton-conv-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-lg);
+  min-height: 4.25rem;
+  width: 100%;
+  pointer-events: none;
+}
+.skeleton-conv-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+}
+.skeleton-conv-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.skeleton-conv-line-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.skeleton-conv-title {
+  width: 42%;
+  height: 14px;
+  border-radius: 4px;
+}
+.skeleton-conv-badge {
+  width: 24px;
+  height: 12px;
+  border-radius: 6px;
+}
+.skeleton-conv-sub {
+  width: 72%;
+  height: 12px;
+  border-radius: 4px;
+}
+
+/* 3. Messages Stream Skeleton */
+.skeleton-messages-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--space-4) var(--space-3);
+  width: 100%;
+  pointer-events: none;
+}
+.skeleton-msg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 100%;
+}
+.skeleton-msg-row.sent {
+  justify-content: flex-end;
+}
+.skeleton-msg-row.received {
+  justify-content: flex-start;
+}
+.skeleton-msg-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-bottom: 2px;
+}
+.skeleton-msg-bubble {
+  height: 42px;
+  border-radius: var(--radius-bubble);
+}
+.skeleton-msg-row.sent .skeleton-msg-bubble {
+  border-bottom-right-radius: var(--radius-bubble-tail);
+}
+.skeleton-msg-row.received .skeleton-msg-bubble {
+  border-bottom-left-radius: var(--radius-bubble-tail);
+}
+
+/* 4. Channels Skeleton */
+.skeleton-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  width: 100%;
+}
+.skeleton-channel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  height: 34px;
+}
+.skeleton-channel-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+.skeleton-channel-title {
+  height: 12px;
+  border-radius: 4px;
+}
+
+/* 5. Details Sidebar Skeleton */
+.skeleton-details-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding-bottom: 20px;
+  pointer-events: none;
+}
+.skeleton-details-banner {
+  width: 100%;
+  height: 7.75rem;
+}
+.skeleton-details-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  margin-top: -40px;
+  border: 4px solid var(--bg-primary);
+}
+.skeleton-details-title {
+  width: 130px;
+  height: 18px;
+  border-radius: 4px;
+  margin-top: 10px;
+}
+.skeleton-details-sub {
+  width: 90px;
+  height: 12px;
+  border-radius: 4px;
+  margin-top: 6px;
+}
+.skeleton-details-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  width: 90%;
+  justify-content: center;
+}
+.skeleton-details-action-btn {
+  width: 58px;
+  height: 48px;
+  border-radius: var(--radius-md);
+}

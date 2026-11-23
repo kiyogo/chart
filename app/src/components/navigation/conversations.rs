@@ -18,6 +18,7 @@ use crate::{
         },
         messages::preview_text,
         profile_card::{name_effect_class, nameplate_style},
+        skeleton::{SkeletonConversations, SkeletonStories},
     },
     i18n::t,
     models::{BotItem, ChannelItem, ChatLabel, ConvPref, FriendItem, GroupItem},
@@ -92,6 +93,7 @@ pub fn ConversationList(
     #[props(default)] my_status_emoji: Option<String>,
     #[props(default)] on_my_status_updated: Option<EventHandler<(Option<String>, Option<String>)>>,
     #[props(default)] on_note_reply: Option<EventHandler<(FriendItem, String)>>,
+    #[props(default = false)] loading: bool,
 ) -> Element {
     let mut query = use_signal(String::new);
     let mut filter = use_signal(|| "all".to_string());
@@ -349,6 +351,7 @@ pub fn ConversationList(
                     my_status_text: my_status_text.clone(),
                     my_status_emoji: my_status_emoji.clone(),
                     friends: friends.clone(),
+                    loading: loading,
                     on_my_status_updated: on_my_status_updated,
                     on_open_friend: {
                         let on_open = on_open;
@@ -357,16 +360,20 @@ pub fn ConversationList(
                     on_note_reply: on_note_reply,
                 }
             }
-            if !pinned.is_empty() {
-                div { class: "sidebar-section-header", span { "{t(\"chat.pinned\")}" } }
-                for r in pinned { {render_row(r)} }
-            }
-            if rest.is_empty() && rows.is_empty() {
-                div { class: "sidebar-empty",
-                    if friends.is_empty() && groups.is_empty() { "No conversation yet. Open the Friends section to make friends." } else { "No appropriate conversation" }
+            if loading {
+                SkeletonConversations { count: 6 }
+            } else {
+                if !pinned.is_empty() {
+                    div { class: "sidebar-section-header", span { "{t(\"chat.pinned\")}" } }
+                    for r in pinned { {render_row(r)} }
                 }
+                if rest.is_empty() && rows.is_empty() {
+                    div { class: "sidebar-empty",
+                        if friends.is_empty() && groups.is_empty() { "No conversation yet. Open the Friends section to make friends." } else { "No appropriate conversation" }
+                    }
+                }
+                for r in rest { {render_row(r)} }
             }
-            for r in rest { {render_row(r)} }
         }
         if manage_labels() {
             LabelManager {
@@ -408,7 +415,15 @@ pub fn StoriesNotesBar(
     #[props(default)] on_my_status_updated: Option<EventHandler<(Option<String>, Option<String>)>>,
     on_open_friend: EventHandler<FriendItem>,
     #[props(default)] on_note_reply: Option<EventHandler<(FriendItem, String)>>,
+    #[props(default = false)] loading: bool,
 ) -> Element {
+    if loading {
+        return rsx! {
+            div { class: "notes-strip-wrap",
+                SkeletonStories {}
+            }
+        };
+    }
     let mut edit_my_note = use_signal(|| false);
     let mut note_emoji = use_signal(|| my_status_emoji.clone().unwrap_or_default());
     let mut note_text = use_signal(|| my_status_text.clone().unwrap_or_default());

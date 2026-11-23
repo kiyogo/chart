@@ -46,6 +46,7 @@ pub mod settings_about_dev;
 pub mod settings_extra;
 pub mod settings_more;
 pub mod settings_view;
+pub mod skeleton;
 pub mod sticker_picker;
 pub mod storage_ui;
 pub mod studio;

@@ -243,6 +243,7 @@ pub fn Chat(
     let mut is_group_info_open = use_signal(|| false);
     let mut is_group_invite_open = use_signal(|| false);
     let mut is_group_add_member_open = use_signal(|| false);
+    let mut is_dialogs_loading = use_signal(|| true);
 
     // Profile State
     let mut viewing_profile_user_id = use_signal(|| Option::<String>::None);
@@ -610,6 +611,9 @@ pub fn Chat(
                 {
                     servers.set(parsed_s);
                 }
+                if !friends.peek().is_empty() || !groups.peek().is_empty() || !servers.peek().is_empty() {
+                    is_dialogs_loading.set(false);
+                }
             }
             let key_mismatched = crate::storage::E2EE_RECOVERY_REQUIRED
                 .peek()
@@ -671,6 +675,7 @@ pub fn Chat(
                 });
                 platform::save_dialogs_cache(&uid, &snap).await;
             }
+            is_dialogs_loading.set(false);
             reload_social.call(());
 
             let (_ws_handle, mut rx) = ws::connect_ws();
@@ -3933,6 +3938,7 @@ pub fn Chat(
                     }
                 } else {
                     NavigationSidebar {
+                    loading: is_dialogs_loading(),
                     dm_content: rsx! {
                         ConversationList {
                             my_id: current_user_id.clone(),
@@ -3947,6 +3953,7 @@ pub fn Chat(
                             self_chat: privacy.read().self_chat,
                             active_key: active_conv_key.clone(),
                             blocked: blocked_ids(),
+                            loading: is_dialogs_loading(),
                             on_open: move |o: ConvOpen| match o {
                                 ConvOpen::SelfChat => open_self_chat.call(()),
                                 ConvOpen::Dm(f) => select_friend.call(f),

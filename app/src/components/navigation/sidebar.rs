@@ -11,6 +11,7 @@ use crate::{
             UserPlusIcon, VolumeIcon,
         },
         navigation::NavSection,
+        skeleton::{SkeletonChannels, SkeletonConversations},
     },
     models::{
         ChannelItem, FriendItem, GroupItem, PendingRequestItem, ServerCategoryItem, ServerItem,
@@ -130,6 +131,7 @@ pub fn NavigationSidebar(
     #[props(default = true)] self_chat_enabled: bool,
     /// Restore "Chính mình" self-chat from the Messages "+" dropdown menu.
     #[props(default)] on_create_self: Option<EventHandler<()>>,
+    #[props(default = false)] loading: bool,
 ) -> Element {
     let mut collapsed_categories = use_signal(HashSet::<String>::new);
     let mut dm_query = use_signal(String::new);
@@ -178,6 +180,8 @@ pub fn NavigationSidebar(
         .filter(|s| seen_srv.insert(s.id.clone()))
         .filter(|s| cq.is_empty() || s.name.to_lowercase().contains(&cq))
         .collect();
+    let no_friends = friends.is_empty() && pending_requests.is_empty();
+    let no_servers = servers_shown.is_empty() && community_groups.is_empty();
 
     rsx! {
         aside { class: "{sidebar_cls}", aria_label: "Navigation list",
@@ -516,6 +520,9 @@ pub fn NavigationSidebar(
                                 }
                             }
                         }
+                        if loading && no_friends {
+                            SkeletonConversations { count: 5 }
+                        }
                     }
                 },
 
@@ -692,7 +699,11 @@ pub fn NavigationSidebar(
                             }
 
                             if server_channels.is_empty() {
-                                div { class: "empty-chat-inner", "There are no channels yet" }
+                                if loading {
+                                    SkeletonChannels { count: 5 }
+                                } else {
+                                    div { class: "empty-chat-inner", "There are no channels yet" }
+                                }
                             }
                         }
                     } else {
@@ -766,6 +777,9 @@ pub fn NavigationSidebar(
                                     }
                                 }
                             }
+                        }
+                        if loading && no_servers {
+                            SkeletonConversations { count: 4 }
                         }
                         button {
                             r#type: "button",

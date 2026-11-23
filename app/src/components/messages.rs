@@ -9,6 +9,7 @@ use crate::{
         emoji_picker::EmojiPicker,
         icons::{ClockIcon, CopyIcon, PinIcon, ReplyIcon, ShieldIcon, SmilePlusIcon},
         rich::{Rich, RichContent, VoteTally, parse_rich, rich_preview},
+        skeleton::SkeletonMessages,
     },
     platform,
 };
@@ -557,9 +558,7 @@ pub fn MessageList(
                     div { class: "virtual-spacer", style: "height: {top_spacer_px:.0}px;", aria_hidden: "true" }
                 }
                 if loading_initial && messages.is_empty() {
-                    div { class: "chat-loading-initial", role: "status", aria_label: "Loading messages",
-                        span { class: "spinner" }
-                    }
+                    SkeletonMessages {}
                 } else if loading_more {
                     div { class: "load-older-bar",
                         span { class: "spinner" }
