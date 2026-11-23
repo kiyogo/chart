@@ -134,17 +134,14 @@
     const maxInset = Math.max(0, Math.floor((Math.min(rect.height, clientH) - THUMB_MIN_HEIGHT - 8) / 2));
     insetY = Math.min(insetY, maxInset);
 
-    // Center the scrollbar horizontally inside narrow sidebar/nav right-padding gutters (Spec 086:
-    // supports tight 3px 1/3 gutters by adapting thumb width to 2px with exact 0.5px symmetry on both sides!).
-    const thumbW = (!isDoc && padRight > 0 && padRight <= 4.5)
-      ? Math.max(1.5, Math.min(THUMB_WIDTH, padRight - 1))
-      : THUMB_WIDTH;
+    // Center the 3px scrollbar horizontally inside narrow sidebar/nav right-padding gutters
+    // so it has equal breathing room from both the inner content on the left and the panel border on the right.
     let edgeMargin = THUMB_EDGE_MARGIN;
-    if (!isDoc && padRight > 0 && padRight <= GUTTER_MAX_PAD_RIGHT) {
-      edgeMargin = Math.max(0, (padRight - thumbW) / 2);
+    if (!isDoc && padRight >= THUMB_WIDTH + 2 && padRight <= GUTTER_MAX_PAD_RIGHT) {
+      edgeMargin = (padRight - THUMB_WIDTH) / 2;
     }
-    const rawThumbX = rect.right - thumbW - edgeMargin;
-    const thumbX = rawThumbX;
+    const rawThumbX = rect.right - THUMB_WIDTH - edgeMargin;
+    const thumbX = Math.round(rawThumbX * dpr) / dpr;
 
     const maxScroll = Math.max(1, scrollH - clientH);
     const trackTop = rect.top + insetY;
@@ -158,7 +155,7 @@
       : Math.max(0, Math.min(1, scrollT / maxScroll));
 
     const thumbY = trackTop + Math.round(ratio * thumbMaxY);
-    return { isDoc, isColReverse, rect, trackTop, insetY, padRight, edgeMargin, thumbW, thumbX, clientH, scrollH, scrollT, maxScroll, trackH, thumbH, thumbMaxY, thumbY };
+    return { isDoc, isColReverse, rect, trackTop, insetY, padRight, edgeMargin, thumbW: THUMB_WIDTH, thumbX, clientH, scrollH, scrollT, maxScroll, trackH, thumbH, thumbMaxY, thumbY };
   }
 
   function findScrollableContainerAt(target, clientX, clientY) {
@@ -261,8 +258,7 @@
       const withinY = y >= m.rect.top && y <= m.rect.bottom;
       const isNearEdge = withinY && distFromRight >= -EDGE_OUTER_TOLERANCE_PX && distFromRight <= PROXIMITY_PX;
       const withinThumbY = y >= m.thumbY - THUMB_Y_TOLERANCE_PX && y <= m.thumbY + m.thumbH + THUMB_Y_TOLERANCE_PX;
-      const hitThumbW = m.thumbW || THUMB_WIDTH;
-      const isThumbHovered = withinThumbY && x >= m.thumbX - 3 && x <= m.thumbX + hitThumbW + 3 + EDGE_OUTER_TOLERANCE_PX;
+      const isThumbHovered = withinThumbY && x >= m.thumbX - 3 && x <= m.thumbX + THUMB_WIDTH + 3 + EDGE_OUTER_TOLERANCE_PX;
 
       if (isNearEdge || isThumbHovered || activeEntries.has(el)) {
         const entry = getEntry(el);
@@ -372,7 +368,7 @@
       const m = getScrollMetrics(el);
       if (m.rect.bottom <= 0 || m.rect.top >= window.innerHeight || m.rect.height <= 10) continue;
 
-      const thumbW = m.thumbW || THUMB_WIDTH;
+      const thumbW = THUMB_WIDTH;
       const thumbX = m.thumbX;
 
       entry.thumbRect = {

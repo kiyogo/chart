@@ -1,11 +1,11 @@
-// Automated Live Playwright Verification for Spec 086:
+// Automated Live Playwright Verification for Spec 086 / 088:
 // Verifies:
 //  1. Bright vibrant 7-color LGBT spectrum across ALL app text AND ALL monochrome UI SVG icons
 //     (using #cw-lgbt-icon-grad + animated hue flow when Reduce motion OFF, frozen when ON).
 //  2. Bright fresh 6-stripe Pride avatar colors (#FF2E55..#A838FF) on "Chính mình".
-//  3. "Nhà phát triển" ("Developer") spacing in Settings nav equals 100% the gap of all other items (0px flush).
-//  4. Tight 1/3 left/right inset (3px) and flush 0px item gap across Messages, Friends, Communities & Settings sidebars.
-//  5. Right-side canvas scrollbar sits mathematically centered inside the 3px right gutter (leftGap == rightGap == 0.5px).
+//  3. "Nhà phát triển" ("Developer") spacing in Settings nav equals 100% the gap of all other items (exact 1px).
+//  4. Balanced equal 5px left/right inset and exact 1px item gap across Messages, Friends, Communities, Channels & Settings sidebars.
+//  5. Restored original 3px pixel-snapped canvas scrollbar sits centered inside the 5px right gutter (1px left == 1px right).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -121,7 +121,7 @@ try {
       rightInset,
       itemCount: items.length,
       gaps,
-      allZeroGaps: gaps.every((g) => Math.abs(g) <= 0.5),
+      allOnePxGaps: gaps.every((g) => Math.abs(g - 1) <= 0.5),
       hasDevItem: Boolean(devItem),
       devMarginTop,
       railIconStroke: railCs?.stroke || '',
@@ -137,7 +137,31 @@ try {
     };
   });
 
+  // Hover the item directly above active "Giao diện" to visually verify crisp 1px seam + capture zoomed closeup
+  const prevNavItem = page.locator('.settings-nav .settings-nav-item').nth(2);
+  await prevNavItem.hover();
+  await page.waitForTimeout(180);
   await page.screenshot({ path: path.join(SHOT_DIR, '01_settings_vibrant_lgbt_all_text_and_icons.png') });
+  await page.screenshot({
+    path: path.join(SHOT_DIR, '06_closeup_settings_1px_gap_and_5px_inset.png'),
+    clip: { x: 56, y: 120, width: 290, height: 220 },
+  });
+
+  // Temporarily shrink viewport height to 360px so .settings-nav overflows & renders live 3px canvas scrollbar on hover
+  await page.setViewportSize({ width: 1440, height: 360 });
+  await page.waitForTimeout(250);
+  const navBox = await page.locator('.settings-nav').boundingBox();
+  if (navBox) {
+    await page.mouse.move(navBox.x + navBox.width - 3, navBox.y + 160);
+    await page.waitForTimeout(350);
+    await page.screenshot({
+      path: path.join(SHOT_DIR, '07_closeup_restored_3px_scrollbar.png'),
+      clip: { x: Math.max(0, Math.floor(navBox.x + navBox.width - 80)), y: Math.max(0, Math.floor(navBox.y)), width: 110, height: Math.min(340, Math.floor(navBox.height)) },
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(200);
+
   // Scroll Settings right column down to capture Font preview + vibrant toggle switch
   await page.locator('.font-preview-card').scrollIntoViewIfNeeded();
   await page.waitForTimeout(200);
@@ -161,10 +185,10 @@ try {
   );
 
   record(
-    '2. Settings nav has tight 3px (1/3) left/right inset, 0px flush gaps & 100% uniform Developer spacing',
-    settingsAudit.leftInset === 3 &&
-      settingsAudit.rightInset === 3 &&
-      settingsAudit.allZeroGaps &&
+    '2. Settings nav has balanced 5px equal left/right inset, exact 1px gaps & 100% uniform Developer spacing',
+    settingsAudit.leftInset === 5 &&
+      settingsAudit.rightInset === 5 &&
+      settingsAudit.allOnePxGaps &&
       (!settingsAudit.hasDevItem || settingsAudit.devMarginTop === '0px'),
     JSON.stringify({
       leftInset: settingsAudit.leftInset,
@@ -175,14 +199,15 @@ try {
   );
 
   record(
-    '3. Right-side canvas scrollbar is mathematically centered inside the 3px sidebar gutter (0.5px left == 0.5px right)',
-    settingsAudit.sbPadRight === 3 &&
-      settingsAudit.sbThumbW === 2 &&
-      Math.abs(settingsAudit.sbLeftGap - settingsAudit.sbRightGap) <= 0.5,
+    '3. Restored original 3px canvas scrollbar is centered inside the 5px sidebar gutter (1px left == 1px right)',
+    settingsAudit.sbPadRight === 5 &&
+      settingsAudit.sbThumbW === 3 &&
+      Math.abs(settingsAudit.sbLeftGap - 1) <= 0.5 &&
+      Math.abs(settingsAudit.sbRightGap - 1) <= 0.5,
     JSON.stringify({ padRight: settingsAudit.sbPadRight, thumbW: settingsAudit.sbThumbW, leftGap: settingsAudit.sbLeftGap, rightGap: settingsAudit.sbRightGap })
   );
 
-  // 4. Verify Messages sidebar (3px inset, 0px gap, bright fresh Pride avatar, vibrant rainbow icons/text)
+  // 4. Verify Messages sidebar (5px inset, 1px gap, bright fresh Pride avatar, restored 3px centered scrollbar)
   await page.locator('.app-rail button[aria-label="Tin nhắn"], .app-rail button[title="Tin nhắn"], .app-rail button[aria-label="Messages"]').first().click();
   await page.waitForSelector('.nav-sidebar .sidebar-scrollable', { timeout: 10000 });
   await page.waitForTimeout(350);
@@ -199,6 +224,7 @@ try {
       padRight: cs.paddingRight,
       gap: cs.rowGap || cs.gap,
       brightAvatar: ['#FF2E55', '#FF8C1A', '#FFE119', '#00D166', '#1A8CFF', '#A838FF'].every((c) => rects.includes(c)),
+      sbThumbW: sb?.thumbW,
       sbLeftGap,
       sbRightGap,
     };
@@ -206,16 +232,18 @@ try {
   await page.screenshot({ path: path.join(SHOT_DIR, '03_messages_tight_flush_bright_lgbt.png') });
 
   record(
-    '4. Messages sidebar has 3px left/right inset, 0px flush gap, bright fresh Pride avatar & centered scrollbar',
-    msgSideAudit.padLeft === '3px' &&
-      msgSideAudit.padRight === '3px' &&
-      (msgSideAudit.gap === '0px' || msgSideAudit.gap === 'normal') &&
+    '4. Messages sidebar has 5px left/right inset, 1px gap, bright fresh Pride avatar & centered 3px scrollbar',
+    msgSideAudit.padLeft === '5px' &&
+      msgSideAudit.padRight === '5px' &&
+      msgSideAudit.gap === '1px' &&
       msgSideAudit.brightAvatar &&
-      Math.abs(msgSideAudit.sbLeftGap - msgSideAudit.sbRightGap) <= 0.5,
+      msgSideAudit.sbThumbW === 3 &&
+      Math.abs(msgSideAudit.sbLeftGap - 1) <= 0.5 &&
+      Math.abs(msgSideAudit.sbRightGap - 1) <= 0.5,
     JSON.stringify(msgSideAudit)
   );
 
-  // 5. Verify Friends & Communities sidebars also share exact 3px inset & 0px flush gap
+  // 5. Verify Friends & Communities sidebars also share exact 5px inset & 1px item gap
   await page.locator('.app-rail button[aria-label="Bạn bè"], .app-rail button[title="Bạn bè"], .app-rail button[aria-label="Friends"]').first().click();
   await page.waitForSelector('.nav-sidebar .sidebar-scrollable', { timeout: 10000 });
   await page.waitForTimeout(300);
@@ -245,11 +273,13 @@ try {
   await page.screenshot({ path: path.join(SHOT_DIR, '05_communities_tight_flush_lgbt.png'), clip: { x: 0, y: 0, width: 420, height: 600 } });
 
   record(
-    '5. Friends & Communities sidebars use identical 3px left/right inset, 0px flush gap & localized Vietnamese labels',
-    friendsAudit.padLeft === '3px' &&
-      friendsAudit.padRight === '3px' &&
-      commAudit.padLeft === '3px' &&
-      commAudit.padRight === '3px' &&
+    '5. Friends & Communities sidebars use identical 5px left/right inset, 1px gap & localized Vietnamese labels',
+    friendsAudit.padLeft === '5px' &&
+      friendsAudit.padRight === '5px' &&
+      friendsAudit.gap === '1px' &&
+      commAudit.padLeft === '5px' &&
+      commAudit.padRight === '5px' &&
+      commAudit.gap === '1px' &&
       commAudit.localizedCreateBtn,
     JSON.stringify({ friends: friendsAudit, communities: commAudit })
   );
