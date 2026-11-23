@@ -1634,8 +1634,15 @@ button.chat-header-identity:hover { background: var(--bg-hover); }
   gap: var(--space-3);
   width: 100%;
   min-width: 0;
+}
+.message-row:not(:has(.lightbox, .modal-overlay)) {
   content-visibility: auto;
   contain-intrinsic-size: auto 68px;
+}
+.message-row:has(.lightbox, .modal-overlay) {
+  content-visibility: visible;
+  contain: none;
+  z-index: var(--z-modal);
 }
 .message-row.pending .message-bubble {
   opacity: 0.82;
@@ -3540,8 +3547,11 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   border-radius: 8px;
   background: var(--bg-surface-hover);
 }
-.message-stream {
+.message-stream:not(:has(.lightbox, .modal-overlay)) {
   contain: layout style;
+}
+.message-stream:has(.lightbox, .modal-overlay) {
+  contain: none;
 }
 .scroll-to-bottom-btn {
   position: sticky;
@@ -3583,9 +3593,74 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   font-weight: 700;
 }
 .rich-image-loading, .rich-image-error { padding: var(--space-4); font-size: var(--text-sm); color: var(--text-secondary); }
-.lightbox { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(8, 10, 14, 0.86); display: flex; align-items: center; justify-content: center; padding: var(--space-6); }
-.lightbox img { max-width: 100%; max-height: 100%; border-radius: var(--radius-lg); }
-.lightbox-close { position: absolute; top: var(--space-4); right: var(--space-4); color: #fff; }
+.lightbox {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: var(--z-modal);
+  background: rgba(8, 10, 14, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4.5rem var(--space-6) var(--space-6);
+}
+.lightbox img {
+  max-width: min(92vw, 1400px);
+  max-height: calc(100vh - 7rem);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+.lightbox-actions {
+  position: fixed;
+  top: 1rem;
+  right: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  z-index: calc(var(--z-modal) + 1);
+}
+.lightbox-actions .btn-secondary {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.lightbox-actions .btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: #fff !important;
+}
+.lightbox-close {
+  position: static !important;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: #fff !important;
+}
+.chat-column:has(.lightbox, .modal-overlay),
+.chat-messages:has(.lightbox, .modal-overlay) {
+  contain: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  transform: none !important;
+}
 .invite-card { padding: 0; overflow: hidden; min-width: 17rem; }
 .invite-card .invite-banner { height: 4.5rem; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #EC4899)); background-size: cover; background-position: center; }
 .invite-card .invite-body { display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); margin-top: -1.25rem; }
@@ -7243,15 +7318,6 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   flex-direction: column;
   gap: 0.375rem;
   min-width: 14rem;
-}
-
-.lightbox-actions {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .details-recovery-box {

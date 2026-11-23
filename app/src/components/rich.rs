@@ -461,8 +461,24 @@ pub fn RichImage(data: ImageData) -> Element {
                     img { class: "rich-image-full", src: "{s}", alt: "Image", decoding: "async" }
                 }
                 if open() {
-                    div { class: "lightbox", role: "dialog", aria_label: "Photo", onclick: move |_| open.set(false),
-                        img { src: "{s}", alt: "Image" }
+                    div {
+                        class: "lightbox",
+                        role: "dialog",
+                        aria_modal: "true",
+                        aria_label: "Photo",
+                        tabindex: "-1",
+                        onmounted: move |ev| {
+                            spawn(async move {
+                                let _ = ev.set_focus(true).await;
+                            });
+                        },
+                        onkeydown: move |e| {
+                            if e.key() == Key::Escape {
+                                open.set(false);
+                            }
+                        },
+                        onclick: move |_| open.set(false),
+                        img { src: "{s}", alt: "Image", onclick: move |e| e.stop_propagation() }
                         div { class: "lightbox-actions", onclick: move |e| e.stop_propagation(),
                             a { href: "{s}", download: if data.name.is_empty() { "chatw-image" } else { data.name.as_str() }, class: "btn-secondary", DownloadIcon { size: 15 } "Download the original" }
                             button { r#type: "button", class: "icon-btn lightbox-close", aria_label: "Close", onclick: move |_| open.set(false), CloseIcon {} }

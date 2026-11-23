@@ -97,11 +97,35 @@ try {
     localStorage.setItem(key, JSON.stringify(cur));
   }, { uid: meA.id, wpUrl });
 
+  // Generate a real 320x200 colorful PNG (so the chat photo & full-viewport lightbox are visually verifiable!)
+  const realPhotoB64 = await pageA.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.width = 320;
+    c.height = 200;
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 320, 200);
+    g.addColorStop(0, '#3B82F6');
+    g.addColorStop(0.5, '#EC4899');
+    g.addColorStop(1, '#F59E0B');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 320, 200);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    ctx.arc(160, 100, 56, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1E293B';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ChatW', 160, 108);
+    return c.toDataURL('image/png').split(',')[1];
+  });
+  const REAL_PHOTO_PNG = Buffer.from(realPhotoB64, 'base64');
+
   // Upload a real E2EE image attachment and send it with a micro-blur data URI embedded in message JSON!
   const imgKey = crypto.randomBytes(32);
   const imgNonce = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', imgKey, imgNonce);
-  const encImg = Buffer.concat([cipher.update(TINY_PNG), cipher.final(), cipher.getAuthTag()]);
+  const encImg = Buffer.concat([cipher.update(REAL_PHOTO_PNG), cipher.final(), cipher.getAuthTag()]);
   const attResp = await ctxA.request.post(
     `${BASE}/api/attachments?scope_type=dm&scope_id=${meB.id}&is_e2ee=true&file_name=anime_test.png&mime_type=image%2Fpng`,
     { headers: { 'Content-Type': 'application/octet-stream' }, data: encImg }
@@ -224,6 +248,44 @@ try {
   });
 
   await pageA.screenshot({ path: path.join(SHOT_DIR, '01_custom_wallpaper_e2ee_image_blob_only.png') });
+
+  // Spec 075: Click chat image -> verify full-viewport Lightbox (NOT trapped in .message-row) + non-overlapping controls + Escape close
+  await pageA.locator('.rich-image-btn').first().click();
+  await pageA.locator('.lightbox').first().waitFor({ timeout: 5000 });
+  await pageA.waitForTimeout(250);
+  const lbAudit = await pageA.evaluate(() => {
+    const lb = document.querySelector('.lightbox');
+    const dl = document.querySelector('.lightbox-actions .btn-secondary');
+    const cl = document.querySelector('.lightbox-close');
+    const r = lb ? lb.getBoundingClientRect() : null;
+    const dr = dl ? dl.getBoundingClientRect() : null;
+    const cr = cl ? cl.getBoundingClientRect() : null;
+    return {
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+      rect: r ? { left: Math.round(r.left), top: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) } : null,
+      nonOverlapping: Boolean(dr && cr && dr.right <= cr.left + 1),
+      dlRect: dr ? { left: Math.round(dr.left), right: Math.round(dr.right) } : null,
+      clRect: cr ? { left: Math.round(cr.left), right: Math.round(cr.right) } : null,
+    };
+  });
+  await pageA.screenshot({ path: path.join(SHOT_DIR, '02_fullscreen_lightbox.png') });
+  await pageA.keyboard.press('Escape');
+  await pageA.waitForTimeout(200);
+  const lbClosed = (await pageA.locator('.lightbox').count()) === 0;
+  record(
+    '7. Spec 075: Clicking image opens full-viewport Lightbox (100vw x 100vh, not trapped in .message-row) with non-overlapping Download & Close controls and Escape closes it',
+    Boolean(
+      lbAudit.rect &&
+      lbAudit.rect.left === 0 &&
+      lbAudit.rect.top === 0 &&
+      lbAudit.rect.w >= lbAudit.vw - 2 &&
+      lbAudit.rect.h >= lbAudit.vh - 2 &&
+      lbAudit.nonOverlapping &&
+      lbClosed
+    ),
+    JSON.stringify({ ...lbAudit, lbClosed })
+  );
 
   record(
     '1. ZERO /uploads/* or /api/attachments/* HTTP requests in Network tab (wallpaper + avatar + chat image all over SharedWorker)',
