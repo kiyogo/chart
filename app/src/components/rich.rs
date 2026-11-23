@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::{
         avatar::Avatar,
-        icons::{BarChartIcon, BellIcon, CheckIcon, CloseIcon, DownloadIcon, FileTextIcon, MicIcon, PlusIcon, RefreshIcon},
+        icons::{
+            BarChartIcon, BellIcon, CheckIcon, CloseIcon, DownloadIcon, FileTextIcon, MicIcon,
+            PlusIcon, RefreshIcon, RotateCwIcon, ZoomInIcon, ZoomOutIcon,
+        },
     },
     platform,
     services::storage_sync,
@@ -24,6 +27,19 @@ use crate::{
         recovery::{self, MediaFetchOutcome},
     },
 };
+
+/// Viewport-root Lightbox payload so full-screen image previews mount outside
+/// `.chat-column` / `.message-row` / `.rich-image` for exact viewport centering (Spec 078).
+#[derive(Clone, Debug, PartialEq)]
+pub struct LightboxMedia {
+    pub src: String,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub size: u64,
+}
+
+pub static GLOBAL_LIGHTBOX: GlobalSignal<Option<LightboxMedia>> = GlobalSignal::new(|| None);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PollData {
@@ -394,7 +410,6 @@ pub fn RichImage(data: ImageData) -> Element {
     let mut missing = use_signal(|| Option::<(String, String, String)>::None);
     let mut rec_status = use_signal(|| Option::<String>::None);
     let mut failed = use_signal(|| false);
-    let mut open = use_signal(|| false);
 
     let key_now = (data.u.clone(), data.k.clone(), data.n.clone());
     let mime_now = data.m.clone();
@@ -457,31 +472,28 @@ pub fn RichImage(data: ImageData) -> Element {
     rsx! {
         div { class: "rich-image",
             if let Some(s) = src() {
-                button { r#type: "button", class: "rich-image-btn rich-image-stage loaded", style: "{stage_style}", aria_label: "See photos", onclick: move |_| open.set(true),
-                    img { class: "rich-image-full", src: "{s}", alt: "Image", decoding: "async" }
-                }
-                if open() {
-                    div {
-                        class: "lightbox",
-                        role: "dialog",
-                        aria_modal: "true",
-                        aria_label: "Photo",
-                        tabindex: "-1",
-                        onmounted: move |ev| {
-                            spawn(async move {
-                                let _ = ev.set_focus(true).await;
-                            });
-                        },
-                        onkeydown: move |e| {
-                            if e.key() == Key::Escape {
-                                open.set(false);
-                            }
-                        },
-                        onclick: move |_| open.set(false),
-                        img { src: "{s}", alt: "Image", onclick: move |e| e.stop_propagation() }
-                        div { class: "lightbox-actions", onclick: move |e| e.stop_propagation(),
-                            a { href: "{s}", download: if data.name.is_empty() { "chatw-image" } else { data.name.as_str() }, class: "btn-secondary", DownloadIcon { size: 15 } "Download the original" }
-                            button { r#type: "button", class: "icon-btn lightbox-close", aria_label: "Close", onclick: move |_| open.set(false), CloseIcon {} }
+                {
+                    let lb_src = s.clone();
+                    let lb_name = data.name.clone();
+                    let lb_w = data.w;
+                    let lb_h = data.h;
+                    let lb_size = data.size;
+                    rsx! {
+                        button {
+                            r#type: "button",
+                            class: "rich-image-btn rich-image-stage loaded",
+                            style: "{stage_style}",
+                            aria_label: "See photos",
+                            onclick: move |_| {
+                                *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
+                                    src: lb_src.clone(),
+                                    name: lb_name.clone(),
+                                    width: lb_w,
+                                    height: lb_h,
+                                    size: lb_size,
+                                });
+                            },
+                            img { class: "rich-image-full", src: "{s}", alt: "Image", decoding: "async" }
                         }
                     }
                 }
@@ -1224,6 +1236,258 @@ pub fn ComposerTools(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Root-mounted Telegram/Preview-grade global image lightbox viewer (Spec 078).
+/// Mounted at the root of `ChatPage` so zero ancestor layout, padding, scroll containment,
+/// or `.rich-image img` CSS cascade can ever shift or clip the image off-center.
+#[component]
+pub fn GlobalImageLightbox() -> Element {
+    let media_opt = GLOBAL_LIGHTBOX();
+    let mut zoom = use_signal(|| 1.0_f64);
+    let mut pan_x = use_signal(|| 0.0_f64);
+    let mut pan_y = use_signal(|| 0.0_f64);
+    let mut rotation = use_signal(|| 0_i32);
+    let mut dragging = use_signal(|| false);
+    let mut drag_origin = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
+    let mut did_drag = use_signal(|| false);
+    let mut active_src = use_signal(String::new);
+
+    let cur_src = media_opt.as_ref().map(|m| m.src.clone()).unwrap_or_default();
+    if *active_src.peek() != cur_src {
+        active_src.set(cur_src);
+        zoom.set(1.0);
+        pan_x.set(0.0);
+        pan_y.set(0.0);
+        rotation.set(0);
+        dragging.set(false);
+        did_drag.set(false);
+    }
+
+    let Some(media) = media_opt else {
+        return rsx! {};
+    };
+
+    let mut set_zoom_clamped = move |next: f64| {
+        let clamped = (next.clamp(0.25, 6.0) * 100.0).round() / 100.0;
+        zoom.set(clamped);
+        if clamped <= 1.01 {
+            pan_x.set(0.0);
+            pan_y.set(0.0);
+        }
+    };
+
+    let mut reset_view = move || {
+        zoom.set(1.0);
+        pan_x.set(0.0);
+        pan_y.set(0.0);
+        rotation.set(0);
+        dragging.set(false);
+        did_drag.set(false);
+    };
+
+    let close_lightbox = move || {
+        *GLOBAL_LIGHTBOX.write() = None;
+    };
+
+    let z = zoom();
+    let px = pan_x();
+    let py = pan_y();
+    let rot = rotation();
+    let is_dragging = dragging();
+    let can_pan = z > 1.01;
+    let pct = (z * 100.0).round() as i32;
+    let stage_cls = if is_dragging {
+        "lightbox-stage is-panning"
+    } else if can_pan {
+        "lightbox-stage can-pan"
+    } else {
+        "lightbox-stage"
+    };
+    let img_style = format!("transform: translate3d({px:.1}px, {py:.1}px, 0) scale({z:.3}) rotate({rot}deg);");
+    let dl_name = if media.name.is_empty() {
+        "chatw-image".to_string()
+    } else {
+        media.name.clone()
+    };
+    let dims_label = match (media.width > 0 && media.height > 0, media.size > 0) {
+        (true, true) => format!("{} × {} · {}", media.width, media.height, format_bytes_human(media.size)),
+        (true, false) => format!("{} × {}", media.width, media.height),
+        (false, true) => format_bytes_human(media.size),
+        (false, false) => String::new(),
+    };
+
+    rsx! {
+        div {
+            class: "lightbox",
+            role: "dialog",
+            aria_modal: "true",
+            aria_label: "Photo",
+            tabindex: "-1",
+            onmounted: move |ev| {
+                spawn(async move {
+                    let _ = ev.set_focus(true).await;
+                });
+            },
+            onkeydown: move |e| {
+                match e.key() {
+                    Key::Escape => {
+                        e.prevent_default();
+                        close_lightbox();
+                    }
+                    Key::Character(ref ch) if ch == "+" || ch == "=" => {
+                        e.prevent_default();
+                        set_zoom_clamped(zoom() + 0.25);
+                    }
+                    Key::Character(ref ch) if ch == "-" || ch == "_" => {
+                        e.prevent_default();
+                        set_zoom_clamped(zoom() - 0.25);
+                    }
+                    Key::Character(ref ch) if ch == "0" => {
+                        e.prevent_default();
+                        reset_view();
+                    }
+                    Key::Character(ref ch) if ch == "r" || ch == "R" => {
+                        e.prevent_default();
+                        rotation.set((rotation() + 90) % 360);
+                    }
+                    _ => {}
+                }
+            },
+            onwheel: move |e| {
+                e.prevent_default();
+                e.stop_propagation();
+                let dy = e.delta().strip_units().y;
+                if dy.abs() > 0.01 {
+                    let factor = if dy < 0.0 { 1.15 } else { 1.0 / 1.15 };
+                    set_zoom_clamped(zoom() * factor);
+                }
+            },
+
+            // Pure symmetric 100vw x 100vh viewport-centered image stage
+            div {
+                class: "{stage_cls}",
+                onclick: move |_| {
+                    if did_drag() {
+                        did_drag.set(false);
+                        return;
+                    }
+                    close_lightbox();
+                },
+                onmousemove: move |e| {
+                    if !dragging() {
+                        return;
+                    }
+                    let c = e.client_coordinates();
+                    let (sx, sy, opx, opy) = drag_origin();
+                    let dx = c.x - sx;
+                    let dy = c.y - sy;
+                    if dx.abs() > 3.0 || dy.abs() > 3.0 {
+                        did_drag.set(true);
+                    }
+                    pan_x.set(opx + dx);
+                    pan_y.set(opy + dy);
+                },
+                onmouseup: move |_| dragging.set(false),
+                onmouseleave: move |_| dragging.set(false),
+
+                img {
+                    class: "lightbox-img",
+                    src: "{media.src}",
+                    alt: "Image",
+                    draggable: "false",
+                    style: "{img_style}",
+                    onclick: move |e| e.stop_propagation(),
+                    ondoubleclick: move |e| {
+                        e.stop_propagation();
+                        if zoom() > 1.05 {
+                            reset_view();
+                        } else {
+                            set_zoom_clamped(2.0);
+                        }
+                    },
+                    onmousedown: move |e| {
+                        if zoom() > 1.01 {
+                            e.prevent_default();
+                            e.stop_propagation();
+                            let c = e.client_coordinates();
+                            dragging.set(true);
+                            did_drag.set(false);
+                            drag_origin.set((c.x, c.y, pan_x(), pan_y()));
+                        }
+                    },
+                }
+            }
+
+            // Minimalist top gradient bar with file meta + frosted glass actions
+            div { class: "lightbox-topbar",
+                div { class: "lightbox-meta", onclick: move |e| e.stop_propagation(),
+                    if !media.name.is_empty() {
+                        span { class: "lightbox-filename", title: "{media.name}", "{media.name}" }
+                    }
+                    if !dims_label.is_empty() {
+                        span { class: "lightbox-dims", "{dims_label}" }
+                    }
+                }
+                div { class: "lightbox-actions", onclick: move |e| e.stop_propagation(),
+                    a {
+                        href: "{media.src}",
+                        download: "{dl_name}",
+                        class: "btn-secondary",
+                        DownloadIcon { size: 15 }
+                        span { "Download original" }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "lightbox-close",
+                        aria_label: "Close",
+                        title: "Close",
+                        onclick: move |_| close_lightbox(),
+                        CloseIcon { size: 18 }
+                    }
+                }
+            }
+
+            // Centered floating frosted-glass Zoom & Rotate dock
+            div { class: "lightbox-dock", role: "toolbar", aria_label: "Photo", onclick: move |e| e.stop_propagation(),
+                button {
+                    r#type: "button",
+                    class: "lightbox-dock-btn",
+                    aria_label: "Zoom out",
+                    title: "Zoom out",
+                    disabled: z <= 0.26,
+                    onclick: move |_| set_zoom_clamped(zoom() - 0.25),
+                    ZoomOutIcon { size: 17 }
+                }
+                button {
+                    r#type: "button",
+                    class: "lightbox-zoom-readout",
+                    aria_label: "Reset zoom",
+                    title: "Reset zoom",
+                    onclick: move |_| reset_view(),
+                    "{pct}%"
+                }
+                button {
+                    r#type: "button",
+                    class: "lightbox-dock-btn",
+                    aria_label: "Zoom in",
+                    title: "Zoom in",
+                    disabled: z >= 5.99,
+                    onclick: move |_| set_zoom_clamped(zoom() + 0.25),
+                    ZoomInIcon { size: 17 }
+                }
+                span { class: "lightbox-dock-sep", aria_hidden: "true" }
+                button {
+                    r#type: "button",
+                    class: "lightbox-dock-btn",
+                    aria_label: "Rotate image",
+                    title: "Rotate image",
+                    onclick: move |_| rotation.set((rotation() + 90) % 360),
+                    RotateCwIcon { size: 17 }
                 }
             }
         }

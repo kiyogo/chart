@@ -7,7 +7,7 @@
 //    `/stickers/*`, SVG/CSS/JS/WASM assets so repeat boots make 0 redundant Fetch/XHR requests.
 
 const STREAM_PREFIXES = ['/stream/media/', '/stream/'];
-const STATIC_CACHE_NAME = 'chatw-static-v4';
+const STATIC_CACHE_NAME = 'chatw-static-v5';
 const DEFAULT_GRANT_TTL_MS = 15 * 60 * 1000;
 const MAX_CHUNK_CACHE_ENTRIES = 64;
 const MAX_STREAM_SPAN = 1024 * 1024;
@@ -430,8 +430,7 @@ function isCacheableStaticAsset(pathname) {
     pathname.startsWith('/stickers/') ||
     pathname.startsWith('/wallpapers/') ||
     pathname.endsWith('.svg') ||
-    pathname.endsWith('.woff2') ||
-    pathname.endsWith('.wasm')
+    pathname.endsWith('.woff2')
   );
 }
 
@@ -523,6 +522,8 @@ self.addEventListener('message', (event) => {
 self.addEventListener('fetch', (event) => {
   const reqUrl = new URL(event.request.url);
   if (reqUrl.origin !== self.location.origin) return;
+  // Never intercept runtime loader binary so SW never emits a ⚙ fetch entry (Spec 077)
+  if (reqUrl.pathname === '/pkg/core.bin' || reqUrl.pathname.endsWith('.wasm')) return;
 
   // 1. Protected Media Streaming Proxy (`/stream/{grantId}` & `/stream/media/{grantId}`)
   const grantId = extractStreamGrantId(reqUrl.pathname);

@@ -5538,6 +5538,7 @@ pub fn Chat(
         }
 
         crate::components::storage_ui::IncomingDeviceApprovalModal {}
+        crate::components::rich::GlobalImageLightbox {}
         crate::components::storage_ui::E2eeUnlockRecoveryModal {
             current_user_id: current_user_id.clone(),
             on_unlocked: move |keys| {

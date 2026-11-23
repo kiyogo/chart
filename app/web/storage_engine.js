@@ -769,6 +769,34 @@
       }
     },
 
+    async deleteStaticCacheByPrefix(prefix, keepKey) {
+      if (!prefix) return 0;
+      try {
+        const db = await openDb();
+        return await new Promise((resolve) => {
+          const tx = db.transaction('static_cache', 'readwrite');
+          const store = tx.objectStore('static_cache');
+          const req = store.openCursor();
+          let deleted = 0;
+          req.onsuccess = (ev) => {
+            const cursor = ev.target.result;
+            if (!cursor) return;
+            const k = String(cursor.key || '');
+            if (k.startsWith(prefix) && k !== keepKey) {
+              cursor.delete();
+              deleted++;
+            }
+            cursor.continue();
+          };
+          tx.oncomplete = () => resolve(deleted);
+          tx.onerror = () => resolve(deleted);
+          tx.onabort = () => resolve(deleted);
+        });
+      } catch (_) {
+        return 0;
+      }
+    },
+
     async ensureNonExtractableVaultKey() {
       if (!crypto || !crypto.subtle) return { ok: false };
       try {
