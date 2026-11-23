@@ -7,7 +7,7 @@ use crate::{
     components::{
         avatar::Avatar,
         calls::{ActiveCallOverlay, IncomingCallModal},
-        details_panel::DmDetailsPanel,
+        details_panel::{DmDetailsPanel, SelfDetailsPanel},
         download_view::DownloadView,
         enterprise::{EnterpriseWorkspace, tasks_projects::CreateTaskFromMsgDialog},
         feed_view::FeedView,
@@ -4212,7 +4212,11 @@ pub fn Chat(
                                     BackIcon {}
                                 }
                                 if self_mode {
-                                    div { class: "chat-header-identity self-header-identity",
+                                    button {
+                                        r#type: "button",
+                                        class: "chat-header-identity self-header-identity",
+                                        title: "Conversation info",
+                                        onclick: move |_| is_partner_info_open.set(!is_partner_info_open()),
                                         span { class: "self-chat-avatar pride-voxel", aria_hidden: "true", SelfChatPrideAvatar {} }
                                         div { class: "chat-header-info",
                                             h2 { class: "chat-header-title", "{t(\"chat.self\")}" }
@@ -4284,17 +4288,15 @@ pub fn Chat(
                                             VideoIcon { size: 22 }
                                         }
                                     }
-                                    if !self_mode {
-                                        button {
-                                            r#type: "button",
-                                            "data-testid": "toggle-details",
-                                            class: if is_partner_info_open() { "icon-btn active" } else { "icon-btn" },
-                                            title: "Conversation info",
-                                            aria_label: "Account information",
-                                            aria_pressed: "{is_partner_info_open()}",
-                                            onclick: move |_| is_partner_info_open.set(!is_partner_info_open()),
-                                            PanelRightIcon { size: 22 }
-                                        }
+                                    button {
+                                        r#type: "button",
+                                        "data-testid": "toggle-details",
+                                        class: if is_partner_info_open() { "icon-btn active" } else { "icon-btn" },
+                                        title: "Conversation info",
+                                        aria_label: "Conversation info",
+                                        aria_pressed: "{is_partner_info_open()}",
+                                        onclick: move |_| is_partner_info_open.set(!is_partner_info_open()),
+                                        PanelRightIcon { size: 22 }
                                     }
                                     button {
                                         r#type: "button",
@@ -4505,40 +4507,56 @@ pub fn Chat(
                             }
                         }
 
-                        if is_partner_info_open() && !self_mode {
+                        if is_partner_info_open() {
                             div {
                                 class: "panel-resizer resizer-right",
                                 "data-resizer": "details",
                                 title: "Drag to resize the detail",
                             }
-                            DmDetailsPanel {
-                                user_id: active.id.clone(),
-                                username: active.username.clone(),
-                                avatar_url: active.avatar_url.clone(),
-                                fingerprint: partner_fingerprint(),
-                                my_fingerprint: my_fingerprint.clone(),
-                                my_user_id: current_user_id.clone(),
-                                on_key_verified: move |pid: String| {
-                                    peer_keys_cache.write().remove(&pid);
-                                    key_ack_tick.set(key_ack_tick() + 1);
-                                    toast.set(None);
-                                },
-                                messages: dm_view.clone(),
-                                on_close: move |_| is_partner_info_open.set(false),
-                                on_focus_composer: move |_| platform::focus_chat_input(),
-                                on_audio_call: {
-                                    let id = active.id.clone();
-                                    move |_| start_call("audio", Some(id.clone()), None)
-                                },
-                                on_video_call: {
-                                    let id = active.id.clone();
-                                    move |_| start_call("video", Some(id.clone()), None)
-                                },
-                                on_view_profile: {
-                                    let id = active.id.clone();
-                                    move |_| viewing_profile_user_id.set(Some(id.clone()))
-                                },
-                                on_jump_to: move |id: String| jump_to_message(id),
+                            if self_mode {
+                                SelfDetailsPanel {
+                                    user_id: current_user_id.clone(),
+                                    username: active.username.clone(),
+                                    my_fingerprint: my_fingerprint.clone(),
+                                    sessions: sessions_now.clone(),
+                                    messages: dm_view.clone(),
+                                    on_close: move |_| is_partner_info_open.set(false),
+                                    on_focus_composer: move |_| platform::focus_chat_input(),
+                                    on_open_wallpaper: move |_| wallpaper_picker_open.set(true),
+                                    on_clear_self: move |_| confirm_clear_self.set(true),
+                                    on_rename_device: move |(sid, label): (String, String)| rename_device.set(Some((sid, label))),
+                                    on_jump_to: move |id: String| jump_to_message(id),
+                                }
+                            } else {
+                                DmDetailsPanel {
+                                    user_id: active.id.clone(),
+                                    username: active.username.clone(),
+                                    avatar_url: active.avatar_url.clone(),
+                                    fingerprint: partner_fingerprint(),
+                                    my_fingerprint: my_fingerprint.clone(),
+                                    my_user_id: current_user_id.clone(),
+                                    on_key_verified: move |pid: String| {
+                                        peer_keys_cache.write().remove(&pid);
+                                        key_ack_tick.set(key_ack_tick() + 1);
+                                        toast.set(None);
+                                    },
+                                    messages: dm_view.clone(),
+                                    on_close: move |_| is_partner_info_open.set(false),
+                                    on_focus_composer: move |_| platform::focus_chat_input(),
+                                    on_audio_call: {
+                                        let id = active.id.clone();
+                                        move |_| start_call("audio", Some(id.clone()), None)
+                                    },
+                                    on_video_call: {
+                                        let id = active.id.clone();
+                                        move |_| start_call("video", Some(id.clone()), None)
+                                    },
+                                    on_view_profile: {
+                                        let id = active.id.clone();
+                                        move |_| viewing_profile_user_id.set(Some(id.clone()))
+                                    },
+                                    on_jump_to: move |id: String| jump_to_message(id),
+                                }
                             }
                         }
                     }

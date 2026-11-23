@@ -6,16 +6,23 @@ use dioxus::prelude::*;
 use crate::{
     components::{
         icons::{
-            ChevronDownIcon, ChevronRightIcon, CloseIcon, CopyIcon, MessageIcon, PhoneIcon,
-            SearchIcon, ShieldIcon, UserIcon, VideoIcon,
+            BellIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CopyIcon,
+            DevicesIcon, FileTextIcon, ImageIcon, LinkIcon, MessageIcon, MicIcon, PaletteIcon,
+            PhoneIcon, PinIcon, SearchIcon, SelfChatPrideAvatar, ShieldIcon, TrashIcon, UserIcon,
+            VideoIcon,
         },
         messages::ViewMessage,
         profile_card::DecoratedAvatar,
+        rich::{
+            parse_rich, rich_preview, ImageData, LightboxMedia, Rich, GLOBAL_LIGHTBOX,
+        },
     },
-    prefs::PrefsCtx,
-    models::UserProfileResponse,
+    i18n::t,
+    models::{SessionItem, UserProfileResponse},
     platform,
+    prefs::PrefsCtx,
     services::api,
+    storage::format_bytes_human,
 };
 
 fn presence_label(p: &str) -> &'static str {
@@ -447,5 +454,794 @@ fn ContactNoteEditor(user_id: String) -> Element {
                 }
             }
         }
+    }
+}
+
+// ============================================================================
+// Spec 089: Right-Side Personal Vault & Info Sidebar for "Chính mình"
+// (Modeled after Telegram Web K "Saved Messages" & Signal "Note to Self")
+// ============================================================================
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelfVaultTab {
+    Photo,
+    Documents,
+    Link,
+    Pinned,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum SelfMediaEntry {
+    Image {
+        msg_id: String,
+        created_at: String,
+        data: ImageData,
+    },
+    Video {
+        msg_id: String,
+        created_at: String,
+        name: String,
+        size: u64,
+        dur_ms: u64,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum SelfDocKind {
+    File,
+    Audio,
+    Note,
+    Reminder,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SelfDocEntry {
+    msg_id: String,
+    created_at: String,
+    kind: SelfDocKind,
+    title: String,
+    subtitle: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SelfLinkEntry {
+    msg_id: String,
+    created_at: String,
+    url: String,
+    host: String,
+}
+
+/// Extracts clean `http://` and `https://` URLs from a message's text or note/reminder content.
+pub fn extract_message_links(text: &str) -> Vec<String> {
+    let scan_buf: String;
+    let body = match parse_rich(text) {
+        Some(Rich::Note(n)) => {
+            scan_buf = format!("{} {}", n.t, n.b);
+            scan_buf.as_str()
+        }
+        Some(Rich::Reminder(r)) => {
+            scan_buf = r.t;
+            scan_buf.as_str()
+        }
+        Some(_) => return Vec::new(),
+        None => text,
+    };
+
+    let mut out = Vec::new();
+    for raw_tok in body.split_whitespace() {
+        let tok = raw_tok.trim_start_matches(|c: char| matches!(c, '(' | '[' | '{' | '<' | '"' | '\''));
+        let lower = tok.to_ascii_lowercase();
+        if !lower.starts_with("https://") && !lower.starts_with("http://") {
+            continue;
+        }
+        let mut cleaned = tok;
+        while let Some(last) = cleaned.chars().last() {
+            let strip = match last {
+                '.' | ',' | ';' | ':' | '!' | '?' | '"' | '\'' | '>' | ']' | '}' => true,
+                ')' => cleaned.matches(')').count() > cleaned.matches('(').count(),
+                _ => false,
+            };
+            if strip {
+                cleaned = &cleaned[..cleaned.len() - last.len_utf8()];
+            } else {
+                break;
+            }
+        }
+        let host = extract_link_host(cleaned);
+        if (host.contains('.') || host.eq_ignore_ascii_case("localhost"))
+            && !out.iter().any(|u| u == cleaned)
+        {
+            out.push(cleaned.to_string());
+        }
+    }
+    out
+}
+
+/// Extracts a clean display host from an HTTP(S) URL.
+pub fn extract_link_host(url: &str) -> String {
+    let without_scheme = url
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(url);
+    let authority = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    let host_port = authority.rsplit('@').next().unwrap_or(authority);
+    let host = host_port.split(':').next().unwrap_or(host_port);
+    host.strip_prefix("www.").unwrap_or(host).to_string()
+}
+
+fn format_duration_short(dur_ms: u64) -> String {
+    let total_secs = dur_ms / 1000;
+    let mins = total_secs / 60;
+    let secs = total_secs % 60;
+    format!("{mins}:{secs:02}")
+}
+
+fn searchable_message_text(m: &ViewMessage) -> String {
+    match parse_rich(&m.text) {
+        Some(Rich::Note(n)) => format!("{} {}", n.t, n.b),
+        Some(Rich::Reminder(r)) => format!("{} {}", r.t, r.at),
+        Some(Rich::Image(i)) => format!("{} {}", i.name, "Image"),
+        Some(Rich::File(f)) | Some(Rich::Video(f)) | Some(Rich::Audio(f)) => f.name,
+        Some(other) => rich_preview(&other),
+        None => m.text.clone(),
+    }
+}
+
+fn display_message_preview(m: &ViewMessage) -> String {
+    match parse_rich(&m.text) {
+        Some(r) => rich_preview(&r),
+        None => m.text.clone(),
+    }
+}
+
+#[component]
+fn SelfMediaThumb(
+    msg_id: String,
+    data: ImageData,
+    on_jump_to: EventHandler<String>,
+) -> Element {
+    let init_key = (data.u.clone(), data.k.clone(), data.n.clone());
+    let init_cached = platform::get_cached_blob_url_sync(&data.u, &data.k, &data.n);
+    let mut src = use_signal(move || init_cached);
+    let mut loaded_key = use_signal(move || if src.peek().is_some() { Some(init_key) } else { None });
+
+    let key_now = (data.u.clone(), data.k.clone(), data.n.clone());
+    let mime_now = data.m.clone();
+    use_effect(use_reactive!(|key_now| {
+        if loaded_key.peek().as_ref() == Some(&key_now) && src.peek().is_some() {
+            return;
+        }
+        let (u, k, n) = key_now.clone();
+        if let Some(hit) = platform::get_cached_blob_url_sync(&u, &k, &n) {
+            loaded_key.set(Some(key_now));
+            src.set(Some(hit));
+            return;
+        }
+        let mime = if mime_now.starts_with("image/") {
+            mime_now.clone()
+        } else {
+            "image/png".into()
+        };
+        let target_key = key_now.clone();
+        spawn(async move {
+            if let Some(burl) = platform::resolve_e2ee_blob_media_url(&u, &k, &n, &mime, "LOW").await {
+                loaded_key.set(Some(target_key));
+                src.set(Some(burl));
+            }
+        });
+    }));
+
+    let blur_ok = data.blur.starts_with("data:image/") && data.blur.len() <= 1600;
+    let display_name = if data.name.trim().is_empty() {
+        "Image".to_string()
+    } else {
+        data.name.clone()
+    };
+    let w = data.w;
+    let h = data.h;
+    let size = data.size;
+    let jump_id = msg_id.clone();
+
+    rsx! {
+        button {
+            r#type: "button",
+            class: "self-media-tile",
+            title: "{display_name}",
+            onclick: move |_| {
+                if let Some(url) = src() {
+                    *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
+                        src: url,
+                        name: display_name.clone(),
+                        width: w,
+                        height: h,
+                        size,
+                    });
+                } else {
+                    on_jump_to.call(jump_id.clone());
+                }
+            },
+            if let Some(url) = src() {
+                img { src: "{url}", alt: "{display_name}", loading: "lazy" }
+            } else if blur_ok {
+                img { class: "self-media-blur", src: "{data.blur}", alt: "" }
+            } else {
+                span { class: "self-media-placeholder", ImageIcon { size: 20 } }
+            }
+        }
+    }
+}
+
+/// Dedicated right-hand panel for "Chính mình" ("Note to self"):
+/// Pride mascot hero, 4 quick actions, Telegram/Zalo-style Shared Storage tabs
+/// (Photo, Documents, Link, Pinned), live in-chat search, synced devices, and E2EE lock details.
+#[component]
+pub fn SelfDetailsPanel(
+    user_id: String,
+    username: String,
+    my_fingerprint: Option<String>,
+    sessions: Vec<SessionItem>,
+    messages: Vec<ViewMessage>,
+    on_close: EventHandler<()>,
+    on_focus_composer: EventHandler<()>,
+    on_open_wallpaper: EventHandler<()>,
+    on_clear_self: EventHandler<()>,
+    on_rename_device: EventHandler<(String, String)>,
+    on_jump_to: EventHandler<String>,
+) -> Element {
+    let mut active_tab = use_signal(|| SelfVaultTab::Photo);
+    let mut search = use_signal(String::new);
+    let mut security_open = use_signal(|| false);
+    let mut copied_fp = use_signal(|| false);
+    let mut copied_link = use_signal(|| Option::<String>::None);
+
+    // Partition decrypted self-chat messages into real Photo/Video, Documents/Notes, Links & Pinned vaults.
+    let mut media_items: Vec<SelfMediaEntry> = Vec::new();
+    let mut doc_items: Vec<SelfDocEntry> = Vec::new();
+    let mut link_items: Vec<SelfLinkEntry> = Vec::new();
+    let mut pinned_items: Vec<ViewMessage> = Vec::new();
+
+    for m in messages.iter().rev() {
+        if m.is_error {
+            continue;
+        }
+        if m.is_pinned {
+            pinned_items.push(m.clone());
+        }
+        match parse_rich(&m.text) {
+            Some(Rich::Image(img)) => {
+                media_items.push(SelfMediaEntry::Image {
+                    msg_id: m.id.clone(),
+                    created_at: m.created_at.clone(),
+                    data: img,
+                });
+            }
+            Some(Rich::Video(v)) => {
+                media_items.push(SelfMediaEntry::Video {
+                    msg_id: m.id.clone(),
+                    created_at: m.created_at.clone(),
+                    name: if v.name.trim().is_empty() { "Video".into() } else { v.name },
+                    size: v.size,
+                    dur_ms: v.dur_ms,
+                });
+            }
+            Some(Rich::File(f)) => {
+                doc_items.push(SelfDocEntry {
+                    msg_id: m.id.clone(),
+                    created_at: m.created_at.clone(),
+                    kind: SelfDocKind::File,
+                    title: if f.name.trim().is_empty() { "Documents".into() } else { f.name },
+                    subtitle: if f.size > 0 { format_bytes_human(f.size) } else { platform::format_local_time(&m.created_at) },
+                });
+            }
+            Some(Rich::Audio(a)) => {
+                doc_items.push(SelfDocEntry {
+                    msg_id: m.id.clone(),
+                    created_at: m.created_at.clone(),
+                    kind: SelfDocKind::Audio,
+                    title: if a.name.trim().is_empty() { "Voice messages".into() } else { a.name },
+                    subtitle: if a.dur_ms > 0 {
+                        format_duration_short(a.dur_ms)
+                    } else if a.size > 0 {
+                        format_bytes_human(a.size)
+                    } else {
+                        platform::format_local_time(&m.created_at)
+                    },
+                });
+            }
+            Some(Rich::Note(n)) => {
+                doc_items.push(SelfDocEntry {
+                    msg_id: m.id.clone(),
+                    created_at: m.created_at.clone(),
+                    kind: SelfDocKind::Note,
+                    title: if n.t.trim().is_empty() { "Notes".into() } else { n.t.clone() },
+                    subtitle: if n.b.trim().is_empty() {
+                        platform::format_local_time(&m.created_at)
+                    } else {
+                        n.b.clone()
+                    },
+                });
+                for url in extract_message_links(&m.text) {
+                    link_items.push(SelfLinkEntry {
+                        msg_id: m.id.clone(),
+                        created_at: m.created_at.clone(),
+                        host: extract_link_host(&url),
+                        url,
+                    });
+                }
+            }
+            Some(Rich::Reminder(r)) => {
+                doc_items.push(SelfDocEntry {
+                    msg_id: m.id.clone(),
+                    created_at: m.created_at.clone(),
+                    kind: SelfDocKind::Reminder,
+                    title: r.t.clone(),
+                    subtitle: r.at.clone(),
+                });
+                for url in extract_message_links(&m.text) {
+                    link_items.push(SelfLinkEntry {
+                        msg_id: m.id.clone(),
+                        created_at: m.created_at.clone(),
+                        host: extract_link_host(&url),
+                        url,
+                    });
+                }
+            }
+            Some(_) => {}
+            None => {
+                for url in extract_message_links(&m.text) {
+                    link_items.push(SelfLinkEntry {
+                        msg_id: m.id.clone(),
+                        created_at: m.created_at.clone(),
+                        host: extract_link_host(&url),
+                        url,
+                    });
+                }
+            }
+        }
+    }
+
+    let q = search().trim().to_lowercase();
+    let hits: Vec<ViewMessage> = if q.is_empty() {
+        Vec::new()
+    } else {
+        messages
+            .iter()
+            .rev()
+            .filter(|m| !m.is_error && searchable_message_text(m).to_lowercase().contains(&q))
+            .take(50)
+            .cloned()
+            .collect()
+    };
+
+    let media_count = media_items.len();
+    let doc_count = doc_items.len();
+    let link_count = link_items.len();
+    let pin_count = pinned_items.len();
+    let device_count = sessions.len().max(1);
+    let self_title = t("chat.self").to_string();
+    let _ = username;
+
+    rsx! {
+        button {
+            r#type: "button",
+            class: "drawer-backdrop",
+            aria_label: "Close",
+            tabindex: "-1",
+            onclick: move |_| on_close.call(()),
+        }
+        aside {
+            class: "details-panel self-details-panel",
+            "data-testid": "self-details-panel",
+            aria_label: "Conversation info",
+            button {
+                r#type: "button",
+                class: "icon-btn profile-close only-mobile",
+                title: "Close",
+                aria_label: "Close",
+                onclick: move |_| on_close.call(()),
+                CloseIcon {}
+            }
+            div { class: "details-scroll",
+                // 1. Hero Header
+                div { class: "details-hero self-details-hero",
+                    div { class: "details-banner self-details-banner", aria_hidden: "true" }
+                    div { class: "details-avatar self-details-avatar",
+                        span { class: "self-chat-avatar pride-voxel self-details-pride-avatar", aria_hidden: "true",
+                            SelfChatPrideAvatar {}
+                        }
+                    }
+                    div { class: "details-name", "{self_title}" }
+                    div { class: "details-status self-details-sub",
+                        ShieldIcon { size: 13 }
+                        span { "Only you" }
+                        span { aria_hidden: "true", "·" }
+                        span { "{device_count}" }
+                        span { "Devices" }
+                    }
+                }
+
+                // 2. 4 Quick Actions (Notes, Search, Theme/Wallpaper, Clear all)
+                div { class: "details-actions",
+                    button {
+                        r#type: "button",
+                        class: "details-action",
+                        title: "Create note",
+                        onclick: move |_| on_focus_composer.call(()),
+                        MessageIcon { size: 19 }
+                        span { "Notes" }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "details-action",
+                        title: "Search in chat",
+                        onclick: move |_| platform::focus_selector("#self-details-search-input"),
+                        SearchIcon { size: 19 }
+                        span { "Search" }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "details-action",
+                        "data-testid": "self-action-wallpaper",
+                        title: "Chat wallpaper",
+                        onclick: move |_| on_open_wallpaper.call(()),
+                        PaletteIcon { size: 19 }
+                        span { "Theme" }
+                    }
+                    button {
+                        r#type: "button",
+                        class: "details-action danger",
+                        "data-testid": "self-action-clear",
+                        title: "Delete all",
+                        onclick: move |_| on_clear_self.call(()),
+                        TrashIcon { size: 19 }
+                        span { "Delete all" }
+                    }
+                }
+
+                // 3. Shared Storage Vault (Photo / Documents / Link / Pinned)
+                div { class: "details-section self-vault-section",
+                    div { class: "details-section-title", "Storage" }
+                    div { class: "self-vault-tabs", role: "tablist", aria_label: "Storage",
+                        button {
+                            r#type: "button",
+                            role: "tab",
+                            "data-vault-tab": "photo",
+                            aria_selected: "{active_tab() == SelfVaultTab::Photo}",
+                            class: if active_tab() == SelfVaultTab::Photo { "self-vault-tab active" } else { "self-vault-tab" },
+                            onclick: move |_| active_tab.set(SelfVaultTab::Photo),
+                            span { "Photo" }
+                            if media_count > 0 { span { class: "self-vault-badge", "{media_count}" } }
+                        }
+                        button {
+                            r#type: "button",
+                            role: "tab",
+                            "data-vault-tab": "documents",
+                            aria_selected: "{active_tab() == SelfVaultTab::Documents}",
+                            class: if active_tab() == SelfVaultTab::Documents { "self-vault-tab active" } else { "self-vault-tab" },
+                            onclick: move |_| active_tab.set(SelfVaultTab::Documents),
+                            span { "Documents" }
+                            if doc_count > 0 { span { class: "self-vault-badge", "{doc_count}" } }
+                        }
+                        button {
+                            r#type: "button",
+                            role: "tab",
+                            "data-vault-tab": "link",
+                            aria_selected: "{active_tab() == SelfVaultTab::Link}",
+                            class: if active_tab() == SelfVaultTab::Link { "self-vault-tab active" } else { "self-vault-tab" },
+                            onclick: move |_| active_tab.set(SelfVaultTab::Link),
+                            span { "Link" }
+                            if link_count > 0 { span { class: "self-vault-badge", "{link_count}" } }
+                        }
+                        button {
+                            r#type: "button",
+                            role: "tab",
+                            "data-vault-tab": "pinned",
+                            aria_selected: "{active_tab() == SelfVaultTab::Pinned}",
+                            class: if active_tab() == SelfVaultTab::Pinned { "self-vault-tab active" } else { "self-vault-tab" },
+                            onclick: move |_| active_tab.set(SelfVaultTab::Pinned),
+                            span { "Pinned" }
+                            if pin_count > 0 { span { class: "self-vault-badge", "{pin_count}" } }
+                        }
+                    }
+
+                    match active_tab() {
+                        SelfVaultTab::Photo => rsx! {
+                            if media_items.is_empty() {
+                                div { class: "self-vault-empty",
+                                    ImageIcon { size: 20 }
+                                    span { "No results" }
+                                }
+                            } else {
+                                div { class: "self-media-grid",
+                                    for item in media_items.into_iter().take(24) {
+                                        match item {
+                                            SelfMediaEntry::Image { msg_id, data, .. } => rsx! {
+                                                SelfMediaThumb {
+                                                    key: "{msg_id}",
+                                                    msg_id: msg_id,
+                                                    data: data,
+                                                    on_jump_to: on_jump_to,
+                                                }
+                                            },
+                                            SelfMediaEntry::Video { msg_id, name, dur_ms, .. } => {
+                                                let id_jump = msg_id.clone();
+                                                let dur_lbl = if dur_ms > 0 { format_duration_short(dur_ms) } else { String::new() };
+                                                rsx! {
+                                                    button {
+                                                        key: "{msg_id}",
+                                                        r#type: "button",
+                                                        class: "self-media-tile self-media-video",
+                                                        title: "{name}",
+                                                        onclick: move |_| on_jump_to.call(id_jump.clone()),
+                                                        VideoIcon { size: 20 }
+                                                        if !dur_lbl.is_empty() {
+                                                            span { class: "self-media-dur", "{dur_lbl}" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        SelfVaultTab::Documents => rsx! {
+                            if doc_items.is_empty() {
+                                div { class: "self-vault-empty",
+                                    FileTextIcon { size: 20 }
+                                    span { "No results" }
+                                }
+                            } else {
+                                div { class: "self-vault-list",
+                                    for doc in doc_items.into_iter().take(30) {
+                                        {
+                                            let id_jump = doc.msg_id.clone();
+                                            let when = platform::format_local_time(&doc.created_at);
+                                            rsx! {
+                                                button {
+                                                    key: "{doc.msg_id}",
+                                                    r#type: "button",
+                                                    class: "self-vault-row",
+                                                    onclick: move |_| on_jump_to.call(id_jump.clone()),
+                                                    span { class: "self-vault-row-icon",
+                                                        match doc.kind {
+                                                            SelfDocKind::Audio => rsx! { MicIcon { size: 16 } },
+                                                            SelfDocKind::Reminder => rsx! { BellIcon { size: 16 } },
+                                                            _ => rsx! { FileTextIcon { size: 16 } },
+                                                        }
+                                                    }
+                                                    span { class: "self-vault-row-body",
+                                                        span { class: "self-vault-item-title", "{doc.title}" }
+                                                        span { class: "self-vault-item-sub", "{doc.subtitle} · {when}" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        SelfVaultTab::Link => rsx! {
+                            if link_items.is_empty() {
+                                div { class: "self-vault-empty",
+                                    LinkIcon { size: 20 }
+                                    span { "No results" }
+                                }
+                            } else {
+                                div { class: "self-vault-list",
+                                    for lnk in link_items.into_iter().take(30) {
+                                        {
+                                            let id_jump = lnk.msg_id.clone();
+                                            let url_copy = lnk.url.clone();
+                                            let is_copied = copied_link().as_deref() == Some(lnk.url.as_str());
+                                            let when = platform::format_local_time(&lnk.created_at);
+                                            rsx! {
+                                                div { key: "{lnk.msg_id}-{lnk.url}", class: "self-vault-row-wrap",
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "self-vault-row",
+                                                        onclick: move |_| on_jump_to.call(id_jump.clone()),
+                                                        span { class: "self-vault-row-icon", LinkIcon { size: 16 } }
+                                                        span { class: "self-vault-row-body",
+                                                            span { class: "self-vault-item-title", "{lnk.host}" }
+                                                            span { class: "self-vault-item-sub", "{lnk.url}" }
+                                                            span { class: "self-vault-item-meta", "{when}" }
+                                                        }
+                                                    }
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "icon-btn self-vault-copy-btn",
+                                                        title: "Copy link",
+                                                        aria_label: "Copy link",
+                                                        onclick: move |_| {
+                                                            platform::copy_to_clipboard(&url_copy);
+                                                            copied_link.set(Some(url_copy.clone()));
+                                                        },
+                                                        if is_copied { CheckIcon { size: 14 } } else { CopyIcon { size: 14 } }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        SelfVaultTab::Pinned => rsx! {
+                            if pinned_items.is_empty() {
+                                div { class: "self-vault-empty",
+                                    PinIcon { size: 20 }
+                                    span { "No results" }
+                                }
+                            } else {
+                                div { class: "self-vault-list",
+                                    for pm in pinned_items.into_iter().take(30) {
+                                        {
+                                            let id_jump = pm.id.clone();
+                                            let preview = display_message_preview(&pm);
+                                            let when = platform::format_local_time(&pm.created_at);
+                                            rsx! {
+                                                button {
+                                                    key: "{pm.id}",
+                                                    r#type: "button",
+                                                    class: "self-vault-row",
+                                                    onclick: move |_| on_jump_to.call(id_jump.clone()),
+                                                    span { class: "self-vault-row-icon", PinIcon { size: 16 } }
+                                                    span { class: "self-vault-row-body",
+                                                        span { class: "self-vault-item-title", "{preview}" }
+                                                        span { class: "self-vault-item-sub", "{when}" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+
+                // 4. Instant In-Chat Search
+                div { class: "details-section",
+                    div { class: "details-section-title", "Search in chat" }
+                    div { class: "search-field",
+                        SearchIcon { size: 16 }
+                        input {
+                            id: "self-details-search-input",
+                            r#type: "search",
+                            placeholder: "Find downloaded messages",
+                            aria_label: "Search in chat",
+                            value: "{search}",
+                            oninput: move |e| search.set(e.value()),
+                        }
+                    }
+                    if !q.is_empty() {
+                        if hits.is_empty() {
+                            div { class: "sidebar-empty", "There are no matching messages" }
+                        } else {
+                            div { class: "details-search-results",
+                                for h in hits {
+                                    {
+                                        let id = h.id.clone();
+                                        let when = platform::format_local_time(&h.created_at);
+                                        let preview = display_message_preview(&h);
+                                        rsx! {
+                                            button {
+                                                key: "{h.id}",
+                                                r#type: "button",
+                                                class: "details-search-hit",
+                                                onclick: move |_| on_jump_to.call(id.clone()),
+                                                span { class: "details-search-hit-meta", "{when}" }
+                                                span { class: "details-search-hit-text", "{preview}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 5. Synced Devices ("Your device")
+                if !sessions.is_empty() {
+                    div { class: "details-section",
+                        div { class: "details-section-title", "Your device" }
+                        div { class: "self-device-list",
+                            for sess in sessions {
+                                {
+                                    let label = sess
+                                        .device_label
+                                        .clone()
+                                        .or(sess.device_name.clone())
+                                        .unwrap_or_else(|| "Devices".into());
+                                    let sid = sess.id.clone();
+                                    let label_click = label.clone();
+                                    rsx! {
+                                        button {
+                                            key: "{sess.id}",
+                                            r#type: "button",
+                                            class: if sess.is_current { "self-device-row current" } else { "self-device-row" },
+                                            title: "Click to rename the device",
+                                            onclick: move |_| on_rename_device.call((sid.clone(), label_click.clone())),
+                                            span { class: "self-vault-row-icon", DevicesIcon { size: 15 } }
+                                            span { class: "self-device-name", "{label}" }
+                                            if sess.is_current {
+                                                span { class: "self-device-badge", "this device" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 6. Security & Personal E2EE Lock Disclosure
+                div { class: "details-section",
+                    button {
+                        r#type: "button",
+                        class: "disclosure",
+                        aria_expanded: "{security_open()}",
+                        onclick: move |_| security_open.set(!security_open()),
+                        span { class: "disclosure-icon", ShieldIcon { size: 16 } }
+                        span { class: "disclosure-text",
+                            span { class: "disclosure-title", "Security and encryption" }
+                            span { class: "disclosure-sub", "End-to-end encryption is on" }
+                        }
+                        if security_open() { ChevronDownIcon { size: 16 } } else { ChevronRightIcon { size: 16 } }
+                    }
+                    if security_open() {
+                        div { class: "security-note", "Direct messages are end-to-end encrypted" }
+                        if let Some(mine) = my_fingerprint.clone() {
+                            div { class: "details-section-title", "Fingerprint your lock" }
+                            div { class: "fingerprint", "{format_fingerprint(&mine)}" }
+                            button {
+                                r#type: "button",
+                                class: "btn-secondary",
+                                onclick: move |_| {
+                                    platform::copy_to_clipboard(&mine);
+                                    copied_fp.set(true);
+                                },
+                                CopyIcon {}
+                                if copied_fp() { "Copied" } else { "Copy fingerprint" }
+                            }
+                        }
+                        div { class: "details-row",
+                            span { class: "details-row-label", "User code" }
+                        }
+                        div { class: "fingerprint", "{user_id}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod spec089_self_vault_tests {
+    use super::{extract_link_host, extract_message_links};
+
+    #[test]
+    fn extracts_clean_http_links_without_trailing_punctuation() {
+        let links = extract_message_links(
+            "Check https://github.com/kiyogo/chart, and (https://en.wikipedia.org/wiki/Rust_(programming_language))!",
+        );
+        assert_eq!(
+            links,
+            vec![
+                "https://github.com/kiyogo/chart".to_string(),
+                "https://en.wikipedia.org/wiki/Rust_(programming_language)".to_string(),
+            ]
+        );
+        assert_eq!(extract_link_host("https://www.github.com/kiyogo/chart"), "github.com");
+    }
+
+    #[test]
+    fn extracts_links_inside_rich_notes_and_skips_binary_rich_payloads() {
+        let note_links = extract_message_links(r#"note:{"t":"Bookmarks","b":"See https://chatw.app/docs."}"#);
+        assert_eq!(note_links, vec!["https://chatw.app/docs".to_string()]);
+        assert!(extract_message_links(r#"img:{"u":"/uploads/media/a.png","name":"pic"}"#).is_empty());
     }
 }
