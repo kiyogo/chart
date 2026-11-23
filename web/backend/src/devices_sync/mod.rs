@@ -96,7 +96,7 @@ async fn handle_register_device(
 
     // Check if this client_device_id already exists for user.
     let existing = sqlx::query(
-        "SELECT id, trust_state FROM devices WHERE user_id = $1 AND client_device_id = $2",
+        "SELECT id, trust_state, ecdh_public FROM devices WHERE user_id = $1 AND client_device_id = $2",
     )
     .bind(user.id)
     .bind(cid)
@@ -111,19 +111,34 @@ async fn handle_register_device(
     .fetch_one(&state.db)
     .await?;
 
+    let has_account_keys: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM device_keys WHERE user_id = $1)",
+    )
+    .bind(user.id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(false);
+
     let require_approval: bool = sqlx::query_scalar(
         "SELECT require_device_approval FROM device_storage_policies WHERE user_id = $1",
     )
     .bind(user.id)
     .fetch_optional(&state.db)
     .await?
-    .unwrap_or(true);
+    .unwrap_or(false);
+
+    let needs_key_sync = ecdsa.is_none() || fp.is_none();
+    let mut ecdh_changed = false;
 
     let (device_id, trust_state) = if let Some(row) = existing {
         let did: Uuid = row.try_get("id")?;
         let state_str: String = row.try_get("trust_state")?;
+        let prev_ecdh: Option<Vec<u8>> = row.try_get("ecdh_public").ok().flatten();
         if state_str == "revoked" {
             return Err(AppError::Forbidden("device_revoked"));
+        }
+        if let Some(ref next_ecdh) = ecdh {
+            ecdh_changed = prev_ecdh.as_deref() != Some(next_ecdh.as_slice());
         }
         sqlx::query(
             r#"
@@ -148,7 +163,9 @@ async fn handle_register_device(
         (did, state_str)
     } else {
         let did = Uuid::new_v4();
-        let initial_trust = if other_trusted_count > 0 && require_approval {
+        // Keep new devices without local E2EE identity keys in `pending` until a trusted device
+        // transfers `wrapped_sync_key` (automatically when !require_approval, or manually when opted in).
+        let initial_trust = if other_trusted_count > 0 && (require_approval || needs_key_sync) {
             "pending"
         } else {
             "trusted"
@@ -193,20 +210,36 @@ async fn handle_register_device(
 
     let mut challenge_id: Option<Uuid> = None;
     let mut verification_code: Option<String> = None;
-    if trust_state == "pending" {
+    let should_request_sync = trust_state == "pending"
+        || (needs_key_sync
+            && has_account_keys
+            && other_trusted_count > 0
+            && req.ecdh_public_b64.is_some());
+
+    if should_request_sync {
+        if ecdh_changed {
+            let _ = sqlx::query(
+                "UPDATE device_login_requests SET status = 'expired' WHERE requesting_device_id = $1 AND status = 'pending'",
+            )
+            .bind(device_id)
+            .execute(&state.db)
+            .await;
+        }
         let existing_req = sqlx::query(
             "SELECT id, verification_code FROM device_login_requests WHERE requesting_device_id = $1 AND status = 'pending' AND expires_at > now() ORDER BY created_at DESC LIMIT 1",
         )
         .bind(device_id)
         .fetch_optional(&state.db)
         .await?;
-        if let Some(er) = existing_req {
-            challenge_id = Some(er.try_get("id")?);
-            verification_code = Some(er.try_get("verification_code")?);
+        let (rid, code) = if let Some(er) = existing_req {
+            (er.try_get::<Uuid, _>("id")?, er.try_get::<String, _>("verification_code")?)
         } else {
             let rid = Uuid::new_v4();
             let code = generate_6_digit_code();
-            let ua = headers.get(axum::http::header::USER_AGENT).and_then(|v| v.to_str().ok()).map(|s| s.chars().take(200).collect::<String>());
+            let ua = headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.chars().take(200).collect::<String>());
             sqlx::query(
                 r#"
                 INSERT INTO device_login_requests
@@ -222,31 +255,37 @@ async fn handle_register_device(
             .bind(&ua)
             .execute(&state.db)
             .await?;
-            challenge_id = Some(rid);
-            verification_code = Some(code.clone());
+            (rid, code)
+        };
+        challenge_id = Some(rid);
+        verification_code = Some(code.clone());
 
-            state
-                .ws_hub
-                .send_to_user(
-                    &user.id,
-                    WsEvent::DeviceApprovalRequest(serde_json::json!({
-                        "request_id": rid,
-                        "requesting_device_id": device_id,
-                        "client_device_id": cid,
-                        "device_name": req.device_name.as_deref().unwrap_or(platform),
-                        "platform": platform,
-                        "verification_code": code,
-                        "ecdh_public_b64": req.ecdh_public_b64,
-                    })),
-                )
-                .await;
-        }
+        // Always notify online trusted devices (including on page reload) so auto-sync fires immediately.
+        state
+            .ws_hub
+            .send_to_user(
+                &user.id,
+                WsEvent::DeviceApprovalRequest(serde_json::json!({
+                    "request_id": rid,
+                    "requesting_device_id": device_id,
+                    "client_device_id": cid,
+                    "device_name": req.device_name.as_deref().unwrap_or(platform),
+                    "platform": platform,
+                    "verification_code": code,
+                    "ecdh_public_b64": req.ecdh_public_b64,
+                    "auto_approve": !require_approval,
+                    "needs_key_sync": needs_key_sync,
+                })),
+            )
+            .await;
     }
 
     Ok(Json(serde_json::json!({
         "device_id": device_id,
         "trust_state": trust_state,
         "requires_approval": trust_state == "pending",
+        "auto_approve": !require_approval,
+        "needs_key_sync": needs_key_sync,
         "request_id": challenge_id,
         "verification_code": verification_code,
     })))
@@ -346,6 +385,14 @@ async fn handle_list_devices(
         false
     };
 
+    let require_approval: bool = sqlx::query_scalar(
+        "SELECT require_device_approval FROM device_storage_policies WHERE user_id = $1",
+    )
+    .bind(user.id)
+    .fetch_optional(&state.db)
+    .await?
+    .unwrap_or(false);
+
     let reqs_json: Vec<serde_json::Value> = if caller_is_trusted {
         let reqs = sqlx::query(
             r#"
@@ -353,11 +400,15 @@ async fn handle_list_devices(
                    d.device_label, d.platform, d.ecdh_public
             FROM device_login_requests r
             JOIN devices d ON d.id = r.requesting_device_id
-            WHERE r.user_id = $1 AND r.status = 'pending' AND r.expires_at > now()
+            WHERE r.user_id = $1
+              AND r.status = 'pending'
+              AND r.expires_at > now()
+              AND ($2::uuid IS NULL OR r.requesting_device_id <> $2)
             ORDER BY r.created_at DESC
             "#,
         )
         .bind(user.id)
+        .bind(user.device_id)
         .fetch_all(&state.db)
         .await?;
 
@@ -389,6 +440,7 @@ async fn handle_list_devices(
     Ok(Json(serde_json::json!({
         "devices": devices_json,
         "pending_requests": reqs_json,
+        "require_device_approval": require_approval,
     })))
 }
 
@@ -939,13 +991,15 @@ async fn handle_delta_sync(
     let group_since = q.group_since.unwrap_or(0);
     let channel_since = q.channel_since.unwrap_or(0);
 
-    // 1. DM incremental deltas
+    // 1. DM incremental deltas (exclude deleted_for_all so deleted messages never resurrect on sync)
     let dm_rows = sqlx::query(
         r#"
         SELECT id, seq, sender_id, receiver_id, reply_to_id, is_pinned, is_edited, deleted_for_all, created_at,
                CASE WHEN sender_id = $1 THEN sender_envelope ELSE recipient_envelope END AS env
         FROM messages
-        WHERE (sender_id = $1 OR receiver_id = $1) AND seq > $2
+        WHERE (sender_id = $1 OR receiver_id = $1)
+          AND seq > $2
+          AND deleted_for_all = FALSE
         ORDER BY seq ASC
         LIMIT $3
         "#,
@@ -1076,8 +1130,13 @@ async fn handle_delta_sync(
         .await;
     }
 
+    let has_more = (dm_messages.len() as i64) >= limit
+        || (group_messages.len() as i64) >= limit
+        || (channel_messages.len() as i64) >= limit;
+
     Ok(Json(serde_json::json!({
         "phase": "a_delta",
+        "has_more": has_more,
         "dm_messages": dm_messages,
         "group_messages": group_messages,
         "channel_messages": channel_messages,

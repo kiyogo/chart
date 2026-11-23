@@ -68,6 +68,8 @@ pub struct DeviceApprovalPending {
 pub struct DevicesListResponse {
     pub devices: Vec<DeviceEntry>,
     pub pending_requests: Vec<DeviceApprovalPending>,
+    #[serde(default)]
+    pub require_device_approval: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -351,9 +353,19 @@ pub async fn get_key_backup() -> Result<serde_json::Value, ApiError> {
 }
 
 pub async fn delta_sync(dm_since: i64, group_since: i64, channel_since: i64) -> Result<serde_json::Value, ApiError> {
+    delta_sync_with_limit(dm_since, group_since, channel_since, 250).await
+}
+
+pub async fn delta_sync_with_limit(
+    dm_since: i64,
+    group_since: i64,
+    channel_since: i64,
+    limit: i64,
+) -> Result<serde_json::Value, ApiError> {
+    let lim = limit.clamp(1, 500);
     req_json(
         "GET",
-        &format!("/api/sync/delta?dm_since={dm_since}&group_since={group_since}&channel_since={channel_since}&limit=100"),
+        &format!("/api/sync/delta?dm_since={dm_since}&group_since={group_since}&channel_since={channel_since}&limit={lim}"),
         None,
     )
     .await

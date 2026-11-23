@@ -283,7 +283,7 @@ pub(crate) async fn prepare_backup_dataset(
                     "auto_download_mode": sp.try_get::<String, _>("auto_download_mode").unwrap_or_else(|_| "wifi".into()),
                     "dm_relay_ttl_hours": sp.try_get::<i32, _>("dm_relay_ttl_hours").unwrap_or(168),
                     "dm_encrypted_backup": sp.try_get::<bool, _>("dm_encrypted_backup").unwrap_or(false),
-                    "require_device_approval": sp.try_get::<bool, _>("require_device_approval").unwrap_or(true),
+                    "require_device_approval": sp.try_get::<bool, _>("require_device_approval").unwrap_or(false),
                     "prefer_original_upload": sp.try_get::<bool, _>("prefer_original_upload").unwrap_or(false),
                 }),
             );

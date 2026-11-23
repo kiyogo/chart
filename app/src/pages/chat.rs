@@ -190,6 +190,7 @@ pub fn Chat(
     let mut is_partner_info_open = use_signal(|| platform::initial_window_width() >= 1280);
     let mut partner_fingerprint = use_signal(|| Option::<String>::None);
     let mut key_ack_tick = use_signal(|| 0u32);
+    let mut key_sync_reload_tick = use_signal(|| 0u32);
 
     // Sidebar Tabs
     let mut nav_section = use_signal(|| NavSection::DirectMessages);
@@ -610,12 +611,39 @@ pub fn Chat(
                     servers.set(parsed_s);
                 }
             }
-            let uk = user_keys.peek().clone();
+            let key_mismatched = crate::storage::E2EE_RECOVERY_REQUIRED
+                .peek()
+                .as_deref()
+                == Some("server_key_mismatch");
+            let uk = if key_mismatched {
+                None
+            } else {
+                user_keys.peek().clone()
+            };
             let uid_sync = uid.clone();
+            let pkey_sync = pkey.clone();
             spawn(async move {
-                if let Some(recovered) = crate::storage::sync_manager::bootstrap_device_and_sync_for_user(&uid_sync, uk).await {
-                    if user_keys.peek().is_none() {
+                let had_keys_before = uk.is_some();
+                let (recovered_opt, outcome) =
+                    crate::storage::sync_manager::bootstrap_device_and_sync_for_user(&uid_sync, uk)
+                        .await;
+                if !outcome.updated_previews.is_empty() {
+                    last_previews.with_mut(|m| {
+                        for (pid, txt) in &outcome.updated_previews {
+                            m.insert(pid.clone(), txt.clone());
+                        }
+                        persist_previews(&pkey_sync, m);
+                    });
+                }
+                if let Some(recovered) = recovered_opt {
+                    if !had_keys_before || user_keys.peek().is_none() || key_mismatched {
                         user_keys.set(Some(recovered));
+                        *crate::storage::E2EE_RECOVERY_REQUIRED.write() = None;
+                        key_sync_reload_tick.set(key_sync_reload_tick() + 1);
+                    } else if let Some(af) = active_friend.peek().clone()
+                        && outcome.touched_partners.contains(&af.id)
+                    {
+                        key_sync_reload_tick.set(key_sync_reload_tick() + 1);
                     }
                 }
             });
@@ -1316,20 +1344,50 @@ pub fn Chat(
                         let plat = v.get("platform").and_then(|s| s.as_str()).unwrap_or("web").to_string();
                         let code = v.get("verification_code").and_then(|s| s.as_str()).unwrap_or("000000").to_string();
                         let ecdh_pub = v.get("ecdh_public_b64").and_then(|s| s.as_str()).map(str::to_string);
-                        let can_approve = crate::storage::DEVICE_TRUST_STATE
-                            .peek()
-                            .as_ref()
-                            .is_some_and(|d| d.trust_state == "trusted" && d.device_id != req_did && (req_cid.is_empty() || d.client_device_id != req_cid));
+                        let auto_approve = v.get("auto_approve").and_then(|b| b.as_bool()).unwrap_or(true);
+                        let can_approve = crate::storage::E2EE_RECOVERY_REQUIRED.peek().is_none()
+                            && crate::storage::DEVICE_TRUST_STATE
+                                .peek()
+                                .as_ref()
+                                .is_some_and(|d| d.trust_state == "trusted" && d.device_id != req_did && (req_cid.is_empty() || d.client_device_id != req_cid));
                         if can_approve && !req_id.is_empty() {
-                            *crate::storage::PENDING_APPROVAL_ALERT.write() = Some(crate::storage::IncomingDeviceApproval {
-                                request_id: req_id,
-                                requesting_device_id: req_did,
-                                device_name: dname.clone(),
-                                platform: plat,
-                                verification_code: code.clone(),
-                                ecdh_public_b64: ecdh_pub,
-                            });
-                            toast.set(Some(format!("New device {dname} is pending approval (code {code})")));
+                            if auto_approve
+                                && let Some(my_keys) = user_keys.peek().clone()
+                                && let Some(pub_b64) = ecdh_pub.as_deref().filter(|s| !s.is_empty())
+                            {
+                                let rid_auto = req_id.clone();
+                                let code_auto = code.clone();
+                                let pub_auto = pub_b64.to_string();
+                                let dname_auto = dname.clone();
+                                spawn(async move {
+                                    if let Ok(wrapped) = crate::crypto::e2ee::wrap_sync_key_for_device(
+                                        &my_keys,
+                                        &pub_auto,
+                                        &rid_auto,
+                                    ) && crate::services::storage_sync::approve_device_request(
+                                        &rid_auto,
+                                        Some(&code_auto),
+                                        Some(&wrapped),
+                                    )
+                                    .await
+                                    .is_ok()
+                                    {
+                                        toast.set(Some(format!(
+                                            "The device is E2EE approved and key synced: {dname_auto}"
+                                        )));
+                                    }
+                                });
+                            } else {
+                                *crate::storage::PENDING_APPROVAL_ALERT.write() = Some(crate::storage::IncomingDeviceApproval {
+                                    request_id: req_id,
+                                    requesting_device_id: req_did,
+                                    device_name: dname.clone(),
+                                    platform: plat,
+                                    verification_code: code.clone(),
+                                    ecdh_public_b64: ecdh_pub,
+                                });
+                                toast.set(Some(format!("New device {dname} is pending approval (code {code})")));
+                            }
                         }
                     }
                     WsEvent::DeviceApprovalResolved(v) => {
@@ -1362,11 +1420,11 @@ pub fn Chat(
                                         ) {
                                             user_keys.set(Some(recovered));
                                             *crate::storage::E2EE_RECOVERY_REQUIRED.write() = None;
+                                            key_sync_reload_tick.set(key_sync_reload_tick() + 1);
+                                            toast.set(Some("The device is E2EE approved and key synced".into()));
                                         }
                                     }
-                                    let _ = crate::storage::sync_manager::run_incremental_delta_sync().await;
                                 });
-                                toast.set(Some("The device is E2EE approved and key synced".into()));
                             } else {
                                 crate::crypto::e2ee::lock_and_wipe_session_keys(Some(&uid));
                                 on_logout.call(());
@@ -2284,11 +2342,19 @@ pub fn Chat(
                 if active_friend.peek().as_ref().map(|f| f.id.as_str()) != Some(friend.id.as_str()) {
                     return;
                 }
-                if let Some(last) = decrypted_list.last() {
+                if let Some(last) = decrypted_list
+                    .iter()
+                    .rev()
+                    .find(|m| m.status == MessageStatus::Sent)
+                    .or_else(|| decrypted_list.last())
+                {
                     let txt = last.text.clone();
+                    let is_err_preview = last.status == MessageStatus::Error;
                     last_previews.with_mut(|m| {
-                        m.insert(friend.id.clone(), txt);
-                        persist_previews(&pkey, m);
+                        if !is_err_preview || !m.contains_key(&friend.id) {
+                            m.insert(friend.id.clone(), txt);
+                            persist_previews(&pkey, m);
+                        }
                     });
                 }
                 let place = if friend.id == uid { t("chat.self").to_string() } else { friend.username.clone() };
@@ -2308,15 +2374,8 @@ pub fn Chat(
                         if prune_orphaned_local_dm(list, &live_outbox_ids, &live_inflight) {
                             changed = true;
                         }
-                        let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
-                        for m in decrypted_list {
-                            if !existing.contains(&m.id) {
-                                list.push(m);
-                                changed = true;
-                            }
-                        }
-                        if changed {
-                            list.sort_by_key(|m| m.seq);
+                        if crate::storage::sync_manager::merge_healed_dm_messages(list, decrypted_list) {
+                            changed = true;
                         }
                     });
                     if *partner_read_seq.peek() != read_res {
@@ -2358,6 +2417,48 @@ pub fn Chat(
             }
         });
     });
+
+    // Spec 092: Whenever E2EE keys arrive via auto-sync, WS approval, or recovery unlock,
+    // immediately run a full decrypted DM history sync across all conversations, update every
+    // sidebar preview, and re-decrypt the open chat window in-place with zero reload.
+    {
+        let uid_for_resync = current_user_id.clone();
+        let pkey_for_resync = preview_storage_key.clone();
+        use_effect(move || {
+            let tick = key_sync_reload_tick();
+            if tick == 0 {
+                return;
+            }
+            let Some(keys_now) = user_keys.peek().clone() else {
+                return;
+            };
+            dm_cache.write().clear();
+            peer_keys_cache.write().clear();
+            let uid = uid_for_resync.clone();
+            let pkey = pkey_for_resync.clone();
+            spawn(async move {
+                if let Ok(outcome) = crate::storage::sync_manager::run_incremental_delta_sync_for_user(
+                    &uid,
+                    Some(&keys_now),
+                    true,
+                )
+                .await
+                {
+                    if !outcome.updated_previews.is_empty() {
+                        last_previews.with_mut(|m| {
+                            for (pid, txt) in &outcome.updated_previews {
+                                m.insert(pid.clone(), txt.clone());
+                            }
+                            persist_previews(&pkey, m);
+                        });
+                    }
+                }
+                if let Some(af) = active_friend.peek().clone() {
+                    select_friend.call(af);
+                }
+            });
+        });
+    }
 
     let uid_for_more = current_user_id.clone();
     let load_more_dm = use_callback(move |_: ()| {
@@ -4034,11 +4135,13 @@ pub fn Chat(
                         },
                         on_keys_imported: move |k| {
                             user_keys.set(Some(k));
+                            *crate::storage::E2EE_RECOVERY_REQUIRED.write() = None;
                             dm_cache.write().clear();
                             peer_keys_cache.write().clear();
                             messages.with_mut(|list| {
                                 list.retain(|m| !(m.id.starts_with("local-") && m.status == MessageStatus::Error));
                             });
+                            key_sync_reload_tick.set(key_sync_reload_tick() + 1);
                         },
                         on_username_changed: move |n: String| if let Some(h) = on_username_changed { h.call(n) },
                         on_replay_tour: move |_| tour_open.set(true),
@@ -5604,11 +5707,13 @@ pub fn Chat(
             current_user_id: current_user_id.clone(),
             on_unlocked: move |keys| {
                 user_keys.set(Some(keys));
+                *crate::storage::E2EE_RECOVERY_REQUIRED.write() = None;
                 dm_cache.write().clear();
                 peer_keys_cache.write().clear();
                 messages.with_mut(|list| {
                     list.retain(|m| !(m.id.starts_with("local-") && m.status == MessageStatus::Error));
                 });
+                key_sync_reload_tick.set(key_sync_reload_tick() + 1);
                 toast.set(Some("End-to-end encryption unlocked".into()));
             },
         }

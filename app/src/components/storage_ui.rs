@@ -28,7 +28,7 @@ pub fn StorageSettingsPanel() -> Element {
         auto_download_mode: "wifi".into(),
         dm_relay_ttl_hours: 168,
         dm_encrypted_backup: false,
-        require_device_approval: true,
+        require_device_approval: false,
         prefer_original_upload: false,
     });
     let mut notice = use_signal(|| Option::<(bool, String)>::None);
@@ -997,23 +997,31 @@ pub fn E2eeUnlockRecoveryModal(
     let mut pass = use_signal(String::new);
     let mut err = use_signal(|| Option::<String>::None);
     let mut confirm_reset = use_signal(|| false);
+    // Spec 092: Give online trusted devices a silent 2.5s auto-sync grace window on login
+    // so zero modal flashes when keys auto-transfer over blind-relay E2EE in ~300ms.
+    let mut auto_sync_grace = use_signal(|| true);
     let trust_info = DEVICE_TRUST_STATE();
 
-    // Race-free background sync watcher: if a trusted device approves this device and delivers
-    // `wrapped_sync_key` (even before WS connects or across reloads), automatically unwrap & unlock!
+    // Race-free background sync watcher: if a trusted device auto-syncs or approves this device
+    // and delivers `wrapped_sync_key` (even before WS connects or across reloads), automatically unwrap & unlock!
     let kind_opt = reason.clone();
     let uid_poll = current_user_id.clone();
     use_effect(use_reactive!(|kind_opt, uid_poll| {
         let Some(k) = kind_opt else {
+            auto_sync_grace.set(true);
             return;
         };
         if k == "locked_vault" || uid_poll.is_empty() {
+            auto_sync_grace.set(false);
             return;
         }
+        auto_sync_grace.set(true);
         let uid = uid_poll.clone();
         spawn(async move {
-            for _ in 0..120 {
-                platform::sleep_ms(1200).await;
+            for step in 0..300 {
+                // Fast 400ms polling during the initial 2.4s auto-sync window, then gentle 1.2s polling.
+                let delay_ms = if step < 6 { 400 } else { 1200 };
+                platform::sleep_ms(delay_ms).await;
                 if E2EE_RECOVERY_REQUIRED.peek().is_none() {
                     break;
                 }
@@ -1041,6 +1049,9 @@ pub fn E2eeUnlockRecoveryModal(
                         break;
                     }
                 }
+                if step == 5 && *auto_sync_grace.peek() {
+                    auto_sync_grace.set(false);
+                }
             }
         });
     }));
@@ -1049,6 +1060,16 @@ pub fn E2eeUnlockRecoveryModal(
         return rsx! {};
     };
     let is_locked_vault = kind == "locked_vault";
+    if !is_locked_vault && auto_sync_grace() {
+        return rsx! {
+            div {
+                class: "toast",
+                "data-testid": "e2ee-auto-sync-pill",
+                role: "status",
+                "Device sync"
+            }
+        };
+    }
     let uid_unlock = current_user_id.clone();
     let uid_reset = current_user_id.clone();
 
