@@ -12,7 +12,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(path.resolve('web/frontend/node_modules/playwright'));
 
 const BASE = process.env.CHATW_URL || 'http://127.0.0.1:8085';
-const SHOT_DIR = process.env.SPEC082_SHOT_DIR || '/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/verify_082';
+const SHOT_DIR = process.env.SPEC085_SHOT_DIR || '/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/verify_085';
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 const checks = [];
@@ -81,7 +81,8 @@ try {
       const polys = svg.querySelectorAll('polygon').length;
       const clipId = svg.querySelector('clipPath')?.getAttribute('id') || '';
       const gradIds = Array.from(svg.querySelectorAll('linearGradient')).map((el) => el.getAttribute('id'));
-      return { w: Math.round(r.width), h: Math.round(r.height), rects, paths, ellipses, circles, polys, clipId, gradIds };
+      const shiftedRight = Boolean(svg.querySelector('g[transform="translate(2.5, 0)"]'));
+      return { w: Math.round(r.width), h: Math.round(r.height), rects, paths, ellipses, circles, polys, clipId, gradIds, shiftedRight };
     };
     return { side: inspect(sideSvg), hdr: inspect(hdrSvg) };
   });
@@ -97,35 +98,37 @@ try {
     audit.side &&
       audit.side.w >= 40 &&
       audit.side.h >= 40 &&
-      audit.side.paths >= 6 &&
+      audit.side.paths === 6 &&
       audit.side.ellipses >= 4 &&
       audit.side.polys === 0 &&
-      audit.side.gradIds.length === 3 &&
+      audit.side.gradIds.length === 2 &&
+      audit.side.shiftedRight &&
       expectedPride.every((c) => audit.side.rects.includes(c))
   );
   const hdrOk = Boolean(
     audit.hdr &&
       audit.hdr.w >= 34 &&
       audit.hdr.h >= 34 &&
-      audit.hdr.paths >= 6 &&
+      audit.hdr.paths === 6 &&
       audit.hdr.ellipses >= 4 &&
       audit.hdr.polys === 0 &&
-      audit.hdr.gradIds.length === 3 &&
+      audit.hdr.gradIds.length === 2 &&
+      audit.hdr.shiftedRight &&
       expectedPride.every((c) => audit.hdr.rects.includes(c))
   );
   const allIds = [...(audit.side ? [audit.side.clipId, ...audit.side.gradIds] : []), ...(audit.hdr ? [audit.hdr.clipId, ...audit.hdr.gradIds] : [])];
-  const uniqueDefsIds = allIds.length === 8 && new Set(allIds).size === 8;
+  const uniqueDefsIds = allIds.length === 6 && new Set(allIds).size === 6;
 
-  record('Sidebar "Chính mình" avatar renders original ChatW mascot over 6-stripe Pride SVG', sideOk, JSON.stringify(audit.side));
-  record('Chat header "Chính mình" avatar renders original ChatW mascot over 6-stripe Pride SVG', hdrOk, JSON.stringify(audit.hdr));
-  record('Multiple inline SVG instances use 8 distinct clipPath + gradient IDs (zero collisions)', uniqueDefsIds, JSON.stringify(allIds));
+  record('Sidebar "Chính mình" avatar renders star-free +1px right-centered ChatW Pride SVG', sideOk, JSON.stringify(audit.side));
+  record('Chat header "Chính mình" avatar renders star-free +1px right-centered ChatW Pride SVG', hdrOk, JSON.stringify(audit.hdr));
+  record('Multiple inline SVG instances use 6 distinct clipPath + gradient IDs (zero collisions)', uniqueDefsIds, JSON.stringify(allIds));
   record('Zero uncaught JS pageerrors', pageErrors.length === 0, pageErrors.join(' | '));
 } finally {
   await browser.close();
 }
 
 const failed = checks.filter((c) => !c.pass);
-console.log(`\nSpec 082 Summary: ${checks.length - failed.length}/${checks.length} checks passed.`);
+console.log(`\nSpec 085 Summary: ${checks.length - failed.length}/${checks.length} checks passed.`);
 if (failed.length) {
   process.exit(1);
 }

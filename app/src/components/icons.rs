@@ -1017,7 +1017,7 @@ pub fn AndroidIcon(#[props(default = 20)] size: u32) -> Element {
 }
 
 /// Pure vector SVG avatar for "Note to self" ("Chính mình") celebrating LGBTQ+ Pride
-/// with an original ChatW Bubble-Spirit Mascot over the 6-stripe Pride flag (Spec 082).
+/// with an original ChatW Bubble-Spirit Mascot over the 6-stripe Pride flag (Spec 082 / Spec 085).
 #[component]
 pub fn SelfChatPrideAvatar() -> Element {
     static SELF_PRIDE_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
@@ -1025,11 +1025,9 @@ pub fn SelfChatPrideAvatar() -> Element {
     let clip_id = format!("cw-pride-clip-{uid}");
     let body_grad_id = format!("cw-mascot-body-{uid}");
     let ear_grad_id = format!("cw-mascot-ear-{uid}");
-    let sparkle_grad_id = format!("cw-sparkle-fill-{uid}");
     let clip_url = format!("url(#{clip_id})");
     let body_url = format!("url(#{body_grad_id})");
     let ear_url = format!("url(#{ear_grad_id})");
-    let sparkle_url = format!("url(#{sparkle_grad_id})");
 
     const MASCOT_SILHOUETTE: &str = "M 52 35.5 C 59 33.8 69 33.8 76 35.5 C 82.5 23.5 90.5 18.5 96 22 C 101 25.2 100.5 35.5 97.5 44.5 C 104.5 51.5 107.8 60.5 106.2 71.5 C 104.2 86.2 91.5 98 70.5 99.6 C 60 100.4 50.5 99.2 43.2 96.2 C 36.2 101.2 28.8 105.2 25 103.2 C 21.5 101.4 24.8 93.5 28.4 87 C 22.5 79.5 20.4 69.8 21.9 59.5 C 23.2 51.4 26.2 47 30.5 44.5 C 27.5 35.5 27 25.2 32 22 C 37.5 18.5 45.5 23.5 52 35.5 Z";
 
@@ -1052,10 +1050,6 @@ pub fn SelfChatPrideAvatar() -> Element {
                     stop { offset: "0%", stop_color: "#FBCFE8" }
                     stop { offset: "100%", stop_color: "#F472B6" }
                 }
-                linearGradient { id: "{sparkle_grad_id}", x1: "0", y1: "0", x2: "1", y2: "1",
-                    stop { offset: "0%", stop_color: "#FFFFFF" }
-                    stop { offset: "100%", stop_color: "#FEF08A" }
-                }
             }
             g { clip_path: "{clip_url}",
                 // 6-Stripe LGBTQ+ Pride Rainbow Flag Background
@@ -1069,87 +1063,72 @@ pub fn SelfChatPrideAvatar() -> Element {
                 // Subtle tint veil so the flag colors stay rich and cohesive
                 rect { x: "0", y: "0", width: "128", height: "128", fill: "#0F172A", fill_opacity: "0.03" }
 
-                // Soft drop shadow behind original ChatW Bubble-Spirit Mascot
-                g { transform: "translate(0, 4.6)", opacity: "0.27",
-                    path { d: MASCOT_SILHOUETTE, fill: "#0F172A" }
-                }
+                // Optically centered (+1px right) Original ChatW Bubble-Spirit Mascot
+                g { transform: "translate(2.5, 0)",
+                    // Soft drop shadow behind original ChatW Bubble-Spirit Mascot
+                    g { transform: "translate(0, 4.6)", opacity: "0.27",
+                        path { d: MASCOT_SILHOUETTE, fill: "#0F172A" }
+                    }
 
-                // Original ChatW Bubble-Spirit Mascot Body (Speech-Bubble + Soft Ears + Bottom-Left Tail)
-                path {
-                    d: MASCOT_SILHOUETTE,
-                    fill: "{body_url}",
-                    stroke: "#1E293B",
-                    stroke_width: "3.4",
-                    stroke_linejoin: "round",
-                }
+                    // Original ChatW Bubble-Spirit Mascot Body (Speech-Bubble + Soft Ears + Bottom-Left Tail)
+                    path {
+                        d: MASCOT_SILHOUETTE,
+                        fill: "{body_url}",
+                        stroke: "#1E293B",
+                        stroke_width: "3.4",
+                        stroke_linejoin: "round",
+                    }
 
-                // Soft lower-right plump inner shading
-                path {
-                    d: "M 98.8 54 C 103.5 63.5 102.5 78 92 88.2 C 82.5 96.8 66 98.5 50.5 96.2 C 67 95.5 81.5 91.5 90 82.5 C 97.2 74.8 100 64.5 98.8 54 Z",
-                    fill: "#BBD1FF",
-                    fill_opacity: "0.65",
-                }
+                    // Soft lower-right plump inner shading
+                    path {
+                        d: "M 98.8 54 C 103.5 63.5 102.5 78 92 88.2 C 82.5 96.8 66 98.5 50.5 96.2 C 67 95.5 81.5 91.5 90 82.5 C 97.2 74.8 100 64.5 98.8 54 Z",
+                        fill: "#BBD1FF",
+                        fill_opacity: "0.65",
+                    }
 
-                // Soft glossy top-left forehead highlight
-                ellipse {
-                    cx: "49",
-                    cy: "43.8",
-                    rx: "11.5",
-                    ry: "4.4",
-                    transform: "rotate(-14 49 43.8)",
-                    fill: "#FFFFFF",
-                    fill_opacity: "0.92",
-                }
+                    // Soft glossy top-left forehead highlight
+                    ellipse {
+                        cx: "49",
+                        cy: "43.8",
+                        rx: "11.5",
+                        ry: "4.4",
+                        transform: "rotate(-14 49 43.8)",
+                        fill: "#FFFFFF",
+                        fill_opacity: "0.92",
+                    }
 
-                // Pastel Pink Inner Ears
-                path {
-                    d: "M 35.2 27.6 C 32.8 30.2 33.6 36.6 37.2 39.2 C 41.2 37.8 44.8 34.0 44.0 30.8 C 42.2 27.8 38.0 26.2 35.2 27.6 Z",
-                    fill: "{ear_url}",
-                }
-                path {
-                    d: "M 92.8 27.6 C 95.2 30.2 94.4 36.6 90.8 39.2 C 86.8 37.8 83.2 34.0 84.0 30.8 C 85.8 27.8 90.0 26.2 92.8 27.6 Z",
-                    fill: "{ear_url}",
-                }
+                    // Pastel Pink Inner Ears
+                    path {
+                        d: "M 35.2 27.6 C 32.8 30.2 33.6 36.6 37.2 39.2 C 41.2 37.8 44.8 34.0 44.0 30.8 C 42.2 27.8 38.0 26.2 35.2 27.6 Z",
+                        fill: "{ear_url}",
+                    }
+                    path {
+                        d: "M 92.8 27.6 C 95.2 30.2 94.4 36.6 90.8 39.2 C 86.8 37.8 83.2 34.0 84.0 30.8 C 85.8 27.8 90.0 26.2 92.8 27.6 Z",
+                        fill: "{ear_url}",
+                    }
 
-                // Glossy Deep-Slate Kawaii Eyes with Dual Catchlights
-                ellipse { cx: "48.5", cy: "63.8", rx: "5.2", ry: "6.2", fill: "#1E293B" }
-                circle { cx: "46.8", cy: "61.4", r: "2.1", fill: "#FFFFFF" }
-                circle { cx: "50.4", cy: "66.4", r: "1.0", fill: "#FFFFFF", fill_opacity: "0.9" }
+                    // Glossy Deep-Slate Kawaii Eyes with Dual Catchlights
+                    ellipse { cx: "48.5", cy: "63.8", rx: "5.2", ry: "6.2", fill: "#1E293B" }
+                    circle { cx: "46.8", cy: "61.4", r: "2.1", fill: "#FFFFFF" }
+                    circle { cx: "50.4", cy: "66.4", r: "1.0", fill: "#FFFFFF", fill_opacity: "0.9" }
 
-                ellipse { cx: "79.5", cy: "63.8", rx: "5.2", ry: "6.2", fill: "#1E293B" }
-                circle { cx: "77.8", cy: "61.4", r: "2.1", fill: "#FFFFFF" }
-                circle { cx: "81.4", cy: "66.4", r: "1.0", fill: "#FFFFFF", fill_opacity: "0.9" }
+                    ellipse { cx: "79.5", cy: "63.8", rx: "5.2", ry: "6.2", fill: "#1E293B" }
+                    circle { cx: "77.8", cy: "61.4", r: "2.1", fill: "#FFFFFF" }
+                    circle { cx: "81.4", cy: "66.4", r: "1.0", fill: "#FFFFFF", fill_opacity: "0.9" }
 
-                // Soft Rosy Blush Cheeks
-                ellipse { cx: "37.2", cy: "73.2", rx: "5.8", ry: "3.4", fill: "#FB7185", fill_opacity: "0.54" }
-                ellipse { cx: "90.8", cy: "73.2", rx: "5.8", ry: "3.4", fill: "#FB7185", fill_opacity: "0.54" }
+                    // Soft Rosy Blush Cheeks
+                    ellipse { cx: "37.2", cy: "73.2", rx: "5.8", ry: "3.4", fill: "#FB7185", fill_opacity: "0.54" }
+                    ellipse { cx: "90.8", cy: "73.2", rx: "5.8", ry: "3.4", fill: "#FB7185", fill_opacity: "0.54" }
 
-                // Playful Cat-Spirit Happy Smile
-                path {
-                    d: "M 56.5 72.0 Q 60.2 76.8 64 72.8 Q 67.8 76.8 71.5 72.0",
-                    fill: "none",
-                    stroke: "#1E293B",
-                    stroke_width: "3.0",
-                    stroke_linecap: "round",
-                    stroke_linejoin: "round",
-                }
-
-                // Signature Note-to-Self Floating 4-Point Sparkle Star (Top-Right)
-                path {
-                    d: "M 110.2 31.8 Q 110.8 37.8 116.8 38.4 Q 110.8 39.0 110.2 45.0 Q 109.6 39.0 103.6 38.4 Q 109.6 37.8 110.2 31.8 Z",
-                    fill: "{sparkle_url}",
-                    stroke: "#1E293B",
-                    stroke_width: "1.9",
-                    stroke_linejoin: "round",
-                }
-
-                // Companion Mini 4-Point Sparkle (Upper-Left)
-                path {
-                    d: "M 17.8 37.5 Q 18.2 41.3 22.0 41.7 Q 18.2 42.1 17.8 45.9 Q 17.4 42.1 13.6 41.7 Q 17.4 41.3 17.8 37.5 Z",
-                    fill: "{sparkle_url}",
-                    stroke: "#1E293B",
-                    stroke_width: "1.6",
-                    stroke_linejoin: "round",
+                    // Playful Cat-Spirit Happy Smile
+                    path {
+                        d: "M 56.5 72.0 Q 60.2 76.8 64 72.8 Q 67.8 76.8 71.5 72.0",
+                        fill: "none",
+                        stroke: "#1E293B",
+                        stroke_width: "3.0",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                    }
                 }
             }
         }
