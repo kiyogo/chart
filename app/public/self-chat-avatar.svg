@@ -15,16 +15,13 @@
   </defs>
 
   <g clip-path="url(#cw-pride-circle)">
-    <!-- 6-Stripe LGBTQ+ Pride Rainbow Flag Background -->
-    <rect x="0" y="0" width="128" height="21.8" fill="#E40303" />
-    <rect x="0" y="21.3" width="128" height="21.8" fill="#FF8C00" />
-    <rect x="0" y="42.6" width="128" height="21.8" fill="#FFED00" />
-    <rect x="0" y="64.0" width="128" height="21.8" fill="#008026" />
-    <rect x="0" y="85.3" width="128" height="21.8" fill="#004DFF" />
-    <rect x="0" y="106.6" width="128" height="21.8" fill="#750787" />
-
-    <!-- Subtle tint veil so the flag colors stay rich and cohesive -->
-    <rect x="0" y="0" width="128" height="128" fill="#0F172A" opacity="0.03" />
+    <!-- Vibrant Bright 6-Stripe LGBTQ+ Pride Rainbow Flag Background (Spec 086) -->
+    <rect x="0" y="0" width="128" height="21.8" fill="#FF2E55" />
+    <rect x="0" y="21.3" width="128" height="21.8" fill="#FF8C1A" />
+    <rect x="0" y="42.6" width="128" height="21.8" fill="#FFE119" />
+    <rect x="0" y="64.0" width="128" height="21.8" fill="#00D166" />
+    <rect x="0" y="85.3" width="128" height="21.8" fill="#1A8CFF" />
+    <rect x="0" y="106.6" width="128" height="21.8" fill="#A838FF" />
 
     <!-- Optically centered (+1px right) Original ChatW Bubble-Spirit Mascot -->
     <g transform="translate(2.5, 0)">

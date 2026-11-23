@@ -1,0 +1,7 @@
+# Spec 086 — Tasks
+
+- [x] **T1**: Upgrade the "Chính mình" Pride avatar flag palette to bright vibrant colors (zero dark veil) in `app/public/self-chat-avatar.svg` and `app/src/components/icons.rs`.
+- [x] **T2**: Add global hidden `<svg class="cw-lgbt-svg-defs">` with vibrant 7-color `#cw-lgbt-icon-grad` in `app/src/lib.rs`, wrap incoming Settings preview bubble text in a `<span>` in `app/src/components/settings_view.rs`, and upgrade `app/assets/fonts.css` to a bright vibrant 7-color LGBT spectrum covering ALL text AND ALL UI SVG icons (respecting `Reduce motion`).
+- [x] **T3**: Remove `.settings-nav-dev` extra `margin-top: 6px`, set `--panel-inset: 3px` (1/3 of 8px) across all left sidebars, set `gap: 0` on sidebar list containers (Messages, Friends, Communities, Channels, Settings), align `.settings-search`, and update `app/web/canvas_scrollbars.js` to mathematically center the right scrollbar inside the narrow `3px` gutter (plus allow system preview phrases in `app/web/i18n_runtime.js`).
+- [x] **T4**: Update `app/e2e/spec081-self-chat-pride-svg-avatar.mjs` for the bright avatar hex colors, create & run `app/e2e/spec086-vibrant-lgbt-icons-and-tight-sidebars.mjs`, build release WASM, run Rust + Playwright E2E suites, and visually inspect live screenshots across Messages, Friends, Communities, and Settings.
+- [x] **T5**: Mark tasks `[x]` and commit + push to `origin main` (`https://github.com/kiyogo/chart`).

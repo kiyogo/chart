@@ -1155,28 +1155,28 @@
   --cw-font-calligraphy: "ChatW Calligraphy", cursive, var(--cw-fallback-serif);
   --cw-font-dyslexic: "ChatW Readable", "Atkinson Hyperlegible", Verdana, var(--cw-fallback-sans);
 
-  /* 7-Color LGBT Pride Chromatic Palettes (Light & Dark optimized for contrast across all 197 languages) */
+  /* Radiant Fresh 7-Color LGBT Pride Chromatic Palettes (Spec 086 — zero muddy brown/olive!) */
   --lgbt-spectrum: linear-gradient(
     90deg,
-    #E51937 0%,
-    #F26500 14.28%,
-    #D99B00 28.57%,
-    #009E49 42.85%,
-    #0088D1 57.14%,
-    #2E4DFF 71.42%,
-    #9B26FF 85.71%,
-    #E51937 100%
+    #FF2E63 0%,
+    #FF7B00 14.28%,
+    #FFBE00 28.57%,
+    #00CE67 42.85%,
+    #00B4FF 57.14%,
+    #3B82F6 71.42%,
+    #B833FF 85.71%,
+    #FF2E63 100%
   );
   --lgbt-pill-bg: linear-gradient(
     115deg,
-    #D91642 0%,
-    #DF5B00 14.28%,
-    #C48900 28.57%,
-    #008B45 42.85%,
-    #0077C8 57.14%,
-    #3548E8 71.42%,
-    #8E24EA 85.71%,
-    #D91642 100%
+    #FF2E63 0%,
+    #FF7B00 14.28%,
+    #FFBE00 28.57%,
+    #00CE67 42.85%,
+    #00B4FF 57.14%,
+    #3B82F6 71.42%,
+    #B833FF 85.71%,
+    #FF2E63 100%
   );
 }
 
@@ -1184,14 +1184,14 @@
 html[data-surface-tone="dark"] {
   --lgbt-spectrum: linear-gradient(
     90deg,
-    #FF4D6D 0%,
-    #FF922B 14.28%,
+    #FF4D79 0%,
+    #FF9429 14.28%,
     #FFE033 28.57%,
-    #2EE676 42.85%,
-    #22D3EE 57.14%,
-    #638CFF 71.42%,
+    #26F288 42.85%,
+    #29D8FF 57.14%,
+    #6699FF 71.42%,
     #D966FF 85.71%,
-    #FF4D6D 100%
+    #FF4D79 100%
   );
 }
 
@@ -1237,53 +1237,110 @@ html[data-font="calligraphy"] body {
 }
 
 /* ============================================================================
- * 7-Color Animated LGBT Pride Chromatic Typography Engine (Spec 084)
- * - Smooth flowing 7-color rainbow when Reduce motion is OFF
- * - Freezes cleanly into a static 7-color Pride gradient when Reduce motion is ON
- * - Full protection for inputs, emojis, error alerts, danger buttons & lightbox
+ * 7-Color Vibrant Animated LGBT Pride Engine — ALL App Text + ALL UI Icons (Spec 086)
+ * - Radiant, bright 7-color rainbow flowing across every text element & SVG icon
+ * - Freezes cleanly onto a bright static 7-color Pride palette when Reduce motion is ON
+ * - Preserves hover/selected backgrounds, crisp white text on Pride pills, danger alerts & lightbox
  * ============================================================================ */
 @keyframes cwLgbtPrismFlow {
   0%   { background-position: 0% 50%; }
   100% { background-position: 200% 50%; }
 }
 
+@keyframes cwLgbtTextColorFlow {
+  0%   { color: #FF2E63; -webkit-text-fill-color: #FF2E63; }
+  14%  { color: #FF7B00; -webkit-text-fill-color: #FF7B00; }
+  28%  { color: #E5A500; -webkit-text-fill-color: #E5A500; }
+  43%  { color: #00C860; -webkit-text-fill-color: #00C860; }
+  57%  { color: #00AAFF; -webkit-text-fill-color: #00AAFF; }
+  71%  { color: #3B82F6; -webkit-text-fill-color: #3B82F6; }
+  85%  { color: #B833FF; -webkit-text-fill-color: #B833FF; }
+  100% { color: #FF2E63; -webkit-text-fill-color: #FF2E63; }
+}
+
+@keyframes cwLgbtIconHue {
+  0%   { filter: hue-rotate(0deg) saturate(1.12) brightness(1.03); }
+  100% { filter: hue-rotate(360deg) saturate(1.12) brightness(1.03); }
+}
+
+/* 1. Multi-stop 7-color rainbow gradient text across ALL inline/block typography in the entire app */
+html[data-font="lgbt"] h1,
+html[data-font="lgbt"] h2,
+html[data-font="lgbt"] h3,
+html[data-font="lgbt"] h4,
+html[data-font="lgbt"] h5,
+html[data-font="lgbt"] h6,
+html[data-font="lgbt"] p,
+html[data-font="lgbt"] dt,
+html[data-font="lgbt"] dd,
+html[data-font="lgbt"] th,
+html[data-font="lgbt"] td,
+html[data-font="lgbt"] small,
+html[data-font="lgbt"] strong,
+html[data-font="lgbt"] em,
+html[data-font="lgbt"] legend,
 html[data-font="lgbt"] .sidebar-title,
+html[data-font="lgbt"] .sidebar-section-header,
+html[data-font="lgbt"] .sidebar-empty,
+html[data-font="lgbt"] .sidebar-server-name,
 html[data-font="lgbt"] .chat-header-title,
 html[data-font="lgbt"] .chat-header-meta,
+html[data-font="lgbt"] .chat-header-sub,
 html[data-font="lgbt"] .chat-item-name,
 html[data-font="lgbt"] .chat-item-preview,
+html[data-font="lgbt"] .chat-item-time,
 html[data-font="lgbt"] .story-name,
+html[data-font="lgbt"] .story-bubble,
+html[data-font="lgbt"] .story-add-label,
+html[data-font="lgbt"] .note-label,
+html[data-font="lgbt"] .note-name,
 html[data-font="lgbt"] .channel-row-name,
-html[data-font="lgbt"] .sidebar-server-name,
+html[data-font="lgbt"] .category-name,
+html[data-font="lgbt"] .voice-status-label,
+html[data-font="lgbt"] .voice-status-channel,
+html[data-font="lgbt"] .server-banner-sub,
 html[data-font="lgbt"] .settings-title,
+html[data-font="lgbt"] .settings-mobile-title,
 html[data-font="lgbt"] .settings-section-title,
 html[data-font="lgbt"] .settings-group-title,
-html[data-font="lgbt"] .settings-subtab,
-html[data-font="lgbt"] .settings-nav-item span,
+html[data-font="lgbt"] .settings-nav-title,
+html[data-font="lgbt"] .settings-nav-item > span,
 html[data-font="lgbt"] .settings-label,
 html[data-font="lgbt"] .settings-row-desc,
 html[data-font="lgbt"] .settings-value,
 html[data-font="lgbt"] .settings-profile-name,
-html[data-font="lgbt"] .theme-card span,
+html[data-font="lgbt"] .settings-profile-sub,
+html[data-font="lgbt"] .font-size-val,
+html[data-font="lgbt"] .slider-val,
+html[data-font="lgbt"] .theme-card > span,
+html[data-font="lgbt"] .theme-card-label,
 html[data-font="lgbt"] .wallpaper-tile > span:last-child,
+html[data-font="lgbt"] .lang-native,
 html[data-font="lgbt"] .message-author,
 html[data-font="lgbt"] .message-row.received .message-bubble:not(.error-bubble) .message-text,
-html[data-font="lgbt"] .settings-preview-chat .message-row.received .message-bubble,
+html[data-font="lgbt"] .message-row.received .message-bubble:not(.error-bubble) .preview-bubble-text,
 html[data-font="lgbt"] .message-day-divider span,
-html[data-font="lgbt"] .empty-state h2,
-html[data-font="lgbt"] .empty-state h3,
-html[data-font="lgbt"] .empty-state p,
+html[data-font="lgbt"] .empty-state-title,
+html[data-font="lgbt"] .empty-state-sub,
 html[data-font="lgbt"] .empty-chat-title,
 html[data-font="lgbt"] .empty-chat-sub,
+html[data-font="lgbt"] .cw-qs-title,
+html[data-font="lgbt"] .cw-qs-desc,
 html[data-font="lgbt"] .auth-title,
 html[data-font="lgbt"] .auth-sub,
-html[data-font="lgbt"] .modal-header h3,
 html[data-font="lgbt"] .member-name,
+html[data-font="lgbt"] .account-name,
 html[data-font="lgbt"] .result-name,
-html[data-font="lgbt"] .tab-btn,
+html[data-font="lgbt"] .result-sub,
+html[data-font="lgbt"] .result-desc,
 html[data-font="lgbt"] .cw-select-option-label,
 html[data-font="lgbt"] .font-preview-sample,
 html[data-font="lgbt"] .font-preview-chars,
+html[data-font="lgbt"] label.toggle-row span:not(.switch),
+html[data-font="lgbt"] .settings-row > span,
+html[data-font="lgbt"] .settings-row > label > span,
+html[data-font="lgbt"] .settings-subtab,
+html[data-font="lgbt"] .tab-btn,
 .cw-select-option[data-font-preview="lgbt"] .cw-select-option-label {
   background-image: var(--lgbt-spectrum) !important;
   background-size: 200% 100% !important;
@@ -1294,107 +1351,148 @@ html[data-font="lgbt"] .font-preview-chars,
   color: transparent !important;
   line-height: 1.48;
   padding-block: 1px;
-  animation: cwLgbtPrismFlow 6.5s linear infinite;
+  animation: cwLgbtPrismFlow 6s linear infinite;
 }
 
-/* Flowing 7-Color Pride Gradient Pills (high-contrast crisp white text on outgoing bubbles & primary buttons) */
+/* 2. Box-painted controls (selects, inputs, secondary/chip/menu buttons, note bubbles, timestamps, device pills)
+      keep their own surface backgrounds while cycling smoothly through all 7 vibrant Pride colors! */
+html[data-font="lgbt"] select,
+html[data-font="lgbt"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+html[data-font="lgbt"] textarea,
+html[data-font="lgbt"] .btn-secondary:not(.danger),
+html[data-font="lgbt"] .btn-ghost:not(.danger),
+html[data-font="lgbt"] .btn-small-secondary:not(.danger),
+html[data-font="lgbt"] .btn-avatar-upload,
+html[data-font="lgbt"] .note-bubble,
+html[data-font="lgbt"] button.filter-chip,
+html[data-font="lgbt"] button.account-menu-item:not(.danger),
+html[data-font="lgbt"] .bubble-meta,
+html[data-font="lgbt"] .message-time,
+html[data-font="lgbt"] .message-time-standalone,
+html[data-font="lgbt"] .device-pill,
+html[data-font="lgbt"] .self-device-pill,
+html[data-font="lgbt"] .settings-row label {
+  animation: cwLgbtTextColorFlow 6.5s linear infinite;
+  color: #FF2E63;
+  -webkit-text-fill-color: #FF2E63;
+}
+html[data-font="lgbt"] input::placeholder,
+html[data-font="lgbt"] textarea::placeholder {
+  color: #B833FF !important;
+  -webkit-text-fill-color: #B833FF !important;
+  opacity: 0.72;
+}
+
+/* 3. Radiant 7-Color Rainbow on ALL Monochrome UI SVG Icons (rail, settings, sidebar, composer, header) */
+html[data-font="lgbt"] svg.cw-icon {
+  stroke: url(#cw-lgbt-icon-grad) !important;
+  color: #FF2E63 !important;
+  animation: cwLgbtIconHue 6s linear infinite;
+}
+html[data-font="lgbt"] svg.cw-icon [fill="currentColor"] {
+  fill: url(#cw-lgbt-icon-grad) !important;
+}
+html[data-font="lgbt"] svg.cw-icon [fill-opacity] {
+  fill: url(#cw-lgbt-icon-grad) !important;
+  fill-opacity: 0.24 !important;
+}
+
+/* 4. Vibrant Flowing 7-Color Pride Gradient Pills (crisp pure white text & white icons) */
 html[data-font="lgbt"] .message-row.sent .message-bubble:not(.error-bubble),
 html[data-font="lgbt"] .btn-primary:not(.danger):not(.btn-danger),
+html[data-font="lgbt"] .btn-small-primary:not(.danger),
 html[data-font="lgbt"] .send-btn:not(:disabled),
-html[data-font="lgbt"] input[type="checkbox"].switch:checked {
+html[data-font="lgbt"] input[type="checkbox"].switch:checked,
+html[data-font="lgbt"] input[type="checkbox"]:not(.switch):checked {
   background-image: var(--lgbt-pill-bg) !important;
   background-size: 220% 100% !important;
+  border-color: transparent !important;
   color: #FFFFFF !important;
   -webkit-text-fill-color: #FFFFFF !important;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
-  animation: cwLgbtPrismFlow 7.5s linear infinite;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+  animation: cwLgbtPrismFlow 6.5s linear infinite;
 }
 html[data-font="lgbt"] .message-row.sent .message-bubble:not(.error-bubble) *,
-html[data-font="lgbt"] .btn-primary:not(.danger):not(.btn-danger) * {
+html[data-font="lgbt"] .btn-primary:not(.danger):not(.btn-danger) *,
+html[data-font="lgbt"] .btn-small-primary:not(.danger) *,
+html[data-font="lgbt"] .send-btn:not(:disabled) * {
   background-image: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;
   -webkit-text-fill-color: #FFFFFF !important;
   color: #FFFFFF !important;
+  stroke: #FFFFFF !important;
+  filter: none !important;
   animation: none !important;
 }
 
-/* Keep preview incoming bubble timestamp cleanly legible */
-html[data-font="lgbt"] .settings-preview-chat .message-row.received .bubble-meta {
+/* Protect brand marks, avatars, lightbox controls, error alerts, and danger controls */
+html[data-font="lgbt"] .brand-mark svg.cw-icon,
+html[data-font="lgbt"] .has-logo svg.cw-icon,
+html[data-font="lgbt"] .lightbox svg.cw-icon {
+  stroke: #FFFFFF !important;
+  color: #FFFFFF !important;
+  filter: none !important;
+  animation: none !important;
+}
+html[data-font="lgbt"] .brand-mark svg.cw-icon [fill="currentColor"],
+html[data-font="lgbt"] .has-logo svg.cw-icon [fill="currentColor"] {
+  fill: #FFFFFF !important;
+}
+html[data-font="lgbt"] .user-avatar,
+html[data-font="lgbt"] .user-avatar *,
+html[data-font="lgbt"] .avatar,
+html[data-font="lgbt"] .avatar * {
+  background-clip: border-box !important;
+  -webkit-background-clip: border-box !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  animation: none !important;
+}
+html[data-font="lgbt"] .message-bubble.error-bubble *,
+html[data-font="lgbt"] .lightbox *,
+html[data-font="lgbt"] .danger,
+html[data-font="lgbt"] .danger *,
+html[data-font="lgbt"] .btn-danger,
+html[data-font="lgbt"] .btn-danger * {
   background-image: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;
-  -webkit-text-fill-color: var(--text-tertiary) !important;
-  color: var(--text-tertiary) !important;
+  -webkit-text-fill-color: currentColor !important;
   animation: none !important;
+  filter: none !important;
+}
+html[data-font="lgbt"] .danger svg.cw-icon,
+html[data-font="lgbt"] .btn-danger svg.cw-icon {
+  stroke: currentColor !important;
 }
 
-/* Subtle Pride accent halo on focused composer & inputs (keep typed text & caret 100% crisp) */
+/* Subtle Pride accent halo on focused composer & inputs (keep caret & selection crisp) */
 html[data-font="lgbt"] input,
 html[data-font="lgbt"] textarea {
-  caret-color: #9B26FF;
+  caret-color: #B833FF;
 }
 html[data-font="lgbt"] ::selection {
-  background: #7C3AED;
+  background: #B833FF;
   color: #FFFFFF;
   -webkit-text-fill-color: #FFFFFF;
 }
 html[data-font="lgbt"] .composer-box:focus-within {
-  box-shadow: 0 0 0 2px rgba(155, 38, 255, 0.32), 0 0 16px rgba(0, 136, 209, 0.16);
+  box-shadow: 0 0 0 2px rgba(184, 51, 255, 0.34), 0 0 18px rgba(0, 180, 255, 0.18);
 }
 
-/* Strictly preserve readability on danger, error bubbles, and lightbox overlays */
-html[data-font="lgbt"] .message-bubble.error-bubble .message-text,
-html[data-font="lgbt"] .lightbox *,
-html[data-font="lgbt"] .danger,
-html[data-font="lgbt"] .btn-danger {
-  -webkit-text-fill-color: currentColor !important;
-}
-
-/* Reduce Motion ("Giảm chuyển động") ON -> Freeze seamlessly onto a gorgeous static 7-color Pride gradient! */
-html[data-reduce-motion="true"] .sidebar-title,
-html[data-reduce-motion="true"] .chat-header-title,
-html[data-reduce-motion="true"] .chat-header-meta,
-html[data-reduce-motion="true"] .chat-item-name,
-html[data-reduce-motion="true"] .chat-item-preview,
-html[data-reduce-motion="true"] .story-name,
-html[data-reduce-motion="true"] .channel-row-name,
-html[data-reduce-motion="true"] .sidebar-server-name,
-html[data-reduce-motion="true"] .settings-title,
-html[data-reduce-motion="true"] .settings-section-title,
-html[data-reduce-motion="true"] .settings-group-title,
-html[data-reduce-motion="true"] .settings-subtab,
-html[data-reduce-motion="true"] .settings-nav-item span,
-html[data-reduce-motion="true"] .settings-label,
-html[data-reduce-motion="true"] .settings-row-desc,
-html[data-reduce-motion="true"] .settings-value,
-html[data-reduce-motion="true"] .settings-profile-name,
-html[data-reduce-motion="true"] .theme-card span,
-html[data-reduce-motion="true"] .wallpaper-tile > span:last-child,
-html[data-reduce-motion="true"] .message-author,
-html[data-reduce-motion="true"] .message-row.received .message-bubble .message-text,
-html[data-reduce-motion="true"] .settings-preview-chat .message-row.received .message-bubble,
-html[data-reduce-motion="true"] .message-day-divider span,
-html[data-reduce-motion="true"] .empty-state h2,
-html[data-reduce-motion="true"] .empty-state h3,
-html[data-reduce-motion="true"] .empty-state p,
-html[data-reduce-motion="true"] .empty-chat-title,
-html[data-reduce-motion="true"] .empty-chat-sub,
-html[data-reduce-motion="true"] .auth-title,
-html[data-reduce-motion="true"] .auth-sub,
-html[data-reduce-motion="true"] .modal-header h3,
-html[data-reduce-motion="true"] .member-name,
-html[data-reduce-motion="true"] .result-name,
-html[data-reduce-motion="true"] .tab-btn,
-html[data-reduce-motion="true"] .cw-select-option-label,
-html[data-reduce-motion="true"] .font-preview-sample,
-html[data-reduce-motion="true"] .font-preview-chars,
-html[data-reduce-motion="true"] .message-row.sent .message-bubble,
-html[data-reduce-motion="true"] .btn-primary,
-html[data-reduce-motion="true"] .send-btn,
-html[data-reduce-motion="true"] input[type="checkbox"].switch:checked,
+/* Reduce Motion ("Giảm chuyển động") ON -> Freeze ALL text, icons & pills onto static bright 7-color Pride! */
+html[data-reduce-motion="true"][data-font="lgbt"] *,
 html[data-reduce-motion="true"] .cw-select-option[data-font-preview="lgbt"] .cw-select-option-label {
   animation: none !important;
+}
+html[data-reduce-motion="true"][data-font="lgbt"] svg.cw-icon {
+  filter: none !important;
+}
+html[data-reduce-motion="true"][data-font="lgbt"] .font-preview-sample,
+html[data-reduce-motion="true"][data-font="lgbt"] .font-preview-chars,
+html[data-reduce-motion="true"][data-font="lgbt"] .message-row.sent .message-bubble,
+html[data-reduce-motion="true"][data-font="lgbt"] input[type="checkbox"].switch:checked,
+html[data-reduce-motion="true"] .cw-select-option[data-font-preview="lgbt"] .cw-select-option-label {
   background-size: 100% 100% !important;
   background-position: 0% 50% !important;
 }

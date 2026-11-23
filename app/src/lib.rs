@@ -157,6 +157,25 @@ pub fn App() -> Element {
         document::Style { {THEME_CSS} }
         document::Style { {MAIN_CSS} }
         document::Style { {FONTS_CSS} }
+        // Global vibrant 7-color Pride gradient definition for UI SVG icons when LGBT font is active (Spec 086)
+        svg {
+            class: "cw-lgbt-svg-defs",
+            width: "0",
+            height: "0",
+            "aria-hidden": "true",
+            style: "position:fixed;width:0;height:0;overflow:hidden;pointer-events:none;",
+            defs {
+                linearGradient { id: "cw-lgbt-icon-grad", x1: "0%", y1: "0%", x2: "100%", y2: "100%",
+                    stop { offset: "0%", stop_color: "#FF2E63" }
+                    stop { offset: "16.6%", stop_color: "#FF7B00" }
+                    stop { offset: "33.3%", stop_color: "#FFBE00" }
+                    stop { offset: "50%", stop_color: "#00CE67" }
+                    stop { offset: "66.6%", stop_color: "#00B4FF" }
+                    stop { offset: "83.3%", stop_color: "#3B82F6" }
+                    stop { offset: "100%", stop_color: "#B833FF" }
+                }
+            }
+        }
         div { class: "app-layout",
             div { class: "app-content",
                 match status() {

@@ -36,12 +36,12 @@ try {
   const svgResp = await ctx.request.get(`${BASE}/self-chat-avatar.svg`);
   const svgBody = await svgResp.text();
   record(
-    'Standalone /self-chat-avatar.svg serves HTTP 200 original ChatW mascot SVG with all 6 Pride colors',
+    'Standalone /self-chat-avatar.svg serves HTTP 200 original ChatW mascot SVG with all 6 bright Pride colors',
     svgResp.ok() &&
       svgBody.includes('<svg') &&
       svgBody.includes('<path') &&
       !svgBody.includes('<polygon') &&
-      ['#E40303', '#FF8C00', '#FFED00', '#008026', '#004DFF', '#750787'].every((c) => svgBody.includes(c)),
+      ['#FF2E55', '#FF8C1A', '#FFE119', '#00D166', '#1A8CFF', '#A838FF'].every((c) => svgBody.includes(c)),
     `status=${svgResp.status()} len=${svgBody.length}`
   );
 
@@ -93,7 +93,7 @@ try {
     clip: { x: 60, y: 0, width: 620, height: 340 },
   });
 
-  const expectedPride = ['#E40303', '#FF8C00', '#FFED00', '#008026', '#004DFF', '#750787'];
+  const expectedPride = ['#FF2E55', '#FF8C1A', '#FFE119', '#00D166', '#1A8CFF', '#A838FF'];
   const sideOk = Boolean(
     audit.side &&
       audit.side.w >= 40 &&

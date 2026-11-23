@@ -11585,6 +11585,65 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
   border-top-color: rgba(255, 255, 255, 0.09);
 }
 
+/* ==========================================================================
+   Spec 086: Tight 1/3 Left/Right Insets (3px) & Flush (0px Gap) Sidebar Lists
+   Across Messages, Friends, Communities, Channels & Settings + 100% Uniform
+   "Developer" ("Nhà phát triển") Spacing
+   ========================================================================== */
+:root {
+  --panel-inset: 3px;
+}
+
+.nav-sidebar .sidebar-top-header {
+  padding: 0 6px 0 10px !important;
+}
+.nav-sidebar .sidebar-search,
+.nav-sidebar .sidebar-filters,
+.nav-sidebar .add-friend-container {
+  padding-left: var(--panel-inset, 3px) !important;
+  padding-right: var(--panel-inset, 3px) !important;
+}
+.nav-sidebar .sidebar-scrollable,
+.nav-sidebar .friends-scroll {
+  padding: 0 var(--panel-inset, 3px) 6px !important;
+  gap: 0 !important;
+}
+.nav-sidebar .sidebar-scrollable > .notes-strip-wrap {
+  margin-bottom: 4px !important;
+}
+.nav-sidebar .category-block {
+  gap: 0 !important;
+}
+.nav-sidebar .conv-row,
+.nav-sidebar .chat-item,
+.nav-sidebar .request-card,
+.nav-sidebar .create-community-btn,
+.nav-sidebar .channel-row {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.nav-sidebar .server-banner,
+.nav-sidebar .voice-status-panel {
+  margin-left: var(--panel-inset, 3px) !important;
+  margin-right: var(--panel-inset, 3px) !important;
+}
+.settings-nav,
+.server-settings-stage .settings-nav {
+  padding: 8px var(--panel-inset, 3px) !important;
+  gap: 0 !important;
+}
+.settings-nav .settings-search,
+.server-settings-stage .settings-nav .settings-search {
+  margin: 0 0 6px !important;
+}
+.settings-nav .settings-nav-item,
+.settings-nav .settings-nav-item.settings-nav-dev,
+.server-settings-stage .settings-nav .settings-nav-item {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+
 
 
 

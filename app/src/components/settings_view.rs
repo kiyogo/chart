@@ -825,12 +825,12 @@ pub fn SettingsView(
                                                             div { class: "{preview_cls}",
                                                                 div { class: "message-row received group-start group-end",
                                                                     div { class: "message-content-wrapper",
-                                                                        div { class: "message-bubble", "Text and background auto-balance for easy reading." span { class: "bubble-meta", "09:41" } }
+                                                                        div { class: "message-bubble", span { class: "preview-bubble-text", "Text and background auto-balance for easy reading." } span { class: "bubble-meta", "09:41" } }
                                                                     }
                                                                 }
                                                                 div { class: "message-row sent group-start group-end",
                                                                     div { class: "message-content-wrapper",
-                                                                        div { class: "message-bubble", "Crisp and clear in every theme style." span { class: "bubble-meta", "09:42" } }
+                                                                        div { class: "message-bubble", span { class: "preview-bubble-text", "Crisp and clear in every theme style." } span { class: "bubble-meta", "09:42" } }
                                                                     }
                                                                 }
                                                             }

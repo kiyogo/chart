@@ -375,18 +375,20 @@
     // Allow preview chat bubbles inside Appearance preview and system error bubbles, skip user chat messages
     const bubble = el.closest('.message-bubble');
     if (bubble && !bubble.classList.contains('error-bubble') && !bubble.closest('.settings-preview-chat')) return true;
-    // Allow "Note to self" system name in chat-item-name / header, skip arbitrary usernames
+    // Allow "Note to self" & "Create or join community" system names in chat-item-name / header, skip arbitrary usernames
     const chatName = el.closest('.chat-item-name, .chat-header-title');
     if (chatName) {
       const txt = (origText.get(node) ?? node.nodeValue ?? '').trim();
-      if (txt !== 'Note to self') return true;
+      if (txt !== 'Note to self' && txt !== 'Create or join community') return true;
     }
-    // Skip arbitrary user message previews, translate system Note-to-self default subtitle & system preview labels
+    // Skip arbitrary user message previews, translate system Note-to-self & community subtitles
     const preview = el.closest('.chat-item-preview');
     if (preview) {
       const txt = (origText.get(node) ?? node.nodeValue ?? '').trim();
       if (
         txt !== 'Notes, files, and links synced across your devices' &&
+        txt !== 'Cannot read on this device' &&
+        txt !== 'By new name or invite link' &&
         txt !== 'Voted' &&
         txt !== 'Sent a sticker'
       ) {
