@@ -2949,22 +2949,36 @@ pub fn Chat(
         });
     });
 
-    // End-to-end encrypted media/image/voice/file for direct messages: cached locally first (OPFS/IndexedDB),
-    // ciphertext uploaded to server Temp Relay / Encrypted Backup with scope authorization.
+    // End-to-end encrypted media/image/voice/file for direct messages:
+    // Sender sees crisp local preview immediately; payload is compressed -> encrypted E2EE (`CWCH3`/AEAD) ->
+    // uploaded as opaque ciphertext to Server-First durable storage (S3/CAS) -> cached locally for sender.
     let send_dm_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
         if payload.bytes.len() > 25 * 1024 * 1024 {
+            if let Some(ref p) = payload.instant_preview_url {
+                crate::components::rich::remove_pending_media(p);
+            }
             toast.set(Some("File larger than 25 MB".into()));
             return;
         }
         let peer_id = active_friend().map(|f| f.id);
+        let preview_key = payload.instant_preview_url.clone();
         spawn(async move {
+            if let Some(ref p) = preview_key {
+                crate::components::rich::update_pending_media_status(p, "Đang mã hóa", false);
+            }
             let sealed = match crate::crypto::blob::seal(&payload.bytes) {
                 Ok(s) => s,
                 Err(_) => {
+                    if let Some(ref p) = preview_key {
+                        crate::components::rich::update_pending_media_status(p, "Mã hóa thất bại", true);
+                    }
                     toast.set(Some("File encryption failed".into()));
                     return;
                 }
             };
+            if let Some(ref p) = preview_key {
+                crate::components::rich::update_pending_media_status(p, "Đang tải lên", false);
+            }
             match crate::services::storage_sync::upload_attachment_scoped(
                 sealed.cipher,
                 "application/octet-stream",
@@ -2987,9 +3001,20 @@ pub fn Chat(
                             file_name: payload.file_name.clone(),
                             mime_type: payload.mime.clone(),
                             sha256_plain: Some(payload.sha256_plain.clone()),
-                            availability_state: resp["availability_state"].as_str().unwrap_or("pending_delivery").to_string(),
+                            availability_state: resp["availability_state"].as_str().unwrap_or("server_durable").to_string(),
                         };
                         let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
+                    }
+                    // Pre-register blob in memory pool so sender's confirmed bubble appears with 0 flicker & 0 re-download!
+                    if payload.media_kind == "image" {
+                        let _ = platform::register_cached_blob_url(
+                            &url,
+                            &sealed.key_b64,
+                            &sealed.nonce_b64,
+                            &payload.bytes,
+                            &payload.mime,
+                        )
+                        .await;
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
                         url,
@@ -2998,9 +3023,17 @@ pub fn Chat(
                         "dm",
                         &payload,
                     );
+                    if let Some(ref p) = preview_key {
+                        crate::components::rich::remove_pending_media(p);
+                    }
                     send_dm_text.call((msg_str, None));
                 }
-                Err(_) => toast.set(Some("Unable to upload file".into())),
+                Err(_) => {
+                    if let Some(ref p) = preview_key {
+                        crate::components::rich::update_pending_media_status(p, "Gửi thất bại", true);
+                    }
+                    toast.set(Some("Unable to upload file".into()));
+                }
             }
         });
     });
@@ -3025,6 +3058,8 @@ pub fn Chat(
             width: None,
             height: None,
             waveform: Vec::new(),
+            instant_preview_url: None,
+            codec: None,
         });
     });
 
@@ -3422,11 +3457,18 @@ pub fn Chat(
     let send_group_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
         let gid = active_group().map(|g| g.id);
         let bytes_for_cache = payload.bytes.clone();
+        let preview_key = payload.instant_preview_url.clone();
         spawn(async move {
             let Some(group_id) = gid else {
+                if let Some(ref p) = preview_key {
+                    crate::components::rich::remove_pending_media(p);
+                }
                 toast.set(Some("No group selected".into()));
                 return;
             };
+            if let Some(ref p) = preview_key {
+                crate::components::rich::update_pending_media_status(p, "Đang tải lên", false);
+            }
             match crate::services::storage_sync::upload_attachment_scoped(
                 payload.bytes.clone(),
                 &payload.mime,
@@ -3453,6 +3495,9 @@ pub fn Chat(
                         };
                         let _ = crate::storage::put_local_object(&meta, &bytes_for_cache).await;
                     }
+                    if payload.media_kind == "image" {
+                        let _ = platform::register_cached_blob_url(&url, "", "", &bytes_for_cache, &payload.mime).await;
+                    }
                     let msg_str = crate::components::rich::build_rich_media_wire(
                         url,
                         String::new(),
@@ -3460,9 +3505,17 @@ pub fn Chat(
                         "group",
                         &payload,
                     );
+                    if let Some(ref p) = preview_key {
+                        crate::components::rich::remove_pending_media(p);
+                    }
                     send_group_raw.call(msg_str);
                 }
-                Err(_) => toast.set(Some("Unable to upload file".into())),
+                Err(_) => {
+                    if let Some(ref p) = preview_key {
+                        crate::components::rich::update_pending_media_status(p, "Gửi thất bại", true);
+                    }
+                    toast.set(Some("Unable to upload file".into()));
+                }
             }
         });
     });
@@ -3487,17 +3540,26 @@ pub fn Chat(
             width: None,
             height: None,
             waveform: Vec::new(),
+            instant_preview_url: None,
+            codec: None,
         });
     });
 
     let send_channel_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
         let cid = selected_channel().map(|c| c.id);
         let bytes_for_cache = payload.bytes.clone();
+        let preview_key = payload.instant_preview_url.clone();
         spawn(async move {
             let Some(channel_id) = cid else {
+                if let Some(ref p) = preview_key {
+                    crate::components::rich::remove_pending_media(p);
+                }
                 toast.set(Some("Channel not selected".into()));
                 return;
             };
+            if let Some(ref p) = preview_key {
+                crate::components::rich::update_pending_media_status(p, "Đang tải lên", false);
+            }
             match crate::services::storage_sync::upload_attachment_scoped(
                 payload.bytes.clone(),
                 &payload.mime,
@@ -3524,6 +3586,9 @@ pub fn Chat(
                         };
                         let _ = crate::storage::put_local_object(&meta, &bytes_for_cache).await;
                     }
+                    if payload.media_kind == "image" {
+                        let _ = platform::register_cached_blob_url(&url, "", "", &bytes_for_cache, &payload.mime).await;
+                    }
                     let msg_str = crate::components::rich::build_rich_media_wire(
                         url,
                         String::new(),
@@ -3531,6 +3596,9 @@ pub fn Chat(
                         "channel",
                         &payload,
                     );
+                    if let Some(ref p) = preview_key {
+                        crate::components::rich::remove_pending_media(p);
+                    }
                     if let Ok(msg) = api::channels_post_message(&channel_id, &msg_str).await {
                         channel_messages.with_mut(|list| {
                             if !list.iter().any(|m| m.id == msg.id) {
@@ -3540,7 +3608,12 @@ pub fn Chat(
                         platform::scroll_chat_to_bottom(false);
                     }
                 }
-                Err(_) => toast.set(Some("Unable to upload files to channel".into())),
+                Err(_) => {
+                    if let Some(ref p) = preview_key {
+                        crate::components::rich::update_pending_media_status(p, "Gửi thất bại", true);
+                    }
+                    toast.set(Some("Unable to upload files to channel".into()));
+                }
             }
         });
     });

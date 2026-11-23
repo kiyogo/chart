@@ -15,7 +15,14 @@ async fn req_json<T: serde::de::DeserializeOwned>(
     })
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+fn default_media_quality_mode() -> String {
+    "ultra_optimized".into()
+}
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StoragePolicy {
     pub cache_limit_mb: i32,
     pub auto_download_mode: String,
@@ -23,6 +30,34 @@ pub struct StoragePolicy {
     pub dm_encrypted_backup: bool,
     pub require_device_approval: bool,
     pub prefer_original_upload: bool,
+    #[serde(default = "default_media_quality_mode")]
+    pub media_quality_mode: String,
+    #[serde(default = "default_true")]
+    pub ai_enhancement_enabled: bool,
+    #[serde(default)]
+    pub data_saver_mode: bool,
+    #[serde(default = "default_true")]
+    pub auto_cache_cleanup: bool,
+    #[serde(default = "default_true")]
+    pub server_durable_dm: bool,
+}
+
+impl Default for StoragePolicy {
+    fn default() -> Self {
+        Self {
+            cache_limit_mb: 1024,
+            auto_download_mode: "wifi".into(),
+            dm_relay_ttl_hours: 168,
+            dm_encrypted_backup: false,
+            require_device_approval: false,
+            prefer_original_upload: false,
+            media_quality_mode: default_media_quality_mode(),
+            ai_enhancement_enabled: true,
+            data_saver_mode: false,
+            auto_cache_cleanup: true,
+            server_durable_dm: true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -128,6 +163,22 @@ pub async fn get_metrics() -> Result<serde_json::Value, ApiError> {
 
 pub async fn trigger_cleanup() -> Result<serde_json::Value, ApiError> {
     req_json("POST", "/api/storage/cleanup", None).await
+}
+
+pub async fn trigger_gc_incomplete() -> Result<serde_json::Value, ApiError> {
+    req_json("POST", "/api/storage/gc/incomplete", None).await
+}
+
+pub async fn check_dedup(payload: serde_json::Value) -> Result<serde_json::Value, ApiError> {
+    req_json("POST", "/api/storage/dedup/check", Some(payload)).await
+}
+
+pub async fn get_manifest(ref_id: &str) -> Result<serde_json::Value, ApiError> {
+    req_json("GET", &format!("/api/storage/references/{}/manifest", urlencoding::encode(ref_id)), None).await
+}
+
+pub async fn put_manifest(ref_id: &str, payload: serde_json::Value) -> Result<serde_json::Value, ApiError> {
+    req_json("POST", &format!("/api/storage/references/{}/manifest", urlencoding::encode(ref_id)), Some(payload)).await
 }
 
 pub async fn run_migration_job(dry_run: bool) -> Result<serde_json::Value, ApiError> {

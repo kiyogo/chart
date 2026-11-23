@@ -15,11 +15,12 @@ use crate::{
     error::{AppError, AppResult},
     storage::{
         StorageAdapter, migration,
-        permissions::authorize_read,
+        permissions::{authorize_read, authorize_write},
         router::{auth_caller, decode_hex_32},
     },
     websocket::WsEvent,
 };
+use chatw_media_core::dedup::{PdqHash256, PerceptualMatchVerdict, compare_perceptual_images, evaluate_dedup_policy};
 
 pub async fn handle_get_ref_meta(
     State(state): State<AppState>,
@@ -29,11 +30,15 @@ pub async fn handle_get_ref_meta(
     let user = auth_caller(&state, &headers).await?;
     let r = sqlx::query(
         r#"
-        SELECT owner_id, scope_type, scope_id, original_filename, mime_type, byte_size,
-               storage_tier, availability_state, min_safe_copies, deleted_for_all,
-               relay_expires_at, object_id, optimized_object_id, thumb_object_id,
-               encode(sha256_plain, 'hex') AS sha_plain, encode(sha256_cipher, 'hex') AS sha_cipher
-        FROM media_references WHERE id = $1
+        SELECT r.owner_id, r.scope_type, r.scope_id, r.original_filename, r.mime_type, r.byte_size,
+               r.storage_tier, r.availability_state, r.min_safe_copies, r.deleted_for_all,
+               r.relay_expires_at, r.object_id, r.optimized_object_id, r.thumb_object_id,
+               encode(r.sha256_plain, 'hex') AS sha_plain, encode(r.sha256_cipher, 'hex') AS sha_cipher,
+               o.storage_backend, encode(o.blake3, 'hex') AS blake3_hex, o.compression_codec,
+               o.compression_ratio, o.quality_ssim, o.media_class, o.ai_recommended
+        FROM media_references r
+        LEFT JOIN media_objects o ON o.id = r.object_id
+        WHERE r.id = $1
         "#,
     )
     .bind(ref_id)
@@ -82,6 +87,7 @@ pub async fn handle_get_ref_meta(
         "mime_type": r.try_get::<String, _>("mime_type")?,
         "byte_size": r.try_get::<i64, _>("byte_size")?,
         "storage_tier": r.try_get::<String, _>("storage_tier")?,
+        "storage_backend": r.try_get::<Option<String>, _>("storage_backend")?,
         "availability_state": r.try_get::<String, _>("availability_state")?,
         "deleted_for_all": r.try_get::<bool, _>("deleted_for_all")?,
         "relay_expires_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("relay_expires_at")?,
@@ -90,6 +96,12 @@ pub async fn handle_get_ref_meta(
         "has_thumb": r.try_get::<Option<Uuid>, _>("thumb_object_id")?.is_some(),
         "sha256_plain": r.try_get::<Option<String>, _>("sha_plain")?,
         "sha256_cipher": r.try_get::<Option<String>, _>("sha_cipher")?,
+        "blake3": r.try_get::<Option<String>, _>("blake3_hex")?,
+        "compression_codec": r.try_get::<Option<String>, _>("compression_codec")?,
+        "compression_ratio": r.try_get::<Option<f32>, _>("compression_ratio")?,
+        "quality_ssim": r.try_get::<Option<f32>, _>("quality_ssim")?,
+        "media_class": r.try_get::<Option<String>, _>("media_class")?,
+        "ai_recommended": r.try_get::<Option<bool>, _>("ai_recommended")?.unwrap_or(false),
         "device_locations": devices_json,
     })))
 }
@@ -516,4 +528,379 @@ pub async fn handle_run_migration(
     let dry_run = body.and_then(|b| b.0.dry_run).unwrap_or(true);
     let res = migration::execute_migration_job(&state.db, &state.storage, dry_run).await?;
     Ok(Json(res))
+}
+
+#[derive(Deserialize)]
+pub struct DedupCheckReq {
+    pub scope_type: String,
+    pub scope_id: Option<Uuid>,
+    pub is_e2ee: bool,
+    pub blake3_hex: Option<String>,
+    pub sha256_hex: Option<String>,
+    pub perceptual_hash_hex: Option<String>,
+    pub perceptual_quality: Option<u8>,
+    pub caption_band_hash: Option<u64>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+/// Privacy-enforced Smart Deduplication Check (`POST /api/storage/dedup/check`).
+/// STRICT INVARIANT: If `is_e2ee == true`, NEVER performs a global plaintext or perceptual DB lookup!
+pub async fn handle_dedup_check(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<DedupCheckReq>,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = auth_caller(&state, &headers).await?;
+    authorize_write(&state.db, user.id, &req.scope_type, req.scope_id).await?;
+
+    let probe_key = req
+        .blake3_hex
+        .as_deref()
+        .or(req.sha256_hex.as_deref())
+        .unwrap_or("probe");
+    let decision = evaluate_dedup_policy(
+        &req.scope_type,
+        &user.id.to_string(),
+        req.scope_id.map(|u| u.to_string()).as_deref(),
+        req.is_e2ee,
+        false,
+        probe_key,
+    );
+
+    if !decision.allow_exact_global_lookup {
+        return Ok(Json(serde_json::json!({
+            "dedup_allowed": false,
+            "matched": false,
+            "match_kind": "none",
+            "reason": decision.reason,
+        })));
+    }
+
+    // 1. Exact cryptographic match (BLAKE3 primary, SHA-256 fallback) in shared_non_e2ee index
+    if let Some(b3_arr) = decode_hex_32(req.blake3_hex.as_deref()) {
+        if let Some(row) = sqlx::query(
+            r#"
+            SELECT d.object_id, o.storage_backend, o.storage_key, o.byte_size
+            FROM media_dedup_indexes d
+            JOIN media_objects o ON o.id = d.object_id
+            WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.blake3 = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(&b3_arr[..])
+        .fetch_optional(&state.db)
+        .await?
+        {
+            let oid: Uuid = row.try_get("object_id")?;
+            let backend: String = row.try_get("storage_backend")?;
+            let key: String = row.try_get("storage_key")?;
+            let exists = match backend.as_str() {
+                "s3_ready" => state.storage.s3.object_exists(&key).await.unwrap_or(false),
+                _ => state.storage.local_cas.object_exists(&key).await.unwrap_or(false),
+            };
+            if exists {
+                return Ok(Json(serde_json::json!({
+                    "dedup_allowed": true,
+                    "matched": true,
+                    "match_kind": "exact_blake3",
+                    "object_id": oid,
+                    "byte_size": row.try_get::<i64, _>("byte_size")?,
+                })));
+            }
+        }
+    }
+
+    if let Some(sha_arr) = decode_hex_32(req.sha256_hex.as_deref()) {
+        if let Some(row) = sqlx::query(
+            r#"
+            SELECT d.object_id, o.storage_backend, o.storage_key, o.byte_size
+            FROM media_dedup_indexes d
+            JOIN media_objects o ON o.id = d.object_id
+            WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.sha256 = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(&sha_arr[..])
+        .fetch_optional(&state.db)
+        .await?
+        {
+            let oid: Uuid = row.try_get("object_id")?;
+            let backend: String = row.try_get("storage_backend")?;
+            let key: String = row.try_get("storage_key")?;
+            let exists = match backend.as_str() {
+                "s3_ready" => state.storage.s3.object_exists(&key).await.unwrap_or(false),
+                _ => state.storage.local_cas.object_exists(&key).await.unwrap_or(false),
+            };
+            if exists {
+                return Ok(Json(serde_json::json!({
+                    "dedup_allowed": true,
+                    "matched": true,
+                    "match_kind": "exact_sha256",
+                    "object_id": oid,
+                    "byte_size": row.try_get::<i64, _>("byte_size")?,
+                })));
+            }
+        }
+    }
+
+    // 2. Perceptual PDQ 256-bit DCT match with strict meme-caption-band guard & quality protection
+    if decision.allow_perceptual_lookup {
+        if let Some(pdq_hex) = req.perceptual_hash_hex.as_deref() {
+            if let Some(incoming_pdq) = PdqHash256::from_hex(
+                pdq_hex,
+                req.perceptual_quality.unwrap_or(0),
+                req.caption_band_hash.unwrap_or(0),
+            ) {
+                let incoming_px = (req.width.unwrap_or(0) as u64) * (req.height.unwrap_or(0) as u64);
+                let cands = sqlx::query(
+                    r#"
+                    SELECT d.object_id, d.perceptual_hash, d.perceptual_quality, d.caption_band_hash,
+                           d.width, d.height, o.storage_backend, o.storage_key, o.byte_size
+                    FROM media_dedup_indexes d
+                    JOIN media_objects o ON o.id = d.object_id
+                    WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.perceptual_hash IS NOT NULL
+                    ORDER BY d.created_at DESC
+                    LIMIT 120
+                    "#,
+                )
+                .fetch_all(&state.db)
+                .await?;
+
+                for cand in cands {
+                    let ph: Vec<u8> = cand.try_get("perceptual_hash")?;
+                    if ph.len() != 32 {
+                        continue;
+                    }
+                    let mut bytes = [0u8; 32];
+                    bytes.copy_from_slice(&ph);
+                    let existing_pdq = PdqHash256 {
+                        bytes,
+                        quality: cand.try_get::<Option<i16>, _>("perceptual_quality")?.unwrap_or(0).clamp(0, 100) as u8,
+                        caption_band_hash: cand.try_get::<Option<i64>, _>("caption_band_hash")?.unwrap_or(0) as u64,
+                    };
+                    let ex_px = (cand.try_get::<Option<i32>, _>("width")?.unwrap_or(0).max(0) as u64)
+                        * (cand.try_get::<Option<i32>, _>("height")?.unwrap_or(0).max(0) as u64);
+                    if let PerceptualMatchVerdict::EquivalentCandidate { hamming } =
+                        compare_perceptual_images(&incoming_pdq, &existing_pdq, incoming_px, ex_px)
+                    {
+                        return Ok(Json(serde_json::json!({
+                            "dedup_allowed": true,
+                            "matched": true,
+                            "match_kind": "perceptual_pdq_candidate",
+                            "hamming_distance": hamming,
+                            "object_id": cand.try_get::<Uuid, _>("object_id")?,
+                            "byte_size": cand.try_get::<i64, _>("byte_size")?,
+                        })));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "dedup_allowed": true,
+        "matched": false,
+        "match_kind": "none",
+        "reason": decision.reason,
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct PutManifestChunk {
+    pub variant_id: Option<String>,
+    pub chunk_index: i32,
+    pub byte_offset: i64,
+    pub cipher_len: i32,
+    pub plain_len: i32,
+    pub start_ms: Option<i64>,
+    pub duration_ms: Option<i32>,
+    pub is_keyframe: Option<bool>,
+    pub blake3_hex: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PutManifestReq {
+    pub version: Option<i16>,
+    pub mime_type: String,
+    pub codec: String,
+    pub duration_ms: Option<i64>,
+    pub is_e2ee: Option<bool>,
+    pub sealed_manifest_b64: Option<String>,
+    pub variants_json: Option<serde_json::Value>,
+    pub chunks: Option<Vec<PutManifestChunk>>,
+}
+
+/// Store an authenticated E2EE streaming manifest + chunk byte-offset index (`POST /api/storage/references/{id}/manifest`).
+pub async fn handle_put_manifest(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(ref_id): Path<Uuid>,
+    Json(req): Json<PutManifestReq>,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = auth_caller(&state, &headers).await?;
+    let r = sqlx::query("SELECT owner_id FROM media_references WHERE id = $1")
+        .bind(ref_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(AppError::NotFound("reference_not_found"))?;
+    let owner_id: Uuid = r.try_get("owner_id")?;
+    if owner_id != user.id {
+        return Err(AppError::Forbidden("not_manifest_owner"));
+    }
+
+    let chunks = req.chunks.unwrap_or_default();
+    let total_segments = chunks.len() as i32;
+    let variants = req.variants_json.unwrap_or_else(|| serde_json::json!([]));
+
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        r#"
+        INSERT INTO media_chunk_manifests
+            (ref_id, version, mime_type, codec, duration_ms, is_e2ee, sealed_manifest_b64, variants_json, total_segments, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+        ON CONFLICT (ref_id) DO UPDATE SET
+            version = EXCLUDED.version,
+            mime_type = EXCLUDED.mime_type,
+            codec = EXCLUDED.codec,
+            duration_ms = EXCLUDED.duration_ms,
+            is_e2ee = EXCLUDED.is_e2ee,
+            sealed_manifest_b64 = EXCLUDED.sealed_manifest_b64,
+            variants_json = EXCLUDED.variants_json,
+            total_segments = EXCLUDED.total_segments,
+            updated_at = now()
+        "#,
+    )
+    .bind(ref_id)
+    .bind(req.version.unwrap_or(3))
+    .bind(&req.mime_type)
+    .bind(&req.codec)
+    .bind(req.duration_ms.unwrap_or(0))
+    .bind(req.is_e2ee.unwrap_or(true))
+    .bind(&req.sealed_manifest_b64)
+    .bind(&variants)
+    .bind(total_segments)
+    .execute(&mut *tx)
+    .await?;
+
+    if !chunks.is_empty() {
+        sqlx::query("DELETE FROM media_chunks WHERE ref_id = $1")
+            .bind(ref_id)
+            .execute(&mut *tx)
+            .await?;
+        for c in chunks.into_iter().take(2000) {
+            let b3 = decode_hex_32(c.blake3_hex.as_deref());
+            sqlx::query(
+                r#"
+                INSERT INTO media_chunks
+                    (ref_id, variant_id, chunk_index, byte_offset, cipher_len, plain_len, start_ms, duration_ms, is_keyframe, blake3)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                "#,
+            )
+            .bind(ref_id)
+            .bind(c.variant_id.as_deref().unwrap_or("default"))
+            .bind(c.chunk_index)
+            .bind(c.byte_offset.max(0))
+            .bind(c.cipher_len.max(1))
+            .bind(c.plain_len.max(0))
+            .bind(c.start_ms.unwrap_or(0))
+            .bind(c.duration_ms.unwrap_or(0))
+            .bind(c.is_keyframe.unwrap_or(false))
+            .bind(b3.as_ref().map(|x| &x[..]))
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "ref_id": ref_id,
+        "total_segments": total_segments,
+    })))
+}
+
+/// Fetch streaming manifest + chunk byte ranges (`GET /api/storage/references/{id}/manifest`), enforced by `authorize_read`.
+pub async fn handle_get_manifest(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(ref_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = auth_caller(&state, &headers).await?;
+    let r = sqlx::query("SELECT owner_id, scope_type, scope_id, deleted_for_all FROM media_references WHERE id = $1")
+        .bind(ref_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(AppError::NotFound("reference_not_found"))?;
+    let owner_id: Uuid = r.try_get("owner_id")?;
+    let scope_type: String = r.try_get("scope_type")?;
+    let scope_id: Option<Uuid> = r.try_get("scope_id")?;
+    authorize_read(&state.db, user.id, &scope_type, scope_id, owner_id).await?;
+    if r.try_get::<bool, _>("deleted_for_all")? {
+        return Err(AppError::NotFound("deleted_for_everyone"));
+    }
+
+    let m = sqlx::query(
+        r#"
+        SELECT version, mime_type, codec, duration_ms, is_e2ee, sealed_manifest_b64, variants_json, total_segments
+        FROM media_chunk_manifests WHERE ref_id = $1
+        "#,
+    )
+    .bind(ref_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("manifest_not_found"))?;
+
+    let chunk_rows = sqlx::query(
+        r#"
+        SELECT variant_id, chunk_index, byte_offset, cipher_len, plain_len, start_ms, duration_ms,
+               is_keyframe, encode(blake3, 'hex') AS blake3_hex
+        FROM media_chunks
+        WHERE ref_id = $1
+        ORDER BY variant_id ASC, chunk_index ASC
+        "#,
+    )
+    .bind(ref_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let chunks_json: Vec<serde_json::Value> = chunk_rows
+        .into_iter()
+        .map(|c| {
+            serde_json::json!({
+                "variant_id": c.try_get::<String, _>("variant_id").unwrap_or_default(),
+                "chunk_index": c.try_get::<i32, _>("chunk_index").unwrap_or(0),
+                "byte_offset": c.try_get::<i64, _>("byte_offset").unwrap_or(0),
+                "cipher_len": c.try_get::<i32, _>("cipher_len").unwrap_or(0),
+                "plain_len": c.try_get::<i32, _>("plain_len").unwrap_or(0),
+                "start_ms": c.try_get::<i64, _>("start_ms").unwrap_or(0),
+                "duration_ms": c.try_get::<i32, _>("duration_ms").unwrap_or(0),
+                "is_keyframe": c.try_get::<bool, _>("is_keyframe").unwrap_or(false),
+                "blake3_hex": c.try_get::<Option<String>, _>("blake3_hex").ok().flatten(),
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "ref_id": ref_id,
+        "version": m.try_get::<i16, _>("version")?,
+        "mime_type": m.try_get::<String, _>("mime_type")?,
+        "codec": m.try_get::<String, _>("codec")?,
+        "duration_ms": m.try_get::<i64, _>("duration_ms")?,
+        "is_e2ee": m.try_get::<bool, _>("is_e2ee")?,
+        "sealed_manifest_b64": m.try_get::<Option<String>, _>("sealed_manifest_b64")?,
+        "variants_json": m.try_get::<serde_json::Value, _>("variants_json")?,
+        "total_segments": m.try_get::<i32, _>("total_segments")?,
+        "chunks": chunks_json,
+    })))
+}
+
+/// Abort expired multipart uploads and sweep unpinned zero-ref GC objects (`POST /api/storage/gc/incomplete`).
+pub async fn handle_gc_incomplete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<migration::IncompleteAndGcReport>> {
+    let _user = auth_caller(&state, &headers).await?;
+    let report = migration::cleanup_incomplete_uploads_and_gc(&state.db, &state.storage).await?;
+    Ok(Json(report))
 }

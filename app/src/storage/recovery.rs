@@ -125,13 +125,23 @@ pub async fn load_or_fetch_media(
 
     match platform::fetch_bytes(&fetch_url).await {
         Ok(raw_bytes) => {
-            let plain_bytes = if !key_b64.is_empty() {
+            let decrypted_bytes = if !key_b64.is_empty() {
                 match blob::open(&raw_bytes, key_b64, nonce_b64) {
                     Ok(p) => p,
                     Err(e) => return MediaFetchOutcome::Error(e),
                 }
             } else {
                 raw_bytes
+            };
+
+            // Transparently decompress `CWCMP1` smart lossless file envelope (with BLAKE3 & bomb guard!)
+            let plain_bytes: Vec<u8> = if decrypted_bytes.starts_with(chatw_media_core::files::COMP_ENVELOPE_MAGIC) {
+                match chatw_media_core::files::decompress_file_verified(&decrypted_bytes, 256 * 1024 * 1024) {
+                    Ok((p, _codec)) => p,
+                    Err(e) => return MediaFetchOutcome::Error(e.to_string()),
+                }
+            } else {
+                decrypted_bytes
             };
 
             let sha = sha256_hex(&plain_bytes);

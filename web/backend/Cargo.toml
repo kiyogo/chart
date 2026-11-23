@@ -6,8 +6,10 @@ edition = "2024"
 [dependencies]
 argon2 = "0.5"
 axum = { version = "0.8.9", features = ["ws", "macros"] }
+chatw-media-core = { path = "../../crates/chatw-media-core", features = ["native-fast"] }
 kiyo-kdata = { path = "../../crates/kiyo-kdata" }
 base64 = "0.22"
+blake3 = "1.8"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "serde", "std"] }
 dotenvy = "0.15.7"
 flate2 = "1"

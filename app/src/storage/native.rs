@@ -1,6 +1,13 @@
-use std::{collections::HashMap, path::PathBuf, sync::Mutex, time::{SystemTime, UNIX_EPOCH}};
-
+use chatw_media_core::cache::{
+    CacheCategory, CacheItemMeta, IntelligentCacheIndex, compute_adaptive_cache_budget,
+};
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use super::{LocalObjectMeta, LocalQuotaInfo, OutboxEntry, sha256_hex};
 
@@ -18,6 +25,24 @@ struct NativeEntry {
     last_accessed_at: u64,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct NativeStoreState {
+    entries: HashMap<String, NativeEntry>,
+    #[serde(default)]
+    smart_index: IntelligentCacheIndex,
+}
+
+fn current_account_part() -> String {
+    crate::services::api::auth_me_cached_id()
+        .map(|uid| {
+            uid.chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                .collect()
+        })
+        .filter(|s: &String| !s.is_empty())
+        .unwrap_or_else(|| "default".to_string())
+}
+
 fn cas_root() -> PathBuf {
     let base = std::env::var("XDG_DATA_HOME")
         .or_else(|_| std::env::var("LOCALAPPDATA"))
@@ -27,18 +52,14 @@ fn cas_root() -> PathBuf {
                 .map(|h| PathBuf::from(h).join(".local").join("share"))
                 .unwrap_or_else(|_| std::env::temp_dir())
         });
-    let account_part: String = crate::services::api::auth_me_cached_id()
-        .map(|uid| {
-            uid.chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-                .collect()
-        })
-        .filter(|s: &String| !s.is_empty())
-        .unwrap_or_else(|| "default".to_string());
-    base.join("chatw").join("cas").join(account_part)
+    base.join("chatw").join("cas").join(current_account_part())
 }
 
 fn index_path() -> PathBuf {
+    cas_root().join("index_v2.json")
+}
+
+fn legacy_index_path() -> PathBuf {
     cas_root().join("index.json")
 }
 
@@ -47,26 +68,103 @@ fn cursors_path() -> PathBuf {
 }
 
 fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
-fn load_index() -> HashMap<String, NativeEntry> {
-    std::fs::read_to_string(index_path())
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+fn atomic_write_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension(format!("tmp.{}", uuid::Uuid::new_v4().simple()));
+    std::fs::write(&tmp, bytes)?;
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
 }
 
-fn save_index(map: &HashMap<String, NativeEntry>) {
-    let root = cas_root();
-    let _ = std::fs::create_dir_all(&root);
-    if let Ok(json) = serde_json::to_string(map) {
-        let _ = std::fs::write(index_path(), json);
+fn safe_blob_name(ref_id: &str) -> String {
+    ref_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect()
+}
+
+fn classify_cache_category(mime: &str, availability_state: &str) -> CacheCategory {
+    if matches!(availability_state, "local_only" | "pending_delivery") {
+        return CacheCategory::OriginalLocal;
+    }
+    if mime.starts_with("video/") {
+        CacheCategory::VideoSegment
+    } else if mime.starts_with("audio/") {
+        CacheCategory::AudioVoice
+    } else if mime.starts_with("image/") {
+        CacheCategory::OptimizedMedia
+    } else {
+        CacheCategory::FileAttachment
     }
 }
 
+fn load_state() -> NativeStoreState {
+    if let Ok(raw) = std::fs::read_to_string(index_path()) {
+        if let Ok(state) = serde_json::from_str::<NativeStoreState>(&raw) {
+            return state;
+        }
+    }
+    // Seamless upgrade from pre-Spec 110 `index.json`
+    let legacy: HashMap<String, NativeEntry> = std::fs::read_to_string(legacy_index_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let mut smart = IntelligentCacheIndex::new();
+    let acct = current_account_part();
+    for (k, e) in &legacy {
+        let pinned = matches!(e.availability_state.as_str(), "local_only" | "pending_delivery");
+        smart.entries.insert(
+            k.clone(),
+            CacheItemMeta {
+                key: k.clone(),
+                account_id: acct.clone(),
+                category: classify_cache_category(&e.mime_type, &e.availability_state),
+                byte_size: e.byte_size,
+                created_at_secs: e.last_accessed_at,
+                last_accessed_secs: e.last_accessed_at,
+                access_count: 1,
+                download_cost_ms: 80,
+                ai_recompute_cost_ms: 0,
+                ttl_secs: None,
+                pinned_offline: pinned,
+                in_use: false,
+                stale_model_version: false,
+                protected_segment: false,
+            },
+        );
+    }
+    NativeStoreState {
+        entries: legacy,
+        smart_index: smart,
+    }
+}
+
+fn save_state(state: &NativeStoreState) {
+    if let Ok(json) = serde_json::to_vec(state) {
+        let _ = atomic_write_file(&index_path(), &json);
+    }
+}
+
+fn configured_limit_mb() -> i32 {
+    crate::platform::storage_get("chatw_cache_limit_mb")
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(1024)
+}
+
 pub async fn init_local_storage() -> Result<(String, String, String), String> {
-    let _ = std::fs::create_dir_all(cas_root());
+    let _ = std::fs::create_dir_all(cas_root().join("blobs"));
+    let _ = std::fs::create_dir_all(cas_root().join("ai_outputs"));
     Ok(get_client_device_info().await)
 }
 
@@ -91,13 +189,43 @@ pub async fn get_client_device_info() -> (String, String, String) {
 pub async fn put_local_object(meta: &LocalObjectMeta, bytes: &[u8]) -> Result<String, String> {
     let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
     let sha = sha256_hex(bytes);
-    let safe_id: String = meta.ref_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
-    let dir = cas_root().join("blobs");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join(&safe_id), bytes).map_err(|e| e.to_string())?;
+    let safe_id = safe_blob_name(&meta.ref_id);
+    let blob_path = cas_root().join("blobs").join(&safe_id);
+    atomic_write_file(&blob_path, bytes).map_err(|e| e.to_string())?;
 
-    let mut idx = load_index();
-    idx.insert(
+    let now = now_secs();
+    let mut state = load_state();
+    let pinned = matches!(meta.availability_state.as_str(), "local_only" | "pending_delivery");
+    let item_meta = CacheItemMeta {
+        key: meta.ref_id.clone(),
+        account_id: current_account_part(),
+        category: classify_cache_category(&meta.mime_type, &meta.availability_state),
+        byte_size: bytes.len() as u64,
+        created_at_secs: now,
+        last_accessed_secs: now,
+        access_count: 1,
+        download_cost_ms: 100,
+        ai_recompute_cost_ms: 0,
+        ttl_secs: None,
+        pinned_offline: pinned,
+        in_use: false,
+        stale_model_version: false,
+        protected_segment: false,
+    };
+
+    // Adaptive W-TinyLFU + Cost-Aware & Size-Aware eviction protecting unique `local_only` files!
+    let lim_mb = configured_limit_mb().max(0) as u64;
+    let assumed_free = 16 * 1024 * 1024 * 1024u64;
+    let budget = compute_adaptive_cache_budget(assumed_free, Some(lim_mb));
+    let evicted_keys = state.smart_index.put_and_plan_evictions(item_meta, &budget, now);
+    for ek in evicted_keys {
+        if ek != meta.ref_id {
+            let _ = std::fs::remove_file(cas_root().join("blobs").join(safe_blob_name(&ek)));
+            state.entries.remove(&ek);
+        }
+    }
+
+    state.entries.insert(
         meta.ref_id.clone(),
         NativeEntry {
             ref_id: meta.ref_id.clone(),
@@ -107,78 +235,78 @@ pub async fn put_local_object(meta: &LocalObjectMeta, bytes: &[u8]) -> Result<St
             byte_size: bytes.len() as u64,
             sha256_plain: meta.sha256_plain.clone().unwrap_or(sha),
             availability_state: meta.availability_state.clone(),
-            last_accessed_at: now_secs(),
+            last_accessed_at: now,
         },
     );
-    save_index(&idx);
+    save_state(&state);
     Ok("native_fs".into())
 }
 
 pub async fn get_local_object(ref_id: &str) -> Option<(Vec<u8>, String, String)> {
     let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
-    let mut idx = load_index();
-    let entry = idx.get_mut(ref_id)?;
-    let safe_id: String = ref_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+    let mut state = load_state();
+    let entry = state.entries.get_mut(ref_id)?;
+    let safe_id = safe_blob_name(ref_id);
     let bytes = std::fs::read(cas_root().join("blobs").join(&safe_id)).ok()?;
     let actual_sha = sha256_hex(&bytes);
     if !entry.sha256_plain.is_empty() && actual_sha != entry.sha256_plain {
         return None;
     }
     let mime = entry.mime_type.clone();
-    entry.last_accessed_at = now_secs();
-    save_index(&idx);
+    let now = now_secs();
+    entry.last_accessed_at = now;
+    state.smart_index.touch(ref_id, now);
+    save_state(&state);
     Some((bytes, mime, actual_sha))
 }
 
 pub async fn delete_local_object(ref_id: &str, force_unique: bool) -> Result<u64, String> {
     let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
-    let mut idx = load_index();
-    let Some(entry) = idx.get(ref_id).cloned() else {
+    let mut state = load_state();
+    let Some(entry) = state.entries.get(ref_id).cloned() else {
         return Err("not_found".into());
     };
     if !force_unique && matches!(entry.availability_state.as_str(), "local_only" | "pending_delivery") {
         return Err("unique_local_file".into());
     }
-    let safe_id: String = ref_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
-    let _ = std::fs::remove_file(cas_root().join("blobs").join(&safe_id));
-    idx.remove(ref_id);
-    save_index(&idx);
+    let _ = std::fs::remove_file(cas_root().join("blobs").join(safe_blob_name(ref_id)));
+    state.entries.remove(ref_id);
+    state.smart_index.entries.remove(ref_id);
+    save_state(&state);
     Ok(entry.byte_size)
 }
 
 pub async fn clear_safe_cache(include_unique: bool) -> Result<(u64, usize), String> {
     let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
-    let mut idx = load_index();
+    let mut state = load_state();
     let mut freed = 0u64;
     let mut protected = 0usize;
-    let keys: Vec<String> = idx.keys().cloned().collect();
+    let keys: Vec<String> = state.entries.keys().cloned().collect();
     for k in keys {
-        if let Some(entry) = idx.get(&k) {
+        if let Some(entry) = state.entries.get(&k) {
             let unique = matches!(entry.availability_state.as_str(), "local_only" | "pending_delivery");
             if !include_unique && unique {
                 protected += 1;
                 continue;
             }
-            let safe_id: String = k.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
-            let _ = std::fs::remove_file(cas_root().join("blobs").join(&safe_id));
+            let _ = std::fs::remove_file(cas_root().join("blobs").join(safe_blob_name(&k)));
             freed += entry.byte_size;
-            idx.remove(&k);
+            state.entries.remove(&k);
+            state.smart_index.entries.remove(&k);
         }
     }
-    save_index(&idx);
+    save_state(&state);
     Ok((freed, protected))
 }
 
 pub async fn get_quota_estimate() -> LocalQuotaInfo {
     let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
-    let idx = load_index();
-    let limit_mb = crate::platform::storage_get("chatw_cache_limit_mb")
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(1024);
+    let state = load_state();
+    let limit_mb = configured_limit_mb();
     let mut total = 0u64;
     let mut disposable = 0u64;
     let mut pinned = 0u64;
-    for e in idx.values() {
+    for e in state.entries.values() {
         total += e.byte_size;
         if matches!(e.availability_state.as_str(), "local_only" | "pending_delivery") {
             pinned += e.byte_size;
@@ -188,11 +316,11 @@ pub async fn get_quota_estimate() -> LocalQuotaInfo {
     }
     LocalQuotaInfo {
         limit_mb,
-        browser_quota_bytes: 0,
+        browser_quota_bytes: (limit_mb.max(0) as u64) * 1024 * 1024,
         browser_usage_bytes: total,
         persisted: true,
         opfs_supported: false,
-        local_object_count: idx.len(),
+        local_object_count: state.entries.len(),
         total_local_bytes: total,
         disposable_cache_bytes: disposable,
         pinned_unique_bytes: pinned,
@@ -201,7 +329,8 @@ pub async fn get_quota_estimate() -> LocalQuotaInfo {
 
 pub async fn list_local_locations() -> Vec<serde_json::Value> {
     let _g = INDEX_LOCK.get_or_init(|| Mutex::new(())).lock().ok();
-    load_index()
+    load_state()
+        .entries
         .into_values()
         .map(|e| {
             serde_json::json!({
@@ -229,11 +358,8 @@ pub async fn load_sync_cursors() -> (i64, i64, i64) {
 }
 
 pub async fn save_sync_cursors(dm_seq: i64, group_seq: i64, channel_seq: i64) {
-    let _ = std::fs::create_dir_all(cas_root());
-    let _ = std::fs::write(
-        cursors_path(),
-        serde_json::json!({ "dm_seq": dm_seq, "group_seq": group_seq, "channel_seq": channel_seq }).to_string(),
-    );
+    let payload = serde_json::json!({ "dm_seq": dm_seq, "group_seq": group_seq, "channel_seq": channel_seq });
+    let _ = atomic_write_file(&cursors_path(), payload.to_string().as_bytes());
 }
 
 fn chat_cache_path(conv_key: &str) -> PathBuf {
@@ -258,11 +384,8 @@ pub async fn load_cached_messages_json(conv_key: &str) -> Option<(serde_json::Va
 
 pub async fn save_cached_messages_json(conv_key: &str, items: &serde_json::Value, has_more: bool) {
     let path = chat_cache_path(conv_key);
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
     let payload = serde_json::json!({ "items": items, "has_more": has_more });
-    let _ = std::fs::write(path, payload.to_string());
+    let _ = atomic_write_file(&path, payload.to_string().as_bytes());
 }
 
 pub async fn enqueue_outbox_item(entry: &OutboxEntry) {
@@ -273,9 +396,8 @@ pub async fn enqueue_outbox_item(entry: &OutboxEntry) {
         .unwrap_or_default();
     rows.retain(|r| r.client_id != entry.client_id);
     rows.push(entry.clone());
-    let _ = std::fs::create_dir_all(cas_root());
-    if let Ok(json) = serde_json::to_string(&rows) {
-        let _ = std::fs::write(outbox_path(), json);
+    if let Ok(json) = serde_json::to_vec(&rows) {
+        let _ = atomic_write_file(&outbox_path(), &json);
     }
 }
 
@@ -294,8 +416,7 @@ pub async fn remove_outbox_item(client_id: &str) {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
     rows.retain(|r| r.client_id != client_id);
-    let _ = std::fs::create_dir_all(cas_root());
-    if let Ok(json) = serde_json::to_string(&rows) {
-        let _ = std::fs::write(outbox_path(), json);
+    if let Ok(json) = serde_json::to_vec(&rows) {
+        let _ = atomic_write_file(&outbox_path(), &json);
     }
 }

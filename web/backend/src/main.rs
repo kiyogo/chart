@@ -47,7 +47,7 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
         headers.insert(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' blob:; worker-src 'self' blob:; frame-src 'self' blob: data:; media-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://ipc.localhost ipc:; img-src 'self' data: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
+                "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' blob:; worker-src 'self' blob:; frame-src 'self' blob: data:; media-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: ws: wss: http://ipc.localhost ipc:; img-src 'self' data: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self';",
             ),
         );
     }

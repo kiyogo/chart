@@ -1,21 +1,23 @@
 #![allow(deprecated)]
 //! Client-side AEAD encryption for attachments (images, audio, video & files in E2EE chats).
 //!
-//! Supports BOTH:
+//! Supports ALL 3 versions seamlessly (100% backward-compatible):
 //! - Single-blob AES-256-GCM (v1, backward-compatible with all existing messages)
-//! - Chunked streaming AES-256-GCM (`CWCH2` v2, independent per-chunk AEAD with unique derived
-//!   nonces and chunk-index/finality AAD binding so large E2EE videos/audio can decrypt & seek
-//!   progressively without buffering or risking chunk reordering/truncation).
+//! - Chunked streaming AES-256-GCM (`CWCH2` v2)
+//! - Authenticated HKDF-nonce Chunked streaming AES-256-GCM (`CWCH3` v3 via `chatw-media-core`,
+//!   binding media_tag, variant_tag, chunk_index, total_chunks, and finality in AAD!)
 
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
     aead::{Aead, Payload},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use chatw_media_core::e2ee as core_e2ee;
 use p256::elliptic_curve::rand_core::{OsRng, RngCore};
 use zeroize::Zeroize;
 
 pub const CHUNKED_MAGIC: &[u8; 5] = b"CWCH2";
+pub const CHUNKED_V3_MAGIC: &[u8; 5] = b"CWCH3";
 pub const DEFAULT_STREAM_CHUNK_SIZE: usize = 512 * 1024; // 512 KiB per encrypted segment
 pub const CHUNKED_HEADER_LEN: usize = 5 + 4 + 4 + 8; // magic + chunk_size + chunk_count + total_plain_len = 21 bytes
 
@@ -66,13 +68,29 @@ pub fn parse_chunked_header(bytes: &[u8]) -> Option<ChunkedHeader> {
     })
 }
 
-/// Seal bytes using single-shot AEAD for small files (< 512 KiB) or chunked streaming AEAD (`CWCH2`)
+/// Seal bytes using single-shot AEAD for small files (< 512 KiB) or `CWCH3` HKDF-derived chunked streaming AEAD
 /// automatically for larger video/audio/files.
 pub fn seal(bytes: &[u8]) -> Result<SealedBlob, String> {
     if bytes.len() >= DEFAULT_STREAM_CHUNK_SIZE {
-        return seal_chunked(bytes, DEFAULT_STREAM_CHUNK_SIZE);
+        return seal_cwch3(bytes, DEFAULT_STREAM_CHUNK_SIZE, "chatw-media", "default");
     }
     seal_single(bytes)
+}
+
+/// Seal bytes using `CWCH3` chunked streaming AEAD (HKDF per-chunk nonces + media/variant/finality AAD).
+pub fn seal_cwch3(
+    bytes: &[u8],
+    chunk_size: usize,
+    media_id: &str,
+    variant_id: &str,
+) -> Result<SealedBlob, String> {
+    let sealed = core_e2ee::seal_cwch3(bytes, media_id, variant_id, chunk_size)
+        .map_err(|e| e.to_string())?;
+    Ok(SealedBlob {
+        cipher: sealed.cipher,
+        key_b64: sealed.key_b64,
+        nonce_b64: sealed.nonce_b64,
+    })
 }
 
 /// Single-shot AES-256-GCM encryption (v1 format).
@@ -178,8 +196,11 @@ pub fn open_chunk(
         .map_err(|_| "chunk_decrypt_failed".to_string())
 }
 
-/// Transparently decrypt BOTH `CWCH2` chunked AEAD streams and legacy v1 single-blob ciphertexts.
+/// Transparently decrypt ALL formats: `CWCH3` v3, `CWCH2` v2 chunked AEAD streams, and legacy v1 single-blob ciphertexts.
 pub fn open(cipher: &[u8], key_b64: &str, nonce_b64: &str) -> Result<Vec<u8>, String> {
+    if core_e2ee::parse_cwch3_header(cipher).is_some() {
+        return core_e2ee::open_any_media(cipher, key_b64, nonce_b64).map_err(|e| e.to_string());
+    }
     if let Some(hdr) = parse_chunked_header(cipher) {
         let mut key = URL_SAFE_NO_PAD.decode(key_b64).map_err(|_| "bad_key".to_string())?;
         let nonce_vec = URL_SAFE_NO_PAD.decode(nonce_b64).map_err(|_| "bad_nonce".to_string())?;
@@ -286,5 +307,19 @@ mod tests {
         assert_eq!(seg0_pt, &data[..32 * 1024]);
         // Claiming segment 0 is index 1 must fail AAD/nonce authentication
         assert!(open_chunk(seg0_ct, 1, false, &sealed.key_b64, &sealed.nonce_b64).is_err());
+    }
+
+    #[test]
+    fn cwch3_hkdf_streaming_roundtrip_and_tamper_detection() {
+        let data: Vec<u8> = (0..(128 * 1024)).map(|i| ((i * 13) % 251) as u8).collect();
+        let sealed = seal_cwch3(&data, 32 * 1024, "media-e2ee-110", "av1-720p").unwrap();
+        assert_eq!(&sealed.cipher[0..5], CHUNKED_V3_MAGIC);
+        let opened = open(&sealed.cipher, &sealed.key_b64, &sealed.nonce_b64).unwrap();
+        assert_eq!(opened, data);
+
+        let mut tampered = sealed.cipher.clone();
+        let mid = tampered.len() / 2;
+        tampered[mid] ^= 0x40;
+        assert!(open(&tampered, &sealed.key_b64, &sealed.nonce_b64).is_err());
     }
 }

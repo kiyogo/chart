@@ -135,6 +135,7 @@ pub fn App() -> Element {
     };
 
     use_effect(move || {
+        crate::storage::wasm_bridge::install_wasm_media_bridge();
         platform::apply_appearance(&platform::load_appearance());
         i18n::init_from_storage();
         check_auth();

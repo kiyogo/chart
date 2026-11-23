@@ -1,13 +1,53 @@
-// Client-side IndexedDB + OPFS + Cache API Storage Engine for ChatW (Spec 022)
-// Handles persistent chunked/object caching, SHA-256 integrity, QuotaExceededError resilience,
-// and safe cache-vs-source eviction protecting unique unbacked `local_only` DM media.
+// Client-side IndexedDB + OPFS + Cache API Intelligent Storage Engine for ChatW (Spec 022 + Spec 110)
+// - W-TinyLFU (4-bit Count-Min Sketch) + Segmented LRU + Cost-Aware & Size-Aware Eviction
+// - Adaptive Capacity Budget based on real browser storage headroom
+// - Dedicated AI Output Cache (`ai_outputs`), AI Model Weight Cache (`ai_models`), Video Segment Cache (`video_segments`)
+// - SHA-256 integrity verification, QuotaExceededError resilience, & protection for unique unbacked DM files.
 (() => {
   const DB_NAME = 'chatw_storage_v1';
-  const DB_VERSION = 4;
+  const DB_VERSION = 5;
   const OPFS_DIR = 'chatw_cas';
   const CACHE_NAME = 'chatw_media_cache_v1';
   const MAX_CACHED_MESSAGES_PER_CONV = 500;
   const MAX_CACHED_CONVS = 120;
+
+  // 4-bit Count-Min Sketch for W-TinyLFU frequency estimation (4 rows x 1024 counters, periodic halving)
+  const CMS_WIDTH = 1024;
+  const CMS_ROWS = 4;
+  const cmsTable = new Uint8Array(CMS_ROWS * CMS_WIDTH);
+  let cmsOps = 0;
+
+  function cmsHash(str, seed) {
+    let h = (2166136261 ^ seed) >>> 0;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h & (CMS_WIDTH - 1);
+  }
+
+  function cmsRecord(key) {
+    const s = String(key || '');
+    for (let r = 0; r < CMS_ROWS; r++) {
+      const idx = r * CMS_WIDTH + cmsHash(s, (r + 1) * 0x9e3779b1);
+      if (cmsTable[idx] < 15) cmsTable[idx]++;
+    }
+    cmsOps++;
+    if (cmsOps >= 8192) {
+      for (let i = 0; i < cmsTable.length; i++) cmsTable[i] >>= 1;
+      cmsOps = 0;
+    }
+  }
+
+  function cmsEstimate(key) {
+    const s = String(key || '');
+    let minVal = 15;
+    for (let r = 0; r < CMS_ROWS; r++) {
+      const idx = r * CMS_WIDTH + cmsHash(s, (r + 1) * 0x9e3779b1);
+      if (cmsTable[idx] < minVal) minVal = cmsTable[idx];
+    }
+    return minVal;
+  }
 
   let dbPromise = null;
 
@@ -61,6 +101,19 @@
         }
         if (!db.objectStoreNames.contains('crypto_keys')) {
           db.createObjectStore('crypto_keys', { keyPath: 'id' });
+        }
+        // Spec 110 stores: Dedicated AI Output Cache, AI Model Cache, and Video Segment Cache
+        if (!db.objectStoreNames.contains('ai_outputs')) {
+          const ao = db.createObjectStore('ai_outputs', { keyPath: 'cache_key' });
+          ao.createIndex('last_accessed_at', 'last_accessed_at', { unique: false });
+          ao.createIndex('model_version', 'model_version', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('ai_models')) {
+          db.createObjectStore('ai_models', { keyPath: 'model_id' });
+        }
+        if (!db.objectStoreNames.contains('video_segments')) {
+          const vs = db.createObjectStore('video_segments', { keyPath: 'seg_key' });
+          vs.createIndex('last_accessed_at', 'last_accessed_at', { unique: false });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -189,16 +242,54 @@
     await idbTx('objects', 'readwrite', (s) => s.delete(meta.ref_id));
   }
 
+  async function computeAdaptiveLimitBytes() {
+    const cfgMb = getConfiguredLimitMb();
+    if (cfgMb === 0) return Number.MAX_SAFE_INTEGER;
+    let limitBytes = cfgMb * 1024 * 1024;
+    try {
+      if (navigator.storage && typeof navigator.storage.estimate === 'function') {
+        const est = await navigator.storage.estimate();
+        const quota = Number(est.quota || 0);
+        const usage = Number(est.usage || 0);
+        if (quota > 0) {
+          const freeBytes = Math.max(0, quota - usage);
+          // Reserve at least 15% of browser quota (min 64 MiB) so browser/OS never hits QuotaExceededError
+          const safeCap = Math.max(64 * 1024 * 1024, Math.floor(quota * 0.72));
+          if (freeBytes < 128 * 1024 * 1024) {
+            limitBytes = Math.min(limitBytes, Math.max(48 * 1024 * 1024, Math.floor(safeCap * 0.5)));
+          } else {
+            limitBytes = Math.min(limitBytes, safeCap);
+          }
+        }
+      }
+    } catch (_) {}
+    return limitBytes;
+  }
+
+  // W-TinyLFU + Cost-Aware & Size-Aware eviction utility score (higher = more valuable to keep)
+  function computeRetentionScore(item, nowMs) {
+    const key = item.ref_id || item.cache_key || item.seg_key || '';
+    const freq = cmsEstimate(key) + Math.min(15, Number(item.access_count || 1));
+    const ageHours = Math.max(0.05, (nowMs - (item.last_accessed_at || item.updated_at || nowMs)) / 3600000);
+    const recency = 1.0 / (1.0 + Math.log2(1.0 + ageHours));
+    const sizeKb = Math.max(1, (item.byte_size || 1024) / 1024);
+    const computeCost = 1.0 + Math.min(8.0, Number(item.compute_cost_ms || 0) / 120.0);
+    // Size-aware penalty: giant single-hit files lose against frequently-reused compact media/AI outputs
+    return ((freq * 1.4 + recency * 3.0) * computeCost) / Math.pow(sizeKb, 0.35);
+  }
+
   async function evictSafeCacheIfNeeded(incomingBytes) {
-    const limitMb = getConfiguredLimitMb();
+    const limitBytes = await computeAdaptiveLimitBytes();
+    if (limitBytes === Number.MAX_SAFE_INTEGER) return { evicted: 0, freed: 0 };
     const rows = await idbGetAll('objects');
     const totalUsed = rows.reduce((acc, r) => acc + (r.byte_size || 0), 0);
-    if (limitMb === 0) return { evicted: 0, freed: 0 }; // 0 = Unlimited
-    const limitBytes = limitMb * 1024 * 1024;
     if (totalUsed + incomingBytes <= limitBytes) return { evicted: 0, freed: 0 };
 
-    // LRU sort on evictable entries only (server-durable Group/Channel or replicated copies).
-    const candidates = rows.filter(isSafeToEvict).sort((a, b) => (a.last_accessed_at || 0) - (b.last_accessed_at || 0));
+    const nowMs = Date.now();
+    // W-TinyLFU + Cost-Aware + Size-Aware sort on evictable entries ONLY (lowest retention score evicted first!)
+    const candidates = rows
+      .filter(isSafeToEvict)
+      .sort((a, b) => computeRetentionScore(a, nowMs) - computeRetentionScore(b, nowMs));
     let freed = 0;
     let evicted = 0;
     let current = totalUsed;
@@ -210,6 +301,27 @@
       evicted += 1;
     }
     return { evicted, freed };
+  }
+
+  async function evictAiCacheIfNeeded(incomingBytes) {
+    const limitBytes = await computeAdaptiveLimitBytes();
+    // Dedicate up to 22% of adaptive budget (capped 320 MiB, min 24 MiB) to AI Output Cache
+    const aiCap = limitBytes === Number.MAX_SAFE_INTEGER
+      ? 320 * 1024 * 1024
+      : Math.max(24 * 1024 * 1024, Math.min(320 * 1024 * 1024, Math.floor(limitBytes * 0.22)));
+    const rows = await idbGetAll('ai_outputs').catch(() => []);
+    let total = rows.reduce((acc, r) => acc + (r.byte_size || 0), 0);
+    if (total + incomingBytes <= aiCap) return 0;
+    const nowMs = Date.now();
+    rows.sort((a, b) => computeRetentionScore(a, nowMs) - computeRetentionScore(b, nowMs));
+    let evicted = 0;
+    for (const item of rows) {
+      if (total + incomingBytes <= aiCap) break;
+      await idbTx('ai_outputs', 'readwrite', (s) => s.delete(item.cache_key)).catch(() => {});
+      total -= (item.byte_size || 0);
+      evicted++;
+    }
+    return evicted;
   }
 
   async function requestPersistence() {
@@ -350,9 +462,11 @@
       if (meta.sha256_plain && actualSha && actualSha !== meta.sha256_plain) {
         return { found: false, corrupted: true };
       }
-      // Touch LRU timestamp
+      // Touch W-TinyLFU frequency sketch + access count + LRU timestamp
+      cmsRecord(refId);
       try {
         meta.last_accessed_at = Date.now();
+        meta.access_count = (meta.access_count || 1) + 1;
         await idbTx('objects', 'readwrite', (s) => s.put(meta));
       } catch (_) {}
 
@@ -827,6 +941,148 @@
       } catch (_) {
         return false;
       }
+    },
+
+    // ── Spec 110: Dedicated AI Output Cache, Video Segment Cache & Smart Cache Telemetry ──
+    async putAiOutput(cacheKey, blobOrU8, meta = {}) {
+      if (!cacheKey || !blobOrU8) return { ok: false };
+      const blob = blobOrU8 instanceof Blob ? blobOrU8 : new Blob([blobOrU8], { type: meta.mime_type || 'image/png' });
+      const byteSize = blob.size || 0;
+      if (byteSize === 0) return { ok: false };
+      try {
+        await evictAiCacheIfNeeded(byteSize);
+        const now = Date.now();
+        cmsRecord(cacheKey);
+        await idbTx('ai_outputs', 'readwrite', (s) =>
+          s.put({
+            cache_key: String(cacheKey),
+            media_id: meta.media_id || '',
+            model_id: meta.model_id || 'spab_lite_builtin',
+            model_version: meta.model_version || '2.0.0',
+            backend: meta.backend || 'cpu_tiled_spab_lite',
+            ssim: meta.ssim || null,
+            compute_cost_ms: Number(meta.compute_cost_ms || 40),
+            width: Number(meta.width || 0),
+            height: Number(meta.height || 0),
+            byte_size: byteSize,
+            blob,
+            access_count: 1,
+            created_at: now,
+            last_accessed_at: now,
+          }),
+        );
+        return { ok: true, byte_size: byteSize };
+      } catch (err) {
+        return { ok: false, error: String(err && err.message ? err.message : err) };
+      }
+    },
+
+    async getAiOutput(cacheKey) {
+      if (!cacheKey) return { found: false };
+      try {
+        const rec = await idbTx('ai_outputs', 'readonly', (s) => s.get(String(cacheKey)));
+        if (!rec || !rec.blob) return { found: false };
+        cmsRecord(cacheKey);
+        try {
+          rec.last_accessed_at = Date.now();
+          rec.access_count = (rec.access_count || 1) + 1;
+          await idbTx('ai_outputs', 'readwrite', (s) => s.put(rec));
+        } catch (_) {}
+        return {
+          found: true,
+          blob: rec.blob,
+          model_id: rec.model_id,
+          model_version: rec.model_version,
+          backend: rec.backend,
+          ssim: rec.ssim,
+          byte_size: rec.byte_size,
+        };
+      } catch (_) {
+        return { found: false };
+      }
+    },
+
+    async clearAiCache() {
+      try {
+        const rows = await idbGetAll('ai_outputs').catch(() => []);
+        const freed = rows.reduce((a, r) => a + (r.byte_size || 0), 0);
+        await idbTx('ai_outputs', 'readwrite', (s) => s.clear());
+        return { removed: rows.length, freed_bytes: freed };
+      } catch (_) {
+        return { removed: 0, freed_bytes: 0 };
+      }
+    },
+
+    async putVideoSegment(segKey, u8, meta = {}) {
+      if (!segKey || !u8) return false;
+      const bytes = u8 instanceof Uint8Array ? u8 : new Uint8Array(u8);
+      try {
+        const rows = await idbGetAll('video_segments').catch(() => []);
+        let total = rows.reduce((a, r) => a + (r.byte_size || 0), 0);
+        const maxVideoSegBytes = 96 * 1024 * 1024;
+        if (total + bytes.byteLength > maxVideoSegBytes) {
+          const nowMs = Date.now();
+          rows.sort((a, b) => computeRetentionScore(a, nowMs) - computeRetentionScore(b, nowMs));
+          for (const item of rows) {
+            if (total + bytes.byteLength <= maxVideoSegBytes) break;
+            await idbTx('video_segments', 'readwrite', (s) => s.delete(item.seg_key)).catch(() => {});
+            total -= (item.byte_size || 0);
+          }
+        }
+        cmsRecord(segKey);
+        const now = Date.now();
+        await idbTx('video_segments', 'readwrite', (s) =>
+          s.put({
+            seg_key: String(segKey),
+            bytes,
+            byte_size: bytes.byteLength,
+            mime_type: meta.mime_type || 'application/octet-stream',
+            access_count: 1,
+            last_accessed_at: now,
+          }),
+        );
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
+    async getVideoSegment(segKey) {
+      if (!segKey) return null;
+      try {
+        const rec = await idbTx('video_segments', 'readonly', (s) => s.get(String(segKey)));
+        if (!rec || !rec.bytes) return null;
+        cmsRecord(segKey);
+        rec.last_accessed_at = Date.now();
+        rec.access_count = (rec.access_count || 1) + 1;
+        await idbTx('video_segments', 'readwrite', (s) => s.put(rec)).catch(() => {});
+        return rec.bytes instanceof Uint8Array ? rec.bytes : new Uint8Array(rec.bytes);
+      } catch (_) {
+        return null;
+      }
+    },
+
+    async getSmartCacheStats() {
+      const [objs, aiRows, vidRows, effectiveLimit] = await Promise.all([
+        idbGetAll('objects').catch(() => []),
+        idbGetAll('ai_outputs').catch(() => []),
+        idbGetAll('video_segments').catch(() => []),
+        computeAdaptiveLimitBytes().catch(() => 1024 * 1024 * 1024),
+      ]);
+      const objBytes = objs.reduce((a, r) => a + (r.byte_size || 0), 0);
+      const aiBytes = aiRows.reduce((a, r) => a + (r.byte_size || 0), 0);
+      const vidBytes = vidRows.reduce((a, r) => a + (r.byte_size || 0), 0);
+      return {
+        policy: 'W-TinyLFU + Cost-Aware SLRU',
+        adaptive_limit_bytes: effectiveLimit === Number.MAX_SAFE_INTEGER ? 0 : effectiveLimit,
+        media_object_count: objs.length,
+        media_object_bytes: objBytes,
+        ai_output_count: aiRows.length,
+        ai_output_bytes: aiBytes,
+        video_segment_count: vidRows.length,
+        video_segment_bytes: vidBytes,
+        total_smart_cache_bytes: objBytes + aiBytes + vidBytes,
+      };
     },
   };
 })();

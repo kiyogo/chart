@@ -5,6 +5,7 @@ pub mod native;
 pub mod media_opt;
 pub mod recovery;
 pub mod sync_manager;
+pub mod wasm_bridge;
 
 use dioxus::prelude::GlobalSignal;
 use serde::{Deserialize, Serialize};

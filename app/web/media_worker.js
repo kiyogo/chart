@@ -1,6 +1,7 @@
-// ChatW Dedicated Media Processing Web Worker (Spec 071 — OffscreenCanvas)
-// Runs image downscaling, AVIF/WebP adaptive compression, automatic EXIF/GPS stripping,
-// and 16x16 micro-blur thumbnail generation completely off the Main Thread!
+// ChatW Dedicated Media Processing Web Worker (Spec 071 + Spec 110)
+// - Adaptive content-aware resolution (NO blanket 1920px clamp!)
+// - Genuine AVIF (`ftypavif`) encoding ONLY — ZERO silent fallback to JPEG/WebP/PNG!
+// - Automatic EXIF/GPS stripping + 16x16 progressive micro-blur preview off the Main Thread!
 (() => {
   function bytesToB64(u8) {
     let s = '';
@@ -25,20 +26,53 @@
     return { ext: 'bin', mime: 'application/octet-stream', animated: false };
   }
 
-  async function encodeOffscreen(canvas, mimes, quality) {
-    for (const mime of mimes) {
-      try {
-        const blob = await canvas.convertToBlob({ type: mime, quality });
-        if (blob && blob.size > 0 && blob.type === mime) {
-          const u8 = new Uint8Array(await blob.arrayBuffer());
-          const sniff = sniffBytesFormat(u8);
-          if (sniff.mime === mime) return { u8, sniff };
-        }
-      } catch (_) {}
+  function detectCrispTextOrAlpha(ctx, w, h) {
+    const pw = Math.min(256, w);
+    const ph = Math.min(256, h);
+    if (pw < 4 || ph < 4) return { isCrisp: false, hasAlpha: false };
+    const probe = new OffscreenCanvas(pw, ph);
+    const pctx = probe.getContext('2d');
+    pctx.drawImage(ctx.canvas, 0, 0, pw, ph);
+    const data = pctx.getImageData(0, 0, pw, ph).data;
+    let sharp = 0;
+    let flat = 0;
+    let hasAlpha = false;
+    const total = (pw - 1) * (ph - 1);
+    for (let y = 0; y < ph - 1; y++) {
+      for (let x = 0; x < pw - 1; x++) {
+        const i = (y * pw + x) * 4;
+        if (data[i + 3] < 250) hasAlpha = true;
+        const ir = i + 4;
+        const id = i + pw * 4;
+        const dh = Math.abs(data[i] - data[ir]) + Math.abs(data[i + 1] - data[ir + 1]) + Math.abs(data[i + 2] - data[ir + 2]);
+        const dv = Math.abs(data[i] - data[id]) + Math.abs(data[i + 1] - data[id + 1]) + Math.abs(data[i + 2] - data[id + 2]);
+        if (dh > 120 || dv > 120) sharp++;
+        else if (dh <= 4 && dv <= 4) flat++;
+      }
     }
-    const pngBlob = await canvas.convertToBlob({ type: 'image/png' });
-    const u8 = new Uint8Array(await pngBlob.arrayBuffer());
-    return { u8, sniff: sniffBytesFormat(u8) };
+    return { isCrisp: hasAlpha || (flat / total > 0.45 && sharp / total > 0.006), hasAlpha };
+  }
+
+  // Adaptive resolution policy (matches crates/chatw-media-core/src/classifier.rs — NO blanket 1920px clamp!)
+  function adaptiveMaxEdge(w, h, isCrisp, qualityMode) {
+    if (qualityMode === 'original') return null;
+    if (qualityMode === 'data_saver') return isCrisp ? 2560 : 1600;
+    // Ultra-optimized default: keep crisp UI/docs up to 4096px; keep photos up to 3840px (4K)!
+    const maxEdge = Math.max(w, h);
+    if (isCrisp) return maxEdge > 4096 ? 4096 : null;
+    return maxEdge > 3840 ? 3840 : null;
+  }
+
+  async function tryGenuineAvif(canvas, quality) {
+    try {
+      const blob = await canvas.convertToBlob({ type: 'image/avif', quality });
+      if (blob && blob.size > 0 && blob.type === 'image/avif') {
+        const u8 = new Uint8Array(await blob.arrayBuffer());
+        const sniff = sniffBytesFormat(u8);
+        if (sniff.ext === 'avif') return { u8, sniff };
+      }
+    } catch (_) {}
+    return null;
   }
 
   async function makeMicroBlur(bitmap, srcW, srcH) {
@@ -49,12 +83,18 @@
       const ctx = c.getContext('2d');
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(bitmap, 0, 0, bw, bh);
-      const res = await encodeOffscreen(c, ['image/webp', 'image/jpeg'], 0.35);
-      const dataUrl = `data:${res.sniff.mime};base64,${bytesToB64(res.u8)}`;
-      return dataUrl.length <= 1400 ? dataUrl : null;
-    } catch (_) {
-      return null;
-    }
+      for (const mime of ['image/avif', 'image/webp', 'image/jpeg']) {
+        try {
+          const b = await c.convertToBlob({ type: mime, quality: 0.35 });
+          if (b && b.size > 0 && b.size <= 1024) {
+            const u8 = new Uint8Array(await b.arrayBuffer());
+            const dataUrl = `data:${b.type};base64,${bytesToB64(u8)}`;
+            if (dataUrl.length <= 1400) return dataUrl;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return null;
   }
 
   self.onmessage = async (ev) => {
@@ -67,6 +107,22 @@
       const rawU8 = new Uint8Array(buffer);
       const rawSniff = sniffBytesFormat(rawU8);
       if (rawSniff.animated) {
+        self.postMessage({ id, ok: false, animatedNeedsWasmAvif: true });
+        return;
+      }
+
+      const bitmap = await createImageBitmap(new Blob([rawU8], { type: rawSniff.mime || mime || 'image/png' }));
+      const origW = bitmap.width;
+      const origH = bitmap.height;
+
+      const probeCanvas = new OffscreenCanvas(Math.min(origW, 512), Math.min(origH, 512));
+      const pctx = probeCanvas.getContext('2d');
+      pctx.drawImage(bitmap, 0, 0, probeCanvas.width, probeCanvas.height);
+      const { isCrisp } = detectCrispTextOrAlpha(pctx, probeCanvas.width, probeCanvas.height);
+
+      const blurDataUrl = await makeMicroBlur(bitmap, origW, origH);
+      if (opts.preserveOriginal || opts.qualityMode === 'original') {
+        bitmap.close();
         self.postMessage({
           id,
           ok: true,
@@ -75,68 +131,73 @@
           ext: rawSniff.ext,
           originalSize: rawU8.byteLength,
           optimizedSize: rawU8.byteLength,
-          isCrispText: false,
-          width: 0,
-          height: 0,
-          blurDataUrl: null,
+          isCrispText: isCrisp,
+          width: origW,
+          height: origH,
+          blurDataUrl,
           thumbB64: null,
           thumbMime: null,
           exifStripped: false,
+          workerUsed: true,
+          codec: 'original_passthrough',
         });
         return;
       }
 
-      const bitmap = await createImageBitmap(new Blob([rawU8], { type: rawSniff.mime || mime || 'image/png' }));
-      const maxDim = opts.maxDim || 1920;
-      let tw = bitmap.width;
-      let th = bitmap.height;
-      if (tw > maxDim || th > maxDim) {
-        const r = Math.min(maxDim / tw, maxDim / th);
+      const maxEdge = opts.maxDim || adaptiveMaxEdge(origW, origH, isCrisp, opts.qualityMode || 'ultra_optimized');
+      let tw = origW;
+      let th = origH;
+      if (maxEdge && (tw > maxEdge || th > maxEdge)) {
+        const r = Math.min(maxEdge / tw, maxEdge / th);
         tw = Math.max(1, Math.round(tw * r));
         th = Math.max(1, Math.round(th * r));
       }
 
-      // Drawing through OffscreenCanvas inherently strips 100% of EXIF/GPS/IPTC privacy metadata!
       const canvas = new OffscreenCanvas(tw, th);
       const ctx = canvas.getContext('2d');
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(bitmap, 0, 0, tw, th);
 
-      const blurDataUrl = await makeMicroBlur(bitmap, tw, th);
-      const best = opts.preserveOriginal
-        ? { u8: rawU8, sniff: rawSniff }
-        : await encodeOffscreen(canvas, ['image/avif', 'image/webp', 'image/jpeg'], 0.80);
-
-      let thumbB64 = null;
-      let thumbMime = null;
-      try {
-        const tScale = Math.min(320 / tw, 320 / th, 1);
-        const tc = new OffscreenCanvas(Math.max(1, Math.round(tw * tScale)), Math.max(1, Math.round(th * tScale)));
-        tc.getContext('2d').drawImage(bitmap, 0, 0, tc.width, tc.height);
-        const thRes = await encodeOffscreen(tc, ['image/webp', 'image/jpeg'], 0.68);
-        thumbB64 = bytesToB64(thRes.u8);
-        thumbMime = thRes.sniff.mime;
-      } catch (_) {}
-
+      const q = isCrisp ? 0.84 : (opts.qualityMode === 'data_saver' ? 0.62 : 0.72);
+      const avif = await tryGenuineAvif(canvas, q);
       bitmap.close();
+
+      if (!avif) {
+        // NEVER silently fall back to JPEG/WebP/PNG! Hand back cleanly so main thread runs ChatW pure-Rust WASM `ravif` encoder.
+        self.postMessage({
+          id,
+          ok: false,
+          avifUnsupportedInWorker: true,
+          width: tw,
+          height: th,
+          isCrispText: isCrisp,
+          blurDataUrl,
+        });
+        return;
+      }
+
+      const useOrig = avif.u8.byteLength >= rawU8.byteLength && tw === origW && th === origH && rawSniff.ext === 'avif';
+      const outU8 = useOrig ? rawU8 : avif.u8;
+      const outSniff = useOrig ? rawSniff : avif.sniff;
 
       self.postMessage({
         id,
         ok: true,
-        bytesB64: bytesToB64(best.u8),
-        mime: best.sniff.mime,
-        ext: best.sniff.ext,
+        bytesB64: bytesToB64(outU8),
+        mime: outSniff.mime,
+        ext: outSniff.ext,
         originalSize: rawU8.byteLength,
-        optimizedSize: best.u8.byteLength,
-        isCrispText: false,
+        optimizedSize: outU8.byteLength,
+        isCrispText: isCrisp,
         width: tw,
         height: th,
         blurDataUrl,
-        thumbB64,
-        thumbMime,
-        exifStripped: !opts.preserveOriginal,
+        thumbB64: null,
+        thumbMime: null,
+        exifStripped: !useOrig,
         workerUsed: true,
+        codec: 'avif_native_canvas',
       });
     } catch (err) {
       self.postMessage({ id, ok: false, error: String(err && err.message ? err.message : err) });

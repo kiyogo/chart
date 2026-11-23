@@ -1,0 +1,63 @@
+[package]
+name = "chatw-media-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Cross-platform Rust media compression (AVIF/AV1/Opus/FLAC/ZSTD/Brotli/LZMA2), on-device AI restoration, E2EE chunked streaming, safe dedup (BLAKE3/PDQ/vPDQ), and W-TinyLFU intelligent cache core for ChatW."
+
+[features]
+default = ["avif-codec", "av1-codec", "lossless-files", "audio-codecs"]
+# Pure-Rust genuine AVIF encoder (ravif + rav1e). Works on both native and wasm32!
+avif-codec = ["dep:ravif", "dep:rgb", "dep:avif-serialize", "dep:image"]
+# Pure-Rust genuine AV1 video encoder (rav1e) + fMP4/CMAF muxer.
+av1-codec = ["dep:rav1e", "dep:image"]
+# Lossless multi-codec file compression (Brotli + LZMA2 + ZSTD).
+lossless-files = ["dep:brotli", "dep:lzma-rust2", "dep:ruzstd"]
+# Pure-Rust FLAC lossless encoder/decoder + Opus analyzer + speech denoiser.
+audio-codecs = ["dep:flacenc", "dep:claxon"]
+# Native C libzstd acceleration + multi-threaded ravif/rav1e (portable without requiring external nasm).
+native-fast = ["dep:zstd", "ravif?/threading", "rav1e?/threading"]
+# Optional x86_64 NASM assembly acceleration when `nasm` is installed on the build host.
+rav1e-asm = ["rav1e?/asm"]
+# Real ONNX neural network inference engine (tract-onnx) for SPAN / Real-ESRGAN / Real-CUGAN / SwinIR / HAT / NanoVSR.
+onnx-runtime = ["dep:tract-onnx"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4"
+base64 = "0.22"
+blake3 = "1.8"
+sha2 = "0.10"
+hkdf = "0.12"
+aes-gcm = "0.10"
+zeroize = { version = "1.8", features = ["derive"] }
+
+# Image & AVIF/AV1 codecs
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "avif"], optional = true }
+ravif = { version = "0.13", default-features = false, optional = true }
+rav1e = { version = "0.8", default-features = false, optional = true }
+rgb = { version = "0.8", optional = true }
+avif-serialize = { version = "0.8", optional = true }
+
+# Lossless file compression
+brotli = { version = "9.1", default-features = false, features = ["std"], optional = true }
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "encoder", "xz"], optional = true }
+ruzstd = { version = "0.9", default-features = false, features = ["std"], optional = true }
+
+# Audio codecs (FLAC lossless encode + decode)
+flacenc = { version = "0.5", optional = true }
+claxon = { version = "0.4", optional = true }
+
+# Real ONNX Inference Engine (pure-Rust, zero C++ deployment dependency)
+tract-onnx = { version = "0.23", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+zstd = { version = "0.13", optional = true }
+getrandom = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+prost = "0.14"

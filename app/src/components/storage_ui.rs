@@ -23,14 +23,8 @@ pub fn StorageSettingsPanel() -> Element {
     let mut quota = use_signal(LocalQuotaInfo::default);
     let mut metrics = use_signal(|| Option::<serde_json::Value>::None);
     let mut caps = use_signal(|| Option::<serde_json::Value>::None);
-    let mut policy = use_signal(|| StoragePolicy {
-        cache_limit_mb: 1024,
-        auto_download_mode: "wifi".into(),
-        dm_relay_ttl_hours: 168,
-        dm_encrypted_backup: false,
-        require_device_approval: false,
-        prefer_original_upload: false,
-    });
+    let mut ai_status = use_signal(|| Option::<serde_json::Value>::None);
+    let mut policy = use_signal(StoragePolicy::default);
     let mut notice = use_signal(|| Option::<(bool, String)>::None);
     let mut confirm_purge_unique = use_signal(|| false);
     let mut migration_res = use_signal(|| Option::<serde_json::Value>::None);
@@ -40,6 +34,11 @@ pub fn StorageSettingsPanel() -> Element {
             quota.set(get_quota_estimate().await);
             if let Ok(p) = storage_sync::get_policy().await {
                 platform::storage_set("chatw_cache_limit_mb", &p.cache_limit_mb.to_string());
+                platform::storage_set("chatw_media_quality_mode", &p.media_quality_mode);
+                platform::storage_set(
+                    "chatw_ai_enhance",
+                    if p.ai_enhancement_enabled { "true" } else { "false" },
+                );
                 policy.set(p);
             }
             if let Ok(m) = storage_sync::get_metrics().await {
@@ -48,6 +47,20 @@ pub fn StorageSettingsPanel() -> Element {
             if let Ok(c) = storage_sync::get_capabilities().await {
                 caps.set(Some(c));
             }
+            let mut eval = dioxus::document::eval(
+                r#"
+                (async () => {
+                    if (!window.__chatwAiRestorer) { dioxus.send(null); return; }
+                    const st = await window.__chatwAiRestorer.getStatus();
+                    dioxus.send(st);
+                })();
+                "#,
+            );
+            if let Ok(st) = eval.recv::<serde_json::Value>().await {
+                if !st.is_null() {
+                    ai_status.set(Some(st));
+                }
+            }
         });
     };
     use_effect(move || reload());
@@ -55,6 +68,7 @@ pub fn StorageSettingsPanel() -> Element {
     let q = quota();
     let p = policy();
     let m = metrics();
+    let ai = ai_status();
 
     let server_physical = m.as_ref().and_then(|v| v["server"]["physical_bytes"].as_u64()).unwrap_or(0);
     let dedup_saved = m.as_ref().and_then(|v| v["server"]["dedup_saved_bytes"].as_u64()).unwrap_or(0);
@@ -65,6 +79,19 @@ pub fn StorageSettingsPanel() -> Element {
     let at_risk = m.as_ref().and_then(|v| v["user"]["expiring_without_safe_copies"].as_i64()).unwrap_or(0);
 
     let s3_ready = caps.read().as_ref().and_then(|v| v["s3"]["ready"].as_bool()).unwrap_or(false);
+    let ai_backend_label = ai
+        .as_ref()
+        .and_then(|v| v["webgpuAvailable"].as_bool())
+        .map(|gpu| if gpu { "GPU tăng tốc" } else { "CPU thiết bị" })
+        .unwrap_or("Thiết bị");
+    let ai_cache_count = ai
+        .as_ref()
+        .and_then(|v| v["cacheStats"]["ai_output_count"].as_u64())
+        .unwrap_or(0);
+    let ai_cache_bytes = ai
+        .as_ref()
+        .and_then(|v| v["cacheStats"]["ai_output_bytes"].as_u64())
+        .unwrap_or(0);
 
     rsx! {
         if let Some((is_err, msg)) = notice() {
@@ -190,9 +217,111 @@ pub fn StorageSettingsPanel() -> Element {
                                 onchange: move |e| {
                                     let mut next = policy();
                                     next.prefer_original_upload = e.checked();
+                                    if e.checked() {
+                                        next.media_quality_mode = "original".into();
+                                    } else if next.media_quality_mode == "original" {
+                                        next.media_quality_mode = "ultra_optimized".into();
+                                    }
+                                    platform::storage_set("chatw_media_quality_mode", &next.media_quality_mode);
                                     policy.set(next.clone());
                                     spawn(async move { let _ = storage_sync::update_policy(&next).await; });
                                 },
+                            }
+                        }
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Chất lượng gửi media" }
+                            }
+                            select {
+                                class: "settings-select",
+                                aria_label: "Media quality mode",
+                                value: "{p.media_quality_mode}",
+                                onchange: move |e| {
+                                    let mut next = policy();
+                                    next.media_quality_mode = e.value();
+                                    next.prefer_original_upload = next.media_quality_mode == "original";
+                                    next.data_saver_mode = next.media_quality_mode == "data_saver";
+                                    platform::storage_set("chatw_media_quality_mode", &next.media_quality_mode);
+                                    policy.set(next.clone());
+                                    spawn(async move { let _ = storage_sync::update_policy(&next).await; });
+                                },
+                                option { value: "ultra_optimized", "Tối ưu tự động" }
+                                option { value: "data_saver", "Tiết kiệm dữ liệu" }
+                                option { value: "original", "Nguyên bản" }
+                            }
+                        }
+                        label { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Tự động làm nét ảnh trên thiết bị" }
+                            }
+                            input {
+                                r#type: "checkbox",
+                                role: "switch",
+                                class: "switch",
+                                checked: p.ai_enhancement_enabled,
+                                onchange: move |e| {
+                                    let on = e.checked();
+                                    let mut next = policy();
+                                    next.ai_enhancement_enabled = on;
+                                    platform::storage_set("chatw_ai_enhance", if on { "true" } else { "false" });
+                                    let _ = dioxus::document::eval(&format!(
+                                        "if (window.__chatwAiRestorer) window.__chatwAiRestorer.setAiEnabled({});",
+                                        if on { "true" } else { "false" }
+                                    ));
+                                    policy.set(next.clone());
+                                    spawn(async move { let _ = storage_sync::update_policy(&next).await; });
+                                },
+                            }
+                        }
+                        label { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Lưu bền vững trên máy chủ" }
+                            }
+                            input {
+                                r#type: "checkbox",
+                                role: "switch",
+                                class: "switch",
+                                checked: p.server_durable_dm,
+                                onchange: move |e| {
+                                    let mut next = policy();
+                                    next.server_durable_dm = e.checked();
+                                    policy.set(next.clone());
+                                    spawn(async move { let _ = storage_sync::update_policy(&next).await; });
+                                },
+                            }
+                        }
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Bộ nhớ đệm AI" }
+                            }
+                            div { class: "inline-form",
+                                span { class: "chip-privacy", "{ai_backend_label} · {ai_cache_count} ảnh · {format_bytes_human(ai_cache_bytes)}" }
+                                button {
+                                    r#type: "button",
+                                    class: "btn-secondary",
+                                    onclick: move |_| {
+                                        spawn(async move {
+                                            let mut eval = dioxus::document::eval(
+                                                r#"
+                                                (async () => {
+                                                    if (!window.__chatwAiRestorer) { dioxus.send({ freed_bytes: 0 }); return; }
+                                                    const r = await window.__chatwAiRestorer.clearAiCache();
+                                                    dioxus.send(r || { freed_bytes: 0 });
+                                                })();
+                                                "#,
+                                            );
+                                            let freed = eval
+                                                .recv::<serde_json::Value>()
+                                                .await
+                                                .ok()
+                                                .and_then(|v| v["freed_bytes"].as_u64())
+                                                .unwrap_or(0);
+                                            notice.set(Some((false, format!("Đã xóa bộ nhớ đệm AI ({})", format_bytes_human(freed)))));
+                                            reload();
+                                        });
+                                    },
+                                    "Xóa"
+                                }
                             }
                         }
                     }

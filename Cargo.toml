@@ -1,5 +1,5 @@
 [workspace]
-members = ["web/backend", "app", "crates/kiyo-kdata"]
+members = ["web/backend", "app", "crates/kiyo-kdata", "crates/chatw-media-core"]
 resolver = "2"
 
 [profile.dev.package.ravif]
@@ -10,4 +10,7 @@ opt-level = 3
 
 [profile.dev.package.image]
 opt-level = 3
+
+[profile.dev.package.chatw-media-core]
+opt-level = 2
 

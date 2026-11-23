@@ -959,6 +959,7 @@ pub fn MessageList(
                 if bot_spacer_px > 0.5 {
                     div { class: "virtual-spacer", style: "height: {bot_spacer_px:.0}px;", aria_hidden: "true" }
                 }
+                crate::components::rich::PendingSenderMediaList {}
                 if count == 0 && intro_title.is_empty() {
                     div { class: "empty-chat-inner", "No messages yet" }
                 }

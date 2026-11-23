@@ -1,0 +1,17 @@
+# Tasks 110: Kế hoạch triển khai chi tiết
+
+- [x] Task 1: Khởi tạo workspace crate `crates/chatw-media-core` và cấu hình `Cargo.toml` hỗ trợ Native + WASM
+- [x] Task 2: Triển khai `classifier.rs` (magic-byte sniffer, entropy, 10 lớp phân loại ảnh, chính sách độ phân giải thích ứng) và `quality.rs` (PSNR, SSIM, MS-SSIM, Laplacian edge sharpness, Color drift, Anti-Degradation Gate)
+- [x] Task 3: Triển khai `avif.rs` (Adaptive Ultra AVIF Encoder dùng `ravif`/`rav1e` + vòng chọn RD đa ứng viên + Animated AVIF, không fallback lén JPEG/WebP/PNG)
+- [x] Task 4: Triển khai `av1.rs` (AV1 Video Encoder thật dùng `rav1e` + phân tích chuyển động/cảnh + mux IVF & Fragmented MP4/CMAF + ABR planner + hardware probe) và `streaming.rs` (manifest, ABR EWMA selector, smart prefetch)
+- [x] Task 5: Triển khai `audio.rs` (FLAC lossless bit-exact `flacenc`/`claxon`, Opus adaptive planner/parser, bộ khử nhiễu giọng nói Wiener nhẹ) và `files.rs` (ZSTD/Brotli/LZMA2 multi-codec selector + `CWCMP1` envelope + chống decompression bomb + BLAKE3 byte-for-byte)
+- [x] Task 6: Triển khai `e2ee.rs` (`CWCH3` chunked streaming AEAD có AAD media_id/variant/version/index/final + authenticated manifest + tương thích ngược `CWCH2`/v1), `dedup.rs` (BLAKE3, SHA-256, PDQ 256-bit DCT, vPDQ video fingerprint, E2EE Privacy Guard), và `cache.rs` (W-TinyLFU + S-LRU + Cost-Aware Eviction + Adaptive Capacity + AI Output Cache Key)
+- [x] Task 7: Triển khai `ai/` (`hardware.rs`, `registry.rs` kiểm duyệt giấy phép nghiêm ngặt, `router.rs`, `tiling.rs` overlap Hann feathering, `spab_lite.rs` mạng SPAB-Lite thuần Rust, `onnx_runtime.rs` chạy ONNX thật qua `tract-onnx`, `video_ai.rs` phục hồi video nhất quán thời gian)
+- [x] Task 8: Viết bộ unit/integration/security tests toàn diện và thực thi benchmark thật trên `crates/chatw-media-core`
+- [x] Task 9: Thêm migration `web/backend/migrations/0034_ultra_media_v2.sql` (additive 100% tương thích ngược)
+- [x] Task 10: Nâng cấp `web/backend/src/storage/s3.rs` (S3 Multipart thật, exponential backoff retry, true streaming, kiểm thử qua S3 loopback HTTP server thật)
+- [x] Task 11: Nâng cấp `web/backend/src/storage/{router.rs, migration.rs, references.rs}` và `media_opt/mod.rs` (vá nhánh `s3_ready`, Server-First storage, API upload cancel / safe dedup check / streaming manifest / incomplete GC, atomic ref_count GC safety)
+- [x] Task 12: Nâng cấp client Web (`app/web/ai_restorer.js` WebGPU WGSL + CPU fallback, `app/web/storage_engine.js` DB v5 W-TinyLFU + AI Output Cache, `app/web/media_optimizer.js` & `media_worker.js` instant preview + genuine AVIF via WASM + WebCodecs AV1/Opus, `app/web/sw.js` `CWCH3` + persistent segment cache, `app/web/index.html`, `app/build-web.sh`)
+- [x] Task 13: Nâng cấp client Rust (`app/src/crypto/blob.rs`, `app/src/storage/{media_opt.rs, browser.rs, native.rs, recovery.rs, wasm_bridge.rs}`, `app/src/services/storage_sync.rs`, `app/src/components/{rich.rs, messages.rs, storage_ui.rs}`, `app/src/pages/chat.rs`) tích hợp đầy đủ gửi-xem-gốc-ngay, nén AVIF thật, nhận-AI-phục-hồi-cache-AI, và Settings tối giản
+- [x] Task 14: Biên dịch đầy đủ (`cargo test --workspace`, `cargo build -p chatw`, `./app/build-web.sh release`), khởi động backend mới, chạy Playwright E2E test thật `app/e2e/spec110-ultra-media-ai-cache.mjs` và chụp ảnh xác nhận
+- [x] Task 15: Xuất báo cáo kiến trúc (`docs/architecture-media-v2.md`), báo cáo benchmark thực tế (`docs/benchmark-media-v2.md`), đối soát nghiệm thu, commit và `git push origin main`

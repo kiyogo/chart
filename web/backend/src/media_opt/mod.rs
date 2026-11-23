@@ -1,8 +1,8 @@
-use image::{
-    DynamicImage, ImageFormat,
-    codecs::{avif::AvifEncoder, jpeg::JpegEncoder, png::PngEncoder, webp::WebPEncoder},
-    imageops::FilterType,
+use chatw_media_core::{
+    avif::{AvifCompressionMode, AvifEncodeOptions, optimize_image_to_avif, process_avatar_avif},
+    classifier::{ImageClass, MediaKind as CoreMediaKind, analyze_rgba_image, sniff_media_bytes as core_sniff},
 };
+use image::{DynamicImage, ImageFormat};
 use std::io::Cursor;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,93 +42,35 @@ pub struct AdaptiveImageOutput {
     pub thumb_ext: &'static str,
     pub thumb_mime: &'static str,
     pub is_text_or_crisp_ui: bool,
+    pub media_class: String,
+    pub estimated_ssim: Option<f32>,
+    pub ai_recommended: bool,
+    pub codec: &'static str,
+    pub compression_ratio: f32,
 }
 
-/// Real magic-byte detection — never trusts client Content-Type or filename extension blindly.
+/// Real magic-byte detection backed by `chatw-media-core` — never trusts client Content-Type or filename extension blindly.
 pub fn sniff_media_bytes(bytes: &[u8]) -> SniffedFormat {
-    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
-        return SniffedFormat { ext: "png", mime: "image/png", kind: MediaKind::Image };
+    let s = core_sniff(bytes);
+    let kind = match s.kind {
+        CoreMediaKind::Image => MediaKind::Image,
+        CoreMediaKind::AnimatedImage => MediaKind::AnimatedImage,
+        CoreMediaKind::Video => MediaKind::Video,
+        CoreMediaKind::Audio => MediaKind::Audio,
+        _ => MediaKind::Document,
+    };
+    SniffedFormat {
+        ext: s.ext,
+        mime: s.mime,
+        kind,
     }
-    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        return SniffedFormat { ext: "jpg", mime: "image/jpeg", kind: MediaKind::Image };
-    }
-    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        return SniffedFormat { ext: "gif", mime: "image/gif", kind: MediaKind::AnimatedImage };
-    }
-    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
-        let is_anim = bytes.windows(4).any(|w| w == b"ANIM");
-        return SniffedFormat {
-            ext: "webp",
-            mime: "image/webp",
-            kind: if is_anim { MediaKind::AnimatedImage } else { MediaKind::Image },
-        };
-    }
-    if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
-        let brand = &bytes[8..12];
-        if brand == b"avif" || brand == b"avis" {
-            return SniffedFormat {
-                ext: "avif",
-                mime: "image/avif",
-                kind: if brand == b"avis" { MediaKind::AnimatedImage } else { MediaKind::Image },
-            };
-        }
-        if matches!(brand, b"isom" | b"mp42" | b"M4V " | b"qt  " | b"avc1") {
-            return SniffedFormat { ext: "mp4", mime: "video/mp4", kind: MediaKind::Video };
-        }
-        if brand == b"M4A " {
-            return SniffedFormat { ext: "m4a", mime: "audio/mp4", kind: MediaKind::Audio };
-        }
-    }
-    if bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
-        let is_audio_only = bytes.windows(4).any(|w| w == b"opus") && !bytes.windows(4).any(|w| w == b"V_VP");
-        return SniffedFormat {
-            ext: "webm",
-            mime: if is_audio_only { "audio/webm" } else { "video/webm" },
-            kind: if is_audio_only { MediaKind::Audio } else { MediaKind::Video },
-        };
-    }
-    if bytes.starts_with(b"OggS") {
-        return SniffedFormat { ext: "ogg", mime: "audio/ogg", kind: MediaKind::Audio };
-    }
-    if bytes.starts_with(b"%PDF-") {
-        return SniffedFormat { ext: "pdf", mime: "application/pdf", kind: MediaKind::Document };
-    }
-    if bytes.starts_with(b"ID3") || (bytes.len() >= 2 && bytes[0] == 0xFF && (bytes[1] & 0xE0) == 0xE0) {
-        return SniffedFormat { ext: "mp3", mime: "audio/mpeg", kind: MediaKind::Audio };
-    }
-    SniffedFormat { ext: "bin", mime: "application/octet-stream", kind: MediaKind::Document }
 }
 
-/// Center-crop and resize an image to `512x512` AVIF (+ `128x128` thumbnail), or keep genuine fallback format
-/// with matching `.avif`/`.webp`/`.png`/`.jpg` extension so file extension NEVER mismatches container magic bytes.
+/// Center-crop and encode an avatar strictly as genuine `512x512` AVIF (`ftypavif`) + `128x128` AVIF thumbnail.
+/// Zero silent JPEG/WebP/PNG fallback; container magic bytes always match `.avif` / `image/avif`.
 pub fn process_avatar_honest(bytes: &[u8]) -> Result<ProcessedAvatar, &'static str> {
-    let sniffed = sniff_media_bytes(bytes);
-    if !matches!(sniffed.kind, MediaKind::Image) {
-        return Err("unsupported_avatar_format");
-    }
-
-    let img = image::load_from_memory(bytes).map_err(|_| "invalid_image_data")?;
-    let (w, h) = (img.width(), img.height());
-    let side = w.min(h);
-    let x = (w - side) / 2;
-    let y = (h - side) / 2;
-    let cropped = img.crop_imm(x, y, side, side);
-    let main_512 = if side == 512 { cropped.clone() } else { cropped.resize_exact(512, 512, FilterType::Lanczos3) };
-    let thumb_128 = cropped.resize_exact(128, 128, FilterType::Lanczos3);
-
-    // If input was already 512x512 AVIF and reasonably sized, keep exact crisp bytes; otherwise encode genuine AVIF quickly.
-    let main_bytes = if sniffed.ext == "avif" && w == 512 && h == 512 && bytes.len() <= 256 * 1024 {
-        bytes.to_vec()
-    } else {
-        encode_avif(&main_512, 74, 10).or_else(|_| encode_webp(&main_512))?
-    };
+    let (main_bytes, thumb_bytes) = process_avatar_avif(bytes).map_err(|_| "unsupported_or_invalid_avatar")?;
     let out_sniff = sniff_media_bytes(&main_bytes);
-    let thumb_bytes = if out_sniff.ext == "avif" {
-        encode_avif(&thumb_128, 66, 10).unwrap_or_else(|_| encode_webp(&thumb_128).unwrap_or_default())
-    } else {
-        encode_webp(&thumb_128).unwrap_or_default()
-    };
-
     Ok(ProcessedAvatar {
         main_bytes,
         thumb_bytes,
@@ -139,106 +81,77 @@ pub fn process_avatar_honest(bytes: &[u8]) -> Result<ProcessedAvatar, &'static s
     })
 }
 
-/// Inspect crisp edges/flat palette ratio to avoid blurring screenshots/text during adaptive compression.
+/// Inspect crisp edges/flat palette ratio via `chatw-media-core` 10-class analyzer.
 pub fn detect_crisp_text_or_ui(img: &DynamicImage) -> bool {
-    let small = img.thumbnail(256, 256).to_rgba8();
-    let (w, h) = small.dimensions();
-    if w < 4 || h < 4 {
-        return false;
-    }
-    let mut sharp_edges = 0usize;
-    let mut flat_pixels = 0usize;
-    let total = ((w - 1) * (h - 1)) as usize;
-    for y in 0..(h - 1) {
-        for x in 0..(w - 1) {
-            let p = small.get_pixel(x, y);
-            if p[3] < 250 {
-                return true;
-            }
-            let r = small.get_pixel(x + 1, y);
-            let d = small.get_pixel(x, y + 1);
-            let diff_h = (p[0] as i32 - r[0] as i32).abs()
-                + (p[1] as i32 - r[1] as i32).abs()
-                + (p[2] as i32 - r[2] as i32).abs();
-            let diff_v = (p[0] as i32 - d[0] as i32).abs()
-                + (p[1] as i32 - d[1] as i32).abs()
-                + (p[2] as i32 - d[2] as i32).abs();
-            if diff_h > 120 || diff_v > 120 {
-                sharp_edges += 1;
-            } else if diff_h <= 4 && diff_v <= 4 {
-                flat_pixels += 1;
-            }
-        }
-    }
-    let edge_ratio = (sharp_edges as f32) / (total as f32);
-    let flat_ratio = (flat_pixels as f32) / (total as f32);
-    flat_ratio > 0.45 && edge_ratio > 0.008
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let analysis = analyze_rgba_image(rgba.as_raw(), w, h, rgba.len(), None);
+    matches!(
+        analysis.class,
+        ImageClass::CrispTextUi | ImageClass::FlatGraphic | ImageClass::AlphaGraphic
+    )
 }
 
-/// Generate adaptive optimized variant + tiny thumbnail for chat media (never worsens already smaller files, preserves animations).
+/// Generate genuine Adaptive Ultra AVIF (+ Animated AVIF `avis` for animations) and AVIF thumbnail.
+/// - No blanket 1920px clamp (uses content-aware adaptive sizing).
+/// - Zero silent fallback to JPEG, PNG, or WebP.
+/// - Never worsens already-smaller images (returns original bytes if AVIF is larger and no resize occurred).
 pub fn optimize_chat_image(bytes: &[u8]) -> Result<AdaptiveImageOutput, &'static str> {
     let sniffed = sniff_media_bytes(bytes);
-    if sniffed.kind == MediaKind::AnimatedImage {
-        return Ok(AdaptiveImageOutput {
-            bytes: bytes.to_vec(),
-            ext: sniffed.ext,
-            mime: sniffed.mime,
-            width: 0,
-            height: 0,
-            thumb_bytes: None,
-            thumb_ext: sniffed.ext,
-            thumb_mime: sniffed.mime,
-            is_text_or_crisp_ui: false,
-        });
-    }
-    if sniffed.kind != MediaKind::Image {
+    if !matches!(sniffed.kind, MediaKind::Image | MediaKind::AnimatedImage) {
         return Err("not_an_image");
     }
 
-    let img = image::load_from_memory(bytes).map_err(|_| "decode_failed")?;
-    let (w, h) = (img.width(), img.height());
-    let is_crisp = detect_crisp_text_or_ui(&img);
-    let resized = if w > 1920 || h > 1920 {
-        img.resize(1920, 1920, FilterType::Lanczos3)
-    } else {
-        img.clone()
+    let opts = AvifEncodeOptions {
+        mode: AvifCompressionMode::UltraAdaptive,
+        max_edge_override: None,
+        min_ssim_floor: None,
+        generate_thumbnail: true,
+        threads: None,
     };
 
-    // Text/screenshot/alpha preserves crisp edges via PNG/high-q AVIF; photos use adaptive AVIF.
-    let candidate = if is_crisp {
-        let avif_hq = encode_avif(&resized, 84, 7).ok();
-        let png_opt = encode_png(&resized).ok();
-        match (avif_hq, png_opt) {
-            (Some(a), Some(p)) if a.len() <= p.len() => a,
-            (_, Some(p)) => p,
-            (Some(a), None) => a,
-            (None, None) => encode_webp(&resized)?,
-        }
-    } else {
-        encode_avif(&resized, 68, 7).or_else(|_| encode_webp(&resized)).or_else(|_| encode_jpeg(&resized, 82))?
-    };
+    let out = optimize_image_to_avif(bytes, &opts).map_err(|_| "avif_encode_failed")?;
+    let is_crisp = matches!(
+        out.analysis.class,
+        ImageClass::CrispTextUi | ImageClass::FlatGraphic | ImageClass::AlphaGraphic
+    );
+    let media_class = format!("{:?}", out.analysis.class);
 
-    let (final_bytes, final_sniff) = if candidate.len() < bytes.len() || w > 1920 || h > 1920 {
-        let s = sniff_media_bytes(&candidate);
-        (candidate, s)
-    } else {
-        (bytes.to_vec(), sniffed.clone())
-    };
+    // Keep original ONLY if AVIF didn't shrink and it was not resized (and never re-encode into JPEG/WebP/PNG!)
+    let (final_bytes, final_ext, final_mime, codec, ratio) =
+        if out.avif_bytes.len() < bytes.len() || out.is_animated || sniffed.ext == "avif" {
+            let r = (bytes.len() as f32) / (out.avif_bytes.len().max(1) as f32);
+            (
+                out.avif_bytes,
+                out.ext,
+                out.mime,
+                if out.is_animated { "avis_av1" } else { "avif_av1" },
+                r,
+            )
+        } else {
+            (bytes.to_vec(), sniffed.ext, sniffed.mime, "original_passthrough", 1.0)
+        };
 
-    let thumb_img = resized.thumbnail(320, 320);
-    let thumb_bytes = encode_webp(&thumb_img).or_else(|_| encode_jpeg(&thumb_img, 75)).ok();
-    let thumb_sniff = thumb_bytes.as_deref().map(sniff_media_bytes).unwrap_or(final_sniff.clone());
+    let (thumb_bytes, thumb_ext, thumb_mime) = match out.thumb_avif_bytes {
+        Some(tb) if !tb.is_empty() => (Some(tb), "avif", "image/avif"),
+        _ => (None, final_ext, final_mime),
+    };
 
     Ok(AdaptiveImageOutput {
         bytes: final_bytes,
-        ext: final_sniff.ext,
-        mime: final_sniff.mime,
-        width: resized.width(),
-        height: resized.height(),
+        ext: final_ext,
+        mime: final_mime,
+        width: out.width,
+        height: out.height,
         thumb_bytes,
-        thumb_ext: thumb_sniff.ext,
-        thumb_mime: thumb_sniff.mime,
+        thumb_ext,
+        thumb_mime,
         is_text_or_crisp_ui: is_crisp,
+        media_class,
+        estimated_ssim: out.estimated_ssim.map(|s| s as f32),
+        ai_recommended: out.ai_restoration_recommended,
+        codec,
+        compression_ratio: ratio,
     })
 }
 
@@ -247,34 +160,6 @@ pub fn probe_image_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
         .ok()
         .and_then(|_| image::ImageReader::new(Cursor::new(bytes)).with_guessed_format().ok())
         .and_then(|r| r.into_dimensions().ok())
-}
-
-fn encode_avif(img: &DynamicImage, quality: u8, speed: u8) -> Result<Vec<u8>, &'static str> {
-    let mut out = Vec::new();
-    let enc = AvifEncoder::new_with_speed_quality(&mut out, speed, quality);
-    img.write_with_encoder(enc).map_err(|_| "avif_encode_failed")?;
-    Ok(out)
-}
-
-fn encode_webp(img: &DynamicImage) -> Result<Vec<u8>, &'static str> {
-    let mut out = Vec::new();
-    let enc = WebPEncoder::new_lossless(&mut out);
-    img.write_with_encoder(enc).map_err(|_| "webp_encode_failed")?;
-    Ok(out)
-}
-
-fn encode_png(img: &DynamicImage) -> Result<Vec<u8>, &'static str> {
-    let mut out = Vec::new();
-    let enc = PngEncoder::new(&mut out);
-    img.write_with_encoder(enc).map_err(|_| "png_encode_failed")?;
-    Ok(out)
-}
-
-fn encode_jpeg(img: &DynamicImage, quality: u8) -> Result<Vec<u8>, &'static str> {
-    let mut out = Vec::new();
-    let mut enc = JpegEncoder::new_with_quality(&mut out, quality);
-    enc.encode_image(&DynamicImage::ImageRgb8(img.to_rgb8())).map_err(|_| "jpeg_encode_failed")?;
-    Ok(out)
 }
 
 pub fn content_type_for_format(ext: &str) -> &'static str {
@@ -286,7 +171,8 @@ pub fn content_type_for_format(ext: &str) -> &'static str {
         "gif" => "image/gif",
         "mp4" => "video/mp4",
         "webm" => "video/webm",
-        "ogg" => "audio/ogg",
+        "ogg" | "opus" => "audio/ogg",
+        "flac" => "audio/flac",
         "mp3" => "audio/mpeg",
         "m4a" => "audio/mp4",
         "pdf" => "application/pdf",
@@ -308,24 +194,55 @@ pub fn is_format_compatible(ext: &str, format: ImageFormat) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::{Rgba, RgbaImage};
+    use image::{Rgba, RgbaImage, codecs::png::PngEncoder};
+
+    fn make_png(img: &RgbaImage) -> Vec<u8> {
+        let mut out = Vec::new();
+        DynamicImage::ImageRgba8(img.clone())
+            .write_with_encoder(PngEncoder::new(&mut out))
+            .unwrap();
+        out
+    }
 
     #[test]
-    fn avatar_processor_outputs_honest_matching_extension_and_512x512() {
+    fn avatar_processor_outputs_genuine_512x512_avif() {
         let mut src = RgbaImage::new(800, 600);
         for y in 0..600 {
             for x in 0..800 {
                 src.put_pixel(x, y, Rgba([(x % 255) as u8, (y % 255) as u8, 180, 255]));
             }
         }
-        let png = encode_png(&DynamicImage::ImageRgba8(src)).unwrap();
+        let png = make_png(&src);
         let processed = process_avatar_honest(&png).expect("avatar ok");
         assert_eq!(processed.width, 512);
         assert_eq!(processed.height, 512);
+        assert_eq!(processed.ext, "avif");
+        assert_eq!(processed.mime, "image/avif");
         let sniffed = sniff_media_bytes(&processed.main_bytes);
-        assert_eq!(sniffed.ext, processed.ext);
-        assert_eq!(sniffed.mime, processed.mime);
-        assert!(!processed.thumb_bytes.is_empty());
+        assert_eq!(sniffed.ext, "avif");
+        assert_eq!(sniff_media_bytes(&processed.thumb_bytes).ext, "avif");
+    }
+
+    #[test]
+    fn chat_image_optimizer_produces_genuine_avif_never_jpeg_or_webp() {
+        let mut src = RgbaImage::new(320, 240);
+        for y in 0..240 {
+            for x in 0..320 {
+                let r = ((x * 255) / 320) as u8;
+                let g = ((y * 255) / 240) as u8;
+                let b = (((x + y) * 3) % 255) as u8;
+                src.put_pixel(x, y, Rgba([r, g, b, 255]));
+            }
+        }
+        let png = make_png(&src);
+        let opt = optimize_chat_image(&png).expect("optimize ok");
+        assert_eq!(opt.ext, "avif");
+        assert_eq!(opt.mime, "image/avif");
+        assert!(opt.bytes.len() < png.len());
+        assert_eq!(sniff_media_bytes(&opt.bytes).ext, "avif");
+        if let Some(ref th) = opt.thumb_bytes {
+            assert_eq!(sniff_media_bytes(th).ext, "avif");
+        }
     }
 
     #[test]

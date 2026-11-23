@@ -10,8 +10,36 @@ pub struct RelayCleanupOutcome {
     pub expiring_without_safe_copies: i64,
 }
 
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct IncompleteAndGcReport {
+    pub aborted_transfers: u64,
+    pub gc_scanned_objects: u64,
+    pub gc_deleted_objects: u64,
+    pub gc_skipped_pinned: u64,
+    pub gc_freed_bytes: u64,
+}
+
+/// Delete a physical object from whichever backend owns it (`s3_ready`, `local_cas`, `temp_relay`, `encrypted_backup`).
+pub async fn delete_physical_object(storage: &StorageRegistry, backend: &str, key: &str) {
+    match backend {
+        "s3_ready" => {
+            let _ = storage.s3.delete_object(key).await;
+        }
+        "local_cas" => {
+            let _ = storage.local_cas.delete_object(key).await;
+        }
+        "temp_relay" => {
+            let _ = storage.temp_relay.delete_object(key).await;
+        }
+        "encrypted_backup" => {
+            let _ = storage.encrypted_backup.delete_object(key).await;
+        }
+        _ => {}
+    }
+}
+
 /// Clean expired temporary relays ONLY when `delivered_copies >= min_safe_copies` (or explicitly acknowledged),
-/// preventing silent data loss when peer has not synced a copy yet.
+/// preventing silent data loss when peer has not synced a copy yet. Supports S3 + local backends.
 pub async fn cleanup_relays_safely(
     pool: &PgPool,
     storage: &StorageRegistry,
@@ -41,12 +69,9 @@ pub async fn cleanup_relays_safely(
         let deleted_all: bool = row.try_get("deleted_for_all")?;
         let copy_count: i64 = row.try_get("copy_count")?;
         let object_id: Uuid = row.try_get("object_id")?;
-        let storage_key: String = row.try_get("storage_key")?;
-        let storage_backend: String = row.try_get("storage_backend")?;
         let byte_size: i64 = row.try_get("byte_size")?;
 
         if !deleted_all && copy_count < (min_safe as i64) {
-            // Do not purge relay silently without at least 1 replicated copy unless hard-expired > 30 days.
             let hard_expired: bool = sqlx::query_scalar(
                 "SELECT relay_expires_at < now() - interval '30 days' FROM media_references WHERE id = $1",
             )
@@ -61,11 +86,6 @@ pub async fn cleanup_relays_safely(
             }
         }
 
-        if storage_backend == "temp_relay" {
-            let _ = storage.temp_relay.delete_object(&storage_key).await;
-        } else if storage_backend == "local_cas" {
-            let _ = storage.local_cas.delete_object(&storage_key).await;
-        }
         sqlx::query(
             r#"
             UPDATE media_references
@@ -84,20 +104,11 @@ pub async fn cleanup_relays_safely(
         .execute(pool)
         .await?;
 
-        let rem: Option<i32> = sqlx::query_scalar(
-            "UPDATE media_objects SET ref_count = GREATEST(0, ref_count - 1) WHERE id = $1 RETURNING ref_count",
-        )
-        .bind(object_id)
-        .fetch_optional(pool)
-        .await?;
-        if rem.unwrap_or(1) == 0 {
-            let _ = sqlx::query("DELETE FROM media_objects WHERE id = $1")
-                .bind(object_id)
-                .execute(pool)
-                .await;
+        let deleted_physical = release_object_reference(pool, storage, object_id).await?;
+        if deleted_physical {
+            report.deleted += 1;
+            report.freed_bytes += byte_size.max(0) as u64;
         }
-        report.deleted += 1;
-        report.freed_bytes += byte_size.max(0) as u64;
     }
 
     Ok(RelayCleanupOutcome {
@@ -106,39 +117,163 @@ pub async fn cleanup_relays_safely(
     })
 }
 
-/// Decrement refcount cleanly on object deletion and unlink physical CAS file only when `ref_count == 0`.
+/// Atomic, race-safe reference decrement using `SELECT ... FOR UPDATE`.
+/// Honors `is_pinned` (never physically deletes pinned objects) and supports `s3_ready` + local backends.
 pub async fn release_object_reference(
     pool: &PgPool,
     storage: &StorageRegistry,
     object_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
+    release_object_reference_with_grace(pool, storage, object_id, 0).await
+}
+
+/// Decrement `ref_count` inside a row-locked SQL transaction.
+/// If `ref_count` drops to 0:
+/// - If `is_pinned = TRUE`: keeps object safely (`ref_count = 0`, no physical delete).
+/// - If `grace_secs > 0`: sets `gc_eligible_at = now() + grace` for delayed GC sweep.
+/// - If `grace_secs == 0`: deletes DB row atomically first, then removes physical object from S3/CAS.
+pub async fn release_object_reference_with_grace(
+    pool: &PgPool,
+    storage: &StorageRegistry,
+    object_id: Uuid,
+    grace_secs: i64,
+) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE media_objects SET ref_count = GREATEST(0, ref_count - 1) WHERE id = $1 RETURNING ref_count, storage_backend, storage_key",
+        "SELECT ref_count, storage_backend, storage_key, COALESCE(is_pinned, FALSE) AS is_pinned FROM media_objects WHERE id = $1 FOR UPDATE",
     )
     .bind(object_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
 
     let Some(r) = row else {
+        tx.commit().await?;
         return Ok(false);
     };
-    let ref_count: i32 = r.try_get("ref_count")?;
+
+    let current_refs: i32 = r.try_get("ref_count")?;
     let backend: String = r.try_get("storage_backend")?;
     let key: String = r.try_get("storage_key")?;
-    if ref_count == 0 {
-        match backend.as_str() {
-            "local_cas" => { let _ = storage.local_cas.delete_object(&key).await; }
-            "temp_relay" => { let _ = storage.temp_relay.delete_object(&key).await; }
-            "encrypted_backup" => { let _ = storage.encrypted_backup.delete_object(&key).await; }
-            _ => {}
-        }
-        let _ = sqlx::query("DELETE FROM media_objects WHERE id = $1")
+    let is_pinned: bool = r.try_get("is_pinned")?;
+    let next_refs = (current_refs - 1).max(0);
+
+    if next_refs == 0 && !is_pinned && grace_secs <= 0 {
+        // Delete DB row inside transaction before physical unlink so concurrent dedup cannot reference a deleted blob!
+        sqlx::query("DELETE FROM media_objects WHERE id = $1")
             .bind(object_id)
-            .execute(pool)
-            .await;
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        delete_physical_object(storage, &backend, &key).await;
         return Ok(true);
     }
+
+    if next_refs == 0 && !is_pinned && grace_secs > 0 {
+        sqlx::query(
+            "UPDATE media_objects SET ref_count = 0, gc_eligible_at = now() + ($2 * interval '1 second') WHERE id = $1",
+        )
+        .bind(object_id)
+        .bind(grace_secs)
+        .execute(&mut *tx)
+        .await?;
+    } else {
+        sqlx::query("UPDATE media_objects SET ref_count = $2 WHERE id = $1")
+            .bind(object_id)
+            .bind(next_refs)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
     Ok(false)
+}
+
+/// Abort expired incomplete multipart uploads (both S3 and local staging) AND sweep zero-ref unpinned objects
+/// past their GC grace period across S3 + Local CAS.
+pub async fn cleanup_incomplete_uploads_and_gc(
+    pool: &PgPool,
+    storage: &StorageRegistry,
+) -> Result<IncompleteAndGcReport, sqlx::Error> {
+    let mut report = IncompleteAndGcReport::default();
+
+    // 1. Abort expired incomplete transfers
+    let expired = sqlx::query(
+        r#"
+        SELECT id, s3_upload_id
+        FROM transfer_sessions
+        WHERE status = 'active' AND expires_at <= now()
+        LIMIT 200
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for row in expired {
+        let tid: Uuid = row.try_get("id")?;
+        let upload_token: String = row.try_get::<Option<String>, _>("s3_upload_id")?.unwrap_or_default();
+        if let Some(rest) = upload_token.strip_prefix("s3::") {
+            if let Some((s3_key, upload_id)) = rest.split_once("::") {
+                let _ = storage.s3.abort_multipart_upload(s3_key, upload_id).await;
+            }
+        } else if !upload_token.is_empty() {
+            let _ = storage.local_cas.abort_chunks(&upload_token).await;
+        }
+        sqlx::query("UPDATE transfer_sessions SET status = 'aborted' WHERE id = $1")
+            .bind(tid)
+            .execute(pool)
+            .await?;
+        report.aborted_transfers += 1;
+    }
+
+    // 2. Sweep unreferenced, unpinned objects past grace period
+    let orphan_ids: Vec<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id
+        FROM media_objects
+        WHERE ref_count = 0
+          AND (gc_eligible_at IS NULL OR gc_eligible_at <= now())
+        LIMIT 200
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for oid in orphan_ids {
+        report.gc_scanned_objects += 1;
+        let mut tx = pool.begin().await?;
+        let row = sqlx::query(
+            "SELECT ref_count, storage_backend, storage_key, byte_size, COALESCE(is_pinned, FALSE) AS is_pinned FROM media_objects WHERE id = $1 FOR UPDATE",
+        )
+        .bind(oid)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(r) = row else {
+            tx.commit().await?;
+            continue;
+        };
+        let rc: i32 = r.try_get("ref_count")?;
+        let is_pinned: bool = r.try_get("is_pinned")?;
+        if rc > 0 || is_pinned {
+            if is_pinned {
+                report.gc_skipped_pinned += 1;
+            }
+            tx.commit().await?;
+            continue;
+        }
+        let backend: String = r.try_get("storage_backend")?;
+        let key: String = r.try_get("storage_key")?;
+        let byte_size: i64 = r.try_get("byte_size")?;
+        sqlx::query("DELETE FROM media_objects WHERE id = $1")
+            .bind(oid)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        delete_physical_object(storage, &backend, &key).await;
+        report.gc_deleted_objects += 1;
+        report.gc_freed_bytes += byte_size.max(0) as u64;
+    }
+
+    Ok(report)
 }
 
 #[derive(Clone, Debug, Serialize)]

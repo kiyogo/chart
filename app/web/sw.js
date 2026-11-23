@@ -13,6 +13,8 @@ const MAX_CHUNK_CACHE_ENTRIES = 64;
 const MAX_STREAM_SPAN = 1024 * 1024;
 const CWCH2_MAGIC = [0x43, 0x57, 0x43, 0x48, 0x32]; // "CWCH2"
 const CWCH2_HEADER_LEN = 21;
+const CWCH3_MAGIC = [0x43, 0x57, 0x43, 0x48, 0x33]; // "CWCH3"
+const CWCH3_HEADER_LEN = 34;
 const ALLOWED_DESTINATIONS = new Set(['video', 'audio', 'image', 'empty', '']);
 
 /** @type {Map<string, any>} */
@@ -208,13 +210,14 @@ function bytesToReadableStream(u8) {
 }
 
 async function ensureAesKey(grant) {
-  if (grant.aesKey && grant.baseNonce) return;
+  if (grant.aesKey && grant.baseNonce && grant.hkdfKey) return;
   const keyBytes = b64ToU8(grant.keyB64);
   const nonceBytes = b64ToU8(grant.nonceB64);
   if (keyBytes.byteLength !== 32 || nonceBytes.byteLength !== 12) {
     throw new Error('invalid_e2ee_media_key');
   }
   grant.aesKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+  grant.hkdfKey = await crypto.subtle.importKey('raw', keyBytes, 'HKDF', false, ['deriveBits']);
   grant.baseNonce = nonceBytes;
 }
 
@@ -226,34 +229,86 @@ function isCwch2Header(u8) {
   return true;
 }
 
-async function ensureCwch2Meta(grant) {
-  if (grant.probeDone) return grant.cwch2Meta;
-  const res = await fetchUpstreamRange(grant, 0, CWCH2_HEADER_LEN - 1, false, 0);
+function isCwch3Header(u8) {
+  if (u8.byteLength < CWCH3_HEADER_LEN) return false;
+  for (let i = 0; i < 5; i++) {
+    if (u8[i] !== CWCH3_MAGIC[i]) return false;
+  }
+  return true;
+}
+
+async function ensureChunkedMeta(grant) {
+  if (grant.probeDone) return grant.chunkMeta;
+  const res = await fetchUpstreamRange(grant, 0, CWCH3_HEADER_LEN - 1, false, 0);
   if (!res.ok) throw new Error(`upstream_http_${res.status}`);
   grant.probeDone = true;
   grant.viaWorker = res.viaWorker;
+
+  if (isCwch3Header(res.bytes)) {
+    const dv = new DataView(res.bytes.buffer, res.bytes.byteOffset, res.bytes.byteLength);
+    const version = res.bytes[5];
+    const chunkSize = dv.getUint32(6, false);
+    const chunkCount = dv.getUint32(10, false);
+    const totalPlainLen = Number(dv.getBigUint64(14, false));
+    const mediaTag = res.bytes.slice(22, 30);
+    const variantTag = res.bytes.slice(30, 34);
+    if (version === 3 && chunkSize >= 1024 && chunkCount >= 1 && totalPlainLen > 0) {
+      grant.chunkMeta = {
+        version: 3,
+        headerLen: CWCH3_HEADER_LEN,
+        chunkSize,
+        chunkCount,
+        totalPlainLen,
+        mediaTag,
+        variantTag,
+      };
+      return grant.chunkMeta;
+    }
+  }
+
   if (isCwch2Header(res.bytes)) {
     const dv = new DataView(res.bytes.buffer, res.bytes.byteOffset, res.bytes.byteLength);
     const chunkSize = dv.getUint32(5, false);
     const chunkCount = dv.getUint32(9, false);
     const totalPlainLen = Number(dv.getBigUint64(13, false));
     if (chunkSize >= 1024 && chunkCount >= 1 && totalPlainLen > 0) {
-      grant.cwch2Meta = { chunkSize, chunkCount, totalPlainLen };
-      return grant.cwch2Meta;
+      grant.chunkMeta = {
+        version: 2,
+        headerLen: CWCH2_HEADER_LEN,
+        chunkSize,
+        chunkCount,
+        totalPlainLen,
+      };
+      return grant.chunkMeta;
     }
   }
-  grant.cwch2Meta = null;
+  grant.chunkMeta = null;
   return null;
 }
 
-async function fetchAndDecryptCwch2Chunk(grant, grantId, meta, chunkIdx) {
+async function deriveCwch3ChunkNonce(grant, meta, chunkIdx) {
+  const info = new Uint8Array(28);
+  const label = new TextEncoder().encode('chatw-ch3-n!');
+  info.set(label, 0);
+  info.set(meta.mediaTag, 12);
+  info.set(meta.variantTag, 20);
+  new DataView(info.buffer).setUint32(24, chunkIdx, false);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: grant.baseNonce, info },
+    grant.hkdfKey,
+    96,
+  );
+  return new Uint8Array(bits);
+}
+
+async function fetchAndDecryptChunkedSegment(grant, grantId, meta, chunkIdx) {
   const cacheKey = `${grantId}:${chunkIdx}`;
   const hit = lruGet(cacheKey);
   if (hit) return hit;
 
-  const { chunkSize, chunkCount, totalPlainLen } = meta;
+  const { headerLen, chunkSize, chunkCount, totalPlainLen } = meta;
   const encSlotSize = 4 + chunkSize + 16;
-  const encStart = CWCH2_HEADER_LEN + chunkIdx * encSlotSize;
+  const encStart = headerLen + chunkIdx * encSlotSize;
   const plainLen = chunkIdx === chunkCount - 1 ? totalPlainLen - chunkIdx * chunkSize : chunkSize;
   const expectedCtLen = plainLen + 16;
   const encEnd = encStart + 4 + expectedCtLen - 1;
@@ -262,20 +317,35 @@ async function fetchAndDecryptCwch2Chunk(grant, grantId, meta, chunkIdx) {
   if (!res.ok) throw new Error(`chunk_fetch_http_${res.status}`);
   grant.viaWorker = res.viaWorker;
   const seg = res.bytes;
-  if (seg.byteLength < 4 + expectedCtLen) throw new Error('truncated_cwch2_chunk');
+  if (seg.byteLength < 4 + expectedCtLen) throw new Error('truncated_chunk');
   const ctLen = new DataView(seg.buffer, seg.byteOffset, 4).getUint32(0, false);
-  if (ctLen !== expectedCtLen) throw new Error('cwch2_chunk_length_mismatch');
+  if (ctLen !== expectedCtLen) throw new Error('chunk_length_mismatch');
 
-  const chunkNonce = new Uint8Array(grant.baseNonce);
-  chunkNonce[8] ^= (chunkIdx >>> 24) & 0xff;
-  chunkNonce[9] ^= (chunkIdx >>> 16) & 0xff;
-  chunkNonce[10] ^= (chunkIdx >>> 8) & 0xff;
-  chunkNonce[11] ^= chunkIdx & 0xff;
+  let chunkNonce;
+  let aad;
+  if (meta.version === 3) {
+    chunkNonce = await deriveCwch3ChunkNonce(grant, meta, chunkIdx);
+    aad = new Uint8Array(27);
+    aad.set(CWCH3_MAGIC, 0);
+    aad[5] = 3;
+    aad.set(meta.mediaTag, 6);
+    aad.set(meta.variantTag, 14);
+    const dv = new DataView(aad.buffer);
+    dv.setUint32(18, chunkIdx, false);
+    dv.setUint32(22, chunkCount, false);
+    aad[26] = chunkIdx === chunkCount - 1 ? 1 : 0;
+  } else {
+    chunkNonce = new Uint8Array(grant.baseNonce);
+    chunkNonce[8] ^= (chunkIdx >>> 24) & 0xff;
+    chunkNonce[9] ^= (chunkIdx >>> 16) & 0xff;
+    chunkNonce[10] ^= (chunkIdx >>> 8) & 0xff;
+    chunkNonce[11] ^= chunkIdx & 0xff;
 
-  const aad = new Uint8Array(10);
-  aad.set(CWCH2_MAGIC, 0);
-  new DataView(aad.buffer).setUint32(5, chunkIdx, false);
-  aad[9] = chunkIdx === chunkCount - 1 ? 1 : 0;
+    aad = new Uint8Array(10);
+    aad.set(CWCH2_MAGIC, 0);
+    new DataView(aad.buffer).setUint32(5, chunkIdx, false);
+    aad[9] = chunkIdx === chunkCount - 1 ? 1 : 0;
+  }
 
   const plainBuf = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: chunkNonce, additionalData: aad },
@@ -287,13 +357,13 @@ async function fetchAndDecryptCwch2Chunk(grant, grantId, meta, chunkIdx) {
 
   // Smart background prefetch of the next chunk (+1) for stutter-free video playback
   if (chunkIdx + 1 < chunkCount && !chunkLru.has(`${grantId}:${chunkIdx + 1}`)) {
-    fetchAndDecryptCwch2Chunk(grant, grantId, meta, chunkIdx + 1).catch(() => {});
+    fetchAndDecryptChunkedSegment(grant, grantId, meta, chunkIdx + 1).catch(() => {});
   }
 
   return plainU8;
 }
 
-async function handleCwch2Stream(request, grant, grantId, meta) {
+async function handleChunkedStream(request, grant, grantId, meta) {
   const total = meta.totalPlainLen;
   const rangeHdr = request.headers.get('Range');
   let start = 0;
@@ -317,7 +387,7 @@ async function handleCwch2Stream(request, grant, grantId, meta) {
   let writeOff = 0;
 
   for (let idx = firstChunk; idx <= lastChunk; idx++) {
-    const plainChunk = await fetchAndDecryptCwch2Chunk(grant, grantId, meta, idx);
+    const plainChunk = await fetchAndDecryptChunkedSegment(grant, grantId, meta, idx);
     const chunkBase = idx * meta.chunkSize;
     const sliceStart = Math.max(0, start - chunkBase);
     const sliceEnd = Math.min(plainChunk.byteLength, end - chunkBase + 1);
@@ -331,7 +401,7 @@ async function handleCwch2Stream(request, grant, grantId, meta) {
     'Accept-Ranges': 'bytes',
     'Content-Length': String(out.byteLength),
     'Cache-Control': 'no-store',
-    'X-ChatW-Stream-Mode': 'sw-cwch2-206',
+    'X-ChatW-Stream-Mode': meta.version === 3 ? 'sw-cwch3-206' : 'sw-cwch2-206',
     'X-ChatW-Stream-Transport': grant.viaWorker ? 'shared-worker-bin' : 'fallback',
   };
   if (isPartial) headers['Content-Range'] = `bytes ${start}-${end}/${total}`;
@@ -478,8 +548,9 @@ self.addEventListener('message', (event) => {
       streamToken: msg.streamToken || '',
       expiresAt: Date.now() + ttlMs,
       probeDone: false,
-      cwch2Meta: null,
+      chunkMeta: null,
       aesKey: null,
+      hkdfKey: null,
       baseNonce: null,
       singlePlainBuf: null,
       viaWorker: false,
@@ -569,9 +640,9 @@ self.addEventListener('fetch', (event) => {
           return await handlePlainRangeProxy(event.request, grant);
         }
         await ensureAesKey(grant);
-        const cwch2Meta = await ensureCwch2Meta(grant);
-        if (cwch2Meta) {
-          return await handleCwch2Stream(event.request, grant, grantId, cwch2Meta);
+        const chunkMeta = await ensureChunkedMeta(grant);
+        if (chunkMeta) {
+          return await handleChunkedStream(event.request, grant, grantId, chunkMeta);
         }
         return await handleLegacySingleE2eeStream(event.request, grant);
       } catch (err) {

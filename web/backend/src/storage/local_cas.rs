@@ -183,4 +183,13 @@ impl LocalFileStorageAdapter {
         let _ = tokio::fs::remove_dir_all(&dir).await;
         Ok(out)
     }
+
+    /// Clean up an abandoned or aborted multipart upload staging directory.
+    pub async fn abort_chunks(&self, transfer_id: &str) -> Result<(), StorageError> {
+        let dir = self.chunks_dir(transfer_id)?;
+        if dir.exists() {
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+        }
+        Ok(())
+    }
 }

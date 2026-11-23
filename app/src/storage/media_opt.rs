@@ -23,6 +23,22 @@ pub struct OptimizedMediaPayload {
     pub height: Option<u32>,
     #[serde(default)]
     pub waveform: Vec<u8>,
+    #[serde(default)]
+    pub instant_preview_url: Option<String>,
+    #[serde(default)]
+    pub codec: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InstantPickPreview {
+    pub handle_id: String,
+    pub instant_preview_url: String,
+    pub file_name: String,
+    pub mime: String,
+    pub original_size: usize,
+    pub media_kind: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
 }
 
 /// Real magic byte sniffer shared on native & WASM so extension/MIME are always truthful.
@@ -60,24 +76,7 @@ pub fn sniff_mime_from_bytes(bytes: &[u8]) -> (&'static str, &'static str) {
     ("application/octet-stream", "bin")
 }
 
-/// Pick and adaptively optimize image/video/audio/file from a DOM `<input type="file">`.
-pub async fn pick_and_optimize_from_input(
-    input_id: &str,
-    preserve_original: bool,
-) -> Result<OptimizedMediaPayload, String> {
-    let id_json = serde_json::to_string(input_id).unwrap_or_default();
-    let pres = if preserve_original { "true" } else { "false" };
-    let js = format!(
-        r#"
-        (async () => {{
-            if (!window.__chatwMediaOpt) {{ dioxus.send({{ error: 'optimizer_unavailable' }}); return; }}
-            const res = await window.__chatwMediaOpt.optimizeFromInput({id_json}, {pres});
-            dioxus.send(res);
-        }})();
-        "#
-    );
-    let mut eval = dioxus::document::eval(&js);
-    let v: serde_json::Value = eval.recv().await.map_err(|e| e.to_string())?;
+fn parse_optimized_payload(v: &serde_json::Value) -> Result<OptimizedMediaPayload, String> {
     if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
         return Err(err.to_string());
     }
@@ -110,7 +109,94 @@ pub async fn pick_and_optimize_from_input(
         width: v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
         height: v.get("height").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
         waveform: Vec::new(),
+        instant_preview_url: v.get("instantPreviewUrl").and_then(|s| s.as_str()).map(str::to_string),
+        codec: v.get("codec").and_then(|s| s.as_str()).map(str::to_string),
     })
+}
+
+/// Phase 1 (Instant Sender Original Preview): grab crisp local `blob:` preview URL in < 20ms!
+pub async fn pick_instant_preview(input_id: &str) -> Result<InstantPickPreview, String> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            if (!window.__chatwMediaOpt || !window.__chatwMediaOpt.pickInstantPreview) {{
+                dioxus.send({{ error: 'optimizer_unavailable' }});
+                return;
+            }}
+            const res = await window.__chatwMediaOpt.pickInstantPreview({id_json});
+            dioxus.send(res);
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let v: serde_json::Value = eval.recv().await.map_err(|e| e.to_string())?;
+    if let Some(err) = v.get("error").and_then(|e| e.as_str()) {
+        return Err(err.to_string());
+    }
+    Ok(InstantPickPreview {
+        handle_id: v.get("handleId").and_then(|s| s.as_str()).ok_or("missing_handle")?.to_string(),
+        instant_preview_url: v.get("instantPreviewUrl").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
+        file_name: v.get("fileName").and_then(|s| s.as_str()).unwrap_or("attachment").to_string(),
+        mime: v.get("mime").and_then(|s| s.as_str()).unwrap_or("application/octet-stream").to_string(),
+        original_size: v.get("originalSize").and_then(|n| n.as_u64()).unwrap_or(0) as usize,
+        media_kind: v.get("mediaKind").and_then(|s| s.as_str()).unwrap_or("file").to_string(),
+        width: v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
+        height: v.get("height").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
+    })
+}
+
+/// Phase 2: compress the stashed sender file off-main-thread while sender already sees the original preview!
+pub async fn process_pending_handle(
+    handle_id: &str,
+    preserve_original: bool,
+) -> Result<OptimizedMediaPayload, String> {
+    let hid_json = serde_json::to_string(handle_id).unwrap_or_default();
+    let pres = if preserve_original { "true" } else { "false" };
+    let js = format!(
+        r#"
+        (async () => {{
+            if (!window.__chatwMediaOpt || !window.__chatwMediaOpt.processPendingHandle) {{
+                dioxus.send({{ error: 'optimizer_unavailable' }});
+                return;
+            }}
+            const res = await window.__chatwMediaOpt.processPendingHandle({hid_json}, {pres});
+            dioxus.send(res);
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let v: serde_json::Value = eval.recv().await.map_err(|e| e.to_string())?;
+    parse_optimized_payload(&v)
+}
+
+pub fn release_pending_handle(handle_id: &str, revoke_url: bool) {
+    let hid_json = serde_json::to_string(handle_id).unwrap_or_default();
+    let rev = if revoke_url { "true" } else { "false" };
+    let _ = dioxus::document::eval(&format!(
+        "(() => {{ if (window.__chatwMediaOpt && window.__chatwMediaOpt.releasePendingHandle) window.__chatwMediaOpt.releasePendingHandle({hid_json}, {rev}); }})()"
+    ));
+}
+
+/// Pick and adaptively optimize image/video/audio/file from a DOM `<input type="file">`.
+pub async fn pick_and_optimize_from_input(
+    input_id: &str,
+    preserve_original: bool,
+) -> Result<OptimizedMediaPayload, String> {
+    let id_json = serde_json::to_string(input_id).unwrap_or_default();
+    let pres = if preserve_original { "true" } else { "false" };
+    let js = format!(
+        r#"
+        (async () => {{
+            if (!window.__chatwMediaOpt) {{ dioxus.send({{ error: 'optimizer_unavailable' }}); return; }}
+            const res = await window.__chatwMediaOpt.optimizeFromInput({id_json}, {pres});
+            dioxus.send(res);
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let v: serde_json::Value = eval.recv().await.map_err(|e| e.to_string())?;
+    parse_optimized_payload(&v)
 }
 
 pub async fn start_voice_recording() -> Result<String, String> {
@@ -185,5 +271,7 @@ pub async fn stop_voice_recording() -> Result<OptimizedMediaPayload, String> {
         width: None,
         height: None,
         waveform,
+        instant_preview_url: None,
+        codec: Some("opus".into()),
     })
 }

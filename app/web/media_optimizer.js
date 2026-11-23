@@ -66,22 +66,86 @@
     return new Promise((resolve) => canvas.toBlob((b) => resolve(b), type, quality));
   }
 
-  async function encodeCanvasBestFormat(canvas, preferredMimeList, quality) {
-    for (const mime of preferredMimeList) {
-      try {
-        const blob = await canvasToBlobPromise(canvas, mime, quality);
-        if (blob && blob.size > 0 && blob.type === mime) {
-          const u8 = new Uint8Array(await blob.arrayBuffer());
-          const sniffed = await sniffBytesFormat(u8);
-          if (sniffed.mime === mime) {
-            return { u8, sniffed };
-          }
+  // Genuine AVIF ONLY via native canvas (strictly magic-byte verified `ftypavif` — ZERO silent JPEG/WebP/PNG fallback!)
+  async function tryNativeCanvasAvif(canvas, quality) {
+    try {
+      const blob = await canvasToBlobPromise(canvas, 'image/avif', quality);
+      if (blob && blob.size > 0 && blob.type === 'image/avif') {
+        const u8 = new Uint8Array(await blob.arrayBuffer());
+        const sniffed = await sniffBytesFormat(u8);
+        if (sniffed.ext === 'avif') {
+          return { u8, sniffed };
         }
-      } catch (_) {}
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // Adaptive resolution policy (NO blanket 1920px clamp!)
+  function adaptiveMaxEdge(w, h, isCrisp, qualityMode) {
+    if (qualityMode === 'original') return null;
+    if (qualityMode === 'data_saver') return isCrisp ? 2560 : 1600;
+    const maxEdge = Math.max(w, h);
+    if (isCrisp) return maxEdge > 4096 ? 4096 : null;
+    return maxEdge > 3840 ? 3840 : null;
+  }
+
+  function getUserMediaQualityMode(preserveOriginal) {
+    if (preserveOriginal) return 'original';
+    try {
+      const m = localStorage.getItem('chatw_media_quality_mode');
+      if (m === 'original' || m === 'data_saver' || m === 'ultra_optimized') return m;
+    } catch (_) {}
+    return 'ultra_optimized';
+  }
+
+  // In-memory sender pending file registry for Instant Sender Original Preview (< 20ms)
+  const pendingSenderFiles = new Map();
+  let nextHandleSeq = 1;
+
+  async function probeVideoCodecs() {
+    const caps = {
+      webCodecsAvailable: typeof VideoEncoder !== 'undefined',
+      av1EncodeSupported: false,
+      av1HardwareSupported: false,
+      vp9EncodeSupported: false,
+    };
+    if (!caps.webCodecsAvailable || typeof VideoEncoder.isConfigSupported !== 'function') {
+      return caps;
     }
-    const fallback = await canvasToBlobPromise(canvas, 'image/png', 1.0);
-    const u8 = new Uint8Array(await fallback.arrayBuffer());
-    return { u8, sniffed: await sniffBytesFormat(u8) };
+    try {
+      const hw = await VideoEncoder.isConfigSupported({
+        codec: 'av01.0.04M.08',
+        width: 1280,
+        height: 720,
+        bitrate: 1_200_000,
+        framerate: 30,
+        hardwareAcceleration: 'prefer-hardware',
+      });
+      caps.av1EncodeSupported = Boolean(hw && hw.supported);
+      if (caps.av1EncodeSupported) {
+        const sw = await VideoEncoder.isConfigSupported({
+          codec: 'av01.0.04M.08',
+          width: 1280,
+          height: 720,
+          bitrate: 1_200_000,
+          framerate: 30,
+          hardwareAcceleration: 'prefer-software',
+        });
+        caps.av1HardwareSupported = Boolean(hw.supported && (!sw.supported || hw.config?.hardwareAcceleration === 'prefer-hardware'));
+      }
+    } catch (_) {}
+    try {
+      const vp9 = await VideoEncoder.isConfigSupported({
+        codec: 'vp09.00.10.08',
+        width: 1280,
+        height: 720,
+        bitrate: 1_500_000,
+        framerate: 30,
+      });
+      caps.vp9EncodeSupported = Boolean(vp9 && vp9.supported);
+    } catch (_) {}
+    return caps;
   }
 
   async function drawMultiStepResized(bitmap, targetW, targetH) {
@@ -245,17 +309,22 @@
     }
   }
 
-  // Adaptive compression preserving readable text, stripping EXIF/GPS, & offloading to Media Worker.
+  // Adaptive Ultra AVIF compression (NO 1920px clamp, ZERO silent JPEG/WebP/PNG fallback!).
+  // Tries off-main-thread native AVIF worker -> pure-Rust WASM ravif encoder -> safe original passthrough.
   async function optimizeImageBlob(fileOrBlob, opts = {}) {
     const rawU8 = new Uint8Array(await fileOrBlob.arrayBuffer());
     const rawSniff = await sniffBytesFormat(rawU8);
+    const qualityMode = opts.qualityMode || getUserMediaQualityMode(Boolean(opts.preserveOriginal));
+    const effectiveOpts = { ...opts, qualityMode, preserveOriginal: Boolean(opts.preserveOriginal) || qualityMode === 'original' };
+
     if (!rawSniff.animated) {
-      const workerRes = await optimizeInMediaWorker(rawU8, rawSniff.mime || fileOrBlob.type, opts);
-      if (workerRes && workerRes.bytesB64) {
+      const workerRes = await optimizeInMediaWorker(rawU8, rawSniff.mime || fileOrBlob.type, effectiveOpts);
+      if (workerRes && workerRes.bytesB64 && (workerRes.ext === 'avif' || effectiveOpts.preserveOriginal)) {
         return workerRes;
       }
     }
-    if (rawSniff.animated || opts.preserveOriginal) {
+
+    if (effectiveOpts.preserveOriginal) {
       let w = 0;
       let h = 0;
       let blurDataUrl = null;
@@ -278,82 +347,103 @@
         blurDataUrl,
         thumbB64: null,
         thumbMime: null,
+        codec: 'original_passthrough',
       };
     }
 
-    const bitmap = await createImageBitmap(new Blob([rawU8], { type: rawSniff.mime }));
-    const maxDim = opts.maxDim || 1920;
-    let tw = bitmap.width;
-    let th = bitmap.height;
-    if (tw > maxDim || th > maxDim) {
-      const r = Math.min(maxDim / tw, maxDim / th);
-      tw = Math.max(1, Math.round(tw * r));
-      th = Math.max(1, Math.round(th * r));
-    }
+    // Extract dimensions & 16x16 blur-up preview while preserving full quality metadata
+    let origW = 0;
+    let origH = 0;
+    let blurDataUrl = null;
+    let isCrisp = false;
+    try {
+      const bitmap = await createImageBitmap(new Blob([rawU8], { type: rawSniff.mime || fileOrBlob.type || 'image/png' }));
+      origW = bitmap.width;
+      origH = bitmap.height;
+      blurDataUrl = await makeMicroBlurDataUrl(bitmap, origW, origH);
+      const probeW = Math.min(origW, 256);
+      const probeH = Math.min(origH, 256);
+      const probe = await drawMultiStepResized(bitmap, probeW, probeH);
+      isCrisp = detectCrispTextOrAlpha(probe).isCrisp;
 
-    const canvas = await drawMultiStepResized(bitmap, tw, th);
-    const { isCrisp } = detectCrispTextOrAlpha(canvas);
-    const targetBytes = opts.targetMaxBytes || (isCrisp ? 900 * 1024 : 520 * 1024);
-
-    let best;
-    if (isCrisp) {
-      // Preserve UI/document sharpness: try high-Q AVIF or WebP or PNG
-      const avifHq = await encodeCanvasBestFormat(canvas, ['image/avif', 'image/webp', 'image/png'], 0.88);
-      const pngRes = await encodeCanvasBestFormat(canvas, ['image/png'], 1.0);
-      best = avifHq.u8.byteLength <= pngRes.u8.byteLength ? avifHq : pngRes;
-    } else {
-      // Binary search adaptive quality in AVIF -> WebP -> JPEG
-      let lo = 0.45, hi = 0.88, q = 0.76;
-      best = await encodeCanvasBestFormat(canvas, ['image/avif', 'image/webp', 'image/jpeg'], q);
-      for (let i = 0; i < 3; i++) {
-        if (best.u8.byteLength <= targetBytes && q >= 0.72) break;
-        if (best.u8.byteLength > targetBytes) {
-          hi = q;
-          q = (lo + q) / 2;
-        } else {
-          lo = q;
-          q = (q + hi) / 2;
+      // 1. Try native canvas genuine AVIF (only for still images)
+      if (!rawSniff.animated) {
+        const maxEdge = opts.maxDim || adaptiveMaxEdge(origW, origH, isCrisp, qualityMode);
+        let tw = origW;
+        let th = origH;
+        if (maxEdge && (tw > maxEdge || th > maxEdge)) {
+          const r = Math.min(maxEdge / tw, maxEdge / th);
+          tw = Math.max(1, Math.round(tw * r));
+          th = Math.max(1, Math.round(th * r));
         }
-        const trial = await encodeCanvasBestFormat(canvas, ['image/avif', 'image/webp', 'image/jpeg'], q);
-        if (trial.u8.byteLength < best.u8.byteLength || (trial.u8.byteLength <= targetBytes && q > 0.65)) {
-          best = trial;
+        const canvas = await drawMultiStepResized(bitmap, tw, th);
+        const q = isCrisp ? 0.84 : (qualityMode === 'data_saver' ? 0.62 : 0.72);
+        const nativeAvif = await tryNativeCanvasAvif(canvas, q);
+        if (nativeAvif && nativeAvif.u8.byteLength < rawU8.byteLength) {
+          bitmap.close();
+          return {
+            bytesB64: bytesToB64(nativeAvif.u8),
+            mime: 'image/avif',
+            ext: 'avif',
+            originalSize: rawU8.byteLength,
+            optimizedSize: nativeAvif.u8.byteLength,
+            isCrispText: isCrisp,
+            width: tw,
+            height: th,
+            blurDataUrl,
+            thumbB64: null,
+            thumbMime: null,
+            codec: 'avif_native_canvas',
+          };
         }
       }
-    }
-
-    // Generate lightweight <= 320px thumbnail AND tiny 16x16 progressive blur-up preview (~250B)
-    let thumbB64 = null;
-    let thumbMime = null;
-    let blurDataUrl = null;
-    try {
-      blurDataUrl = await makeMicroBlurDataUrl(bitmap, tw, th);
-      const tScale = Math.min(320 / tw, 320 / th, 1);
-      const thumbCanvas = await drawMultiStepResized(bitmap, Math.max(1, Math.round(tw * tScale)), Math.max(1, Math.round(th * tScale)));
-      const thRes = await encodeCanvasBestFormat(thumbCanvas, ['image/webp', 'image/jpeg'], 0.68);
-      thumbB64 = bytesToB64(thRes.u8);
-      thumbMime = thRes.sniffed.mime;
+      bitmap.close();
     } catch (_) {}
 
-    const origW = bitmap.width;
-    const origH = bitmap.height;
-    bitmap.close();
+    // 2. Pure-Rust WASM `ravif`/`rav1e` Adaptive Ultra AVIF encoder (works on ALL browsers, incl. Animated AVIF `avis`!)
+    if (window.__chatwWasmMedia && typeof window.__chatwWasmMedia.encodeAvifAdaptive === 'function') {
+      try {
+        const wasmMode = qualityMode === 'data_saver' ? 'fast' : 'ultra';
+        const res = window.__chatwWasmMedia.encodeAvifAdaptive(rawU8, wasmMode);
+        if (res && res.ok && res.bytes && res.bytes.byteLength > 0) {
+          const avifU8 = res.bytes instanceof Uint8Array ? res.bytes : new Uint8Array(res.bytes);
+          const avifSniff = await sniffBytesFormat(avifU8);
+          if (avifSniff.ext === 'avif' && (avifU8.byteLength < rawU8.byteLength || rawSniff.animated)) {
+            return {
+              bytesB64: bytesToB64(avifU8),
+              mime: 'image/avif',
+              ext: 'avif',
+              originalSize: rawU8.byteLength,
+              optimizedSize: avifU8.byteLength,
+              isCrispText: Boolean(res.isCrispText ?? isCrisp),
+              width: res.width || origW,
+              height: res.height || origH,
+              blurDataUrl,
+              thumbB64: null,
+              thumbMime: null,
+              codec: rawSniff.animated ? 'avis_wasm_rav1e' : 'avif_wasm_ravif',
+              estimatedSsim: res.estimatedSsim || null,
+              aiRecommended: Boolean(res.aiRecommended),
+            };
+          }
+        }
+      } catch (_) {}
+    }
 
-    const useOrig = best.u8.byteLength >= rawU8.byteLength && origW <= maxDim && origH <= maxDim;
-    const outU8 = useOrig ? rawU8 : best.u8;
-    const outSniff = useOrig ? rawSniff : best.sniffed;
-
+    // 3. Honest passthrough: NEVER silently fall back to JPEG/WebP/PNG if AVIF encoder unavailable or larger!
     return {
-      bytesB64: bytesToB64(outU8),
-      mime: outSniff.mime,
-      ext: outSniff.ext,
+      bytesB64: bytesToB64(rawU8),
+      mime: rawSniff.mime !== 'application/octet-stream' ? rawSniff.mime : (fileOrBlob.type || 'application/octet-stream'),
+      ext: rawSniff.ext,
       originalSize: rawU8.byteLength,
-      optimizedSize: outU8.byteLength,
+      optimizedSize: rawU8.byteLength,
       isCrispText: isCrisp,
-      width: tw,
-      height: th,
+      width: origW,
+      height: origH,
       blurDataUrl,
-      thumbB64,
-      thumbMime,
+      thumbB64: null,
+      thumbMime: null,
+      codec: 'original_passthrough',
     };
   }
 
@@ -427,49 +517,153 @@
     };
   }
 
+  async function processSingleFile(file, preserveOriginal = false, existingPreviewUrl = null) {
+    const previewUrl = existingPreviewUrl || URL.createObjectURL(file);
+    if (file.type.startsWith('image/')) {
+      try {
+        const res = await optimizeImageBlob(file, { preserveOriginal });
+        return {
+          ...res,
+          fileName: file.name,
+          mediaKind: 'image',
+          instantPreviewUrl: previewUrl,
+        };
+      } catch (e) {
+        return { error: String(e) };
+      }
+    }
+    const raw = new Uint8Array(await file.arrayBuffer());
+    const shaHex = window.__chatwStorage ? await window.__chatwStorage.sha256Hex(raw) : '';
+    const mediaKind = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
+    const poster = mediaKind === 'video' ? await extractVideoPosterMeta(file) : { width: 0, height: 0, blurDataUrl: null };
+
+    // Lossless Smart File Compression (`CWCMP1` ZSTD/Brotli/LZMA2) for general files (documents, logs, JSON, code)
+    let uploadBytes = raw;
+    let fileCodec = 'raw';
+    if (mediaKind === 'file' && !preserveOriginal && window.__chatwWasmMedia && typeof window.__chatwWasmMedia.compressFileSmart === 'function') {
+      try {
+        const cmp = window.__chatwWasmMedia.compressFileSmart(raw);
+        if (cmp && cmp.ok && cmp.compressed && cmp.bytes && cmp.bytes.byteLength < raw.byteLength) {
+          uploadBytes = cmp.bytes instanceof Uint8Array ? cmp.bytes : new Uint8Array(cmp.bytes);
+          fileCodec = cmp.codec || 'cwcmp1';
+        }
+      } catch (_) {}
+    }
+
+    return {
+      bytesB64: bytesToB64(uploadBytes),
+      mime: file.type || 'application/octet-stream',
+      ext: (file.name.split('.').pop() || 'bin').toLowerCase().slice(0, 12),
+      fileName: file.name,
+      originalSize: raw.byteLength,
+      optimizedSize: uploadBytes.byteLength,
+      sha256: shaHex,
+      width: poster.width,
+      height: poster.height,
+      blurDataUrl: poster.blurDataUrl,
+      mediaKind,
+      codec: fileCodec,
+      instantPreviewUrl: previewUrl,
+    };
+  }
+
   window.__chatwMediaOpt = {
     optimizeImageBlob,
+    probeVideoCodecs,
+
+    // Phase 1 of Instant Sender Original Preview: returns crisp local `blob:` URL in < 20ms!
+    async pickInstantPreview(inputId) {
+      const inp = document.getElementById(inputId);
+      if (!inp || !inp.files || !inp.files[0]) return { error: 'no_file' };
+      const file = inp.files[0];
+      inp.value = '';
+      const handleId = `pend_${Date.now().toString(36)}_${nextHandleSeq++}`;
+      const previewUrl = URL.createObjectURL(file);
+      const mediaKind = file.type.startsWith('image/')
+        ? 'image'
+        : file.type.startsWith('video/')
+          ? 'video'
+          : file.type.startsWith('audio/')
+            ? 'audio'
+            : 'file';
+      let width = 0;
+      let height = 0;
+      if (mediaKind === 'image') {
+        try {
+          const bmp = await createImageBitmap(file);
+          width = bmp.width;
+          height = bmp.height;
+          bmp.close();
+        } catch (_) {}
+      }
+      pendingSenderFiles.set(handleId, { file, previewUrl, mediaKind, width, height });
+      return {
+        handleId,
+        instantPreviewUrl: previewUrl,
+        fileName: file.name,
+        mime: file.type || 'application/octet-stream',
+        originalSize: file.size,
+        mediaKind,
+        width,
+        height,
+      };
+    },
+
+    // Phase 2: Compress/encode the stashed sender file off-main-thread while sender already sees crisp original!
+    async processPendingHandle(handleId, preserveOriginal = false) {
+      const entry = pendingSenderFiles.get(handleId);
+      if (!entry) return { error: 'pending_handle_not_found' };
+      const res = await processSingleFile(entry.file, preserveOriginal, entry.previewUrl);
+      return { ...res, handleId };
+    },
+
+    // Return sender's original crisp local bytes so sender's local cache stores the true original!
+    async getPendingOriginalB64(handleId) {
+      const entry = pendingSenderFiles.get(handleId);
+      if (!entry) return null;
+      const raw = new Uint8Array(await entry.file.arrayBuffer());
+      return {
+        bytesB64: bytesToB64(raw),
+        mime: entry.file.type || 'application/octet-stream',
+        fileName: entry.file.name,
+        byteSize: raw.byteLength,
+        previewUrl: entry.previewUrl,
+      };
+    },
+
+    releasePendingHandle(handleId, revokeUrl = false) {
+      const entry = pendingSenderFiles.get(handleId);
+      if (!entry) return;
+      pendingSenderFiles.delete(handleId);
+      if (revokeUrl && entry.previewUrl) {
+        try { URL.revokeObjectURL(entry.previewUrl); } catch (_) {}
+      }
+    },
+
     async optimizeFromInput(inputId, preserveOriginal = false) {
       const inp = document.getElementById(inputId);
       if (!inp || !inp.files || !inp.files[0]) return { error: 'no_file' };
       const file = inp.files[0];
       inp.value = '';
-      if (file.type.startsWith('image/')) {
-        try {
-          const res = await optimizeImageBlob(file, { preserveOriginal });
-          return { ...res, fileName: file.name, mediaKind: 'image' };
-        } catch (e) {
-          return { error: String(e) };
-        }
-      }
-      const raw = new Uint8Array(await file.arrayBuffer());
-      const shaHex = window.__chatwStorage ? await window.__chatwStorage.sha256Hex(raw) : '';
-      const mediaKind = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
-      const poster = mediaKind === 'video' ? await extractVideoPosterMeta(file) : { width: 0, height: 0, blurDataUrl: null };
-      return {
-        bytesB64: bytesToB64(raw),
-        mime: file.type || 'application/octet-stream',
-        ext: (file.name.split('.').pop() || 'bin').toLowerCase().slice(0, 12),
-        fileName: file.name,
-        originalSize: raw.byteLength,
-        optimizedSize: raw.byteLength,
-        sha256: shaHex,
-        width: poster.width,
-        height: poster.height,
-        blurDataUrl: poster.blurDataUrl,
-        mediaKind,
-      };
+      return await processSingleFile(file, preserveOriginal, null);
     },
-    async startVoiceRecording() {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+
+    async startVoiceRecording(mode = 'voice') {
+      const isMusic = mode === 'music';
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: isMusic
+          ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 }
+          : { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      });
       const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' :
         MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : '';
       activeVoiceChunks = [];
       activeVoiceStartedAt = Date.now();
-      activeVoiceRecorder = mime ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 32000 }) : new MediaRecorder(stream);
+      const bps = isMusic ? 64000 : 28000;
+      activeVoiceRecorder = mime ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: bps }) : new MediaRecorder(stream);
       activeVoiceRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) activeVoiceChunks.push(e.data); };
       activeVoiceRecorder.start(200);
-      return { ok: true, mime: activeVoiceRecorder.mimeType };
+      return { ok: true, mime: activeVoiceRecorder.mimeType, bitrateBps: bps };
     },
     async stopVoiceRecording() {
       if (!activeVoiceRecorder) return { error: 'not_recording' };

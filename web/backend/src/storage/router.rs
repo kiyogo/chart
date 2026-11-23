@@ -23,6 +23,7 @@ use crate::{
         sha256_bytes,
     },
 };
+use chatw_media_core::dedup::{compute_pdq_hash_rgba, evaluate_dedup_policy, hash_bytes_exact};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -30,20 +31,23 @@ pub fn routes() -> Router<AppState> {
         .route("/policy", get(handle_get_policy).put(handle_update_policy))
         .route("/conversations/{peer_id}", get(handle_get_conv_policy).put(handle_update_conv_policy))
         .route("/uploads/init", post(handle_init_upload))
-        .route("/uploads/{id}", get(handle_get_upload_status))
+        .route("/uploads/{id}", get(handle_get_upload_status).delete(handle_abort_upload))
         .route(
             "/uploads/{id}/chunks/{index}",
             put(handle_upload_chunk).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
         )
         .route("/uploads/{id}/complete", post(handle_complete_upload))
+        .route("/dedup/check", post(handle_dedup_check))
         .route("/forward", post(handle_forward_reference))
         .route("/references/{id}/meta", get(handle_get_ref_meta))
+        .route("/references/{id}/manifest", get(handle_get_manifest).post(handle_put_manifest))
         .route("/references/{id}/presign", post(handle_presign_ref))
         .route("/references/{id}", delete(handle_delete_reference))
         .route("/relay/{id}/ack", post(handle_relay_ack))
         .route("/locations/report", put(handle_report_locations))
         .route("/metrics", get(handle_storage_metrics))
         .route("/cleanup", post(handle_cleanup_relays))
+        .route("/gc/incomplete", post(handle_gc_incomplete))
         .route("/migration/run", post(handle_run_migration))
 }
 
@@ -90,7 +94,9 @@ pub async fn ingest_media_bytes(
         .unwrap_or_else(|| "attachment.bin".to_string());
 
     let plain_sha = decode_hex_32(meta.sha256_plain.as_deref());
+    let exact_hashes = hash_bytes_exact(&bytes);
     let stored_sha_arr = sha256_bytes(&bytes);
+    let stored_blake3_arr: [u8; 32] = blake3::hash(&bytes).into();
     if let Some(expected_hex) = meta.sha256_cipher.as_deref() {
         let expected = decode_hex_32(Some(expected_hex)).ok_or(AppError::BadRequest("invalid_sha256_cipher"))?;
         if expected != stored_sha_arr {
@@ -115,29 +121,41 @@ pub async fn ingest_media_bytes(
     let actual_ext = if is_e2ee { "enc" } else { sniffed.ext };
 
     let policy_row = sqlx::query(
-        "SELECT dm_relay_ttl_hours, dm_encrypted_backup FROM device_storage_policies WHERE user_id = $1",
+        "SELECT dm_relay_ttl_hours, dm_encrypted_backup, COALESCE(server_durable_dm, TRUE) AS server_durable_dm FROM device_storage_policies WHERE user_id = $1",
     )
     .bind(owner_id)
     .fetch_optional(pool)
     .await?;
     let relay_ttl_hours: i32 = policy_row.as_ref().and_then(|r| r.try_get("dm_relay_ttl_hours").ok()).unwrap_or(168);
     let default_dm_backup: bool = policy_row.as_ref().and_then(|r| r.try_get("dm_encrypted_backup").ok()).unwrap_or(false);
+    let server_durable_dm: bool = policy_row.as_ref().and_then(|r| r.try_get("server_durable_dm").ok()).unwrap_or(true);
 
-    // Determine storage tier strictly from conversation classification:
-    // Group & Server channels ALWAYS durable server storage; DMs use Temp Relay (or Encrypted Backup if opted in).
+    // Server-First storage routing:
+    // - When S3/MinIO is configured and ready, durable objects route directly to `"s3_ready"`.
+    // - Otherwise durable objects use local CAS `"local_cas"` / `"encrypted_backup"`.
+    // - DMs default to durable server storage of E2EE ciphertext (`server_durable_dm = TRUE`) so users
+    //   never lose history across devices while preserving zero-knowledge privacy.
+    let s3_ready = storage.s3.config().is_ready();
+    let durable_backend = if s3_ready { "s3_ready" } else { "local_cas" };
     let wants_backup = meta.backup_dm.unwrap_or(default_dm_backup);
     let (storage_tier, availability_state, relay_expires_at, backend_kind) = match scope_type {
         "group" | "channel" | "avatar" | "banner" | "library" | "sticker" => (
             "server_durable",
             "server_durable",
             None,
-            "local_cas",
+            durable_backend,
         ),
         "dm" if wants_backup => (
             "encrypted_backup",
             "backed_up_encrypted",
             None,
-            "encrypted_backup",
+            if s3_ready { "s3_ready" } else { "encrypted_backup" },
+        ),
+        "dm" if server_durable_dm => (
+            "server_durable",
+            "server_durable",
+            None,
+            durable_backend,
         ),
         _ => (
             "temp_relay",
@@ -147,35 +165,57 @@ pub async fn ingest_media_bytes(
         ),
     };
 
-    // Privacy-safe CAS scope:
-    // - Server/Group/Channel public-within-scope content can deduplicate globally within CAS scope (`shared:{sha}`)
-    // - DM/E2EE content isolates CAS keys per pair/owner (`e2ee:{owner}:{scope}:{sha}`) so zero cross-user existence leakage!
-    let sha_hex = hex::encode(stored_sha_arr);
-    let cas_scope = if matches!(scope_type, "group" | "channel" | "library" | "sticker") && !is_e2ee {
-        format!("shared:{sha_hex}")
-    } else if storage_tier == "temp_relay" {
+    // Privacy-safe deduplication policy (Section XIX.6):
+    // - Non-E2EE shared scopes (`group`/`channel`/`library`/`sticker`): shared CAS + PDQ perceptual index allowed.
+    // - Private E2EE content: STRICTLY isolated per owner/scope; ZERO cross-user or global plaintext lookup!
+    let sha_hex = exact_hashes.sha256_hex.clone();
+    let blake3_hex = exact_hashes.blake3_hex.clone();
+    let dedup_decision = evaluate_dedup_policy(
+        scope_type,
+        &owner_id.to_string(),
+        scope_id.map(|u| u.to_string()).as_deref(),
+        is_e2ee,
+        meta.forward_from_ref_id.is_some(),
+        &blake3_hex,
+    );
+    let cas_scope = if storage_tier == "temp_relay" {
         format!("relay:{}:{}", owner_id, Uuid::new_v4())
     } else if storage_tier == "encrypted_backup" {
-        format!("backup:{}:{}", owner_id, sha_hex)
+        format!("backup:{}:{}", owner_id, blake3_hex)
     } else {
-        format!("priv:{}:{}:{}", owner_id, scope_id.unwrap_or(owner_id), sha_hex)
+        dedup_decision.cas_scope_key.clone()
     };
 
-    let (dims_w, dims_h) = if !is_e2ee && matches!(sniffed.kind, MediaKind::Image) {
-        probe_image_dimensions(&bytes).map(|(w, h)| (Some(w as i32), Some(h as i32))).unwrap_or((None, None))
+    let (dims_w, dims_h, pdq_opt) = if !is_e2ee && matches!(sniffed.kind, MediaKind::Image) {
+        if dedup_decision.allow_perceptual_lookup {
+            if let Ok(img) = image::load_from_memory(&bytes) {
+                let rgba = img.to_rgba8();
+                let (w, h) = rgba.dimensions();
+                let pdq = compute_pdq_hash_rgba(rgba.as_raw(), w, h);
+                (Some(w as i32), Some(h as i32), Some(pdq))
+            } else {
+                let (w, h) = probe_image_dimensions(&bytes).map(|(w, h)| (Some(w as i32), Some(h as i32))).unwrap_or((None, None));
+                (w, h, None)
+            }
+        } else {
+            let (w, h) = probe_image_dimensions(&bytes).map(|(w, h)| (Some(w as i32), Some(h as i32))).unwrap_or((None, None));
+            (w, h, None)
+        }
     } else {
-        (None, None)
+        (None, None, None)
     };
 
     let storage_key = match backend_kind {
         "temp_relay" => format!("{}.enc", Uuid::new_v4()),
         "encrypted_backup" => format!("{}/{}.enc", owner_id, sha_hex),
+        "s3_ready" if is_e2ee => format!("e2ee/{}/{}/{}.enc", &blake3_hex[0..2], &blake3_hex[2..4], Uuid::new_v4()),
+        "s3_ready" => format!("cas/{}", LocalFileStorageAdapter::cas_key_for_sha(&stored_blake3_arr, actual_ext)),
         _ => LocalFileStorageAdapter::cas_key_for_sha(&stored_sha_arr, actual_ext),
     };
 
     let mut tx = pool.begin().await?;
     let existing_obj = sqlx::query(
-        "SELECT id, storage_key FROM media_objects WHERE cas_scope = $1 AND variant_kind = 'original'",
+        "SELECT id, storage_key, storage_backend FROM media_objects WHERE cas_scope = $1 AND variant_kind = 'original'",
     )
     .bind(&cas_scope)
     .fetch_optional(&mut *tx)
@@ -184,17 +224,25 @@ pub async fn ingest_media_bytes(
     let (original_obj_id, deduplicated) = if let Some(existing_row) = existing_obj {
         let oid: Uuid = existing_row.try_get("id")?;
         let ex_key: String = existing_row.try_get("storage_key")?;
-        if backend_kind == "local_cas" && !storage.local_cas.object_exists(&ex_key).await.unwrap_or(false) {
+        let ex_backend: String = existing_row.try_get("storage_backend")?;
+        if ex_backend == "local_cas" && !storage.local_cas.object_exists(&ex_key).await.unwrap_or(false) {
             storage.local_cas.put_object(&ex_key, bytes.clone(), &actual_mime, None).await
                 .map_err(|_| AppError::Internal)?;
+        } else if ex_backend == "s3_ready" && !storage.s3.object_exists(&ex_key).await.unwrap_or(false) {
+            storage.s3.put_object(&ex_key, bytes.clone(), &actual_mime, None).await
+                .map_err(|_| AppError::Internal)?;
         }
-        sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1 WHERE id = $1")
+        sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL WHERE id = $1")
             .bind(oid)
             .execute(&mut *tx)
             .await?;
         (oid, true)
     } else {
         match backend_kind {
+            "s3_ready" => {
+                storage.s3.put_object(&storage_key, bytes.clone(), &actual_mime, None).await
+                    .map_err(|_| AppError::Internal)?;
+            }
             "temp_relay" => {
                 storage.temp_relay.put_object(&storage_key, bytes.clone(), &actual_mime, Some((relay_ttl_hours as u64) * 3600)).await
                     .map_err(|_| AppError::Internal)?;
@@ -209,22 +257,29 @@ pub async fn ingest_media_bytes(
             }
         }
         let oid = Uuid::new_v4();
+        let orig_codec = if is_e2ee { "e2ee_ciphertext" } else { actual_ext };
         sqlx::query(
             r#"
             INSERT INTO media_objects
-                (id, cas_scope, sha256, plain_sha256, storage_backend, storage_key, mime_type, file_ext,
+                (id, cas_scope, sha256, plain_sha256, blake3, perceptual_hash, perceptual_quality, caption_band_hash,
+                 storage_backend, storage_key, mime_type, file_ext, compression_codec, compression_ratio,
                  byte_size, original_byte_size, width, height, is_animated, ref_count, variant_kind, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, $11, $12, 1, 'original', $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1.0, $14, $14, $15, $16, $17, 1, 'original', $18)
             "#,
         )
         .bind(oid)
         .bind(&cas_scope)
         .bind(&stored_sha_arr[..])
         .bind(plain_sha.as_ref().map(|p| &p[..]))
+        .bind(&stored_blake3_arr[..])
+        .bind(pdq_opt.as_ref().map(|p| &p.bytes[..]))
+        .bind(pdq_opt.as_ref().map(|p| p.quality as i16))
+        .bind(pdq_opt.as_ref().map(|p| p.caption_band_hash as i64))
         .bind(backend_kind)
         .bind(&storage_key)
         .bind(&actual_mime)
         .bind(actual_ext)
+        .bind(orig_codec)
         .bind(bytes.len() as i64)
         .bind(dims_w)
         .bind(dims_h)
@@ -232,25 +287,64 @@ pub async fn ingest_media_bytes(
         .bind(relay_expires_at)
         .execute(&mut *tx)
         .await?;
+
+        // Strictly populate shared dedup index ONLY for non-E2EE shared scopes (`is_e2ee = FALSE`)
+        if !is_e2ee && dedup_decision.allow_exact_global_lookup {
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO media_dedup_indexes
+                    (object_id, scope_class, is_e2ee, blake3, sha256, perceptual_hash, perceptual_quality,
+                     caption_band_hash, width, height, byte_size)
+                VALUES ($1, 'shared_non_e2ee', FALSE, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (scope_class, blake3) DO NOTHING
+                "#,
+            )
+            .bind(oid)
+            .bind(&stored_blake3_arr[..])
+            .bind(&stored_sha_arr[..])
+            .bind(pdq_opt.as_ref().map(|p| &p.bytes[..]))
+            .bind(pdq_opt.as_ref().map(|p| p.quality as i16))
+            .bind(pdq_opt.as_ref().map(|p| p.caption_band_hash as i64))
+            .bind(dims_w)
+            .bind(dims_h)
+            .bind(bytes.len() as i64)
+            .execute(&mut *tx)
+            .await;
+        }
         (oid, false)
     };
 
-    // For non-E2EE images in durable scopes (group/channel/library), also produce adaptive optimized + thumbnail variants.
+    // For non-E2EE images in durable scopes (group/channel/library), also produce genuine Adaptive Ultra AVIF + AVIF thumbnail.
     let mut opt_obj_id: Option<Uuid> = None;
     let mut thumb_obj_id: Option<Uuid> = None;
-    if !is_e2ee && !preserve_original && backend_kind == "local_cas" && matches!(sniffed.kind, MediaKind::Image) {
+    if !is_e2ee
+        && !preserve_original
+        && matches!(backend_kind, "local_cas" | "s3_ready")
+        && matches!(sniffed.kind, MediaKind::Image | MediaKind::AnimatedImage)
+    {
         if let Ok(opt) = optimize_chat_image(&bytes) {
             if opt.bytes.len() < bytes.len() {
                 let opt_sha = sha256_bytes(&opt.bytes);
-                let opt_key = LocalFileStorageAdapter::cas_key_for_sha(&opt_sha, opt.ext);
+                let opt_b3: [u8; 32] = blake3::hash(&opt.bytes).into();
+                let opt_key = if backend_kind == "s3_ready" {
+                    format!("cas/{}", LocalFileStorageAdapter::cas_key_for_sha(&opt_b3, opt.ext))
+                } else {
+                    LocalFileStorageAdapter::cas_key_for_sha(&opt_sha, opt.ext)
+                };
                 let opt_scope = format!("{cas_scope}:opt");
-                if storage.local_cas.put_object(&opt_key, opt.bytes.clone(), opt.mime, None).await.is_ok() {
+                let put_ok = if backend_kind == "s3_ready" {
+                    storage.s3.put_object(&opt_key, opt.bytes.clone(), opt.mime, None).await.is_ok()
+                } else {
+                    storage.local_cas.put_object(&opt_key, opt.bytes.clone(), opt.mime, None).await.is_ok()
+                };
+                if put_ok {
                     let oid = sqlx::query_scalar::<_, Uuid>(
                         r#"
                         INSERT INTO media_objects
-                            (id, cas_scope, sha256, storage_backend, storage_key, mime_type, file_ext,
+                            (id, cas_scope, sha256, blake3, storage_backend, storage_key, mime_type, file_ext,
+                             compression_codec, compression_ratio, quality_ssim, media_class, ai_recommended,
                              byte_size, original_byte_size, width, height, is_animated, ref_count, variant_of, variant_kind)
-                        VALUES ($1, $2, $3, 'local_cas', $4, $5, $6, $7, $8, $9, $10, FALSE, 1, $11, 'optimized')
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, 'optimized')
                         ON CONFLICT (cas_scope, variant_kind) DO UPDATE SET ref_count = media_objects.ref_count + 1
                         RETURNING id
                         "#,
@@ -258,13 +352,21 @@ pub async fn ingest_media_bytes(
                     .bind(Uuid::new_v4())
                     .bind(&opt_scope)
                     .bind(&opt_sha[..])
+                    .bind(&opt_b3[..])
+                    .bind(backend_kind)
                     .bind(&opt_key)
                     .bind(opt.mime)
                     .bind(opt.ext)
+                    .bind(opt.codec)
+                    .bind(opt.compression_ratio)
+                    .bind(opt.estimated_ssim)
+                    .bind(&opt.media_class)
+                    .bind(opt.ai_recommended)
                     .bind(opt.bytes.len() as i64)
                     .bind(bytes.len() as i64)
                     .bind(opt.width as i32)
                     .bind(opt.height as i32)
+                    .bind(matches!(sniffed.kind, MediaKind::AnimatedImage))
                     .bind(original_obj_id)
                     .fetch_one(&mut *tx)
                     .await?;
@@ -273,15 +375,25 @@ pub async fn ingest_media_bytes(
             }
             if let Some(tb) = opt.thumb_bytes {
                 let tb_sha = sha256_bytes(&tb);
-                let tb_key = LocalFileStorageAdapter::cas_key_for_sha(&tb_sha, opt.thumb_ext);
+                let tb_b3: [u8; 32] = blake3::hash(&tb).into();
+                let tb_key = if backend_kind == "s3_ready" {
+                    format!("cas/{}", LocalFileStorageAdapter::cas_key_for_sha(&tb_b3, opt.thumb_ext))
+                } else {
+                    LocalFileStorageAdapter::cas_key_for_sha(&tb_sha, opt.thumb_ext)
+                };
                 let tb_scope = format!("{cas_scope}:thumb");
-                if storage.local_cas.put_object(&tb_key, tb.clone(), opt.thumb_mime, None).await.is_ok() {
+                let put_ok = if backend_kind == "s3_ready" {
+                    storage.s3.put_object(&tb_key, tb.clone(), opt.thumb_mime, None).await.is_ok()
+                } else {
+                    storage.local_cas.put_object(&tb_key, tb.clone(), opt.thumb_mime, None).await.is_ok()
+                };
+                if put_ok {
                     let tid = sqlx::query_scalar::<_, Uuid>(
                         r#"
                         INSERT INTO media_objects
-                            (id, cas_scope, sha256, storage_backend, storage_key, mime_type, file_ext,
-                             byte_size, original_byte_size, width, height, is_animated, ref_count, variant_of, variant_kind)
-                        VALUES ($1, $2, $3, 'local_cas', $4, $5, $6, $7, $8, 320, 320, FALSE, 1, $9, 'thumb')
+                            (id, cas_scope, sha256, blake3, storage_backend, storage_key, mime_type, file_ext,
+                             compression_codec, byte_size, original_byte_size, width, height, is_animated, ref_count, variant_of, variant_kind)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'avif_thumb', $9, $10, 320, 320, FALSE, 1, $11, 'thumb')
                         ON CONFLICT (cas_scope, variant_kind) DO UPDATE SET ref_count = media_objects.ref_count + 1
                         RETURNING id
                         "#,
@@ -289,6 +401,8 @@ pub async fn ingest_media_bytes(
                     .bind(Uuid::new_v4())
                     .bind(&tb_scope)
                     .bind(&tb_sha[..])
+                    .bind(&tb_b3[..])
+                    .bind(backend_kind)
                     .bind(&tb_key)
                     .bind(opt.thumb_mime)
                     .bind(opt.thumb_ext)
@@ -379,7 +493,9 @@ pub async fn ingest_media_bytes(
         "file_size": bytes.len() as i64,
         "mime_type": actual_mime,
         "sha256": sha_hex,
+        "blake3": blake3_hex,
         "storage_tier": storage_tier,
+        "storage_backend": backend_kind,
         "availability_state": availability_state,
         "deduplicated": deduplicated,
         "has_optimized": opt_obj_id.is_some(),
@@ -432,7 +548,7 @@ pub async fn serve_media_reference(
         (
             row.try_get::<Option<String>, _>("th_backend")?.unwrap_or_default(),
             row.try_get::<Option<String>, _>("th_key")?.unwrap_or_default(),
-            row.try_get::<Option<String>, _>("th_mime")?.unwrap_or_else(|| "image/webp".into()),
+            row.try_get::<Option<String>, _>("th_mime")?.unwrap_or_else(|| "image/avif".into()),
             row.try_get::<Option<Vec<u8>>, _>("th_sha")?.unwrap_or_default(),
             row.try_get::<Option<i64>, _>("th_size")?.unwrap_or(0) as u64,
         )
@@ -464,6 +580,7 @@ pub async fn serve_media_reference(
     if let Some((start, end_opt)) = range_header.and_then(parse_byte_range) {
         let end = end_opt.unwrap_or(total_size.saturating_sub(1)).min(total_size.saturating_sub(1));
         let (chunk, full_len) = match backend.as_str() {
+            "s3_ready" => storage.s3.get_object_range(&key, start, end).await,
             "local_cas" => storage.local_cas.get_object_range(&key, start, end).await,
             "temp_relay" => storage.temp_relay.get_object_range(&key, start, end).await,
             "encrypted_backup" => storage.encrypted_backup.get_object_range(&key, start, end).await,
@@ -486,6 +603,7 @@ pub async fn serve_media_reference(
     }
 
     let body = match backend.as_str() {
+        "s3_ready" => storage.s3.get_object_stream(&key).await,
         "local_cas" => storage.local_cas.get_object_stream(&key).await,
         "temp_relay" => storage.temp_relay.get_object_stream(&key).await,
         "encrypted_backup" => storage.encrypted_backup.get_object_stream(&key).await,
@@ -521,9 +639,19 @@ async fn handle_capabilities(State(state): State<AppState>, headers: HeaderMap) 
     Ok(Json(serde_json::json!({
         "adapters": state.storage.capabilities_list(),
         "s3": s3_health,
+        "s3_active_for_durable": state.storage.s3.config().is_ready(),
         "s3_lifecycle_preview": state.storage.s3.lifecycle_policy_descriptor(7),
         "default_cache_limit_mb": 1024,
+        "e2ee_chunk_protocol": "CWCH3",
+        "supported_codecs": ["avif", "avis", "av1_fmp4", "opus", "flac", "zstd", "brotli", "lzma2"],
     })))
+}
+
+fn default_media_quality_mode() -> String {
+    "ultra_optimized".into()
+}
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize)]
@@ -534,6 +662,16 @@ struct PolicyPayload {
     pub dm_encrypted_backup: bool,
     pub require_device_approval: bool,
     pub prefer_original_upload: bool,
+    #[serde(default = "default_media_quality_mode")]
+    pub media_quality_mode: String,
+    #[serde(default = "default_true")]
+    pub ai_enhancement_enabled: bool,
+    #[serde(default)]
+    pub data_saver_mode: bool,
+    #[serde(default = "default_true")]
+    pub auto_cache_cleanup: bool,
+    #[serde(default = "default_true")]
+    pub server_durable_dm: bool,
 }
 
 async fn handle_get_policy(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<PolicyPayload>> {
@@ -545,7 +683,16 @@ async fn handle_get_policy(State(state): State<AppState>, headers: HeaderMap) ->
     .execute(&state.db)
     .await?;
     let r = sqlx::query(
-        "SELECT cache_limit_mb, auto_download_mode, dm_relay_ttl_hours, dm_encrypted_backup, require_device_approval, prefer_original_upload FROM device_storage_policies WHERE user_id = $1",
+        r#"
+        SELECT cache_limit_mb, auto_download_mode, dm_relay_ttl_hours, dm_encrypted_backup,
+               require_device_approval, prefer_original_upload,
+               COALESCE(media_quality_mode, 'ultra_optimized') AS media_quality_mode,
+               COALESCE(ai_enhancement_enabled, TRUE) AS ai_enhancement_enabled,
+               COALESCE(data_saver_mode, FALSE) AS data_saver_mode,
+               COALESCE(auto_cache_cleanup, TRUE) AS auto_cache_cleanup,
+               COALESCE(server_durable_dm, TRUE) AS server_durable_dm
+        FROM device_storage_policies WHERE user_id = $1
+        "#,
     )
     .bind(user.id)
     .fetch_one(&state.db)
@@ -557,6 +704,11 @@ async fn handle_get_policy(State(state): State<AppState>, headers: HeaderMap) ->
         dm_encrypted_backup: r.try_get("dm_encrypted_backup")?,
         require_device_approval: r.try_get("require_device_approval")?,
         prefer_original_upload: r.try_get("prefer_original_upload")?,
+        media_quality_mode: r.try_get("media_quality_mode")?,
+        ai_enhancement_enabled: r.try_get("ai_enhancement_enabled")?,
+        data_saver_mode: r.try_get("data_saver_mode")?,
+        auto_cache_cleanup: r.try_get("auto_cache_cleanup")?,
+        server_durable_dm: r.try_get("server_durable_dm")?,
     }))
 }
 
@@ -569,14 +721,19 @@ async fn handle_update_policy(
     if !matches!(p.auto_download_mode.as_str(), "always" | "wifi" | "manual") {
         return Err(AppError::BadRequest("invalid_auto_download_mode"));
     }
+    if !matches!(p.media_quality_mode.as_str(), "ultra_optimized" | "data_saver" | "original") {
+        return Err(AppError::BadRequest("invalid_media_quality_mode"));
+    }
     if !(1..=720).contains(&p.dm_relay_ttl_hours) || p.cache_limit_mb < 0 {
         return Err(AppError::BadRequest("invalid_policy_bounds"));
     }
     sqlx::query(
         r#"
         INSERT INTO device_storage_policies
-            (user_id, cache_limit_mb, auto_download_mode, dm_relay_ttl_hours, dm_encrypted_backup, require_device_approval, prefer_original_upload, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+            (user_id, cache_limit_mb, auto_download_mode, dm_relay_ttl_hours, dm_encrypted_backup,
+             require_device_approval, prefer_original_upload, media_quality_mode, ai_enhancement_enabled,
+             data_saver_mode, auto_cache_cleanup, server_durable_dm, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
         ON CONFLICT (user_id) DO UPDATE SET
             cache_limit_mb = EXCLUDED.cache_limit_mb,
             auto_download_mode = EXCLUDED.auto_download_mode,
@@ -584,6 +741,11 @@ async fn handle_update_policy(
             dm_encrypted_backup = EXCLUDED.dm_encrypted_backup,
             require_device_approval = EXCLUDED.require_device_approval,
             prefer_original_upload = EXCLUDED.prefer_original_upload,
+            media_quality_mode = EXCLUDED.media_quality_mode,
+            ai_enhancement_enabled = EXCLUDED.ai_enhancement_enabled,
+            data_saver_mode = EXCLUDED.data_saver_mode,
+            auto_cache_cleanup = EXCLUDED.auto_cache_cleanup,
+            server_durable_dm = EXCLUDED.server_durable_dm,
             updated_at = now()
         "#,
     )
@@ -594,6 +756,11 @@ async fn handle_update_policy(
     .bind(p.dm_encrypted_backup)
     .bind(p.require_device_approval)
     .bind(p.prefer_original_upload)
+    .bind(&p.media_quality_mode)
+    .bind(p.ai_enhancement_enabled)
+    .bind(p.data_saver_mode)
+    .bind(p.auto_cache_cleanup)
+    .bind(p.server_durable_dm)
     .execute(&state.db)
     .await?;
     Ok(Json(p))
@@ -681,13 +848,13 @@ async fn handle_init_upload(
     let expected_sha = decode_hex_32(req.sha256_cipher.as_deref());
     let plain_sha = decode_hex_32(req.sha256_plain.as_deref());
 
-    // Instant deduplication fast-path check for non-E2EE group/channel uploads.
+    // Instant deduplication fast-path check STRICTLY for non-E2EE shared scopes (`group`/`channel`).
     let is_e2ee = req.is_e2ee.unwrap_or(false);
-    if !is_e2ee && matches!(req.scope_type.as_str(), "group" | "channel") {
+    if !is_e2ee && matches!(req.scope_type.as_str(), "group" | "channel" | "library" | "sticker") {
         if let Some(ref hex_sha) = req.sha256_cipher {
             let cas_scope = format!("shared:{}", hex_sha.to_lowercase());
             if let Some(ex_row) = sqlx::query(
-                "SELECT id, storage_key FROM media_objects WHERE cas_scope = $1 AND variant_kind = 'original'",
+                "SELECT id, storage_key, storage_backend FROM media_objects WHERE cas_scope = $1 AND variant_kind = 'original'",
             )
             .bind(&cas_scope)
             .fetch_optional(&state.db)
@@ -695,51 +862,74 @@ async fn handle_init_upload(
             {
                 let obj_id: Uuid = ex_row.try_get("id")?;
                 let ex_key: String = ex_row.try_get("storage_key")?;
-                if state.storage.local_cas.object_exists(&ex_key).await.unwrap_or(false) {
+                let ex_backend: String = ex_row.try_get("storage_backend")?;
+                let exists = match ex_backend.as_str() {
+                    "s3_ready" => state.storage.s3.object_exists(&ex_key).await.unwrap_or(false),
+                    _ => state.storage.local_cas.object_exists(&ex_key).await.unwrap_or(false),
+                };
+                if exists {
                     let ref_id = Uuid::new_v4();
-                let mut tx = state.db.begin().await?;
-                sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1 WHERE id = $1")
+                    let mut tx = state.db.begin().await?;
+                    sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL WHERE id = $1")
+                        .bind(obj_id)
+                        .execute(&mut *tx)
+                        .await?;
+                    sqlx::query(
+                        r#"
+                        INSERT INTO media_references
+                            (id, owner_id, scope_type, scope_id, object_id, original_filename, mime_type,
+                             byte_size, sha256_plain, sha256_cipher, storage_tier, availability_state)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'server_durable', 'server_durable')
+                        "#,
+                    )
+                    .bind(ref_id)
+                    .bind(user.id)
+                    .bind(&req.scope_type)
+                    .bind(req.scope_id)
                     .bind(obj_id)
+                    .bind(sanitize_filename(&req.file_name))
+                    .bind(&req.mime_type)
+                    .bind(req.total_size)
+                    .bind(plain_sha.as_ref().map(|x| &x[..]))
+                    .bind(expected_sha.as_ref().map(|x| &x[..]))
                     .execute(&mut *tx)
                     .await?;
-                sqlx::query(
-                    r#"
-                    INSERT INTO media_references
-                        (id, owner_id, scope_type, scope_id, object_id, original_filename, mime_type,
-                         byte_size, sha256_plain, sha256_cipher, storage_tier, availability_state)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'server_durable', 'server_durable')
-                    "#,
-                )
-                .bind(ref_id)
-                .bind(user.id)
-                .bind(&req.scope_type)
-                .bind(req.scope_id)
-                .bind(obj_id)
-                .bind(sanitize_filename(&req.file_name))
-                .bind(&req.mime_type)
-                .bind(req.total_size)
-                .bind(plain_sha.as_ref().map(|x| &x[..]))
-                .bind(expected_sha.as_ref().map(|x| &x[..]))
-                .execute(&mut *tx)
-                .await?;
-                tx.commit().await?;
-                return Ok(Json(serde_json::json!({
-                    "dedup_instant": true,
-                    "transfer_id": transfer_id,
-                    "ref_id": ref_id,
-                    "download_url": format!("/api/attachments/{ref_id}"),
-                })));
+                    tx.commit().await?;
+                    return Ok(Json(serde_json::json!({
+                        "dedup_instant": true,
+                        "transfer_id": transfer_id,
+                        "ref_id": ref_id,
+                        "download_url": format!("/api/attachments/{ref_id}"),
+                    })));
                 }
             }
         }
     }
 
-    let init = state
-        .storage
-        .local_cas
-        .begin_multipart_transfer(&format!("transfer/{transfer_id}"), &req.mime_type)
-        .await
-        .map_err(|_| AppError::Internal)?;
+    // Use real S3 Multipart Upload for >= 5 MiB transfers when S3 is configured; otherwise local staging (which uploads to S3 on complete if ready).
+    let use_s3_multipart = state.storage.s3.config().is_ready() && req.total_size >= 5 * 1024 * 1024 && chunk_size >= 5 * 1024 * 1024;
+    let multipart_token = if use_s3_multipart {
+        let s3_key = if is_e2ee {
+            format!("e2ee/multipart/{transfer_id}.enc")
+        } else {
+            format!("cas/multipart/{transfer_id}.bin")
+        };
+        let init = state
+            .storage
+            .s3
+            .initiate_multipart_upload(&s3_key, &req.mime_type)
+            .await
+            .map_err(|_| AppError::Internal)?;
+        format!("s3::{}::{}", s3_key, init.upload_id)
+    } else {
+        let init = state
+            .storage
+            .local_cas
+            .begin_multipart_transfer(&format!("transfer/{transfer_id}"), &req.mime_type)
+            .await
+            .map_err(|_| AppError::Internal)?;
+        init.upload_id
+    };
 
     sqlx::query(
         r#"
@@ -763,16 +953,57 @@ async fn handle_init_upload(
     .bind(plain_sha.as_ref().map(|x| &x[..]))
     .bind(is_e2ee)
     .bind(req.preserve_original.unwrap_or(true))
-    .bind(&init.upload_id)
+    .bind(&multipart_token)
     .execute(&state.db)
     .await?;
 
     Ok(Json(serde_json::json!({
         "dedup_instant": false,
         "transfer_id": transfer_id,
-        "multipart_id": init.upload_id,
+        "multipart_id": multipart_token,
+        "s3_multipart": use_s3_multipart,
         "chunk_size": chunk_size,
         "total_chunks": total_chunks,
+    })))
+}
+
+async fn handle_abort_upload(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(transfer_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = auth_caller(&state, &headers).await?;
+    let row = sqlx::query(
+        "SELECT s3_upload_id, status FROM transfer_sessions WHERE id = $1 AND user_id = $2",
+    )
+    .bind(transfer_id)
+    .bind(user.id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("transfer_not_found"))?;
+
+    let status: String = row.try_get("status")?;
+    if status == "completed" {
+        return Err(AppError::BadRequest("transfer_already_completed"));
+    }
+
+    let token: String = row.try_get::<Option<String>, _>("s3_upload_id")?.unwrap_or_default();
+    if let Some(rest) = token.strip_prefix("s3::") {
+        if let Some((s3_key, upload_id)) = rest.split_once("::") {
+            let _ = state.storage.s3.abort_multipart_upload(s3_key, upload_id).await;
+        }
+    } else if !token.is_empty() {
+        let _ = state.storage.local_cas.abort_chunks(&token).await;
+    }
+
+    sqlx::query("UPDATE transfer_sessions SET status = 'aborted' WHERE id = $1")
+        .bind(transfer_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "aborted": true,
+        "transfer_id": transfer_id,
     })))
 }
 
@@ -842,30 +1073,44 @@ async fn handle_upload_chunk(
         }
     }
 
-    state
-        .storage
-        .local_cas
-        .upload_chunk(&multipart_id, chunk_index as u32, body.to_vec())
-        .await
-        .map_err(|_| AppError::Internal)?;
+    let s3_etag: Option<String> = if let Some(rest) = multipart_id.strip_prefix("s3::") {
+        let (s3_key, upload_id) = rest.split_once("::").ok_or(AppError::Internal)?;
+        let etag = state
+            .storage
+            .s3
+            .upload_multipart_part(s3_key, upload_id, (chunk_index + 1) as u32, body.to_vec())
+            .await
+            .map_err(|_| AppError::Internal)?;
+        Some(etag)
+    } else {
+        state
+            .storage
+            .local_cas
+            .upload_chunk(&multipart_id, chunk_index as u32, body.to_vec())
+            .await
+            .map_err(|_| AppError::Internal)?;
+        None
+    };
 
     sqlx::query(
         r#"
-        INSERT INTO transfer_chunks (transfer_id, chunk_index, byte_size, chunk_sha256)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (transfer_id, chunk_index) DO UPDATE SET byte_size = EXCLUDED.byte_size, chunk_sha256 = EXCLUDED.chunk_sha256, uploaded_at = now()
+        INSERT INTO transfer_chunks (transfer_id, chunk_index, byte_size, chunk_sha256, s3_etag)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (transfer_id, chunk_index) DO UPDATE SET byte_size = EXCLUDED.byte_size, chunk_sha256 = EXCLUDED.chunk_sha256, s3_etag = EXCLUDED.s3_etag, uploaded_at = now()
         "#,
     )
     .bind(transfer_id)
     .bind(chunk_index)
     .bind(body.len() as i32)
     .bind(&chunk_sha[..])
+    .bind(&s3_etag)
     .execute(&state.db)
     .await?;
 
     Ok(Json(serde_json::json!({
         "chunk_index": chunk_index,
         "chunk_sha256": hex::encode(chunk_sha),
+        "s3_etag": s3_etag,
     })))
 }
 
@@ -918,24 +1163,8 @@ async fn handle_complete_upload(
     }
 
     let multipart_id: String = row.try_get::<Option<String>, _>("s3_upload_id")?.unwrap_or_default();
-    let assembled = state
-        .storage
-        .local_cas
-        .assemble_chunks(&multipart_id, total_chunks as u32)
-        .await
-        .map_err(|_| AppError::Internal)?;
-
     let expected_size: i64 = row.try_get("total_size")?;
-    if assembled.len() as i64 != expected_size {
-        return Err(AppError::BadRequest("size_mismatch"));
-    }
     let expected_sha: Option<Vec<u8>> = row.try_get("expected_sha256")?;
-    if let Some(exp) = expected_sha.filter(|v| v.len() == 32) {
-        if sha256_bytes(&assembled).as_slice() != exp.as_slice() {
-            return Err(AppError::BadRequest("integrity_mismatch"));
-        }
-    }
-
     let scope_type: String = row.try_get("scope_type")?;
     let scope_id: Option<Uuid> = row.try_get("scope_id")?;
     let original_filename: String = row.try_get("original_filename")?;
@@ -944,6 +1173,151 @@ async fn handle_complete_upload(
     let is_e2ee: bool = row.try_get("is_e2ee")?;
     let preserve_original: bool = row.try_get("preserve_original")?;
     let b = body.map(|j| j.0).unwrap_or_default();
+
+    if let Some(rest) = multipart_id.strip_prefix("s3::") {
+        let (s3_key, upload_id) = rest.split_once("::").ok_or(AppError::Internal)?;
+        let part_rows = sqlx::query(
+            "SELECT chunk_index, s3_etag FROM transfer_chunks WHERE transfer_id = $1 ORDER BY chunk_index ASC",
+        )
+        .bind(transfer_id)
+        .fetch_all(&state.db)
+        .await?;
+        let mut parts = Vec::with_capacity(part_rows.len());
+        for pr in part_rows {
+            let idx: i32 = pr.try_get("chunk_index")?;
+            let etag: String = pr.try_get::<Option<String>, _>("s3_etag")?.unwrap_or_default();
+            parts.push(((idx + 1) as u32, etag));
+        }
+        state
+            .storage
+            .s3
+            .complete_multipart_upload(s3_key, upload_id, &parts)
+            .await
+            .map_err(|_| AppError::Internal)?;
+
+        let sha_arr = b
+            .sha256_cipher
+            .as_deref()
+            .and_then(|h| decode_hex_32(Some(h)))
+            .or_else(|| {
+                expected_sha.as_ref().and_then(|v| {
+                    if v.len() == 32 {
+                        let mut a = [0u8; 32];
+                        a.copy_from_slice(v);
+                        Some(a)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_else(|| sha256_bytes(s3_key.as_bytes()));
+        let sha_hex = hex::encode(sha_arr);
+        let oid = Uuid::new_v4();
+        let ref_id = Uuid::new_v4();
+        let cas_scope = format!("s3mp:{}:{}", user.id, transfer_id);
+        let actual_ext = if is_e2ee { "enc" } else { "bin" };
+        let ingest_scope = if scope_type == "recovery_relay" { "dm" } else { scope_type.as_str() };
+
+        let mut tx = state.db.begin().await?;
+        sqlx::query(
+            r#"
+            INSERT INTO media_objects
+                (id, cas_scope, sha256, plain_sha256, storage_backend, storage_key, mime_type, file_ext,
+                 compression_codec, byte_size, original_byte_size, is_animated, ref_count, variant_kind)
+            VALUES ($1, $2, $3, $4, 's3_ready', $5, $6, $7, $8, $9, $9, FALSE, 1, 'original')
+            "#,
+        )
+        .bind(oid)
+        .bind(&cas_scope)
+        .bind(&sha_arr[..])
+        .bind(plain_sha.as_ref().map(|p| &p[..]))
+        .bind(s3_key)
+        .bind(&mime_type)
+        .bind(actual_ext)
+        .bind(if is_e2ee { "e2ee_ciphertext" } else { "s3_multipart" })
+        .bind(expected_size)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO media_references
+                (id, owner_id, scope_type, scope_id, message_id, object_id, original_filename, mime_type,
+                 byte_size, sha256_plain, sha256_cipher, storage_tier, availability_state)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'server_durable', 'server_durable')
+            "#,
+        )
+        .bind(ref_id)
+        .bind(user.id)
+        .bind(ingest_scope)
+        .bind(scope_id)
+        .bind(b.message_id)
+        .bind(oid)
+        .bind(&original_filename)
+        .bind(&mime_type)
+        .bind(expected_size)
+        .bind(plain_sha.as_ref().map(|p| &p[..]))
+        .bind(&sha_arr[..])
+        .execute(&mut *tx)
+        .await?;
+
+        let compat_path = format!("s3_ready::{s3_key}");
+        sqlx::query(
+            r#"
+            INSERT INTO attachments (id, uploader_id, file_path, file_name, file_size, mime_type, ref_id, scope_type, scope_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $1, $7, $8)
+            "#,
+        )
+        .bind(ref_id)
+        .bind(user.id)
+        .bind(&compat_path)
+        .bind(&original_filename)
+        .bind(expected_size)
+        .bind(&mime_type)
+        .bind(ingest_scope)
+        .bind(scope_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("UPDATE transfer_sessions SET status = 'completed', resulting_ref_id = $2 WHERE id = $1")
+            .bind(transfer_id)
+            .bind(ref_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        return Ok(Json(serde_json::json!({
+            "id": ref_id,
+            "ref_id": ref_id,
+            "uploader_id": user.id,
+            "file_name": original_filename,
+            "file_size": expected_size,
+            "mime_type": mime_type,
+            "sha256": sha_hex,
+            "storage_tier": "server_durable",
+            "storage_backend": "s3_ready",
+            "availability_state": "server_durable",
+            "deduplicated": false,
+            "download_url": format!("/api/attachments/{ref_id}"),
+            "created_at": chrono::Utc::now(),
+        })));
+    }
+
+    let assembled = state
+        .storage
+        .local_cas
+        .assemble_chunks(&multipart_id, total_chunks as u32)
+        .await
+        .map_err(|_| AppError::Internal)?;
+
+    if assembled.len() as i64 != expected_size {
+        return Err(AppError::BadRequest("size_mismatch"));
+    }
+    if let Some(exp) = expected_sha.filter(|v| v.len() == 32) {
+        if sha256_bytes(&assembled).as_slice() != exp.as_slice() {
+            return Err(AppError::BadRequest("integrity_mismatch"));
+        }
+    }
 
     let ingest_scope = if scope_type == "recovery_relay" { "dm" } else { scope_type.as_str() };
     let res = ingest_media_bytes(
@@ -1082,9 +1456,11 @@ async fn handle_forward_reference(
 }
 
 pub use crate::storage::references::{
-    BatchLocationsReq, DeleteRefQuery, LocationItem, RelayAckBody, RunMigrationReq,
-    handle_cleanup_relays, handle_delete_reference, handle_get_ref_meta, handle_presign_ref,
-    handle_relay_ack, handle_report_locations, handle_run_migration, handle_storage_metrics,
+    BatchLocationsReq, DedupCheckReq, DeleteRefQuery, LocationItem, PutManifestChunk,
+    PutManifestReq, RelayAckBody, RunMigrationReq, handle_cleanup_relays, handle_dedup_check,
+    handle_delete_reference, handle_gc_incomplete, handle_get_manifest, handle_get_ref_meta,
+    handle_presign_ref, handle_put_manifest, handle_relay_ack, handle_report_locations,
+    handle_run_migration, handle_storage_metrics,
 };
 
 pub(crate) fn sanitize_filename(name: &str) -> String {

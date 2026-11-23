@@ -41,6 +41,100 @@ pub struct LightboxMedia {
 
 pub static GLOBAL_LIGHTBOX: GlobalSignal<Option<LightboxMedia>> = GlobalSignal::new(|| None);
 
+/// Instant Sender Original Preview item shown in the message stream the millisecond a file is chosen,
+/// before AVIF compression, E2EE encryption, and S3/CAS upload complete (Spec 110).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PendingSenderMedia {
+    pub handle_id: String,
+    pub preview_url: String,
+    pub file_name: String,
+    pub media_kind: String,
+    pub width: u32,
+    pub height: u32,
+    pub status_label: String,
+    pub failed: bool,
+}
+
+pub static PENDING_SENDER_MEDIA: GlobalSignal<Vec<PendingSenderMedia>> = GlobalSignal::new(Vec::new);
+
+pub fn push_pending_media(item: PendingSenderMedia) {
+    PENDING_SENDER_MEDIA.write().push(item);
+}
+
+pub fn update_pending_media_status(preview_url: &str, status_label: &str, failed: bool) {
+    let mut list = PENDING_SENDER_MEDIA.write();
+    if let Some(it) = list.iter_mut().find(|x| x.preview_url == preview_url || x.handle_id == preview_url) {
+        it.status_label = status_label.to_string();
+        it.failed = failed;
+    }
+}
+
+pub fn remove_pending_media(preview_url: &str) {
+    let mut list = PENDING_SENDER_MEDIA.write();
+    list.retain(|x| x.preview_url != preview_url && x.handle_id != preview_url);
+}
+
+#[component]
+pub fn PendingSenderMediaList() -> Element {
+    let items = PENDING_SENDER_MEDIA();
+    if items.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        for item in items {
+            {
+                let key_id = item.handle_id.clone();
+                let rem_id = item.handle_id.clone();
+                let stage_style = if item.width > 0 && item.height > 0 {
+                    format!("aspect-ratio: {} / {};", item.width, item.height)
+                } else {
+                    String::new()
+                };
+                rsx! {
+                    div { key: "{key_id}", class: "message-row self pending-sender-media-row", "data-pending-media": "true",
+                        div { class: "message-content",
+                            if item.media_kind == "image" && !item.preview_url.is_empty() {
+                                div { class: "rich-image",
+                                    div { class: "rich-image-stage loaded", style: "{stage_style} position: relative;",
+                                        img {
+                                            class: "rich-image-full",
+                                            src: "{item.preview_url}",
+                                            alt: "{item.file_name}",
+                                            "data-sender-original": "true",
+                                        }
+                                        div {
+                                            class: if item.failed { "status-badge error" } else { "chip-privacy" },
+                                            style: "position: absolute; bottom: 8px; right: 8px; backdrop-filter: blur(8px);",
+                                            "{item.status_label}"
+                                            if item.failed {
+                                                button {
+                                                    r#type: "button",
+                                                    class: "btn-secondary",
+                                                    style: "margin-left: 6px; padding: 2px 8px; font-size: 11px;",
+                                                    onclick: move |_| {
+                                                        media_opt::release_pending_handle(&rem_id, true);
+                                                        remove_pending_media(&rem_id);
+                                                    },
+                                                    "Đóng"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                div { class: "rich-card",
+                                    div { class: "rich-title", "{item.file_name}" }
+                                    div { class: if item.failed { "rich-body error" } else { "rich-body muted" }, "{item.status_label}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PollData {
     pub id: String,
@@ -410,21 +504,63 @@ pub fn RichImage(data: ImageData) -> Element {
     let mut missing = use_signal(|| Option::<(String, String, String)>::None);
     let mut rec_status = use_signal(|| Option::<String>::None);
     let mut failed = use_signal(|| false);
+    let mut ai_enhanced = use_signal(|| false);
+    let mut ai_cache_hit = use_signal(|| false);
 
     let key_now = (data.u.clone(), data.k.clone(), data.n.clone());
     let mime_now = data.m.clone();
     let scope_now = data.scope.clone();
+    let sha_now = data.sha.clone();
+
+    let run_progressive_ai = move |base_url: String, media_id: String, content_hash: String, mime_type: String| {
+        if mime_type == "image/gif" {
+            return;
+        }
+        spawn(async move {
+            let url_json = serde_json::to_string(&base_url).unwrap_or_default();
+            let mid_json = serde_json::to_string(&media_id).unwrap_or_default();
+            let hash_json = serde_json::to_string(&content_hash).unwrap_or_default();
+            let js = format!(
+                r#"
+                (async () => {{
+                    if (!window.__chatwAiRestorer || !window.__chatwAiRestorer.isAiEnabled()) {{
+                        dioxus.send({{ enhanced: false }});
+                        return;
+                    }}
+                    const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
+                        mediaId: {mid_json},
+                        contentHash: {hash_json},
+                    }});
+                    dioxus.send(res || {{ enhanced: false }});
+                }})();
+                "#
+            );
+            let mut eval = dioxus::document::eval(&js);
+            if let Ok(v) = eval.recv::<serde_json::Value>().await {
+                if v.get("enhanced").and_then(|b| b.as_bool()) == Some(true) {
+                    if let Some(new_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
+                        ai_enhanced.set(true);
+                        ai_cache_hit.set(v.get("cacheHit").and_then(|b| b.as_bool()).unwrap_or(false));
+                        src.set(Some(new_url.to_string()));
+                    }
+                }
+            }
+        });
+    };
 
     use_effect(use_reactive!(|key_now| {
         if loaded_key.peek().as_ref() == Some(&key_now) && src.peek().is_some() {
             return;
         }
         let (u, k, n) = key_now.clone();
+        ai_enhanced.set(false);
+        ai_cache_hit.set(false);
         if let Some(hit) = platform::get_cached_blob_url_sync(&u, &k, &n) {
             loaded_key.set(Some(key_now));
             missing.set(None);
             failed.set(false);
-            src.set(Some(hit));
+            src.set(Some(hit.clone()));
+            run_progressive_ai(hit, u, sha_now.clone(), mime_now.clone());
             return;
         }
         src.set(None);
@@ -432,14 +568,16 @@ pub fn RichImage(data: ImageData) -> Element {
         failed.set(false);
         let m_in = mime_now.clone();
         let sc_in = scope_now.clone();
+        let sh_in = sha_now.clone();
         let target_key = key_now.clone();
         spawn(async move {
-            let mime = if m_in.starts_with("image/") { m_in } else { "image/png".into() };
+            let mime = if m_in.starts_with("image/") { m_in } else { "image/avif".into() };
             // 1. Primary path for BOTH E2EE & non-E2EE images: SharedWorker Priority DownloadManager +
             //    deduplicated LRU `blobPool` (1 single `blob:` URL, 0 raw `/uploads/` or duplicate loads!).
             if let Some(burl) = platform::resolve_e2ee_blob_media_url(&u, &k, &n, &mime, "HIGH").await {
                 loaded_key.set(Some(target_key));
-                src.set(Some(burl));
+                src.set(Some(burl.clone()));
+                run_progressive_ai(burl, u, sh_in, mime);
                 return;
             }
             // 2. Fallback when server copy expired / requires local IndexedDB or WebRTC P2P recovery.
@@ -452,7 +590,8 @@ pub fn RichImage(data: ImageData) -> Element {
                 MediaFetchOutcome::Ready { bytes, mime: m, .. } => {
                     let burl = platform::register_cached_blob_url(&u, &k, &n, &bytes, &m).await;
                     loaded_key.set(Some(target_key));
-                    src.set(Some(burl));
+                    src.set(Some(burl.clone()));
+                    run_progressive_ai(burl, u, sh_in, m);
                 }
                 MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
                     missing.set(Some((ref_id, availability_state, reason)));
@@ -493,7 +632,14 @@ pub fn RichImage(data: ImageData) -> Element {
                                     size: lb_size,
                                 });
                             },
-                            img { class: "rich-image-full", src: "{s}", alt: "Image", decoding: "async" }
+                            img {
+                                class: "rich-image-full",
+                                src: "{s}",
+                                alt: "Image",
+                                decoding: "async",
+                                "data-ai-restored": if ai_enhanced() { "true" } else { "false" },
+                                "data-ai-cache-hit": if ai_cache_hit() { "true" } else { "false" },
+                            }
                         }
                     }
                 }
@@ -1101,7 +1247,35 @@ pub fn ComposerTools(
                                 let fid = img_id2.clone();
                                 let orig = preserve_original();
                                 spawn(async move {
-                                    if let Ok(payload) = media_opt::pick_and_optimize_from_input(&fid, orig).await {
+                                    // Phase 1 (< 20ms): Render crisp sender local original immediately before compression/E2EE/upload!
+                                    if let Ok(pick) = media_opt::pick_instant_preview(&fid).await {
+                                        let hid = pick.handle_id.clone();
+                                        push_pending_media(PendingSenderMedia {
+                                            handle_id: hid.clone(),
+                                            preview_url: pick.instant_preview_url.clone(),
+                                            file_name: pick.file_name.clone(),
+                                            media_kind: pick.media_kind.clone(),
+                                            width: pick.width.unwrap_or(0),
+                                            height: pick.height.unwrap_or(0),
+                                            status_label: "Đang tối ưu".into(),
+                                            failed: false,
+                                        });
+                                        platform::scroll_chat_to_bottom(false);
+                                        match media_opt::process_pending_handle(&hid, orig).await {
+                                            Ok(payload) => {
+                                                media_opt::release_pending_handle(&hid, false);
+                                                if let Some(h) = on_media {
+                                                    h.call(payload);
+                                                } else {
+                                                    remove_pending_media(&hid);
+                                                    on_image.call((payload.bytes, payload.mime));
+                                                }
+                                            }
+                                            Err(_) => {
+                                                update_pending_media_status(&hid, "Xử lý thất bại", true);
+                                            }
+                                        }
+                                    } else if let Ok(payload) = media_opt::pick_and_optimize_from_input(&fid, orig).await {
                                         if let Some(h) = on_media {
                                             h.call(payload);
                                         } else {
