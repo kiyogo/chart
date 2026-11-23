@@ -11609,6 +11609,11 @@ html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-
   padding: 0 var(--panel-inset, 5px) 6px !important;
   gap: 1px !important;
 }
+/* Spec 090: Messages conversation list ("khung chat") rows touch flush with 0px gap */
+.nav-sidebar .sidebar-scrollable.conv-list-scroll,
+.nav-sidebar .sidebar-scrollable:has(> .conv-row) {
+  gap: 0 !important;
+}
 .nav-sidebar .sidebar-scrollable > .notes-strip-wrap {
   margin-bottom: 4px !important;
 }

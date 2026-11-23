@@ -340,7 +340,7 @@ pub fn ConversationList(
                 }
             }
         }
-        div { class: "sidebar-scrollable",
+        div { class: "sidebar-scrollable conv-list-scroll",
             if q.is_empty() && f == "all" {
                 StoriesNotesBar {
                     strip_id: "conv-notes-strip".to_string(),

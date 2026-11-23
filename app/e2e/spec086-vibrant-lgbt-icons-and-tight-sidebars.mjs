@@ -232,10 +232,10 @@ try {
   await page.screenshot({ path: path.join(SHOT_DIR, '03_messages_tight_flush_bright_lgbt.png') });
 
   record(
-    '4. Messages sidebar has 5px left/right inset, 1px gap, bright fresh Pride avatar & centered 3px scrollbar',
+    '4. Messages sidebar has 5px left/right inset, 0px flush conversation gap, bright fresh Pride avatar & centered 3px scrollbar',
     msgSideAudit.padLeft === '5px' &&
       msgSideAudit.padRight === '5px' &&
-      msgSideAudit.gap === '1px' &&
+      (msgSideAudit.gap === '0px' || msgSideAudit.gap === 'normal') &&
       msgSideAudit.brightAvatar &&
       msgSideAudit.sbThumbW === 3 &&
       Math.abs(msgSideAudit.sbLeftGap - 1) <= 0.5 &&
