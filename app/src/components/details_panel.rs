@@ -64,7 +64,6 @@ pub fn DmDetailsPanel(
 ) -> Element {
     let mut profile = use_signal(|| Option::<UserProfileResponse>::None);
     let mut security_open = use_signal(|| false);
-    let mut search = use_signal(String::new);
     let mut copied = use_signal(|| false);
     let mut ack_tick = use_signal(|| 0u32);
 
@@ -137,19 +136,6 @@ pub fn DmDetailsPanel(
     }).filter(|s| !s.is_empty());
     let bio = p.as_ref().and_then(|p| p.bio.clone()).filter(|b| !b.trim().is_empty());
 
-    let q = search().trim().to_lowercase();
-    let hits: Vec<ViewMessage> = if q.is_empty() {
-        Vec::new()
-    } else {
-        messages
-            .iter()
-            .rev()
-            .filter(|m| !m.is_error && m.text.to_lowercase().contains(&q))
-            .take(50)
-            .cloned()
-            .collect()
-    };
-
     rsx! {
         button {
             r#type: "button",
@@ -216,46 +202,6 @@ pub fn DmDetailsPanel(
                 }
 
                 ContactNoteEditor { key: "{user_id}", user_id: user_id.clone() }
-
-                div { class: "details-section",
-                    div { class: "details-section-title", "Search in chat" }
-                    div { class: "search-field",
-                        SearchIcon { size: 16 }
-                        input {
-                            r#type: "search",
-                            placeholder: "Find downloaded messages",
-                            aria_label: "Find messages in chats",
-                            value: "{search}",
-                            oninput: move |e| search.set(e.value()),
-                        }
-                    }
-                    if !q.is_empty() {
-                        if hits.is_empty() {
-                            div { class: "sidebar-empty", "There are no matching messages" }
-                        } else {
-                            div { class: "details-search-results",
-                                for h in hits {
-                                    {
-                                        let id = h.id.clone();
-                                        let who = if h.is_self { "You".to_string() } else { h.sender_name.clone() };
-                                        let when = platform::format_local_time(&h.created_at);
-                                        rsx! {
-                                            button {
-                                                key: "{h.id}",
-                                                r#type: "button",
-                                                class: "details-search-hit",
-                                                onclick: move |_| on_jump_to.call(id.clone()),
-                                                span { class: "details-search-hit-meta", "{who} · {when}" }
-                                                span { class: "details-search-hit-text", "{h.text}" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        div { class: "form-hint", "Search runs on the device, in the decoded messages of this session." }
-                    }
-                }
 
                 div { class: "details-section",
                     button {
@@ -579,17 +525,6 @@ fn format_duration_short(dur_ms: u64) -> String {
     format!("{mins}:{secs:02}")
 }
 
-fn searchable_message_text(m: &ViewMessage) -> String {
-    match parse_rich(&m.text) {
-        Some(Rich::Note(n)) => format!("{} {}", n.t, n.b),
-        Some(Rich::Reminder(r)) => format!("{} {}", r.t, r.at),
-        Some(Rich::Image(i)) => format!("{} {}", i.name, "Image"),
-        Some(Rich::File(f)) | Some(Rich::Video(f)) | Some(Rich::Audio(f)) => f.name,
-        Some(other) => rich_preview(&other),
-        None => m.text.clone(),
-    }
-}
-
 fn display_message_preview(m: &ViewMessage) -> String {
     match parse_rich(&m.text) {
         Some(r) => rich_preview(&r),
@@ -692,7 +627,6 @@ pub fn SelfDetailsPanel(
     on_jump_to: EventHandler<String>,
 ) -> Element {
     let mut active_tab = use_signal(|| SelfVaultTab::Photo);
-    let mut search = use_signal(String::new);
     let mut security_open = use_signal(|| false);
     let mut copied_fp = use_signal(|| false);
     let mut copied_link = use_signal(|| Option::<String>::None);
@@ -803,24 +737,10 @@ pub fn SelfDetailsPanel(
         }
     }
 
-    let q = search().trim().to_lowercase();
-    let hits: Vec<ViewMessage> = if q.is_empty() {
-        Vec::new()
-    } else {
-        messages
-            .iter()
-            .rev()
-            .filter(|m| !m.is_error && searchable_message_text(m).to_lowercase().contains(&q))
-            .take(50)
-            .cloned()
-            .collect()
-    };
-
     let media_count = media_items.len();
     let doc_count = doc_items.len();
     let link_count = link_items.len();
     let pin_count = pinned_items.len();
-    let device_count = sessions.len().max(1);
     let self_title = t("chat.self").to_string();
     let _ = username;
 
@@ -857,9 +777,6 @@ pub fn SelfDetailsPanel(
                     div { class: "details-status self-details-sub",
                         ShieldIcon { size: 13 }
                         span { "Only you" }
-                        span { aria_hidden: "true", "·" }
-                        span { "{device_count}" }
-                        span { "Devices" }
                     }
                 }
 
@@ -1103,48 +1020,7 @@ pub fn SelfDetailsPanel(
                     }
                 }
 
-                // 4. Instant In-Chat Search
-                div { class: "details-section",
-                    div { class: "details-section-title", "Search in chat" }
-                    div { class: "search-field",
-                        SearchIcon { size: 16 }
-                        input {
-                            id: "self-details-search-input",
-                            r#type: "search",
-                            placeholder: "Find downloaded messages",
-                            aria_label: "Search in chat",
-                            value: "{search}",
-                            oninput: move |e| search.set(e.value()),
-                        }
-                    }
-                    if !q.is_empty() {
-                        if hits.is_empty() {
-                            div { class: "sidebar-empty", "There are no matching messages" }
-                        } else {
-                            div { class: "details-search-results",
-                                for h in hits {
-                                    {
-                                        let id = h.id.clone();
-                                        let when = platform::format_local_time(&h.created_at);
-                                        let preview = display_message_preview(&h);
-                                        rsx! {
-                                            button {
-                                                key: "{h.id}",
-                                                r#type: "button",
-                                                class: "details-search-hit",
-                                                onclick: move |_| on_jump_to.call(id.clone()),
-                                                span { class: "details-search-hit-meta", "{when}" }
-                                                span { class: "details-search-hit-text", "{preview}" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 5. Synced Devices ("Your device")
+                // 4. Synced Devices ("Your device")
                 if !sessions.is_empty() {
                     div { class: "details-section",
                         div { class: "details-section-title", "Your device" }
