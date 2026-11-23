@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 
 use crate::{
-    components::icons::{BookIcon, BoltIcon, CompassIcon, CopyIcon, FileTextIcon, LockIcon, LogoIcon, ShieldIcon, SparkleIcon},
+    components::icons::{BookIcon, CompassIcon, CopyIcon, FileTextIcon, LockIcon, LogoIcon, ShieldIcon, SparkleIcon},
     platform,
     prefs::PrefsCtx,
 };
@@ -31,7 +31,7 @@ fn build_diagnostics_text(lang: &str, theme: &str, accent: &str, panel_opacity: 
 #[component]
 pub fn AboutOverviewPanel(
     has_keys: bool,
-    on_open_developer: EventHandler<()>,
+    #[props(default)] on_open_developer: EventHandler<()>,
     on_open_guide: EventHandler<()>,
     on_replay_tour: EventHandler<()>,
     #[props(default)] on_open_terms: EventHandler<()>,
@@ -39,6 +39,7 @@ pub fn AboutOverviewPanel(
     #[props(default)] on_open_community: EventHandler<()>,
     #[props(default)] on_open_vision: EventHandler<()>,
 ) -> Element {
+    let _ = &on_open_developer;
     let prefs_ctx = use_context::<PrefsCtx>();
     let prefs = prefs_ctx.prefs.read().clone();
     let dev_mode = prefs.developer_mode;
@@ -137,18 +138,11 @@ pub fn AboutOverviewPanel(
             }
 
             div { class: "settings-col",
-                // Developer Mode toggle card
+                // Developer Mode toggle card (clean single-row flat layout)
                 div { class: "settings-group",
-                    div { class: "settings-group-title", "Developer options" }
                     div { class: "about-dev-card",
                         label { class: "about-dev-toggle-row",
-                            div { class: "about-dev-head",
-                                span { class: "about-dev-icon", BoltIcon { size: 18 } }
-                                div { class: "about-dev-text",
-                                    span { class: "about-dev-title", "Developer mode" }
-                                    span { class: "about-dev-hint", "Show the Developer menu with advanced data export, encryption keys, sync recovery, extensions, and diagnostics." }
-                                }
-                            }
+                            span { class: "about-dev-title", "Developer mode" }
                             input {
                                 r#type: "checkbox",
                                 class: "switch",
@@ -159,20 +153,6 @@ pub fn AboutOverviewPanel(
                                     build_taps.set(0);
                                     prefs_ctx.update(|p| p.developer_mode = on);
                                 },
-                            }
-                        }
-                        if dev_mode {
-                            div { class: "about-dev-footer",
-                                span { class: "settings-value tag-active",
-                                    span { class: "cw-live-dot" }
-                                    "Enabled"
-                                }
-                                button {
-                                    r#type: "button",
-                                    class: "btn-secondary",
-                                    onclick: move |_| on_open_developer.call(()),
-                                    "Open Developer"
-                                }
                             }
                         }
                     }

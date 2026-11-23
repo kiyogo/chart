@@ -11583,55 +11583,15 @@ html[dir="rtl"] .about-row-val {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: 0.95rem 1rem;
+  padding: 0.75rem 1rem;
+  min-height: 2.75rem;
   cursor: pointer;
-}
-.about-dev-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  min-width: 0;
-  flex: 1;
-}
-.about-dev-icon {
-  width: 2.1rem;
-  height: 2.1rem;
-  border-radius: 10px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.about-dev-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
+  user-select: none;
 }
 .about-dev-title {
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  color: var(--text-primary);
-}
-.about-dev-hint {
   font-size: var(--text-sm);
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-.about-dev-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 0.7rem 1rem;
-  border-top: 1px solid rgba(15, 23, 42, 0.07);
-}
-[data-theme="dark"] .about-dev-footer,
-html[data-panel-translucent="true"][data-app-wp]:not([data-app-wp="none"])[data-surface-tone="dark"] .about-dev-footer {
-  border-top-color: rgba(255, 255, 255, 0.09);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
 }
 
 /* ==========================================================================

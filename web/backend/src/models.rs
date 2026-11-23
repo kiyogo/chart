@@ -280,6 +280,8 @@ pub struct GroupItem {
     pub name: String,
     pub description: Option<String>,
     pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
     pub owner_id: Uuid,
     pub member_count: i64,
     pub role: Option<String>,
@@ -292,6 +294,8 @@ pub struct CreateGroupRequest {
     pub description: Option<String>,
     pub avatar_url: Option<String>,
     #[serde(default)]
+    pub banner_url: Option<String>,
+    #[serde(default)]
     pub member_ids: Vec<Uuid>,
 }
 
@@ -300,6 +304,8 @@ pub struct UpdateGroupRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

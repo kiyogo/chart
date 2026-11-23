@@ -83,6 +83,7 @@ pub async fn groups_update(
     name: Option<String>,
     description: Option<String>,
     avatar_url: Option<String>,
+    banner_url: Option<String>,
 ) -> Result<GroupItem, ApiError> {
     let encoded = urlencoding::encode(group_id);
     put_json(
@@ -91,6 +92,7 @@ pub async fn groups_update(
             "name": name,
             "description": description,
             "avatar_url": avatar_url,
+            "banner_url": banner_url,
         }),
     )
     .await
@@ -323,5 +325,57 @@ pub async fn groups_toggle_reaction(
     )
     .await?;
     Ok(res.get("action").and_then(|v| v.as_str()).unwrap_or("added").to_string())
+}
+
+// 24. Upload group avatar
+pub async fn groups_upload_avatar(group_id: &str, bytes: Vec<u8>) -> Result<String, ApiError> {
+    let (sniff_mime, _) = crate::storage::media_opt::sniff_mime_from_bytes(&bytes);
+    let content_type = if sniff_mime.starts_with("image/") { sniff_mime } else { "image/avif" };
+    let enc_gid = urlencoding::encode(group_id);
+    let path = format!("/api/groups/{enc_gid}/avatar");
+    let (_, body) = platform::http_request("POST", &path, None, Some((bytes, content_type))).await?;
+    let v: serde_json::Value = serde_json::from_str(&body).map_err(|_| ApiError {
+        code: "invalid_json".into(),
+        status: 200,
+    })?;
+    v.get("avatar_url")
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string())
+        .ok_or(ApiError {
+            code: "missing_avatar_url".into(),
+            status: 200,
+        })
+}
+
+// 25. Upload group cover banner
+pub async fn groups_upload_banner(group_id: &str, bytes: Vec<u8>) -> Result<String, ApiError> {
+    let (sniff_mime, _) = crate::storage::media_opt::sniff_mime_from_bytes(&bytes);
+    let content_type = if sniff_mime.starts_with("image/") { sniff_mime } else { "image/avif" };
+    let enc_gid = urlencoding::encode(group_id);
+    let path = format!("/api/groups/{enc_gid}/banner");
+    let (_, body) = platform::http_request("POST", &path, None, Some((bytes, content_type))).await?;
+    let v: serde_json::Value = serde_json::from_str(&body).map_err(|_| ApiError {
+        code: "invalid_json".into(),
+        status: 200,
+    })?;
+    v.get("banner_url")
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string())
+        .ok_or(ApiError {
+            code: "missing_banner_url".into(),
+            status: 200,
+        })
+}
+
+// 26. Get group settings
+pub async fn groups_get_settings(group_id: &str) -> Result<serde_json::Value, ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    get_json(&format!("/api/groups/{enc_gid}/settings")).await
+}
+
+// 27. Update group settings
+pub async fn groups_update_settings(group_id: &str, payload: serde_json::Value) -> Result<serde_json::Value, ApiError> {
+    let enc_gid = urlencoding::encode(group_id);
+    put_json(&format!("/api/groups/{enc_gid}/settings"), payload).await
 }
 

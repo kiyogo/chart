@@ -1,6 +1,7 @@
 pub mod manage;
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{delete, get, post, put},
@@ -41,6 +42,8 @@ pub fn routes() -> Router<AppState> {
         .route("/{group_id}/block", post(manage::block_group).delete(manage::unblock_group))
         .route("/{group_id}/invite-link", get(manage::get_invite_link))
         .route("/{group_id}/invite-link/regenerate", post(manage::regenerate_invite_link))
+        .route("/{group_id}/avatar", post(upload_group_avatar))
+        .route("/{group_id}/banner", post(upload_group_banner))
         .route("/", post(create_group).get(list_my_groups))
         .route("/join/{code}", post(join_by_invite))
         .route(
@@ -132,13 +135,14 @@ async fn create_group(
 
     sqlx::query!(
         r#"
-        INSERT INTO groups (id, name, description, avatar_url, owner_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO groups (id, name, description, avatar_url, banner_url, owner_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         "#,
         group_id,
         payload.name.trim(),
         payload.description,
         payload.avatar_url,
+        payload.banner_url,
         user.id
     )
     .execute(&mut *tx)
@@ -214,6 +218,7 @@ async fn create_group(
         name: payload.name.trim().to_string(),
         description: payload.description,
         avatar_url: payload.avatar_url,
+        banner_url: payload.banner_url,
         owner_id: user.id,
         member_count: count,
         role: Some("owner".to_string()),
@@ -234,7 +239,7 @@ async fn list_my_groups(
 
     let rows = sqlx::query!(
         r#"
-        SELECT g.id, g.name, g.description, g.avatar_url, g.owner_id, g.created_at,
+        SELECT g.id, g.name, g.description, g.avatar_url, g.banner_url, g.owner_id, g.created_at,
                gm.role,
                (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count
         FROM groups g
@@ -254,6 +259,7 @@ async fn list_my_groups(
             name: r.name,
             description: r.description,
             avatar_url: r.avatar_url,
+            banner_url: r.banner_url,
             owner_id: r.owner_id,
             member_count: r.member_count.unwrap_or(1),
             role: Some(r.role),
@@ -281,7 +287,7 @@ async fn get_group_details(
 
     let g = sqlx::query!(
         r#"
-        SELECT g.id, g.name, g.description, g.avatar_url, g.owner_id, g.created_at,
+        SELECT g.id, g.name, g.description, g.avatar_url, g.banner_url, g.owner_id, g.created_at,
                (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count
         FROM groups g
         WHERE g.id = $1
@@ -297,6 +303,7 @@ async fn get_group_details(
         name: g.name,
         description: g.description,
         avatar_url: g.avatar_url,
+        banner_url: g.banner_url,
         owner_id: g.owner_id,
         member_count: g.member_count.unwrap_or(1),
         role,
@@ -336,14 +343,16 @@ async fn update_group(
         UPDATE groups
         SET name = COALESCE($2, name),
             description = COALESCE($3, description),
-            avatar_url = COALESCE($4, avatar_url)
+            avatar_url = COALESCE($4, avatar_url),
+            banner_url = CASE WHEN $5::text IS NULL THEN banner_url WHEN $5 = '' THEN NULL ELSE $5 END
         WHERE id = $1
-        RETURNING id, name, description, avatar_url, owner_id, created_at
+        RETURNING id, name, description, avatar_url, banner_url, owner_id, created_at
         "#,
         group_id,
         payload.name.as_deref().map(str::trim),
         payload.description,
-        payload.avatar_url
+        payload.avatar_url,
+        payload.banner_url
     )
     .fetch_optional(&state.db)
     .await?
@@ -362,6 +371,7 @@ async fn update_group(
         name: row.name,
         description: row.description,
         avatar_url: row.avatar_url,
+        banner_url: row.banner_url,
         owner_id: row.owner_id,
         member_count,
         role: Some(role),
@@ -820,7 +830,7 @@ async fn join_by_invite(
 
     let g = sqlx::query!(
         r#"
-        SELECT g.id, g.name, g.description, g.avatar_url, g.owner_id, g.created_at,
+        SELECT g.id, g.name, g.description, g.avatar_url, g.banner_url, g.owner_id, g.created_at,
                (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count
         FROM groups g
         WHERE g.id = $1
@@ -860,6 +870,7 @@ async fn join_by_invite(
         name: g.name,
         description: g.description,
         avatar_url: g.avatar_url,
+        banner_url: g.banner_url,
         owner_id: g.owner_id,
         member_count: g.member_count.unwrap_or(1),
         role: Some("member".to_string()),
@@ -1442,4 +1453,125 @@ async fn toggle_reaction(
         .await;
 
     Ok(Json(serde_json::json!({ "action": action, "emoji": emoji })))
+}
+
+// Upload group avatar (honest .avif)
+async fn upload_group_avatar(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    body: Bytes,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    if !manage::is_admin_role(&role) {
+        manage::check_member_may(&state.db, group_id, &role, "avatar").await?;
+    }
+
+    if body.is_empty() {
+        return Err(AppError::BadRequest("empty_avatar_payload"));
+    }
+    if body.len() > 5 * 1024 * 1024 {
+        return Err(AppError::BadRequest("avatar_too_large"));
+    }
+
+    let body_vec = body.to_vec();
+    let processed = tokio::task::spawn_blocking(move || crate::media_opt::process_avatar_honest(&body_vec))
+        .await
+        .map_err(|_| AppError::Internal)?
+        .map_err(AppError::BadRequest)?;
+
+    let avatar_dir = state.config.uploads_dir.join("avatars");
+    tokio::fs::create_dir_all(&avatar_dir).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to create avatar directory");
+        AppError::Internal
+    })?;
+
+    let filename = format!("group_{}.{}", group_id, processed.ext);
+    let filepath = avatar_dir.join(&filename);
+
+    tokio::fs::write(&filepath, &processed.main_bytes).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to write group avatar file");
+        AppError::Internal
+    })?;
+    if !processed.thumb_bytes.is_empty() {
+        let thumb_name = format!("group_{}_thumb.{}", group_id, processed.ext);
+        let _ = tokio::fs::write(avatar_dir.join(&thumb_name), &processed.thumb_bytes).await;
+    }
+
+    let now_ts = chrono::Utc::now().timestamp_millis();
+    let avatar_url = format!("/uploads/avatars/{}?t={}", filename, now_ts);
+
+    sqlx::query!(
+        "UPDATE groups SET avatar_url = $1 WHERE id = $2",
+        avatar_url,
+        group_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "avatar_url": avatar_url })))
+}
+
+// Upload group cover banner
+async fn upload_group_banner(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<Uuid>,
+    body: Bytes,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    if !manage::is_admin_role(&role) {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+
+    if body.is_empty() {
+        return Err(AppError::BadRequest("empty_banner_payload"));
+    }
+    if body.len() > 8 * 1024 * 1024 {
+        return Err(AppError::BadRequest("banner_too_large"));
+    }
+
+    let banner_dir = state.config.uploads_dir.join("banners");
+    tokio::fs::create_dir_all(&banner_dir).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to create banner directory");
+        AppError::Internal
+    })?;
+
+    let ext = crate::users::sniff_image(&body).ok_or(AppError::BadRequest("unsupported_banner_format"))?;
+    for old in ["avif", "webp", "gif", "png", "jpg"] {
+        if old != ext {
+            let _ = tokio::fs::remove_file(banner_dir.join(format!("group_{}.{old}", group_id))).await;
+        }
+    }
+    let filename = format!("group_{}.{ext}", group_id);
+    let filepath = banner_dir.join(&filename);
+    tokio::fs::write(&filepath, &body).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to write group banner file");
+        AppError::Internal
+    })?;
+
+    let now_ts = chrono::Utc::now().timestamp_millis();
+    let banner_url = format!("/uploads/banners/{}?t={}", filename, now_ts);
+
+    sqlx::query!(
+        "UPDATE groups SET banner_url = $1 WHERE id = $2",
+        banner_url,
+        group_id
+    )
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "banner_url": banner_url })))
 }

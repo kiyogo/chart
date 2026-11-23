@@ -427,6 +427,8 @@ pub struct GroupItem {
     pub description: Option<String>,
     #[serde(default)]
     pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
     pub owner_id: String,
     #[serde(default)]
     pub member_count: i64,
