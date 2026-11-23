@@ -441,6 +441,7 @@ async fn handle_upload_attachment(
         preserve_original: query.preserve_original,
         backup_dm: query.backup_dm,
         forward_from_ref_id: query.forward_from_ref_id,
+        tier: query.tier,
     };
 
     let result = ingest_media_bytes(

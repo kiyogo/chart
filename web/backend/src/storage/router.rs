@@ -23,7 +23,10 @@ use crate::{
         sha256_bytes,
     },
 };
-use chatw_media_core::dedup::{compute_pdq_hash_rgba, evaluate_dedup_policy, hash_bytes_exact};
+use chatw_media_core::dedup::{
+    compare_perceptual_images, compute_pdq_hash_rgba, evaluate_dedup_policy, hash_bytes_exact,
+    PdqHash256, PerceptualMatchVerdict,
+};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -64,6 +67,7 @@ pub struct UploadMetaQuery {
     pub preserve_original: Option<bool>,
     pub backup_dm: Option<bool>,
     pub forward_from_ref_id: Option<Uuid>,
+    pub tier: Option<String>,
 }
 
 /// Shared ingestion helper used by BOTH legacy `/api/attachments` and new resumable chunked uploads.
@@ -109,12 +113,12 @@ pub async fn ingest_media_bytes(
         meta.mime_type
             .as_deref()
             .filter(|m| !m.trim().is_empty())
-            .unwrap_or("application/octet-stream")
+            .unwrap_or_else(|| if !content_type_header.is_empty() { content_type_header } else { "application/octet-stream" })
             .to_string()
+    } else if !content_type_header.is_empty() && content_type_header != "application/octet-stream" {
+        content_type_header.to_string()
     } else if sniffed.mime != "application/octet-stream" {
         sniffed.mime.to_string()
-    } else if !content_type_header.is_empty() {
-        content_type_header.to_string()
     } else {
         "application/octet-stream".into()
     };
@@ -138,7 +142,14 @@ pub async fn ingest_media_bytes(
     let s3_ready = storage.s3.config().is_ready();
     let durable_backend = if s3_ready { "s3_ready" } else { "local_cas" };
     let wants_backup = meta.backup_dm.unwrap_or(default_dm_backup);
+    let explicit_tier = meta.tier.as_deref();
     let (storage_tier, availability_state, relay_expires_at, backend_kind) = match scope_type {
+        _ if explicit_tier == Some("temp_relay") => (
+            "temp_relay",
+            "pending_delivery",
+            Some(chrono::Utc::now() + chrono::Duration::hours(relay_ttl_hours as i64)),
+            "temp_relay",
+        ),
         "group" | "channel" | "avatar" | "banner" | "library" | "sticker" => (
             "server_durable",
             "server_durable",
@@ -221,10 +232,92 @@ pub async fn ingest_media_bytes(
     .fetch_optional(&mut *tx)
     .await?;
 
-    let (original_obj_id, deduplicated) = if let Some(existing_row) = existing_obj {
+    let mut dedup_match_kind: &'static str = "none";
+    let mut matched_existing: Option<(Uuid, String, String, &'static str)> = None;
+
+    if let Some(existing_row) = existing_obj {
         let oid: Uuid = existing_row.try_get("id")?;
         let ex_key: String = existing_row.try_get("storage_key")?;
         let ex_backend: String = existing_row.try_get("storage_backend")?;
+        matched_existing = Some((oid, ex_key, ex_backend, "exact_cas_scope"));
+    }
+
+    // Fallback 1: If not found by cas_scope, check exact cryptographic hash in shared dedup index
+    if matched_existing.is_none() && !is_e2ee && dedup_decision.allow_exact_global_lookup {
+        if let Some(row) = sqlx::query(
+            r#"
+            SELECT d.object_id, o.storage_key, o.storage_backend
+            FROM media_dedup_indexes d
+            JOIN media_objects o ON o.id = d.object_id
+            WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND (d.blake3 = $1 OR d.sha256 = $2)
+            LIMIT 1
+            "#,
+        )
+        .bind(&stored_blake3_arr[..])
+        .bind(&stored_sha_arr[..])
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            let oid: Uuid = row.try_get("object_id")?;
+            let ex_key: String = row.try_get("storage_key")?;
+            let ex_backend: String = row.try_get("storage_backend")?;
+            matched_existing = Some((oid, ex_key, ex_backend, "exact_shared_hash"));
+        }
+    }
+
+    // Fallback 2: Perceptual PDQ 256-bit DCT match for memes & re-encoded images (with caption-band guard)
+    if matched_existing.is_none() && !is_e2ee && dedup_decision.allow_perceptual_lookup {
+        if let Some(ref incoming_pdq) = pdq_opt {
+            let incoming_px = (dims_w.unwrap_or(0).max(0) as u64) * (dims_h.unwrap_or(0).max(0) as u64);
+            let candidates = sqlx::query(
+                r#"
+                SELECT d.object_id, d.perceptual_hash, d.perceptual_quality, d.caption_band_hash,
+                       d.width, d.height, o.storage_key, o.storage_backend
+                FROM media_dedup_indexes d
+                JOIN media_objects o ON o.id = d.object_id
+                WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.perceptual_hash IS NOT NULL
+                ORDER BY d.created_at DESC
+                LIMIT 150
+                "#,
+            )
+            .fetch_all(&mut *tx)
+            .await?;
+
+            for cand in candidates {
+                let ph: Vec<u8> = cand.try_get("perceptual_hash")?;
+                if ph.len() != 32 {
+                    continue;
+                }
+                let mut bytes_arr = [0u8; 32];
+                bytes_arr.copy_from_slice(&ph);
+                let existing_pdq = PdqHash256 {
+                    bytes: bytes_arr,
+                    quality: cand.try_get::<Option<i16>, _>("perceptual_quality")?.unwrap_or(0).clamp(0, 100) as u8,
+                    caption_band_hash: cand.try_get::<Option<i64>, _>("caption_band_hash")?.unwrap_or(0) as u64,
+                };
+                let ex_px = (cand.try_get::<Option<i32>, _>("width")?.unwrap_or(0).max(0) as u64)
+                    * (cand.try_get::<Option<i32>, _>("height")?.unwrap_or(0).max(0) as u64);
+                if let PerceptualMatchVerdict::EquivalentCandidate { .. } =
+                    compare_perceptual_images(incoming_pdq, &existing_pdq, incoming_px, ex_px)
+                {
+                    let oid: Uuid = cand.try_get("object_id")?;
+                    let ex_key: String = cand.try_get("storage_key")?;
+                    let ex_backend: String = cand.try_get("storage_backend")?;
+                    let exists = match ex_backend.as_str() {
+                        "s3_ready" => storage.s3.object_exists(&ex_key).await.unwrap_or(false),
+                        _ => storage.local_cas.object_exists(&ex_key).await.unwrap_or(false),
+                    };
+                    if exists {
+                        matched_existing = Some((oid, ex_key, ex_backend, "perceptual_meme_match"));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let (original_obj_id, deduplicated) = if let Some((oid, ex_key, ex_backend, kind)) = matched_existing {
+        dedup_match_kind = kind;
         if ex_backend == "local_cas" && !storage.local_cas.object_exists(&ex_key).await.unwrap_or(false) {
             storage.local_cas.put_object(&ex_key, bytes.clone(), &actual_mime, None).await
                 .map_err(|_| AppError::Internal)?;
@@ -317,7 +410,32 @@ pub async fn ingest_media_bytes(
     // For non-E2EE images in durable scopes (group/channel/library), also produce genuine Adaptive Ultra AVIF + AVIF thumbnail.
     let mut opt_obj_id: Option<Uuid> = None;
     let mut thumb_obj_id: Option<Uuid> = None;
-    if !is_e2ee
+
+    if deduplicated {
+        let variants = sqlx::query(
+            "SELECT id, variant_kind FROM media_objects WHERE variant_of = $1",
+        )
+        .bind(original_obj_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        for v in variants {
+            let vid: Uuid = v.try_get("id")?;
+            let vkind: String = v.try_get("variant_kind")?;
+            if vkind == "optimized" && opt_obj_id.is_none() {
+                opt_obj_id = Some(vid);
+                let _ = sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1 WHERE id = $1")
+                    .bind(vid)
+                    .execute(&mut *tx)
+                    .await;
+            } else if (vkind == "thumb" || vkind == "thumbnail") && thumb_obj_id.is_none() {
+                thumb_obj_id = Some(vid);
+                let _ = sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1 WHERE id = $1")
+                    .bind(vid)
+                    .execute(&mut *tx)
+                    .await;
+            }
+        }
+    } else if !is_e2ee
         && !preserve_original
         && matches!(backend_kind, "local_cas" | "s3_ready")
         && matches!(sniffed.kind, MediaKind::Image | MediaKind::AnimatedImage)
@@ -498,6 +616,7 @@ pub async fn ingest_media_bytes(
         "storage_backend": backend_kind,
         "availability_state": availability_state,
         "deduplicated": deduplicated,
+        "dedup_match_kind": dedup_match_kind,
         "has_optimized": opt_obj_id.is_some(),
         "has_thumb": thumb_obj_id.is_some(),
         "relay_expires_at": relay_expires_at,
@@ -827,6 +946,12 @@ struct InitUploadReq {
     pub chunk_size: Option<i32>,
     pub sha256_cipher: Option<String>,
     pub sha256_plain: Option<String>,
+    pub blake3_hex: Option<String>,
+    pub perceptual_hash_hex: Option<String>,
+    pub perceptual_quality: Option<u8>,
+    pub caption_band_hash: Option<u64>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
     pub is_e2ee: Option<bool>,
     pub preserve_original: Option<bool>,
 }
@@ -848,9 +973,12 @@ async fn handle_init_upload(
     let expected_sha = decode_hex_32(req.sha256_cipher.as_deref());
     let plain_sha = decode_hex_32(req.sha256_plain.as_deref());
 
-    // Instant deduplication fast-path check STRICTLY for non-E2EE shared scopes (`group`/`channel`).
+    // Instant deduplication fast-path check STRICTLY for non-E2EE shared scopes (`group`/`channel`/`library`/`sticker`).
     let is_e2ee = req.is_e2ee.unwrap_or(false);
     if !is_e2ee && matches!(req.scope_type.as_str(), "group" | "channel" | "library" | "sticker") {
+        let mut matched_instant: Option<(Uuid, &'static str)> = None;
+
+        // 1. Exact match by cas_scope
         if let Some(ref hex_sha) = req.sha256_cipher {
             let cas_scope = format!("shared:{}", hex_sha.to_lowercase());
             if let Some(ex_row) = sqlx::query(
@@ -868,41 +996,198 @@ async fn handle_init_upload(
                     _ => state.storage.local_cas.object_exists(&ex_key).await.unwrap_or(false),
                 };
                 if exists {
-                    let ref_id = Uuid::new_v4();
-                    let mut tx = state.db.begin().await?;
-                    sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL WHERE id = $1")
-                        .bind(obj_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query(
-                        r#"
-                        INSERT INTO media_references
-                            (id, owner_id, scope_type, scope_id, object_id, original_filename, mime_type,
-                             byte_size, sha256_plain, sha256_cipher, storage_tier, availability_state)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'server_durable', 'server_durable')
-                        "#,
-                    )
-                    .bind(ref_id)
-                    .bind(user.id)
-                    .bind(&req.scope_type)
-                    .bind(req.scope_id)
-                    .bind(obj_id)
-                    .bind(sanitize_filename(&req.file_name))
-                    .bind(&req.mime_type)
-                    .bind(req.total_size)
-                    .bind(plain_sha.as_ref().map(|x| &x[..]))
-                    .bind(expected_sha.as_ref().map(|x| &x[..]))
-                    .execute(&mut *tx)
-                    .await?;
-                    tx.commit().await?;
-                    return Ok(Json(serde_json::json!({
-                        "dedup_instant": true,
-                        "transfer_id": transfer_id,
-                        "ref_id": ref_id,
-                        "download_url": format!("/api/attachments/{ref_id}"),
-                    })));
+                    matched_instant = Some((obj_id, "exact_cas_scope"));
                 }
             }
+        }
+
+        // 2. Exact match by BLAKE3 or SHA-256 in shared index
+        if matched_instant.is_none() {
+            let b3_arr = decode_hex_32(req.blake3_hex.as_deref());
+            let sha_arr = decode_hex_32(req.sha256_cipher.as_deref()).or_else(|| decode_hex_32(req.sha256_plain.as_deref()));
+            if b3_arr.is_some() || sha_arr.is_some() {
+                if let Some(row) = sqlx::query(
+                    r#"
+                    SELECT d.object_id, o.storage_key, o.storage_backend
+                    FROM media_dedup_indexes d
+                    JOIN media_objects o ON o.id = d.object_id
+                    WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND (d.blake3 = $1 OR d.sha256 = $2)
+                    LIMIT 1
+                    "#,
+                )
+                .bind(b3_arr.as_ref().map(|b| &b[..]))
+                .bind(sha_arr.as_ref().map(|s| &s[..]))
+                .fetch_optional(&state.db)
+                .await?
+                {
+                    let obj_id: Uuid = row.try_get("object_id")?;
+                    let ex_key: String = row.try_get("storage_key")?;
+                    let ex_backend: String = row.try_get("storage_backend")?;
+                    let exists = match ex_backend.as_str() {
+                        "s3_ready" => state.storage.s3.object_exists(&ex_key).await.unwrap_or(false),
+                        _ => state.storage.local_cas.object_exists(&ex_key).await.unwrap_or(false),
+                    };
+                    if exists {
+                        matched_instant = Some((obj_id, "exact_shared_index"));
+                    }
+                }
+            }
+        }
+
+        // 3. Perceptual PDQ meme match with caption-band guard for images
+        if matched_instant.is_none() {
+            if let Some(pdq_hex) = req.perceptual_hash_hex.as_deref() {
+                if let Some(incoming_pdq) = PdqHash256::from_hex(
+                    pdq_hex,
+                    req.perceptual_quality.unwrap_or(0),
+                    req.caption_band_hash.unwrap_or(0),
+                ) {
+                    let incoming_px = (req.width.unwrap_or(0) as u64) * (req.height.unwrap_or(0) as u64);
+                    let candidates = sqlx::query(
+                        r#"
+                        SELECT d.object_id, d.perceptual_hash, d.perceptual_quality, d.caption_band_hash,
+                               d.width, d.height, o.storage_key, o.storage_backend
+                        FROM media_dedup_indexes d
+                        JOIN media_objects o ON o.id = d.object_id
+                        WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.perceptual_hash IS NOT NULL
+                        ORDER BY d.created_at DESC
+                        LIMIT 150
+                        "#,
+                    )
+                    .fetch_all(&state.db)
+                    .await?;
+
+                    for cand in candidates {
+                        let ph: Vec<u8> = cand.try_get("perceptual_hash")?;
+                        if ph.len() != 32 {
+                            continue;
+                        }
+                        let mut bytes_arr = [0u8; 32];
+                        bytes_arr.copy_from_slice(&ph);
+                        let existing_pdq = PdqHash256 {
+                            bytes: bytes_arr,
+                            quality: cand.try_get::<Option<i16>, _>("perceptual_quality")?.unwrap_or(0).clamp(0, 100) as u8,
+                            caption_band_hash: cand.try_get::<Option<i64>, _>("caption_band_hash")?.unwrap_or(0) as u64,
+                        };
+                        let ex_px = (cand.try_get::<Option<i32>, _>("width")?.unwrap_or(0).max(0) as u64)
+                            * (cand.try_get::<Option<i32>, _>("height")?.unwrap_or(0).max(0) as u64);
+                        if let PerceptualMatchVerdict::EquivalentCandidate { .. } =
+                            compare_perceptual_images(&incoming_pdq, &existing_pdq, incoming_px, ex_px)
+                        {
+                            let obj_id: Uuid = cand.try_get("object_id")?;
+                            let ex_key: String = cand.try_get("storage_key")?;
+                            let ex_backend: String = cand.try_get("storage_backend")?;
+                            let exists = match ex_backend.as_str() {
+                                "s3_ready" => state.storage.s3.object_exists(&ex_key).await.unwrap_or(false),
+                                _ => state.storage.local_cas.object_exists(&ex_key).await.unwrap_or(false),
+                            };
+                            if exists {
+                                matched_instant = Some((obj_id, "perceptual_meme_match"));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some((obj_id, match_kind)) = matched_instant {
+            let ref_id = Uuid::new_v4();
+            let mut tx = state.db.begin().await?;
+
+            // Reuse variants if present
+            let mut opt_obj_id: Option<Uuid> = None;
+            let mut thumb_obj_id: Option<Uuid> = None;
+            let variants = sqlx::query(
+                "SELECT id, variant_kind FROM media_objects WHERE variant_of = $1",
+            )
+            .bind(obj_id)
+            .fetch_all(&mut *tx)
+            .await?;
+            for v in variants {
+                let vid: Uuid = v.try_get("id")?;
+                let vkind: String = v.try_get("variant_kind")?;
+                if vkind == "optimized" && opt_obj_id.is_none() {
+                    opt_obj_id = Some(vid);
+                    let _ = sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1 WHERE id = $1")
+                        .bind(vid)
+                        .execute(&mut *tx)
+                        .await;
+                } else if (vkind == "thumb" || vkind == "thumbnail") && thumb_obj_id.is_none() {
+                    thumb_obj_id = Some(vid);
+                    let _ = sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1 WHERE id = $1")
+                        .bind(vid)
+                        .execute(&mut *tx)
+                        .await;
+                }
+            }
+
+            sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL WHERE id = $1")
+                .bind(obj_id)
+                .execute(&mut *tx)
+                .await?;
+
+            sqlx::query(
+                r#"
+                INSERT INTO media_references
+                    (id, owner_id, scope_type, scope_id, object_id, optimized_object_id, thumb_object_id,
+                     original_filename, mime_type, byte_size, sha256_plain, sha256_cipher,
+                     storage_tier, availability_state)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'server_durable', 'server_durable')
+                "#,
+            )
+            .bind(ref_id)
+            .bind(user.id)
+            .bind(&req.scope_type)
+            .bind(req.scope_id)
+            .bind(obj_id)
+            .bind(opt_obj_id)
+            .bind(thumb_obj_id)
+            .bind(sanitize_filename(&req.file_name))
+            .bind(&req.mime_type)
+            .bind(req.total_size)
+            .bind(plain_sha.as_ref().map(|x| &x[..]))
+            .bind(expected_sha.as_ref().map(|x| &x[..]))
+            .execute(&mut *tx)
+            .await?;
+
+            if let Some(sid) = req.scope_id {
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO media_permissions (id, reference_id, grantee_type, grantee_id, can_read, can_write, can_forward)
+                    VALUES ($1, $2, $3, $4, TRUE, TRUE, TRUE)
+                    ON CONFLICT DO NOTHING
+                    "#,
+                )
+                .bind(Uuid::new_v4())
+                .bind(ref_id)
+                .bind(&req.scope_type)
+                .bind(sid)
+                .execute(&mut *tx)
+                .await;
+            }
+
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO media_access_audit_logs (id, reference_id, actor_id, action, client_platform, ip_prefix)
+                VALUES ($1, $2, $3, 'dedup_reference_granted', 'client', '127.0.0.0/24')
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(ref_id)
+            .bind(user.id)
+            .execute(&mut *tx)
+            .await;
+
+            tx.commit().await?;
+
+            return Ok(Json(serde_json::json!({
+                "dedup_instant": true,
+                "dedup_kind": match_kind,
+                "transfer_id": transfer_id,
+                "ref_id": ref_id,
+                "download_url": format!("/api/attachments/{ref_id}"),
+            })));
         }
     }
 
@@ -1339,6 +1624,7 @@ async fn handle_complete_upload(
             preserve_original: Some(preserve_original),
             backup_dm: Some(scope_type == "encrypted_backup"),
             forward_from_ref_id: None,
+            tier: None,
         },
     )
     .await?;

@@ -67,6 +67,7 @@ async fn setup_app() -> (Router, sqlx::PgPool, AppState) {
         oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         storage: storage_reg,
         sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
+        rpc_router: Arc::new(std::sync::OnceLock::new()),
     };
     plugins::marketplace::seed_official_catalog(&state.db).await;
 

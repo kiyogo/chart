@@ -62,6 +62,7 @@ async fn build_app(pool: sqlx::PgPool, config: Config) -> (Router, Arc<storage::
         oauth_tickets: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         storage: storage_reg.clone(),
         sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
+        rpc_router: Arc::new(std::sync::OnceLock::new()),
     };
     let router = Router::new()
         .nest("/api/auth", auth::routes())
@@ -172,6 +173,36 @@ async fn raw_req(
         .unwrap()
         .to_vec();
     (status, bytes)
+}
+
+fn make_test_envelope(msg_id: Uuid, sender_id: Uuid, recipient_id: Uuid) -> Vec<u8> {
+    use p256::elliptic_curve::rand_core::OsRng;
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    use p256::SecretKey;
+    use p256::ecdsa::{SigningKey, signature::Signer};
+
+    let signing_key = SigningKey::random(&mut OsRng);
+    let ephemeral_secret = SecretKey::random(&mut OsRng);
+    let ephemeral_pub = ephemeral_secret.public_key().to_encoded_point(false);
+    let fingerprint = [0x55u8; 32];
+    let salt = [0x11u8; 16];
+    let nonce = [0x22u8; 12];
+    let ciphertext = vec![0x33u8; 32];
+
+    let mut raw = Vec::new();
+    raw.push(chatw::crypto::PROTOCOL_VERSION);
+    raw.extend_from_slice(msg_id.as_bytes());
+    raw.extend_from_slice(sender_id.as_bytes());
+    raw.extend_from_slice(recipient_id.as_bytes());
+    raw.extend_from_slice(&fingerprint);
+    raw.extend_from_slice(ephemeral_pub.as_bytes());
+    raw.extend_from_slice(&salt);
+    raw.extend_from_slice(&nonce);
+    raw.extend_from_slice(&ciphertext);
+
+    let sig: p256::ecdsa::Signature = signing_key.sign(&raw);
+    raw.extend_from_slice(sig.to_bytes().as_ref());
+    raw
 }
 
 #[tokio::test]
@@ -291,14 +322,18 @@ async fn test_kdata_roundtrip_tamper_dedup_selective_and_cross_account() {
     let dm1_id = Uuid::new_v4();
     let dm2_id = Uuid::new_v4();
     let dm_del_id = Uuid::new_v4();
-    let env_a = vec![0xAAu8; 300];
-    let env_b = vec![0xBBu8; 300];
+    let env_dm1_a = make_test_envelope(dm1_id, alice, bob);
+    let env_dm1_b = make_test_envelope(dm1_id, alice, bob);
+    let env_dm2_a = make_test_envelope(dm2_id, bob, alice);
+    let env_dm2_b = make_test_envelope(dm2_id, bob, alice);
+    let env_del_a = make_test_envelope(dm_del_id, alice, bob);
+    let env_del_b = make_test_envelope(dm_del_id, alice, bob);
     sqlx::query("INSERT INTO messages (id, sender_id, receiver_id, recipient_envelope, sender_envelope) VALUES ($1, $2, $3, $4, $5)")
         .bind(dm1_id)
         .bind(alice)
         .bind(bob)
-        .bind(&env_a)
-        .bind(&env_b)
+        .bind(&env_dm1_a)
+        .bind(&env_dm1_b)
         .execute(&pool)
         .await
         .unwrap();
@@ -306,8 +341,8 @@ async fn test_kdata_roundtrip_tamper_dedup_selective_and_cross_account() {
         .bind(dm2_id)
         .bind(bob)
         .bind(alice)
-        .bind(&env_a)
-        .bind(&env_b)
+        .bind(&env_dm2_a)
+        .bind(&env_dm2_b)
         .execute(&pool)
         .await
         .unwrap();
@@ -315,8 +350,8 @@ async fn test_kdata_roundtrip_tamper_dedup_selective_and_cross_account() {
         .bind(dm_del_id)
         .bind(alice)
         .bind(bob)
-        .bind(&env_a)
-        .bind(&env_b)
+        .bind(&env_del_a)
+        .bind(&env_del_b)
         .execute(&pool)
         .await
         .unwrap();
@@ -782,14 +817,14 @@ async fn test_cloud_webdav_incremental_verify_tamper_restore_and_safe_gc() {
     let att_url = up_v["download_url"].as_str().unwrap().to_string();
 
     let dm1 = Uuid::new_v4();
-    let env_a = vec![0xCCu8; 300];
-    let env_b = vec![0xDDu8; 300];
+    let env_dm1_a = make_test_envelope(dm1, alice, bob);
+    let env_dm1_b = make_test_envelope(dm1, alice, bob);
     sqlx::query("INSERT INTO messages (id, sender_id, receiver_id, recipient_envelope, sender_envelope) VALUES ($1, $2, $3, $4, $5)")
         .bind(dm1)
         .bind(alice)
         .bind(bob)
-        .bind(&env_a)
-        .bind(&env_b)
+        .bind(&env_dm1_a)
+        .bind(&env_dm1_b)
         .execute(&pool)
         .await
         .unwrap();
@@ -836,12 +871,14 @@ async fn test_cloud_webdav_incremental_verify_tamper_restore_and_safe_gc() {
 
     // Add 1 small DM without changing media
     let dm2 = Uuid::new_v4();
+    let env_dm2_a = make_test_envelope(dm2, alice, bob);
+    let env_dm2_b = make_test_envelope(dm2, alice, bob);
     sqlx::query("INSERT INTO messages (id, sender_id, receiver_id, recipient_envelope, sender_envelope) VALUES ($1, $2, $3, $4, $5)")
         .bind(dm2)
         .bind(alice)
         .bind(bob)
-        .bind(&env_a)
-        .bind(&env_b)
+        .bind(&env_dm2_a)
+        .bind(&env_dm2_b)
         .execute(&pool)
         .await
         .unwrap();

@@ -59,6 +59,7 @@ async fn build_app(pool: sqlx::PgPool, config: Config) -> (axum::Router, Arc<sto
         oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         storage: storage_reg.clone(),
         sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
+        rpc_router: Arc::new(std::sync::OnceLock::new()),
     };
     let router = axum::Router::new()
         .nest("/api/auth", auth::routes())
@@ -180,6 +181,57 @@ fn sample_png_bytes(w: u32, h: u32) -> Vec<u8> {
     out
 }
 
+fn sample_meme_png(seed: u64, w: u32, h: u32, caption_variant: u8, perturb: u8) -> Vec<u8> {
+    let mut img = RgbaImage::new(w, h);
+    let s_factor = ((seed % 500) as f32) * 0.123;
+    for y in 0..h {
+        for x in 0..w {
+            let wave = (((x as f32 * 0.08).sin() + (y as f32 * 0.07).cos() + s_factor) * 45.0 + 128.0) as u8;
+            let r = wave.saturating_add(perturb);
+            let g = (((x + y + (seed as u32 % 250)) / 2) % 255) as u8;
+            let b = (255u8).saturating_sub(wave / 2);
+            img.put_pixel(x, y, Rgba([r, g, b, 255]));
+        }
+    }
+    // Caption stripe on top
+    for y in 4..(h / 6) {
+        for x in 8..(w - 8) {
+            let stripe = if caption_variant == 1 { (x / 6) % 2 == 0 } else { ((x + 15) / 11) % 3 == 0 };
+            let val = if stripe { 255 } else { 10 };
+            img.put_pixel(x, y, Rgba([val, val, val, 255]));
+        }
+    }
+    let mut out = Vec::new();
+    DynamicImage::ImageRgba8(img).write_with_encoder(PngEncoder::new(&mut out)).unwrap();
+    out
+}
+
+fn sample_meme_jpg(seed: u64, w: u32, h: u32, caption_variant: u8, perturb: u8) -> Vec<u8> {
+    let mut img = RgbaImage::new(w, h);
+    let s_factor = ((seed % 500) as f32) * 0.123;
+    for y in 0..h {
+        for x in 0..w {
+            let wave = (((x as f32 * 0.08).sin() + (y as f32 * 0.07).cos() + s_factor) * 45.0 + 128.0) as u8;
+            let r = wave.saturating_add(perturb);
+            let g = (((x + y + (seed as u32 % 250)) / 2) % 255) as u8;
+            let b = (255u8).saturating_sub(wave / 2);
+            img.put_pixel(x, y, Rgba([r, g, b, 255]));
+        }
+    }
+    // Caption stripe on top
+    for y in 4..(h / 6) {
+        for x in 8..(w - 8) {
+            let stripe = if caption_variant == 1 { (x / 6) % 2 == 0 } else { ((x + 15) / 11) % 3 == 0 };
+            let val = if stripe { 255 } else { 10 };
+            img.put_pixel(x, y, Rgba([val, val, val, 255]));
+        }
+    }
+    let mut out = Vec::new();
+    let rgb = DynamicImage::ImageRgba8(img).to_rgb8();
+    DynamicImage::ImageRgb8(rgb).write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 85)).unwrap();
+    out
+}
+
 #[tokio::test]
 async fn scenario_01_to_05_tiers_rbac_idor_and_legacy_compat() {
     let pool = setup_db().await;
@@ -196,7 +248,7 @@ async fn scenario_01_to_05_tiers_rbac_idor_and_legacy_compat() {
     let (st, raw_dm, _) = req_bytes(
         &app,
         "POST",
-        &format!("/api/attachments?scope_type=dm&scope_id={bob}&is_e2ee=true&file_name=secret.bin"),
+        &format!("/api/attachments?scope_type=dm&scope_id={bob}&is_e2ee=true&tier=temp_relay&file_name=secret.bin"),
         &c_alice,
         "application/octet-stream",
         dm_payload.clone(),
@@ -350,6 +402,55 @@ async fn scenario_06_to_14_avatar_honesty_dedup_forward_chunking_and_relay_safet
         .bind(&storage::sha256_bytes(&blob)[..]).fetch_one(&pool).await.unwrap();
     assert_eq!(remaining_objs, 0);
 
+    // 8. Perceptual Meme Deduplication with Meta PDQ 256-bit DCT & Caption-Band Guard
+    let meme_seed = u64::from_le_bytes(Uuid::new_v4().as_bytes()[0..8].try_into().unwrap());
+    let meme1_png = sample_meme_png(meme_seed, 128, 128, 1, 0);
+    let meme2_reenc_jpg = sample_meme_jpg(meme_seed, 128, 128, 1, 4);
+    let meme3_diff_caption_jpg = sample_meme_jpg(meme_seed, 128, 128, 2, 0);
+
+    // Alice uploads master meme 1 (PNG)
+    let (_, m1_raw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=group&scope_id={gid}&file_name=meme1.png"), &c_alice, "image/png", meme1_png.clone(), &[]).await;
+    let m1_val: Value = serde_json::from_slice(&m1_raw).unwrap();
+    assert_eq!(m1_val["deduplicated"], false);
+    let m1_ref = m1_val["ref_id"].as_str().unwrap();
+
+    // Bob uploads meme 2 (JPEG re-encode with JPEG artifacts & distinct hashes, but visually identical meme & caption)
+    let (_, m2_raw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=group&scope_id={gid}&file_name=meme2.jpg"), &c_bob, "image/jpeg", meme2_reenc_jpg.clone(), &[]).await;
+    let m2_val: Value = serde_json::from_slice(&m2_raw).unwrap();
+    assert_ne!(sha_hex(&meme1_png), sha_hex(&meme2_reenc_jpg), "Hashes MUST be distinct to test perceptual deduplication!");
+    assert_eq!(m2_val["deduplicated"], true);
+    assert_eq!(m2_val["dedup_match_kind"], "perceptual_meme_match");
+    let m2_ref = m2_val["ref_id"].as_str().unwrap();
+
+    // Bob can download and gets the high quality master file
+    let (st_m2_get, m2_got, _) = req_bytes(&app, "GET", m2_val["download_url"].as_str().unwrap(), &c_bob, "", vec![], &[]).await;
+    assert_eq!(st_m2_get, StatusCode::OK);
+    assert_eq!(m2_got, meme1_png);
+
+    // Bob uploads meme 3 (same background image BUT different caption text!)
+    let (_, m3_raw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=group&scope_id={gid}&file_name=meme3.jpg"), &c_bob, "image/jpeg", meme3_diff_caption_jpg.clone(), &[]).await;
+    let m3_val: Value = serde_json::from_slice(&m3_raw).unwrap();
+    // Must NOT merge because caption text differs!
+    assert_eq!(m3_val["deduplicated"], false, "Different meme caption must NEVER be falsely deduplicated!");
+
+    // Instant Multipart Init Deduplication Check
+    let meme1_sha = sha_hex(&meme1_png);
+    let (st_init_dedup, init_dedup_val) = req_json(&app, "POST", "/api/storage/uploads/init", &c_alice, Some(json!({
+        "scope_type": "group",
+        "scope_id": gid,
+        "file_name": "instant_meme.png",
+        "mime_type": "image/png",
+        "total_size": meme1_png.len(),
+        "sha256_cipher": meme1_sha,
+    }))).await;
+    assert_eq!(st_init_dedup, StatusCode::OK);
+    assert_eq!(init_dedup_val["dedup_instant"], true);
+    assert!(init_dedup_val["download_url"].as_str().unwrap().starts_with("/api/attachments/"));
+
+    // Clean up test memes
+    req_json(&app, "DELETE", &format!("/api/storage/references/{m1_ref}?scope=everyone"), &c_alice, None).await;
+    req_json(&app, "DELETE", &format!("/api/storage/references/{m2_ref}?scope=everyone"), &c_bob, None).await;
+
     // 11. Chunked multipart resumable upload + Range download
     let mut big = vec![0x42u8; 10_000];
     big[0..16].copy_from_slice(Uuid::new_v4().as_bytes());
@@ -393,7 +494,7 @@ async fn scenario_06_to_14_avatar_honesty_dedup_forward_chunking_and_relay_safet
     // Register Alice & Bob devices first so ack tracks devices cleanly.
     req_json(&app, "POST", "/api/devices/register", &c_alice, Some(json!({ "client_device_id": format!("dev-a-{}", Uuid::new_v4().simple()), "platform": "web" }))).await;
     req_json(&app, "POST", "/api/devices/register", &c_bob, Some(json!({ "client_device_id": format!("dev-b-{}", Uuid::new_v4().simple()), "platform": "web" }))).await;
-    let (_, dm_r_raw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=dm&scope_id={bob}&is_e2ee=true"), &c_alice, "application/octet-stream", b"relay_protected".to_vec(), &[]).await;
+    let (_, dm_r_raw, _) = req_bytes(&app, "POST", &format!("/api/attachments?scope_type=dm&scope_id={bob}&is_e2ee=true&tier=temp_relay"), &c_alice, "application/octet-stream", b"relay_protected".to_vec(), &[]).await;
     let dm_r_id = serde_json::from_slice::<Value>(&dm_r_raw).unwrap()["ref_id"].as_str().unwrap().to_string();
     sqlx::query("UPDATE media_references SET relay_expires_at = now() - interval '1 hour' WHERE id = $1::uuid").bind(&dm_r_id).execute(&pool).await.unwrap();
     let cl1 = storage::migration::cleanup_relays_safely(&pool, &storage_reg).await.unwrap();
@@ -470,7 +571,11 @@ async fn scenario_15_to_25_devices_approval_sync_and_peer_recovery() {
     let fp = compute_fingerprint(ecdh_pub.as_bytes());
     let fp_b64 = URL_SAFE_NO_PAD.encode(fp);
     let ecdsa = SigningKey::random(&mut OsRng);
-    let _ = ecdsa;
+    let (st_keys, _) = req_json(&app, "POST", "/api/keys", &c_alice_dev1, Some(json!({
+        "ecdh_public": URL_SAFE_NO_PAD.encode(ecdh_pub.as_bytes()),
+        "ecdsa_public": URL_SAFE_NO_PAD.encode(ecdsa.verifying_key().to_encoded_point(false).as_bytes()),
+    }))).await;
+    assert_eq!(st_keys, StatusCode::OK);
     let (st_kb, _) = req_json(&app, "PUT", "/api/keys/backup", &c_alice_dev1, Some(json!({
         "wrapped_keys_b64": "dGVzdF93cmFwcGVkX2Jsb2I",
         "kdf_salt_b64": "dGVzdF9zYWx0",
@@ -481,8 +586,19 @@ async fn scenario_15_to_25_devices_approval_sync_and_peer_recovery() {
 
     let s_alice4 = create_session(&pool, &cfg, alice, Some("Fresh Laptop")).await.unwrap();
     let c_alice_dev4 = s_alice4.split(';').next().unwrap().to_string();
-    req_json(&app, "POST", "/api/devices/register", &c_alice_dev4, Some(json!({ "client_device_id": format!("alice-lost-{}", Uuid::new_v4().simple()), "platform": "desktop" }))).await;
-    let (st_rec, rec_val) = req_json(&app, "POST", "/api/devices/recover-lost", &c_alice_dev4, Some(json!({ "revoke_unreachable_devices": false }))).await;
+    let (_, reg4_val) = req_json(&app, "POST", "/api/devices/register", &c_alice_dev4, Some(json!({ "client_device_id": format!("alice-lost-{}", Uuid::new_v4().simple()), "platform": "desktop" }))).await;
+    let did4_str = reg4_val["device_id"].as_str().unwrap();
+    let did4 = Uuid::parse_str(did4_str).unwrap();
+    use p256::ecdsa::signature::Signer;
+    let mut rec_msg = Vec::new();
+    rec_msg.extend_from_slice(b"chatw-recover-device-v1:");
+    rec_msg.extend_from_slice(did4.as_bytes());
+    let sig: p256::ecdsa::Signature = ecdsa.sign(&rec_msg);
+    let proof_b64 = URL_SAFE_NO_PAD.encode(sig.to_bytes());
+    let (st_rec, rec_val) = req_json(&app, "POST", "/api/devices/recover-lost", &c_alice_dev4, Some(json!({
+        "revoke_unreachable_devices": false,
+        "recovery_proof_b64": proof_b64,
+    }))).await;
     assert_eq!(st_rec, StatusCode::OK);
     assert_eq!(rec_val["trust_state"], "trusted");
     assert_eq!(rec_val["key_backup"]["wrapped_keys_b64"], "dGVzdF93cmFwcGVkX2Jsb2I");

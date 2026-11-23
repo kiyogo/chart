@@ -61,6 +61,7 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         storage: Arc::new(chatw::storage::StorageRegistry::from_uploads_dir(&config.uploads_dir)),
         sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
+        rpc_router: Arc::new(std::sync::OnceLock::new()),
     };
 
     axum::Router::new()
@@ -1049,7 +1050,7 @@ async fn test_enterprise_server_lifecycle() {
         .await
         .unwrap();
     let roles_list: Vec<Value> = serde_json::from_slice(&axum::body::to_bytes(roles_res.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let staff_role_id = roles_list.iter().find(|r| r["name"] == "Nhân viên").unwrap()["id"].as_str().unwrap().to_string();
+    let staff_role_id = roles_list.iter().find(|r| r["name"] == "Nhân viên" || r["name"] == "Staff").unwrap()["id"].as_str().unwrap().to_string();
 
     assert_eq!(
         app.clone()

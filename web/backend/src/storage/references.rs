@@ -20,7 +20,10 @@ use crate::{
     },
     websocket::WsEvent,
 };
-use chatw_media_core::dedup::{PdqHash256, PerceptualMatchVerdict, compare_perceptual_images, evaluate_dedup_policy};
+use chatw_media_core::dedup::{
+    PdqHash256, PerceptualMatchVerdict, VideoFingerprint, compare_perceptual_images, evaluate_dedup_policy,
+    videos_are_safe_dedup_equivalent,
+};
 
 pub async fn handle_get_ref_meta(
     State(state): State<AppState>,
@@ -540,6 +543,7 @@ pub struct DedupCheckReq {
     pub perceptual_hash_hex: Option<String>,
     pub perceptual_quality: Option<u8>,
     pub caption_band_hash: Option<u64>,
+    pub video_fingerprint: Option<VideoFingerprint>,
     pub width: Option<u32>,
     pub height: Option<u32>,
 }
@@ -692,6 +696,49 @@ pub async fn handle_dedup_check(
                             "object_id": cand.try_get::<Uuid, _>("object_id")?,
                             "byte_size": cand.try_get::<i64, _>("byte_size")?,
                         })));
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Multi-keyframe vPDQ video fingerprint match (duration <= 3% difference & >= 90% keyframe hashes match)
+    if decision.allow_perceptual_lookup {
+        if let Some(ref vf) = req.video_fingerprint {
+            let video_cands = sqlx::query(
+                r#"
+                SELECT d.object_id, d.video_fingerprint, o.storage_backend, o.storage_key, o.byte_size
+                FROM media_dedup_indexes d
+                JOIN media_objects o ON o.id = d.object_id
+                WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.video_fingerprint IS NOT NULL
+                ORDER BY d.created_at DESC
+                LIMIT 100
+                "#,
+            )
+            .fetch_all(&state.db)
+            .await?;
+
+            for cand in video_cands {
+                if let Ok(cand_val) = cand.try_get::<serde_json::Value, _>("video_fingerprint") {
+                    if let Ok(cand_vf) = serde_json::from_value::<VideoFingerprint>(cand_val) {
+                        if videos_are_safe_dedup_equivalent(vf, &cand_vf) {
+                            let oid: Uuid = cand.try_get("object_id")?;
+                            let backend: String = cand.try_get("storage_backend")?;
+                            let key: String = cand.try_get("storage_key")?;
+                            let exists = match backend.as_str() {
+                                "s3_ready" => state.storage.s3.object_exists(&key).await.unwrap_or(false),
+                                _ => state.storage.local_cas.object_exists(&key).await.unwrap_or(false),
+                            };
+                            if exists {
+                                return Ok(Json(serde_json::json!({
+                                    "dedup_allowed": true,
+                                    "matched": true,
+                                    "match_kind": "video_fingerprint_match",
+                                    "object_id": oid,
+                                    "byte_size": cand.try_get::<i64, _>("byte_size")?,
+                                })));
+                            }
+                        }
                     }
                 }
             }
