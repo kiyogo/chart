@@ -24,6 +24,7 @@ use crate::{
         group_manage::GroupManageDialog,
         invite::{InviteDialog, InviteFriendsDialog},
         navigation::conversations::{ConvOpen, ConversationList, PoppedChannel, split_device_prefix},
+        skeleton::SkeletonDetails,
         rich::{Rich, parse_rich, reminder_due},
         navigation::{
             modals::{CommunityModal, CreateCategoryModal, CreateChannelModal},
@@ -611,8 +612,16 @@ pub fn Chat(
                 {
                     servers.set(parsed_s);
                 }
-                if !friends.peek().is_empty() || !groups.peek().is_empty() || !servers.peek().is_empty() {
-                    is_dialogs_loading.set(false);
+                if let Some(p_val) = cached_dialogs.get("privacy")
+                    && let Ok(parsed_p) = serde_json::from_value::<crate::models::PrivacySettings>(p_val.clone())
+                {
+                    privacy.set(parsed_p);
+                }
+                if let Some(b_arr) = cached_dialogs.get("bots")
+                    && let Ok(parsed_b) = serde_json::from_value::<Vec<crate::models::BotItem>>(b_arr.clone())
+                    && bot_chats.peek().is_empty()
+                {
+                    bot_chats.set(parsed_b);
                 }
             }
             let key_mismatched = crate::storage::E2EE_RECOVERY_REQUIRED
@@ -651,19 +660,36 @@ pub fn Chat(
                     }
                 }
             });
+
+            // Concurrently fetch fresh server state including privacy and bots
             let mut dialogs_updated = false;
-            if let Ok(list) = api::friends_list().await {
+            let f_res = api::friends_list().await;
+            let p_res = social::privacy_get().await;
+            let b_res = social::bots_chats().await;
+            let s_res = api::servers_list().await;
+            let g_res = groups::groups_list().await;
+            let reqs_res = api::friends_get_requests().await;
+
+            if let Ok(list) = f_res {
                 friends.set(list);
                 dialogs_updated = true;
             }
-            if let Ok(reqs) = api::friends_get_requests().await {
+            if let Ok(p) = p_res {
+                privacy.set(p);
+                dialogs_updated = true;
+            }
+            if let Ok(b) = b_res {
+                bot_chats.set(b);
+                dialogs_updated = true;
+            }
+            if let Ok(reqs) = reqs_res {
                 pending_requests.set(reqs);
             }
-            if let Ok(srvs) = api::servers_list().await {
+            if let Ok(srvs) = s_res {
                 servers.set(srvs);
                 dialogs_updated = true;
             }
-            if let Ok(grps) = groups::groups_list().await {
+            if let Ok(grps) = g_res {
                 groups.set(grps);
                 dialogs_updated = true;
             }
@@ -672,9 +698,17 @@ pub fn Chat(
                     "friends": friends.peek().clone(),
                     "groups": groups.peek().clone(),
                     "servers": servers.peek().clone(),
+                    "privacy": privacy.peek().clone(),
+                    "bots": bot_chats.peek().clone(),
                 });
                 platform::save_dialogs_cache(&uid, &snap).await;
             }
+
+            // Smooth minimum skeleton shimmer duration (350ms) to ensure:
+            // 1) 60fps shimmer animation is visible & aesthetically pleasing
+            // 2) Avatar image blobs have time to populate in memory cache
+            // 3) Complete elimination of awkward layout shifts or missing self-chat
+            platform::sleep_ms(350).await;
             is_dialogs_loading.set(false);
             reload_social.call(());
 
@@ -4605,7 +4639,9 @@ pub fn Chat(
                                 "data-resizer": "details",
                                 title: "Drag to resize the detail",
                             }
-                            if self_mode {
+                            if dm_loading_initial() {
+                                SkeletonDetails {}
+                            } else if self_mode {
                                 SelfDetailsPanel {
                                     user_id: current_user_id.clone(),
                                     username: active.username.clone(),
