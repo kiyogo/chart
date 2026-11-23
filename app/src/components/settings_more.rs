@@ -35,11 +35,18 @@ pub fn Toggle(label: String, #[props(default)] desc: String, checked: bool, on_c
 }
 
 #[component]
-pub fn SelectMenu(options: Vec<(String, String)>, value: String, on_change: EventHandler<String>, #[props(default)] label: String) -> Element {
+pub fn SelectMenu(
+    options: Vec<(String, String)>,
+    value: String,
+    on_change: EventHandler<String>,
+    #[props(default)] label: String,
+    #[props(default = false)] font_picker: bool,
+) -> Element {
     rsx! {
         select {
             class: "cw-dropdown",
             aria_label: "{label}",
+            "data-font-picker": if font_picker { "true" } else { "false" },
             value: "{value}",
             onchange: move |e| on_change.call(e.value()),
             for (v, l) in options {
@@ -526,7 +533,35 @@ pub fn AppearanceColorsShapes() -> Element {
             }
             div { class: "settings-row",
                 span { class: "settings-label", "Font" }
-                SelectMenu { label: "Font", value: pr.font_family.clone(), options: opts(&[("system", "System"), ("rounded", "Rounded"), ("serif", "Serif"), ("mono", "Monospace"), ("dyslexic", "Readable")]), on_change: move |v: String| c.update(|p| p.font_family = v) }
+                SelectMenu {
+                    label: "Font",
+                    font_picker: true,
+                    value: pr.font_family.clone(),
+                    options: opts(&[
+                        ("system", "System"),
+                        ("lgbt", "LGBT"),
+                        ("minecraft", "Minecraft"),
+                        ("modern", "Modern Sans"),
+                        ("rounded", "Rounded"),
+                        ("geometric", "Geometric"),
+                        ("humanist", "Humanist"),
+                        ("expressive", "Editorial Sans"),
+                        ("serif", "Serif"),
+                        ("classic", "Classic"),
+                        ("slab", "Slab"),
+                        ("mono", "Monospace"),
+                        ("pixel", "Retro Pixel"),
+                        ("futuristic", "Futuristic"),
+                        ("handwriting", "Handwriting"),
+                        ("calligraphy", "Calligraphy"),
+                        ("dyslexic", "Readable"),
+                    ]),
+                    on_change: move |v: String| c.update(|p| p.font_family = v),
+                }
+            }
+            div { class: "font-preview-card", aria_label: "Font preview",
+                span { class: "font-preview-sample", "Private messaging that looks great in every language" }
+                span { class: "font-preview-chars", "Aa Bb Cc · 0123456789 · ! ?" }
             }
             Toggle { label: "Reduce motion", desc: "Turn off animations and transitions", checked: pr.reduce_motion, on_change: move |v| c.update(|p| p.reduce_motion = v) }
         }

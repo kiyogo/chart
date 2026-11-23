@@ -146,12 +146,16 @@
       }
     }
 
+    const isFontPicker = sel.getAttribute('data-font-picker') === 'true';
+    if (isFontPicker) pop.setAttribute('data-font-menu', 'true');
+
     opts.forEach((opt, idx) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'cw-select-option' + (opt.selected ? ' selected' : '');
       btn.setAttribute('role', 'option');
       btn.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
+      if (isFontPicker) btn.setAttribute('data-font-preview', opt.value);
       if (opt.disabled) {
         btn.disabled = true;
         btn.setAttribute('aria-disabled', 'true');
@@ -159,7 +163,11 @@
 
       const label = document.createElement('span');
       label.className = 'cw-select-option-label';
-      const txt = (opt.textContent || opt.label || opt.value || '').trim();
+      const rawTxt = (opt.textContent || opt.label || opt.value || '').trim();
+      const txt =
+        window.__chatwI18n && typeof window.__chatwI18n.translateString === 'function'
+          ? window.__chatwI18n.translateString(rawTxt)
+          : rawTxt;
       label.textContent = txt;
       btn.appendChild(label);
 

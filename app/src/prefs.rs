@@ -217,7 +217,15 @@ impl Prefs {
         pick(&mut self.bubble_shape, &["round", "soft", "square", "leaf"], "round");
         pick(&mut self.avatar_shape, &["circle", "squircle", "square"], "circle");
         pick(&mut self.chat_width, &["narrow", "normal", "wide", "full"], "normal");
-        pick(&mut self.font_family, &["system", "rounded", "serif", "mono", "dyslexic"], "system");
+        pick(
+            &mut self.font_family,
+            &[
+                "system", "lgbt", "minecraft", "modern", "rounded", "geometric",
+                "humanist", "expressive", "serif", "classic", "slab", "mono",
+                "pixel", "futuristic", "handwriting", "calligraphy", "dyslexic",
+            ],
+            "system",
+        );
         for c in [&mut self.custom_accent, &mut self.bubble_self, &mut self.bubble_other] {
             if !c.is_empty() && !is_hex_color(c) {
                 c.clear();
@@ -343,5 +351,24 @@ mod tests {
         assert!(merged.lock_enabled);
         assert_eq!(merged.custom_accent, "#112233");
         assert_eq!(merged.fav_stickers, vec!["/stickers/openmoji/1F600.svg".to_string()]);
+    }
+
+    #[test]
+    fn spec084_font_family_sanitizes_all_17_fonts_including_lgbt_and_minecraft() {
+        let valid = [
+            "system", "lgbt", "minecraft", "modern", "rounded", "geometric",
+            "humanist", "expressive", "serif", "classic", "slab", "mono",
+            "pixel", "futuristic", "handwriting", "calligraphy", "dyslexic",
+        ];
+        for f in valid {
+            let mut p = Prefs::default();
+            p.font_family = f.to_string();
+            p.sanitize();
+            assert_eq!(p.font_family, f);
+        }
+        let mut bad = Prefs::default();
+        bad.font_family = "unknown-injected-font".to_string();
+        bad.sanitize();
+        assert_eq!(bad.font_family, "system");
     }
 }

@@ -24,6 +24,7 @@ use crate::{
 
 const THEME_CSS: &str = include_str!("../assets/theme.css");
 const MAIN_CSS: &str = include_str!("../assets/main.css");
+const FONTS_CSS: &str = include_str!("../assets/fonts.css");
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AuthStatus {
@@ -155,6 +156,7 @@ pub fn App() -> Element {
     rsx! {
         document::Style { {THEME_CSS} }
         document::Style { {MAIN_CSS} }
+        document::Style { {FONTS_CSS} }
         div { class: "app-layout",
             div { class: "app-content",
                 match status() {
