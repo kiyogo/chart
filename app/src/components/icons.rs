@@ -728,24 +728,32 @@ pub fn PlugIcon(#[props(default = 20)] size: u32) -> Element {
 #[component]
 pub fn ZoomInIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "11", cy: "11", r: "7" }
-        path { d: "M21 21l-4.35-4.35M11 8v6M8 11h6" }
+        circle { cx: "10.5", cy: "10.5", r: "6.25" }
+        path { d: "M15.2 15.2L19.5 19.5M10.5 7.8v5.4M7.8 10.5h5.4" }
     } }
 }
 
 #[component]
 pub fn ZoomOutIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        circle { cx: "11", cy: "11", r: "7" }
-        path { d: "M21 21l-4.35-4.35M8 11h6" }
+        circle { cx: "10.5", cy: "10.5", r: "6.25" }
+        path { d: "M15.2 15.2L19.5 19.5M7.8 10.5h5.4" }
     } }
 }
 
 #[component]
 pub fn RotateCwIcon(#[props(default = 18)] size: u32) -> Element {
     rsx! { Duo { size,
-        path { d: "M21 12a9 9 0 1 1-2.64-6.36L21 8" }
-        path { d: "M21 3v5h-5" }
+        path { d: "M18.6 12.2a6.7 6.7 0 1 1-1.8-4.6L19 9.8" }
+        path { d: "M19 5.4v4.4h-4.4" }
+    } }
+}
+
+/// Minimal stroke-only download glyph optically matched to ZoomIn/ZoomOut/RotateCw/Close for media lightboxes (Spec 083).
+#[component]
+pub fn DownloadMinimalIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! { Duo { size,
+        path { d: "M12 4.5v10.2M7.8 10.8L12 15l4.2-4.2M5 18.8h14" }
     } }
 }
 

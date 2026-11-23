@@ -193,7 +193,48 @@ try {
       style: img.getAttribute('style'),
     };
   });
+  // 3b. Spec 083: Verify Download & all top-right buttons stay sleek, uniform, and borderless
+  // EVEN under translucent custom-wallpaper mode while hovering over a bright 200% zoomed image!
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-panel-translucent', 'true');
+    document.documentElement.setAttribute('data-app-wp', 'custom');
+  });
+  const dlBtn = page.locator('.lightbox-actions .lightbox-download');
+  await dlBtn.hover();
+  await page.waitForTimeout(220);
+  const hoverAudit = await page.evaluate(() => {
+    const dl = document.querySelector('.lightbox-actions .lightbox-download');
+    const btns = Array.from(document.querySelectorAll('.lightbox-actions .lightbox-tool-btn'));
+    const svgs = btns.map((b) => b.querySelector('svg'));
+    const dlCs = dl ? getComputedStyle(dl) : null;
+    return {
+      hasBtnSecondary: dl ? dl.classList.contains('btn-secondary') : true,
+      dlBg: dlCs?.backgroundColor || '',
+      dlBoxShadow: dlCs?.boxShadow || '',
+      dlFilter: dlCs?.filter || '',
+      dlBorder: dlCs?.borderTopWidth || '',
+      allIconsUniform18: svgs.every((s) => s && Math.round(s.getBoundingClientRect().width) === 18 && Math.round(s.getBoundingClientRect().height) === 18),
+      zeroDuoFillPaths: svgs.every((s) => s && s.querySelectorAll('[stroke="none"]').length === 0),
+    };
+  });
+  const shot83Dir = '/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/verify_083';
+  fs.mkdirSync(shot83Dir, { recursive: true });
+  await page.screenshot({
+    path: path.join(shot83Dir, '01_toolbar_hover_over_bright_zoomed.png'),
+    clip: { x: 1120, y: 0, width: 480, height: 120 },
+  });
   await page.screenshot({ path: path.join(SHOT_DIR, '02_zoomed_200pct_snapped_corner.png') });
+  record(
+    'Spec 083: Under translucent wallpaper mode, Download hover stays subtle glass (no opaque white blob), zero btn-secondary leak, and all 5 icons are uniform 18x18 stroke-only',
+    !hoverAudit.hasBtnSecondary &&
+      hoverAudit.dlBg === 'rgba(255, 255, 255, 0.16)' &&
+      hoverAudit.dlBoxShadow === 'none' &&
+      hoverAudit.dlFilter === 'none' &&
+      hoverAudit.dlBorder === '0px' &&
+      hoverAudit.allIconsUniform18 &&
+      hoverAudit.zeroDuoFillPaths,
+    JSON.stringify(hoverAudit)
+  );
 
   record(
     'Extreme drag at 200% applies elastic resistance (never loses photo) and springs back flush to exact corner (left<=2, top<=2)',

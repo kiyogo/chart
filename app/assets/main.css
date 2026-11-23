@@ -3674,13 +3674,13 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   top: 0;
   left: 0;
   right: 0;
-  height: 60px;
-  padding: 0 18px;
+  height: 76px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: linear-gradient(180deg, rgba(6, 8, 12, 0.58) 0%, rgba(6, 8, 12, 0) 100%);
+  background: linear-gradient(180deg, rgba(8, 10, 14, 0.72) 0%, rgba(8, 10, 14, 0.34) 56%, rgba(8, 10, 14, 0) 100%);
   pointer-events: none;
   z-index: 10001;
 }
@@ -3693,7 +3693,7 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   color: rgba(255, 255, 255, 0.92);
   font-size: 0.875rem;
   font-weight: 500;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
 }
 .lightbox-filename {
   overflow: hidden;
@@ -3702,7 +3702,7 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   max-width: 40vw;
 }
 .lightbox-dims {
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.68);
   font-size: 0.8125rem;
   font-weight: 400;
   white-space: nowrap;
@@ -3710,80 +3710,112 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .lightbox-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   pointer-events: auto;
   flex-shrink: 0;
   border: none !important;
   box-shadow: none !important;
   background: transparent !important;
 }
-/* 100% uniform borderless top-right Telegram-style icon buttons (Spec 080) */
-.lightbox-tool-btn,
-.lightbox-actions .btn-secondary,
-.lightbox-close {
+/* 100% uniform borderless top-right Telegram-style icon buttons (Spec 080 / Spec 083) */
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn,
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-download,
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-close {
   position: static !important;
-  width: 38px !important;
-  height: 38px !important;
-  min-width: 38px !important;
-  min-height: 38px !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
   padding: 0 !important;
+  margin: 0;
   border-radius: 50% !important;
   background: transparent !important;
-  color: rgba(255, 255, 255, 0.92) !important;
+  color: rgba(255, 255, 255, 0.88) !important;
   border: none !important;
-  outline: none;
+  outline: none !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  filter: none !important;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
   text-decoration: none;
-  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.45));
-  transition: background 140ms ease, opacity 140ms ease, color 140ms ease;
+  transition: background-color 140ms ease, color 140ms ease, opacity 140ms ease, transform 110ms ease;
 }
-.lightbox-tool-btn svg,
-.lightbox-actions .btn-secondary svg,
-.lightbox-close svg {
-  color: #fff !important;
-  stroke: #fff !important;
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-rotate,
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-close {
+  margin-left: 6px;
 }
-.lightbox-tool-btn:hover:not(:disabled),
-.lightbox-actions .btn-secondary:hover,
-.lightbox-close:hover {
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn svg,
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-download svg,
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-close svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  color: currentColor !important;
+  stroke: currentColor !important;
+  stroke-width: 1.85 !important;
+  fill: none !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn:hover:not(:disabled),
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-download:hover,
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-close:hover {
   background: rgba(255, 255, 255, 0.16) !important;
-  color: #fff !important;
+  color: #FFFFFF !important;
   border: none !important;
   box-shadow: none !important;
 }
-.lightbox-tool-btn:disabled {
-  opacity: 0.32 !important;
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn:active:not(:disabled),
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-download:active,
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-close:active {
+  background: rgba(255, 255, 255, 0.24) !important;
+  color: #FFFFFF !important;
+  transform: scale(0.93);
+}
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn:focus-visible,
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-zoom-readout:focus-visible {
+  background: rgba(255, 255, 255, 0.18) !important;
+  outline: none !important;
+}
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn:disabled {
+  opacity: 0.34 !important;
   cursor: default !important;
-}
-.lightbox-zoom-readout {
-  min-width: 48px;
-  height: 34px;
-  padding: 0 8px;
-  border-radius: 999px;
   background: transparent !important;
-  color: rgba(255, 255, 255, 0.92) !important;
+  transform: none !important;
+}
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-zoom-readout {
+  min-width: 48px;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 18px !important;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.90) !important;
   border: none !important;
+  outline: none !important;
   box-shadow: none !important;
+  filter: none !important;
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-  transition: background 140ms ease, color 140ms ease;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  transition: background-color 140ms ease, color 140ms ease, transform 110ms ease;
 }
-.lightbox-zoom-readout:hover {
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-zoom-readout:hover {
   background: rgba(255, 255, 255, 0.16) !important;
-  color: #fff !important;
+  color: #FFFFFF !important;
+}
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-zoom-readout:active {
+  background: rgba(255, 255, 255, 0.24) !important;
+  transform: scale(0.95);
 }
 .chat-column:has(.lightbox, .modal-overlay),
 .chat-messages:has(.lightbox, .modal-overlay) {

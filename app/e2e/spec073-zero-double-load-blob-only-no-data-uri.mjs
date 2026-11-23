@@ -255,7 +255,7 @@ try {
   await pageA.waitForTimeout(250);
   const lbAudit = await pageA.evaluate(() => {
     const lb = document.querySelector('.lightbox');
-    const dl = document.querySelector('.lightbox-actions .btn-secondary');
+    const dl = document.querySelector('.lightbox-actions .lightbox-download');
     const cl = document.querySelector('.lightbox-close');
     const r = lb ? lb.getBoundingClientRect() : null;
     const dr = dl ? dl.getBoundingClientRect() : null;

@@ -15,8 +15,8 @@ use crate::{
     components::{
         avatar::Avatar,
         icons::{
-            BarChartIcon, BellIcon, CheckIcon, CloseIcon, DownloadIcon, FileTextIcon, MicIcon,
-            PlusIcon, RefreshIcon, RotateCwIcon, ZoomInIcon, ZoomOutIcon,
+            BarChartIcon, BellIcon, CheckIcon, CloseIcon, DownloadIcon, DownloadMinimalIcon,
+            FileTextIcon, MicIcon, PlusIcon, RefreshIcon, RotateCwIcon, ZoomInIcon, ZoomOutIcon,
         },
     },
     platform,
@@ -1599,7 +1599,7 @@ pub fn GlobalImageLightbox() -> Element {
                         title: "Zoom out",
                         disabled: z <= 1.01,
                         onclick: move |_| set_zoom_clamped(zoom() - 0.25),
-                        ZoomOutIcon { size: 19 }
+                        ZoomOutIcon { size: 18 }
                     }
                     button {
                         r#type: "button",
@@ -1616,23 +1616,23 @@ pub fn GlobalImageLightbox() -> Element {
                         title: "Zoom in",
                         disabled: z >= 3.99,
                         onclick: move |_| set_zoom_clamped(zoom() + 0.25),
-                        ZoomInIcon { size: 19 }
+                        ZoomInIcon { size: 18 }
                     }
                     button {
                         r#type: "button",
-                        class: "lightbox-tool-btn",
+                        class: "lightbox-tool-btn lightbox-rotate",
                         aria_label: "Rotate image",
                         title: "Rotate image",
                         onclick: move |_| apply_rotate(),
-                        RotateCwIcon { size: 19 }
+                        RotateCwIcon { size: 18 }
                     }
                     a {
                         href: "{media.src}",
                         download: "{dl_name}",
-                        class: "lightbox-tool-btn btn-secondary",
+                        class: "lightbox-tool-btn lightbox-download",
                         aria_label: "Download original",
                         title: "Download original",
-                        DownloadIcon { size: 19 }
+                        DownloadMinimalIcon { size: 18 }
                     }
                     button {
                         r#type: "button",
@@ -1640,7 +1640,7 @@ pub fn GlobalImageLightbox() -> Element {
                         aria_label: "Close",
                         title: "Close",
                         onclick: move |_| close_lightbox(),
-                        CloseIcon { size: 20 }
+                        CloseIcon { size: 18 }
                     }
                 }
             }
