@@ -120,6 +120,7 @@
   --bg-error: #FDEDEE;
   --bg-success: #E7F6EE;
   --bg-warning: #FDF4E3;
+  --bg-skeleton: #E5E7EB;
 
   --text: #171C26;
   --text-primary: #171C26;
@@ -185,6 +186,7 @@
   --bg-error: #3A1D20;
   --bg-success: #15301F;
   --bg-warning: #382A12;
+  --bg-skeleton: #2D3748;
 
   --text: #EDF0F5;
   --text-primary: #EDF0F5;

@@ -11923,12 +11923,26 @@ html[data-surface-tone="dark"] .self-details-banner {
 
 
 /* ==========================================================================
-   Spec 095: Unified Shimmer Skeleton Loading System Across All Views
+   Spec 098: Unified Single Solid Gray Skeleton Loading System Across All Views
    ========================================================================== */
 
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Backwards-compatible alias for skeleton-shimmer */
 @keyframes skeleton-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .skeleton-shimmer,
@@ -11936,14 +11950,10 @@ html[data-surface-tone="dark"] .self-details-banner {
 .skeleton-circle,
 .skeleton-text,
 .skeleton-avatar {
-  background: linear-gradient(
-    90deg,
-    rgba(15, 23, 42, 0.06) 25%,
-    rgba(15, 23, 42, 0.13) 37%,
-    rgba(15, 23, 42, 0.06) 63%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  background-color: var(--bg-skeleton, #E5E7EB) !important;
+  background-image: none !important;
+  background: var(--bg-skeleton, #E5E7EB) !important;
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
   flex-shrink: 0;
 }
 
@@ -11957,13 +11967,19 @@ html[data-surface-tone="dark"] .skeleton-box,
 html[data-surface-tone="dark"] .skeleton-circle,
 html[data-surface-tone="dark"] .skeleton-text,
 html[data-surface-tone="dark"] .skeleton-avatar {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.06) 25%,
-    rgba(255, 255, 255, 0.15) 37%,
-    rgba(255, 255, 255, 0.06) 63%
-  );
-  background-size: 200% 100%;
+  background-color: var(--bg-skeleton, #2D3748) !important;
+  background-image: none !important;
+  background: var(--bg-skeleton, #2D3748) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer,
+  .skeleton-box,
+  .skeleton-circle,
+  .skeleton-text,
+  .skeleton-avatar {
+    animation: none !important;
+  }
 }
 
 /* 1. Stories Strip Skeleton */
