@@ -27,10 +27,7 @@ use flate2::{
 use futures_util::{SinkExt, StreamExt};
 use std::{
     io::{Read, Write},
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::Arc,
     time::Duration,
 };
 use tokio::sync::{Semaphore, mpsc};
@@ -441,6 +438,61 @@ async fn invoke_internal_router(
     }
 }
 
+/// Standard 64-bit sliding anti-replay window (RFC 6479).
+/// Rejects `seq == 0`, duplicate sequences, and frames older than `max_seq - 63`
+/// while tolerating minor benign out-of-order delivery across concurrent pipelines.
+#[derive(Default)]
+struct ReplayWindow {
+    max_seq: u64,
+    bitmap: u64,
+}
+
+impl ReplayWindow {
+    fn check(&self, seq: u64) -> bool {
+        if seq == 0 {
+            return false;
+        }
+        if seq > self.max_seq {
+            return true;
+        }
+        let diff = self.max_seq - seq;
+        if diff >= 64 {
+            return false;
+        }
+        (self.bitmap & (1u64 << diff)) == 0
+    }
+
+    fn record(&mut self, seq: u64) {
+        if seq == 0 {
+            return;
+        }
+        if seq > self.max_seq {
+            let shift = seq - self.max_seq;
+            if shift >= 64 {
+                self.bitmap = 1;
+            } else {
+                self.bitmap = (self.bitmap << shift) | 1;
+            }
+            self.max_seq = seq;
+        } else {
+            let diff = self.max_seq - seq;
+            if diff < 64 {
+                self.bitmap |= 1u64 << diff;
+            }
+        }
+    }
+}
+
+enum OutboundFrame {
+    Plain(Vec<u8>),
+    Encrypted {
+        op: u8,
+        req_id: u32,
+        payload: Vec<u8>,
+        allow_compress: bool,
+    },
+}
+
 pub async fn handle_socket_rpc_bin(
     socket: WebSocket,
     state: AppState,
@@ -504,17 +556,18 @@ pub async fn handle_socket_rpc_bin(
         return;
     };
     let cipher = Arc::new(cipher);
-    let out_seq = Arc::new(AtomicU64::new(1));
     let rpc_sem = Arc::new(Semaphore::new(MAX_CONCURRENT_RPCS));
     let cookie_header = Arc::new(format!("{SESSION_COOKIE_NAME}={session_token}"));
 
-    // Outgoing binary frame queue shared by WsHub events + concurrent RPC/Media worker tasks
-    let (out_tx, mut out_rx) = mpsc::channel::<Message>(256);
+    // Outgoing frame queue: a single writer_task assigns strictly monotonic `server_seq`
+    // and encrypts in wire order, eliminating any concurrent sequence reordering race.
+    let (out_tx, mut out_rx) = mpsc::channel::<OutboundFrame>(256);
 
-    // Writer task pumping all outgoing frames into the single WS sink
+    let writer_cipher = cipher.clone();
     let writer_task = tokio::spawn(async move {
         let mut ping_interval = tokio::time::interval(PING_INTERVAL);
         ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut server_seq: u64 = 1;
         loop {
             tokio::select! {
                 _ = ping_interval.tick() => {
@@ -524,8 +577,17 @@ pub async fn handle_socket_rpc_bin(
                 }
                 maybe_msg = out_rx.recv() => {
                     match maybe_msg {
-                        Some(m) => {
-                            if ws_sender.send(m).await.is_err() {
+                        Some(OutboundFrame::Plain(raw)) => {
+                            if ws_sender.send(Message::Binary(raw.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                        Some(OutboundFrame::Encrypted { op, req_id, payload, allow_compress }) => {
+                            let s = server_seq;
+                            server_seq = server_seq.saturating_add(1);
+                            if let Ok(frame) = encode_cwbf2_encrypted(&writer_cipher, op, s, req_id, &payload, allow_compress)
+                                && ws_sender.send(Message::Binary(frame.into())).await.is_err()
+                            {
                                 break;
                             }
                         }
@@ -538,23 +600,26 @@ pub async fn handle_socket_rpc_bin(
 
     // Forward real-time WsHub events as encrypted CWBF2 OP_EVENT frames
     let event_tx = out_tx.clone();
-    let event_cipher = cipher.clone();
-    let event_seq = out_seq.clone();
     let event_task = tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
-            if let Ok(json_bytes) = serde_json::to_vec(&event) {
-                let seq = event_seq.fetch_add(1, Ordering::Relaxed);
-                if let Ok(frame) = encode_cwbf2_encrypted(&event_cipher, OP_EVENT, seq, 0, &json_bytes, true)
-                    && event_tx.send(Message::Binary(frame.into())).await.is_err()
-                {
-                    break;
-                }
+            if let Ok(json_bytes) = serde_json::to_vec(&event)
+                && event_tx
+                    .send(OutboundFrame::Encrypted {
+                        op: OP_EVENT,
+                        req_id: 0,
+                        payload: json_bytes,
+                        allow_compress: true,
+                    })
+                    .await
+                    .is_err()
+            {
+                break;
             }
         }
     });
 
-    // Strict monotonic client sequence counter for replay protection
-    let mut last_client_seq: u64 = 0;
+    // 64-bit sliding anti-replay window for client encrypted frames
+    let mut replay_win = ReplayWindow::default();
 
     while let Some(msg) = ws_receiver.next().await {
         match msg {
@@ -564,27 +629,25 @@ pub async fn handle_socket_rpc_bin(
                 };
                 if h.op == OP_PING && h.payload.len() <= 32 {
                     let pong = encode_cwbf2_plain(OP_PONG, h.seq, h.req_id, h.payload);
-                    if out_tx.send(Message::Binary(pong.into())).await.is_err() {
+                    if out_tx.send(OutboundFrame::Plain(pong)).await.is_err() {
                         break;
                     }
                     continue;
                 }
                 // Replay check on encrypted client frames
-                if h.seq == 0 || h.seq <= last_client_seq {
+                if !replay_win.check(h.seq) {
                     continue;
                 }
                 let Ok((op, seq, req_id, payload)) = decode_cwbf2_encrypted(&cipher, &bytes) else {
                     continue;
                 };
-                last_client_seq = seq;
+                replay_win.record(seq);
 
                 let Ok(permit) = rpc_sem.clone().acquire_owned().await else {
                     break;
                 };
                 let st = state.clone();
                 let ck = cookie_header.clone();
-                let ciph = cipher.clone();
-                let oseq = out_seq.clone();
                 let otx = out_tx.clone();
 
                 tokio::spawn(async move {
@@ -598,10 +661,14 @@ pub async fn handle_socket_rpc_bin(
                             } else {
                                 encode_rpc_response(400, "application/json", br#"{"error":"malformed_rpc_frame"}"#)
                             };
-                            let s = oseq.fetch_add(1, Ordering::Relaxed);
-                            if let Ok(frame) = encode_cwbf2_encrypted(&ciph, OP_RPC_RES, s, req_id, &resp_bytes, true) {
-                                let _ = otx.send(Message::Binary(frame.into())).await;
-                            }
+                            let _ = otx
+                                .send(OutboundFrame::Encrypted {
+                                    op: OP_RPC_RES,
+                                    req_id,
+                                    payload: resp_bytes,
+                                    allow_compress: true,
+                                })
+                                .await;
                         }
                         OP_MEDIA_CHUNK_REQ => {
                             let resp_bytes = if payload.len() >= 14 {
@@ -627,11 +694,15 @@ pub async fn handle_socket_rpc_bin(
                             } else {
                                 encode_media_chunk_response(400, 0, "text/plain", b"short_chunk_req")
                             };
-                            let s = oseq.fetch_add(1, Ordering::Relaxed);
                             // Media chunks are already compressed/encrypted; skip Zlib to keep CPU O(1).
-                            if let Ok(frame) = encode_cwbf2_encrypted(&ciph, OP_MEDIA_CHUNK_RES, s, req_id, &resp_bytes, false) {
-                                let _ = otx.send(Message::Binary(frame.into())).await;
-                            }
+                            let _ = otx
+                                .send(OutboundFrame::Encrypted {
+                                    op: OP_MEDIA_CHUNK_RES,
+                                    req_id,
+                                    payload: resp_bytes,
+                                    allow_compress: false,
+                                })
+                                .await;
                         }
                         OP_UPLOAD_PART => {
                             let resp_bytes = if payload.len() >= 6 {
@@ -670,10 +741,14 @@ pub async fn handle_socket_rpc_bin(
                                 out.extend_from_slice(&0u32.to_be_bytes());
                                 out
                             };
-                            let s = oseq.fetch_add(1, Ordering::Relaxed);
-                            if let Ok(frame) = encode_cwbf2_encrypted(&ciph, OP_UPLOAD_ACK, s, req_id, &resp_bytes, false) {
-                                let _ = otx.send(Message::Binary(frame.into())).await;
-                            }
+                            let _ = otx
+                                .send(OutboundFrame::Encrypted {
+                                    op: OP_UPLOAD_ACK,
+                                    req_id,
+                                    payload: resp_bytes,
+                                    allow_compress: false,
+                                })
+                                .await;
                         }
                         OP_DELTA_SYNC_REQ => {
                             let resp_bytes = if payload.len() == 24 {
@@ -692,10 +767,14 @@ pub async fn handle_socket_rpc_bin(
                                 out.extend_from_slice(&400u16.to_be_bytes());
                                 out
                             };
-                            let s = oseq.fetch_add(1, Ordering::Relaxed);
-                            if let Ok(frame) = encode_cwbf2_encrypted(&ciph, OP_DELTA_SYNC_RES, s, req_id, &resp_bytes, true) {
-                                let _ = otx.send(Message::Binary(frame.into())).await;
-                            }
+                            let _ = otx
+                                .send(OutboundFrame::Encrypted {
+                                    op: OP_DELTA_SYNC_RES,
+                                    req_id,
+                                    payload: resp_bytes,
+                                    allow_compress: true,
+                                })
+                                .await;
                         }
                         _ => {}
                     }
@@ -761,5 +840,27 @@ mod tests {
         assert!(!is_safe_internal_path("/api/ws"));
         assert!(!is_safe_internal_path("/stream/abc"));
         assert!(!is_safe_internal_path("/api/../etc/passwd"));
+    }
+
+    #[test]
+    fn replay_window_allows_minor_reordering_and_rejects_duplicates_and_stale() {
+        let mut w = ReplayWindow::default();
+        assert!(!w.check(0));
+        assert!(w.check(1));
+        w.record(1);
+        assert!(!w.check(1)); // duplicate rejected
+
+        assert!(w.check(5));
+        w.record(5);
+        assert!(w.check(3)); // slightly out-of-order inside 64-window accepted once
+        w.record(3);
+        assert!(!w.check(3)); // duplicate rejected
+
+        assert!(w.check(70));
+        w.record(70);
+        assert!(!w.check(6)); // 70 - 6 = 64 -> outside window, rejected
+        assert!(w.check(7));  // 70 - 7 = 63 -> inside window, accepted once
+        w.record(7);
+        assert!(!w.check(7));
     }
 }

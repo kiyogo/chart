@@ -124,7 +124,20 @@ async fn try_core_worker_rpc(
                     dioxus.send({{ handled: false }});
                     return;
                 }}
-                const res = await core.rpcFromRust({m_json}, {p_json}, {j_json}, {r_b64_json}, {r_ct_json});
+                let res = await core.rpcFromRust({m_json}, {p_json}, {j_json}, {r_b64_json}, {r_ct_json});
+                if ((!res || !res.ok || res.status === 0) && !(core.isSimulatedOffline && core.isSimulatedOffline()) && navigator.onLine !== false) {{
+                    try {{
+                        core.reconnectNow();
+                        const ready = await core.waitUntilReady(2000);
+                        if (ready) {{
+                            res = await core.rpcFromRust({m_json}, {p_json}, {j_json}, {r_b64_json}, {r_ct_json});
+                        }}
+                    }} catch (_) {{}}
+                    if (!res || !res.ok || res.status === 0) {{
+                        dioxus.send({{ handled: false }});
+                        return;
+                    }}
+                }}
                 if ({static_flag} && res && res.ok && res.status === 200 && res.text && window.__chatwStorage && window.__chatwStorage.putStaticCache) {{
                     window.__chatwStorage.putStaticCache('static:' + {p_json}, 'v2', res.text).catch(() => {{}});
                 }}

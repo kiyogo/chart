@@ -36,7 +36,9 @@ pub async fn send_encrypted_dm_with_id(
     let peer = match cached {
         Some(p) => p,
         None => {
-            let pk = api::keys_get(partner_id).await.map_err(|e| e.code)?;
+            let pk = api::keys_get(partner_id)
+                .await
+                .map_err(|e| if e.status == 0 { "network_error".to_string() } else { e.code })?;
             let peer = get_or_verify_peer_keys_scoped(
                 Some(my_id),
                 &pk.user_id,
@@ -53,6 +55,8 @@ pub async fn send_encrypted_dm_with_id(
         .map(str::to_string)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let (recipient_env, sender_env) = encrypt_chat_message(&id, my_id, partner_id, &keys, &peer, text)?;
-    let resp = api::messages_send_reply(&id, partner_id, &recipient_env, &sender_env, reply_to).await.map_err(|e| e.code)?;
+    let resp = api::messages_send_reply(&id, partner_id, &recipient_env, &sender_env, reply_to)
+        .await
+        .map_err(|e| if e.status == 0 { "network_error".to_string() } else { e.code })?;
     Ok(SentDm { id, seq: resp.seq, created_at: resp.created_at })
 }

@@ -2610,30 +2610,43 @@ pub fn Chat(
                     platform::scroll_chat_to_bottom(false);
                 }
                 Err(code) => {
-                    let is_hard_reject = matches!(
+                    let is_transient_offline = matches!(
                         code.as_str(),
-                        "blocked" | "not_friends" | "self_chat_disabled" | "missing_local_keys"
+                        "network_error"
+                            | "offline"
+                            | "ws_offline"
+                            | "ws_disconnected"
+                            | "ws_not_ready"
+                            | "ws_closed"
+                            | "ws_handshake_timeout"
+                            | "rpc_timeout"
                     );
-                    if is_hard_reject {
+                    if is_transient_offline {
+                        // Offline or transient network error: keep Optimistic Pending bubble & IndexedDB outbox for auto-retry!
+                        toast.set(Some("Offline: message queued and will send automatically when reconnected".into()));
+                    } else {
                         crate::storage::remove_outbox_item(&client_id).await;
                         let msg = match code.as_str() {
-                            "blocked" => "Unable to send: one of you has blocked the other",
-                            "not_friends" => "Unable to send: you two are not friends yet",
-                            "self_chat_disabled" => "\"Myself\" has been deleted. Create again to continue taking notes",
-                            "missing_local_keys" => "This device does not yet have an encryption key",
-                            _ => "Unable to send",
+                            "blocked" => "Unable to send: one of you has blocked the other".to_string(),
+                            "not_friends" => "Unable to send: you two are not friends yet".to_string(),
+                            "self_chat_disabled" => "\"Myself\" has been deleted. Create again to continue taking notes".to_string(),
+                            "missing_local_keys" => "This device does not yet have an encryption key".to_string(),
+                            "unauthorized" => "Session expired. Please sign in again".to_string(),
+                            "not_found" | "keys_not_found" => "Recipient has not set up an encryption key yet".to_string(),
+                            other if other.contains("fingerprint") || other.contains("key_changed") => {
+                                "Recipient encryption key changed. Please verify their safety number".to_string()
+                            }
+                            other => format!("Unable to send ({other})"),
                         };
                         if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(active.id.as_str()) {
                             messages.with_mut(|list| {
                                 if let Some(slot) = list.iter_mut().find(|m| m.id == local_id) {
-                                    slot.text = msg.to_string();
+                                    slot.text = msg.clone();
                                     slot.status = MessageStatus::Error;
                                 }
                             });
                         }
-                    } else {
-                        // Offline or transient network error: keep Optimistic Pending bubble & IndexedDB outbox for auto-retry!
-                        toast.set(Some("Offline: message queued and will send automatically when reconnected".into()));
+                        toast.set(Some(msg));
                     }
                 }
             }

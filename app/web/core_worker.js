@@ -55,6 +55,7 @@
   let pongTimeout = null;
   let nextTabId = 1;
   let authFailedCloseCount = 0;
+  let everAuthenticated = false;
 
   /** @type {Map<number, MessagePort>} */
   const tabs = new Map();
@@ -277,9 +278,10 @@
   }
 
   // ── Serialized Outgoing Encrypt/Send Queue (preserves strict monotonic seq order!) ──
+  // CRITICAL: Never let a rejected send poison `sendChain` for subsequent RPCs!
   let sendChain = Promise.resolve();
   function sendEncrypted(op, reqId, payload, allowCompress) {
-    sendChain = sendChain.then(async () => {
+    const task = sendChain.then(async () => {
       if (!ws || ws.readyState !== WebSocket.OPEN || !handshakeCompleted || !sessionKey || simulatedOffline) {
         throw new Error('ws_not_ready');
       }
@@ -289,11 +291,9 @@
       }
       ws.send(buf);
       stats.binaryFramesSent += 1;
-    }).catch((err) => {
-      // Keep chain alive for future calls
-      throw err;
     });
-    return sendChain;
+    sendChain = task.catch(() => {});
+    return task;
   }
 
   function sendRpcRaw(op, payload, allowCompress = true, timeoutMs = 15000) {
@@ -320,7 +320,10 @@
 
       if (ws && ws.readyState === WebSocket.OPEN && handshakeCompleted && sessionKey) {
         dispatch();
-      } else if (running && !simulatedOffline && authFailedCloseCount < 2) {
+      } else if (running && !simulatedOffline && (everAuthenticated || authFailedCloseCount < 4)) {
+        if (!ws || ws.readyState === WebSocket.CLOSED) {
+          connect();
+        }
         const qTimer = setTimeout(() => {
           const idx = preHandshakeQueue.findIndex((q) => q.reqId === reqId);
           if (idx >= 0) preHandshakeQueue.splice(idx, 1);
@@ -601,7 +604,7 @@
       const tsBuf = new ArrayBuffer(8);
       new DataView(tsBuf).setBigUint64(0, BigInt(Date.now()), false);
       try {
-        ws.send(buildPlainFrame(OP_PING, clientSeq++, 0, tsBuf));
+        ws.send(buildPlainFrame(OP_PING, 0, 0, tsBuf));
       } catch (_) { return; }
       if (pongTimeout) clearTimeout(pongTimeout);
       pongTimeout = setTimeout(() => {
@@ -638,10 +641,12 @@
 
       sessionKey = derivedKey;
       clientSeq = 1;
+      sendChain = Promise.resolve();
       authFailedCloseCount = 0;
+      everAuthenticated = true;
       activeWs.send(buildPlainFrame(OP_HELLO_ACK, 0, 0, clientPubRaw));
       handshakeCompleted = true;
-      retryDelayMs = 600;
+      retryDelayMs = 500;
       stats.connected = true;
       stats.handshakeCompleted = true;
       stats.lastError = null;
@@ -658,9 +663,9 @@
   function scheduleReconnect() {
     if (!running || simulatedOffline) return;
     clearTimers();
-    const jitter = Math.floor(Math.random() * 220);
-    const wait = Math.min(10000, Math.round(retryDelayMs) + jitter);
-    retryDelayMs = Math.min(10000, retryDelayMs * 1.5);
+    const jitter = Math.floor(Math.random() * 200);
+    const wait = Math.min(5000, Math.round(retryDelayMs) + jitter);
+    retryDelayMs = Math.min(5000, retryDelayMs * 1.5);
     reconnectTimer = setTimeout(() => {
       if (running && !simulatedOffline) {
         stats.reconnectCount += 1;
@@ -744,7 +749,7 @@
       if (!wasHandshaked) authFailedCloseCount += 1;
       rejectAllPending('ws_disconnected');
       broadcastState();
-      if (authFailedCloseCount < 4) {
+      if (everAuthenticated || authFailedCloseCount < 4) {
         scheduleReconnect();
       }
     };
@@ -833,15 +838,30 @@
       }
 
       if (msg.type === 'reconnect_now') {
-        if (!running || !targetUrl || simulatedOffline) return;
+        if (simulatedOffline) return;
+        if (msg.wsUrl) {
+          const rawUrl = String(msg.wsUrl);
+          const sep = rawUrl.includes('?') ? '&' : '?';
+          targetUrl = rawUrl.includes('proto=rpc-bin') ? rawUrl : `${rawUrl}${sep}proto=rpc-bin`;
+        }
+        if (!targetUrl) return;
+        running = true;
         authFailedCloseCount = 0;
-        retryDelayMs = 600;
+        retryDelayMs = 500;
         if (ws && ws.readyState === WebSocket.OPEN && handshakeCompleted) {
           postToTab(port, { type: 'ws_state', stats: { ...stats } });
           return;
         }
         if (ws) { try { ws.close(); } catch (_) {} ws = null; }
         connect();
+        return;
+      }
+
+      if (msg.type === 'force_drop_for_test') {
+        if (ws) {
+          try { ws.close(); } catch (_) {}
+        }
+        postToTab(port, { type: 'rpc_reply', callId: msg.callId, ok: true });
         return;
       }
 
@@ -993,6 +1013,8 @@
 
       if (msg.type === 'logout_wipe') {
         running = false;
+        everAuthenticated = false;
+        sendChain = Promise.resolve();
         clearTimers();
         if (ws) { try { ws.close(); } catch (_) {} ws = null; }
         sessionKey = null;

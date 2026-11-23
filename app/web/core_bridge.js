@@ -50,7 +50,7 @@
     if (port) return port;
     if (typeof SharedWorker !== 'undefined') {
       try {
-        const sw = new SharedWorker('/core_worker.js', { name: 'chatw-core-v1' });
+        const sw = new SharedWorker('/core_worker.js', { name: 'chatw-core-v2' });
         port = sw.port;
         port.start();
         workerMode = 'shared';
@@ -293,7 +293,12 @@
 
     reconnectNow() {
       const p = ensureWorkerPort();
-      if (p) p.postMessage({ type: 'reconnect_now' });
+      if (!activeWsUrl) activeWsUrl = defaultWsUrl();
+      if (p) p.postMessage({ type: 'reconnect_now', wsUrl: activeWsUrl });
+    },
+
+    async forceDropSocketForTest() {
+      return await callWorker({ type: 'force_drop_for_test' }, [], 3000);
     },
 
     stop() {

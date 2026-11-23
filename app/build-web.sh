@@ -39,7 +39,7 @@ cp app/web/living_motion.js app/dist/living_motion.js
 cp app/web/adaptive_surface.js app/dist/adaptive_surface.js
 cp app/web/storage_engine.js app/dist/storage_engine.js
 cp app/web/core_worker.js app/dist/core_worker.js
-cp app/web/core_bridge.js app/dist/core_bridge.js
+sed "s|/core_worker.js|/core_worker.js?v=${TS}|g" app/web/core_bridge.js > app/dist/core_bridge.js
 cp app/web/media_worker.js app/dist/media_worker.js
 cp app/web/network_worker.js app/dist/network_worker.js
 cp app/web/network_bridge.js app/dist/network_bridge.js
