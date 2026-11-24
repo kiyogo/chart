@@ -457,7 +457,7 @@ pub fn build_rich_media_wire(
             k: key_b64,
             n: nonce_b64,
             m: payload.mime.clone(),
-            name: payload.file_name.clone(),
+            name: crate::storage::media_opt::strip_file_extension(&payload.file_name),
             size: wire_size,
             sha: payload.sha256_plain.clone(),
             scope: scope.to_string(),
@@ -481,7 +481,7 @@ pub fn build_rich_media_wire(
         k: key_b64,
         n: nonce_b64,
         m: payload.mime.clone(),
-        name: payload.file_name.clone(),
+        name: crate::storage::media_opt::strip_file_extension(&payload.file_name),
         size: wire_size,
         sha: payload.sha256_plain.clone(),
         dur_ms: payload.duration_ms.unwrap_or(0),
@@ -866,7 +866,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                 {
                     let lb_src = s.clone();
                     let lb_raw_src = raw_src().unwrap_or_else(|| s.clone());
-                    let lb_name = data.name.clone();
+                    let lb_name = crate::storage::media_opt::strip_file_extension(&data.name);
                     let lb_mid = data.u.clone();
                     let lb_sha = data.sha.clone();
                     let lb_qp = data.qp.clone();
@@ -2703,10 +2703,11 @@ pub fn GlobalImageLightbox() -> Element {
         String::new()
     };
     let img_style = format!("transform: {};", physics.peek().borrow().format_transform());
-    let dl_name = if media.name.is_empty() {
+    let clean_media_name = crate::storage::media_opt::strip_file_extension(&media.name);
+    let dl_name = if clean_media_name.is_empty() {
         "chatw-image".to_string()
     } else {
-        media.name.clone()
+        clean_media_name.clone()
     };
     let ai_toggle_active = media.ai_restored && !show_original();
     let media_for_toggle = media.clone();
@@ -2867,8 +2868,8 @@ pub fn GlobalImageLightbox() -> Element {
             // Single borderless Telegram-style topbar: filename ONLY on the left, clean SVG icon controls on the right
             div { class: "lightbox-topbar",
                 div { class: "lightbox-meta", onclick: move |e| e.stop_propagation(),
-                    if !media.name.is_empty() {
-                        span { class: "lightbox-filename", title: "{media.name}", "{media.name}" }
+                    if !clean_media_name.is_empty() {
+                        span { class: "lightbox-filename", title: "{clean_media_name}", "{clean_media_name}" }
                     }
                 }
                 div { class: "lightbox-actions", role: "toolbar", aria_label: "Photo", onclick: move |e| e.stop_propagation(),

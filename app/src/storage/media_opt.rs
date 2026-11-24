@@ -77,6 +77,17 @@ pub struct InstantPickPreview {
     pub height: Option<u32>,
 }
 
+/// Spec 126: Strip raw file extensions from media filenames so names are stored cleanly without `.jpg`, `.png`, etc.
+pub fn strip_file_extension(name: &str) -> String {
+    let s = name.trim();
+    if let Some(idx) = s.rfind('.') {
+        if idx > 0 {
+            return s[..idx].to_string();
+        }
+    }
+    s.to_string()
+}
+
 /// Real magic byte sniffer shared on native & WASM so extension/MIME are always truthful.
 pub fn sniff_mime_from_bytes(bytes: &[u8]) -> (&'static str, &'static str) {
     if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
@@ -139,7 +150,7 @@ fn parse_optimized_payload(v: &serde_json::Value) -> Result<OptimizedMediaPayloa
         bytes,
         mime,
         ext,
-        file_name: v.get("fileName").and_then(|s| s.as_str()).unwrap_or("attachment").to_string(),
+        file_name: strip_file_extension(v.get("fileName").and_then(|s| s.as_str()).unwrap_or("attachment")),
         original_size: v.get("originalSize").and_then(|n| n.as_u64()).unwrap_or(0) as usize,
         optimized_size: v.get("optimizedSize").and_then(|n| n.as_u64()).unwrap_or(0) as usize,
         is_crisp_text: v.get("isCrispText").and_then(|b| b.as_bool()).unwrap_or(false),
@@ -224,7 +235,7 @@ pub async fn pick_instant_preview(input_id: &str) -> Result<InstantPickPreview, 
     Ok(InstantPickPreview {
         handle_id: v.get("handleId").and_then(|s| s.as_str()).ok_or("missing_handle")?.to_string(),
         instant_preview_url: v.get("instantPreviewUrl").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
-        file_name: v.get("fileName").and_then(|s| s.as_str()).unwrap_or("attachment").to_string(),
+        file_name: strip_file_extension(v.get("fileName").and_then(|s| s.as_str()).unwrap_or("attachment")),
         mime: v.get("mime").and_then(|s| s.as_str()).unwrap_or("application/octet-stream").to_string(),
         original_size: v.get("originalSize").and_then(|n| n.as_u64()).unwrap_or(0) as usize,
         media_kind: v.get("mediaKind").and_then(|s| s.as_str()).unwrap_or("file").to_string(),

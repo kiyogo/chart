@@ -870,7 +870,7 @@
           keyB64: meta.keyB64 || '',
           nonceB64: meta.nonceB64 || '',
           mime: meta.mime || 'image/avif',
-          fileName: meta.fileName || 'image',
+          fileName: stripFileExtension(meta.fileName || 'image'),
           mediaKind: 'image',
           sha256: meta.sha256 || '',
           wireBlake3: b3,
@@ -894,6 +894,13 @@
       }
     },
   };
+
+  // Spec 126: Omit raw file extensions when saving media filenames to system/chat payloads.
+  function stripFileExtension(fileName) {
+    if (!fileName || typeof fileName !== 'string') return '';
+    const idx = fileName.lastIndexOf('.');
+    return idx > 0 ? fileName.slice(0, idx) : fileName;
+  }
 
   // Spec 115: Strictly block `.svg` / `.svgz` / `image/svg+xml` / XML-SVG payloads on all frontend pickers & paste paths.
   function isBlockedSvgFile(fileName, mime, bytesU8) {
@@ -973,7 +980,7 @@
             bytesB64: '',
             mime: localHit.mime || 'image/avif',
             ext: (localHit.mime || '').includes('avif') ? 'avif' : 'bin',
-            fileName: file.name && file.name !== 'image.png' ? file.name : (localHit.fileName || file.name || 'image.png'),
+            fileName: stripFileExtension(file.name && file.name !== 'image.png' ? file.name : (localHit.fileName || file.name || 'image')),
             originalSize: rawArr.byteLength,
             optimizedSize: 0,
             isCrispText: false,
@@ -1003,7 +1010,7 @@
         stashPreviewFile(previewUrl, file, res.targetWidth || res.width || 0, res.targetHeight || res.height || 0);
         return {
           ...res,
-          fileName: file.name,
+          fileName: stripFileExtension(file.name),
           mediaKind: 'image',
           origBlake3,
           pdqHex: pdq ? pdq.pdqHex : '',
@@ -1030,7 +1037,7 @@
         bytesB64: '',
         mime: localFileHit.mime || file.type || 'application/octet-stream',
         ext: (file.name.split('.').pop() || 'bin').toLowerCase().slice(0, 12),
-        fileName: file.name || localFileHit.fileName || 'attachment',
+        fileName: stripFileExtension(file.name || localFileHit.fileName || 'attachment'),
         originalSize: raw.byteLength,
         optimizedSize: 0,
         sha256: localFileHit.sha256 || shaHex,
@@ -1066,7 +1073,7 @@
       bytesB64: bytesToB64(uploadBytes),
       mime: file.type || 'application/octet-stream',
       ext: (file.name.split('.').pop() || 'bin').toLowerCase().slice(0, 12),
-      fileName: file.name,
+      fileName: stripFileExtension(file.name),
       originalSize: raw.byteLength,
       optimizedSize: uploadBytes.byteLength,
       sha256: shaHex,
@@ -1083,6 +1090,7 @@
   }
 
   window.__chatwMediaOpt = {
+    stripFileExtension,
     optimizeImageBlob,
     probeVideoCodecs,
     isBlockedSvgFile,
@@ -1121,7 +1129,7 @@
       return {
         handleId,
         instantPreviewUrl: previewUrl,
-        fileName: file.name,
+        fileName: stripFileExtension(file.name),
         mime: file.type || 'application/octet-stream',
         originalSize: file.size,
         mediaKind,
@@ -1213,7 +1221,7 @@
       return {
         bytesB64: bytesToB64(raw),
         mime: entry.file.type || 'application/octet-stream',
-        fileName: entry.file.name,
+        fileName: stripFileExtension(entry.file.name),
         byteSize: raw.byteLength,
         previewUrl: entry.previewUrl,
       };

@@ -573,7 +573,7 @@ fn SelfMediaThumb(
     let display_name = if data.name.trim().is_empty() {
         "Image".to_string()
     } else {
-        data.name.clone()
+        crate::storage::media_opt::strip_file_extension(&data.name)
     };
     let qp = data.qp.clone();
     let media_u = data.u.clone();
