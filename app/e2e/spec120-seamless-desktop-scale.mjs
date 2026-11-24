@@ -180,8 +180,8 @@ async function run() {
   }
   if (settingsAudit.itemAudits.length > 0) {
     const firstItem = settingsAudit.itemAudits[0];
-    if (firstItem.height > 38) {
-      throw new Error(`FAIL: .settings-nav-item height is ${firstItem.height}px (expected compact <= 36px)`);
+    if (firstItem.height < 32 || firstItem.height > 44) {
+      throw new Error(`FAIL: .settings-nav-item height is ${firstItem.height}px (expected normalized 34-42px)`);
     }
   }
 

@@ -2413,28 +2413,30 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 }
 .settings-mobile-bar { display: none; }
 .settings-nav {
-  width: var(--settings-nav-width, 16rem);
+  width: var(--settings-nav-width, 20rem);
+  min-width: 19rem;
   flex-shrink: 0;
   background: var(--bg-sidebar);
   border-radius: var(--panel-radius);
-  padding: var(--panel-inset, 0.5rem);
+  padding: 8px 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   overflow-y: auto;
   scrollbar-width: none;
 }
 .settings-nav::-webkit-scrollbar { display: none; }
 .server-settings-stage .settings-nav {
-  width: var(--settings-nav-width, 12.75rem);
-  padding: var(--panel-inset, 0.5rem);
+  width: var(--settings-nav-width, 20rem);
+  min-width: 19rem;
+  padding: 8px 8px;
 }
 .settings-nav-footer {
   margin-top: auto;
   padding-top: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 .settings-nav-title {
   padding: var(--space-2) var(--space-3);
@@ -2446,18 +2448,23 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 2.125rem;
-  height: 2.125rem;
-  padding: 0 10px;
-  border-radius: var(--radius-md);
+  gap: 12px;
+  min-height: 2.67rem;
+  height: 2.67rem;
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
   color: var(--text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: var(--weight-medium);
   text-align: left;
   box-sizing: border-box;
 }
-.settings-nav-item svg { color: var(--text-secondary); flex-shrink: 0; }
+.settings-nav-item svg {
+  width: 20px;
+  height: 20px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
 .settings-nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .settings-nav-item.active { background: var(--accent-soft); color: var(--text-primary); font-weight: var(--weight-medium); }
 .settings-nav-item .chevron { margin-left: auto; display: none; color: var(--text-muted); }
@@ -2882,7 +2889,7 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 
 @media (max-width: 1023px) {
   :root { --sidebar-width: 17rem; }
-  .settings-nav { width: 13rem; }
+  .settings-nav { width: clamp(16.5rem, 20vw, 19rem); }
   .chat-header-sep { display: none; }
 /* Panels that sit directly on the canvas */
 .main-stage > .empty-state { background: var(--bg-chat); border-radius: var(--panel-radius); }
@@ -4893,7 +4900,14 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 .vis-select { margin-bottom: 2px; max-width: 8.5rem; }
 
 /* Spec 009: settings search, help search, Demo Gallery, contact notes */
-.settings-search { margin: 0 var(--space-2) var(--space-2); }
+.settings-search { margin: 0 0 var(--space-2); }
+.settings-search input {
+  min-height: 2.5rem;
+  height: 2.5rem;
+  font-size: var(--text-base);
+  padding-left: 2.35rem;
+  border-radius: var(--radius-lg);
+}
 .help-search { margin-bottom: var(--space-4); }
 .details-section-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; color: inherit; }
 .details-section input[type="text"], .details-section textarea { width: 100%; margin-top: var(--space-2); }
@@ -5204,7 +5218,7 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
 
 /* ============ Simpler layout pass: one-line labels, no descriptions, even spacing ============ */
 .settings-page-desc, .settings-row-desc, .settings-group-desc, p.member-sub, .studio-status, .modal-sub { display: none !important; }
-.settings-nav-item { min-height: 2.125rem; height: 2.125rem; white-space: nowrap; }
+.settings-nav-item { min-height: 2.67rem; height: 2.67rem; white-space: nowrap; }
 .settings-nav-item > span:not(.chevron) { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 .settings-nav-title { margin-top: var(--space-3); }
 .settings-nav-title:first-of-type { margin-top: 0; }
@@ -11936,16 +11950,16 @@ html[dir="rtl"] .about-row-val {
 }
 .settings-nav,
 .server-settings-stage .settings-nav {
-  padding: 8px var(--panel-inset, 5px) !important;
-  gap: 2px !important;
+  padding: 8px 8px !important;
+  gap: 4px !important;
 }
 .settings-nav-footer,
 .server-settings-stage .settings-nav-footer {
-  gap: 2px !important;
+  gap: 4px !important;
 }
 .settings-nav .settings-search,
 .server-settings-stage .settings-nav .settings-search {
-  margin: 0 0 6px !important;
+  margin: 0 0 8px !important;
 }
 .settings-nav .settings-nav-item,
 .settings-nav .settings-nav-item.settings-nav-dev,

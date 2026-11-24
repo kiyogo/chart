@@ -20,9 +20,9 @@
       selector: '.settings-nav',
       cssVar: '--settings-nav-width',
       storageKey: 'chatw_settings_nav_width',
-      fallbackWidth: 240,
-      minWidth: 180,
-      maxWidth: () => Math.min(400, Math.round(window.innerWidth * 0.4)),
+      fallbackWidth: 296,
+      minWidth: 240,
+      maxWidth: () => Math.min(460, Math.round(window.innerWidth * 0.4)),
       direction: 1
     },
     details: {
