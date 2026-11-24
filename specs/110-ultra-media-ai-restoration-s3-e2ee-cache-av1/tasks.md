@@ -21,3 +21,7 @@
   - `app/src/storage/realesrgan_gpu.rs`: engine GPU WebGL2 MRT `TEXTURE_2D_ARRAY` viết 100% bằng Rust (`web-sys`) chạy mượt trên mọi trình duyệt (không cần flag), tự dự phòng CPU Rust.
   - `crates/chatw-media-core/src/avif.rs`: nâng `UltraAggressive` lên **10-bit YCbCr AVIF** (~16.3 KB từ PNG 1.2 MB, nhỏ hơn **74.7×**) triệt tiêu hoàn toàn vệt nén khối 8×8.
   - Kiểm thử thành công trên GPU thật (`AMD Radeon RX 590`, **2.47s**, `836×471 → 3344×1884`, SSIM `0.9735`, khớp gốc `99.4%`), WebGL2 mặc định, E2E 2 người dùng (`Alice → Bob`), và toàn bộ hồi quy Spec 110.
+- [x] Task 18: Tinh gọn tối đa giao diện AI & hoàn thiện 2 luồng trải nghiệm theo Spec:
+  - Xóa toàn bộ nhãn chữ `AI` / `Real-ESRGAN` / `% khớp gốc` / thông số `KB` trên ảnh chat và Lightbox; Lightbox chỉ hiển thị đúng **tên tệp** bên trái và **1 icon vector SVG (`EnhanceToggleIcon`)** duy nhất bên phải để chuyển đổi ảnh nét / ảnh gốc trước khi làm nét.
+  - Luồng nhận ảnh trực tiếp khi đang đăng nhập: ảnh nền làm mờ phía dưới + lưới chấm xanh gợn sóng kiểu AI tạo ảnh + `%` tiến độ thực theo từng tile truyền trực tiếp từ Rust (`realesrgan_gpu.rs`) rồi hiện mượt ra ảnh 4× sắc nét, không còn badge chữ.
+  - Luồng đăng nhập máy mới / lịch sử cũ chưa cache: chỉ hiện 1 icon SVG tròn nhỏ gọn ở góc dưới-phải ảnh; khi người dùng bấm mở xem ảnh trong Lightbox (hoặc bấm trực tiếp vào icon góc), tự kích hoạt Real-ESRGAN 4× kèm hiệu ứng làm mờ + lưới chấm xanh gọn trong khung ảnh rồi đồng bộ ngược về khung chat. Kiểm thử E2E cả 2 luồng + Spec 110 đạt 100%.

@@ -192,9 +192,9 @@ pub fn install_wasm_media_bridge() {
         },
     );
 
-    // 7. restoreImageRealEsrgan(rgba, w, h, modelId, modelBytesCwsr1, origProfileJson) -> Promise<{ ok, rgba, width, height, scale, modelId, modelLabel, backend, ssim, meanColorDrift, matchPct }>
-    let restore_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue, Uint8Array, JsValue) -> JsValue>::new(
-        move |rgba: Uint8Array, width: u32, height: u32, model_id_val: JsValue, model_bytes: Uint8Array, prof_val: JsValue| {
+    // 7. restoreImageRealEsrgan(rgba, w, h, modelId, modelBytesCwsr1, origProfileJson, onProgress?) -> Promise<{ ok, ... }>
+    let restore_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue, Uint8Array, JsValue, JsValue) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32, model_id_val: JsValue, model_bytes: Uint8Array, prof_val: JsValue, prog_val: JsValue| {
             let raw = rgba.to_vec();
             let mbytes = model_bytes.to_vec();
             let model_str = model_id_val.as_string().unwrap_or_else(|| "realesr_animevideov3".into());
@@ -203,10 +203,11 @@ pub fn install_wasm_media_bridge() {
                 .as_string()
                 .filter(|s| !s.is_empty())
                 .and_then(|s| serde_json::from_str(&s).ok());
+            let on_progress: Option<js_sys::Function> = prog_val.dyn_into::<js_sys::Function>().ok();
 
             future_to_promise(async move {
                 let out = Object::new();
-                match restore_image_realesrgan_rust(&raw, width, height, kind, &mbytes, orig_prof.as_ref()).await {
+                match restore_image_realesrgan_rust(&raw, width, height, kind, &mbytes, orig_prof.as_ref(), on_progress).await {
                     Ok(res) => {
                         let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
                         let _ = Reflect::set(&out, &"rgba".into(), &Uint8Array::from(res.rgba.as_slice()).into());

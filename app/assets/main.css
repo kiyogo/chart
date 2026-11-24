@@ -3751,88 +3751,135 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 40vw;
+  max-width: 55vw;
 }
-.lightbox-dims {
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 0.8125rem;
-  font-weight: 400;
-  white-space: nowrap;
+/* Blurred image underneath during live AI Real-ESRGAN generation */
+.rich-image-full {
+  transition: filter 420ms cubic-bezier(0.22, 1, 0.36, 1), transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.lightbox-ai-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.2);
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  white-space: nowrap;
+.rich-image-full.is-ai-generating,
+.lightbox-img.is-ai-generating {
+  filter: blur(16px) brightness(0.76) saturate(1.1);
+  transform: scale(1.06);
 }
-.ai-restored-badge {
+/* Gemini-style animated blue dot-matrix wave shimmer over blurred image underneath */
+.ai-gen-overlay {
   position: absolute;
-  bottom: 8px;
-  left: 8px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #ffffff;
-  background: rgba(15, 23, 42, 0.78);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
   pointer-events: none;
+  background: radial-gradient(circle at 50% 48%, rgba(28, 63, 138, 0.24) 0%, rgba(9, 13, 24, 0.44) 100%);
+  border-radius: inherit;
 }
-.ai-restoring-badge {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: #e2e8f0;
-  background: rgba(15, 23, 42, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  pointer-events: none;
-}
-.lightbox .lightbox-topbar .lightbox-actions .lightbox-compare-btn {
+.lightbox-img-frame {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 14px;
-  font-size: 0.75rem;
+  overflow: hidden;
+  border-radius: 6px;
+  max-width: min(92vw, 1440px);
+  max-height: 86vh;
+  transform-origin: center center;
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lightbox-stage.is-panning .lightbox-img-frame {
+  transition: none !important;
+}
+.ai-gen-overlay.lightbox-ai-gen {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 50%, rgba(24, 58, 132, 0.22) 0%, rgba(8, 12, 22, 0.42) 100%);
+}
+.ai-gen-dots-base,
+.ai-gen-dots-wave {
+  position: absolute;
+  inset: -12px;
+  background-image: radial-gradient(circle, rgba(96, 165, 250, 0.32) 1.5px, transparent 2px);
+  background-size: 13px 13px;
+}
+.ai-gen-dots-wave {
+  background-image: radial-gradient(circle, rgba(96, 165, 250, 0.96) 2.15px, transparent 2.55px);
+  background-size: 13px 13px;
+  -webkit-mask-image: radial-gradient(ellipse 46% 52% at 50% 50%, #000 0%, rgba(0, 0, 0, 0.72) 42%, transparent 78%);
+  mask-image: radial-gradient(ellipse 46% 52% at 50% 50%, #000 0%, rgba(0, 0, 0, 0.72) 42%, transparent 78%);
+  -webkit-mask-size: 170% 170%;
+  mask-size: 170% 170%;
+  animation: chatwAiDotSweep 2.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.65));
+}
+@keyframes chatwAiDotSweep {
+  0% {
+    -webkit-mask-position: 0% 15%;
+    mask-position: 0% 15%;
+    opacity: 0.78;
+  }
+  50% {
+    -webkit-mask-position: 100% 85%;
+    mask-position: 100% 85%;
+    opacity: 1;
+  }
+  100% {
+    -webkit-mask-position: 0% 15%;
+    mask-position: 0% 15%;
+    opacity: 0.78;
+  }
+}
+.ai-gen-pct {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 4;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.78rem;
   font-weight: 600;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: #60a5fa;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(96, 165, 250, 0.24);
+}
+.lightbox-ai-gen .ai-gen-pct {
+  bottom: 14px;
+  right: 14px;
+  font-size: 0.85rem;
+  padding: 5px 13px;
+}
+/* New-device / unenhanced history: single sleek SVG icon in bottom-right corner of image */
+.rich-image-enhance-corner {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 23, 42, 0.68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  margin-right: 6px;
-  transition: all 140ms ease;
+  transition: background-color 140ms ease, transform 120ms ease, color 140ms ease;
 }
-.lightbox .lightbox-topbar .lightbox-actions .lightbox-compare-btn:hover {
-  background: rgba(255, 255, 255, 0.26);
+.rich-image-enhance-corner:hover {
+  background: rgba(37, 99, 235, 0.86);
+  color: #ffffff;
+  transform: scale(1.06);
 }
-.lightbox .lightbox-topbar .lightbox-actions .lightbox-compare-btn.is-active {
-  background: var(--accent, #3b82f6);
-  border-color: transparent;
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn.lightbox-enhance-toggle.is-active {
+  color: #60a5fa !important;
+  background: rgba(59, 130, 246, 0.22) !important;
 }
 .lightbox-actions {
   display: inline-flex;

@@ -575,10 +575,9 @@ fn SelfMediaThumb(
     } else {
         data.name.clone()
     };
-    let w = data.w;
-    let h = data.h;
-    let size = data.size;
     let qp = data.qp.clone();
+    let media_u = data.u.clone();
+    let media_sha = data.sha.clone();
     let jump_id = msg_id.clone();
 
     rsx! {
@@ -591,18 +590,13 @@ fn SelfMediaThumb(
                     *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
                         src: url.clone(),
                         name: display_name.clone(),
-                        width: w,
-                        height: h,
-                        size,
+                        media_id: media_u.clone(),
+                        content_hash: media_sha.clone(),
+                        orig_profile_json: qp.clone(),
                         ai_restored: false,
                         original_src: Some(url),
-                        ai_model: None,
-                        ai_scale: 1,
-                        ai_out_size: 0,
                         is_sender_original: false,
-                        compressed_size: size,
-                        orig_profile_json: qp.clone(),
-                        ai_match_pct: None,
+                        auto_enhance_on_open: false,
                     });
                 } else {
                     on_jump_to.call(jump_id.clone());

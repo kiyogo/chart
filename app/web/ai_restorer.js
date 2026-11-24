@@ -161,8 +161,20 @@
       } catch (_) {}
     }
 
+    // Fast cache-only lookup for historical / new-device images (shows sleek corner SVG icon until clicked!)
+    if (meta.cacheOnly) {
+      return { enhanced: false, cacheMiss: true, url: imageUrl };
+    }
+
+    const reportProgress = (pct) => {
+      if (typeof meta.onProgress === 'function') {
+        try { meta.onProgress(Math.max(0, Math.min(100, Math.round(pct)))); } catch (_) {}
+      }
+    };
+
     return await enqueueExclusive(async () => {
       if (sessionResultCache.has(cacheKey)) {
+        reportProgress(100);
         return { ...sessionResultCache.get(cacheKey), enhanced: true, cacheHit: true, cacheTier: 'memory', provenance: 'ai_restored' };
       }
 
@@ -172,6 +184,7 @@
       }
 
       const t0 = performance.now();
+      reportProgress(2);
       const hw = await detectHardware();
       if (hw.lowBattery && !meta.forceRun) {
         return { enhanced: false, skipped: true, reason: 'low_battery_power_saver', url: imageUrl };
@@ -223,6 +236,7 @@
       }
 
       // 2. Load compact FP16 Real-ESRGAN weights (cached permanently in IndexedDB `ai_models`)
+      reportProgress(4);
       let modelBytes;
       try {
         modelBytes = await loadModelBytesCached(sel.modelId, sel.cwsrUrl, sel.version);
@@ -230,8 +244,8 @@
         return { enhanced: false, skipped: true, reason: 'model_download_failed', error: String(err), url: imageUrl };
       }
 
-      // 3. Execute 100% Pure-Rust Real-ESRGAN 4× (WebGL2 GPU MRT -> Pure-Rust CPU + Color Lock + SSIM Gate)!
-      const res = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson);
+      // 3. Execute 100% Pure-Rust Real-ESRGAN 4× with live tile progress callbacks (`6% -> 98%`)!
+      const res = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, reportProgress);
       if (!res || !res.ok || !res.rgba) {
         return { enhanced: false, skipped: true, reason: (res && res.error) || 'rust_realesrgan_failed', url: imageUrl };
       }
@@ -269,6 +283,7 @@
       if (!outBlob || outBlob.size === 0) {
         return { enhanced: false, skipped: true, reason: 'output_encode_failed', url: imageUrl };
       }
+      reportProgress(100);
 
       const elapsedMs = Math.round(performance.now() - t0);
       const entry = {

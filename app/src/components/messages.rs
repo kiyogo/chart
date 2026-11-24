@@ -701,6 +701,7 @@ pub fn MessageList(
                                                 tally: tally_for,
                                                 on_vote: on_send_raw.map(|h| EventHandler::new(move |(pid, i): (String, usize)| h.call(format!("vote:{pid}:{i}")))),
                                                 on_open_invite: on_open_invite,
+                                                is_live_incoming: !msg.is_self && crate::components::rich::is_message_live_incoming(&msg.created_at),
                                             }
                                         }
                                         span { class: "message-time-standalone",

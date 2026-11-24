@@ -399,6 +399,27 @@ pub fn TypeIcon(#[props(default = 20)] size: u32) -> Element {
     rsx! { Duo { size, path { d: "M4.5 6.8V4.5h15v2.3M12 4.5v15M8.5 19.5h7" } } }
 }
 
+/// Custom vector SVG icon for toggling / activating on-device Real-ESRGAN image clarity.
+#[component]
+pub fn EnhanceToggleIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "1.85",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            "aria-hidden": "true",
+            path { d: "M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6-5.6-1.9 5.6-1.9L12 3z" }
+            path { d: "M18.8 15.8l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z" }
+            path { d: "M5.4 3.6l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5.5-1.4z" }
+        }
+    }
+}
+
 #[component]
 pub fn GoogleIcon() -> Element {
     rsx! {

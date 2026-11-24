@@ -658,8 +658,14 @@ async fn yield_browser_task() {
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
 
+fn emit_progress(cb: Option<&js_sys::Function>, pct: u32) {
+    if let Some(f) = cb {
+        let _ = f.call1(&JsValue::UNDEFINED, &JsValue::from(pct.min(100)));
+    }
+}
+
 /// Complete 100% Pure-Rust Real-ESRGAN 4× restoration pipeline (GPU WebGL2 MRT -> Pure-Rust CPU fallback):
-/// Zero-seam 16px halo tiling (async yielding per tile) -> Real-ESRGAN 4× -> OriginalQualityProfile Color Lock -> Pure-Rust SSIM Gate!
+/// Zero-seam 16px halo tiling (async yielding + real live tile progress `0..100`) -> Real-ESRGAN 4× -> Color Lock -> SSIM Gate!
 pub async fn restore_image_realesrgan_rust(
     rgba: &[u8],
     width: u32,
@@ -667,6 +673,7 @@ pub async fn restore_image_realesrgan_rust(
     kind: RealEsrganModelKind,
     model_bytes: &[u8],
     orig_profile: Option<&OriginalQualityProfile>,
+    on_progress: Option<js_sys::Function>,
 ) -> Result<RealEsrganFullOutput, String> {
     let w = width as usize;
     let h = height as usize;
@@ -680,13 +687,23 @@ pub async fn restore_image_realesrgan_rust(
     let ow = w * scale;
     let oh = h * scale;
 
+    emit_progress(on_progress.as_ref(), 6);
+    yield_browser_task().await;
+
     let probe = probe_gpu();
     let (mut out_rgba, backend) = if probe.webgl2_available {
         let tile = if probe.is_software { 144usize } else { 160usize };
         let gpu_res: Result<Vec<u8>, String> = if w <= tile && h <= tile {
-            with_gl_engine(|eng| run_tile_gl(eng, rgba, w, h, model_id, model_bytes))
+            emit_progress(on_progress.as_ref(), 24);
+            let res = with_gl_engine(|eng| run_tile_gl(eng, rgba, w, h, model_id, model_bytes));
+            emit_progress(on_progress.as_ref(), 92);
+            res
         } else {
             let halo = 16usize;
+            let tiles_y = (h + tile - 1) / tile;
+            let tiles_x = (w + tile - 1) / tile;
+            let total_tiles = (tiles_y * tiles_x).max(1);
+            let mut done_tiles = 0usize;
             let mut out = vec![0u8; ow * oh * 4];
             let mut err_opt: Option<String> = None;
             let mut ty = 0usize;
@@ -726,6 +743,9 @@ pub async fn restore_image_realesrgan_rust(
                         let d_off = ((ty * scale + r) * ow + tx * scale) * 4;
                         out[d_off..d_off + copy_w * 4].copy_from_slice(&tile_out[s_off..s_off + copy_w * 4]);
                     }
+                    done_tiles += 1;
+                    let pct = (6 + (done_tiles * 88) / total_tiles).min(94) as u32;
+                    emit_progress(on_progress.as_ref(), pct);
                     yield_browser_task().await;
                     tx = valid_x1;
                 }
@@ -740,27 +760,33 @@ pub async fn restore_image_realesrgan_rust(
         match gpu_res {
             Ok(buf) => (buf, probe.backend),
             Err(_) => {
+                emit_progress(on_progress.as_ref(), 30);
                 let model = RealEsrganModel::from_cwsr_bytes(model_bytes).map_err(|e| e.to_string())?;
                 let (buf, _, _) = run_realesrgan_tiled(rgba, width, height, &model, 128, None)
                     .map_err(|e| e.to_string())?;
+                emit_progress(on_progress.as_ref(), 92);
                 (buf, "rust_wasm_cpu_realesrgan_srvgg")
             }
         }
     } else {
+        emit_progress(on_progress.as_ref(), 25);
         let model = RealEsrganModel::from_cwsr_bytes(model_bytes).map_err(|e| e.to_string())?;
         let (buf, _, _) = run_realesrgan_tiled(rgba, width, height, &model, 128, None)
             .map_err(|e| e.to_string())?;
+        emit_progress(on_progress.as_ref(), 92);
         (buf, "rust_wasm_cpu_realesrgan_srvgg")
     };
 
     // 3. OriginalQualityProfile Color/Contrast/Saturation Lock (preserves 100% of Real-ESRGAN vector-sharp 4× edges!)
     let match_pct = calibrate_color_preserve_sr(&mut out_rgba, ow as u32, oh as u32, orig_profile);
+    emit_progress(on_progress.as_ref(), 96);
 
     // 4. Pure-Rust Anti-Corruption Quality Gate (SSIM + Color Drift)
     let (passed, ssim, drift) = evaluate_sr_quality_gate(rgba, width, height, &out_rgba, ow as u32, oh as u32);
     if !passed {
         return Err(format!("quality_gate_rejected (ssim={ssim:.4}, drift={drift:.4})"));
     }
+    emit_progress(on_progress.as_ref(), 98);
 
     Ok(RealEsrganFullOutput {
         rgba: out_rgba,
