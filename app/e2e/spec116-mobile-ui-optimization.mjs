@@ -83,12 +83,19 @@ async function auditViewport(browser, vw, vh, tag, alice, bob, aliceLs, aliceCoo
       .map((el) => { const r = el.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; });
     const railBorderR = rail ? getComputedStyle(rail).borderRightWidth : null;
     const bottomBorderT = bottomBar ? getComputedStyle(bottomBar).borderTopWidth : null;
+    const railCs = rail ? getComputedStyle(rail) : null;
+    const railBeforeCs = rail ? getComputedStyle(rail, '::before') : null;
+    const sidebar = document.querySelector('.nav-sidebar');
+    const sidebarRect = sidebar ? sidebar.getBoundingClientRect() : null;
+    const canvasScrollbar = document.getElementById('canvas-scrollbar-overlay');
+    const canvasCs = canvasScrollbar ? getComputedStyle(canvasScrollbar) : null;
     return {
       scrollW: document.documentElement.scrollWidth,
       innerW: window.innerWidth,
       innerH: window.innerHeight,
-      leftRail: railRect ? { left: Math.round(railRect.left), w: Math.round(railRect.width), h: Math.round(railRect.height) } : null,
-      bottomBar: bottomRect ? { bottom: Math.round(bottomRect.bottom), w: Math.round(bottomRect.width), h: Math.round(bottomRect.height) } : null,
+      leftRail: railRect ? { left: Math.round(railRect.left), w: Math.round(railRect.width), h: Math.round(railRect.height), bottom: Math.round(railRect.bottom) } : null,
+      sidebar: sidebarRect ? { left: Math.round(sidebarRect.left), w: Math.round(sidebarRect.width), h: Math.round(sidebarRect.height), bottom: Math.round(sidebarRect.bottom) } : null,
+      bottomBar: bottomRect ? { top: Math.round(bottomRect.top), bottom: Math.round(bottomRect.bottom), w: Math.round(bottomRect.width), h: Math.round(bottomRect.height) } : null,
       leftItemCount: leftItems.length,
       bottomTabCount: bottomTabs.length,
       minBottomTabW: Math.min(...bottomTabs.map((x) => x.w)),
@@ -98,6 +105,8 @@ async function auditViewport(browser, vw, vh, tag, alice, bob, aliceLs, aliceCoo
       leftOutlineSizes,
       leftLogoSizes,
       bottomIconSizes,
+      railBeforeDisplay: railBeforeCs ? railBeforeCs.display : 'none',
+      canvasScrollbarDisplay: canvasCs ? canvasCs.display : 'none',
     };
   });
   console.log(`[${tag}] LIST_AUDIT:`, JSON.stringify(listAudit));
@@ -117,11 +126,21 @@ async function auditViewport(browser, vw, vh, tag, alice, bob, aliceLs, aliceCoo
   if (listAudit.leftOutlineSizes.some((s) => s !== '24x24')) {
     throw new Error(`[${tag}] Left outline icons not uniform 24x24: ${JSON.stringify(listAudit.leftOutlineSizes)}`);
   }
-  if (listAudit.leftLogoSizes.some((s) => s !== '28x28')) {
-    throw new Error(`[${tag}] Left logo icons not uniform 28x28: ${JSON.stringify(listAudit.leftLogoSizes)}`);
+  if (listAudit.leftLogoSizes.some((s) => s !== '24x24')) {
+    throw new Error(`[${tag}] Left logo icons not uniform 24x24: ${JSON.stringify(listAudit.leftLogoSizes)}`);
   }
   if (listAudit.bottomIconSizes.some((s) => s !== '22x22')) {
     throw new Error(`[${tag}] Bottom tab icons not uniform 22x22: ${JSON.stringify(listAudit.bottomIconSizes)}`);
+  }
+  if (listAudit.railBeforeDisplay !== 'none') {
+    throw new Error(`[${tag}] Left rail ::before pseudo-element not disabled: ${listAudit.railBeforeDisplay}`);
+  }
+  if (listAudit.canvasScrollbarDisplay !== 'none') {
+    throw new Error(`[${tag}] Canvas scrollbars overlay not disabled on touch mobile: ${listAudit.canvasScrollbarDisplay}`);
+  }
+  // Spec 119: Both rail and sidebar must stop cleanly above the bottom bar with ZERO vertical seam
+  if (listAudit.sidebar && Math.abs(listAudit.sidebar.bottom - listAudit.leftRail.bottom) > 2) {
+    throw new Error(`[${tag}] Rail and sidebar heights mismatched: railBottom=${listAudit.leftRail.bottom} sidebarBottom=${listAudit.sidebar.bottom}`);
   }
   if (tag === '390x844') {
     await page.screenshot({ path: path.join(OUT_DIR, '02_conversations_390x844.png') });

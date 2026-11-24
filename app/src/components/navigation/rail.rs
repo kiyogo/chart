@@ -514,7 +514,11 @@ pub fn AppRail(
                     menu_open.set(!menu_open());
                 },
                 span { class: "mobile-tab-icon",
-                    Avatar { name: mob_uname.clone(), avatar_url: mob_avatar.clone(), size: 24 }
+                    if let Some(av_url) = mob_avatar.as_ref().filter(|u| !u.trim().is_empty()) {
+                        Avatar { name: mob_uname.clone(), avatar_url: Some(av_url.clone()), size: 22 }
+                    } else {
+                        UserIcon { size: 22 }
+                    }
                 }
                 span { class: "mobile-tab-label", "Account" }
             }
