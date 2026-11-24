@@ -589,7 +589,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (meta.provenance === 'original' || meta.isAnimated) {
       return { enhanced: false, skipped: true, reason: 'already_original_or_animated', url: imageUrl };
     }
-    const modelId = meta.modelId || 'spab_lite_builtin';
+    const reqW0 = Number(meta.targetWidth) || 0;
+    const reqH0 = Number(meta.targetHeight) || 0;
+    const modelId = meta.modelId || (reqW0 > 0 ? 'realcugan_2x' : 'spab_lite_builtin');
     if (!isModelLicenseAllowed(modelId)) {
       return { enhanced: false, skipped: true, reason: 'model_license_blocked', url: imageUrl };
     }
@@ -597,8 +599,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     const model = resolveModelDescriptor(modelId) || APPROVED_MODELS.spab_lite_builtin;
     const mediaId = String(meta.mediaId || meta.refId || imageUrl).slice(0, 128);
     const contentHash = String(meta.contentHash || meta.sha256 || 'v1').slice(0, 32);
+    const targetTag = `${reqW0}x${reqH0}`;
     const paramsHash = meta.textSafe ? 'text_safe' : 'balanced_v2';
-    const cacheKey = `ai:${mediaId}:v1:${contentHash}:${model.id}:${model.version}:${paramsHash}:${PIPELINE_VERSION}`;
+    const cacheKey = `ai:${mediaId}:v1:${contentHash}:${model.id}:${model.version}:${paramsHash}:${targetTag}:${PIPELINE_VERSION}`;
 
     // 1. Hot in-memory session cache hit (< 1ms, ZERO inference)
     if (sessionUrlCache.has(cacheKey)) {
@@ -627,6 +630,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             modelId: hit.model_id || model.id,
             backend: hit.backend || 'cached',
             ssim: hit.ssim || null,
+            width: hit.width || reqW0,
+            height: hit.height || reqH0,
+            superRes: (hit.width && reqW0 && hit.width >= reqW0) ? 2 : 1,
             provenance: 'ai_restored',
           };
         }
@@ -662,34 +668,54 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return { enhanced: false, skipped: true, reason: 'decode_failed', error: String(err), url: imageUrl };
       }
 
-      const w = bitmap.width;
-      const h = bitmap.height;
+      const rawW = bitmap.width;
+      const rawH = bitmap.height;
+      const reqW = Number(meta.targetWidth) || 0;
+      const reqH = Number(meta.targetHeight) || 0;
+      const isSuperRes = (reqW > rawW * 1.15 && reqH > rawH * 1.15) ||
+        (meta.superRes === true) ||
+        (!meta.isCrispText && reqW === 0 && rawW <= 960 && rawH <= 960);
+
+      const targetW = isSuperRes ? (reqW > 0 ? reqW : Math.min(3840, rawW * 2)) : rawW;
+      const targetH = isSuperRes ? (reqH > 0 ? reqH : Math.min(3840, rawH * 2)) : rawH;
+
       // Guard ultra-tiny icons (< 32px) or giant 16MP images on low-RAM devices
-      if (w < 32 || h < 32 || w * h > (hw.ramGb <= 2 ? 2_500_000 : 12_000_000)) {
+      if (rawW < 32 || rawH < 32 || targetW * targetH > (hw.ramGb <= 2 ? 2_500_000 : 12_000_000)) {
         bitmap.close();
         return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
       }
 
       const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = targetW;
+      canvas.height = targetH;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(bitmap, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(bitmap, 0, 0, targetW, targetH);
       bitmap.close();
 
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const cls = classifyImagePixels(imgData.data, w, h);
+      const imgData = ctx.getImageData(0, 0, targetW, targetH);
+      const cls = classifyImagePixels(imgData.data, targetW, targetH);
       if (cls.isNearlySolid) {
         return { enhanced: false, skipped: true, reason: 'solid_flat_image', url: imageUrl };
       }
 
-      // Text-safe conservative tuning vs photo deblocking/detail tuning
-      const params = cls.isCrispTextOrUi
-        ? { denoiseWeight: 0.25, detailStrength: 0.22, edgeThreshold: 0.08, maxDelta: 0.045 }
-        : { denoiseWeight: 0.55, detailStrength: 0.42, edgeThreshold: 0.11, maxDelta: 0.08 };
+      // Text-safe conservative tuning vs photo/illustration 2X super-resolution detail tuning
+      let params;
+      if (isSuperRes) {
+        if (cls.isCrispTextOrUi) {
+          params = { denoiseWeight: 0.20, detailStrength: 0.45, edgeThreshold: 0.07, maxDelta: 0.08 };
+        } else {
+          params = { denoiseWeight: 0.45, detailStrength: 0.72, edgeThreshold: 0.09, maxDelta: 0.12 };
+        }
+      } else {
+        params = cls.isCrispTextOrUi
+          ? { denoiseWeight: 0.25, detailStrength: 0.22, edgeThreshold: 0.08, maxDelta: 0.045 }
+          : { denoiseWeight: 0.55, detailStrength: 0.42, edgeThreshold: 0.11, maxDelta: 0.08 };
+      }
 
-      const restoredRgba = await runTiledSpabLite(imgData.data, w, h, params, hw);
-      const qCheck = evaluateRestorationQuality(imgData.data, restoredRgba, w, h);
+      const restoredRgba = await runTiledSpabLite(imgData.data, targetW, targetH, params, hw);
+      const qCheck = evaluateRestorationQuality(imgData.data, restoredRgba, targetW, targetH);
       if (!qCheck.passed) {
         return {
           enhanced: false,
@@ -701,7 +727,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         };
       }
 
-      ctx.putImageData(new ImageData(restoredRgba, w, h), 0, 0);
+      ctx.putImageData(new ImageData(restoredRgba, targetW, targetH), 0, 0);
       const outBlob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
       if (!outBlob || outBlob.size === 0) {
         return { enhanced: false, skipped: true, reason: 'output_encode_failed', url: imageUrl };
@@ -720,8 +746,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
           backend: hw.backend,
           ssim: Number(qCheck.ssim.toFixed(4)),
           compute_cost_ms: elapsedMs,
-          width: w,
-          height: h,
+          width: targetW,
+          height: targetH,
         }).catch(() => {});
       }
 
@@ -737,6 +763,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         ssim: Number(qCheck.ssim.toFixed(4)),
         meanColorDrift: Number(qCheck.meanColorDrift.toFixed(4)),
         isCrispTextSafe: cls.isCrispTextOrUi,
+        width: targetW,
+        height: targetH,
+        superRes: isSuperRes ? 2 : 1,
         provenance: 'ai_restored',
       };
     });

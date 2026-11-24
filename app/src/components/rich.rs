@@ -37,6 +37,8 @@ pub struct LightboxMedia {
     pub width: u32,
     pub height: u32,
     pub size: u64,
+    pub ai_restored: bool,
+    pub original_src: Option<String>,
 }
 
 pub static GLOBAL_LIGHTBOX: GlobalSignal<Option<LightboxMedia>> = GlobalSignal::new(|| None);
@@ -182,6 +184,12 @@ pub struct ImageData {
     pub w: u32,
     #[serde(default)]
     pub h: u32,
+    #[serde(default)]
+    pub orig_size: u64,
+    #[serde(default)]
+    pub orig_w: u32,
+    #[serde(default)]
+    pub orig_h: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -399,6 +407,9 @@ pub fn build_rich_media_wire(
         .to_string();
     let w = payload.width.unwrap_or(0);
     let h = payload.height.unwrap_or(0);
+    let orig_w = payload.target_width.unwrap_or(w);
+    let orig_h = payload.target_height.unwrap_or(h);
+    let orig_size = payload.original_size as u64;
     if payload.media_kind == "image" {
         let data = ImageData {
             u: url,
@@ -412,6 +423,9 @@ pub fn build_rich_media_wire(
             blur,
             w,
             h,
+            orig_size,
+            orig_w,
+            orig_h,
         };
         return format!("img:{}", serde_json::to_string(&data).unwrap_or_default());
     }
@@ -497,25 +511,36 @@ fn parse_blur_data_uri(raw: &str) -> Option<(&str, &str)> {
 pub fn RichImage(data: ImageData) -> Element {
     let init_key = (data.u.clone(), data.k.clone(), data.n.clone());
     let init_cached = platform::get_cached_blob_url_sync(&data.u, &data.k, &data.n);
-    let mut src = use_signal(move || init_cached);
-    let mut loaded_key = use_signal(move || {
+    let cached_raw = init_cached.clone();
+    let src = use_signal(move || init_cached);
+    let raw_src = use_signal(move || cached_raw);
+    let loaded_key = use_signal(move || {
         if src.peek().is_some() { Some(init_key) } else { None }
     });
-    let mut missing = use_signal(|| Option::<(String, String, String)>::None);
+    let missing = use_signal(|| Option::<(String, String, String)>::None);
     let mut rec_status = use_signal(|| Option::<String>::None);
-    let mut failed = use_signal(|| false);
-    let mut ai_enhanced = use_signal(|| false);
-    let mut ai_cache_hit = use_signal(|| false);
+    let failed = use_signal(|| false);
+    let ai_enhanced = use_signal(|| false);
+    let ai_loading = use_signal(|| false);
+    let ai_cache_hit = use_signal(|| false);
 
     let key_now = (data.u.clone(), data.k.clone(), data.n.clone());
     let mime_now = data.m.clone();
     let scope_now = data.scope.clone();
     let sha_now = data.sha.clone();
 
+    let target_w = if data.orig_w > 0 { data.orig_w } else { data.w };
+    let target_h = if data.orig_h > 0 { data.orig_h } else { data.h };
+
     let run_progressive_ai = move |base_url: String, media_id: String, content_hash: String, mime_type: String| {
         if mime_type == "image/gif" {
             return;
         }
+        let mut ai_loading = ai_loading;
+        let mut ai_enhanced = ai_enhanced;
+        let mut ai_cache_hit = ai_cache_hit;
+        let mut src = src;
+        ai_loading.set(true);
         spawn(async move {
             let url_json = serde_json::to_string(&base_url).unwrap_or_default();
             let mid_json = serde_json::to_string(&media_id).unwrap_or_default();
@@ -530,6 +555,8 @@ pub fn RichImage(data: ImageData) -> Element {
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
+                        targetWidth: {target_w},
+                        targetHeight: {target_h},
                     }});
                     dioxus.send(res || {{ enhanced: false }});
                 }})();
@@ -537,6 +564,7 @@ pub fn RichImage(data: ImageData) -> Element {
             );
             let mut eval = dioxus::document::eval(&js);
             if let Ok(v) = eval.recv::<serde_json::Value>().await {
+                ai_loading.set(false);
                 if v.get("enhanced").and_then(|b| b.as_bool()) == Some(true) {
                     if let Some(new_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
                         ai_enhanced.set(true);
@@ -544,6 +572,8 @@ pub fn RichImage(data: ImageData) -> Element {
                         src.set(Some(new_url.to_string()));
                     }
                 }
+            } else {
+                ai_loading.set(false);
             }
         });
     };
@@ -552,18 +582,29 @@ pub fn RichImage(data: ImageData) -> Element {
         if loaded_key.peek().as_ref() == Some(&key_now) && src.peek().is_some() {
             return;
         }
+        let mut ai_enhanced = ai_enhanced;
+        let mut ai_loading = ai_loading;
+        let mut ai_cache_hit = ai_cache_hit;
+        let mut raw_src = raw_src;
+        let mut src = src;
+        let mut loaded_key = loaded_key;
+        let mut missing = missing;
+        let mut failed = failed;
         let (u, k, n) = key_now.clone();
         ai_enhanced.set(false);
+        ai_loading.set(false);
         ai_cache_hit.set(false);
         if let Some(hit) = platform::get_cached_blob_url_sync(&u, &k, &n) {
             loaded_key.set(Some(key_now));
             missing.set(None);
             failed.set(false);
+            raw_src.set(Some(hit.clone()));
             src.set(Some(hit.clone()));
             run_progressive_ai(hit, u, sha_now.clone(), mime_now.clone());
             return;
         }
         src.set(None);
+        raw_src.set(None);
         missing.set(None);
         failed.set(false);
         let m_in = mime_now.clone();
@@ -576,6 +617,7 @@ pub fn RichImage(data: ImageData) -> Element {
             //    deduplicated LRU `blobPool` (1 single `blob:` URL, 0 raw `/uploads/` or duplicate loads!).
             if let Some(burl) = platform::resolve_e2ee_blob_media_url(&u, &k, &n, &mime, "HIGH").await {
                 loaded_key.set(Some(target_key));
+                raw_src.set(Some(burl.clone()));
                 src.set(Some(burl.clone()));
                 run_progressive_ai(burl, u, sh_in, mime);
                 return;
@@ -590,6 +632,7 @@ pub fn RichImage(data: ImageData) -> Element {
                 MediaFetchOutcome::Ready { bytes, mime: m, .. } => {
                     let burl = platform::register_cached_blob_url(&u, &k, &n, &bytes, &m).await;
                     loaded_key.set(Some(target_key));
+                    raw_src.set(Some(burl.clone()));
                     src.set(Some(burl.clone()));
                     run_progressive_ai(burl, u, sh_in, m);
                 }
@@ -613,10 +656,14 @@ pub fn RichImage(data: ImageData) -> Element {
             if let Some(s) = src() {
                 {
                     let lb_src = s.clone();
+                    let lb_raw_src = raw_src().unwrap_or_else(|| s.clone());
                     let lb_name = data.name.clone();
                     let lb_w = data.w;
                     let lb_h = data.h;
+                    let lb_orig_w = data.orig_w;
+                    let lb_orig_h = data.orig_h;
                     let lb_size = data.size;
+                    let is_ai = ai_enhanced();
                     rsx! {
                         button {
                             r#type: "button",
@@ -624,12 +671,19 @@ pub fn RichImage(data: ImageData) -> Element {
                             style: "{stage_style}",
                             aria_label: "See photos",
                             onclick: move |_| {
+                                let (disp_w, disp_h) = if is_ai && lb_orig_w > 0 && lb_orig_h > 0 {
+                                    (lb_orig_w, lb_orig_h)
+                                } else {
+                                    (lb_w, lb_h)
+                                };
                                 *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
                                     src: lb_src.clone(),
                                     name: lb_name.clone(),
-                                    width: lb_w,
-                                    height: lb_h,
+                                    width: disp_w,
+                                    height: disp_h,
                                     size: lb_size,
+                                    ai_restored: is_ai,
+                                    original_src: Some(lb_raw_src.clone()),
                                 });
                             },
                             img {
@@ -637,8 +691,13 @@ pub fn RichImage(data: ImageData) -> Element {
                                 src: "{s}",
                                 alt: "Image",
                                 decoding: "async",
-                                "data-ai-restored": if ai_enhanced() { "true" } else { "false" },
+                                "data-ai-restored": if is_ai { "true" } else { "false" },
                                 "data-ai-cache-hit": if ai_cache_hit() { "true" } else { "false" },
+                            }
+                            if is_ai {
+                                span { class: "ai-restored-badge", "✨ AI Đã làm nét" }
+                            } else if ai_loading() {
+                                span { class: "ai-restoring-badge", "✨ AI đang làm nét..." }
                             }
                         }
                     }
@@ -1486,6 +1545,7 @@ pub fn GlobalImageLightbox() -> Element {
     let mut dragging = use_signal(|| false);
     let mut drag_origin = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
     let mut did_drag = use_signal(|| false);
+    let mut show_original = use_signal(|| false);
     let mut active_src = use_signal(String::new);
     // Live layout (base_w, base_h, vw, vh) measured from `.lightbox-img` offsetWidth/offsetHeight
     let mut bounds = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
@@ -1493,6 +1553,7 @@ pub fn GlobalImageLightbox() -> Element {
     let cur_src = media_opt.as_ref().map(|m| m.src.clone()).unwrap_or_default();
     if *active_src.peek() != cur_src {
         active_src.set(cur_src.clone());
+        show_original.set(false);
         zoom.set(1.0);
         pan_x.set(0.0);
         pan_y.set(0.0);
@@ -1698,36 +1759,45 @@ pub fn GlobalImageLightbox() -> Element {
                 onmouseup: move |_| finish_drag_and_snap(),
                 onmouseleave: move |_| finish_drag_and_snap(),
 
-                img {
-                    class: "lightbox-img",
-                    src: "{media.src}",
-                    alt: "Image",
-                    draggable: "false",
-                    style: "{img_style}",
-                    onload: move |_| {
-                        spawn(async move {
-                            if let Some(b) = measure_lightbox_bounds().await {
-                                bounds.set(b);
-                            }
-                        });
-                    },
-                    onclick: move |e| e.stop_propagation(),
-                    ondoubleclick: move |e| {
-                        e.stop_propagation();
-                        if zoom() > 1.05 {
-                            reset_view();
-                        } else {
-                            set_zoom_clamped(2.0);
+                {
+                    let cur_display_src = if show_original() {
+                        media.original_src.as_deref().unwrap_or(&media.src)
+                    } else {
+                        &media.src
+                    };
+                    rsx! {
+                        img {
+                            class: "lightbox-img",
+                            src: "{cur_display_src}",
+                            alt: "Image",
+                            draggable: "false",
+                            style: "{img_style}",
+                            onload: move |_| {
+                                spawn(async move {
+                                    if let Some(b) = measure_lightbox_bounds().await {
+                                        bounds.set(b);
+                                    }
+                                });
+                            },
+                            onclick: move |e| e.stop_propagation(),
+                            ondoubleclick: move |e| {
+                                e.stop_propagation();
+                                if zoom() > 1.05 {
+                                    reset_view();
+                                } else {
+                                    set_zoom_clamped(2.0);
+                                }
+                            },
+                            onmousedown: move |e| {
+                                e.prevent_default();
+                                e.stop_propagation();
+                                let c = e.client_coordinates();
+                                dragging.set(true);
+                                did_drag.set(false);
+                                drag_origin.set((c.x, c.y, *pan_x.peek(), *pan_y.peek()));
+                            },
                         }
-                    },
-                    onmousedown: move |e| {
-                        e.prevent_default();
-                        e.stop_propagation();
-                        let c = e.client_coordinates();
-                        dragging.set(true);
-                        did_drag.set(false);
-                        drag_origin.set((c.x, c.y, *pan_x.peek(), *pan_y.peek()));
-                    },
+                    }
                 }
             }
 
@@ -1740,8 +1810,21 @@ pub fn GlobalImageLightbox() -> Element {
                     if !dims_label.is_empty() {
                         span { class: "lightbox-dims", "{dims_label}" }
                     }
+                    if media.ai_restored {
+                        span { class: "lightbox-ai-pill", "✨ AI Đã làm nét" }
+                    }
                 }
                 div { class: "lightbox-actions", role: "toolbar", aria_label: "Photo", onclick: move |e| e.stop_propagation(),
+                    if media.ai_restored && media.original_src.is_some() {
+                        button {
+                            r#type: "button",
+                            class: if show_original() { "lightbox-compare-btn is-active" } else { "lightbox-compare-btn" },
+                            aria_label: "So sánh ảnh gốc và AI",
+                            title: if show_original() { "Đang xem ảnh nén trước AI (Bấm để xem ảnh AI phục hồi)" } else { "Đang xem ảnh AI phục hồi (Bấm để xem ảnh nén trước AI)" },
+                            onclick: move |_| show_original.set(!show_original()),
+                            if show_original() { "Ảnh nén" } else { "✨ AI" }
+                        }
+                    }
                     button {
                         r#type: "button",
                         class: "lightbox-tool-btn",

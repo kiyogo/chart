@@ -22,6 +22,10 @@ pub struct OptimizedMediaPayload {
     #[serde(default)]
     pub height: Option<u32>,
     #[serde(default)]
+    pub target_width: Option<u32>,
+    #[serde(default)]
+    pub target_height: Option<u32>,
+    #[serde(default)]
     pub waveform: Vec<u8>,
     #[serde(default)]
     pub instant_preview_url: Option<String>,
@@ -108,6 +112,8 @@ fn parse_optimized_payload(v: &serde_json::Value) -> Result<OptimizedMediaPayloa
         blur_data_url: v.get("blurDataUrl").and_then(|s| s.as_str()).map(str::to_string),
         width: v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
         height: v.get("height").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
+        target_width: v.get("targetWidth").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
+        target_height: v.get("targetHeight").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
         waveform: Vec::new(),
         instant_preview_url: v.get("instantPreviewUrl").and_then(|s| s.as_str()).map(str::to_string),
         codec: v.get("codec").and_then(|s| s.as_str()).map(str::to_string),
@@ -270,6 +276,8 @@ pub async fn stop_voice_recording() -> Result<OptimizedMediaPayload, String> {
         blur_data_url: None,
         width: None,
         height: None,
+        target_width: None,
+        target_height: None,
         waveform,
         instant_preview_url: None,
         codec: Some("opus".into()),

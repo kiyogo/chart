@@ -53,14 +53,23 @@
     return { isCrisp: hasAlpha || (flat / total > 0.45 && sharp / total > 0.006), hasAlpha };
   }
 
-  // Adaptive resolution policy (matches crates/chatw-media-core/src/classifier.rs — NO blanket 1920px clamp!)
+  // Adaptive resolution policy:
+  // When preserveOriginal is false, compress AGGRESSIVELY ("nén mạnh nhất có thể"):
+  // - Downscale large images by 2x (0.5x) so transmitted size drops by 80-90% (e.g. 178KB down to ~15-28KB)
+  // - The sender immediately sees their crisp original file locally (< 20ms)
+  // - The receiver runs on-device AI 2x Super-Resolution to restore back to full original resolution & sharpness!
   function adaptiveMaxEdge(w, h, isCrisp, qualityMode) {
     if (qualityMode === 'original') return null;
-    if (qualityMode === 'data_saver') return isCrisp ? 2560 : 1600;
-    // Ultra-optimized default: keep crisp UI/docs up to 4096px; keep photos up to 3840px (4K)!
     const maxEdge = Math.max(w, h);
-    if (isCrisp) return maxEdge > 4096 ? 4096 : null;
-    return maxEdge > 3840 ? 3840 : null;
+    if (qualityMode === 'data_saver') {
+      return maxEdge > 960 ? Math.round(maxEdge * 0.5) : (maxEdge > 640 ? 640 : null);
+    }
+    if (maxEdge > 1080) {
+      return Math.round(maxEdge * 0.5);
+    } else if (maxEdge > 800) {
+      return 640;
+    }
+    return null;
   }
 
   async function tryGenuineAvif(canvas, quality) {
@@ -161,7 +170,7 @@
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(bitmap, 0, 0, tw, th);
 
-      const q = isCrisp ? 0.84 : (opts.qualityMode === 'data_saver' ? 0.62 : 0.72);
+      const q = isCrisp ? 0.54 : (opts.qualityMode === 'data_saver' ? 0.44 : 0.48);
       const avif = await tryGenuineAvif(canvas, q);
       bitmap.close();
 
@@ -173,6 +182,8 @@
           avifUnsupportedInWorker: true,
           width: tw,
           height: th,
+          targetWidth: origW,
+          targetHeight: origH,
           isCrispText: isCrisp,
           blurDataUrl,
         });
@@ -194,6 +205,9 @@
         isCrispText: isCrisp,
         width: tw,
         height: th,
+        targetWidth: origW,
+        targetHeight: origH,
+        superResRecommended: tw < origW,
         blurDataUrl,
         thumbB64: null,
         thumbMime: null,
