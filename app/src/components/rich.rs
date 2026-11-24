@@ -1908,19 +1908,452 @@ async fn read_lightbox_natural_size() -> Option<(u32, u32)> {
         .map(|a| (a[0], a[1]))
 }
 
-/// Root-mounted Telegram Web K style global image lightbox viewer (Specs 078, 080, 101 & 112).
-/// Computes exact final post-enhancement viewport fit dimensions synchronously on Frame 0 so
-/// there is 0px size jump across open -> enhancing -> 4K completion -> toggle original.
+/// Pure-Rust True-Physics Mass-Spring-Damper & Pointer Momentum Engine for Lightbox (Spec 113).
+/// Implements Apple `CASpringAnimation` / PhotoSwipe v5 Hooke's law dynamics:
+///   F = -k * (x - target) - c * v,   c = 2 * zeta * sqrt(k * m)
+/// with 250Hz sub-stepped integration, recent pointer velocity tracking for flick momentum carry,
+/// zoomed interior exponential glide, boundary rebound spring, and seamless mid-flight grab.
+#[derive(Clone, Debug)]
+pub struct LightboxSpringEngine {
+    pub x: f64,
+    pub y: f64,
+    pub vx: f64,
+    pub vy: f64,
+    pub tx: f64,
+    pub ty: f64,
+    pub zoom: f64,
+    pub vz: f64,
+    pub tzoom: f64,
+    pub rot: f64,
+    pub vrot: f64,
+    pub trot: f64,
+    pub base_w: f64,
+    pub base_h: f64,
+    pub vw: f64,
+    pub vh: f64,
+    pub dragging: bool,
+    pub drag_start_x: f64,
+    pub drag_start_y: f64,
+    pub drag_origin_x: f64,
+    pub drag_origin_y: f64,
+    pub samples: Vec<(f64, f64, f64)>,
+    pub generation: u64,
+    pub raf_running: bool,
+    pub last_frame_ms: f64,
+}
+
+impl Default for LightboxSpringEngine {
+    fn default() -> Self {
+        Self {
+            x: 0.0,
+            y: 0.0,
+            vx: 0.0,
+            vy: 0.0,
+            tx: 0.0,
+            ty: 0.0,
+            zoom: 1.0,
+            vz: 0.0,
+            tzoom: 1.0,
+            rot: 0.0,
+            vrot: 0.0,
+            trot: 0.0,
+            base_w: 0.0,
+            base_h: 0.0,
+            vw: 0.0,
+            vh: 0.0,
+            dragging: false,
+            drag_start_x: 0.0,
+            drag_start_y: 0.0,
+            drag_origin_x: 0.0,
+            drag_origin_y: 0.0,
+            samples: Vec::with_capacity(12),
+            generation: 0,
+            raf_running: false,
+            last_frame_ms: 0.0,
+        }
+    }
+}
+
+impl LightboxSpringEngine {
+    // Pan spring: fluid near-critical Apple CASpringAnimation feel (k=400, zeta=0.92).
+    // Settles 220px..400px displacements cleanly to exact 0.0px in ~320..360ms while carrying real flick momentum!
+    const PAN_STIFFNESS: f64 = 400.0;
+    const PAN_DAMPING_RATIO: f64 = 0.92;
+    // Zoom / rotation spring: snappy, near-critically damped (~240ms settle, zero wobble).
+    const ZOOM_STIFFNESS: f64 = 440.0;
+    const ZOOM_DAMPING_RATIO: f64 = 0.94;
+    // Interior zoomed glide friction (iOS UIScrollView-style exponential velocity decay).
+    const GLIDE_DECAY: f64 = 5.4;
+    const MAX_RELEASE_SPEED: f64 = 3800.0;
+    const MAX_SUB_DT: f64 = 0.004;
+
+    pub fn reset_immediate(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.raf_running = false;
+        self.dragging = false;
+        self.x = 0.0;
+        self.y = 0.0;
+        self.vx = 0.0;
+        self.vy = 0.0;
+        self.tx = 0.0;
+        self.ty = 0.0;
+        self.zoom = 1.0;
+        self.vz = 0.0;
+        self.tzoom = 1.0;
+        self.rot = 0.0;
+        self.vrot = 0.0;
+        self.trot = 0.0;
+        self.samples.clear();
+        self.last_frame_ms = 0.0;
+    }
+
+    pub fn set_bounds(&mut self, base_w: f64, base_h: f64, vw: f64, vh: f64) {
+        self.base_w = base_w;
+        self.base_h = base_h;
+        self.vw = vw;
+        self.vh = vh;
+    }
+
+    /// Catches the image seamlessly right at its live mid-air coordinates (zero teleport!).
+    pub fn begin_drag(&mut self, client_x: f64, client_y: f64, now_ms: f64) {
+        self.generation = self.generation.wrapping_add(1);
+        self.raf_running = false;
+        self.dragging = true;
+        self.vx = 0.0;
+        self.vy = 0.0;
+        self.drag_start_x = client_x;
+        self.drag_start_y = client_y;
+        self.drag_origin_x = self.x;
+        self.drag_origin_y = self.y;
+        self.samples.clear();
+        self.samples.push((now_ms, client_x, client_y));
+    }
+
+    /// Tracks pointer 1:1 with zero latency and records velocity samples for authentic release momentum.
+    pub fn move_drag(&mut self, client_x: f64, client_y: f64, now_ms: f64) -> bool {
+        if !self.dragging {
+            return false;
+        }
+        let dx = client_x - self.drag_start_x;
+        let dy = client_y - self.drag_start_y;
+        self.x = self.drag_origin_x + dx;
+        self.y = self.drag_origin_y + dy;
+        self.tx = self.x;
+        self.ty = self.y;
+        self.samples.push((now_ms, client_x, client_y));
+        // Keep only recent samples within the last 100ms
+        let cutoff = now_ms - 100.0;
+        if self.samples.len() > 12 {
+            let drop_n = self.samples.len() - 12;
+            self.samples.drain(0..drop_n);
+        }
+        while self.samples.len() > 2 && self.samples[0].0 < cutoff {
+            self.samples.remove(0);
+        }
+        dx.abs() > 3.0 || dy.abs() > 3.0
+    }
+
+    /// Computes physical pointer release velocity (px/s) and engages spring return / momentum glide.
+    pub fn end_drag(&mut self, now_ms: f64) {
+        if !self.dragging {
+            return;
+        }
+        self.dragging = false;
+        let (mut vx, mut vy) = (0.0_f64, 0.0_f64);
+        if let Some(&(t_last, x_last, y_last)) = self.samples.last() {
+            // If pointer paused > 65ms before release, hand momentum naturally decayed to 0.
+            if now_ms - t_last <= 65.0 && self.samples.len() >= 2 {
+                // Pick the earliest sample within the last 90ms that spans >= 6ms for low-noise velocity.
+                let mut chosen = self.samples[0];
+                for &s in &self.samples {
+                    if t_last - s.0 <= 90.0 {
+                        chosen = s;
+                        break;
+                    }
+                }
+                let dt_ms = t_last - chosen.0;
+                if dt_ms >= 4.0 {
+                    vx = ((x_last - chosen.1) / (dt_ms / 1000.0))
+                        .clamp(-Self::MAX_RELEASE_SPEED, Self::MAX_RELEASE_SPEED);
+                    vy = ((y_last - chosen.2) / (dt_ms / 1000.0))
+                        .clamp(-Self::MAX_RELEASE_SPEED, Self::MAX_RELEASE_SPEED);
+                }
+            }
+        }
+        self.samples.clear();
+        self.vx = vx;
+        self.vy = vy;
+        let rot_i = self.trot.round() as i32;
+        let (cx, cy) = clamp_lightbox_pan(
+            self.x,
+            self.y,
+            self.tzoom,
+            rot_i,
+            self.base_w,
+            self.base_h,
+            self.vw,
+            self.vh,
+        );
+        self.tx = cx;
+        self.ty = cy;
+    }
+
+    /// Sets new spring targets for zoom / rotate / reset / resize clamp smoothly.
+    pub fn set_targets(&mut self, next_zoom: f64, next_rot: f64, force_center: bool) {
+        self.tzoom = next_zoom;
+        self.trot = next_rot;
+        if force_center {
+            self.tx = 0.0;
+            self.ty = 0.0;
+        } else {
+            let rot_i = next_rot.round() as i32;
+            let (cx, cy) = clamp_lightbox_pan(
+                self.x,
+                self.y,
+                next_zoom,
+                rot_i,
+                self.base_w,
+                self.base_h,
+                self.vw,
+                self.vh,
+            );
+            self.tx = cx;
+            self.ty = cy;
+        }
+    }
+
+    pub fn snap_to_targets(&mut self) {
+        self.x = self.tx;
+        self.y = self.ty;
+        self.vx = 0.0;
+        self.vy = 0.0;
+        self.zoom = self.tzoom;
+        self.vz = 0.0;
+        self.rot = ((self.trot.round() as i32 % 360) + 360) as f64 % 360.0;
+        self.trot = self.rot;
+        self.vrot = 0.0;
+    }
+
+    /// Advances the physical mass-spring-damper simulation by `dt_sec`.
+    /// Returns `true` while motion is still active, `false` once settled cleanly on target.
+    pub fn step(&mut self, dt_sec: f64) -> bool {
+        let total_dt = dt_sec.clamp(0.0005, 0.15);
+        let sub_steps = (total_dt / Self::MAX_SUB_DT).ceil().max(1.0) as usize;
+        let h = total_dt / (sub_steps as f64);
+
+        let pan_c = 2.0 * Self::PAN_DAMPING_RATIO * Self::PAN_STIFFNESS.sqrt();
+        let z_c = 2.0 * Self::ZOOM_DAMPING_RATIO * Self::ZOOM_STIFFNESS.sqrt();
+        let rot_i = self.trot.round() as i32;
+        let (mx, my) = lightbox_pan_limits(
+            self.tzoom,
+            rot_i,
+            self.base_w,
+            self.base_h,
+            self.vw,
+            self.vh,
+        );
+
+        for _ in 0..sub_steps {
+            // Zoom & Rotation spring
+            let az = -Self::ZOOM_STIFFNESS * (self.zoom - self.tzoom) - z_c * self.vz;
+            self.vz += az * h;
+            self.zoom += self.vz * h;
+
+            let ar = -Self::ZOOM_STIFFNESS * (self.rot - self.trot) - z_c * self.vrot;
+            self.vrot += ar * h;
+            self.rot += self.vrot * h;
+
+            // Axis X: interior zoomed inertia glide OR boundary/return Hooke's law spring
+            if mx > 0.5 && self.x.abs() <= mx && (self.x - self.tx).abs() <= 1.0 && self.vx.abs() > 8.0 {
+                self.vx *= (-Self::GLIDE_DECAY * h).exp();
+                self.x += self.vx * h;
+                self.tx = self.x.clamp(-mx, mx);
+            } else {
+                self.tx = self.tx.clamp(-mx, mx);
+                let ax = -Self::PAN_STIFFNESS * (self.x - self.tx) - pan_c * self.vx;
+                self.vx += ax * h;
+                self.x += self.vx * h;
+            }
+
+            // Axis Y: interior zoomed inertia glide OR boundary/return Hooke's law spring
+            if my > 0.5 && self.y.abs() <= my && (self.y - self.ty).abs() <= 1.0 && self.vy.abs() > 8.0 {
+                self.vy *= (-Self::GLIDE_DECAY * h).exp();
+                self.y += self.vy * h;
+                self.ty = self.y.clamp(-my, my);
+            } else {
+                self.ty = self.ty.clamp(-my, my);
+                let ay = -Self::PAN_STIFFNESS * (self.y - self.ty) - pan_c * self.vy;
+                self.vy += ay * h;
+                self.y += self.vy * h;
+            }
+        }
+
+        let settled = (self.x - self.tx).abs() < 0.65
+            && (self.y - self.ty).abs() < 0.65
+            && self.vx.abs() < 22.0
+            && self.vy.abs() < 22.0
+            && (self.zoom - self.tzoom).abs() < 0.0008
+            && self.vz.abs() < 0.015
+            && (self.rot - self.trot).abs() < 0.08
+            && self.vrot.abs() < 2.5;
+
+        if settled {
+            self.snap_to_targets();
+            false
+        } else {
+            true
+        }
+    }
+
+    pub fn format_transform(&self) -> String {
+        let px = if self.x.abs() < 0.05 { 0.0 } else { self.x };
+        let py = if self.y.abs() < 0.05 { 0.0 } else { self.y };
+        let rot_norm = if (self.rot - self.rot.round()).abs() < 0.05 {
+            format!("{}deg", self.rot.round() as i32)
+        } else {
+            format!("{:.1}deg", self.rot)
+        };
+        format!(
+            "translate3d({px:.1}px, {py:.1}px, 0) scale({:.3}) rotate({rot_norm})",
+            self.zoom
+        )
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn now_perf_ms() -> f64 {
+    web_sys::window()
+        .and_then(|w| w.performance())
+        .map(|p| p.now())
+        .unwrap_or_else(|| js_sys::Date::now())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn now_perf_ms() -> f64 {
+    0.0
+}
+
+#[cfg(target_arch = "wasm32")]
+fn prefers_reduced_motion() -> bool {
+    let Some(win) = web_sys::window() else { return false; };
+    if let Some(doc) = win.document() {
+        if let Some(root) = doc.document_element() {
+            if root.get_attribute("data-reduce-motion").as_deref() == Some("true") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(target_arch = "wasm32")]
+fn apply_lightbox_transform_dom(tf: &str) {
+    use wasm_bindgen::JsCast;
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else { return; };
+    for sel in [".lightbox-img", ".ai-gen-overlay.lightbox-ai-gen"] {
+        if let Ok(Some(el)) = doc.query_selector(sel) {
+            if let Ok(he) = el.dyn_into::<web_sys::HtmlElement>() {
+                let _ = he.style().set_property("transform", tf);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_lightbox_transform_dom(_tf: &str) {}
+
+#[cfg(target_arch = "wasm32")]
+fn kick_lightbox_spring_raf(engine: std::rc::Rc<std::cell::RefCell<LightboxSpringEngine>>) {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use wasm_bindgen::{closure::Closure, JsCast};
+
+    if prefers_reduced_motion() {
+        let tf = {
+            let mut st = engine.borrow_mut();
+            st.snap_to_targets();
+            st.format_transform()
+        };
+        apply_lightbox_transform_dom(&tf);
+        return;
+    }
+
+    let (gen_id, already_running) = {
+        let mut st = engine.borrow_mut();
+        if st.raf_running {
+            (st.generation, true)
+        } else {
+            st.raf_running = true;
+            st.last_frame_ms = now_perf_ms();
+            (st.generation, false)
+        }
+    };
+    if already_running {
+        return;
+    }
+
+    let cb_slot: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
+    let cb_slot_clone = cb_slot.clone();
+    let eng_clone = engine.clone();
+
+    *cb_slot.borrow_mut() = Some(Closure::wrap(Box::new(move |_ts_ms: f64| {
+        let now_ms = now_perf_ms();
+        let (keep_going, tf) = {
+            let mut st = eng_clone.borrow_mut();
+            if st.generation != gen_id || st.dragging {
+                st.raf_running = false;
+                drop(st);
+                let _ = cb_slot_clone.borrow_mut().take();
+                return;
+            }
+            let prev = if st.last_frame_ms > 0.0 { st.last_frame_ms } else { now_ms - 16.667 };
+            st.last_frame_ms = now_ms;
+            let dt = ((now_ms - prev) / 1000.0).clamp(0.001, 0.150);
+            let active = st.step(dt);
+            if !active {
+                st.raf_running = false;
+            }
+            (active, st.format_transform())
+        };
+        apply_lightbox_transform_dom(&tf);
+        if keep_going {
+            if let Some(win) = web_sys::window() {
+                if let Some(cb) = cb_slot_clone.borrow().as_ref() {
+                    if win.request_animation_frame(cb.as_ref().unchecked_ref()).is_ok() {
+                        return;
+                    }
+                }
+            }
+            eng_clone.borrow_mut().raf_running = false;
+        }
+        let _ = cb_slot_clone.borrow_mut().take();
+    }) as Box<dyn FnMut(f64)>));
+
+    if let Some(win) = web_sys::window() {
+        if let Some(cb) = cb_slot.borrow().as_ref() {
+            if win.request_animation_frame(cb.as_ref().unchecked_ref()).is_err() {
+                engine.borrow_mut().raf_running = false;
+                let _ = cb_slot.borrow_mut().take();
+            }
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn kick_lightbox_spring_raf(engine: std::rc::Rc<std::cell::RefCell<LightboxSpringEngine>>) {
+    engine.borrow_mut().snap_to_targets();
+}
+
+/// Root-mounted Telegram Web K style global image lightbox viewer (Specs 078, 080, 101, 112 & 113).
+/// Computes exact final post-enhancement viewport fit dimensions synchronously on Frame 0 (0px jump)
+/// and drives unrounded 0px-radius photos with a 60/120/240Hz Pure-Rust mass-spring-damper physics engine.
 #[component]
 pub fn GlobalImageLightbox() -> Element {
     let _ = SESSION_START_MS.get_or_init(|| Utc::now().timestamp_millis());
     let media_opt = GLOBAL_LIGHTBOX();
     let mut zoom = use_signal(|| 1.0_f64);
-    let mut pan_x = use_signal(|| 0.0_f64);
-    let mut pan_y = use_signal(|| 0.0_f64);
     let mut rotation = use_signal(|| 0_i32);
     let mut dragging = use_signal(|| false);
-    let mut drag_origin = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
     let mut did_drag = use_signal(|| false);
     let mut show_original = use_signal(|| false);
     let mut upscaling_ai = use_signal(|| false);
@@ -1931,6 +2364,8 @@ pub fn GlobalImageLightbox() -> Element {
     let mut fallback_nat = use_signal(|| (0u32, 0u32));
     // Live layout (base_w, base_h, vw, vh) used for corner-clamped panning
     let mut bounds = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
+    // Zero-VDOM-rerender 60/120/240Hz Pure-Rust physics controller (stored in a Copy Signal handle, accessed only via `.peek()`)
+    let physics = use_signal(|| std::rc::Rc::new(std::cell::RefCell::new(LightboxSpringEngine::default())));
 
     let cur_key = media_opt
         .as_ref()
@@ -1950,12 +2385,11 @@ pub fn GlobalImageLightbox() -> Element {
         lb_revealing.set(false);
         lb_progress.set(if auto_enh { 3 } else { 0 });
         zoom.set(1.0);
-        pan_x.set(0.0);
-        pan_y.set(0.0);
         rotation.set(0);
         dragging.set(false);
         did_drag.set(false);
         bounds.set((0.0, 0.0, 0.0, 0.0));
+        physics.peek().borrow_mut().reset_immediate();
     }
 
     let run_lb_enhance = move |m: LightboxMedia| {
@@ -2127,72 +2561,102 @@ pub fn GlobalImageLightbox() -> Element {
     let fit_box = compute_lightbox_target_dimensions(eff_w, eff_h, media.orig_width, media.orig_height, can_toggle_ai)
         .map(|(fw, fh)| compute_lightbox_fit_box(fw, fh, vw, vh));
 
-    let effective_bounds = move || -> (f64, f64, f64, f64) {
-        if let Some((fw, fh)) = fit_box {
-            (fw, fh, vw, vh)
-        } else {
-            *bounds.peek()
+    if let Some((fw, fh)) = fit_box {
+        physics.peek().borrow_mut().set_bounds(fw, fh, vw, vh);
+    } else {
+        let (bw, bh, v_w, v_h) = *bounds.peek();
+        if bw > 0.0 && bh > 0.0 {
+            physics.peek().borrow_mut().set_bounds(bw, bh, v_w, v_h);
         }
-    };
-
-    let mut snap_pan_to_bounds = move |next_zoom: f64, next_rot: i32| {
-        let (bw, bh, v_w, v_h) = effective_bounds();
-        let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), next_zoom, next_rot, bw, bh, v_w, v_h);
-        pan_x.set(cx);
-        pan_y.set(cy);
-    };
+    }
 
     let mut set_zoom_clamped = move |next: f64| {
         // Spec 080: Min zoom locked at 100% (1.0x) so photo never shrinks too tiny; max 400% (4.0x).
         let clamped = (next.clamp(1.0, 4.0) * 100.0).round() / 100.0;
         zoom.set(clamped);
-        let rot_now = *rotation.peek();
-        snap_pan_to_bounds(clamped, rot_now);
+        let eng = physics.peek().clone();
+        let next_rot = eng.borrow().trot;
+        eng.borrow_mut().set_targets(clamped, next_rot, false);
+        kick_lightbox_spring_raf(eng);
         if fit_box.is_none() {
             spawn(async move {
                 if let Some((bw, bh, v_w, v_h)) = measure_lightbox_bounds().await {
                     bounds.set((bw, bh, v_w, v_h));
-                    let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), *zoom.peek(), *rotation.peek(), bw, bh, v_w, v_h);
-                    pan_x.set(cx);
-                    pan_y.set(cy);
+                    let eng2 = physics.peek().clone();
+                    {
+                        let mut st = eng2.borrow_mut();
+                        st.set_bounds(bw, bh, v_w, v_h);
+                        let z_now = st.tzoom;
+                        let r_now = st.trot;
+                        st.set_targets(z_now, r_now, false);
+                    }
+                    kick_lightbox_spring_raf(eng2);
                 }
             });
         }
     };
 
     let mut apply_rotate = move || {
-        let next_rot = (*rotation.peek() + 90) % 360;
-        rotation.set(next_rot);
-        let z_now = *zoom.peek();
-        snap_pan_to_bounds(z_now, next_rot);
+        let next_rot_i = (*rotation.peek() + 90) % 360;
+        rotation.set(next_rot_i);
+        let eng = physics.peek().clone();
+        {
+            let mut st = eng.borrow_mut();
+            let z_now = st.tzoom;
+            // Always rotate clockwise smoothly (`270 -> 360`, normalized to `0` on settle)
+            let next_rot_f = st.trot + 90.0;
+            st.set_targets(z_now, next_rot_f, false);
+        }
+        kick_lightbox_spring_raf(eng);
     };
 
     let mut reset_view = move || {
         zoom.set(1.0);
-        pan_x.set(0.0);
-        pan_y.set(0.0);
         rotation.set(0);
         dragging.set(false);
         did_drag.set(false);
+        let eng = physics.peek().clone();
+        eng.borrow_mut().set_targets(1.0, 0.0, true);
+        kick_lightbox_spring_raf(eng);
+    };
+
+    let mut start_drag = move |cx: f64, cy: f64| {
+        physics.peek().borrow_mut().begin_drag(cx, cy, now_perf_ms());
+        dragging.set(true);
+        did_drag.set(false);
+    };
+
+    let mut handle_drag_move = move |cx: f64, cy: f64| {
+        let (moved_far, tf) = {
+            let eng = physics.peek();
+            let mut st = eng.borrow_mut();
+            if !st.dragging {
+                return;
+            }
+            let far = st.move_drag(cx, cy, now_perf_ms());
+            (far, st.format_transform())
+        };
+        apply_lightbox_transform_dom(&tf);
+        if moved_far && !*did_drag.peek() {
+            did_drag.set(true);
+        }
     };
 
     let mut finish_drag_and_snap = move || {
-        if dragging() {
+        if *dragging.peek() {
             dragging.set(false);
-            let z_now = *zoom.peek();
-            let r_now = *rotation.peek();
-            snap_pan_to_bounds(z_now, r_now);
+            let eng = physics.peek().clone();
+            eng.borrow_mut().end_drag(now_perf_ms());
+            kick_lightbox_spring_raf(eng);
         }
     };
 
     let close_lightbox = move || {
+        physics.peek().borrow_mut().reset_immediate();
         *GLOBAL_LIGHTBOX.write() = None;
     };
 
     let z = zoom();
-    let px = pan_x();
-    let py = pan_y();
-    let rot = rotation();
     let is_dragging = dragging();
     let pct = (z * 100.0).round() as i32;
     let stage_cls = if is_dragging {
@@ -2205,7 +2669,7 @@ pub fn GlobalImageLightbox() -> Element {
     } else {
         String::new()
     };
-    let img_style = format!("transform: translate3d({px:.1}px, {py:.1}px, 0) scale({z:.3}) rotate({rot}deg);");
+    let img_style = format!("transform: {};", physics.peek().borrow().format_transform());
     let dl_name = if media.name.is_empty() {
         "chatw-image".to_string()
     } else {
@@ -2230,8 +2694,9 @@ pub fn GlobalImageLightbox() -> Element {
                 spawn(async move {
                     let _ = ev.set_focus(true).await;
                     if !has_known_dims {
-                        if let Some(b) = measure_lightbox_bounds().await {
-                            bounds.set(b);
+                        if let Some((bw, bh, v_w, v_h)) = measure_lightbox_bounds().await {
+                            bounds.set((bw, bh, v_w, v_h));
+                            physics.peek().borrow_mut().set_bounds(bw, bh, v_w, v_h);
                         }
                     }
                 });
@@ -2283,23 +2748,11 @@ pub fn GlobalImageLightbox() -> Element {
                 },
                 onmousedown: move |e| {
                     let c = e.client_coordinates();
-                    dragging.set(true);
-                    did_drag.set(false);
-                    drag_origin.set((c.x, c.y, *pan_x.peek(), *pan_y.peek()));
+                    start_drag(c.x, c.y);
                 },
                 onmousemove: move |e| {
-                    if !dragging() {
-                        return;
-                    }
                     let c = e.client_coordinates();
-                    let (sx, sy, opx, opy) = drag_origin();
-                    let dx = c.x - sx;
-                    let dy = c.y - sy;
-                    if dx.abs() > 3.0 || dy.abs() > 3.0 {
-                        did_drag.set(true);
-                    }
-                    pan_x.set(opx + dx);
-                    pan_y.set(opy + dy);
+                    handle_drag_move(c.x, c.y);
                 },
                 onmouseup: move |_| finish_drag_and_snap(),
                 onmouseleave: move |_| finish_drag_and_snap(),
@@ -2333,8 +2786,9 @@ pub fn GlobalImageLightbox() -> Element {
                                             if let Some((nw, nh)) = read_lightbox_natural_size().await {
                                                 fallback_nat.set((nw, nh));
                                             }
-                                            if let Some(b) = measure_lightbox_bounds().await {
-                                                bounds.set(b);
+                                            if let Some((bw, bh, v_w, v_h)) = measure_lightbox_bounds().await {
+                                                bounds.set((bw, bh, v_w, v_h));
+                                                physics.peek().borrow_mut().set_bounds(bw, bh, v_w, v_h);
                                             }
                                         });
                                     }
@@ -2351,9 +2805,7 @@ pub fn GlobalImageLightbox() -> Element {
                                     e.prevent_default();
                                     e.stop_propagation();
                                     let c = e.client_coordinates();
-                                    dragging.set(true);
-                                    did_drag.set(false);
-                                    drag_origin.set((c.x, c.y, *pan_x.peek(), *pan_y.peek()));
+                                    start_drag(c.x, c.y);
                                 },
                             }
                             if is_lb_enhancing || is_lb_revealing {
@@ -2520,5 +2972,66 @@ mod spec080_lightbox_clamp_tests {
         assert_eq!(compute_chat_image_box(3344, 1884), Some((352, 198)));
         assert_eq!(compute_chat_image_box(800, 1600), Some((176, 352)));
         assert_eq!(compute_chat_image_box(200, 120), Some((200, 120)));
+    }
+
+    #[test]
+    fn spec113_spring_carries_flick_momentum_and_settles_smoothly() {
+        let mut eng = LightboxSpringEngine::default();
+        eng.set_bounds(1200.0, 675.0, 1600.0, 960.0);
+        // Fast flick +200px in 80ms -> release velocity = +2500 px/s
+        eng.begin_drag(500.0, 400.0, 1000.0);
+        eng.move_drag(600.0, 440.0, 1040.0);
+        eng.move_drag(700.0, 480.0, 1080.0);
+        eng.end_drag(1085.0);
+        assert!(eng.vx > 2000.0, "expected real flick velocity, got {}", eng.vx);
+        assert_eq!((eng.tx, eng.ty), (0.0, 0.0));
+
+        // First 16ms frame MUST carry inertia further right (> 200px) instead of braking dead!
+        assert!(eng.step(0.016));
+        assert!(eng.x > 215.0, "expected physical inertia arc > 215px, got {}", eng.x);
+
+        // Must smoothly return and settle cleanly at exact (0, 0) within 600ms!
+        let mut t = 0.016;
+        while eng.step(0.016) && t < 1.0 {
+            t += 0.016;
+        }
+        assert!(t < 0.60, "spring took too long to settle: {t:.3}s");
+        assert_eq!((eng.x, eng.y), (0.0, 0.0));
+        assert_eq!(eng.format_transform(), "translate3d(0.0px, 0.0px, 0) scale(1.000) rotate(0deg)");
+    }
+
+    #[test]
+    fn spec113_stationary_release_settles_under_420ms_for_spec101() {
+        let mut eng = LightboxSpringEngine::default();
+        eng.set_bounds(800.0, 600.0, 1280.0, 800.0);
+        eng.begin_drag(400.0, 300.0, 1000.0);
+        eng.move_drag(620.0, 440.0, 1050.0);
+        // Held stationary for 100ms before release -> velocity decays to 0
+        eng.end_drag(1150.0);
+        assert_eq!((eng.vx, eng.vy), (0.0, 0.0));
+
+        let mut t = 0.0;
+        while eng.step(0.016) && t < 1.0 {
+            t += 0.016;
+        }
+        assert!(t < 0.42, "stationary 220px release should settle < 420ms, took {t:.3}s");
+        assert_eq!((eng.x, eng.y), (0.0, 0.0));
+    }
+
+    #[test]
+    fn spec113_mid_flight_grab_catches_without_teleport() {
+        let mut eng = LightboxSpringEngine::default();
+        eng.set_bounds(1200.0, 675.0, 1600.0, 960.0);
+        eng.begin_drag(500.0, 400.0, 1000.0);
+        eng.move_drag(800.0, 400.0, 1050.0);
+        eng.end_drag(1150.0);
+        for _ in 0..5 {
+            eng.step(0.016);
+        }
+        let mid_x = eng.x;
+        assert!(mid_x > 40.0 && mid_x < 280.0, "expected mid-flight x, got {mid_x}");
+        eng.begin_drag(600.0, 400.0, 1250.0);
+        assert!((eng.x - mid_x).abs() < 1e-6);
+        assert_eq!(eng.vx, 0.0);
     }
 }
