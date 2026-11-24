@@ -3674,14 +3674,12 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   width: 100vw;
   height: 100vh;
   z-index: 9999;
-  background: rgba(8, 10, 15, 0.92);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  background: rgba(7, 9, 14, 0.95);
   overflow: hidden;
   user-select: none;
   outline: none;
   contain: layout style;
-  animation: cwLightboxFadeIn 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: cwLightboxFadeIn 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes cwLightboxFadeIn {
   from { opacity: 0; }

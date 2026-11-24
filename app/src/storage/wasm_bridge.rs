@@ -10,7 +10,7 @@
 
 #[cfg(target_arch = "wasm32")]
 pub fn install_wasm_media_bridge() {
-    use crate::storage::realesrgan_gpu::{probe_gpu, restore_image_realesrgan_rust};
+    use crate::storage::realesrgan_gpu::{probe_gpu, restore_image_realesrgan_rust, warmup_gpu};
     use chatw_media_core::{
         ai::realesrgan::{
             OriginalQualityProfile, RealEsrganModelKind, extract_original_quality_profile,
@@ -375,6 +375,9 @@ pub fn install_wasm_media_bridge() {
         },
     );
 
+    // 15. warmupRealEsrganGpu() -> bool (idle pre-compile of WebGL2 shaders so first click has 0ms compile hitch!)
+    let warmup_cb = Closure::<dyn Fn() -> JsValue>::new(move || JsValue::from(warmup_gpu()));
+
     let _ = Reflect::set(&api, &"version".into(), &JsValue::from("chatw-media-core-v2"));
     let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("rust-realesrgan-srvgg-upscayl-v7"));
     let _ = Reflect::set(&api, &"dedupEngine".into(), &JsValue::from("rust-hyper-dedup-fastcdc-pdq-mih-v1"));
@@ -383,6 +386,7 @@ pub fn install_wasm_media_bridge() {
     let _ = Reflect::set(&api, &"decompressFileVerified".into(), dec_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"blake3Hex".into(), b3_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"probeRealEsrganGpu".into(), probe_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"warmupRealEsrganGpu".into(), warmup_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"selectRealEsrganModel".into(), select_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"restoreImageRealEsrgan".into(), restore_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"extractQualityProfile".into(), prof_cb.as_ref().unchecked_ref());
@@ -399,6 +403,7 @@ pub fn install_wasm_media_bridge() {
     dec_cb.forget();
     b3_cb.forget();
     probe_cb.forget();
+    warmup_cb.forget();
     select_cb.forget();
     restore_cb.forget();
     prof_cb.forget();

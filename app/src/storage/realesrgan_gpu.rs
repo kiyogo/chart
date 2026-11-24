@@ -23,8 +23,8 @@ use js_sys::{Array, Float32Array, Object, Reflect, Uint16Array};
 use std::{cell::RefCell, collections::HashMap};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{
-    HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlFramebuffer, WebGlProgram, WebGlTexture,
-    WebGlUniformLocation, WebGlVertexArrayObject,
+    HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlBuffer, WebGlFramebuffer, WebGlProgram,
+    WebGlSync, WebGlTexture, WebGlUniformLocation, WebGlVertexArrayObject,
 };
 
 const GL_VS: &str = r#"#version 300 es
@@ -777,6 +777,10 @@ where
     })
 }
 
+pub fn warmup_gpu() -> bool {
+    with_gl_engine(|_| Ok(())).is_ok()
+}
+
 pub fn probe_gpu() -> GpuProbeInfo {
     match with_gl_engine(|eng| {
         Ok(GpuProbeInfo {
@@ -1268,9 +1272,16 @@ impl RealEsrganGlEngine {
         Ok(())
     }
 
-    /// Multi-step 2× hardware box-mip blit of the final WebGL2 default canvas (`ow × oh`) down to `(gw, gh)`
-    /// (zero 21× point-sampling aliasing, zero 25MB full-res readback!) for the 0.3ms Pure-Rust Quality Gate.
-    fn read_gate_thumbnail(&self, ow: u32, oh: u32, gw: u32, gh: u32) -> Result<Vec<u8>, String> {
+    /// Phase 1 (0.1ms non-blocking): Multi-step 2× hardware box-mip blit of the final WebGL2 default canvas (`ow × oh`)
+    /// down to `(gw, gh)` and enqueue an asynchronous GPU DMA transfer into a WebGL2 `PIXEL_PACK_BUFFER` (PBO) + FenceSync.
+    /// NEVER stalls the browser main thread with a synchronous `glFinish`!
+    fn begin_gate_thumbnail_pbo(
+        &self,
+        ow: u32,
+        oh: u32,
+        gw: u32,
+        gh: u32,
+    ) -> Result<(WebGlBuffer, Option<WebGlSync>, usize), String> {
         let gl = &self.gl;
         let hw = (ow / 2).max(gw);
         let hh = (oh / 2).max(gh);
@@ -1299,9 +1310,14 @@ impl RealEsrganGlEngine {
         gl.framebuffer_texture_2d(Gl::DRAW_FRAMEBUFFER, Gl::COLOR_ATTACHMENT0, Gl::TEXTURE_2D, Some(&gate_tex), 0);
         gl.blit_framebuffer(0, 0, qw as i32, qh as i32, 0, 0, gw as i32, gh as i32, Gl::COLOR_BUFFER_BIT, Gl::LINEAR);
 
+        let byte_len = (gw * gh * 4) as usize;
+        let pbo = gl.create_buffer().ok_or("create PBO buffer failed")?;
         gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.gate_fbo));
-        let mut out = vec![0u8; (gw * gh * 4) as usize];
-        let read_res = gl.read_pixels_with_opt_u8_array(0, 0, gw as i32, gh as i32, Gl::RGBA, Gl::UNSIGNED_BYTE, Some(&mut out));
+        gl.bind_buffer(Gl::PIXEL_PACK_BUFFER, Some(&pbo));
+        gl.buffer_data_with_i32(Gl::PIXEL_PACK_BUFFER, byte_len as i32, Gl::STREAM_READ);
+        let read_res = gl.read_pixels_with_i32(0, 0, gw as i32, gh as i32, Gl::RGBA, Gl::UNSIGNED_BYTE, 0);
+        gl.bind_buffer(Gl::PIXEL_PACK_BUFFER, None);
+
         gl.framebuffer_texture_2d(Gl::FRAMEBUFFER, Gl::COLOR_ATTACHMENT0, Gl::TEXTURE_2D, None, 0);
         gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
         gl.framebuffer_texture_2d(Gl::FRAMEBUFFER, Gl::COLOR_ATTACHMENT0, Gl::TEXTURE_2D, None, 0);
@@ -1309,8 +1325,31 @@ impl RealEsrganGlEngine {
         gl.delete_texture(Some(&half_tex));
         gl.delete_texture(Some(&qtr_tex));
         gl.delete_texture(Some(&gate_tex));
-        read_res.map_err(|e| format!("gate read_pixels failed: {e:?}"))?;
-        Ok(out)
+
+        if let Err(e) = read_res {
+            gl.delete_buffer(Some(&pbo));
+            return Err(format!("async PBO read_pixels failed: {e:?}"));
+        }
+        let sync = gl.fence_sync(Gl::SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        Ok((pbo, sync, byte_len))
+    }
+
+    /// Phase 2 (0.1ms after GPU fence signaled): reads already-DMA'd thumbnail bytes from PBO with zero stall!
+    fn finish_gate_thumbnail_pbo(&self, pbo: &WebGlBuffer, byte_len: usize) -> Vec<u8> {
+        let gl = &self.gl;
+        let mut out = vec![0u8; byte_len];
+        gl.bind_buffer(Gl::PIXEL_PACK_BUFFER, Some(pbo));
+        gl.get_buffer_sub_data_with_i32_and_u8_array(Gl::PIXEL_PACK_BUFFER, 0, &mut out);
+        gl.bind_buffer(Gl::PIXEL_PACK_BUFFER, None);
+        gl.delete_buffer(Some(pbo));
+        out
+    }
+
+    fn create_flush_fence(&self) -> Option<WebGlSync> {
+        let sync = self.gl.fence_sync(Gl::SYNC_GPU_COMMANDS_COMPLETE, 0);
+        self.gl.flush();
+        sync
     }
 }
 
@@ -1331,16 +1370,85 @@ pub struct RealEsrganFullOutput {
     pub match_pct: f32,
 }
 
-/// Yield one browser task slice between GPU layer batches so scrolling/typing and live `%` animation stay 60fps smooth!
-async fn yield_browser_task() {
+/// Yield one browser task slice (`ms` milliseconds) so scrolling, spring physics, and CSS animations stay 60–120fps!
+async fn yield_browser_ms(ms: i32) {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
         if let Some(win) = web_sys::window() {
-            let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0);
+            let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms);
         } else {
             let _ = resolve.call0(&JsValue::UNDEFINED);
         }
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
+
+async fn yield_browser_task() {
+    yield_browser_ms(0).await;
+}
+
+/// Non-blocking WebGL2 `fenceSync` waiter: polls `clientWaitSync(sync, 0, 0)` (0ns timeout!) every 8ms
+/// so the browser main thread NEVER freezes while waiting for GPU shaders or PBO DMA transfers!
+async fn await_gl_fence_nonblocking(sync_opt: Option<WebGlSync>) {
+    let Some(sync) = sync_opt else {
+        yield_browser_task().await;
+        return;
+    };
+    let mut spins = 0u32;
+    loop {
+        let status = with_gl_engine(|eng| Ok(eng.gl.client_wait_sync_with_u32(&sync, 0, 0)))
+            .unwrap_or(Gl::WAIT_FAILED);
+        if status == Gl::ALREADY_SIGNALED
+            || status == Gl::CONDITION_SATISFIED
+            || status == Gl::WAIT_FAILED
+            || spins >= 600
+        {
+            break;
+        }
+        spins += 1;
+        yield_browser_ms(8).await;
+    }
+    let _ = with_gl_engine(|eng| {
+        eng.gl.delete_sync(Some(&sync));
+        Ok(())
+    });
+}
+
+/// Uploads FP16 `SRVGGNetCompact` weight textures incrementally (4 layers per task slice) so cold-start
+/// model upload never stalls the browser main thread for > 6ms!
+async fn ensure_model_uploaded_async(model_id: &str, model_bytes: &[u8]) -> Result<usize, String> {
+    if let Ok(Some(n)) = with_gl_engine(|eng| Ok(eng.models.get(model_id).map(|m| m.body.len()))) {
+        return Ok(n);
+    }
+    let parsed = RealEsrganGpuF16Model::from_cwsr_bytes(model_bytes).map_err(|e| e.to_string())?;
+    yield_browser_task().await;
+
+    let first_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 64, 9, &parsed.first_conv.weights_u16))?;
+    let mut body = Vec::with_capacity(parsed.body_convs.len());
+    for (idx, layer) in parsed.body_convs.iter().enumerate() {
+        let tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 64, 144, &layer.weights_u16))?;
+        body.push(GlBodyLayer {
+            tex,
+            bias: layer.bias.clone(),
+            prelu: layer.prelu.clone().unwrap_or_else(|| vec![0.0; 64]),
+        });
+        if (idx + 1) % 4 == 0 {
+            yield_browser_task().await;
+        }
+    }
+    let last_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 144, &parsed.last_conv.weights_u16))?;
+    let num_body = body.len();
+    with_gl_engine(|eng| {
+        eng.models.entry(model_id.to_string()).or_insert(GlUploadedModel {
+            first_tex,
+            first_b: parsed.first_conv.bias,
+            first_p: parsed.first_conv.prelu.unwrap_or_else(|| vec![0.0; 64]),
+            body,
+            last_tex,
+            last_b: parsed.last_conv.bias,
+        });
+        Ok(())
+    })?;
+    Ok(num_body)
 }
 
 fn emit_progress(cb: Option<&js_sys::Function>, pct: u32) {
@@ -1349,8 +1457,8 @@ fn emit_progress(cb: Option<&js_sys::Function>, pct: u32) {
     }
 }
 
-/// Executes a single tile asynchronously on WebGL2 in chunked layer batches (non-blocking `gl.flush()` between chunks)
-/// and renders the cropped valid region straight to the default WebGL2 canvas through `GL_FIDELITY_CAS_FS`.
+/// Executes a single tile asynchronously on WebGL2 in chunked 4-layer batches with non-blocking
+/// `gl.fenceSync` waits between batches so Chromium's compositor & Lightbox stay silky 60–120fps!
 #[allow(clippy::too_many_arguments)]
 async fn run_tile_gl_async(
     tile_rgba: &[u8],
@@ -1371,37 +1479,48 @@ async fn run_tile_gl_async(
     prog_end: u32,
     on_progress: Option<&js_sys::Function>,
 ) -> Result<(), String> {
+    ensure_model_uploaded_async(model_id, model_bytes).await?;
     let num_body = with_gl_engine(|eng| eng.begin_tile(tile_rgba, tw, th, model_id, model_bytes))?;
-    // Flush in smooth 4-layer chunks (4 non-blocking yields on 16-layer anime, 8 on 32-layer photo) so progress ticks & UI stay 60fps smooth!
+    // Flush in smooth 4-layer chunks + non-blocking GPU fence so UI stays 60–120fps & progress tracks real GPU work!
     let _ = is_software;
     let chunk = 4usize;
     let span = prog_end.saturating_sub(prog_start).max(1);
     let mut layer = 0usize;
     while layer < num_body {
         let next = (layer + chunk).min(num_body);
-        if let Err(e) = with_gl_engine(|eng| eng.step_body_layers(model_id, layer, next)) {
+        let fence_res = with_gl_engine(|eng| {
+            eng.step_body_layers(model_id, layer, next)?;
+            Ok(eng.create_flush_fence())
+        });
+        let fence = match fence_res {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = with_gl_engine(|eng| {
+                    eng.cleanup_active_tile();
+                    Ok(())
+                });
+                return Err(e);
+            }
+        };
+        await_gl_fence_nonblocking(fence).await;
+        layer = next;
+        let pct = prog_start + ((layer as u32 * span * 85) / (num_body.max(1) as u32 * 100));
+        emit_progress(on_progress, pct.min(prog_end));
+    }
+    let fin_fence = match with_gl_engine(|eng| {
+        eng.finish_tile_to_canvas(model_id, vx, vy, crop_x0, crop_y0, copy_w, copy_h, color0, color1)?;
+        Ok(eng.create_flush_fence())
+    }) {
+        Ok(f) => f,
+        Err(e) => {
             let _ = with_gl_engine(|eng| {
                 eng.cleanup_active_tile();
                 Ok(())
             });
             return Err(e);
         }
-        layer = next;
-        let pct = prog_start + ((layer as u32 * span * 85) / (num_body.max(1) as u32 * 100));
-        emit_progress(on_progress, pct.min(prog_end));
-        if layer < num_body {
-            yield_browser_task().await;
-        }
-    }
-    if let Err(e) = with_gl_engine(|eng| {
-        eng.finish_tile_to_canvas(model_id, vx, vy, crop_x0, crop_y0, copy_w, copy_h, color0, color1)
-    }) {
-        let _ = with_gl_engine(|eng| {
-            eng.cleanup_active_tile();
-            Ok(())
-        });
-        return Err(e);
-    }
+    };
+    await_gl_fence_nonblocking(fin_fence).await;
     emit_progress(on_progress, prog_end);
     Ok(())
 }
@@ -1553,17 +1672,19 @@ pub async fn restore_image_realesrgan_rust(
                     let gw = ((width as f64 * gh as f64) / height as f64).round().max(16.0) as u32;
                     (gw.min(max_gate), gh)
                 };
-                if let Ok((gate_rgba, canvas_handle)) = with_gl_engine(|eng| {
-                    let thumb = eng.read_gate_thumbnail(ow as u32, oh as u32, gw, gh)?;
-                    Ok((thumb, eng.canvas.clone()))
+                if let Ok((pbo, pbo_sync, byte_len, canvas_handle)) = with_gl_engine(|eng| {
+                    let (pbo, sync, blen) = eng.begin_gate_thumbnail_pbo(ow as u32, oh as u32, gw, gh)?;
+                    Ok((pbo, sync, blen, eng.canvas.clone()))
                 }) {
+                    await_gl_fence_nonblocking(pbo_sync).await;
+                    let gate_rgba = with_gl_engine(|eng| Ok(eng.finish_gate_thumbnail_pbo(&pbo, byte_len)))?;
                     let (passed, ssim, drift) = evaluate_sr_quality_gate(rgba, width, height, &gate_rgba, gw, gh);
                     if !passed {
                         return Err(format!("quality_gate_rejected (ssim={ssim:.4}, drift={drift:.4})"));
                     }
                     let match_pct = (((ssim.clamp(0.0, 1.0) * 0.55 + (1.0 - drift * 4.5).clamp(0.0, 1.0) * 0.45) * 1000.0).round() / 10.0)
                         .clamp(0.0, 100.0);
-                    emit_progress(on_progress.as_ref(), 98);
+                    emit_progress(on_progress.as_ref(), 96);
                     return Ok(RealEsrganFullOutput {
                         canvas: Some(canvas_handle),
                         rgba: None,

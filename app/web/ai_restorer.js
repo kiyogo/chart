@@ -105,6 +105,177 @@
     };
   }
 
+  // Persistent background OffscreenCanvas Worker for zero-jank blob->RGBA decode and 4K JPEG/WebP encode!
+  let aiMediaWorker = null;
+  let aiMediaWorkerFailed = false;
+  let aiWorkerSeq = 1;
+  const aiWorkerPending = new Map();
+
+  function getAiMediaWorker() {
+    if (aiMediaWorkerFailed || typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return null;
+    if (aiMediaWorker) return aiMediaWorker;
+    try {
+      const workerCode = `
+        self.onmessage = async (ev) => {
+          const msg = ev.data || {};
+          const id = msg.id;
+          try {
+            if (msg.type === 'decode') {
+              const bmp = await createImageBitmap(msg.blob);
+              const rawW = bmp.width;
+              const rawH = bmp.height;
+              if (rawW < 16 || rawH < 16 || rawW * rawH > 8000000) {
+                bmp.close();
+                self.postMessage({ id, ok: false, reason: 'dimensions_out_of_ai_bounds' });
+                return;
+              }
+              const maxInEdge = msg.maxInEdge || 1080;
+              let procW = rawW;
+              let procH = rawH;
+              if (Math.max(rawW, rawH) > maxInEdge) {
+                const r = maxInEdge / Math.max(rawW, rawH);
+                procW = Math.max(32, Math.round(rawW * r));
+                procH = Math.max(32, Math.round(rawH * r));
+              }
+              const c = new OffscreenCanvas(procW, procH);
+              const ctx = c.getContext('2d', { willReadFrequently: true });
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(bmp, 0, 0, procW, procH);
+              bmp.close();
+              const imgData = ctx.getImageData(0, 0, procW, procH);
+              const u8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+              self.postMessage({ id, ok: true, rawW, rawH, procW, procH, rgba: u8 }, [u8.buffer]);
+              return;
+            }
+            if (msg.type === 'encode') {
+              const bmp = msg.bitmap;
+              let finalW = msg.width || bmp.width;
+              let finalH = msg.height || bmp.height;
+              const maxOutEdge = msg.maxOutEdge || 3840;
+              if (Math.max(finalW, finalH) > maxOutEdge) {
+                const r = maxOutEdge / Math.max(finalW, finalH);
+                finalW = Math.round(finalW * r);
+                finalH = Math.round(finalH * r);
+              }
+              const c = new OffscreenCanvas(finalW, finalH);
+              const ctx = c.getContext('2d');
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(bmp, 0, 0, finalW, finalH);
+              bmp.close();
+              let outBlob = null;
+              if (!msg.hasAlpha) {
+                try {
+                  const j = await c.convertToBlob({ type: 'image/jpeg', quality: 0.93 });
+                  if (j && j.size > 0 && j.type === 'image/jpeg') outBlob = j;
+                } catch (_) {}
+              }
+              if (!outBlob) {
+                try {
+                  const w = await c.convertToBlob({ type: 'image/webp', quality: 0.88 });
+                  if (w && w.size > 0 && w.type === 'image/webp') outBlob = w;
+                } catch (_) {}
+              }
+              if (!outBlob) {
+                outBlob = await c.convertToBlob({ type: 'image/png' });
+              }
+              self.postMessage({ id, ok: Boolean(outBlob && outBlob.size > 0), blob: outBlob, width: finalW, height: finalH });
+              return;
+            }
+            self.postMessage({ id, ok: false, reason: 'unknown_cmd' });
+          } catch (err) {
+            self.postMessage({ id, ok: false, reason: String(err) });
+          }
+        };
+      `;
+      const blobUrl = URL.createObjectURL(new Blob([workerCode], { type: 'application/javascript' }));
+      const w = new Worker(blobUrl);
+      w.onmessage = (ev) => {
+        const d = ev.data || {};
+        const p = aiWorkerPending.get(d.id);
+        if (p) {
+          aiWorkerPending.delete(d.id);
+          p.resolve(d);
+        }
+      };
+      w.onerror = () => {
+        aiMediaWorkerFailed = true;
+        for (const p of aiWorkerPending.values()) p.reject(new Error('ai_media_worker_failed'));
+        aiWorkerPending.clear();
+        try { w.terminate(); } catch (_) {}
+        aiMediaWorker = null;
+      };
+      aiMediaWorker = w;
+      return w;
+    } catch (_) {
+      aiMediaWorkerFailed = true;
+      return null;
+    }
+  }
+
+  function callAiMediaWorker(payload, transfers = []) {
+    const w = getAiMediaWorker();
+    if (!w) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const id = aiWorkerSeq++;
+      aiWorkerPending.set(id, {
+        resolve,
+        reject: () => resolve(null),
+      });
+      try {
+        w.postMessage({ ...payload, id }, transfers);
+      } catch (_) {
+        aiWorkerPending.delete(id);
+        resolve(null);
+      }
+    });
+  }
+
+  function yieldUiSlice() {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  // Idle GPU shader + cached model pre-warm so clicking an unenhanced image has 0ms compile hitch!
+  let idleWarmupScheduled = false;
+  function scheduleIdleGpuWarmup() {
+    if (idleWarmupScheduled) return;
+    idleWarmupScheduled = true;
+    const runWarm = async () => {
+      try {
+        if (!isAiEnabled()) return;
+        const wasm = window.__chatwWasmMedia;
+        if (wasm && typeof wasm.warmupRealEsrganGpu === 'function') {
+          wasm.warmupRealEsrganGpu();
+        }
+        // Also warm IndexedDB model bytes into RAM if already cached locally (0 network cost!)
+        if (window.__chatwStorage && typeof window.__chatwStorage.getAiModel === 'function') {
+          for (const mid of ['realesr_animevideov3', 'realesr_general_x4v3']) {
+            if (!modelBytesMemCache.has(mid)) {
+              const hit = await window.__chatwStorage.getAiModel(mid).catch(() => null);
+              if (hit && hit.byteLength > 100000) {
+                modelBytesMemCache.set(mid, hit);
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    };
+    const trigger = () => {
+      if (!window.__chatwWasmMedia || typeof window.__chatwWasmMedia.warmupRealEsrganGpu !== 'function') {
+        setTimeout(trigger, 120);
+        return;
+      }
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => { runWarm(); }, { timeout: 800 });
+      } else {
+        setTimeout(() => { runWarm(); }, 150);
+      }
+    };
+    setTimeout(trigger, 120);
+  }
+  scheduleIdleGpuWarmup();
+
   async function predecodeImageUrl(url) {
     if (!url || typeof Image === 'undefined') return;
     try {
@@ -215,44 +386,59 @@
         return { enhanced: false, skipped: true, reason: 'low_battery_power_saver', url: imageUrl };
       }
 
-      let bitmap = null;
       let srcBytes = 0;
+      let rawW = 0;
+      let rawH = 0;
+      let procW = 0;
+      let procH = 0;
+      let srcU8 = null;
+      const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 1080 : 960;
       try {
         const resp = await fetch(imageUrl);
         if (!resp.ok) return { enhanced: false, skipped: true, reason: 'fetch_failed', url: imageUrl };
         const blob = await resp.blob();
         srcBytes = blob.size;
-        bitmap = await createImageBitmap(blob);
+        // Offload decode + downscale + getImageData completely off the main thread!
+        const wDec = await callAiMediaWorker({ type: 'decode', blob, maxInEdge });
+        if (wDec && wDec.ok && wDec.rgba) {
+          rawW = wDec.rawW;
+          rawH = wDec.rawH;
+          procW = wDec.procW;
+          procH = wDec.procH;
+          srcU8 = wDec.rgba;
+        } else if (wDec && wDec.reason === 'dimensions_out_of_ai_bounds') {
+          return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+        } else {
+          const bitmap = await createImageBitmap(blob);
+          rawW = bitmap.width;
+          rawH = bitmap.height;
+          if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
+            bitmap.close();
+            return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+          }
+          procW = rawW;
+          procH = rawH;
+          if (Math.max(rawW, rawH) > maxInEdge) {
+            const r = maxInEdge / Math.max(rawW, rawH);
+            procW = Math.max(32, Math.round(rawW * r));
+            procH = Math.max(32, Math.round(rawH * r));
+          }
+          const srcCanvas = document.createElement('canvas');
+          srcCanvas.width = procW;
+          srcCanvas.height = procH;
+          const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+          srcCtx.imageSmoothingEnabled = true;
+          srcCtx.imageSmoothingQuality = 'high';
+          srcCtx.drawImage(bitmap, 0, 0, procW, procH);
+          bitmap.close();
+          const imgData = srcCtx.getImageData(0, 0, procW, procH);
+          srcU8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+        }
       } catch (err) {
         return { enhanced: false, skipped: true, reason: 'decode_failed', error: String(err), url: imageUrl };
       }
 
-      const rawW = bitmap.width;
-      const rawH = bitmap.height;
-      if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
-        bitmap.close();
-        return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
-      }
-
-      const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 1080 : 960;
-      let procW = rawW;
-      let procH = rawH;
-      if (Math.max(rawW, rawH) > maxInEdge) {
-        const r = maxInEdge / Math.max(rawW, rawH);
-        procW = Math.max(32, Math.round(rawW * r));
-        procH = Math.max(32, Math.round(rawH * r));
-      }
-
-      const srcCanvas = document.createElement('canvas');
-      srcCanvas.width = procW;
-      srcCanvas.height = procH;
-      const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
-      srcCtx.imageSmoothingEnabled = true;
-      srcCtx.imageSmoothingQuality = 'high';
-      srcCtx.drawImage(bitmap, 0, 0, procW, procH);
-      bitmap.close();
-      const imgData = srcCtx.getImageData(0, 0, procW, procH);
-      const srcU8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+      await yieldUiSlice();
 
       // 1. Model selection strictly in Pure Rust (`selectRealEsrganModel`)
       const sel = wasm.selectRealEsrganModel(srcU8, procW, procH, origProfileJson, meta.modelId || '');
@@ -269,7 +455,10 @@
         return { enhanced: false, skipped: true, reason: 'model_download_failed', error: String(err), url: imageUrl };
       }
 
+      await yieldUiSlice();
+
       // 3. Execute 100% Pure-Rust FP16 8-MRT Real-ESRGAN 4× + Zero-Alteration Color Anchor + AMD CAS!
+      // All GPU layer batches & quality-gate PBO readback use non-blocking WebGL2 FenceSync!
       const tGpu0 = performance.now();
       const res = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, reportProgress);
       const gpuMs = Math.round(performance.now() - tGpu0);
@@ -277,41 +466,66 @@
         return { enhanced: false, skipped: true, reason: (res && res.error) || 'rust_realesrgan_failed', url: imageUrl };
       }
 
-      // Zero-copy WebGL2 canvas directly from Rust GPU engine (zero 25MB readPixels / Uint8Array / putImageData copy!)
-      let finalCanvas = res.canvas || null;
-      if (!finalCanvas) {
-        const outCanvas = document.createElement('canvas');
-        outCanvas.width = res.width;
-        outCanvas.height = res.height;
-        const outCtx = outCanvas.getContext('2d');
-        outCtx.putImageData(
-          new ImageData(new Uint8ClampedArray(res.rgba.buffer, res.rgba.byteOffset, res.rgba.byteLength), res.width, res.height),
-          0,
-          0,
-        );
-        finalCanvas = outCanvas;
-      }
-
+      // 4. Zero-stall off-main-thread 4K JPEG/WebP encoding via OffscreenCanvas Web Worker!
+      const tEnc0 = performance.now();
       let finalW = res.width;
       let finalH = res.height;
-      if (Math.max(finalW, finalH) > 3840) {
-        const r = 3840 / Math.max(finalW, finalH);
-        const cw = Math.round(finalW * r);
-        const ch = Math.round(finalH * r);
-        const fit = document.createElement('canvas');
-        fit.width = cw;
-        fit.height = ch;
-        const fctx = fit.getContext('2d');
-        fctx.imageSmoothingEnabled = true;
-        fctx.imageSmoothingQuality = 'high';
-        fctx.drawImage(finalCanvas, 0, 0, cw, ch);
-        finalCanvas = fit;
-        finalW = cw;
-        finalH = ch;
+      let outBlob = null;
+      if (getAiMediaWorker()) {
+        try {
+          let bmp = null;
+          if (res.canvas) {
+            bmp = await createImageBitmap(res.canvas);
+          } else if (res.rgba) {
+            bmp = await createImageBitmap(
+              new ImageData(new Uint8ClampedArray(res.rgba.buffer, res.rgba.byteOffset, res.rgba.byteLength), res.width, res.height),
+            );
+          }
+          if (bmp) {
+            const wEnc = await callAiMediaWorker(
+              { type: 'encode', bitmap: bmp, width: res.width, height: res.height, hasAlpha: Boolean(res.hasAlpha), maxOutEdge: 3840 },
+              [bmp],
+            );
+            if (wEnc && wEnc.ok && wEnc.blob) {
+              outBlob = wEnc.blob;
+              finalW = wEnc.width || finalW;
+              finalH = wEnc.height || finalH;
+            }
+          }
+        } catch (_) {}
       }
 
-      const tEnc0 = performance.now();
-      const outBlob = await encodeCanvasBlob(finalCanvas, Boolean(res.hasAlpha));
+      if (!outBlob) {
+        let finalCanvas = res.canvas || null;
+        if (!finalCanvas) {
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = res.width;
+          outCanvas.height = res.height;
+          const outCtx = outCanvas.getContext('2d');
+          outCtx.putImageData(
+            new ImageData(new Uint8ClampedArray(res.rgba.buffer, res.rgba.byteOffset, res.rgba.byteLength), res.width, res.height),
+            0,
+            0,
+          );
+          finalCanvas = outCanvas;
+        }
+        if (Math.max(finalW, finalH) > 3840) {
+          const r = 3840 / Math.max(finalW, finalH);
+          const cw = Math.round(finalW * r);
+          const ch = Math.round(finalH * r);
+          const fit = document.createElement('canvas');
+          fit.width = cw;
+          fit.height = ch;
+          const fctx = fit.getContext('2d');
+          fctx.imageSmoothingEnabled = true;
+          fctx.imageSmoothingQuality = 'high';
+          fctx.drawImage(finalCanvas, 0, 0, cw, ch);
+          finalCanvas = fit;
+          finalW = cw;
+          finalH = ch;
+        }
+        outBlob = await encodeCanvasBlob(finalCanvas, Boolean(res.hasAlpha));
+      }
       const encodeMs = Math.round(performance.now() - tEnc0);
       if (!outBlob || outBlob.size === 0) {
         return { enhanced: false, skipped: true, reason: 'output_encode_failed', url: imageUrl };

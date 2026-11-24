@@ -2414,6 +2414,8 @@ pub fn GlobalImageLightbox() -> Element {
                 r#"
                 (async () => {{
                     if (!window.__chatwAiRestorer) {{ dioxus.send({{ type: 'failed' }}); return; }}
+                    // Let Lightbox Frame-0/Frame-1 paint smoothly at 60/120fps before kicking off GPU AI work!
+                    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
