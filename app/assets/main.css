@@ -3915,45 +3915,57 @@ body:has(.lightbox) .panel-resizer {
   mask-image: radial-gradient(ellipse 76% 76% at 50% 50%, rgba(0, 0, 0, 0.92) 22%, rgba(0, 0, 0, 0.36) 68%, transparent 98%);
   opacity: 0.90;
 }
+/* Spec 135: Refined Slender AI Laser Scan Beam (zero milky floodlight, zero aspect ratio clipping) */
 .ai-gen-dots-wave {
   position: absolute;
-  inset: -10% -25%;
+  inset: 0;
   z-index: 5;
-  background: linear-gradient(
-    108deg,
-    transparent 32%,
-    rgba(56, 189, 248, 0.22) 42%,
-    rgba(96, 165, 250, 0.60) 47%,
-    rgba(255, 255, 255, 0.95) 50%,
-    rgba(192, 132, 252, 0.60) 53%,
-    rgba(168, 85, 247, 0.22) 58%,
-    transparent 68%
-  );
-  filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.85)) drop-shadow(0 0 6px rgba(255, 255, 255, 0.95));
-  will-change: transform;
-  transform: translate3d(-60%, 0, 0);
-  animation: chatwAiSheenGlide 1.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  overflow: hidden;
   pointer-events: none;
+  mix-blend-mode: screen;
+  border-radius: inherit;
+  contain: layout paint;
 }
 .ai-gen-dots-wave::after {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 3px;
-  background: #FFFFFF;
-  box-shadow: 0 0 10px #FFFFFF, 0 0 20px #38BDF8, 0 0 36px #818CF8;
-  transform: skewX(-18deg);
-  opacity: 0.95;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 46.5%,
+    rgba(56, 189, 248, 0.16) 48.2%,
+    rgba(255, 255, 255, 0.45) 49.4%,
+    rgba(255, 255, 255, 0.92) 50.0%,
+    rgba(255, 255, 255, 0.45) 50.6%,
+    rgba(168, 85, 247, 0.18) 51.8%,
+    transparent 53.5%,
+    transparent 100%
+  );
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.65)) drop-shadow(0 0 8px rgba(56, 189, 248, 0.35));
+  will-change: transform, opacity;
+  transform: translate3d(-105%, 0, 0);
+  animation: chatwAiLaserScan 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
   pointer-events: none;
 }
-@keyframes chatwAiSheenGlide {
+@keyframes chatwAiLaserScan {
   0% {
-    transform: translate3d(-62%, 0, 0);
+    transform: translate3d(-105%, 0, 0);
+    opacity: 0;
   }
-  100% {
-    transform: translate3d(62%, 0, 0);
+  6% {
+    opacity: 1;
+  }
+  70% {
+    transform: translate3d(105%, 0, 0);
+    opacity: 1;
+  }
+  74%, 100% {
+    transform: translate3d(105%, 0, 0);
+    opacity: 0;
   }
 }
 .ai-gen-pct {
@@ -4001,12 +4013,14 @@ body:has(.lightbox) .panel-resizer {
 @media (prefers-reduced-motion: reduce) {
   .ai-gen-aurora,
   .ai-gen-dots-wave,
+  .ai-gen-dots-wave::after,
   .ai-gen-pct::before {
     animation: none !important;
   }
 }
 html[data-reduce-motion="true"] .ai-gen-aurora,
 html[data-reduce-motion="true"] .ai-gen-dots-wave,
+html[data-reduce-motion="true"] .ai-gen-dots-wave::after,
 html[data-reduce-motion="true"] .ai-gen-pct::before {
   animation: none !important;
 }
