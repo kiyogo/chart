@@ -2901,7 +2901,7 @@ pub fn GlobalImageLightbox() -> Element {
                     }
                     button {
                         r#type: "button",
-                        class: "lightbox-tool-btn",
+                        class: "lightbox-tool-btn lightbox-zoom-btn",
                         aria_label: "Zoom out",
                         title: "Zoom out",
                         disabled: z <= 1.01,
@@ -2918,7 +2918,7 @@ pub fn GlobalImageLightbox() -> Element {
                     }
                     button {
                         r#type: "button",
-                        class: "lightbox-tool-btn",
+                        class: "lightbox-tool-btn lightbox-zoom-btn",
                         aria_label: "Zoom in",
                         title: "Zoom in",
                         disabled: z >= 3.99,

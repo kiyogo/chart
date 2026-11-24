@@ -4504,11 +4504,11 @@ pub fn Chat(
                                         div { class: "chat-header-info",
                                             h2 { class: "chat-header-title", "{active.username}" }
                                             if active_blocked {
-                                                span { class: "chat-header-meta", BlockIcon { size: 12 } " Blocked" }
+                                                span { class: "chat-header-meta", BlockIcon { size: 12 } span { class: "chat-header-meta-text", "Blocked" } }
                                             } else if is_friend_typing() && privacy.read().typing {
-                                                span { class: "chat-header-meta", style: "color: var(--accent-text);", "{tn(\"chat.typing\", &active.username)}" }
+                                                span { class: "chat-header-meta", style: "color: var(--accent-text);", span { class: "chat-header-meta-text", "{tn(\"chat.typing\", &active.username)}" } }
                                             } else {
-                                                span { class: "chat-header-meta secure", ShieldIcon { size: 12 } "{t(\"chat.e2ee\")}" }
+                                                span { class: "chat-header-meta secure", ShieldIcon { size: 12 } span { class: "chat-header-meta-text", "{t(\"chat.e2ee\")}" } }
                                             }
                                         }
                                     }

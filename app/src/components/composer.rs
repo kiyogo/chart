@@ -655,7 +655,7 @@ pub fn Composer(
                         if on_sticker.is_some() {
                             button {
                                 r#type: "button",
-                                class: if picker() == Some(MediaTab::Gif) { "icon-btn active" } else { "icon-btn" },
+                                class: if picker() == Some(MediaTab::Gif) { "icon-btn composer-media-shortcut active" } else { "icon-btn composer-media-shortcut" },
                                 title: "GIF",
                                 aria_label: "Choose GIF",
                                 onclick: move |evt| {
@@ -666,7 +666,7 @@ pub fn Composer(
                             }
                             button {
                                 r#type: "button",
-                                class: if picker() == Some(MediaTab::Sticker) { "icon-btn active" } else { "icon-btn" },
+                                class: if picker() == Some(MediaTab::Sticker) { "icon-btn composer-media-shortcut active" } else { "icon-btn composer-media-shortcut" },
                                 title: "Sticker",
                                 aria_label: "Choose sticker",
                                 onclick: move |evt| {
