@@ -469,39 +469,161 @@ pub fn StoriesNotesBar(
                 const el = document.getElementById({id:?});
                 if (!el || el.__notesDragReady) return;
                 el.__notesDragReady = true;
-                let down = false, startX = 0, startScroll = 0, moved = false;
+
+                let down = false;
+                let moved = false;
+                let startX = 0;
+                let currentX = 0;
+                let startScroll = 0;
+                let targetScroll = 0;
+                let activePointerId = null;
+                let rafId = null;
+                let momentumId = null;
+                let lastTime = 0;
+                let lastX = 0;
+                const velocitySamples = [];
+
                 el.addEventListener('dragstart', (e) => e.preventDefault());
+
+                function cancelMomentum() {{
+                    if (momentumId !== null) {{
+                        cancelAnimationFrame(momentumId);
+                        momentumId = null;
+                    }}
+                }}
+
+                function scheduleScroll() {{
+                    if (rafId === null) {{
+                        rafId = requestAnimationFrame(() => {{
+                            rafId = null;
+                            if (!down) return;
+                            el.scrollLeft = targetScroll;
+                        }});
+                    }}
+                }}
+
                 el.addEventListener('pointerdown', (e) => {{
                     if (e.button !== 0) return;
-                    down = true; moved = false;
-                    startX = e.clientX; startScroll = el.scrollLeft;
+                    cancelMomentum();
+                    down = true;
+                    moved = false;
+                    startX = e.clientX;
+                    currentX = e.clientX;
+                    lastX = e.clientX;
+                    startScroll = el.scrollLeft;
+                    targetScroll = startScroll;
+                    lastTime = performance.now();
+                    velocitySamples.length = 0;
+                    activePointerId = e.pointerId;
+
+                    try {{
+                        el.setPointerCapture(e.pointerId);
+                    }} catch (_) {{}}
                 }});
+
                 window.addEventListener('pointermove', (e) => {{
                     if (!down) return;
-                    const dx = e.clientX - startX;
-                    if (Math.abs(dx) > 5) {{
-                        if (!moved) {{
+                    currentX = e.clientX;
+                    const now = performance.now();
+                    const dt = now - lastTime;
+                    const totalDx = currentX - startX;
+
+                    if (!moved) {{
+                        if (Math.abs(totalDx) > 4) {{
                             moved = true;
                             el.classList.add('dragging');
+                            startX = currentX;
+                            startScroll = el.scrollLeft;
+                            targetScroll = startScroll;
+                            lastX = currentX;
+                            lastTime = now;
                         }}
-                        el.scrollLeft = startScroll - dx;
+                    }}
+
+                    if (moved) {{
+                        targetScroll = startScroll - (currentX - startX);
+                        if (dt > 8) {{
+                            const sampleV = (lastX - currentX) / dt;
+                            velocitySamples.push({{ v: sampleV, t: now }});
+                            while (velocitySamples.length > 5 || (velocitySamples.length > 0 && now - velocitySamples[0].t > 90)) {{
+                                velocitySamples.shift();
+                            }}
+                            lastX = currentX;
+                            lastTime = now;
+                        }}
+                        scheduleScroll();
                     }}
                 }});
-                window.addEventListener('pointerup', () => {{
+
+                function endDrag() {{
                     if (!down) return;
                     down = false;
+                    if (activePointerId !== null) {{
+                        try {{
+                            el.releasePointerCapture(activePointerId);
+                        }} catch (_) {{}}
+                        activePointerId = null;
+                    }}
+                    if (rafId !== null) {{
+                        cancelAnimationFrame(rafId);
+                        rafId = null;
+                    }}
                     el.classList.remove('dragging');
+
                     if (moved) {{
                         el.dataset.justDragged = '1';
-                        setTimeout(() => {{ delete el.dataset.justDragged; }}, 60);
+                        setTimeout(() => {{ delete el.dataset.justDragged; }}, 120);
+
+                        const now = performance.now();
+                        let sumV = 0, count = 0;
+                        for (let i = 0; i < velocitySamples.length; i++) {{
+                            if (now - velocitySamples[i].t < 110) {{
+                                sumV += velocitySamples[i].v;
+                                count++;
+                            }}
+                        }}
+                        let initialV = count > 0 ? (sumV / count) : 0;
+                        initialV = Math.max(-2.5, Math.min(2.5, initialV));
+
+                        if (Math.abs(initialV) > 0.08) {{
+                            startKineticMomentum(initialV);
+                        }}
                     }}
-                }});
+                }}
+
+                function startKineticMomentum(initV) {{
+                    cancelMomentum();
+                    let v = initV * 16.0;
+                    const friction = 0.94;
+                    function step() {{
+                        v *= friction;
+                        if (Math.abs(v) < 0.25) {{
+                            momentumId = null;
+                            return;
+                        }}
+                        const prev = el.scrollLeft;
+                        el.scrollLeft += v;
+                        if (Math.abs(el.scrollLeft - prev) < 0.1) {{
+                            momentumId = null;
+                            return;
+                        }}
+                        momentumId = requestAnimationFrame(step);
+                    }}
+                    momentumId = requestAnimationFrame(step);
+                }}
+
+                window.addEventListener('pointerup', endDrag);
+                window.addEventListener('pointercancel', endDrag);
+
                 el.addEventListener('wheel', (e) => {{
-                    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {{
-                        el.scrollLeft += e.deltaY;
+                    const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+                    if (Math.abs(delta) > 0.5) {{
+                        cancelMomentum();
+                        el.scrollLeft += delta * 0.75;
                         e.preventDefault();
                     }}
                 }}, {{ passive: false }});
+
                 el.addEventListener('click', (e) => {{
                     if (el.dataset.justDragged === '1') {{
                         e.preventDefault();

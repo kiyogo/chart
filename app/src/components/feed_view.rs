@@ -170,30 +170,141 @@ pub fn FeedView(
             if (typeof ResizeObserver !== 'undefined') {
                 new ResizeObserver(updateArrows).observe(rail);
             }
-            let down = false, startX = 0, startScroll = 0, moved = false;
+            let down = false, moved = false, startX = 0, currentX = 0, startScroll = 0, targetScroll = 0;
+            let activePointerId = null, rafId = null, momentumId = null, lastTime = 0, lastX = 0;
+            const velocitySamples = [];
+
             rail.addEventListener('dragstart', (e) => e.preventDefault());
+
+            function cancelMomentum() {
+                if (momentumId !== null) {
+                    cancelAnimationFrame(momentumId);
+                    momentumId = null;
+                }
+            }
+
+            function scheduleScroll() {
+                if (rafId === null) {
+                    rafId = requestAnimationFrame(() => {
+                        rafId = null;
+                        if (!down) return;
+                        rail.scrollLeft = targetScroll;
+                    });
+                }
+            }
+
             rail.addEventListener('pointerdown', (e) => {
                 if (e.button !== 0) return;
+                cancelMomentum();
                 down = true; moved = false;
-                startX = e.clientX; startScroll = rail.scrollLeft;
+                startX = e.clientX; currentX = e.clientX; lastX = e.clientX;
+                startScroll = rail.scrollLeft; targetScroll = startScroll;
+                lastTime = performance.now();
+                velocitySamples.length = 0;
+                activePointerId = e.pointerId;
+                try { rail.setPointerCapture(e.pointerId); } catch (_) {}
             });
+
             window.addEventListener('pointermove', (e) => {
                 if (!down) return;
-                const dx = e.clientX - startX;
-                if (Math.abs(dx) > 6) {
-                    if (!moved) { moved = true; rail.classList.add('dragging'); }
-                    rail.scrollLeft = startScroll - dx;
+                currentX = e.clientX;
+                const now = performance.now();
+                const dt = now - lastTime;
+                const totalDx = currentX - startX;
+
+                if (!moved) {
+                    if (Math.abs(totalDx) > 4) {
+                        moved = true;
+                        rail.classList.add('dragging');
+                        startX = currentX;
+                        startScroll = rail.scrollLeft;
+                        targetScroll = startScroll;
+                        lastX = currentX;
+                        lastTime = now;
+                    }
+                }
+                if (moved) {
+                    targetScroll = startScroll - (currentX - startX);
+                    if (dt > 8) {
+                        const sampleV = (lastX - currentX) / dt;
+                        velocitySamples.push({ v: sampleV, t: now });
+                        while (velocitySamples.length > 5 || (velocitySamples.length > 0 && now - velocitySamples[0].t > 90)) {
+                            velocitySamples.shift();
+                        }
+                        lastX = currentX;
+                        lastTime = now;
+                    }
+                    scheduleScroll();
                 }
             });
-            window.addEventListener('pointerup', () => {
+
+            function endDrag() {
                 if (!down) return;
                 down = false;
+                if (activePointerId !== null) {
+                    try { rail.releasePointerCapture(activePointerId); } catch (_) {}
+                    activePointerId = null;
+                }
+                if (rafId !== null) {
+                    cancelAnimationFrame(rafId);
+                    rafId = null;
+                }
                 rail.classList.remove('dragging');
+
                 if (moved) {
                     rail.dataset.justDragged = '1';
-                    setTimeout(() => { delete rail.dataset.justDragged; }, 60);
+                    setTimeout(() => { delete rail.dataset.justDragged; }, 120);
+
+                    const now = performance.now();
+                    let sumV = 0, count = 0;
+                    for (let i = 0; i < velocitySamples.length; i++) {
+                        if (now - velocitySamples[i].t < 110) {
+                            sumV += velocitySamples[i].v;
+                            count++;
+                        }
+                    }
+                    let initialV = count > 0 ? (sumV / count) : 0;
+                    initialV = Math.max(-2.5, Math.min(2.5, initialV));
+
+                    if (Math.abs(initialV) > 0.08) {
+                        startKineticMomentum(initialV);
+                    }
                 }
-            });
+            }
+
+            function startKineticMomentum(initV) {
+                cancelMomentum();
+                let v = initV * 16.0;
+                const friction = 0.94;
+                function step() {
+                    v *= friction;
+                    if (Math.abs(v) < 0.25) {
+                        momentumId = null;
+                        return;
+                    }
+                    const prev = rail.scrollLeft;
+                    rail.scrollLeft += v;
+                    if (Math.abs(rail.scrollLeft - prev) < 0.1) {
+                        momentumId = null;
+                        return;
+                    }
+                    momentumId = requestAnimationFrame(step);
+                }
+                momentumId = requestAnimationFrame(step);
+            }
+
+            window.addEventListener('pointerup', endDrag);
+            window.addEventListener('pointercancel', endDrag);
+
+            rail.addEventListener('wheel', (e) => {
+                const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+                if (Math.abs(delta) > 0.5) {
+                    cancelMomentum();
+                    rail.scrollLeft += delta * 0.75;
+                    e.preventDefault();
+                }
+            }, { passive: false });
+
             rail.addEventListener('click', (e) => {
                 if (rail.dataset.justDragged === '1') {
                     e.preventDefault();

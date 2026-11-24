@@ -6566,10 +6566,13 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   padding: 2px 0.45rem 4px;
   scrollbar-width: none !important;
   -ms-overflow-style: none;
-  scroll-snap-type: x proximity;
+  scroll-snap-type: none !important; /* Spec 128: eliminated snap fight during drag */
   cursor: grab;
   user-select: none;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+  will-change: scroll-position;
 }
 .sidebar-scrollable > .notes-strip-wrap .notes-strip {
   padding: 2px 0.9rem 4px;
@@ -6588,8 +6591,16 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   -webkit-user-drag: none;
   user-select: none;
 }
-.notes-strip.dragging { cursor: grabbing; user-select: none; }
-.notes-strip.dragging * { pointer-events: none; }
+.notes-strip.dragging {
+  cursor: grabbing !important;
+  user-select: none !important;
+  scroll-behavior: auto !important;
+  scroll-snap-type: none !important;
+}
+.notes-strip.dragging * {
+  pointer-events: none !important;
+  user-select: none !important;
+}
 .note-item {
   position: relative;
   display: flex;
@@ -6599,7 +6610,6 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   flex-shrink: 0;
   width: 4.125rem;
   padding: 2.2rem 0 0 0;
-  scroll-snap-align: start;
   background: transparent;
   color: var(--text-primary);
   border: none;
@@ -6959,16 +6969,22 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   overflow-y: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
+  scroll-snap-type: none !important;
+  cursor: grab;
   user-select: none;
   padding: 1px 0;
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+  will-change: scroll-position;
 }
 .feed-story-rail::-webkit-scrollbar {
   display: none;
 }
 .feed-story-rail.dragging {
-  scroll-behavior: auto;
-  cursor: grabbing;
+  scroll-behavior: auto !important;
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 .feed-story-card {
   position: relative;
