@@ -431,6 +431,11 @@ pub fn build_rich_media_wire(
     let orig_w = payload.target_width.unwrap_or(w);
     let orig_h = payload.target_height.unwrap_or(h);
     let orig_size = payload.original_size as u64;
+    let wire_size = if !payload.bytes.is_empty() {
+        payload.bytes.len() as u64
+    } else {
+        payload.optimized_size as u64
+    };
     if payload.media_kind == "image" {
         let data = ImageData {
             u: url,
@@ -438,7 +443,7 @@ pub fn build_rich_media_wire(
             n: nonce_b64,
             m: payload.mime.clone(),
             name: payload.file_name.clone(),
-            size: payload.bytes.len() as u64,
+            size: wire_size,
             sha: payload.sha256_plain.clone(),
             scope: scope.to_string(),
             blur,
@@ -462,7 +467,7 @@ pub fn build_rich_media_wire(
         n: nonce_b64,
         m: payload.mime.clone(),
         name: payload.file_name.clone(),
-        size: payload.bytes.len() as u64,
+        size: wire_size,
         sha: payload.sha256_plain.clone(),
         dur_ms: payload.duration_ms.unwrap_or(0),
         scope: scope.to_string(),
@@ -551,6 +556,9 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
     let scope_now = data.scope.clone();
     let sha_now = data.sha.clone();
     let qp_now = data.qp.clone();
+    let name_now = data.name.clone();
+    let wire_w_now = data.w;
+    let wire_h_now = data.h;
 
     let target_w = if data.orig_w > 0 { data.orig_w } else { data.w };
     let target_h = if data.orig_h > 0 { data.orig_h } else { data.h };
@@ -577,7 +585,12 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                 content_hash: String,
                                 mime_type: String,
                                 orig_qp: String,
-                                auto_run: bool| {
+                                auto_run: bool,
+                                key_b64_reg: String,
+                                nonce_b64_reg: String,
+                                fname_reg: String,
+                                wire_w_reg: u32,
+                                wire_h_reg: u32| {
         if mime_type == "image/gif" {
             return;
         }
@@ -594,18 +607,45 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             let mid_json = serde_json::to_string(&media_id).unwrap_or_default();
             let hash_json = serde_json::to_string(&content_hash).unwrap_or_default();
             let qp_json = serde_json::to_string(&orig_qp).unwrap_or_else(|_| "\"\"".to_string());
+            let key_json = serde_json::to_string(&key_b64_reg).unwrap_or_else(|_| "\"\"".to_string());
+            let nonce_json = serde_json::to_string(&nonce_b64_reg).unwrap_or_else(|_| "\"\"".to_string());
+            let fname_json = serde_json::to_string(&fname_reg).unwrap_or_else(|_| "\"image\"".to_string());
+            let mime_json = serde_json::to_string(&mime_type).unwrap_or_else(|_| "\"image/avif\"".to_string());
             let auto_flag = if auto_run { "true" } else { "false" };
             let js = format!(
                 r#"
                 (async () => {{
+                    // 0. Register this loaded image (even if blurry/un-enhanced!) in local cross-chat PDQ/BLAKE3 dedup index
+                    // so copying/pasting it into another chat NEVER creates a duplicate file on the server!
+                    const regDedup = (isSenderOrigLocal) => {{
+                        if (window.__chatwDedupLocal && window.__chatwDedupLocal.registerLoadedImageFromBlobUrl) {{
+                            window.__chatwDedupLocal.registerLoadedImageFromBlobUrl({url_json}, {{
+                                url: {mid_json},
+                                keyB64: {key_json},
+                                nonceB64: {nonce_json},
+                                mime: {mime_json},
+                                fileName: {fname_json},
+                                sha256: {hash_json},
+                                width: {wire_w_reg},
+                                height: {wire_h_reg},
+                                origW: {target_w},
+                                origH: {target_h},
+                                qp: {qp_json},
+                                isAiRecovery: Boolean({qp_json}) || ({target_w} > {wire_w_reg}),
+                                isSenderOrigLocal: Boolean(isSenderOrigLocal),
+                            }}).catch(() => {{}});
+                        }}
+                    }};
                     // 1. Sender keeps 100% untouched local original -> show immediately with zero AI overlay
                     if (window.__chatwMediaOpt && window.__chatwMediaOpt.getSenderOriginalFromCache) {{
                         const orig = await window.__chatwMediaOpt.getSenderOriginalFromCache({mid_json});
                         if (orig && orig.found && orig.url) {{
+                            regDedup(true);
                             dioxus.send({{ type: 'sender_orig', url: orig.url }});
                             return;
                         }}
                     }}
+                    regDedup(false);
                     if (!window.__chatwAiRestorer || !window.__chatwAiRestorer.isAiEnabled()) {{
                         dioxus.send({{ type: 'noop' }});
                         return;
@@ -726,7 +766,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             failed.set(false);
             raw_src.set(Some(hit.clone()));
             src.set(Some(hit.clone()));
-            run_ai_pipeline(hit, u, sha_now.clone(), mime_now.clone(), qp_now.clone(), is_live_incoming);
+            run_ai_pipeline(hit, u, sha_now.clone(), mime_now.clone(), qp_now.clone(), is_live_incoming, k, n, name_now.clone(), wire_w_now, wire_h_now);
             return;
         }
         src.set(None);
@@ -737,6 +777,9 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
         let sc_in = scope_now.clone();
         let sh_in = sha_now.clone();
         let qp_in = qp_now.clone();
+        let fname_in = name_now.clone();
+        let wire_w_in = wire_w_now;
+        let wire_h_in = wire_h_now;
         let target_key = key_now.clone();
         spawn(async move {
             let mime = if m_in.starts_with("image/") { m_in } else { "image/avif".into() };
@@ -744,7 +787,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                 loaded_key.set(Some(target_key));
                 raw_src.set(Some(burl.clone()));
                 src.set(Some(burl.clone()));
-                run_ai_pipeline(burl, u, sh_in, mime, qp_in, is_live_incoming);
+                run_ai_pipeline(burl, u, sh_in, mime, qp_in, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
                 return;
             }
             let scope = if sc_in.is_empty() {
@@ -758,7 +801,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     loaded_key.set(Some(target_key));
                     raw_src.set(Some(burl.clone()));
                     src.set(Some(burl.clone()));
-                    run_ai_pipeline(burl, u, sh_in, m, qp_in, is_live_incoming);
+                    run_ai_pipeline(burl, u, sh_in, m, qp_in, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
                 }
                 MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
                     missing.set(Some((ref_id, availability_state, reason)));
@@ -796,6 +839,12 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     let corner_sha = data.sha.clone();
                     let corner_mime = data.m.clone();
                     let corner_qp = data.qp.clone();
+                    let corner_k = data.k.clone();
+                    let corner_n = data.n.clone();
+                    let corner_name = data.name.clone();
+                    let corner_w = data.w;
+                    let corner_h = data.h;
+                    let dom_ref_id = crate::storage::extract_ref_id(&data.u).unwrap_or_default();
 
                     rsx! {
                         button {
@@ -821,6 +870,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                 src: "{s}",
                                 alt: "Image",
                                 decoding: "async",
+                                "data-media-ref": "{dom_ref_id}",
                                 "data-ai-restored": if is_ai { "true" } else { "false" },
                                 "data-ai-cache-hit": if ai_cache_hit() { "true" } else { "false" },
                                 "data-sender-original": if is_orig { "true" } else { "false" },
@@ -845,6 +895,11 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                             corner_mime.clone(),
                                             corner_qp.clone(),
                                             true,
+                                            corner_k.clone(),
+                                            corner_n.clone(),
+                                            corner_name.clone(),
+                                            corner_w,
+                                            corner_h,
                                         );
                                     },
                                     EnhanceToggleIcon { size: 15 }
@@ -2026,6 +2081,7 @@ pub fn GlobalImageLightbox() -> Element {
                                 src: "{cur_display_src}",
                                 alt: "Image",
                                 draggable: "false",
+                                "data-media-ref": "{crate::storage::extract_ref_id(&media.media_id).unwrap_or_default()}",
                                 onload: move |_| {
                                     spawn(async move {
                                         if let Some(b) = measure_lightbox_bounds().await {

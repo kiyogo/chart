@@ -140,7 +140,7 @@ pub async fn release_object_reference_with_grace(
 ) -> Result<bool, sqlx::Error> {
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "SELECT ref_count, storage_backend, storage_key, COALESCE(is_pinned, FALSE) AS is_pinned FROM media_objects WHERE id = $1 FOR UPDATE",
+        "SELECT ref_count, storage_backend, storage_key, COALESCE(is_pinned, FALSE) AS is_pinned, COALESCE(is_cdc_assembled, FALSE) AS is_cdc FROM media_objects WHERE id = $1 FOR UPDATE",
     )
     .bind(object_id)
     .fetch_optional(&mut *tx)
@@ -155,16 +155,54 @@ pub async fn release_object_reference_with_grace(
     let backend: String = r.try_get("storage_backend")?;
     let key: String = r.try_get("storage_key")?;
     let is_pinned: bool = r.try_get("is_pinned")?;
+    let is_cdc: bool = r.try_get("is_cdc")?;
     let next_refs = (current_refs - 1).max(0);
 
     if next_refs == 0 && !is_pinned && grace_secs <= 0 {
+        let mut dead_cdc_chunks: Vec<(String, String)> = Vec::new();
+        if is_cdc {
+            let chunk_rows = sqlx::query(
+                "SELECT chunk_blake3, COUNT(*)::int AS uses FROM media_cdc_recipes WHERE object_id = $1 GROUP BY chunk_blake3",
+            )
+            .bind(object_id)
+            .fetch_all(&mut *tx)
+            .await?;
+            for cr in chunk_rows {
+                let cb3: Vec<u8> = cr.try_get("chunk_blake3")?;
+                let uses: i32 = cr.try_get("uses")?;
+                if let Some(updated) = sqlx::query(
+                    "UPDATE media_cdc_chunks SET ref_count = GREATEST(0, ref_count - $2) WHERE chunk_blake3 = $1 RETURNING ref_count, storage_backend, storage_key",
+                )
+                .bind(&cb3)
+                .bind(uses)
+                .fetch_optional(&mut *tx)
+                .await?
+                {
+                    if updated.try_get::<i32, _>("ref_count").unwrap_or(1) == 0 {
+                        dead_cdc_chunks.push((
+                            updated.try_get::<String, _>("storage_backend").unwrap_or_default(),
+                            updated.try_get::<String, _>("storage_key").unwrap_or_default(),
+                        ));
+                    }
+                }
+            }
+        }
         // Delete DB row inside transaction before physical unlink so concurrent dedup cannot reference a deleted blob!
         sqlx::query("DELETE FROM media_objects WHERE id = $1")
             .bind(object_id)
             .execute(&mut *tx)
             .await?;
+        if !dead_cdc_chunks.is_empty() {
+            let _ = sqlx::query("DELETE FROM media_cdc_chunks WHERE ref_count = 0").execute(&mut *tx).await;
+        }
         tx.commit().await?;
-        delete_physical_object(storage, &backend, &key).await;
+        if is_cdc {
+            for (cb, ck) in dead_cdc_chunks {
+                delete_physical_object(storage, &cb, &ck).await;
+            }
+        } else {
+            delete_physical_object(storage, &backend, &key).await;
+        }
         return Ok(true);
     }
 

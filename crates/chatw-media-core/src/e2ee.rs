@@ -135,18 +135,55 @@ pub fn parse_cwch3_header(bytes: &[u8]) -> Option<Cwch3Header> {
     })
 }
 
-/// Seal bytes using `CWCH3` chunked streaming AEAD bound to `(media_id, variant_id)`.
+/// Seal bytes using `CWCH3` chunked streaming AEAD bound to `(media_id, variant_id)` with fresh OS-random key/nonce.
 pub fn seal_cwch3(
     bytes: &[u8],
     media_id: &str,
     variant_id: &str,
     chunk_size: usize,
 ) -> MediaResult<SealedMedia> {
-    let seg_len = chunk_size.clamp(16 * 1024, 4 * 1024 * 1024);
     let mut key = [0u8; 32];
     let mut base_nonce = [0u8; 12];
     fill_random(&mut key)?;
     fill_random(&mut base_nonce)?;
+    seal_cwch3_with_material(bytes, media_id, variant_id, chunk_size, key, base_nonce)
+}
+
+/// Derive deterministic single-blob Convergent MLE `(key, nonce)` via domain-separated `BLAKE3_derive_key`.
+pub fn derive_convergent_single_key_nonce(bytes: &[u8]) -> ([u8; 32], [u8; 12]) {
+    let key = blake3::derive_key("chatw-mle-v1-single-aes256gcm-key", bytes);
+    let nonce_full = blake3::derive_key("chatw-mle-v1-single-aes256gcm-nonce", bytes);
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(&nonce_full[..12]);
+    (key, nonce)
+}
+
+/// Convergent Message-Locked Encryption (MLE) `CWCH3` (Tahoe-LAFS / Bellare-Keelveedhi-Ristenpart):
+/// Derives deterministic AES-256-GCM key & base nonce from content via domain-separated `BLAKE3_derive_key`
+/// so identical files produce identical blind ciphertexts across users (zero-knowledge server deduplication!),
+/// while remaining 100% decryptable by standard `open_cwch3` / `open`!
+pub fn seal_cwch3_convergent(
+    bytes: &[u8],
+    media_id: &str,
+    variant_id: &str,
+    chunk_size: usize,
+) -> MediaResult<SealedMedia> {
+    let key = blake3::derive_key("chatw-mle-v1-cwch3-aes256gcm-key", bytes);
+    let nonce_full = blake3::derive_key("chatw-mle-v1-cwch3-aes256gcm-nonce", bytes);
+    let mut base_nonce = [0u8; 12];
+    base_nonce.copy_from_slice(&nonce_full[..12]);
+    seal_cwch3_with_material(bytes, media_id, variant_id, chunk_size, key, base_nonce)
+}
+
+fn seal_cwch3_with_material(
+    bytes: &[u8],
+    media_id: &str,
+    variant_id: &str,
+    chunk_size: usize,
+    mut key: [u8; 32],
+    base_nonce: [u8; 12],
+) -> MediaResult<SealedMedia> {
+    let seg_len = chunk_size.clamp(16 * 1024, 4 * 1024 * 1024);
 
     let media_tag = hash_tag_8(media_id);
     let variant_tag = hash_tag_4(variant_id);

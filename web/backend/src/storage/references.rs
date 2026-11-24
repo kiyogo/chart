@@ -21,8 +21,8 @@ use crate::{
     websocket::WsEvent,
 };
 use chatw_media_core::dedup::{
-    PdqHash256, PerceptualMatchVerdict, VideoFingerprint, compare_perceptual_images, evaluate_dedup_policy,
-    videos_are_safe_dedup_equivalent,
+    AudioFingerprint, PdqHash256, VideoFingerprint, audio_fingerprints_equivalent,
+    evaluate_dedup_policy, videos_are_safe_dedup_equivalent,
 };
 
 pub async fn handle_get_ref_meta(
@@ -473,6 +473,28 @@ pub async fn handle_storage_metrics(
     .await
     .unwrap_or(0);
 
+    let cdc_stats = sqlx::query(
+        r#"
+        SELECT
+            COUNT(*)::bigint AS unique_chunks,
+            COALESCE(SUM(byte_size::bigint), 0)::bigint AS physical_chunk_bytes,
+            COALESCE(SUM(byte_size::bigint * GREATEST(ref_count, 1)), 0)::bigint AS logical_chunk_bytes
+        FROM media_cdc_chunks
+        "#,
+    )
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+    let cdc_unique_chunks: i64 = cdc_stats.as_ref().and_then(|r| r.try_get("unique_chunks").ok()).unwrap_or(0);
+    let cdc_phys: i64 = cdc_stats.as_ref().and_then(|r| r.try_get("physical_chunk_bytes").ok()).unwrap_or(0);
+    let cdc_log: i64 = cdc_stats.as_ref().and_then(|r| r.try_get("logical_chunk_bytes").ok()).unwrap_or(0);
+    let cdc_saved_bytes = (cdc_log - cdc_phys).max(0);
+    let mih_indexed_images: i64 = sqlx::query_scalar("SELECT COUNT(DISTINCT object_id) FROM media_pdq_mih_buckets")
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+
     Ok(Json(serde_json::json!({
         "user": {
             "total_refs": user_refs.try_get::<i64, _>("total_refs")?,
@@ -495,7 +517,10 @@ pub async fn handle_storage_metrics(
             "unique_objects": cas_stats.try_get::<i64, _>("unique_objects")?,
             "physical_bytes": physical_bytes,
             "logical_bytes": logical_bytes,
-            "dedup_saved_bytes": dedup_saved_bytes,
+            "dedup_saved_bytes": dedup_saved_bytes + cdc_saved_bytes,
+            "cdc_unique_chunks": cdc_unique_chunks,
+            "cdc_saved_bytes": cdc_saved_bytes,
+            "mih_indexed_images": mih_indexed_images,
             "compression_saved_bytes": cas_stats.try_get::<i64, _>("compression_saved_bytes")?,
             "relay_physical_bytes": cas_stats.try_get::<i64, _>("relay_physical_bytes")?,
             "backup_physical_bytes": cas_stats.try_get::<i64, _>("backup_physical_bytes")?,
@@ -539,11 +564,15 @@ pub struct DedupCheckReq {
     pub scope_id: Option<Uuid>,
     pub is_e2ee: bool,
     pub blake3_hex: Option<String>,
+    pub orig_blake3_hex: Option<String>,
     pub sha256_hex: Option<String>,
     pub perceptual_hash_hex: Option<String>,
     pub perceptual_quality: Option<u8>,
     pub caption_band_hash: Option<u64>,
+    pub color_moment_hash: Option<u64>,
+    pub aspect_ratio_milli: Option<u16>,
     pub video_fingerprint: Option<VideoFingerprint>,
+    pub audio_fingerprint: Option<AudioFingerprint>,
     pub width: Option<u32>,
     pub height: Option<u32>,
 }
@@ -648,54 +677,72 @@ pub async fn handle_dedup_check(
         }
     }
 
-    // 2. Perceptual PDQ 256-bit DCT match with strict meme-caption-band guard & quality protection
+    // 2. O(1) 16-Band Multi-Index Hashing (MIH) PDQ 256-bit DCT match with Triple Meme/Color/Aspect Guard
     if decision.allow_perceptual_lookup {
         if let Some(pdq_hex) = req.perceptual_hash_hex.as_deref() {
-            if let Some(incoming_pdq) = PdqHash256::from_hex(
+            if let Some(incoming_pdq) = PdqHash256::from_hex_full(
                 pdq_hex,
                 req.perceptual_quality.unwrap_or(0),
                 req.caption_band_hash.unwrap_or(0),
+                req.color_moment_hash.unwrap_or(0),
+                req.aspect_ratio_milli.unwrap_or(0),
             ) {
                 let incoming_px = (req.width.unwrap_or(0) as u64) * (req.height.unwrap_or(0) as u64);
-                let cands = sqlx::query(
-                    r#"
-                    SELECT d.object_id, d.perceptual_hash, d.perceptual_quality, d.caption_band_hash,
-                           d.width, d.height, o.storage_backend, o.storage_key, o.byte_size
-                    FROM media_dedup_indexes d
-                    JOIN media_objects o ON o.id = d.object_id
-                    WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.perceptual_hash IS NOT NULL
-                    ORDER BY d.created_at DESC
-                    LIMIT 120
-                    "#,
+                if let Some(hit) = crate::storage::dedup_engine::find_pdq_mih_match(
+                    &state.db,
+                    &state.storage,
+                    "shared_non_e2ee",
+                    &incoming_pdq,
+                    incoming_px,
                 )
-                .fetch_all(&state.db)
-                .await?;
+                .await?
+                {
+                    return Ok(Json(serde_json::json!({
+                        "dedup_allowed": true,
+                        "matched": true,
+                        "match_kind": "perceptual_pdq_mih_candidate",
+                        "hamming_distance": hit.hamming,
+                        "object_id": hit.object_id,
+                        "byte_size": hit.byte_size,
+                        "orig_profile_json": hit.orig_profile_json,
+                        "ai_recommended": hit.ai_recommended,
+                    })));
+                }
+            }
+        }
 
-                for cand in cands {
-                    let ph: Vec<u8> = cand.try_get("perceptual_hash")?;
-                    if ph.len() != 32 {
-                        continue;
-                    }
-                    let mut bytes = [0u8; 32];
-                    bytes.copy_from_slice(&ph);
-                    let existing_pdq = PdqHash256 {
-                        bytes,
-                        quality: cand.try_get::<Option<i16>, _>("perceptual_quality")?.unwrap_or(0).clamp(0, 100) as u8,
-                        caption_band_hash: cand.try_get::<Option<i64>, _>("caption_band_hash")?.unwrap_or(0) as u64,
-                    };
-                    let ex_px = (cand.try_get::<Option<i32>, _>("width")?.unwrap_or(0).max(0) as u64)
-                        * (cand.try_get::<Option<i32>, _>("height")?.unwrap_or(0).max(0) as u64);
-                    if let PerceptualMatchVerdict::EquivalentCandidate { hamming } =
-                        compare_perceptual_images(&incoming_pdq, &existing_pdq, incoming_px, ex_px)
-                    {
-                        return Ok(Json(serde_json::json!({
-                            "dedup_allowed": true,
-                            "matched": true,
-                            "match_kind": "perceptual_pdq_candidate",
-                            "hamming_distance": hamming,
-                            "object_id": cand.try_get::<Uuid, _>("object_id")?,
-                            "byte_size": cand.try_get::<i64, _>("byte_size")?,
-                        })));
+        // 4. Audio 128-bit Spectral Fingerprint match
+        if let Some(ref afp) = req.audio_fingerprint {
+            let audio_cands = sqlx::query(
+                r#"
+                SELECT d.object_id, d.audio_fingerprint, o.storage_backend, o.storage_key, o.byte_size, o.is_cdc_assembled
+                FROM media_dedup_indexes d
+                JOIN media_objects o ON o.id = d.object_id
+                WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.audio_fingerprint IS NOT NULL
+                ORDER BY d.created_at DESC
+                LIMIT 150
+                "#,
+            )
+            .fetch_all(&state.db)
+            .await?;
+            for cand in audio_cands {
+                if let Ok(val) = cand.try_get::<serde_json::Value, _>("audio_fingerprint") {
+                    if let Ok(cand_afp) = serde_json::from_value::<AudioFingerprint>(val) {
+                        if audio_fingerprints_equivalent(afp, &cand_afp) {
+                            let oid: Uuid = cand.try_get("object_id")?;
+                            let backend: String = cand.try_get("storage_backend")?;
+                            let key: String = cand.try_get("storage_key")?;
+                            let is_cdc: bool = cand.try_get("is_cdc_assembled").unwrap_or(false);
+                            if crate::storage::dedup_engine::physical_object_available(&state.storage, &backend, &key, is_cdc).await {
+                                return Ok(Json(serde_json::json!({
+                                    "dedup_allowed": true,
+                                    "matched": true,
+                                    "match_kind": "audio_spectral_match",
+                                    "object_id": oid,
+                                    "byte_size": cand.try_get::<i64, _>("byte_size")?,
+                                })));
+                            }
+                        }
                     }
                 }
             }

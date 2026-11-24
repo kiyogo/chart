@@ -2949,10 +2949,10 @@ pub fn Chat(
         });
     });
 
-    // End-to-end encrypted media/image/voice/file for direct messages:
-    // Sender sees crisp local preview immediately; payload is compressed -> encrypted E2EE (`CWCH3`/AEAD) ->
-    // uploaded as opaque ciphertext to Server-First durable storage (S3/CAS) -> cached locally for sender.
-    let send_dm_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
+    // End-to-end encrypted media/image/voice/file for direct messages (Spec 111 Hyper-Dedup + Convergent MLE):
+    // Checks cross-chat copy & zero-knowledge convergent dedup BEFORE uploading a single byte;
+    // when copying a blurry/un-enhanced image from another chat, reuses the exact server object AND sharpens BOTH sender & receiver!
+    let send_dm_media = use_callback(move |mut payload: crate::storage::media_opt::OptimizedMediaPayload| {
         if payload.bytes.len() > 25 * 1024 * 1024 {
             if let Some(ref p) = payload.instant_preview_url {
                 crate::components::rich::remove_pending_media(p);
@@ -2964,73 +2964,57 @@ pub fn Chat(
         let preview_key = payload.instant_preview_url.clone();
         spawn(async move {
             if let Some(ref p) = preview_key {
-                crate::components::rich::update_pending_media_status(p, "Đang mã hóa", false);
+                crate::components::rich::update_pending_media_status(p, "Đang gửi", false);
             }
-            let sealed = match crate::crypto::blob::seal(&payload.bytes) {
-                Ok(s) => s,
-                Err(_) => {
-                    if let Some(ref p) = preview_key {
-                        crate::components::rich::update_pending_media_status(p, "Mã hóa thất bại", true);
-                    }
-                    toast.set(Some("File encryption failed".into()));
-                    return;
-                }
-            };
-            if let Some(ref p) = preview_key {
-                crate::components::rich::update_pending_media_status(p, "Đang tải lên", false);
-            }
-            match crate::services::storage_sync::upload_attachment_scoped(
-                sealed.cipher,
-                "application/octet-stream",
+            match crate::services::storage_sync::upload_or_claim_media_for_scope(
                 "dm",
                 peer_id.as_deref(),
-                Some(&payload.file_name),
-                Some(&payload.mime),
-                Some(&payload.sha256_plain),
                 true,
-                true,
+                &mut payload,
             )
             .await
             {
-                Ok(resp) => {
-                    let url = resp["download_url"].as_str().unwrap_or_default().to_string();
-                    if let Some(ref_id) = resp["ref_id"].as_str() {
+                Ok(out) => {
+                    if !out.ref_id.is_empty() && !payload.bytes.is_empty() {
                         let meta = crate::storage::LocalObjectMeta {
-                            ref_id: ref_id.to_string(),
+                            ref_id: out.ref_id.clone(),
                             scope_type: "dm".into(),
                             file_name: payload.file_name.clone(),
                             mime_type: payload.mime.clone(),
                             sha256_plain: Some(payload.sha256_plain.clone()),
-                            availability_state: resp["availability_state"].as_str().unwrap_or("server_durable").to_string(),
+                            availability_state: out.availability_state.clone(),
                         };
                         let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
                     }
-                    // Copy sender's 100% untouched original file into sender's local app storage so sender sees crisp original!
+                    // Only commit untouched local original when sender actually holds a crisp original (NOT a copied blurry image!)
                     if payload.media_kind == "image" {
-                        if let Some(ref p) = preview_key {
-                            let rid = resp["ref_id"].as_str().unwrap_or_default();
-                            crate::storage::media_opt::commit_sender_original(
-                                p,
-                                &url,
-                                &sealed.key_b64,
-                                &sealed.nonce_b64,
-                                rid,
+                        if !out.needs_sender_ai {
+                            if let Some(ref p) = preview_key {
+                                crate::storage::media_opt::commit_sender_original(
+                                    p,
+                                    &out.download_url,
+                                    &out.key_b64,
+                                    &out.nonce_b64,
+                                    &out.ref_id,
+                                )
+                                .await;
+                            }
+                        }
+                        if !payload.bytes.is_empty() {
+                            let _ = platform::register_cached_blob_url(
+                                &out.download_url,
+                                &out.key_b64,
+                                &out.nonce_b64,
+                                &payload.bytes,
+                                &payload.mime,
                             )
                             .await;
                         }
-                        let _ = platform::register_cached_blob_url(
-                            &url,
-                            &sealed.key_b64,
-                            &sealed.nonce_b64,
-                            &payload.bytes,
-                            &payload.mime,
-                        )
-                        .await;
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
-                        url,
-                        sealed.key_b64,
-                        sealed.nonce_b64,
+                        out.download_url,
+                        out.key_b64,
+                        out.nonce_b64,
                         "dm",
                         &payload,
                     );
@@ -3049,31 +3033,53 @@ pub fn Chat(
         });
     });
 
+    // Clipboard-pasted images route through the exact same Hyper-Dedup + AVIF + blurry-copy AI recovery pipeline!
     let send_dm_image = use_callback(move |(bytes, mime): (Vec<u8>, String)| {
-        let sha = crate::storage::sha256_hex(&bytes);
-        let len = bytes.len();
-        send_dm_media.call(crate::storage::media_opt::OptimizedMediaPayload {
-            bytes,
-            mime,
-            ext: "bin".into(),
-            file_name: "image".into(),
-            original_size: len,
-            optimized_size: len,
-            is_crisp_text: false,
-            media_kind: "image".into(),
-            sha256_plain: sha,
-            thumb_b64: None,
-            thumb_mime: None,
-            duration_ms: None,
-            blur_data_url: None,
-            width: None,
-            height: None,
-            target_width: None,
-            target_height: None,
-            waveform: Vec::new(),
-            instant_preview_url: None,
-            codec: None,
-            orig_profile_json: None,
+        let send_dm_media = send_dm_media;
+        spawn(async move {
+            match crate::storage::media_opt::optimize_pasted_image_bytes(&bytes, &mime, "image.png").await {
+                Ok(payload) => send_dm_media.call(payload),
+                Err(_) => {
+                    let sha = crate::storage::sha256_hex(&bytes);
+                    let len = bytes.len();
+                    send_dm_media.call(crate::storage::media_opt::OptimizedMediaPayload {
+                        bytes,
+                        mime,
+                        ext: "png".into(),
+                        file_name: "image.png".into(),
+                        original_size: len,
+                        optimized_size: len,
+                        is_crisp_text: false,
+                        media_kind: "image".into(),
+                        sha256_plain: sha,
+                        thumb_b64: None,
+                        thumb_mime: None,
+                        duration_ms: None,
+                        blur_data_url: None,
+                        width: None,
+                        height: None,
+                        target_width: None,
+                        target_height: None,
+                        waveform: Vec::new(),
+                        instant_preview_url: None,
+                        codec: None,
+                        orig_profile_json: None,
+                        orig_blake3: None,
+                        pdq_hex: None,
+                        pdq_quality: None,
+                        caption_band_hash: None,
+                        color_moment_hash: None,
+                        aspect_ratio_milli: None,
+                        ai_recommended: false,
+                        video_fingerprint_json: None,
+                        audio_fingerprint_json: None,
+                        copied_from_ref_id: None,
+                        copied_key_b64: None,
+                        copied_nonce_b64: None,
+                        needs_sender_ai: false,
+                    });
+                }
+            }
         });
     });
 
@@ -3468,9 +3474,8 @@ pub fn Chat(
             }
         });
     });
-    let send_group_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
+    let send_group_media = use_callback(move |mut payload: crate::storage::media_opt::OptimizedMediaPayload| {
         let gid = active_group().map(|g| g.id);
-        let bytes_for_cache = payload.bytes.clone();
         let preview_key = payload.instant_preview_url.clone();
         spawn(async move {
             let Some(group_id) = gid else {
@@ -3481,45 +3486,42 @@ pub fn Chat(
                 return;
             };
             if let Some(ref p) = preview_key {
-                crate::components::rich::update_pending_media_status(p, "Đang tải lên", false);
+                crate::components::rich::update_pending_media_status(p, "Đang gửi", false);
             }
-            match crate::services::storage_sync::upload_attachment_scoped(
-                payload.bytes.clone(),
-                &payload.mime,
+            match crate::services::storage_sync::upload_or_claim_media_for_scope(
                 "group",
                 Some(&group_id),
-                Some(&payload.file_name),
-                Some(&payload.mime),
-                Some(&payload.sha256_plain),
                 false,
-                false,
+                &mut payload,
             )
             .await
             {
-                Ok(resp) => {
-                    let url = resp["download_url"].as_str().unwrap_or_default().to_string();
-                    if let Some(ref_id) = resp["ref_id"].as_str() {
+                Ok(out) => {
+                    if !out.ref_id.is_empty() && !payload.bytes.is_empty() {
                         let meta = crate::storage::LocalObjectMeta {
-                            ref_id: ref_id.to_string(),
+                            ref_id: out.ref_id.clone(),
                             scope_type: "group".into(),
                             file_name: payload.file_name.clone(),
                             mime_type: payload.mime.clone(),
                             sha256_plain: Some(payload.sha256_plain.clone()),
                             availability_state: "server_durable".into(),
                         };
-                        let _ = crate::storage::put_local_object(&meta, &bytes_for_cache).await;
+                        let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
                     }
                     if payload.media_kind == "image" {
-                        if let Some(ref p) = preview_key {
-                            let rid = resp["ref_id"].as_str().unwrap_or_default();
-                            crate::storage::media_opt::commit_sender_original(p, &url, "", "", rid).await;
+                        if !out.needs_sender_ai {
+                            if let Some(ref p) = preview_key {
+                                crate::storage::media_opt::commit_sender_original(p, &out.download_url, &out.key_b64, &out.nonce_b64, &out.ref_id).await;
+                            }
                         }
-                        let _ = platform::register_cached_blob_url(&url, "", "", &bytes_for_cache, &payload.mime).await;
+                        if !payload.bytes.is_empty() {
+                            let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
+                        }
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
-                        url,
-                        String::new(),
-                        String::new(),
+                        out.download_url,
+                        out.key_b64,
+                        out.nonce_b64,
                         "group",
                         &payload,
                     );
@@ -3539,36 +3541,56 @@ pub fn Chat(
     });
 
     let send_group_image = use_callback(move |(bytes, mime): (Vec<u8>, String)| {
-        let sha = crate::storage::sha256_hex(&bytes);
-        let len = bytes.len();
-        send_group_media.call(crate::storage::media_opt::OptimizedMediaPayload {
-            bytes,
-            mime,
-            ext: "bin".into(),
-            file_name: "image".into(),
-            original_size: len,
-            optimized_size: len,
-            is_crisp_text: false,
-            media_kind: "image".into(),
-            sha256_plain: sha,
-            thumb_b64: None,
-            thumb_mime: None,
-            duration_ms: None,
-            blur_data_url: None,
-            width: None,
-            height: None,
-            target_width: None,
-            target_height: None,
-            waveform: Vec::new(),
-            instant_preview_url: None,
-            codec: None,
-            orig_profile_json: None,
+        let send_group_media = send_group_media;
+        spawn(async move {
+            match crate::storage::media_opt::optimize_pasted_image_bytes(&bytes, &mime, "image.png").await {
+                Ok(payload) => send_group_media.call(payload),
+                Err(_) => {
+                    let sha = crate::storage::sha256_hex(&bytes);
+                    let len = bytes.len();
+                    send_group_media.call(crate::storage::media_opt::OptimizedMediaPayload {
+                        bytes,
+                        mime,
+                        ext: "png".into(),
+                        file_name: "image.png".into(),
+                        original_size: len,
+                        optimized_size: len,
+                        is_crisp_text: false,
+                        media_kind: "image".into(),
+                        sha256_plain: sha,
+                        thumb_b64: None,
+                        thumb_mime: None,
+                        duration_ms: None,
+                        blur_data_url: None,
+                        width: None,
+                        height: None,
+                        target_width: None,
+                        target_height: None,
+                        waveform: Vec::new(),
+                        instant_preview_url: None,
+                        codec: None,
+                        orig_profile_json: None,
+                        orig_blake3: None,
+                        pdq_hex: None,
+                        pdq_quality: None,
+                        caption_band_hash: None,
+                        color_moment_hash: None,
+                        aspect_ratio_milli: None,
+                        ai_recommended: false,
+                        video_fingerprint_json: None,
+                        audio_fingerprint_json: None,
+                        copied_from_ref_id: None,
+                        copied_key_b64: None,
+                        copied_nonce_b64: None,
+                        needs_sender_ai: false,
+                    });
+                }
+            }
         });
     });
 
-    let send_channel_media = use_callback(move |payload: crate::storage::media_opt::OptimizedMediaPayload| {
+    let send_channel_media = use_callback(move |mut payload: crate::storage::media_opt::OptimizedMediaPayload| {
         let cid = selected_channel().map(|c| c.id);
-        let bytes_for_cache = payload.bytes.clone();
         let preview_key = payload.instant_preview_url.clone();
         spawn(async move {
             let Some(channel_id) = cid else {
@@ -3579,45 +3601,42 @@ pub fn Chat(
                 return;
             };
             if let Some(ref p) = preview_key {
-                crate::components::rich::update_pending_media_status(p, "Đang tải lên", false);
+                crate::components::rich::update_pending_media_status(p, "Đang gửi", false);
             }
-            match crate::services::storage_sync::upload_attachment_scoped(
-                payload.bytes.clone(),
-                &payload.mime,
+            match crate::services::storage_sync::upload_or_claim_media_for_scope(
                 "channel",
                 Some(&channel_id),
-                Some(&payload.file_name),
-                Some(&payload.mime),
-                Some(&payload.sha256_plain),
                 false,
-                false,
+                &mut payload,
             )
             .await
             {
-                Ok(resp) => {
-                    let url = resp["download_url"].as_str().unwrap_or_default().to_string();
-                    if let Some(ref_id) = resp["ref_id"].as_str() {
+                Ok(out) => {
+                    if !out.ref_id.is_empty() && !payload.bytes.is_empty() {
                         let meta = crate::storage::LocalObjectMeta {
-                            ref_id: ref_id.to_string(),
+                            ref_id: out.ref_id.clone(),
                             scope_type: "channel".into(),
                             file_name: payload.file_name.clone(),
                             mime_type: payload.mime.clone(),
                             sha256_plain: Some(payload.sha256_plain.clone()),
                             availability_state: "server_durable".into(),
                         };
-                        let _ = crate::storage::put_local_object(&meta, &bytes_for_cache).await;
+                        let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
                     }
                     if payload.media_kind == "image" {
-                        if let Some(ref p) = preview_key {
-                            let rid = resp["ref_id"].as_str().unwrap_or_default();
-                            crate::storage::media_opt::commit_sender_original(p, &url, "", "", rid).await;
+                        if !out.needs_sender_ai {
+                            if let Some(ref p) = preview_key {
+                                crate::storage::media_opt::commit_sender_original(p, &out.download_url, &out.key_b64, &out.nonce_b64, &out.ref_id).await;
+                            }
                         }
-                        let _ = platform::register_cached_blob_url(&url, "", "", &bytes_for_cache, &payload.mime).await;
+                        if !payload.bytes.is_empty() {
+                            let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
+                        }
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
-                        url,
-                        String::new(),
-                        String::new(),
+                        out.download_url,
+                        out.key_b64,
+                        out.nonce_b64,
                         "channel",
                         &payload,
                     );

@@ -24,9 +24,10 @@ use crate::{
     },
 };
 use chatw_media_core::dedup::{
-    compare_perceptual_images, compute_pdq_hash_rgba, evaluate_dedup_policy, hash_bytes_exact,
-    PdqHash256, PerceptualMatchVerdict,
+    AudioFingerprint, PdqHash256, VideoFingerprint, compute_pdq_hash_rgba, compute_pow_digest,
+    evaluate_dedup_policy, hash_bytes_exact,
 };
+use crate::storage::dedup_engine;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -41,6 +42,13 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/uploads/{id}/complete", post(handle_complete_upload))
         .route("/dedup/check", post(handle_dedup_check))
+        .route("/dedup/claim", post(dedup_engine::handle_dedup_claim))
+        .route("/dedup/cdc/plan", post(dedup_engine::handle_cdc_plan))
+        .route(
+            "/dedup/cdc/chunks/{blake3}",
+            put(dedup_engine::handle_cdc_chunk_put).layer(DefaultBodyLimit::max(4 * 1024 * 1024)),
+        )
+        .route("/dedup/cdc/commit", post(dedup_engine::handle_cdc_commit))
         .route("/forward", post(handle_forward_reference))
         .route("/references/{id}/meta", get(handle_get_ref_meta))
         .route("/references/{id}/manifest", get(handle_get_manifest).post(handle_put_manifest))
@@ -54,7 +62,7 @@ pub fn routes() -> Router<AppState> {
         .route("/migration/run", post(handle_run_migration))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct UploadMetaQuery {
     pub scope_type: Option<String>,
     pub scope_id: Option<Uuid>,
@@ -68,6 +76,18 @@ pub struct UploadMetaQuery {
     pub backup_dm: Option<bool>,
     pub forward_from_ref_id: Option<Uuid>,
     pub tier: Option<String>,
+    pub orig_blake3: Option<String>,
+    pub pdq_hex: Option<String>,
+    pub pdq_quality: Option<u8>,
+    pub caption_band_hash: Option<u64>,
+    pub color_moment_hash: Option<u64>,
+    pub aspect_ratio_milli: Option<u16>,
+    pub orig_profile_json: Option<String>,
+    pub orig_width: Option<i32>,
+    pub orig_height: Option<i32>,
+    pub ai_recommended: Option<bool>,
+    pub video_fingerprint_json: Option<String>,
+    pub audio_fingerprint_json: Option<String>,
 }
 
 /// Shared ingestion helper used by BOTH legacy `/api/attachments` and new resumable chunked uploads.
@@ -98,9 +118,26 @@ pub async fn ingest_media_bytes(
         .unwrap_or_else(|| "attachment.bin".to_string());
 
     let plain_sha = decode_hex_32(meta.sha256_plain.as_deref());
+    let orig_b3_opt = decode_hex_32(meta.orig_blake3.as_deref());
     let exact_hashes = hash_bytes_exact(&bytes);
     let stored_sha_arr = sha256_bytes(&bytes);
     let stored_blake3_arr: [u8; 32] = blake3::hash(&bytes).into();
+    let pow_digest_arr: [u8; 32] = compute_pow_digest(&bytes);
+    let client_orig_profile = meta
+        .orig_profile_json
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= 512)
+        .map(str::to_string);
+    let client_ai_recommended = meta.ai_recommended.unwrap_or(client_orig_profile.is_some());
+    let client_vf: Option<VideoFingerprint> = meta
+        .video_fingerprint_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+    let client_af: Option<AudioFingerprint> = meta
+        .audio_fingerprint_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
     if let Some(expected_hex) = meta.sha256_cipher.as_deref() {
         let expected = decode_hex_32(Some(expected_hex)).ok_or(AppError::BadRequest("invalid_sha256_cipher"))?;
         if expected != stored_sha_arr {
@@ -197,8 +234,23 @@ pub async fn ingest_media_bytes(
         dedup_decision.cas_scope_key.clone()
     };
 
+    let client_pdq = meta.pdq_hex.as_deref().and_then(|hex| {
+        PdqHash256::from_hex_full(
+            hex,
+            meta.pdq_quality.unwrap_or(50),
+            meta.caption_band_hash.unwrap_or(0),
+            meta.color_moment_hash.unwrap_or(0),
+            meta.aspect_ratio_milli.unwrap_or(0),
+        )
+    });
+
     let (dims_w, dims_h, pdq_opt) = if !is_e2ee && matches!(sniffed.kind, MediaKind::Image) {
-        if dedup_decision.allow_perceptual_lookup {
+        if let Some(cpdq) = client_pdq {
+            let (w, h) = probe_image_dimensions(&bytes)
+                .map(|(w, h)| (Some(w as i32), Some(h as i32)))
+                .unwrap_or((meta.orig_width, meta.orig_height));
+            (w, h, Some(cpdq))
+        } else if dedup_decision.allow_perceptual_lookup {
             if let Ok(img) = image::load_from_memory(&bytes) {
                 let rgba = img.to_rgba8();
                 let (w, h) = rgba.dimensions();
@@ -213,7 +265,7 @@ pub async fn ingest_media_bytes(
             (w, h, None)
         }
     } else {
-        (None, None, None)
+        (meta.orig_width, meta.orig_height, None)
     };
 
     let storage_key = match backend_kind {
@@ -242,19 +294,21 @@ pub async fn ingest_media_bytes(
         matched_existing = Some((oid, ex_key, ex_backend, "exact_cas_scope"));
     }
 
-    // Fallback 1: If not found by cas_scope, check exact cryptographic hash in shared dedup index
+    // Fallback 1: If not found by cas_scope, check exact wire/original BLAKE3 or SHA-256 in shared dedup index
     if matched_existing.is_none() && !is_e2ee && dedup_decision.allow_exact_global_lookup {
         if let Some(row) = sqlx::query(
             r#"
             SELECT d.object_id, o.storage_key, o.storage_backend
             FROM media_dedup_indexes d
             JOIN media_objects o ON o.id = d.object_id
-            WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND (d.blake3 = $1 OR d.sha256 = $2)
+            WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE
+              AND (d.blake3 = $1 OR d.sha256 = $2 OR ($3::bytea IS NOT NULL AND (d.orig_blake3 = $3 OR d.blake3 = $3)))
             LIMIT 1
             "#,
         )
         .bind(&stored_blake3_arr[..])
         .bind(&stored_sha_arr[..])
+        .bind(orig_b3_opt.as_ref().map(|x| &x[..]))
         .fetch_optional(&mut *tx)
         .await?
         {
@@ -265,53 +319,46 @@ pub async fn ingest_media_bytes(
         }
     }
 
-    // Fallback 2: Perceptual PDQ 256-bit DCT match for memes & re-encoded images (with caption-band guard)
+    // Fallback 1B: Convergent MLE Ciphertext Match for E2EE DMs (blind zero-knowledge dedup by exact ciphertext + PoW!)
+    if matched_existing.is_none() && is_e2ee && storage_tier != "temp_relay" {
+        if let Some(row) = sqlx::query(
+            r#"
+            SELECT id, storage_key, storage_backend, is_cdc_assembled
+            FROM media_objects
+            WHERE blake3 = $1 AND pow_digest = $2 AND variant_kind = 'original'
+            ORDER BY ref_count DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(&stored_blake3_arr[..])
+        .bind(&pow_digest_arr[..])
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            let oid: Uuid = row.try_get("id")?;
+            let ex_key: String = row.try_get("storage_key")?;
+            let ex_backend: String = row.try_get("storage_backend")?;
+            let is_cdc: bool = row.try_get("is_cdc_assembled").unwrap_or(false);
+            if dedup_engine::physical_object_available(storage, &ex_backend, &ex_key, is_cdc).await {
+                matched_existing = Some((oid, ex_key, ex_backend, "convergent_mle_pow"));
+            }
+        }
+    }
+
+    // Fallback 2: O(1) 16-Band MIH Meta PDQ 256-bit DCT match for memes & re-encoded/blurry images (Triple Guard!)
     if matched_existing.is_none() && !is_e2ee && dedup_decision.allow_perceptual_lookup {
         if let Some(ref incoming_pdq) = pdq_opt {
             let incoming_px = (dims_w.unwrap_or(0).max(0) as u64) * (dims_h.unwrap_or(0).max(0) as u64);
-            let candidates = sqlx::query(
-                r#"
-                SELECT d.object_id, d.perceptual_hash, d.perceptual_quality, d.caption_band_hash,
-                       d.width, d.height, o.storage_key, o.storage_backend
-                FROM media_dedup_indexes d
-                JOIN media_objects o ON o.id = d.object_id
-                WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.perceptual_hash IS NOT NULL
-                ORDER BY d.created_at DESC
-                LIMIT 150
-                "#,
+            if let Some(hit) = dedup_engine::find_pdq_mih_match(
+                pool,
+                storage,
+                "shared_non_e2ee",
+                incoming_pdq,
+                incoming_px,
             )
-            .fetch_all(&mut *tx)
-            .await?;
-
-            for cand in candidates {
-                let ph: Vec<u8> = cand.try_get("perceptual_hash")?;
-                if ph.len() != 32 {
-                    continue;
-                }
-                let mut bytes_arr = [0u8; 32];
-                bytes_arr.copy_from_slice(&ph);
-                let existing_pdq = PdqHash256 {
-                    bytes: bytes_arr,
-                    quality: cand.try_get::<Option<i16>, _>("perceptual_quality")?.unwrap_or(0).clamp(0, 100) as u8,
-                    caption_band_hash: cand.try_get::<Option<i64>, _>("caption_band_hash")?.unwrap_or(0) as u64,
-                };
-                let ex_px = (cand.try_get::<Option<i32>, _>("width")?.unwrap_or(0).max(0) as u64)
-                    * (cand.try_get::<Option<i32>, _>("height")?.unwrap_or(0).max(0) as u64);
-                if let PerceptualMatchVerdict::EquivalentCandidate { .. } =
-                    compare_perceptual_images(incoming_pdq, &existing_pdq, incoming_px, ex_px)
-                {
-                    let oid: Uuid = cand.try_get("object_id")?;
-                    let ex_key: String = cand.try_get("storage_key")?;
-                    let ex_backend: String = cand.try_get("storage_backend")?;
-                    let exists = match ex_backend.as_str() {
-                        "s3_ready" => storage.s3.object_exists(&ex_key).await.unwrap_or(false),
-                        _ => storage.local_cas.object_exists(&ex_key).await.unwrap_or(false),
-                    };
-                    if exists {
-                        matched_existing = Some((oid, ex_key, ex_backend, "perceptual_meme_match"));
-                        break;
-                    }
-                }
+            .await?
+            {
+                matched_existing = Some((hit.object_id, hit.storage_key, hit.storage_backend, "perceptual_pdq_mih_match"));
             }
         }
     }
@@ -354,10 +401,12 @@ pub async fn ingest_media_bytes(
         sqlx::query(
             r#"
             INSERT INTO media_objects
-                (id, cas_scope, sha256, plain_sha256, blake3, perceptual_hash, perceptual_quality, caption_band_hash,
+                (id, cas_scope, sha256, plain_sha256, blake3, pow_digest,
+                 perceptual_hash, perceptual_quality, caption_band_hash, color_moment_hash, aspect_ratio_milli,
+                 orig_profile_json, orig_width, orig_height, ai_recommended,
                  storage_backend, storage_key, mime_type, file_ext, compression_codec, compression_ratio,
                  byte_size, original_byte_size, width, height, is_animated, ref_count, variant_kind, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1.0, $14, $14, $15, $16, $17, 1, 'original', $18)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 1.0, $21, $21, $22, $23, $24, 1, 'original', $25)
             "#,
         )
         .bind(oid)
@@ -365,9 +414,16 @@ pub async fn ingest_media_bytes(
         .bind(&stored_sha_arr[..])
         .bind(plain_sha.as_ref().map(|p| &p[..]))
         .bind(&stored_blake3_arr[..])
+        .bind(&pow_digest_arr[..])
         .bind(pdq_opt.as_ref().map(|p| &p.bytes[..]))
         .bind(pdq_opt.as_ref().map(|p| p.quality as i16))
         .bind(pdq_opt.as_ref().map(|p| p.caption_band_hash as i64))
+        .bind(pdq_opt.as_ref().map(|p| p.color_moment_hash as i64))
+        .bind(pdq_opt.as_ref().map(|p| p.aspect_ratio_milli as i16))
+        .bind(&client_orig_profile)
+        .bind(meta.orig_width)
+        .bind(meta.orig_height)
+        .bind(client_ai_recommended)
         .bind(backend_kind)
         .bind(&storage_key)
         .bind(&actual_mime)
@@ -381,28 +437,48 @@ pub async fn ingest_media_bytes(
         .execute(&mut *tx)
         .await?;
 
-        // Strictly populate shared dedup index ONLY for non-E2EE shared scopes (`is_e2ee = FALSE`)
+        // Strictly populate shared dedup index + O(1) 16-Band MIH buckets ONLY for non-E2EE shared scopes (`is_e2ee = FALSE`)
         if !is_e2ee && dedup_decision.allow_exact_global_lookup {
+            let vf_json = client_vf.as_ref().and_then(|v| serde_json::to_value(v).ok());
+            let af_json = client_af.as_ref().and_then(|a| serde_json::to_value(a).ok());
             let _ = sqlx::query(
                 r#"
                 INSERT INTO media_dedup_indexes
-                    (object_id, scope_class, is_e2ee, blake3, sha256, perceptual_hash, perceptual_quality,
-                     caption_band_hash, width, height, byte_size)
-                VALUES ($1, 'shared_non_e2ee', FALSE, $2, $3, $4, $5, $6, $7, $8, $9)
+                    (object_id, scope_class, is_e2ee, blake3, orig_blake3, sha256,
+                     perceptual_hash, perceptual_quality, caption_band_hash, color_moment_hash, aspect_ratio_milli,
+                     video_fingerprint, audio_fingerprint,
+                     width, height, orig_width, orig_height, orig_profile_json, ai_recommended, byte_size)
+                VALUES ($1, 'shared_non_e2ee', FALSE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                 ON CONFLICT (scope_class, blake3) DO NOTHING
                 "#,
             )
             .bind(oid)
             .bind(&stored_blake3_arr[..])
+            .bind(orig_b3_opt.as_ref().map(|x| &x[..]))
             .bind(&stored_sha_arr[..])
             .bind(pdq_opt.as_ref().map(|p| &p.bytes[..]))
             .bind(pdq_opt.as_ref().map(|p| p.quality as i16))
             .bind(pdq_opt.as_ref().map(|p| p.caption_band_hash as i64))
+            .bind(pdq_opt.as_ref().map(|p| p.color_moment_hash as i64))
+            .bind(pdq_opt.as_ref().map(|p| p.aspect_ratio_milli as i16))
+            .bind(&vf_json)
+            .bind(&af_json)
             .bind(dims_w)
             .bind(dims_h)
+            .bind(meta.orig_width)
+            .bind(meta.orig_height)
+            .bind(&client_orig_profile)
+            .bind(client_ai_recommended)
             .bind(bytes.len() as i64)
             .execute(&mut *tx)
             .await;
+
+            if let Some(ref pdq) = pdq_opt {
+                let _ = dedup_engine::insert_pdq_mih_buckets(&mut tx, oid, "shared_non_e2ee", pdq).await;
+            }
+            if let Some(anchor) = client_vf.as_ref().and_then(|v| v.anchor_pdq()) {
+                let _ = dedup_engine::insert_pdq_mih_buckets(&mut tx, oid, "video_shared", &anchor).await;
+            }
         }
         (oid, false)
     };
@@ -606,12 +682,17 @@ pub async fn ingest_media_bytes(
     Ok(serde_json::json!({
         "id": ref_id,
         "ref_id": ref_id,
+        "object_id": original_obj_id,
         "uploader_id": owner_id,
         "file_name": declared_name,
         "file_size": bytes.len() as i64,
         "mime_type": actual_mime,
         "sha256": sha_hex,
         "blake3": blake3_hex,
+        "orig_profile_json": client_orig_profile,
+        "orig_width": meta.orig_width,
+        "orig_height": meta.orig_height,
+        "ai_recommended": client_ai_recommended,
         "storage_tier": storage_tier,
         "storage_backend": backend_kind,
         "availability_state": availability_state,
@@ -637,7 +718,7 @@ pub async fn serve_media_reference(
         r#"
         SELECT r.owner_id, r.scope_type, r.scope_id, r.original_filename, r.mime_type, r.deleted_for_all,
                r.object_id, r.optimized_object_id, r.thumb_object_id,
-               o.storage_backend AS orig_backend, o.storage_key AS orig_key, o.mime_type AS orig_mime, o.sha256 AS orig_sha, o.byte_size AS orig_size,
+               o.storage_backend AS orig_backend, o.storage_key AS orig_key, o.mime_type AS orig_mime, o.sha256 AS orig_sha, o.byte_size AS orig_size, COALESCE(o.is_cdc_assembled, FALSE) AS orig_is_cdc,
                opt.storage_backend AS opt_backend, opt.storage_key AS opt_key, opt.mime_type AS opt_mime, opt.sha256 AS opt_sha, opt.byte_size AS opt_size,
                th.storage_backend AS th_backend, th.storage_key AS th_key, th.mime_type AS th_mime, th.sha256 AS th_sha, th.byte_size AS th_size
         FROM media_references r
@@ -663,13 +744,16 @@ pub async fn serve_media_reference(
     }
 
     let wanted = variant.unwrap_or("original");
-    let (backend, key, mime, sha, total_size) = if wanted == "thumb" && row.try_get::<Option<String>, _>("th_key")?.is_some() {
+    let orig_is_cdc: bool = row.try_get("orig_is_cdc").unwrap_or(false);
+    let orig_object_id: Option<Uuid> = row.try_get("object_id")?;
+    let (backend, key, mime, sha, total_size, use_cdc) = if wanted == "thumb" && row.try_get::<Option<String>, _>("th_key")?.is_some() {
         (
             row.try_get::<Option<String>, _>("th_backend")?.unwrap_or_default(),
             row.try_get::<Option<String>, _>("th_key")?.unwrap_or_default(),
             row.try_get::<Option<String>, _>("th_mime")?.unwrap_or_else(|| "image/avif".into()),
             row.try_get::<Option<Vec<u8>>, _>("th_sha")?.unwrap_or_default(),
             row.try_get::<Option<i64>, _>("th_size")?.unwrap_or(0) as u64,
+            false,
         )
     } else if wanted == "optimized" && row.try_get::<Option<String>, _>("opt_key")?.is_some() {
         (
@@ -678,6 +762,7 @@ pub async fn serve_media_reference(
             row.try_get::<Option<String>, _>("opt_mime")?.unwrap_or_else(|| "image/avif".into()),
             row.try_get::<Option<Vec<u8>>, _>("opt_sha")?.unwrap_or_default(),
             row.try_get::<Option<i64>, _>("opt_size")?.unwrap_or(0) as u64,
+            false,
         )
     } else {
         let Some(k) = row.try_get::<Option<String>, _>("orig_key")? else {
@@ -689,12 +774,46 @@ pub async fn serve_media_reference(
             row.try_get::<Option<String>, _>("orig_mime")?.unwrap_or_else(|| "application/octet-stream".into()),
             row.try_get::<Option<Vec<u8>>, _>("orig_sha")?.unwrap_or_default(),
             row.try_get::<Option<i64>, _>("orig_size")?.unwrap_or(0) as u64,
+            orig_is_cdc,
         )
     };
 
     let filename: String = row.try_get("original_filename")?;
     let safe_disp = sanitize_filename(&filename);
     let sha_hex = hex::encode(sha);
+
+    if use_cdc {
+        let oid = orig_object_id.ok_or(AppError::NotFound("cdc_object_missing"))?;
+        if let Some((start, end_opt)) = range_header.and_then(parse_byte_range) {
+            let end = end_opt.unwrap_or(total_size.saturating_sub(1)).min(total_size.saturating_sub(1));
+            let (chunk, full_len) = dedup_engine::read_cdc_object_range(pool, storage, oid, Some((start, end))).await?;
+            let end_actual = start + (chunk.len() as u64).saturating_sub(1);
+            return Ok((
+                StatusCode::PARTIAL_CONTENT,
+                [
+                    (header::CONTENT_TYPE, mime),
+                    (header::CONTENT_RANGE, format!("bytes {start}-{end_actual}/{full_len}")),
+                    (header::ACCEPT_RANGES, "bytes".into()),
+                    (header::CONTENT_DISPOSITION, format!("inline; filename=\"{safe_disp}\"")),
+                    (header::HeaderName::from_static("x-content-sha256"), sha_hex),
+                ],
+                chunk,
+            )
+                .into_response());
+        }
+        let (full_bytes, _) = dedup_engine::read_cdc_object_range(pool, storage, oid, None).await?;
+        return Ok((
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, mime),
+                (header::ACCEPT_RANGES, "bytes".into()),
+                (header::CONTENT_DISPOSITION, format!("inline; filename=\"{safe_disp}\"")),
+                (header::HeaderName::from_static("x-content-sha256"), sha_hex),
+            ],
+            full_bytes,
+        )
+            .into_response());
+    }
 
     if let Some((start, end_opt)) = range_header.and_then(parse_byte_range) {
         let end = end_opt.unwrap_or(total_size.saturating_sub(1)).min(total_size.saturating_sub(1));
@@ -1034,7 +1153,7 @@ async fn handle_init_upload(
             }
         }
 
-        // 3. Perceptual PDQ meme match with caption-band guard for images
+        // 3. O(1) 16-Band MIH PDQ meme match with Triple Guard (caption + color + aspect)
         if matched_instant.is_none() {
             if let Some(pdq_hex) = req.perceptual_hash_hex.as_deref() {
                 if let Some(incoming_pdq) = PdqHash256::from_hex(
@@ -1043,49 +1162,16 @@ async fn handle_init_upload(
                     req.caption_band_hash.unwrap_or(0),
                 ) {
                     let incoming_px = (req.width.unwrap_or(0) as u64) * (req.height.unwrap_or(0) as u64);
-                    let candidates = sqlx::query(
-                        r#"
-                        SELECT d.object_id, d.perceptual_hash, d.perceptual_quality, d.caption_band_hash,
-                               d.width, d.height, o.storage_key, o.storage_backend
-                        FROM media_dedup_indexes d
-                        JOIN media_objects o ON o.id = d.object_id
-                        WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE AND d.perceptual_hash IS NOT NULL
-                        ORDER BY d.created_at DESC
-                        LIMIT 150
-                        "#,
+                    if let Some(hit) = dedup_engine::find_pdq_mih_match(
+                        &state.db,
+                        &state.storage,
+                        "shared_non_e2ee",
+                        &incoming_pdq,
+                        incoming_px,
                     )
-                    .fetch_all(&state.db)
-                    .await?;
-
-                    for cand in candidates {
-                        let ph: Vec<u8> = cand.try_get("perceptual_hash")?;
-                        if ph.len() != 32 {
-                            continue;
-                        }
-                        let mut bytes_arr = [0u8; 32];
-                        bytes_arr.copy_from_slice(&ph);
-                        let existing_pdq = PdqHash256 {
-                            bytes: bytes_arr,
-                            quality: cand.try_get::<Option<i16>, _>("perceptual_quality")?.unwrap_or(0).clamp(0, 100) as u8,
-                            caption_band_hash: cand.try_get::<Option<i64>, _>("caption_band_hash")?.unwrap_or(0) as u64,
-                        };
-                        let ex_px = (cand.try_get::<Option<i32>, _>("width")?.unwrap_or(0).max(0) as u64)
-                            * (cand.try_get::<Option<i32>, _>("height")?.unwrap_or(0).max(0) as u64);
-                        if let PerceptualMatchVerdict::EquivalentCandidate { .. } =
-                            compare_perceptual_images(&incoming_pdq, &existing_pdq, incoming_px, ex_px)
-                        {
-                            let obj_id: Uuid = cand.try_get("object_id")?;
-                            let ex_key: String = cand.try_get("storage_key")?;
-                            let ex_backend: String = cand.try_get("storage_backend")?;
-                            let exists = match ex_backend.as_str() {
-                                "s3_ready" => state.storage.s3.object_exists(&ex_key).await.unwrap_or(false),
-                                _ => state.storage.local_cas.object_exists(&ex_key).await.unwrap_or(false),
-                            };
-                            if exists {
-                                matched_instant = Some((obj_id, "perceptual_meme_match"));
-                                break;
-                            }
-                        }
+                    .await?
+                    {
+                        matched_instant = Some((hit.object_id, "perceptual_pdq_mih_match"));
                     }
                 }
             }
@@ -1625,6 +1711,7 @@ async fn handle_complete_upload(
             backup_dm: Some(scope_type == "encrypted_backup"),
             forward_from_ref_id: None,
             tier: None,
+            ..Default::default()
         },
     )
     .await?;
@@ -1685,25 +1772,38 @@ async fn handle_forward_reference(
     let mut tx = state.db.begin().await?;
     for id_opt in [obj_id, opt_id, thumb_id] {
         if let Some(oid) = id_opt {
-            sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1 WHERE id = $1")
+            sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL WHERE id = $1")
                 .bind(oid)
                 .execute(&mut *tx)
                 .await?;
         }
     }
 
-    let target_tier = if matches!(req.target_scope_type.as_str(), "group" | "channel") {
+    let obj_meta = if let Some(oid) = obj_id {
+        sqlx::query(
+            "SELECT storage_backend, storage_key, orig_profile_json, orig_width, orig_height, ai_recommended FROM media_objects WHERE id = $1",
+        )
+        .bind(oid)
+        .fetch_optional(&mut *tx)
+        .await?
+    } else {
+        None
+    };
+
+    let target_tier = if obj_id.is_some() {
         "server_durable"
-    } else if obj_id.is_some() {
-        "temp_relay"
     } else {
         "dm_client_preferred"
     };
     let target_avail = if obj_id.is_some() {
-        if target_tier == "server_durable" { "server_durable" } else { "pending_delivery" }
+        "server_durable"
     } else {
         "replicated_multi_device"
     };
+
+    let src_fname: String = src.try_get("original_filename")?;
+    let src_mime: String = src.try_get("mime_type")?;
+    let src_size: i64 = src.try_get("byte_size")?;
 
     sqlx::query(
         r#"
@@ -1722,9 +1822,9 @@ async fn handle_forward_reference(
     .bind(obj_id)
     .bind(opt_id)
     .bind(thumb_id)
-    .bind(src.try_get::<String, _>("original_filename")?)
-    .bind(src.try_get::<String, _>("mime_type")?)
-    .bind(src.try_get::<i64, _>("byte_size")?)
+    .bind(&src_fname)
+    .bind(&src_mime)
+    .bind(src_size)
     .bind(src.try_get::<Option<Vec<u8>>, _>("sha256_plain")?)
     .bind(src.try_get::<Option<Vec<u8>>, _>("sha256_cipher")?)
     .bind(req.from_ref_id)
@@ -1733,10 +1833,48 @@ async fn handle_forward_reference(
     .execute(&mut *tx)
     .await?;
 
+    // Maintain backwards-compatible row in `attachments` linking to `new_ref_id`
+    let compat_path = obj_meta
+        .as_ref()
+        .and_then(|m| Some(format!("{}::{}", m.try_get::<String, _>("storage_backend").ok()?, m.try_get::<String, _>("storage_key").ok()?)))
+        .unwrap_or_else(|| format!("forwarded::{new_ref_id}"));
+    sqlx::query(
+        r#"
+        INSERT INTO attachments (id, uploader_id, file_path, file_name, file_size, mime_type, ref_id, scope_type, scope_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $1, $7, $8)
+        "#,
+    )
+    .bind(new_ref_id)
+    .bind(user.id)
+    .bind(&compat_path)
+    .bind(&src_fname)
+    .bind(src_size)
+    .bind(&src_mime)
+    .bind(&req.target_scope_type)
+    .bind(req.target_scope_id)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
+    let orig_profile_json = obj_meta.as_ref().and_then(|m| m.try_get::<Option<String>, _>("orig_profile_json").ok().flatten());
+    let orig_width = obj_meta.as_ref().and_then(|m| m.try_get::<Option<i32>, _>("orig_width").ok().flatten());
+    let orig_height = obj_meta.as_ref().and_then(|m| m.try_get::<Option<i32>, _>("orig_height").ok().flatten());
+    let ai_recommended = obj_meta.as_ref().and_then(|m| m.try_get::<Option<bool>, _>("ai_recommended").ok().flatten()).unwrap_or(orig_profile_json.is_some());
+
     Ok(Json(serde_json::json!({
+        "id": new_ref_id,
         "ref_id": new_ref_id,
+        "object_id": obj_id,
         "reused_object": true,
+        "deduplicated": true,
+        "dedup_match_kind": "authorized_cross_chat_ref",
+        "file_name": src_fname,
+        "file_size": src_size,
+        "mime_type": src_mime,
+        "orig_profile_json": orig_profile_json,
+        "orig_width": orig_width,
+        "orig_height": orig_height,
+        "ai_recommended": ai_recommended,
         "download_url": format!("/api/attachments/{new_ref_id}"),
     })))
 }

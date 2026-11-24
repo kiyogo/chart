@@ -132,9 +132,13 @@
 
     const origProfileJson = typeof meta.origProfileJson === 'string' ? meta.origProfileJson : '';
     const mediaId = String(meta.mediaId || meta.refId || imageUrl).slice(0, 128);
-    const contentHash = String(meta.contentHash || meta.sha256 || 'v1').slice(0, 32);
+    const contentHash = String(meta.contentHash || meta.sha256 || 'v1').slice(0, 64);
     const profTag = origProfileJson ? `qp${origProfileJson.length}` : 'noqp';
-    const cacheKey = `ai:${mediaId}:v7rs:${contentHash}:${meta.modelId || 'auto'}:${profTag}:${PIPELINE_VERSION}`;
+    // Deduplicate on-device AI outputs across chats by canonical contentHash whenever a real hash is present!
+    const hasCanonicalHash = /^[0-9a-f]{32,}$/i.test(contentHash);
+    const cacheKey = hasCanonicalHash
+      ? `ai:hash:${contentHash}:v7rs:${meta.modelId || 'auto'}:${profTag}:${PIPELINE_VERSION}`
+      : `ai:${mediaId}:v7rs:${contentHash}:${meta.modelId || 'auto'}:${profTag}:${PIPELINE_VERSION}`;
 
     if (sessionResultCache.has(cacheKey)) {
       return { ...sessionResultCache.get(cacheKey), enhanced: true, cacheHit: true, cacheTier: 'memory', provenance: 'ai_restored' };

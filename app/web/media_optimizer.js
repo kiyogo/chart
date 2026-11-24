@@ -610,26 +610,388 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Spec 111: Hyper-Dedup Local Authorized Cross-Chat Index + Pure-Rust WASM Fingerprinting
+  // ---------------------------------------------------------------------------
+  const LOCAL_DEDUP_STORAGE_KEY = 'chatw_dedup_local_v1';
+  const MAX_LOCAL_DEDUP_ENTRIES = 256;
+  const localDedupEntries = new Map(); // key = refId -> entry
+  let lastCopiedHint = null; // { refId, at }
+
+  function loadLocalDedupFromStorage() {
+    try {
+      const raw = localStorage.getItem(LOCAL_DEDUP_STORAGE_KEY);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        for (const e of arr) {
+          if (e && e.refId) localDedupEntries.set(e.refId, e);
+        }
+      }
+    } catch (_) {}
+  }
+
+  function saveLocalDedupToStorage() {
+    try {
+      const arr = Array.from(localDedupEntries.values()).slice(-MAX_LOCAL_DEDUP_ENTRIES);
+      localStorage.setItem(LOCAL_DEDUP_STORAGE_KEY, JSON.stringify(arr));
+    } catch (_) {}
+  }
+
+  loadLocalDedupFromStorage();
+
+  function extractRefIdFromUrl(u) {
+    if (!u || typeof u !== 'string') return '';
+    const m = u.match(/\/api\/attachments\/([0-9a-f-]{36})/i);
+    return m ? m[1] : '';
+  }
+
+  function registerLocalDedupEntry(entry) {
+    if (!entry || !entry.refId) return;
+    const prev = localDedupEntries.get(entry.refId) || {};
+    const merged = {
+      ...prev,
+      ...entry,
+      refId: entry.refId,
+      updatedAt: Date.now(),
+    };
+    localDedupEntries.delete(entry.refId);
+    localDedupEntries.set(entry.refId, merged);
+    while (localDedupEntries.size > MAX_LOCAL_DEDUP_ENTRIES) {
+      const oldest = localDedupEntries.keys().next().value;
+      localDedupEntries.delete(oldest);
+    }
+    saveLocalDedupToStorage();
+  }
+
+  async function computeImagePdqFromBytes(u8, mime) {
+    const wasm = window.__chatwWasmMedia;
+    if (!wasm || typeof wasm.computeImagePdq !== 'function') return null;
+    try {
+      const bmp = await createImageBitmap(new Blob([u8], { type: mime || 'image/png' }));
+      const origW = bmp.width;
+      const origH = bmp.height;
+      if (origW < 8 || origH < 8) {
+        bmp.close();
+        return null;
+      }
+      // PDQ downsamples to 64x64 internally; scaling to <= 256px preserves exact aspect & runs in < 2ms!
+      const scale = Math.min(1, 256 / Math.max(origW, origH));
+      const pw = Math.max(16, Math.round(origW * scale));
+      const ph = Math.max(16, Math.round(origH * scale));
+      const c = document.createElement('canvas');
+      c.width = pw;
+      c.height = ph;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(bmp, 0, 0, pw, ph);
+      bmp.close();
+      const d = ctx.getImageData(0, 0, pw, ph).data;
+      const pdq = wasm.computeImagePdq(new Uint8Array(d.buffer, d.byteOffset, d.byteLength), pw, ph);
+      return {
+        pdqHex: pdq.pdqHex || '',
+        pdqQuality: Number(pdq.quality || 0),
+        captionBandHash: String(pdq.captionBandHash || '0'),
+        colorMomentHash: String(pdq.colorMomentHash || '0'),
+        aspectRatioMilli: Number(pdq.aspectRatioMilli || Math.round((origW * 1000) / Math.max(1, origH))),
+        width: origW,
+        height: origH,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function extractVideoFingerprint(file) {
+    const wasm = window.__chatwWasmMedia;
+    if (!wasm || typeof wasm.computeImagePdq !== 'function') return null;
+    return await new Promise((resolve) => {
+      let settled = false;
+      const objUrl = URL.createObjectURL(file);
+      const v = document.createElement('video');
+      v.muted = true;
+      v.playsInline = true;
+      v.preload = 'auto';
+      const done = (val) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { URL.revokeObjectURL(objUrl); } catch (_) {}
+        resolve(val);
+      };
+      const timer = setTimeout(() => done(null), 3500);
+      v.onerror = () => done(null);
+      v.onloadedmetadata = async () => {
+        const dur = Number(v.duration || 0);
+        const w = v.videoWidth || 0;
+        const h = v.videoHeight || 0;
+        if (!dur || !Number.isFinite(dur) || w < 8 || h < 8) { done(null); return; }
+        const pts = [0.15, 0.40, 0.65, 0.85].map((r) => Math.max(0.05, Math.min(dur - 0.05, dur * r)));
+        const pw = Math.max(32, Math.min(160, w));
+        const ph = Math.max(32, Math.round(pw * (h / Math.max(1, w))));
+        const c = document.createElement('canvas');
+        c.width = pw; c.height = ph;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        const hashes = [];
+        for (const t of pts) {
+          const ok = await new Promise((res) => {
+            const onSeek = () => { v.removeEventListener('seeked', onSeek); res(true); };
+            v.addEventListener('seeked', onSeek, { once: true });
+            try { v.currentTime = t; } catch (_) { res(false); }
+            setTimeout(() => res(false), 600);
+          });
+          if (!ok) continue;
+          try {
+            ctx.drawImage(v, 0, 0, pw, ph);
+            const d = ctx.getImageData(0, 0, pw, ph).data;
+            const pdq = wasm.computeImagePdq(new Uint8Array(d.buffer, d.byteOffset, d.byteLength), pw, ph);
+            if (pdq && pdq.pdqHex && pdq.pdqHex.length === 64) {
+              const bytes = [];
+              for (let i = 0; i < 64; i += 2) bytes.push(parseInt(pdq.pdqHex.slice(i, i + 2), 16));
+              hashes.push({
+                bytes,
+                quality: Number(pdq.quality || 0),
+                caption_band_hash: Number(BigInt(pdq.captionBandHash || '0') & 0x1fffffffffffffn),
+                color_moment_hash: Number(BigInt(pdq.colorMomentHash || '0') & 0x1fffffffffffffn),
+                aspect_ratio_milli: Number(pdq.aspectRatioMilli || 0),
+              });
+            }
+          } catch (_) {}
+        }
+        if (hashes.length === 0) { done(null); return; }
+        done(JSON.stringify({
+          duration_ms: Math.round(dur * 1000),
+          frame_count: hashes.length,
+          width: w,
+          height: h,
+          keyframe_hashes: hashes,
+        }));
+      };
+      v.src = objUrl;
+    });
+  }
+
+  async function extractAudioFingerprint(rawBytes) {
+    const wasm = window.__chatwWasmMedia;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!wasm || typeof wasm.computeAudioFingerprint !== 'function' || !AC) return null;
+    try {
+      const ac = new AC();
+      const decoded = await ac.decodeAudioData(rawBytes.slice(0).buffer);
+      const ch = decoded.getChannelData(0);
+      const durMs = Math.round((decoded.duration || 0) * 1000);
+      const stride = Math.max(1, Math.floor(ch.length / 32000));
+      const down = new Float32Array(Math.ceil(ch.length / stride));
+      for (let i = 0, j = 0; i < ch.length && j < down.length; i += stride, j++) down[j] = ch[i];
+      try { await ac.close(); } catch (_) {}
+      const fp = wasm.computeAudioFingerprint(down, durMs);
+      return fp && fp.json ? fp.json : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function findLocalAuthorizedMatch({ origBlake3, wireBlake3, sha256, pdq }) {
+    const wasm = window.__chatwWasmMedia;
+    // 1. Exact cryptographic match first (BLAKE3 or SHA-256 across ALL media types!)
+    for (const e of localDedupEntries.values()) {
+      if (!e.refId) continue;
+      if (origBlake3 && (e.origBlake3 === origBlake3 || e.wireBlake3 === origBlake3)) return { ...e, matchKind: 'local_exact_blake3', hamming: 0 };
+      if (wireBlake3 && (e.wireBlake3 === wireBlake3 || e.origBlake3 === wireBlake3)) return { ...e, matchKind: 'local_exact_blake3', hamming: 0 };
+      if (sha256 && e.sha256 && e.sha256 === sha256) return { ...e, matchKind: 'local_exact_sha256', hamming: 0 };
+    }
+    // 2. Perceptual Pure-Rust PDQ 256-bit + Triple Guard (catches right-click Copy Image -> clipboard PNG, blurry AVIF, 4x enhanced!)
+    if (pdq && pdq.pdqHex && pdq.pdqQuality >= 18 && wasm && typeof wasm.comparePdqLocal === 'function') {
+      let best = null;
+      // Check recently right-clicked/copied hint first for priority tie-breaking
+      const ordered = Array.from(localDedupEntries.values()).reverse();
+      if (lastCopiedHint && Date.now() - lastCopiedHint.at < 120_000 && localDedupEntries.has(lastCopiedHint.refId)) {
+        ordered.unshift(localDedupEntries.get(lastCopiedHint.refId));
+      }
+      for (const e of ordered) {
+        if (!e || !e.refId || !e.pdqHex) continue;
+        const cmp = wasm.comparePdqLocal(pdq, e);
+        if (cmp && cmp.matched) {
+          const ham = Number(cmp.hamming || 0);
+          if (!best || ham < best.hamming) {
+            best = { ...e, matchKind: 'local_pdq_cross_chat', hamming: ham };
+            if (ham <= 4) break;
+          }
+        }
+      }
+      if (best) return best;
+    }
+    return null;
+  }
+
+  // Track Right-Click / Copy / Drag on any rendered chat image or Lightbox image!
+  function recordDomMediaHint(target) {
+    if (!target || typeof target.closest !== 'function') return;
+    const img = target.closest('img[data-media-ref], [data-media-ref]');
+    if (!img) return;
+    const refId = img.getAttribute('data-media-ref') || '';
+    if (refId) lastCopiedHint = { refId, at: Date.now() };
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('contextmenu', (e) => recordDomMediaHint(e.target), true);
+    document.addEventListener('dragstart', (e) => recordDomMediaHint(e.target), true);
+    document.addEventListener('copy', (e) => {
+      recordDomMediaHint(e.target);
+      const sel = window.getSelection && window.getSelection();
+      if (sel && sel.anchorNode && sel.anchorNode.nodeType === 1) recordDomMediaHint(sel.anchorNode);
+    }, true);
+  }
+
+  window.__chatwDedupLocal = {
+    registerMedia: registerLocalDedupEntry,
+    findMatch: findLocalAuthorizedMatch,
+    listCount: () => localDedupEntries.size,
+    async registerLoadedImageFromBlobUrl(blobUrl, meta = {}) {
+      const refId = meta.refId || extractRefIdFromUrl(meta.url || '');
+      if (!refId || !blobUrl) return { ok: false };
+      const existing = localDedupEntries.get(refId);
+      if (existing && existing.pdqHex && existing.keyB64 === (meta.keyB64 || '')) {
+        // Update blurry/qp flags if newly known
+        registerLocalDedupEntry({ ...existing, ...meta, refId });
+        return { ok: true, cached: true };
+      }
+      try {
+        const resp = await fetch(blobUrl);
+        if (!resp.ok) return { ok: false };
+        const u8 = new Uint8Array(await resp.arrayBuffer());
+        const b3 = window.__chatwWasmMedia && window.__chatwWasmMedia.blake3Hex
+          ? window.__chatwWasmMedia.blake3Hex(u8)
+          : '';
+        const pdq = await computeImagePdqFromBytes(u8, meta.mime || 'image/avif');
+        registerLocalDedupEntry({
+          refId,
+          url: meta.url || `/api/attachments/${refId}`,
+          keyB64: meta.keyB64 || '',
+          nonceB64: meta.nonceB64 || '',
+          mime: meta.mime || 'image/avif',
+          fileName: meta.fileName || 'image',
+          mediaKind: 'image',
+          sha256: meta.sha256 || '',
+          wireBlake3: b3,
+          origBlake3: meta.origBlake3 || b3,
+          pdqHex: pdq ? pdq.pdqHex : '',
+          pdqQuality: pdq ? pdq.pdqQuality : 0,
+          captionBandHash: pdq ? pdq.captionBandHash : '0',
+          colorMomentHash: pdq ? pdq.colorMomentHash : '0',
+          aspectRatioMilli: pdq ? pdq.aspectRatioMilli : 0,
+          width: meta.width || (pdq ? pdq.width : 0),
+          height: meta.height || (pdq ? pdq.height : 0),
+          origW: meta.origW || meta.width || (pdq ? pdq.width : 0),
+          origH: meta.origH || meta.height || (pdq ? pdq.height : 0),
+          qp: meta.qp || '',
+          isAiRecovery: Boolean(meta.qp) || Boolean(meta.isAiRecovery) || (meta.origW > meta.width),
+          isSenderOrigLocal: Boolean(meta.isSenderOrigLocal),
+        });
+        return { ok: true, refId, pdqHex: pdq ? pdq.pdqHex : '' };
+      } catch (_) {
+        return { ok: false };
+      }
+    },
+  };
+
   async function processSingleFile(file, preserveOriginal = false, existingPreviewUrl = null) {
     const previewUrl = existingPreviewUrl || URL.createObjectURL(file);
+    const rawArr = new Uint8Array(await file.arrayBuffer());
+    const origBlake3 = window.__chatwWasmMedia && window.__chatwWasmMedia.blake3Hex
+      ? window.__chatwWasmMedia.blake3Hex(rawArr)
+      : '';
+    const shaHexRaw = window.__chatwStorage ? await window.__chatwStorage.sha256Hex(rawArr) : '';
+
     if (file.type.startsWith('image/')) {
       try {
+        const pdq = await computeImagePdqFromBytes(rawArr, file.type);
+        // 1. Check local authorized cross-chat dedup registry FIRST (catches copied/pasted/saved blurry OR enhanced images -> 0ms encode, 0B upload!)
+        const localHit = findLocalAuthorizedMatch({ origBlake3, wireBlake3: origBlake3, sha256: shaHexRaw, pdq });
+        if (localHit && localHit.refId) {
+          const needsSenderAi = Boolean(localHit.isAiRecovery || localHit.qp || !localHit.isSenderOrigLocal);
+          if (!needsSenderAi) {
+            stashPreviewFile(previewUrl, file, localHit.origW || (pdq ? pdq.width : 0), localHit.origH || (pdq ? pdq.height : 0));
+          }
+          return {
+            bytesB64: '',
+            mime: localHit.mime || 'image/avif',
+            ext: (localHit.mime || '').includes('avif') ? 'avif' : 'bin',
+            fileName: file.name && file.name !== 'image.png' ? file.name : (localHit.fileName || file.name || 'image.png'),
+            originalSize: rawArr.byteLength,
+            optimizedSize: 0,
+            isCrispText: false,
+            mediaKind: 'image',
+            sha256: localHit.sha256 || shaHexRaw,
+            origBlake3,
+            pdqHex: pdq ? pdq.pdqHex : (localHit.pdqHex || ''),
+            pdqQuality: pdq ? pdq.pdqQuality : (localHit.pdqQuality || 0),
+            captionBandHash: pdq ? pdq.captionBandHash : (localHit.captionBandHash || '0'),
+            colorMomentHash: pdq ? pdq.colorMomentHash : (localHit.colorMomentHash || '0'),
+            aspectRatioMilli: pdq ? pdq.aspectRatioMilli : (localHit.aspectRatioMilli || 0),
+            width: localHit.width || (pdq ? pdq.width : 0),
+            height: localHit.height || (pdq ? pdq.height : 0),
+            targetWidth: localHit.origW || localHit.width || (pdq ? pdq.width : 0),
+            targetHeight: localHit.origH || localHit.height || (pdq ? pdq.height : 0),
+            origProfileJson: localHit.qp || '',
+            aiRecommended: needsSenderAi,
+            copiedFromRefId: localHit.refId,
+            copiedKeyB64: localHit.keyB64 || '',
+            copiedNonceB64: localHit.nonceB64 || '',
+            needsSenderAi,
+            instantPreviewUrl: previewUrl,
+          };
+        }
+
         const res = await optimizeImageBlob(file, { preserveOriginal });
         stashPreviewFile(previewUrl, file, res.targetWidth || res.width || 0, res.targetHeight || res.height || 0);
         return {
           ...res,
           fileName: file.name,
           mediaKind: 'image',
+          origBlake3,
+          pdqHex: pdq ? pdq.pdqHex : '',
+          pdqQuality: pdq ? pdq.pdqQuality : 0,
+          captionBandHash: pdq ? pdq.captionBandHash : '0',
+          colorMomentHash: pdq ? pdq.colorMomentHash : '0',
+          aspectRatioMilli: pdq ? pdq.aspectRatioMilli : 0,
+          aiRecommended: Boolean(res.aiRecommended || res.origProfileJson || (res.targetWidth && res.width && res.targetWidth > res.width)),
           instantPreviewUrl: previewUrl,
         };
       } catch (e) {
         return { error: String(e) };
       }
     }
-    const raw = new Uint8Array(await file.arrayBuffer());
-    const shaHex = window.__chatwStorage ? await window.__chatwStorage.sha256Hex(raw) : '';
+
+    const raw = rawArr;
+    const shaHex = shaHexRaw;
     const mediaKind = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
+
+    // Check exact cross-chat dedup for videos, audio & general files too!
+    const localFileHit = findLocalAuthorizedMatch({ origBlake3, wireBlake3: origBlake3, sha256: shaHex, pdq: null });
+    if (localFileHit && localFileHit.refId) {
+      return {
+        bytesB64: '',
+        mime: localFileHit.mime || file.type || 'application/octet-stream',
+        ext: (file.name.split('.').pop() || 'bin').toLowerCase().slice(0, 12),
+        fileName: file.name || localFileHit.fileName || 'attachment',
+        originalSize: raw.byteLength,
+        optimizedSize: 0,
+        sha256: localFileHit.sha256 || shaHex,
+        origBlake3,
+        width: localFileHit.width || 0,
+        height: localFileHit.height || 0,
+        mediaKind,
+        copiedFromRefId: localFileHit.refId,
+        copiedKeyB64: localFileHit.keyB64 || '',
+        copiedNonceB64: localFileHit.nonceB64 || '',
+        instantPreviewUrl: previewUrl,
+      };
+    }
+
     const poster = mediaKind === 'video' ? await extractVideoPosterMeta(file) : { width: 0, height: 0, blurDataUrl: null };
+    const videoFingerprintJson = mediaKind === 'video' ? await extractVideoFingerprint(file) : null;
+    const audioFingerprintJson = mediaKind === 'audio' ? await extractAudioFingerprint(raw) : null;
 
     // Lossless Smart File Compression (`CWCMP1` ZSTD/Brotli/LZMA2) for general files (documents, logs, JSON, code)
     let uploadBytes = raw;
@@ -652,9 +1014,12 @@
       originalSize: raw.byteLength,
       optimizedSize: uploadBytes.byteLength,
       sha256: shaHex,
+      origBlake3,
       width: poster.width,
       height: poster.height,
       blurDataUrl: poster.blurDataUrl,
+      videoFingerprintJson,
+      audioFingerprintJson,
       mediaKind,
       codec: fileCodec,
       instantPreviewUrl: previewUrl,
@@ -808,6 +1173,19 @@
       const file = inp.files[0];
       inp.value = '';
       return await processSingleFile(file, preserveOriginal, null);
+    },
+
+    async optimizePastedBytes(b64, mime = 'image/png', fileName = 'image.png') {
+      const u8 = b64ToBytes(b64);
+      const blob = new Blob([u8], { type: mime || 'image/png' });
+      let file;
+      try {
+        file = new File([blob], fileName || 'image.png', { type: mime || 'image/png' });
+      } catch (_) {
+        file = blob;
+        file.name = fileName || 'image.png';
+      }
+      return await processSingleFile(file, false, null);
     },
 
     async startVoiceRecording(mode = 'voice') {

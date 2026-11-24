@@ -18,13 +18,17 @@ pub fn install_wasm_media_bridge() {
         },
         avif::{AvifCompressionMode, AvifEncodeOptions, optimize_image_to_avif},
         classifier::ImageClass,
-        dedup::hash_bytes_exact,
+        dedup::{
+            PdqHash256, PerceptualMatchVerdict, compare_perceptual_images_v2,
+            compute_audio_fingerprint_pcm, compute_pdq_hash_rgba, compute_pow_digest_hex,
+            fastcdc_chunk_bytes, hash_bytes_exact,
+        },
         files::{
             COMP_ENVELOPE_MAGIC, CompressionGoal, LosslessCodec, compress_file_smart,
             decompress_file_verified,
         },
     };
-    use js_sys::{Object, Reflect, Uint8Array};
+    use js_sys::{Array, Float32Array, Object, Reflect, Uint8Array};
     use std::sync::atomic::{AtomicBool, Ordering};
     use wasm_bindgen::{JsCast, JsValue, closure::Closure};
     use wasm_bindgen_futures::future_to_promise;
@@ -266,8 +270,114 @@ pub fn install_wasm_media_bridge() {
         JsValue::from(!blocked && approved)
     });
 
+    // 10. computeImagePdq(rgba, w, h) -> { pdqHex, quality, captionBandHash, colorMomentHash, aspectRatioMilli, mihBands }
+    let pdq_cb = Closure::<dyn Fn(Uint8Array, u32, u32) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32| {
+            let h = compute_pdq_hash_rgba(&rgba.to_vec(), width, height);
+            let out = Object::new();
+            let _ = Reflect::set(&out, &"pdqHex".into(), &JsValue::from(h.to_hex()));
+            let _ = Reflect::set(&out, &"quality".into(), &JsValue::from(h.quality));
+            let _ = Reflect::set(&out, &"captionBandHash".into(), &JsValue::from(h.caption_band_hash.to_string()));
+            let _ = Reflect::set(&out, &"colorMomentHash".into(), &JsValue::from(h.color_moment_hash.to_string()));
+            let _ = Reflect::set(&out, &"aspectRatioMilli".into(), &JsValue::from(h.aspect_ratio_milli));
+            let bands = Array::new();
+            for b in h.mih_bands() {
+                bands.push(&JsValue::from(b));
+            }
+            let _ = Reflect::set(&out, &"mihBands".into(), &bands.into());
+            out.into()
+        },
+    );
+
+    // 11. computePowProof(bytesU8) -> { blake3Hex, sha256Hex, powDigestHex, byteSize }
+    let pow_cb = Closure::<dyn Fn(Uint8Array) -> JsValue>::new(move |raw_u8: Uint8Array| {
+        let raw = raw_u8.to_vec();
+        let h = hash_bytes_exact(&raw);
+        let pow = compute_pow_digest_hex(&raw);
+        let out = Object::new();
+        let _ = Reflect::set(&out, &"blake3Hex".into(), &JsValue::from(h.blake3_hex));
+        let _ = Reflect::set(&out, &"sha256Hex".into(), &JsValue::from(h.sha256_hex));
+        let _ = Reflect::set(&out, &"powDigestHex".into(), &JsValue::from(pow));
+        let _ = Reflect::set(&out, &"byteSize".into(), &JsValue::from(h.byte_size as f64));
+        out.into()
+    });
+
+    // 12. computeFastCdc(bytesU8) -> { blake3Hex, sha256Hex, powDigestHex, chunks: [{ index, offset, length, blake3Hex }] }
+    let cdc_cb = Closure::<dyn Fn(Uint8Array) -> JsValue>::new(move |raw_u8: Uint8Array| {
+        let raw = raw_u8.to_vec();
+        let h = hash_bytes_exact(&raw);
+        let pow = compute_pow_digest_hex(&raw);
+        let chunks = fastcdc_chunk_bytes(&raw);
+        let arr = Array::new();
+        for (idx, c) in chunks.iter().enumerate() {
+            let co = Object::new();
+            let _ = Reflect::set(&co, &"index".into(), &JsValue::from(idx as u32));
+            let _ = Reflect::set(&co, &"offset".into(), &JsValue::from(c.offset as f64));
+            let _ = Reflect::set(&co, &"length".into(), &JsValue::from(c.length));
+            let _ = Reflect::set(&co, &"blake3Hex".into(), &JsValue::from(c.blake3_hex.clone()));
+            arr.push(&co.into());
+        }
+        let out = Object::new();
+        let _ = Reflect::set(&out, &"blake3Hex".into(), &JsValue::from(h.blake3_hex));
+        let _ = Reflect::set(&out, &"sha256Hex".into(), &JsValue::from(h.sha256_hex));
+        let _ = Reflect::set(&out, &"powDigestHex".into(), &JsValue::from(pow));
+        let _ = Reflect::set(&out, &"chunks".into(), &arr.into());
+        out.into()
+    });
+
+    // 13. computeAudioFingerprint(pcmF32, durationMs) -> { bitsHex, durationMs, energyScore, json }
+    let audio_fp_cb = Closure::<dyn Fn(Float32Array, f64) -> JsValue>::new(
+        move |pcm: Float32Array, duration_ms: f64| {
+            let samples = pcm.to_vec();
+            let fp = compute_audio_fingerprint_pcm(&samples, duration_ms.max(0.0) as u64);
+            let out = Object::new();
+            let _ = Reflect::set(&out, &"bitsHex".into(), &JsValue::from(fp.to_hex()));
+            let _ = Reflect::set(&out, &"durationMs".into(), &JsValue::from(fp.duration_ms as f64));
+            let _ = Reflect::set(&out, &"energyScore".into(), &JsValue::from(fp.energy_score));
+            if let Ok(js) = serde_json::to_string(&fp) {
+                let _ = Reflect::set(&out, &"json".into(), &JsValue::from(js));
+            }
+            out.into()
+        },
+    );
+
+    // 14. comparePdqLocal(pdqObjA, pdqObjB) -> { matched, hamming }
+    let cmp_pdq_cb = Closure::<dyn Fn(JsValue, JsValue) -> JsValue>::new(
+        move |obj_a: JsValue, obj_b: JsValue| {
+            let out = Object::new();
+            let parse_pdq = |obj: &JsValue| -> Option<PdqHash256> {
+                let hex = Reflect::get(obj, &"pdqHex".into()).ok()?.as_string()?;
+                let q = Reflect::get(obj, &"pdqQuality".into()).ok().and_then(|v| v.as_f64()).unwrap_or(0.0).clamp(0.0, 100.0) as u8;
+                let parse_u64 = |k: &str| -> u64 {
+                    Reflect::get(obj, &k.into()).ok().and_then(|v| {
+                        v.as_string()
+                            .and_then(|s| s.parse::<u64>().ok())
+                            .or_else(|| v.as_f64().map(|f| f as u64))
+                    }).unwrap_or(0)
+                };
+                let cap = parse_u64("captionBandHash");
+                let col = parse_u64("colorMomentHash");
+                let asp = Reflect::get(obj, &"aspectRatioMilli".into()).ok().and_then(|v| v.as_f64()).unwrap_or(0.0).clamp(0.0, 10000.0) as u16;
+                PdqHash256::from_hex_full(&hex, q, cap, col, asp)
+            };
+            if let (Some(pa), Some(pb)) = (parse_pdq(&obj_a), parse_pdq(&obj_b)) {
+                if let PerceptualMatchVerdict::EquivalentCandidate { hamming } =
+                    compare_perceptual_images_v2(&pa, &pb, 0, 0, true)
+                {
+                    let _ = Reflect::set(&out, &"matched".into(), &JsValue::TRUE);
+                    let _ = Reflect::set(&out, &"hamming".into(), &JsValue::from(hamming));
+                    return out.into();
+                }
+            }
+            let _ = Reflect::set(&out, &"matched".into(), &JsValue::FALSE);
+            let _ = Reflect::set(&out, &"hamming".into(), &JsValue::from(256u32));
+            out.into()
+        },
+    );
+
     let _ = Reflect::set(&api, &"version".into(), &JsValue::from("chatw-media-core-v2"));
     let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("rust-realesrgan-srvgg-upscayl-v7"));
+    let _ = Reflect::set(&api, &"dedupEngine".into(), &JsValue::from("rust-hyper-dedup-fastcdc-pdq-mih-v1"));
     let _ = Reflect::set(&api, &"encodeAvifAdaptive".into(), enc_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"compressFileSmart".into(), cmp_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"decompressFileVerified".into(), dec_cb.as_ref().unchecked_ref());
@@ -277,6 +387,11 @@ pub fn install_wasm_media_bridge() {
     let _ = Reflect::set(&api, &"restoreImageRealEsrgan".into(), restore_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"extractQualityProfile".into(), prof_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"isModelLicenseAllowed".into(), lic_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"computeImagePdq".into(), pdq_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"computePowProof".into(), pow_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"computeFastCdc".into(), cdc_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"computeAudioFingerprint".into(), audio_fp_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"comparePdqLocal".into(), cmp_pdq_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&win, &"__chatwWasmMedia".into(), &api.into());
 
     enc_cb.forget();
@@ -288,6 +403,11 @@ pub fn install_wasm_media_bridge() {
     restore_cb.forget();
     prof_cb.forget();
     lic_cb.forget();
+    pdq_cb.forget();
+    pow_cb.forget();
+    cdc_cb.forget();
+    audio_fp_cb.forget();
+    cmp_pdq_cb.forget();
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -34,6 +34,35 @@ pub struct OptimizedMediaPayload {
     /// Compact (~95-byte) perceptual fingerprint of sender's original image for receiver closed-loop AI calibration.
     #[serde(default)]
     pub orig_profile_json: Option<String>,
+    /// Spec 111 Hyper-Dedup metadata computed in Pure-Rust WASM before upload!
+    #[serde(default)]
+    pub orig_blake3: Option<String>,
+    #[serde(default)]
+    pub pdq_hex: Option<String>,
+    #[serde(default)]
+    pub pdq_quality: Option<u8>,
+    #[serde(default)]
+    pub caption_band_hash: Option<u64>,
+    #[serde(default)]
+    pub color_moment_hash: Option<u64>,
+    #[serde(default)]
+    pub aspect_ratio_milli: Option<u16>,
+    #[serde(default)]
+    pub ai_recommended: bool,
+    #[serde(default)]
+    pub video_fingerprint_json: Option<String>,
+    #[serde(default)]
+    pub audio_fingerprint_json: Option<String>,
+    /// Populated immediately if the image/file was copied from another chat (`__chatwDedupLocal` hit -> 0-byte upload!).
+    #[serde(default)]
+    pub copied_from_ref_id: Option<String>,
+    #[serde(default)]
+    pub copied_key_b64: Option<String>,
+    #[serde(default)]
+    pub copied_nonce_b64: Option<String>,
+    /// True when the user copied/pasted a blurry/un-enhanced or server-deduped AI image -> sharpen BOTH sender & receiver!
+    #[serde(default)]
+    pub needs_sender_ai: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -99,6 +128,13 @@ fn parse_optimized_payload(v: &serde_json::Value) -> Result<OptimizedMediaPayloa
     };
     let ext = v.get("ext").and_then(|s| s.as_str()).unwrap_or(sniff_ext).to_string();
 
+    let parse_u64 = |k: &str| -> Option<u64> {
+        v.get(k).and_then(|val| {
+            val.as_u64()
+                .or_else(|| val.as_str().and_then(|s| s.parse::<u64>().ok()))
+        })
+    };
+
     Ok(OptimizedMediaPayload {
         bytes,
         mime,
@@ -111,7 +147,7 @@ fn parse_optimized_payload(v: &serde_json::Value) -> Result<OptimizedMediaPayloa
         sha256_plain: v.get("sha256").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string).unwrap_or(sha),
         thumb_b64: v.get("thumbB64").and_then(|s| s.as_str()).map(str::to_string),
         thumb_mime: v.get("thumbMime").and_then(|s| s.as_str()).map(str::to_string),
-        duration_ms: None,
+        duration_ms: v.get("durationMs").and_then(|n| n.as_u64()),
         blur_data_url: v.get("blurDataUrl").and_then(|s| s.as_str()).map(str::to_string),
         width: v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
         height: v.get("height").and_then(|n| n.as_u64()).filter(|&n| n > 0).map(|n| n as u32),
@@ -121,7 +157,48 @@ fn parse_optimized_payload(v: &serde_json::Value) -> Result<OptimizedMediaPayloa
         instant_preview_url: v.get("instantPreviewUrl").and_then(|s| s.as_str()).map(str::to_string),
         codec: v.get("codec").and_then(|s| s.as_str()).map(str::to_string),
         orig_profile_json: v.get("origProfileJson").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
+        orig_blake3: v.get("origBlake3").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
+        pdq_hex: v.get("pdqHex").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
+        pdq_quality: v.get("pdqQuality").and_then(|n| n.as_u64()).map(|n| n.min(100) as u8),
+        caption_band_hash: parse_u64("captionBandHash"),
+        color_moment_hash: parse_u64("colorMomentHash"),
+        aspect_ratio_milli: v.get("aspectRatioMilli").and_then(|n| n.as_u64()).map(|n| n.min(10000) as u16),
+        ai_recommended: v.get("aiRecommended").and_then(|b| b.as_bool()).unwrap_or(false),
+        video_fingerprint_json: v.get("videoFingerprintJson").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
+        audio_fingerprint_json: v.get("audioFingerprintJson").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
+        copied_from_ref_id: v.get("copiedFromRefId").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
+        copied_key_b64: v.get("copiedKeyB64").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
+        copied_nonce_b64: v.get("copiedNonceB64").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
+        needs_sender_ai: v.get("needsSenderAi").and_then(|b| b.as_bool()).unwrap_or(false),
     })
+}
+
+/// Optimize & fingerprint raw bytes (e.g., pasted from clipboard `Ctrl+V`!) through the exact same
+/// Hyper-Dedup + AVIF pipeline so copied chat images NEVER create duplicate files on the server!
+pub async fn optimize_pasted_image_bytes(
+    bytes: &[u8],
+    mime: &str,
+    file_name: &str,
+) -> Result<OptimizedMediaPayload, String> {
+    let b64 = B64.encode(bytes);
+    let b64_json = serde_json::to_string(&b64).unwrap_or_default();
+    let mime_json = serde_json::to_string(mime).unwrap_or_default();
+    let name_json = serde_json::to_string(file_name).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            if (!window.__chatwMediaOpt || !window.__chatwMediaOpt.optimizePastedBytes) {{
+                dioxus.send({{ error: 'optimizer_unavailable' }});
+                return;
+            }}
+            const res = await window.__chatwMediaOpt.optimizePastedBytes({b64_json}, {mime_json}, {name_json});
+            dioxus.send(res);
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let v: serde_json::Value = eval.recv().await.map_err(|e| e.to_string())?;
+    parse_optimized_payload(&v)
 }
 
 /// Phase 1 (Instant Sender Original Preview): grab crisp local `blob:` preview URL in < 20ms!
@@ -314,5 +391,18 @@ pub async fn stop_voice_recording() -> Result<OptimizedMediaPayload, String> {
         instant_preview_url: None,
         codec: Some("opus".into()),
         orig_profile_json: None,
+        orig_blake3: None,
+        pdq_hex: None,
+        pdq_quality: None,
+        caption_band_hash: None,
+        color_moment_hash: None,
+        aspect_ratio_milli: None,
+        ai_recommended: false,
+        video_fingerprint_json: None,
+        audio_fingerprint_json: None,
+        copied_from_ref_id: None,
+        copied_key_b64: None,
+        copied_nonce_b64: None,
+        needs_sender_ai: false,
     })
 }

@@ -1,3 +1,4 @@
+pub mod dedup_engine;
 pub mod encrypted_backup;
 pub mod existing;
 pub mod local_cas;

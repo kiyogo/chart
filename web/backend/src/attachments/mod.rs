@@ -442,6 +442,42 @@ async fn handle_upload_attachment(
         backup_dm: query.backup_dm,
         forward_from_ref_id: query.forward_from_ref_id,
         tier: query.tier,
+        orig_blake3: query.orig_blake3.or_else(|| {
+            headers.get("x-orig-blake3").and_then(|v| v.to_str().ok()).map(str::to_string)
+        }),
+        pdq_hex: query.pdq_hex.or_else(|| {
+            headers.get("x-pdq-hex").and_then(|v| v.to_str().ok()).map(str::to_string)
+        }),
+        pdq_quality: query.pdq_quality.or_else(|| {
+            headers.get("x-pdq-quality").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok())
+        }),
+        caption_band_hash: query.caption_band_hash.or_else(|| {
+            headers.get("x-caption-hash").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok())
+        }),
+        color_moment_hash: query.color_moment_hash.or_else(|| {
+            headers.get("x-color-hash").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok())
+        }),
+        aspect_ratio_milli: query.aspect_ratio_milli.or_else(|| {
+            headers.get("x-aspect-milli").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok())
+        }),
+        orig_profile_json: query.orig_profile_json.or_else(|| {
+            headers.get("x-orig-profile-json").and_then(|v| v.to_str().ok()).map(str::to_string)
+        }),
+        orig_width: query.orig_width.or_else(|| {
+            headers.get("x-orig-width").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok())
+        }),
+        orig_height: query.orig_height.or_else(|| {
+            headers.get("x-orig-height").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok())
+        }),
+        ai_recommended: query.ai_recommended.or_else(|| {
+            headers.get("x-ai-recommended").and_then(|v| v.to_str().ok()).map(|s| s == "true" || s == "1")
+        }),
+        video_fingerprint_json: query.video_fingerprint_json.or_else(|| {
+            headers.get("x-video-fp-json").and_then(|v| v.to_str().ok()).map(str::to_string)
+        }),
+        audio_fingerprint_json: query.audio_fingerprint_json.or_else(|| {
+            headers.get("x-audio-fp-json").and_then(|v| v.to_str().ok()).map(str::to_string)
+        }),
     };
 
     let result = ingest_media_bytes(

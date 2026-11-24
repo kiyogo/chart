@@ -77,6 +77,34 @@ pub fn seal(bytes: &[u8]) -> Result<SealedBlob, String> {
     seal_single(bytes)
 }
 
+/// Convergent Message-Locked Encryption (MLE) for zero-knowledge cross-user DM deduplication (Spec 111):
+/// Derives deterministic AES-256-GCM key & nonce from content via domain-separated `BLAKE3_derive_key`,
+/// producing bit-identical blind ciphertexts for identical files across users while remaining 100% decryptable
+/// by existing `open(...)` and keeping the server completely blind to plaintext and keys!
+pub fn seal_convergent(bytes: &[u8]) -> Result<SealedBlob, String> {
+    if bytes.len() >= DEFAULT_STREAM_CHUNK_SIZE {
+        let sealed = core_e2ee::seal_cwch3_convergent(bytes, "chatw-media", "default", DEFAULT_STREAM_CHUNK_SIZE)
+            .map_err(|e| e.to_string())?;
+        return Ok(SealedBlob {
+            cipher: sealed.cipher,
+            key_b64: sealed.key_b64,
+            nonce_b64: sealed.nonce_b64,
+        });
+    }
+    let (mut key, nonce) = core_e2ee::derive_convergent_single_key_nonce(bytes);
+    let cipher_inst = Aes256Gcm::new_from_slice(&key).map_err(|_| "bad_key".to_string());
+    let key_b64 = URL_SAFE_NO_PAD.encode(key);
+    key.zeroize();
+    let cipher = cipher_inst?
+        .encrypt(Nonce::from_slice(&nonce), bytes)
+        .map_err(|_| "encrypt_failed".to_string())?;
+    Ok(SealedBlob {
+        cipher,
+        key_b64,
+        nonce_b64: URL_SAFE_NO_PAD.encode(nonce),
+    })
+}
+
 /// Seal bytes using `CWCH3` chunked streaming AEAD (HKDF per-chunk nonces + media/variant/finality AAD).
 pub fn seal_cwch3(
     bytes: &[u8],
