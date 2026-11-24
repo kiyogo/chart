@@ -57,19 +57,19 @@
   --radius-bubble-tail: 0.375rem;
 
   /* Layout */
-  --rail-width: 3.375rem;
+  --rail-width: 3.25rem;
   --panel-inset: 0.5rem;
-  --sidebar-width: clamp(17rem, 21vw, 22rem);
-  --details-width: clamp(19rem, 22vw, 23rem);
-  --header-height: 3.5rem;
+  --sidebar-width: clamp(16rem, 20vw, 21rem);
+  --details-width: clamp(18rem, 21vw, 22rem);
+  --header-height: 3.25rem;
   --shell-gap: 0.75rem;
   --panel-radius: 1.125rem;
   --bubble-max: min(40rem, 72%);
-  --control-height: 2.5rem;
-  --icon-btn: 2.25rem;
-  --avatar-list: 3.375rem;
-  --avatar-header: 2.375rem;
-  --list-item-py: 0.5rem;
+  --control-height: 2.25rem;
+  --icon-btn: 2rem;
+  --avatar-list: 3.125rem;
+  --avatar-header: 2.25rem;
+  --list-item-py: 0.45rem;
   --message-gap: 0.125rem;
   --message-group-gap: 0.875rem;
 
