@@ -3988,7 +3988,7 @@ html[data-reduce-motion="true"] .ai-gen-dots-wave,
 html[data-reduce-motion="true"] .ai-gen-pct::before {
   animation: none !important;
 }
-/* Spec 122: Transparent Focus Reticle Icon with Dark Diffusion Scrim & Clean Zero-Grey Hover */
+/* Spec 125: Transparent Focus Reticle Icon with Subtle Tight Shadow & Zero Hover Zoom */
 .rich-image-enhance-corner {
   position: absolute;
   bottom: 8px;
@@ -4009,8 +4009,9 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 6px rgba(0, 0, 0, 0.75));
-  transition: transform 160ms cubic-bezier(0.2, 0, 0, 1), filter 160ms ease, opacity 160ms ease;
+  opacity: 0.9;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  transition: opacity 140ms ease, filter 140ms ease;
 }
 .rich-image-enhance-corner svg {
   width: 18px;
@@ -4025,11 +4026,13 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
   box-shadow: none !important;
   border: none !important;
   color: #ffffff !important;
-  transform: scale(1.15);
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 8px rgba(0, 0, 0, 0.85));
+  transform: none !important;
+  opacity: 1 !important;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6)) !important;
 }
 .rich-image-enhance-corner:active {
-  transform: scale(0.96);
+  transform: none !important;
+  opacity: 0.8 !important;
   background: transparent !important;
 }
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn.lightbox-enhance-toggle.is-active {
