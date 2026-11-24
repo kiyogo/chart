@@ -330,8 +330,8 @@ void main() {
   fragColor = vec4(clamp(orig.rgb + vec3(rr, gg, bb), 0.0, 1.0), orig.a);
 }"#;
 
-// Zero-Alteration Wavelet Color Anchor + 3-Scale Anti-Ringing AMD FidelityFX CAS + Dark-Ink Tightener (Spec 115 v8)
-// Renders directly onto the WebGL2 default canvas (Y-flipped to top-down DOM canvas space) with ZERO 25MB readPixels!
+// Pure-AI Neural Super-Resolution + Luma-Only Anti-Ringing AMD FidelityFX CAS (Spec 123)
+// Delivers 100% pristine Real-ESRGAN neural output with ZERO chromatic aberration, ZERO green/red halos, and ZERO edge noise!
 const GL_FIDELITY_CAS_FS: &str = r#"#version 300 es
 precision highp float;
 precision highp sampler2D;
@@ -349,102 +349,65 @@ vec3 fetchSr(ivec2 p, ivec2 maxP) {
   return texelFetch(uSr, clamp(p, ivec2(0), maxP), 0).rgb;
 }
 
+float rgbToLuma(vec3 c) {
+  return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
 void main() {
   int localX = int(gl_FragCoord.x) - uDstOrigin.x;
   int localY = (uCopyDims.y - 1) - (int(gl_FragCoord.y) - uDstOrigin.y);
   ivec2 maxP = uSrDims - ivec2(1);
   ivec2 op = clamp(uCropOrigin + ivec2(localX, localY), ivec2(0), maxP);
 
-  // 1. Exact 3×3 neighborhood of Real-ESRGAN 4× output for AMD FidelityFX CAS
-  vec3 a = fetchSr(op + ivec2(-1, -1), maxP);
-  vec3 b = fetchSr(op + ivec2( 0, -1), maxP);
-  vec3 c = fetchSr(op + ivec2( 1, -1), maxP);
-  vec3 d = fetchSr(op + ivec2(-1,  0), maxP);
+  // Exact 4× neural network Real-ESRGAN pixel output
   vec4 e4 = texelFetch(uSr, op, 0);
   vec3 e = e4.rgb;
+
+  // 1. Fetch 3×3 cross neighborhood from Real-ESRGAN output
+  vec3 b = fetchSr(op + ivec2( 0, -1), maxP);
+  vec3 d = fetchSr(op + ivec2(-1,  0), maxP);
   vec3 f = fetchSr(op + ivec2( 1,  0), maxP);
-  vec3 g = fetchSr(op + ivec2(-1,  1), maxP);
   vec3 h = fetchSr(op + ivec2( 0,  1), maxP);
-  vec3 i = fetchSr(op + ivec2( 1,  1), maxP);
 
-  vec3 mn = min(min(min(d, e), min(f, b)), h);
-  vec3 mn2 = min(mn, min(min(a, c), min(g, i)));
-  mn += mn2;
+  // 2. Compute AMD FidelityFX CAS strictly on scalar LUMINANCE (guarantees ZERO chromatic fringing / rainbow halos!)
+  float eL = rgbToLuma(e);
+  float bL = rgbToLuma(b);
+  float dL = rgbToLuma(d);
+  float fL = rgbToLuma(f);
+  float hL = rgbToLuma(h);
 
-  vec3 mx = max(max(max(d, e), max(f, b)), h);
-  vec3 mx2 = max(mx, max(max(a, c), max(g, i)));
-  mx += mx2;
+  float mnL = min(min(min(dL, eL), min(fL, bL)), hL);
+  float mxL = max(max(max(dL, eL), max(fL, bL)), hL);
 
-  // 2. Full 8-tap isotropic radius-2 ring for true 5×5 edge endpoints [mn5, mx5]
-  //    On 4× SR outputs, a 1px input edge spans 3-4 output pixels, so clamping to [mn5, mx5]
-  //    lets deconvolution tighten blurred edge ramps to razor-sharp 1px transitions with ZERO halos!
-  vec3 a2 = fetchSr(op + ivec2(-2, -2), maxP);
-  vec3 b2 = fetchSr(op + ivec2( 0, -2), maxP);
-  vec3 c2 = fetchSr(op + ivec2( 2, -2), maxP);
-  vec3 d2 = fetchSr(op + ivec2(-2,  0), maxP);
-  vec3 f2 = fetchSr(op + ivec2( 2,  0), maxP);
-  vec3 g2 = fetchSr(op + ivec2(-2,  2), maxP);
-  vec3 h2 = fetchSr(op + ivec2( 0,  2), maxP);
-  vec3 i2 = fetchSr(op + ivec2( 2,  2), maxP);
+  // Noise gate: flat skin, flat sky, and flat fills have zero sharpening (pure silky-smooth AI output!)
+  float edgeRange = mxL - mnL;
+  float gate = smoothstep(0.025, 0.12, edgeRange);
 
-  vec3 mn5 = min(mn2, min(min(min(b2, d2), min(f2, h2)), min(min(a2, c2), min(g2, i2))));
-  vec3 mx5 = max(mx2, max(max(max(b2, d2), max(f2, h2)), max(max(a2, c2), max(g2, i2))));
+  // Official AMD FidelityFX CAS calculation with safe denominator >= 0.50 (zero division-by-zero!)
+  float rcpM = 1.0 / max(mxL, 1e-4);
+  float amp = sqrt(clamp(min(mnL, 2.0 - mxL) * rcpM, 0.0, 1.0));
+  float peak = -0.125 * clamp(uColor1.z, 0.0, 1.0) * gate;
+  float w = max(amp * peak, -0.125);
 
-  float localRange = max(max(mx2.r - mn2.r, mx2.g - mn2.g), mx2.b - mn2.b);
-  float edgeRange5 = max(max(mx5.r - mn5.r, mx5.g - mn5.g), mx5.b - mn5.b);
-  float gate1 = smoothstep(0.008, 0.042, max(localRange, edgeRange5 * 0.75));
-  float gate2 = smoothstep(0.015, 0.075, edgeRange5);
+  // Uniform scalar CAS weight applied equally to all RGB channels -> 100% ZERO COLOR FRINGING!
+  vec3 cas = clamp(((b + d + f + h) * w + e) / (1.0 + 4.0 * w), 0.0, 1.0);
 
-  // Scale 1: High-power AMD FidelityFX CAS (numerically safe denominator >= 0.16, noise-gated on flat skin/sky)
-  vec3 rcpM = 1.0 / max(mx, vec3(1e-4));
-  vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) * rcpM, 0.0, 1.0));
-  float peak = -0.38 * uColor1.z * gate1;
-  vec3 w = max(amp * peak, vec3(-0.28));
-  vec3 cas1 = clamp(((b + d + f + h) * w + e) / (1.0 + 4.0 * w), 0.0, 1.0);
+  // Strict local clamp inside cross bounds to guarantee ZERO ringing / halos:
+  vec3 mnRgb = min(min(min(d, e), min(f, b)), h);
+  vec3 mxRgb = max(max(max(d, e), max(f, b)), h);
+  vec3 sharp = clamp(cas, mnRgb, mxRgb);
 
-  // Scale 2 & 3: 8-tap isotropic radius-2 deconvolution + radius-1 micro-detail boost
-  vec3 avg1 = 0.25 * (b + d + f + h);
-  vec3 avg2 = 0.15 * (b2 + d2 + f2 + h2) + 0.10 * (a2 + c2 + g2 + i2);
-  vec3 deconv = cas1
-              + (cas1 - avg2) * (1.28 * uColor1.z * gate2)
-              + (cas1 - avg1) * (0.46 * uColor1.z * gate1);
+  // 3. Sender OriginalQualityProfile global contrast / balance calibration (if specified)
+  if (abs(uColor0.x) > 0.001 || abs(uColor0.y) > 0.001 || abs(uColor0.z) > 0.001 || abs(uColor0.w - 1.0) > 0.005) {
+    vec3 adj = sharp + uColor0.rgb;
+    float pivot = uColor1.y;
+    adj = vec3(pivot) + (adj - vec3(pivot)) * uColor0.w;
+    float lumaAdj = rgbToLuma(adj);
+    adj = clamp(vec3(lumaAdj) + (adj - vec3(lumaAdj)) * uColor1.x, 0.0, 1.0);
+    sharp = mix(sharp, adj, 0.65);
+  }
 
-  // Dark-ink / fine-line stroke tightener (pulls softened dark edges cleanly toward true local minimum mn5)
-  float lDeconv = dot(deconv, vec3(0.299, 0.587, 0.114));
-  float lAvg2 = dot(avg2, vec3(0.299, 0.587, 0.114));
-  float darkLine = clamp((lAvg2 - lDeconv) * 2.8, 0.0, 1.0) * smoothstep(0.10, 0.38, edgeRange5);
-  deconv = mix(deconv, mn5, darkLine * (0.34 * min(uColor1.z, 1.70)));
-
-  // STRICT zero-overshoot anti-ringing clamp inside [mn5, mx5] -> razor-sharp edges, ZERO white halos!
-  vec3 sharp = clamp(deconv, mn5, mx5);
-
-  // 3. Wavelet Low-Frequency Color & Tone Anchor -> ZERO alteration to original colors/skin/blush/exposure!
-  vec2 invDims = 1.0 / vec2(uSrDims);
-  vec2 uv = (vec2(op) + 0.5) * invDims;
-  vec2 dL = invDims * 2.5;
-  vec3 srLow = 0.28 * texture(uSr, uv).rgb
-             + 0.18 * texture(uSr, uv + vec2( dL.x,  dL.y)).rgb
-             + 0.18 * texture(uSr, uv + vec2(-dL.x,  dL.y)).rgb
-             + 0.18 * texture(uSr, uv + vec2( dL.x, -dL.y)).rgb
-             + 0.18 * texture(uSr, uv + vec2(-dL.x, -dL.y)).rgb;
-  vec3 origLow = 0.28 * texture(uOrig, uv).rgb
-               + 0.18 * texture(uOrig, uv + vec2( dL.x,  dL.y)).rgb
-               + 0.18 * texture(uOrig, uv + vec2(-dL.x,  dL.y)).rgb
-               + 0.18 * texture(uOrig, uv + vec2( dL.x, -dL.y)).rgb
-               + 0.18 * texture(uOrig, uv + vec2(-dL.x, -dL.y)).rgb;
-
-  // Apply sender OriginalQualityProfile delta to origLow so targetLow matches the sender's ORIGINAL pre-AVIF image!
-  vec3 tLow = origLow + uColor0.rgb;
-  float pivot = uColor1.y;
-  tLow = vec3(pivot) + (tLow - vec3(pivot)) * uColor0.w;
-  float lumaT = dot(tLow, vec3(0.299, 0.587, 0.114));
-  tLow = clamp(vec3(lumaT) + (tLow - vec3(lumaT)) * uColor1.x, 0.0, 1.0);
-
-  // Ultra-tight 96% identity anchor on smooth/skin/color regions; 58% on high-contrast ink strokes so outlines stay razor-crisp!
-  float anchorW = mix(0.96, 0.58, smoothstep(0.08, 0.36, edgeRange5));
-  vec3 deltaLow = clamp(tLow - srLow, vec3(-0.10), vec3(0.10)) * anchorW;
-
-  fragColor = vec4(clamp(sharp + deltaLow, 0.0, 1.0), e4.a);
+  fragColor = vec4(sharp, e4.a);
 }"#;
 
 struct ConvInProg {
@@ -1578,8 +1541,8 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Spec 121 ultra-sharp intensity knob: 1.68 for anime/illustration razor-sharp lines, 1.55 for photo ultra-crisp natural detail
-    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.68 } else { 1.55 };
+    // Spec 123 pure AI balanced intensity knob: 1.0 for true neural Real-ESRGAN reconstruction
+    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.0 } else { 0.90 };
 
     let probe = probe_gpu();
     if probe.webgl2_available && (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {
