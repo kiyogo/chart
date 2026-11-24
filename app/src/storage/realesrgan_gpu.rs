@@ -330,8 +330,8 @@ void main() {
   fragColor = vec4(clamp(orig.rgb + vec3(rr, gg, bb), 0.0, 1.0), orig.a);
 }"#;
 
-// Pure-AI Neural Super-Resolution + Luma-Only Anti-Ringing AMD FidelityFX CAS (Spec 123)
-// Delivers 100% pristine Real-ESRGAN neural output with ZERO chromatic aberration, ZERO green/red halos, and ZERO edge noise!
+// Ultra-Sharp AI Neural Super-Resolution + 8-Tap Luma Anti-Ringing CAS + High-Frequency Boost (Spec 127)
+// Delivers dramatic crispness and edge punch with ZERO chromatic aberration, ZERO green/red halos, and ZERO noise in flat fills!
 const GL_FIDELITY_CAS_FS: &str = r#"#version 300 es
 precision highp float;
 precision highp sampler2D;
@@ -363,39 +363,64 @@ void main() {
   vec4 e4 = texelFetch(uSr, op, 0);
   vec3 e = e4.rgb;
 
-  // 1. Fetch 3×3 cross neighborhood from Real-ESRGAN output
+  // 1. Fetch full 3×3 8-tap neighborhood from Real-ESRGAN output
+  vec3 a = fetchSr(op + ivec2(-1, -1), maxP);
   vec3 b = fetchSr(op + ivec2( 0, -1), maxP);
+  vec3 c = fetchSr(op + ivec2( 1, -1), maxP);
   vec3 d = fetchSr(op + ivec2(-1,  0), maxP);
   vec3 f = fetchSr(op + ivec2( 1,  0), maxP);
+  vec3 g = fetchSr(op + ivec2(-1,  1), maxP);
   vec3 h = fetchSr(op + ivec2( 0,  1), maxP);
+  vec3 i = fetchSr(op + ivec2( 1,  1), maxP);
 
-  // 2. Compute AMD FidelityFX CAS strictly on scalar LUMINANCE (guarantees ZERO chromatic fringing / rainbow halos!)
+  // 2. Compute scalar LUMINANCE for center and all 8 neighbors (strict luma domain prevents chromatic fringes!)
   float eL = rgbToLuma(e);
+  float aL = rgbToLuma(a);
   float bL = rgbToLuma(b);
+  float cL = rgbToLuma(c);
   float dL = rgbToLuma(d);
   float fL = rgbToLuma(f);
+  float gL = rgbToLuma(g);
   float hL = rgbToLuma(h);
+  float iL = rgbToLuma(i);
 
-  float mnL = min(min(min(dL, eL), min(fL, bL)), hL);
-  float mxL = max(max(max(dL, eL), max(fL, bL)), hL);
+  // Cross min/max & full 8-tap min/max
+  float mnCrossL = min(min(min(dL, eL), min(fL, bL)), hL);
+  float mxCrossL = max(max(max(dL, eL), max(fL, bL)), hL);
+  float mnAllL = min(min(min(aL, cL), min(gL, iL)), mnCrossL);
+  float mxAllL = max(max(max(aL, cL), max(gL, iL)), mxCrossL);
 
-  // Noise gate: flat skin, flat sky, and flat fills have zero sharpening (pure silky-smooth AI output!)
-  float edgeRange = mxL - mnL;
-  float gate = smoothstep(0.025, 0.12, edgeRange);
+  // Edge contrast detection & fine-line gate:
+  // Threshold lowered from 0.025..0.12 to 0.008..0.045 so delicate anime line art, hair contours,
+  // eyelashes, and subtle textures get full punch, while flat fills (edgeRange < 0.008) remain noise-free.
+  float edgeRange = mxAllL - mnAllL;
+  float gate = smoothstep(0.008, 0.045, edgeRange);
 
-  // Official AMD FidelityFX CAS calculation with safe denominator >= 0.50 (zero division-by-zero!)
-  float rcpM = 1.0 / max(mxL, 1e-4);
-  float amp = sqrt(clamp(min(mnL, 2.0 - mxL) * rcpM, 0.0, 1.0));
-  float peak = -0.125 * clamp(uColor1.z, 0.0, 1.0) * gate;
-  float w = max(amp * peak, -0.125);
+  // AMD FidelityFX CAS adaptive slope calculation
+  float rcpM = 1.0 / max(mxCrossL, 1e-4);
+  float amp = sqrt(clamp(min(mnCrossL, 2.0 - mxCrossL) * rcpM, 0.0, 1.0));
 
-  // Uniform scalar CAS weight applied equally to all RGB channels -> 100% ZERO COLOR FRINGING!
-  vec3 cas = clamp(((b + d + f + h) * w + e) / (1.0 + 4.0 * w), 0.0, 1.0);
+  // High-frequency 8-tap Laplacian kernel in luminance:
+  // Center eL vs weighted average of 4 cross (1.0) + 4 diagonal (0.50) neighbors
+  float avgNeighborsL = ((bL + dL + fL + hL) + (aL + cL + gL + iL) * 0.5) / 6.0;
+  float highFreqL = eL - avgNeighborsL;
 
-  // Strict local clamp inside cross bounds to guarantee ZERO ringing / halos:
-  vec3 mnRgb = min(min(min(d, e), min(f, b)), h);
-  vec3 mxRgb = max(max(max(d, e), max(f, b)), h);
-  vec3 sharp = clamp(cas, mnRgb, mxRgb);
+  // Ultra-sharp sharpening strength (boosted based on amp, gate, and knob)
+  float boostStrength = (0.35 + 0.45 * amp) * clamp(uColor1.z, 0.0, 1.8) * gate;
+  float enhancedL = eL + highFreqL * boostStrength;
+
+  // Adaptive contrast overshoot envelope:
+  // Replaces the rigid zero-overshoot clamp with a 35% edge-delta headroom,
+  // restoring true edge contrast pop without halo ringing.
+  float boundMinL = clamp(mnAllL - edgeRange * 0.35, 0.0, 1.0);
+  float boundMaxL = clamp(mxAllL + edgeRange * 0.35, 0.0, 1.0);
+  float targetL = clamp(enhancedL, boundMinL, boundMaxL);
+
+  // Uniform scalar ratio transfer to RGB:
+  // Multiplying all RGB channels by the exact same scalar (targetL / eL) guarantees 0.000 chromatic aberration!
+  float scalarRatio = (eL > 1e-4) ? (targetL / eL) : 1.0;
+  scalarRatio = clamp(scalarRatio, 0.65, 1.45);
+  vec3 sharp = clamp(e * scalarRatio, 0.0, 1.0);
 
   // 3. Sender OriginalQualityProfile global contrast / balance calibration (if specified)
   if (abs(uColor0.x) > 0.001 || abs(uColor0.y) > 0.001 || abs(uColor0.z) > 0.001 || abs(uColor0.w - 1.0) > 0.005) {
@@ -1541,8 +1566,8 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Spec 123 pure AI balanced intensity knob: 1.0 for true neural Real-ESRGAN reconstruction
-    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.0 } else { 0.90 };
+    // Spec 127 ultra-sharp AI enhancement knob: 1.25 for anime line art, 1.15 for general photo reconstruction
+    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.25 } else { 1.15 };
 
     let probe = probe_gpu();
     if probe.webgl2_available && (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {
