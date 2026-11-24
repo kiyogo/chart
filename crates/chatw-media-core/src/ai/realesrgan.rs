@@ -229,20 +229,36 @@ fn extract_profile_with_kernel_stride(
         }
     }
 
-    let cls = match analysis.class {
-        ImageClass::AnimeManga => "anime",
-        ImageClass::Meme | ImageClass::FlatGraphic | ImageClass::AlphaGraphic => "art",
-        ImageClass::CrispTextUi => {
-            if sat_m > 0.14 { "anime" } else { "text_ui" }
+    // 1. Photos, portraits, real human faces, and natural scenes MUST NEVER be categorized as anime!
+    let is_human_or_photo = matches!(
+        analysis.class,
+        ImageClass::Portrait
+            | ImageClass::Photo
+            | ImageClass::LowLightNoisy
+            | ImageClass::HdrWideGamut
+            | ImageClass::AlreadyHeavilyCompressed
+    ) || analysis.skin_tone_ratio > 0.04;
+
+    let cls = if is_human_or_photo {
+        if analysis.class == ImageClass::Portrait || analysis.skin_tone_ratio > 0.04 {
+            "portrait"
+        } else {
+            "photo"
         }
-        _ if analysis.flat_pixel_ratio > 0.34
-            || (analysis.flat_pixel_ratio > 0.20 && outline_r >= 0.0025)
-            || outline_r >= 0.0045 =>
-        {
-            "anime"
+    } else {
+        match analysis.class {
+            ImageClass::AnimeManga => "anime",
+            ImageClass::Meme | ImageClass::FlatGraphic | ImageClass::AlphaGraphic => "art",
+            ImageClass::CrispTextUi => {
+                if sat_m > 0.14 { "anime" } else { "text_ui" }
+            }
+            _ if analysis.palette_sparsity > 0.55
+                && (analysis.flat_pixel_ratio > 0.35 || outline_r >= 0.006) =>
+            {
+                "anime"
+            }
+            _ => "photo",
         }
-        ImageClass::Portrait => "portrait",
-        _ => "photo",
     };
 
     let r2 = |v: f64| -> f32 { ((v * 100.0).round() / 100.0) as f32 };
@@ -285,7 +301,11 @@ pub fn select_realesrgan_model(
         if qp.luma_s < 1.2 && qp.sharp < 0.2 {
             return None;
         }
-        let is_anime = matches!(qp.cls.as_str(), "anime" | "art" | "meme" | "text_ui") || qp.outline_r >= 0.005;
+        // Strict priority: Photos, portraits, and human subjects strictly route to GeneralX4V3!
+        if matches!(qp.cls.as_str(), "portrait" | "photo") {
+            return Some(RealEsrganModelKind::GeneralX4V3);
+        }
+        let is_anime = matches!(qp.cls.as_str(), "anime" | "art" | "meme" | "text_ui");
         if is_anime {
             return Some(RealEsrganModelKind::AnimeVideoV3);
         }
@@ -1213,5 +1233,66 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn portrait_and_photos_never_route_to_anime_model() {
+        // Human portrait synthetic buffer with warm skin tones and dark hair outlines
+        let (w, h) = (64u32, 64u32);
+        let mut rgba = vec![255u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                if y < 16 || x < 6 || x > 57 {
+                    // Dark hair / dark outlines
+                    rgba[i] = 18;
+                    rgba[i + 1] = 16;
+                    rgba[i + 2] = 20;
+                } else {
+                    // Peach/warm human skin tone (R > G > B)
+                    rgba[i] = 235;
+                    rgba[i + 1] = 188;
+                    rgba[i + 2] = 165;
+                }
+            }
+        }
+        let qp = extract_original_quality_profile(&rgba, w, h);
+        assert_eq!(qp.cls, "portrait", "Skin and face tones must classify as portrait!");
+
+        let sel_no_qp = select_realesrgan_model(&rgba, w, h, None, false);
+        let sel_qp = select_realesrgan_model(&rgba, w, h, Some(&qp), false);
+
+        assert_eq!(
+            sel_no_qp,
+            Some(RealEsrganModelKind::GeneralX4V3),
+            "Human portrait must route to GeneralX4V3 without QP!"
+        );
+        assert_eq!(
+            sel_qp,
+            Some(RealEsrganModelKind::GeneralX4V3),
+            "Human portrait must route to GeneralX4V3 with QP!"
+        );
+    }
+
+    #[test]
+    fn high_detail_cosplay_portrait_routes_to_general_x4v3() {
+        let p = "/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/.user_uploaded/media_1795545206648_e1cddb86.jpg";
+        if !std::path::Path::new(p).exists() {
+            return;
+        }
+        let img = match image::open(p) {
+            Ok(im) => im.to_rgba8(),
+            Err(_) => return,
+        };
+        let (w, h) = img.dimensions();
+        let raw = img.into_raw();
+        let qp = extract_original_quality_profile(&raw, w, h);
+        assert_eq!(qp.cls, "portrait");
+
+        let model_no_qp = select_realesrgan_model(&raw, w, h, None, false);
+        let model_qp = select_realesrgan_model(&raw, w, h, Some(&qp), false);
+
+        assert_eq!(model_no_qp, Some(RealEsrganModelKind::GeneralX4V3));
+        assert_eq!(model_qp, Some(RealEsrganModelKind::GeneralX4V3));
     }
 }
