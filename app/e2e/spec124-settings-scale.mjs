@@ -142,9 +142,9 @@ async function run() {
   }
 
   // Assertions
-  console.log(`Checking .settings-nav width: ${audit.navWidth}px (expected >= 270px)`);
-  if (audit.navWidth < 270) {
-    throw new Error(`FAIL: .settings-nav width is too narrow: ${audit.navWidth}px (expected >= 270px)`);
+  console.log(`Checking .settings-nav width: ${audit.navWidth}px (expected >= 240px, synchronized with messages sidebar)`);
+  if (audit.navWidth < 240) {
+    throw new Error(`FAIL: .settings-nav width is too narrow: ${audit.navWidth}px (expected >= 240px)`);
   }
 
   if (audit.items.length === 0) {

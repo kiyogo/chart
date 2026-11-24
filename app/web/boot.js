@@ -20,7 +20,11 @@
     const dw = get('chatw_details_width', '');
     if (dw) root.style.setProperty('--details-width', dw);
     const snw = get('chatw_settings_nav_width', '');
-    if (snw) root.style.setProperty('--settings-nav-width', snw);
+    if (snw === '294px' || snw === '296px') {
+      try { localStorage.removeItem('chatw_settings_nav_width'); } catch (_) {}
+    } else if (snw) {
+      root.style.setProperty('--settings-nav-width', snw);
+    }
   } catch (_) { /* storage unavailable */ }
 })();
 

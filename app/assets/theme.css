@@ -60,7 +60,7 @@
   --rail-width: 3.25rem;
   --panel-inset: 0.5rem;
   --sidebar-width: clamp(16rem, 20vw, 21rem);
-  --settings-nav-width: clamp(19rem, 23vw, 24rem);
+  --settings-nav-width: var(--sidebar-width);
   --details-width: clamp(18rem, 21vw, 22rem);
   --header-height: 3.25rem;
   --shell-gap: 0.75rem;
