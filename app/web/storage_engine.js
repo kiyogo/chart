@@ -1027,6 +1027,36 @@
       }
     },
 
+    async putAiModel(modelId, bytesU8, meta = {}) {
+      if (!modelId || !bytesU8) return false;
+      const bytes = bytesU8 instanceof Uint8Array ? bytesU8 : new Uint8Array(bytesU8);
+      try {
+        await idbTx('ai_models', 'readwrite', (s) =>
+          s.put({
+            model_id: String(modelId),
+            version: String(meta.version || '1.0'),
+            byte_size: bytes.byteLength,
+            bytes,
+            saved_at: Date.now(),
+          }),
+        );
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
+    async getAiModel(modelId) {
+      if (!modelId) return null;
+      try {
+        const rec = await idbTx('ai_models', 'readonly', (s) => s.get(String(modelId)));
+        if (!rec || !rec.bytes) return null;
+        return rec.bytes instanceof Uint8Array ? rec.bytes : new Uint8Array(rec.bytes);
+      } catch (_) {
+        return null;
+      }
+    },
+
     async putVideoSegment(segKey, u8, meta = {}) {
       if (!segKey || !u8) return false;
       const bytes = u8 instanceof Uint8Array ? u8 : new Uint8Array(u8);

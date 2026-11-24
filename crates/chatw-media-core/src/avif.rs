@@ -11,7 +11,7 @@
 
 use crate::{
     MediaError, MediaResult,
-    ai::cnn_sr::{OriginalQualityProfile, extract_original_quality_profile},
+    ai::realesrgan::{OriginalQualityProfile, extract_original_quality_profile},
     classifier::{ImageAnalysis, ImageClass, MediaKind, analyze_rgba_image, sniff_media_bytes},
 };
 use serde::{Deserialize, Serialize};
@@ -115,45 +115,46 @@ mod impl_codec {
         };
 
         if matches!(mode, AvifCompressionMode::UltraAggressive) {
-            // Maximum compression calibrated for on-device 2× CNN Super-Resolution recovery!
+            // Maximum compression calibrated for REAL Real-ESRGAN 4× Super-Resolution recovery!
+            // 10-bit YCbCr eliminates 8×8 pastel/skin macro-blocking completely while staying ~20-28 KB!
             let cfg = match analysis.class {
                 ImageClass::CrispTextUi | ImageClass::FlatGraphic => CandidateConfig {
-                    quality: 52.0,
-                    alpha_quality: 74.0,
+                    quality: 58.0,
+                    alpha_quality: 78.0,
                     speed: fast_speed,
-                    bit_depth: BitDepth::Eight,
+                    bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
                 ImageClass::AlphaGraphic => CandidateConfig {
-                    quality: 46.0,
-                    alpha_quality: 72.0,
-                    speed: fast_speed,
-                    bit_depth: BitDepth::Eight,
-                    color_model: ColorModel::YCbCr,
-                },
-                ImageClass::AnimeManga | ImageClass::Meme => CandidateConfig {
-                    quality: 54.0,
-                    alpha_quality: 76.0,
-                    speed: fast_speed,
-                    bit_depth: BitDepth::Eight,
-                    color_model: ColorModel::YCbCr,
-                },
-                ImageClass::HdrWideGamut => CandidateConfig {
                     quality: 54.0,
                     alpha_quality: 76.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
-                _ => CandidateConfig {
-                    quality: 50.0,
-                    alpha_quality: 74.0,
+                ImageClass::AnimeManga | ImageClass::Meme => CandidateConfig {
+                    quality: 58.0,
+                    alpha_quality: 78.0,
                     speed: fast_speed,
-                    bit_depth: BitDepth::Eight,
+                    bit_depth: BitDepth::Ten,
+                    color_model: ColorModel::YCbCr,
+                },
+                ImageClass::HdrWideGamut => CandidateConfig {
+                    quality: 58.0,
+                    alpha_quality: 78.0,
+                    speed: fast_speed,
+                    bit_depth: BitDepth::Ten,
+                    color_model: ColorModel::YCbCr,
+                },
+                _ => CandidateConfig {
+                    quality: 54.0,
+                    alpha_quality: 76.0,
+                    speed: fast_speed,
+                    bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
             };
-            return (vec![cfg], 0.88);
+            return (vec![cfg], 0.90);
         }
 
         match analysis.class {

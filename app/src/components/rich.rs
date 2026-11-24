@@ -763,11 +763,13 @@ pub fn RichImage(data: ImageData) -> Element {
                     let match_pct_attr = cur_match_pct
                         .map(|mp| format!("{mp:.1}"))
                         .unwrap_or_default();
-                    let badge_txt = match (cur_scale >= 2, cur_match_pct) {
-                        (true, Some(mp)) => format!("✨ AI CNN-L 2× · {:.0}%", mp.round()),
-                        (true, None) => "✨ AI CNN-L 2×".to_string(),
-                        (false, Some(mp)) => format!("✨ AI CNN-L · {:.0}%", mp.round()),
-                        (false, None) => "✨ AI CNN-L Đã làm nét".to_string(),
+                    let badge_txt = match (cur_scale, cur_match_pct) {
+                        (4.., Some(mp)) => format!("✨ Real-ESRGAN 4× · {:.0}%", mp.round()),
+                        (4.., None) => "✨ Real-ESRGAN 4×".to_string(),
+                        (2..=3, Some(mp)) => format!("✨ AI CNN 2× · {:.0}%", mp.round()),
+                        (2..=3, None) => "✨ AI CNN 2×".to_string(),
+                        (_, Some(mp)) => format!("✨ AI · {:.0}%", mp.round()),
+                        (_, None) => "✨ AI Đã làm nét".to_string(),
                     };
                     rsx! {
                         button {
@@ -815,7 +817,7 @@ pub fn RichImage(data: ImageData) -> Element {
                             } else if is_ai {
                                 span { class: "ai-restored-badge", "{badge_txt}" }
                             } else if ai_loading() {
-                                span { class: "ai-restoring-badge", "✨ AI CNN-L đang xử lý" }
+                                span { class: "ai-restoring-badge", "✨ Real-ESRGAN đang xử lý" }
                             }
                         }
                     }
@@ -1851,10 +1853,12 @@ pub fn GlobalImageLightbox() -> Element {
     } else {
         let base = if let Some(ref m) = media.ai_model {
             format!("✨ {m}")
+        } else if media.ai_scale >= 4 {
+            "✨ Real-ESRGAN 4×".to_string()
         } else if media.ai_scale >= 2 {
             "✨ CNN-L 2×".to_string()
         } else {
-            "✨ CNN-L Đã làm nét".to_string()
+            "✨ AI Đã làm nét".to_string()
         };
         if let Some(mp) = media.ai_match_pct {
             format!("{base} · Khớp gốc {:.0}%", mp.round())
@@ -1862,7 +1866,7 @@ pub fn GlobalImageLightbox() -> Element {
             base
         }
     };
-    let can_force_2x = !media.is_sender_original && media.ai_scale < 2 && media.original_src.is_some();
+    let can_force_2x = !media.is_sender_original && media.ai_scale < 4 && media.original_src.is_some();
     let media_for_2x = media.clone();
 
     rsx! {
@@ -2009,8 +2013,8 @@ pub fn GlobalImageLightbox() -> Element {
                             r#type: "button",
                             class: "lightbox-compare-btn",
                             disabled: upscaling_2x(),
-                            aria_label: "Phóng nét AI CNN 2×",
-                            title: "Chạy mạng Neural CNN 2× Siêu phân giải trực tiếp trên thiết bị",
+                            aria_label: "Phóng nét Real-ESRGAN 4×",
+                            title: "Chạy mạng Neural Real-ESRGAN 4× (Upscayl) trực tiếp trên GPU thiết bị",
                             onclick: move |_| {
                                 let m = media_for_2x.clone();
                                 let Some(raw_u) = m.original_src.clone() else { return; };
@@ -2027,7 +2031,7 @@ pub fn GlobalImageLightbox() -> Element {
                                             const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
                                                 mediaId: {mid_json},
                                                 origProfileJson: {qp_json},
-                                                force2x: true,
+                                                force4x: true,
                                                 forceRun: true,
                                             }});
                                             dioxus.send(res || {{ enhanced: false }});
@@ -2041,6 +2045,7 @@ pub fn GlobalImageLightbox() -> Element {
                                                 let nw = v.get("width").and_then(|n| n.as_u64()).unwrap_or(m.width as u64) as u32;
                                                 let nh = v.get("height").and_then(|n| n.as_u64()).unwrap_or(m.height as u64) as u32;
                                                 let out_sz = v.get("outBytes").and_then(|n| n.as_u64()).unwrap_or(0);
+                                                let sc = v.get("superRes").and_then(|n| n.as_u64()).unwrap_or(4) as u32;
                                                 let lbl = v.get("modelLabel").and_then(|s| s.as_str()).map(str::to_string);
                                                 let mp = v.get("matchPct")
                                                     .and_then(|n| n.as_f64())
@@ -2051,8 +2056,8 @@ pub fn GlobalImageLightbox() -> Element {
                                                     width: nw,
                                                     height: nh,
                                                     ai_restored: true,
-                                                    ai_model: lbl.or(Some("CNN-L 2×".into())),
-                                                    ai_scale: 2,
+                                                    ai_model: lbl.or(Some("Real-ESRGAN 4×".into())),
+                                                    ai_scale: sc,
                                                     ai_out_size: out_sz,
                                                     ai_match_pct: mp.or(m.ai_match_pct),
                                                     ..m
@@ -2063,7 +2068,7 @@ pub fn GlobalImageLightbox() -> Element {
                                     upscaling_2x.set(false);
                                 });
                             },
-                            if upscaling_2x() { "Đang chạy CNN 2×" } else { "✨ CNN 2×" }
+                            if upscaling_2x() { "Đang chạy Real-ESRGAN 4×" } else { "✨ Real-ESRGAN 4×" }
                         }
                     }
                     if media.ai_restored && media.original_src.is_some() {

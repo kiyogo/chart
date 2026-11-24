@@ -1,8 +1,8 @@
 //! Unified On-Device AI Restoration Orchestrator (Sections VIII, IX, X, XI, XII, XV).
 
-pub mod cnn_sr;
 pub mod hardware;
 pub mod onnx_runtime;
+pub mod realesrgan;
 pub mod registry;
 pub mod router;
 pub mod spab_lite;

@@ -1,17 +1,20 @@
-//! Pure-Rust WASM Media Codec Bridge (`window.__chatwWasmMedia`, Spec 110)
-//! Exposes ChatW's shared `chatw-media-core` directly to JS via raw `Uint8Array` (zero Base64):
-//! - `encodeAvifAdaptive(u8, mode)` -> genuine `ravif`/`rav1e` AVIF (NEVER silent JPEG/WebP/PNG!)
-//! - `compressFileSmart(u8)` -> lossless `CWCMP1` (Brotli / LZMA2 / ZSTD with entropy skip)
-//! - `decompressFileVerified(u8)` -> verified byte-for-byte BLAKE3 decompression with bomb guard
+//! Pure-Rust WASM Media Codec & Real-ESRGAN GPU Bridge (`window.__chatwWasmMedia`, Spec 110)
+//! Exposes ChatW's 100% Pure-Rust media core + Real-ESRGAN / Upscayl GPU engine directly to thin JS DOM bindings:
+//! - `encodeAvifAdaptive(u8, mode)` -> genuine 10-bit `ravif`/`rav1e` AVIF + `OriginalQualityProfile`
+//! - `compressFileSmart(u8)` / `decompressFileVerified(u8)` -> lossless `CWCMP1` (Brotli / LZMA2 / ZSTD)
 //! - `blake3Hex(u8)` -> fast BLAKE3 content hash
+//! - `probeRealEsrganGpu()` -> probes Rust WebGL2 GPU engine status
+//! - `selectRealEsrganModel(rgba, w, h, origProfileJson)` -> chooses Anime v3 vs Upscayl-Lite General v3 in Rust
+//! - `restoreImageRealEsrgan(rgba, w, h, modelId, modelBytesCwsr1, origProfileJson)` -> async 100% Pure-Rust Real-ESRGAN 4×!
+//! - `isModelLicenseAllowed(modelId)` -> strict SPDX commercial license gate in Rust
 
 #[cfg(target_arch = "wasm32")]
 pub fn install_wasm_media_bridge() {
+    use crate::storage::realesrgan_gpu::{probe_gpu, restore_image_realesrgan_rust};
     use chatw_media_core::{
-        ai::cnn_sr::{
-            CnnModelKind, OriginalQualityProfile, calibrate_to_original_profile_with_base,
-            extract_original_quality_profile, raw_cnn_weights_bytes, restore_guided_hq,
-            run_cnn_sr_tiled, upscale_catmull_rom_2x,
+        ai::realesrgan::{
+            OriginalQualityProfile, RealEsrganModelKind, extract_original_quality_profile,
+            select_realesrgan_model,
         },
         avif::{AvifCompressionMode, AvifEncodeOptions, optimize_image_to_avif},
         classifier::ImageClass,
@@ -24,6 +27,7 @@ pub fn install_wasm_media_bridge() {
     use js_sys::{Object, Reflect, Uint8Array};
     use std::sync::atomic::{AtomicBool, Ordering};
     use wasm_bindgen::{JsCast, JsValue, closure::Closure};
+    use wasm_bindgen_futures::future_to_promise;
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
     if INSTALLED.swap(true, Ordering::SeqCst) {
@@ -33,10 +37,9 @@ pub fn install_wasm_media_bridge() {
     let Some(win) = web_sys::window() else {
         return;
     };
-
     let api = Object::new();
 
-    // 1. encodeAvifAdaptive(u8: Uint8Array, mode?: string) -> { ok, bytes, width, height, targetWidth, targetHeight, superResRecommended, isCrispText, estimatedSsim, aiRecommended }
+    // 1. encodeAvifAdaptive(rawBytesU8, mode?: string) -> { ok, bytes, width, height, targetWidth, targetHeight, origProfileJson, ... }
     let enc_cb = Closure::<dyn Fn(Uint8Array, JsValue) -> JsValue>::new(
         move |input: Uint8Array, mode_val: JsValue| {
             let raw = input.to_vec();
@@ -70,11 +73,7 @@ pub fn install_wasm_media_bridge() {
                     let _ = Reflect::set(&out, &"targetHeight".into(), &JsValue::from(res.target_height));
                     let _ = Reflect::set(&out, &"superResRecommended".into(), &JsValue::from(super_res));
                     let _ = Reflect::set(&out, &"isCrispText".into(), &JsValue::from(is_crisp));
-                    let _ = Reflect::set(
-                        &out,
-                        &"aiRecommended".into(),
-                        &JsValue::from(res.ai_restoration_recommended),
-                    );
+                    let _ = Reflect::set(&out, &"aiRecommended".into(), &JsValue::from(res.ai_restoration_recommended));
                     if let Some(ssim) = res.estimated_ssim {
                         let _ = Reflect::set(&out, &"estimatedSsim".into(), &JsValue::from(ssim));
                     }
@@ -140,113 +139,99 @@ pub fn install_wasm_media_bridge() {
         out.into()
     });
 
-    // 4. blake3Hex(u8: Uint8Array) -> string
-    let b3_cb = Closure::<dyn Fn(Uint8Array) -> JsValue>::new(move |input: Uint8Array| {
-        let h = hash_bytes_exact(&input.to_vec());
+    // 4. blake3Hex(bytesU8)
+    let b3_cb = Closure::<dyn Fn(Uint8Array) -> JsValue>::new(move |raw_u8: Uint8Array| {
+        let h = hash_bytes_exact(&raw_u8.to_vec());
         JsValue::from(h.blake3_hex)
     });
 
-    // 5. restoreImageCnn(rgba: Uint8Array, width: u32, height: u32, modelKind?: string) -> { ok, rgba, width, height, scale, modelId }
-    let cnn_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue) -> JsValue>::new(
-        move |rgba: Uint8Array, width: u32, height: u32, model_val: JsValue| {
-            let raw = rgba.to_vec();
-            let model_str = model_val.as_string().unwrap_or_else(|| "auto".into());
-            let kind = CnnModelKind::from_str_name(&model_str);
-            let out = Object::new();
-            match run_cnn_sr_tiled(&raw, width, height, kind, 192, None) {
-                Ok(res) => {
-                    let bytes = Uint8Array::from(res.rgba.as_slice());
-                    let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
-                    let _ = Reflect::set(&out, &"rgba".into(), &bytes.into());
-                    let _ = Reflect::set(&out, &"width".into(), &JsValue::from(res.width));
-                    let _ = Reflect::set(&out, &"height".into(), &JsValue::from(res.height));
-                    let _ = Reflect::set(&out, &"scale".into(), &JsValue::from(res.scale));
-                    let _ = Reflect::set(&out, &"modelId".into(), &JsValue::from(res.model_id));
-                }
-                Err(err) => {
-                    let _ = Reflect::set(&out, &"ok".into(), &JsValue::FALSE);
-                    let _ = Reflect::set(&out, &"error".into(), &JsValue::from(err.to_string()));
-                }
-            }
-            out.into()
-        },
-    );
-
-    // 6. getCnnWeights(modelKind?: string) -> Uint8Array (raw CWNN1 binary weights shared with WebGPU WGSL shaders)
-    let weights_cb = Closure::<dyn Fn(JsValue) -> JsValue>::new(move |model_val: JsValue| {
-        let model_str = model_val.as_string().unwrap_or_else(|| "anime_l".into());
-        let kind = CnnModelKind::from_str_name(&model_str);
-        Uint8Array::from(raw_cnn_weights_bytes(kind)).into()
+    // 5. probeRealEsrganGpu() -> { webgl2Available, isSoftware, renderer, backend }
+    let probe_cb = Closure::<dyn Fn() -> JsValue>::new(move || {
+        let info = probe_gpu();
+        let out = Object::new();
+        let _ = Reflect::set(&out, &"webgl2Available".into(), &JsValue::from(info.webgl2_available));
+        let _ = Reflect::set(&out, &"isSoftware".into(), &JsValue::from(info.is_software));
+        let _ = Reflect::set(&out, &"renderer".into(), &JsValue::from(info.renderer));
+        let _ = Reflect::set(&out, &"backend".into(), &JsValue::from(info.backend));
+        out.into()
     });
 
-    // 7. restoreImageGuided(rgba, w, h, want2x, preRestore, origProfileJson) -> { ok, rgba, width, height, scale, modelId, modelLabel, matchPct }
-    let guided_cb = Closure::<dyn Fn(Uint8Array, u32, u32, bool, bool, JsValue) -> JsValue>::new(
-        move |rgba: Uint8Array, width: u32, height: u32, want_2x: bool, pre_restore: bool, prof_val: JsValue| {
+    // 6. selectRealEsrganModel(rgba, w, h, origProfileJson, requestedModelId?) -> { skip, reason, modelId, modelLabel, cwsrUrl, version }
+    let select_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue, JsValue) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32, prof_val: JsValue, req_model_val: JsValue| {
+            let out = Object::new();
             let raw = rgba.to_vec();
             let orig_prof: Option<OriginalQualityProfile> = prof_val
                 .as_string()
                 .filter(|s| !s.is_empty())
                 .and_then(|s| serde_json::from_str(&s).ok());
-            let out = Object::new();
-            match restore_guided_hq(&raw, width, height, want_2x, pre_restore, orig_prof.as_ref(), 192, None) {
-                Ok(res) => {
-                    let bytes = Uint8Array::from(res.rgba.as_slice());
-                    let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
-                    let _ = Reflect::set(&out, &"rgba".into(), &bytes.into());
-                    let _ = Reflect::set(&out, &"width".into(), &JsValue::from(res.width));
-                    let _ = Reflect::set(&out, &"height".into(), &JsValue::from(res.height));
-                    let _ = Reflect::set(&out, &"scale".into(), &JsValue::from(res.scale));
-                    let _ = Reflect::set(&out, &"modelId".into(), &JsValue::from(res.model_id));
-                    let _ = Reflect::set(&out, &"modelLabel".into(), &JsValue::from(res.model_label));
-                    let _ = Reflect::set(&out, &"matchPct".into(), &JsValue::from(res.match_pct));
+            let probe = probe_gpu();
+
+            let req_str = req_model_val.as_string().unwrap_or_default();
+            let chosen = if !req_str.is_empty() && (req_str == "realesr_animevideov3" || req_str == "realesr_general_x4v3") {
+                Some(RealEsrganModelKind::from_str_name(&req_str))
+            } else {
+                select_realesrgan_model(&raw, width, height, orig_prof.as_ref(), probe.is_software)
+            };
+
+            match chosen {
+                Some(kind) => {
+                    let _ = Reflect::set(&out, &"skip".into(), &JsValue::FALSE);
+                    let _ = Reflect::set(&out, &"modelId".into(), &JsValue::from(kind.model_id()));
+                    let _ = Reflect::set(&out, &"modelLabel".into(), &JsValue::from(kind.model_label()));
+                    let _ = Reflect::set(&out, &"cwsrUrl".into(), &JsValue::from(kind.cwsr_url()));
+                    let _ = Reflect::set(&out, &"version".into(), &JsValue::from(kind.version()));
+                    let _ = Reflect::set(&out, &"isAnime".into(), &JsValue::from(kind == RealEsrganModelKind::AnimeVideoV3));
                 }
-                Err(err) => {
-                    let _ = Reflect::set(&out, &"ok".into(), &JsValue::FALSE);
-                    let _ = Reflect::set(&out, &"error".into(), &JsValue::from(err.to_string()));
+                None => {
+                    let _ = Reflect::set(&out, &"skip".into(), &JsValue::TRUE);
+                    let _ = Reflect::set(&out, &"reason".into(), &JsValue::from("solid_flat_image"));
                 }
             }
             out.into()
         },
     );
 
-    // 8. calibrateToProfile(rgba, w, h, origProfileJson, srcRgba?, srcW?, srcH?) -> { ok, rgba, matchPct }
-    let calib_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue, JsValue, JsValue, JsValue) -> JsValue>::new(
-        move |rgba: Uint8Array, width: u32, height: u32, prof_val: JsValue, src_val: JsValue, src_w_val: JsValue, src_h_val: JsValue| {
-            let mut buf = rgba.to_vec();
+    // 7. restoreImageRealEsrgan(rgba, w, h, modelId, modelBytesCwsr1, origProfileJson) -> Promise<{ ok, rgba, width, height, scale, modelId, modelLabel, backend, ssim, meanColorDrift, matchPct }>
+    let restore_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue, Uint8Array, JsValue) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32, model_id_val: JsValue, model_bytes: Uint8Array, prof_val: JsValue| {
+            let raw = rgba.to_vec();
+            let mbytes = model_bytes.to_vec();
+            let model_str = model_id_val.as_string().unwrap_or_else(|| "realesr_animevideov3".into());
+            let kind = RealEsrganModelKind::from_str_name(&model_str);
             let orig_prof: Option<OriginalQualityProfile> = prof_val
                 .as_string()
                 .filter(|s| !s.is_empty())
                 .and_then(|s| serde_json::from_str(&s).ok());
-            let base_buf: Option<Vec<u8>> = if !src_val.is_undefined() && !src_val.is_null() {
-                let sw = src_w_val.as_f64().unwrap_or(0.0) as u32;
-                let sh = src_h_val.as_f64().unwrap_or(0.0) as u32;
-                let src_u8 = Uint8Array::new(&src_val).to_vec();
-                if sw * 2 == width && sh * 2 == height && src_u8.len() == (sw as usize * sh as usize * 4) {
-                    Some(upscale_catmull_rom_2x(&src_u8, sw, sh))
-                } else if sw == width && sh == height && src_u8.len() == buf.len() {
-                    Some(src_u8)
-                } else {
-                    None
+
+            future_to_promise(async move {
+                let out = Object::new();
+                match restore_image_realesrgan_rust(&raw, width, height, kind, &mbytes, orig_prof.as_ref()).await {
+                    Ok(res) => {
+                        let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
+                        let _ = Reflect::set(&out, &"rgba".into(), &Uint8Array::from(res.rgba.as_slice()).into());
+                        let _ = Reflect::set(&out, &"width".into(), &JsValue::from(res.width));
+                        let _ = Reflect::set(&out, &"height".into(), &JsValue::from(res.height));
+                        let _ = Reflect::set(&out, &"scale".into(), &JsValue::from(res.scale));
+                        let _ = Reflect::set(&out, &"modelId".into(), &JsValue::from(res.model_id));
+                        let _ = Reflect::set(&out, &"modelLabel".into(), &JsValue::from(res.model_label));
+                        let _ = Reflect::set(&out, &"backend".into(), &JsValue::from(res.backend));
+                        let _ = Reflect::set(&out, &"ssim".into(), &JsValue::from(res.ssim));
+                        let _ = Reflect::set(&out, &"meanColorDrift".into(), &JsValue::from(res.mean_color_drift));
+                        let _ = Reflect::set(&out, &"matchPct".into(), &JsValue::from(res.match_pct));
+                    }
+                    Err(err) => {
+                        let _ = Reflect::set(&out, &"ok".into(), &JsValue::FALSE);
+                        let _ = Reflect::set(&out, &"error".into(), &JsValue::from(err));
+                    }
                 }
-            } else {
-                None
-            };
-            let match_pct = calibrate_to_original_profile_with_base(
-                &mut buf,
-                base_buf.as_deref(),
-                width,
-                height,
-                orig_prof.as_ref(),
-            );
-            let out = Object::new();
-            let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
-            let _ = Reflect::set(&out, &"rgba".into(), &Uint8Array::from(buf.as_slice()).into());
-            let _ = Reflect::set(&out, &"matchPct".into(), &JsValue::from(match_pct));
-            out.into()
+                Ok(out.into())
+            })
+            .into()
         },
     );
 
-    // 9. extractQualityProfile(rgba, w, h) -> string (JSON OriginalQualityProfile)
+    // 8. extractQualityProfile(rgba, w, h) -> string (JSON OriginalQualityProfile)
     let prof_cb = Closure::<dyn Fn(Uint8Array, u32, u32) -> JsValue>::new(
         move |rgba: Uint8Array, width: u32, height: u32| {
             let prof = extract_original_quality_profile(&rgba.to_vec(), width, height);
@@ -254,28 +239,45 @@ pub fn install_wasm_media_bridge() {
         },
     );
 
+    // 9. isModelLicenseAllowed(modelId) -> bool (strict Rust SPDX commercial license gate!)
+    let lic_cb = Closure::<dyn Fn(JsValue) -> JsValue>::new(move |id_val: JsValue| {
+        let k = id_val.as_string().unwrap_or_default().to_ascii_lowercase();
+        let blocked = ["codeformer", "rvrt", "apisr", "upscayl"].iter().any(|b| k.contains(b));
+        let approved = matches!(
+            k.as_str(),
+            "realesr_animevideov3"
+                | "realesr_general_x4v3"
+                | "spab_lite_builtin"
+                | "span_x2_s"
+                | "realesrgan_x2plus"
+                | "realcugan_2x"
+                | "nanovsr_lite"
+        );
+        JsValue::from(!blocked && approved)
+    });
+
     let _ = Reflect::set(&api, &"version".into(), &JsValue::from("chatw-media-core-v2"));
-    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("anime4k-crelu-15layer-guided-v4"));
+    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("rust-realesrgan-srvgg-upscayl-v6"));
     let _ = Reflect::set(&api, &"encodeAvifAdaptive".into(), enc_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"compressFileSmart".into(), cmp_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"decompressFileVerified".into(), dec_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"blake3Hex".into(), b3_cb.as_ref().unchecked_ref());
-    let _ = Reflect::set(&api, &"restoreImageCnn".into(), cnn_cb.as_ref().unchecked_ref());
-    let _ = Reflect::set(&api, &"getCnnWeights".into(), weights_cb.as_ref().unchecked_ref());
-    let _ = Reflect::set(&api, &"restoreImageGuided".into(), guided_cb.as_ref().unchecked_ref());
-    let _ = Reflect::set(&api, &"calibrateToProfile".into(), calib_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"probeRealEsrganGpu".into(), probe_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"selectRealEsrganModel".into(), select_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"restoreImageRealEsrgan".into(), restore_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"extractQualityProfile".into(), prof_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"isModelLicenseAllowed".into(), lic_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&win, &"__chatwWasmMedia".into(), &api.into());
 
     enc_cb.forget();
     cmp_cb.forget();
     dec_cb.forget();
     b3_cb.forget();
-    cnn_cb.forget();
-    weights_cb.forget();
-    guided_cb.forget();
-    calib_cb.forget();
+    probe_cb.forget();
+    select_cb.forget();
+    restore_cb.forget();
     prof_cb.forget();
+    lic_cb.forget();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
