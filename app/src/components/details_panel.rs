@@ -578,6 +578,11 @@ fn SelfMediaThumb(
     let qp = data.qp.clone();
     let media_u = data.u.clone();
     let media_sha = data.sha.clone();
+    let media_w = data.w;
+    let media_h = data.h;
+    let media_orig_w = data.orig_w;
+    let media_orig_h = data.orig_h;
+    let media_can_ai = data.m != "image/gif";
     let jump_id = msg_id.clone();
 
     rsx! {
@@ -597,6 +602,11 @@ fn SelfMediaThumb(
                         original_src: Some(url),
                         is_sender_original: false,
                         auto_enhance_on_open: false,
+                        can_ai_enhance: media_can_ai,
+                        width: media_w,
+                        height: media_h,
+                        orig_width: media_orig_w,
+                        orig_height: media_orig_h,
                     });
                 } else {
                     on_jump_to.call(jump_id.clone());

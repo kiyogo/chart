@@ -616,7 +616,6 @@
     chatCol.style.removeProperty('--chat-bot-fade-strip');
     lastEdgeKey = '';
   }
-  }
 
   // =========================================================================
   // PART 4: Real-Time Per-Position Adaptive Surface & Contrast (60fps)

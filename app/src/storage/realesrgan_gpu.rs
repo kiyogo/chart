@@ -1372,8 +1372,9 @@ async fn run_tile_gl_async(
     on_progress: Option<&js_sys::Function>,
 ) -> Result<(), String> {
     let num_body = with_gl_engine(|eng| eng.begin_tile(tile_rgba, tw, th, model_id, model_bytes))?;
-    // On real GPU flush in chunks of 8 layers (1 mid-yield on 16-layer anime, 3 on 32-layer photo); on SwiftShader 4 layers.
-    let chunk = if is_software { 4usize } else { 8usize };
+    // Flush in smooth 4-layer chunks (4 non-blocking yields on 16-layer anime, 8 on 32-layer photo) so progress ticks & UI stay 60fps smooth!
+    let _ = is_software;
+    let chunk = 4usize;
     let span = prog_end.saturating_sub(prog_start).max(1);
     let mut layer = 0usize;
     while layer < num_body {

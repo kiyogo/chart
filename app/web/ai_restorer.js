@@ -105,6 +105,18 @@
     };
   }
 
+  async function predecodeImageUrl(url) {
+    if (!url || typeof Image === 'undefined') return;
+    try {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = url;
+      if (typeof img.decode === 'function') {
+        await img.decode();
+      }
+    } catch (_) {}
+  }
+
   async function encodeCanvasBlob(canvas, hasAlpha) {
     // Opaque 4× images use hardware-SIMD `image/jpeg@0.93` (~8× faster than software WebP on 4K canvases,
     // while 4× super-res gives full original 1:1 chroma resolution!). Transparent images keep lossless-alpha WebP.
@@ -167,6 +179,7 @@
             matchPct: hit.match_pct != null ? hit.match_pct : null,
             provenance: 'ai_restored',
           };
+          await predecodeImageUrl(entry.url);
           rememberSessionResult(cacheKey, entry);
           return entry;
         }
@@ -303,6 +316,8 @@
       if (!outBlob || outBlob.size === 0) {
         return { enhanced: false, skipped: true, reason: 'output_encode_failed', url: imageUrl };
       }
+      const outUrl = URL.createObjectURL(outBlob);
+      await predecodeImageUrl(outUrl);
       reportProgress(100);
 
       const elapsedMs = Math.round(performance.now() - t0);
@@ -310,7 +325,7 @@
         enhanced: true,
         cacheHit: false,
         cacheTier: 'computed',
-        url: URL.createObjectURL(outBlob),
+        url: outUrl,
         modelId: res.modelId,
         modelLabel: res.modelLabel,
         modelVersion: sel.version,

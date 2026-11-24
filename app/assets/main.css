@@ -3555,16 +3555,16 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .table-scroll td, .table-scroll th { padding: 6px 10px; white-space: nowrap; text-align: left; }
 .table-scroll tr:first-child td, .table-scroll th { background: var(--accent-soft); font-weight: var(--weight-semibold); position: sticky; top: 0; }
 .table-scroll tr:nth-child(even) td { background: color-mix(in srgb, var(--bg-hover) 60%, transparent); }
-.rich-image { max-width: min(22rem, 100%); border-radius: var(--radius-xl); overflow: hidden; background: var(--bg-surface-hover); }
-.rich-image-btn { display: block; padding: 0; width: 100%; }
-.rich-image-stage { position: relative; display: block; width: 100%; overflow: hidden; border-radius: var(--radius-xl); background: var(--bg-surface-hover); }
+.rich-image { max-width: min(22rem, 100%); border-radius: var(--radius-xl); overflow: hidden; background: var(--bg-surface-hover); contain: layout style; }
+.rich-image-btn { display: block; padding: 0; width: 100%; border: none; background: transparent; cursor: pointer; }
+.rich-image-stage { position: relative; display: block; width: 100%; overflow: hidden; border-radius: var(--radius-xl); background: var(--bg-surface-hover); isolation: isolate; contain: layout paint; }
 .rich-image-blur { display: block; width: 100%; height: 100%; max-height: 22rem; object-fit: cover; filter: blur(18px); transform: scale(1.08); transition: opacity 220ms ease; }
 .rich-image-stage.loaded .rich-image-blur { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
-.rich-image-full { position: relative; z-index: 1; display: block; width: 100%; max-width: 100%; max-height: 22rem; object-fit: cover; animation: cwMediaFadeIn 220ms ease; }
+.rich-image-full { position: relative; z-index: 1; display: block; width: 100%; height: 100%; max-width: 100%; max-height: 22rem; object-fit: cover; }
 .rich-image-blur-spinner { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.14); }
 .rich-video-stage { position: relative; overflow: hidden; border-radius: 8px; }
 @keyframes cwMediaFadeIn { from { opacity: 0; } to { opacity: 1; } }
-.rich-image img { display: block; max-width: 100%; max-height: 22rem; object-fit: cover; }
+.rich-image img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 22rem; object-fit: cover; }
 
 /* Spec 071: Interactive Voice Waveform, Virtual Spacers & Floating Scroll-to-Bottom Button */
 .voice-waveform {
@@ -3674,12 +3674,13 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   width: 100vw;
   height: 100vh;
   z-index: 9999;
-  background: rgba(8, 10, 15, 0.90);
-  backdrop-filter: blur(22px) saturate(130%);
-  -webkit-backdrop-filter: blur(22px) saturate(130%);
+  background: rgba(8, 10, 15, 0.92);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
   overflow: hidden;
   user-select: none;
   outline: none;
+  contain: layout style;
   animation: cwLightboxFadeIn 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes cwLightboxFadeIn {
@@ -3700,24 +3701,39 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 }
 .lightbox-stage.can-pan { cursor: grab; }
 .lightbox-stage.is-panning { cursor: grabbing; }
-.lightbox-img {
-  display: block;
+.lightbox-img-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   max-width: min(92vw, 1440px);
   max-height: 86vh;
-  width: auto;
-  height: auto;
+  border-radius: 0;
+  overflow: visible;
+  isolation: isolate;
+}
+.lightbox-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: min(92vw, 1440px);
+  max-height: 86vh;
   object-fit: contain;
   margin: 0;
   border: none !important;
   border-radius: 0 !important;
   box-shadow: 0 24px 72px rgba(0, 0, 0, 0.50);
   transform-origin: center center;
-  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  backface-visibility: hidden;
   -webkit-user-drag: none;
   cursor: grab;
 }
 .lightbox-stage.can-pan .lightbox-img { cursor: grab; }
-.lightbox-stage.is-panning .lightbox-img {
+.lightbox-stage.is-panning .lightbox-img,
+.lightbox-stage.is-panning .ai-gen-overlay.lightbox-ai-gen {
   cursor: grabbing;
   transition: none !important;
 }
@@ -3753,103 +3769,179 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   white-space: nowrap;
   max-width: 55vw;
 }
-/* Blurred image underneath during live AI Real-ESRGAN generation */
-.rich-image-full {
-  transition: filter 420ms cubic-bezier(0.22, 1, 0.36, 1), transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.rich-image-full.is-ai-generating,
-.lightbox-img.is-ai-generating {
-  filter: blur(16px) brightness(0.76) saturate(1.1);
-  transform: scale(1.06);
-}
-/* Gemini-style animated blue dot-matrix wave shimmer over blurred image underneath */
+/* Spec 112: Zero-jitter GPU-composited AI enhancement frosted-crystal aurora overlay.
+   Static pre-blurred preview `.ai-gen-blur-img` is rasterized ONCE inside `overflow: hidden`
+   (zero pale edge bleed, zero backdrop-filter stalls), while `.ai-gen-aurora`, `.ai-gen-dots-wave`,
+   and `.is-revealing` animate strictly via compositor `transform` & `opacity`. */
 .ai-gen-overlay {
   position: absolute;
   inset: 0;
   z-index: 3;
   overflow: hidden;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 48%, rgba(28, 63, 138, 0.24) 0%, rgba(9, 13, 24, 0.44) 100%);
   border-radius: inherit;
-}
-.lightbox-img-frame {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: 6px;
-  max-width: min(92vw, 1440px);
-  max-height: 86vh;
-  transform-origin: center center;
-  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.lightbox-stage.is-panning .lightbox-img-frame {
-  transition: none !important;
+  background: #090d18;
+  contain: layout paint;
+  opacity: 1;
+  transition: opacity 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity;
+  backface-visibility: hidden;
+  animation: chatwAiOverlayIn 160ms ease-out;
 }
 .ai-gen-overlay.lightbox-ai-gen {
   position: absolute;
   inset: 0;
   z-index: 4;
-  border-radius: inherit;
-  background: radial-gradient(circle at 50% 50%, rgba(24, 58, 132, 0.22) 0%, rgba(8, 12, 22, 0.42) 100%);
+  border-radius: 0;
+  transform-origin: center center;
+  transition: opacity 360ms cubic-bezier(0.22, 1, 0.36, 1), transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: none;
 }
-.ai-gen-dots-base,
-.ai-gen-dots-wave {
+.ai-gen-overlay.is-revealing {
+  opacity: 0;
+}
+@keyframes chatwAiOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.ai-gen-blur-img {
   position: absolute;
-  inset: -12px;
-  background-image: radial-gradient(circle, rgba(96, 165, 250, 0.32) 1.5px, transparent 2px);
-  background-size: 13px 13px;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(22px) saturate(1.42) contrast(1.06) brightness(0.78);
+  transform: scale(1.14) translateZ(0);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
-.ai-gen-dots-wave {
-  background-image: radial-gradient(circle, rgba(96, 165, 250, 0.96) 2.15px, transparent 2.55px);
-  background-size: 13px 13px;
-  -webkit-mask-image: radial-gradient(ellipse 46% 52% at 50% 50%, #000 0%, rgba(0, 0, 0, 0.72) 42%, transparent 78%);
-  mask-image: radial-gradient(ellipse 46% 52% at 50% 50%, #000 0%, rgba(0, 0, 0, 0.72) 42%, transparent 78%);
-  -webkit-mask-size: 170% 170%;
-  mask-size: 170% 170%;
-  animation: chatwAiDotSweep 2.4s ease-in-out infinite;
-  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.65));
+.ai-gen-frost {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: radial-gradient(
+    ellipse 82% 80% at 50% 48%,
+    rgba(12, 18, 36, 0.16) 0%,
+    rgba(7, 11, 24, 0.52) 100%
+  );
+  box-shadow: inset 0 0 0 1px rgba(191, 219, 254, 0.14);
 }
-@keyframes chatwAiDotSweep {
+.ai-gen-aurora {
+  position: absolute;
+  inset: -38%;
+  z-index: 3;
+  background:
+    radial-gradient(ellipse 46% 42% at 30% 36%, rgba(56, 189, 248, 0.32) 0%, transparent 68%),
+    radial-gradient(ellipse 48% 44% at 70% 62%, rgba(139, 92, 246, 0.34) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 38% at 52% 24%, rgba(59, 130, 246, 0.28) 0%, transparent 66%);
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+  animation: chatwAiAuroraDrift 4.0s ease-in-out infinite alternate;
+}
+@keyframes chatwAiAuroraDrift {
   0% {
-    -webkit-mask-position: 0% 15%;
-    mask-position: 0% 15%;
-    opacity: 0.78;
+    transform: translate3d(-5%, -4%, 0) scale(1.0);
+    opacity: 0.82;
   }
   50% {
-    -webkit-mask-position: 100% 85%;
-    mask-position: 100% 85%;
+    transform: translate3d(4%, 3%, 0) scale(1.07);
     opacity: 1;
   }
   100% {
-    -webkit-mask-position: 0% 15%;
-    mask-position: 0% 15%;
-    opacity: 0.78;
+    transform: translate3d(-2%, 5%, 0) scale(1.02);
+    opacity: 0.86;
+  }
+}
+.ai-gen-dots-base {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background-image: radial-gradient(circle, rgba(224, 242, 254, 0.34) 1.05px, transparent 1.5px);
+  background-size: 18px 18px;
+  -webkit-mask-image: radial-gradient(ellipse 76% 76% at 50% 50%, rgba(0, 0, 0, 0.92) 22%, rgba(0, 0, 0, 0.36) 68%, transparent 98%);
+  mask-image: radial-gradient(ellipse 76% 76% at 50% 50%, rgba(0, 0, 0, 0.92) 22%, rgba(0, 0, 0, 0.36) 68%, transparent 98%);
+  opacity: 0.90;
+}
+.ai-gen-dots-wave {
+  position: absolute;
+  inset: -12% -55%;
+  z-index: 5;
+  background: linear-gradient(
+    112deg,
+    transparent 26%,
+    rgba(96, 165, 250, 0.18) 41%,
+    rgba(224, 242, 254, 0.40) 50%,
+    rgba(167, 139, 250, 0.18) 59%,
+    transparent 74%
+  );
+  mix-blend-mode: screen;
+  will-change: transform;
+  transform: translate3d(-45%, 0, 0);
+  animation: chatwAiSheenGlide 2.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes chatwAiSheenGlide {
+  0% {
+    transform: translate3d(-48%, 0, 0);
+  }
+  100% {
+    transform: translate3d(48%, 0, 0);
   }
 }
 .ai-gen-pct {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
-  z-index: 4;
-  padding: 4px 11px;
+  bottom: 10px;
+  right: 10px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-  color: #60a5fa;
-  background: rgba(15, 23, 42, 0.8);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(96, 165, 250, 0.24);
+  letter-spacing: 0.02em;
+  color: rgba(248, 250, 252, 0.96);
+  background: rgba(8, 12, 24, 0.76);
+  border: 1px solid rgba(191, 219, 254, 0.18);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  contain: layout style;
+}
+.ai-gen-pct::before {
+  content: "";
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background: #60a5fa;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.85);
+  will-change: opacity;
+  animation: chatwAiPulseDot 1.3s ease-in-out infinite;
+}
+@keyframes chatwAiPulseDot {
+  0%, 100% { opacity: 0.42; }
+  50% { opacity: 1; }
 }
 .lightbox-ai-gen .ai-gen-pct {
-  bottom: 14px;
-  right: 14px;
-  font-size: 0.85rem;
-  padding: 5px 13px;
+  bottom: 16px;
+  right: 16px;
+  font-size: 0.8125rem;
+  padding: 5px 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-gen-aurora,
+  .ai-gen-dots-wave,
+  .ai-gen-pct::before {
+    animation: none !important;
+  }
+}
+html[data-reduce-motion="true"] .ai-gen-aurora,
+html[data-reduce-motion="true"] .ai-gen-dots-wave,
+html[data-reduce-motion="true"] .ai-gen-pct::before {
+  animation: none !important;
 }
 /* New-device / unenhanced history: single sleek SVG icon in bottom-right corner of image */
 .rich-image-enhance-corner {
@@ -3861,19 +3953,20 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   height: 28px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(15, 23, 42, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(9, 13, 24, 0.64);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(241, 245, 249, 0.94);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 140ms ease, transform 120ms ease, color 140ms ease;
+  transition: background-color 140ms ease, transform 120ms ease, color 140ms ease, border-color 140ms ease;
 }
 .rich-image-enhance-corner:hover {
-  background: rgba(37, 99, 235, 0.86);
+  background: rgba(37, 99, 235, 0.88);
+  border-color: rgba(147, 197, 253, 0.45);
   color: #ffffff;
   transform: scale(1.06);
 }

@@ -54,6 +54,16 @@ pub struct LightboxMedia {
     pub is_sender_original: bool,
     /// True when opened from a new-device/history image that hasn't been enhanced locally yet.
     pub auto_enhance_on_open: bool,
+    /// True when this image is eligible for on-device Real-ESRGAN 4× enhancement (non-GIF, non-sender-original).
+    pub can_ai_enhance: bool,
+    /// Wire/display width in pixels (used for deterministic Frame-0 Lightbox sizing).
+    pub width: u32,
+    /// Wire/display height in pixels (used for deterministic Frame-0 Lightbox sizing).
+    pub height: u32,
+    /// Pre-compression original width if recorded in attachment metadata (`0` if unknown).
+    pub orig_width: u32,
+    /// Pre-compression original height if recorded in attachment metadata (`0` if unknown).
+    pub orig_height: u32,
 }
 
 pub static GLOBAL_LIGHTBOX: GlobalSignal<Option<LightboxMedia>> = GlobalSignal::new(|| None);
@@ -104,17 +114,20 @@ pub fn PendingSenderMediaList() -> Element {
             {
                 let key_id = item.handle_id.clone();
                 let rem_id = item.handle_id.clone();
-                let stage_style = if item.width > 0 && item.height > 0 {
-                    format!("aspect-ratio: {} / {};", item.width, item.height)
+                let (box_style, stage_style) = if let Some((bw, bh)) = compute_chat_image_box(item.width, item.height) {
+                    (
+                        format!("width: min({bw}px, 100%);"),
+                        format!("aspect-ratio: {bw} / {bh}; position: relative;"),
+                    )
                 } else {
-                    String::new()
+                    (String::new(), "position: relative;".to_string())
                 };
                 rsx! {
                     div { key: "{key_id}", class: "message-row self pending-sender-media-row", "data-pending-media": "true",
                         div { class: "message-content",
                             if item.media_kind == "image" && !item.preview_url.is_empty() {
-                                div { class: "rich-image",
-                                    div { class: "rich-image-stage loaded", style: "{stage_style} position: relative;",
+                                div { class: "rich-image", style: "{box_style}",
+                                    div { class: "rich-image-stage loaded", style: "{stage_style}",
                                         img {
                                             class: "rich-image-full",
                                             src: "{item.preview_url}",
@@ -546,6 +559,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
     let failed = use_signal(|| false);
     let ai_enhanced = use_signal(|| false);
     let ai_loading = use_signal(|| false);
+    let ai_revealing = use_signal(|| false);
     let ai_progress = use_signal(|| 0u32);
     let ai_cache_hit = use_signal(|| false);
     let needs_on_demand_ai = use_signal(|| false);
@@ -595,6 +609,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             return;
         }
         let mut ai_loading = ai_loading;
+        let mut ai_revealing = ai_revealing;
         let mut ai_progress = ai_progress;
         let mut ai_enhanced = ai_enhanced;
         let mut ai_cache_hit = ai_cache_hit;
@@ -710,16 +725,20 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     }
                     "start" => {
                         needs_on_demand_ai.set(false);
+                        ai_revealing.set(false);
                         ai_loading.set(true);
                         ai_progress.set(v.get("pct").and_then(|n| n.as_u64()).unwrap_or(3) as u32);
                     }
                     "progress" => {
                         if let Some(p) = v.get("pct").and_then(|n| n.as_u64()) {
-                            ai_progress.set((p as u32).min(100));
+                            let p32 = (p as u32).min(100);
+                            if p32 != *ai_progress.peek() {
+                                ai_progress.set(p32);
+                            }
                         }
                     }
                     "done" => {
-                        ai_loading.set(false);
+                        let was_loading = *ai_loading.peek();
                         ai_progress.set(100);
                         needs_on_demand_ai.set(false);
                         if let Some(new_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
@@ -727,10 +746,24 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                             ai_cache_hit.set(v.get("cacheHit").and_then(|b| b.as_bool()).unwrap_or(false));
                             src.set(Some(new_url.to_string()));
                         }
+                        if was_loading {
+                            ai_revealing.set(true);
+                            ai_loading.set(false);
+                            let mut rev_sig = ai_revealing;
+                            spawn(async move {
+                                let mut ev = dioxus::document::eval("await new Promise((r) => setTimeout(r, 350)); dioxus.send(1);");
+                                let _ = ev.recv::<i32>().await;
+                                rev_sig.set(false);
+                            });
+                        } else {
+                            ai_loading.set(false);
+                            ai_revealing.set(false);
+                        }
                         break;
                     }
                     _ => {
                         ai_loading.set(false);
+                        ai_revealing.set(false);
                         break;
                     }
                 }
@@ -744,6 +777,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
         }
         let mut ai_enhanced = ai_enhanced;
         let mut ai_loading = ai_loading;
+        let mut ai_revealing = ai_revealing;
         let mut ai_progress = ai_progress;
         let mut ai_cache_hit = ai_cache_hit;
         let mut needs_on_demand_ai = needs_on_demand_ai;
@@ -756,6 +790,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
         let (u, k, n) = key_now.clone();
         ai_enhanced.set(false);
         ai_loading.set(false);
+        ai_revealing.set(false);
         ai_progress.set(0);
         ai_cache_hit.set(false);
         needs_on_demand_ai.set(false);
@@ -812,14 +847,19 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
     }));
 
     let blur_parts = parse_blur_data_uri(&data.blur);
-    let stage_style = if data.w > 0 && data.h > 0 {
-        format!("aspect-ratio: {} / {};", data.w, data.h)
+    let (box_style, stage_style) = if let Some((bw, bh)) = compute_chat_image_box(data.w, data.h) {
+        (
+            format!("width: min({bw}px, 100%);"),
+            format!("aspect-ratio: {bw} / {bh};"),
+        )
+    } else if data.w > 0 && data.h > 0 {
+        (String::new(), format!("aspect-ratio: {} / {};", data.w, data.h))
     } else {
-        String::new()
+        (String::new(), String::new())
     };
 
     rsx! {
-        div { class: "rich-image",
+        div { class: "rich-image", style: "{box_style}",
             if let Some(s) = src() {
                 {
                     let lb_src = s.clone();
@@ -828,11 +868,17 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     let lb_mid = data.u.clone();
                     let lb_sha = data.sha.clone();
                     let lb_qp = data.qp.clone();
+                    let lb_w = data.w;
+                    let lb_h = data.h;
+                    let lb_orig_w = data.orig_w;
+                    let lb_orig_h = data.orig_h;
                     let is_ai = ai_enhanced();
                     let is_orig = is_sender_original();
+                    let can_ai = !is_orig && data.m != "image/gif";
                     let is_loading = ai_loading();
+                    let is_revealing = ai_revealing();
                     let pct_now = ai_progress();
-                    let show_corner_icon = needs_on_demand_ai() && !is_ai && !is_orig && !is_loading;
+                    let show_corner_icon = needs_on_demand_ai() && !is_ai && !is_orig && !is_loading && !is_revealing;
 
                     let corner_raw = lb_raw_src.clone();
                     let corner_mid = data.u.clone();
@@ -863,6 +909,11 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                     original_src: Some(lb_raw_src.clone()),
                                     is_sender_original: is_orig,
                                     auto_enhance_on_open: show_corner_icon,
+                                    can_ai_enhance: can_ai,
+                                    width: lb_w,
+                                    height: lb_h,
+                                    orig_width: lb_orig_w,
+                                    orig_height: lb_orig_h,
                                 });
                             },
                             img {
@@ -876,8 +927,18 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                 "data-sender-original": if is_orig { "true" } else { "false" },
                                 "data-ai-pending": if show_corner_icon { "true" } else { "false" },
                             }
-                            if is_loading {
-                                div { class: "ai-gen-overlay", aria_hidden: "true",
+                            if is_loading || is_revealing {
+                                div {
+                                    class: if is_revealing && !is_loading { "ai-gen-overlay is-revealing" } else { "ai-gen-overlay" },
+                                    aria_hidden: "true",
+                                    img {
+                                        class: "ai-gen-blur-img",
+                                        src: "{lb_raw_src}",
+                                        alt: "",
+                                        draggable: "false",
+                                    }
+                                    div { class: "ai-gen-frost" }
+                                    div { class: "ai-gen-aurora" }
                                     div { class: "ai-gen-dots-base" }
                                     div { class: "ai-gen-dots-wave" }
                                     span { class: "ai-gen-pct", "{pct_now}%" }
@@ -1721,6 +1782,96 @@ pub fn clamp_lightbox_pan(
     (px.clamp(-mx, mx), py.clamp(-my, my))
 }
 
+/// Synchronously reads `(window.innerWidth, window.innerHeight)` on WASM so Frame-0 Lightbox
+/// sizing has zero async delay and zero first-frame layout flash (Spec 112).
+fn read_viewport_size() -> (f64, f64) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(win) = web_sys::window() {
+            let vw = win.inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1440.0);
+            let vh = win.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(900.0);
+            if vw > 100.0 && vh > 100.0 {
+                return (vw, vh);
+            }
+        }
+    }
+    (1440.0, 900.0)
+}
+
+/// Computes the exact final post-enhancement pixel dimensions `(final_w, final_h)` upfront
+/// before Real-ESRGAN 4× starts so Lightbox renders at the final display size from Frame 0
+/// with 0px resize jump across open -> enhance -> 4K completion -> toggle original (Spec 112).
+pub fn compute_lightbox_target_dimensions(
+    src_w: u32,
+    src_h: u32,
+    orig_w: u32,
+    orig_h: u32,
+    is_ai_eligible: bool,
+) -> Option<(f64, f64)> {
+    let (base_w, base_h) = if src_w > 0 && src_h > 0 {
+        (src_w as f64, src_h as f64)
+    } else if orig_w > 0 && orig_h > 0 {
+        (orig_w as f64, orig_h as f64)
+    } else {
+        return None;
+    };
+    let aspect = (base_w / base_h).max(0.05);
+    let (nat_w, nat_h) = if orig_w > 0 && orig_h > 0 {
+        (orig_w as f64, orig_h as f64)
+    } else {
+        (base_w, base_h)
+    };
+    if !is_ai_eligible {
+        return Some((nat_w, nat_h));
+    }
+    // Mirror `ai_restorer.js` exact Real-ESRGAN 4× output geometry:
+    // input longest edge capped at 1080px -> 4× -> output longest edge capped at 3840px.
+    let max_in = base_w.max(base_h);
+    let (proc_w, proc_h) = if max_in > 1080.0 {
+        let r = 1080.0 / max_in;
+        ((base_w * r).round().max(32.0), (base_h * r).round().max(32.0))
+    } else {
+        (base_w, base_h)
+    };
+    let mut out_w = proc_w * 4.0;
+    let out_h = proc_h * 4.0;
+    let max_out = out_w.max(out_h);
+    if max_out > 3840.0 {
+        let r = 3840.0 / max_out;
+        out_w = (out_w * r).round();
+    }
+    let final_w = out_w.max(nat_w);
+    let final_h = (final_w / aspect).round().max(1.0);
+    Some((final_w, final_h))
+}
+
+/// Fits final natural dimensions `(final_w, final_h)` deterministically inside the Lightbox stage
+/// (`min(92vw, 1440px) × 86vh`) without artificially upscaling native sender originals beyond 1:1.
+pub fn compute_lightbox_fit_box(final_w: f64, final_h: f64, vw: f64, vh: f64) -> (f64, f64) {
+    let max_w = (vw * 0.92).min(1440.0).max(1.0);
+    let max_h = (vh * 0.86).max(1.0);
+    if final_w <= 0.0 || final_h <= 0.0 {
+        return (max_w.round(), max_h.round());
+    }
+    let scale = (max_w / final_w).min(max_h / final_h).min(1.0);
+    ((final_w * scale).round().max(1.0), (final_h * scale).round().max(1.0))
+}
+
+/// Computes stable chat-bubble display dimensions inside `352px × 352px` (`22rem × 22rem`) so
+/// image bubbles never reflow between blur-placeholder, wire AVIF, AI enhancement, and 4K swap.
+pub fn compute_chat_image_box(w: u32, h: u32) -> Option<(u32, u32)> {
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let max_edge = 352.0_f64;
+    let wf = w as f64;
+    let hf = h as f64;
+    let scale = (max_edge / wf).min(max_edge / hf).min(1.0);
+    let bw = (wf * scale).round().clamp(48.0, max_edge) as u32;
+    let bh = (hf * scale).round().clamp(48.0, max_edge) as u32;
+    Some((bw, bh))
+}
+
 async fn measure_lightbox_bounds() -> Option<(f64, f64, f64, f64)> {
     let mut ev = dioxus::document::eval(
         r#"
@@ -1739,9 +1890,27 @@ async fn measure_lightbox_bounds() -> Option<(f64, f64, f64, f64)> {
         .map(|a| (a[0], a[1], a[2], a[3]))
 }
 
-/// Root-mounted Telegram Web K style global image lightbox viewer (Specs 078 & 080).
-/// Mounted at the root of `ChatPage` with 100% borderless top-right unified toolbar,
-/// 100%..=400% zoom range, and elastic corner-clamped pan with automatic spring snap-back.
+async fn read_lightbox_natural_size() -> Option<(u32, u32)> {
+    let mut ev = dioxus::document::eval(
+        r#"
+        const img = document.querySelector('.lightbox-img');
+        if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+            dioxus.send([img.naturalWidth, img.naturalHeight]);
+        } else {
+            dioxus.send(null);
+        }
+        "#,
+    );
+    ev.recv::<Option<[u32; 2]>>()
+        .await
+        .ok()
+        .flatten()
+        .map(|a| (a[0], a[1]))
+}
+
+/// Root-mounted Telegram Web K style global image lightbox viewer (Specs 078, 080, 101 & 112).
+/// Computes exact final post-enhancement viewport fit dimensions synchronously on Frame 0 so
+/// there is 0px size jump across open -> enhancing -> 4K completion -> toggle original.
 #[component]
 pub fn GlobalImageLightbox() -> Element {
     let _ = SESSION_START_MS.get_or_init(|| Utc::now().timestamp_millis());
@@ -1755,21 +1924,31 @@ pub fn GlobalImageLightbox() -> Element {
     let mut did_drag = use_signal(|| false);
     let mut show_original = use_signal(|| false);
     let mut upscaling_ai = use_signal(|| false);
+    let mut lb_revealing = use_signal(|| false);
     let mut lb_progress = use_signal(|| 0u32);
     let mut active_key = use_signal(String::new);
-    // Live layout (base_w, base_h, vw, vh) measured from `.lightbox-img` offsetWidth/offsetHeight
+    let mut viewport = use_signal(read_viewport_size);
+    let mut fallback_nat = use_signal(|| (0u32, 0u32));
+    // Live layout (base_w, base_h, vw, vh) used for corner-clamped panning
     let mut bounds = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
 
     let cur_key = media_opt
         .as_ref()
         .map(|m| format!("{}::{}", m.media_id, m.original_src.as_deref().unwrap_or(&m.src)))
         .unwrap_or_default();
-    let cur_src = media_opt.as_ref().map(|m| m.src.clone()).unwrap_or_default();
+    let lightbox_open = !cur_key.is_empty();
     if *active_key.peek() != cur_key {
+        let auto_enh = media_opt
+            .as_ref()
+            .map(|m| m.auto_enhance_on_open && !m.ai_restored && !m.is_sender_original && m.can_ai_enhance)
+            .unwrap_or(false);
         active_key.set(cur_key.clone());
+        viewport.set(read_viewport_size());
+        fallback_nat.set((0, 0));
         show_original.set(false);
         upscaling_ai.set(false);
-        lb_progress.set(0);
+        lb_revealing.set(false);
+        lb_progress.set(if auto_enh { 3 } else { 0 });
         zoom.set(1.0);
         pan_x.set(0.0);
         pan_y.set(0.0);
@@ -1785,8 +1964,11 @@ pub fn GlobalImageLightbox() -> Element {
             return;
         }
         let mut upscaling_ai = upscaling_ai;
+        let mut lb_revealing = lb_revealing;
         let mut lb_progress = lb_progress;
         let mut show_original = show_original;
+        let key_at_start = active_key.peek().clone();
+        lb_revealing.set(false);
         upscaling_ai.set(true);
         lb_progress.set(3);
         spawn(async move {
@@ -1821,7 +2003,10 @@ pub fn GlobalImageLightbox() -> Element {
                 match v.get("type").and_then(|s| s.as_str()).unwrap_or("") {
                     "progress" => {
                         if let Some(p) = v.get("pct").and_then(|n| n.as_u64()) {
-                            lb_progress.set((p as u32).min(100));
+                            let p32 = (p as u32).min(100);
+                            if p32 != *lb_progress.peek() {
+                                lb_progress.set(p32);
+                            }
                         }
                     }
                     "done" => {
@@ -1843,18 +2028,38 @@ pub fn GlobalImageLightbox() -> Element {
                                     auto_enhance_on_open: false,
                                     ..m.clone()
                                 });
+                                lb_revealing.set(true);
+                                upscaling_ai.set(false);
+                                let mut rev_sig = lb_revealing;
+                                let active_key_ref = active_key;
+                                let expected_key = key_at_start.clone();
+                                spawn(async move {
+                                    let mut ev = dioxus::document::eval(
+                                        "await new Promise((r) => setTimeout(r, 350)); dioxus.send(1);",
+                                    );
+                                    let _ = ev.recv::<i32>().await;
+                                    if *active_key_ref.peek() == expected_key {
+                                        rev_sig.set(false);
+                                    }
+                                });
+                            } else {
+                                upscaling_ai.set(false);
                             }
+                        } else {
+                            upscaling_ai.set(false);
                         }
-                        upscaling_ai.set(false);
                         break;
                     }
                     _ => {
                         upscaling_ai.set(false);
+                        lb_revealing.set(false);
                         break;
                     }
                 }
             }
-            upscaling_ai.set(false);
+            if *upscaling_ai.peek() {
+                upscaling_ai.set(false);
+            }
         });
     };
 
@@ -1864,41 +2069,48 @@ pub fn GlobalImageLightbox() -> Element {
             return;
         }
         if let Some(m) = GLOBAL_LIGHTBOX.peek().clone() {
-            if m.auto_enhance_on_open && !m.ai_restored && !m.is_sender_original {
+            if m.auto_enhance_on_open && !m.ai_restored && !m.is_sender_original && m.can_ai_enhance {
                 run_lb_enhance(m);
             }
         }
     }));
 
-    // Keep layout bounds synced across window resizes / DevTools open-close while open.
-    use_effect(use_reactive!(|cur_src| {
-        if cur_src.is_empty() {
+    // Single rAF-throttled viewport resize listener while Lightbox is open (never re-created on `src` swap!).
+    use_effect(use_reactive!(|lightbox_open| {
+        if !lightbox_open {
+            let _ = dioxus::document::eval(
+                r#"
+                if (window.__chatwLbResize) {
+                    window.removeEventListener('resize', window.__chatwLbResize);
+                    window.__chatwLbResize = null;
+                }
+                "#,
+            );
             return;
         }
         spawn(async move {
             let mut ev = dioxus::document::eval(
                 r#"
-                const sendBounds = () => {
-                    const img = document.querySelector('.lightbox-img');
-                    if (img && img.offsetWidth > 0 && img.offsetHeight > 0) {
-                        try { dioxus.send([img.offsetWidth, img.offsetHeight, window.innerWidth, window.innerHeight]); } catch (_) {}
-                    }
+                let raf = 0;
+                const onResize = () => {
+                    if (raf) return;
+                    raf = requestAnimationFrame(() => {
+                        raf = 0;
+                        try { dioxus.send([window.innerWidth, window.innerHeight]); } catch (_) {}
+                    });
                 };
-                sendBounds();
-                setTimeout(sendBounds, 80);
                 if (window.__chatwLbResize) {
                     window.removeEventListener('resize', window.__chatwLbResize);
                 }
-                window.__chatwLbResize = sendBounds;
-                window.addEventListener('resize', sendBounds);
+                window.__chatwLbResize = onResize;
+                window.addEventListener('resize', onResize, { passive: true });
                 "#,
             );
-            while let Ok(arr) = ev.recv::<[f64; 4]>().await {
-                let (bw, bh, vw, vh) = (arr[0], arr[1], arr[2], arr[3]);
-                bounds.set((bw, bh, vw, vh));
-                let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), *zoom.peek(), *rotation.peek(), bw, bh, vw, vh);
-                pan_x.set(cx);
-                pan_y.set(cy);
+            while let Ok(arr) = ev.recv::<[f64; 2]>().await {
+                let (vw, vh) = (arr[0], arr[1]);
+                if vw > 100.0 && vh > 100.0 {
+                    viewport.set((vw, vh));
+                }
             }
         });
     }));
@@ -1907,9 +2119,25 @@ pub fn GlobalImageLightbox() -> Element {
         return rsx! {};
     };
 
+    let can_toggle_ai = media.can_ai_enhance && !media.is_sender_original && media.original_src.is_some();
+    let (vw, vh) = viewport();
+    let (fb_w, fb_h) = fallback_nat();
+    let eff_w = if media.width > 0 { media.width } else { fb_w };
+    let eff_h = if media.height > 0 { media.height } else { fb_h };
+    let fit_box = compute_lightbox_target_dimensions(eff_w, eff_h, media.orig_width, media.orig_height, can_toggle_ai)
+        .map(|(fw, fh)| compute_lightbox_fit_box(fw, fh, vw, vh));
+
+    let effective_bounds = move || -> (f64, f64, f64, f64) {
+        if let Some((fw, fh)) = fit_box {
+            (fw, fh, vw, vh)
+        } else {
+            *bounds.peek()
+        }
+    };
+
     let mut snap_pan_to_bounds = move |next_zoom: f64, next_rot: i32| {
-        let (bw, bh, vw, vh) = *bounds.peek();
-        let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), next_zoom, next_rot, bw, bh, vw, vh);
+        let (bw, bh, v_w, v_h) = effective_bounds();
+        let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), next_zoom, next_rot, bw, bh, v_w, v_h);
         pan_x.set(cx);
         pan_y.set(cy);
     };
@@ -1920,14 +2148,16 @@ pub fn GlobalImageLightbox() -> Element {
         zoom.set(clamped);
         let rot_now = *rotation.peek();
         snap_pan_to_bounds(clamped, rot_now);
-        spawn(async move {
-            if let Some((bw, bh, vw, vh)) = measure_lightbox_bounds().await {
-                bounds.set((bw, bh, vw, vh));
-                let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), *zoom.peek(), *rotation.peek(), bw, bh, vw, vh);
-                pan_x.set(cx);
-                pan_y.set(cy);
-            }
-        });
+        if fit_box.is_none() {
+            spawn(async move {
+                if let Some((bw, bh, v_w, v_h)) = measure_lightbox_bounds().await {
+                    bounds.set((bw, bh, v_w, v_h));
+                    let (cx, cy) = clamp_lightbox_pan(*pan_x.peek(), *pan_y.peek(), *zoom.peek(), *rotation.peek(), bw, bh, v_w, v_h);
+                    pan_x.set(cx);
+                    pan_y.set(cy);
+                }
+            });
+        }
     };
 
     let mut apply_rotate = move || {
@@ -1970,17 +2200,24 @@ pub fn GlobalImageLightbox() -> Element {
     } else {
         "lightbox-stage can-pan"
     };
+    let frame_style = if let Some((fw, fh)) = fit_box {
+        format!("width: {fw:.0}px; height: {fh:.0}px;")
+    } else {
+        String::new()
+    };
     let img_style = format!("transform: translate3d({px:.1}px, {py:.1}px, 0) scale({z:.3}) rotate({rot}deg);");
     let dl_name = if media.name.is_empty() {
         "chatw-image".to_string()
     } else {
         media.name.clone()
     };
-    let can_toggle_ai = !media.is_sender_original && media.original_src.is_some();
     let ai_toggle_active = media.ai_restored && !show_original();
     let media_for_toggle = media.clone();
-    let is_lb_enhancing = upscaling_ai();
-    let lb_pct_now = lb_progress();
+    // Frame-0 active enhancing flag: eliminates the 1-2 frame raw blurry flash before `use_effect` starts!
+    let is_lb_enhancing = upscaling_ai() || (media.auto_enhance_on_open && !media.ai_restored && can_toggle_ai);
+    let is_lb_revealing = lb_revealing() && !is_lb_enhancing;
+    let lb_pct_now = lb_progress().max(if is_lb_enhancing { 3 } else { 0 });
+    let has_known_dims = media.width > 0 && media.height > 0;
 
     rsx! {
         div {
@@ -1992,8 +2229,10 @@ pub fn GlobalImageLightbox() -> Element {
             onmounted: move |ev| {
                 spawn(async move {
                     let _ = ev.set_focus(true).await;
-                    if let Some(b) = measure_lightbox_bounds().await {
-                        bounds.set(b);
+                    if !has_known_dims {
+                        if let Some(b) = measure_lightbox_bounds().await {
+                            bounds.set(b);
+                        }
                     }
                 });
             },
@@ -2071,23 +2310,34 @@ pub fn GlobalImageLightbox() -> Element {
                     } else {
                         &media.src
                     };
+                    let overlay_cls = if is_lb_revealing {
+                        "ai-gen-overlay lightbox-ai-gen is-revealing"
+                    } else {
+                        "ai-gen-overlay lightbox-ai-gen"
+                    };
                     rsx! {
                         div {
                             class: "lightbox-img-frame",
-                            style: "{img_style}",
+                            style: "{frame_style}",
                             onclick: move |e| e.stop_propagation(),
                             img {
                                 class: if is_lb_enhancing { "lightbox-img is-ai-generating" } else { "lightbox-img" },
+                                style: "{img_style}",
                                 src: "{cur_display_src}",
                                 alt: "Image",
                                 draggable: "false",
                                 "data-media-ref": "{crate::storage::extract_ref_id(&media.media_id).unwrap_or_default()}",
                                 onload: move |_| {
-                                    spawn(async move {
-                                        if let Some(b) = measure_lightbox_bounds().await {
-                                            bounds.set(b);
-                                        }
-                                    });
+                                    if !has_known_dims && *fallback_nat.peek() == (0, 0) {
+                                        spawn(async move {
+                                            if let Some((nw, nh)) = read_lightbox_natural_size().await {
+                                                fallback_nat.set((nw, nh));
+                                            }
+                                            if let Some(b) = measure_lightbox_bounds().await {
+                                                bounds.set(b);
+                                            }
+                                        });
+                                    }
                                 },
                                 ondoubleclick: move |e| {
                                     e.stop_propagation();
@@ -2106,8 +2356,19 @@ pub fn GlobalImageLightbox() -> Element {
                                     drag_origin.set((c.x, c.y, *pan_x.peek(), *pan_y.peek()));
                                 },
                             }
-                            if is_lb_enhancing {
-                                div { class: "ai-gen-overlay lightbox-ai-gen", aria_hidden: "true",
+                            if is_lb_enhancing || is_lb_revealing {
+                                div {
+                                    class: "{overlay_cls}",
+                                    style: "{img_style}",
+                                    aria_hidden: "true",
+                                    img {
+                                        class: "ai-gen-blur-img",
+                                        src: "{media.original_src.as_deref().unwrap_or(&media.src)}",
+                                        alt: "",
+                                        draggable: "false",
+                                    }
+                                    div { class: "ai-gen-frost" }
+                                    div { class: "ai-gen-aurora" }
                                     div { class: "ai-gen-dots-base" }
                                     div { class: "ai-gen-dots-wave" }
                                     span { class: "ai-gen-pct", "{lb_pct_now}%" }
@@ -2231,5 +2492,33 @@ mod spec080_lightbox_clamp_tests {
     fn pan_swaps_axes_on_90_degree_rotation() {
         // Rotated 90deg at 200%: effective 1080x1920 in 1600x960 -> max_x = 0, max_y = (1920 - 960)/2 = 480
         assert_eq!(clamp_lightbox_pan(500.0, 1000.0, 2.0, 90, 960.0, 540.0, 1600.0, 960.0), (0.0, 480.0));
+    }
+
+    #[test]
+    fn spec112_precomputes_exact_final_4x_frame_from_frame_zero() {
+        // 836x471 wire AVIF -> predicted 3344x1884 -> fits 1440x811 on 1600x960 and 1214x684 on 1320x860!
+        let target = compute_lightbox_target_dimensions(836, 471, 1672, 941, true).unwrap();
+        assert_eq!(target, (3344.0, 1884.0));
+        assert_eq!(compute_lightbox_fit_box(target.0, target.1, 1600.0, 960.0), (1440.0, 811.0));
+        assert_eq!(compute_lightbox_fit_box(target.0, target.1, 1320.0, 860.0), (1214.0, 684.0));
+        // Exact same fit box when already restored to 3344x1884 (0.0px jump!)
+        assert_eq!(compute_lightbox_fit_box(3344.0, 1884.0, 1600.0, 960.0), (1440.0, 811.0));
+        assert_eq!(compute_lightbox_fit_box(3344.0, 1884.0, 1320.0, 860.0), (1214.0, 684.0));
+    }
+
+    #[test]
+    fn spec112_preserves_native_size_for_sender_originals_spec078_and_spec101() {
+        let s78 = compute_lightbox_target_dimensions(960, 540, 960, 540, false).unwrap();
+        assert_eq!(compute_lightbox_fit_box(s78.0, s78.1, 1600.0, 960.0), (960.0, 540.0));
+        let s101 = compute_lightbox_target_dimensions(800, 600, 800, 600, false).unwrap();
+        assert_eq!(compute_lightbox_fit_box(s101.0, s101.1, 1280.0, 800.0), (800.0, 600.0));
+    }
+
+    #[test]
+    fn spec112_chat_bubble_box_locks_landscape_and_portrait_geometry() {
+        assert_eq!(compute_chat_image_box(836, 471), Some((352, 198)));
+        assert_eq!(compute_chat_image_box(3344, 1884), Some((352, 198)));
+        assert_eq!(compute_chat_image_box(800, 1600), Some((176, 352)));
+        assert_eq!(compute_chat_image_box(200, 120), Some((200, 120)));
     }
 }
