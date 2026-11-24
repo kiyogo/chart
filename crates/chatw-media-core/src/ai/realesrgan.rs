@@ -279,15 +279,14 @@ pub fn select_realesrgan_model(
         return None;
     }
 
+    let _ = prefer_fast_sw; // Content semantics strictly dictate model choice; never force anime onto real human photos!
+
     if let Some(qp) = orig_profile {
         if qp.luma_s < 1.2 && qp.sharp < 0.2 {
             return None;
         }
-        let is_anime = matches!(qp.cls.as_str(), "anime" | "art" | "meme" | "text_ui") || qp.outline_r >= 0.004;
+        let is_anime = matches!(qp.cls.as_str(), "anime" | "art" | "meme" | "text_ui") || qp.outline_r >= 0.005;
         if is_anime {
-            return Some(RealEsrganModelKind::AnimeVideoV3);
-        }
-        if prefer_fast_sw && (w * h) > 220_000 {
             return Some(RealEsrganModelKind::AnimeVideoV3);
         }
         return Some(RealEsrganModelKind::GeneralX4V3);
@@ -297,6 +296,22 @@ pub fn select_realesrgan_model(
     if analysis.flat_pixel_ratio > 0.985 && analysis.sharp_edge_ratio < 0.001 {
         return None;
     }
+
+    // 1. Photos, portraits, real human faces, and natural scenes MUST use GeneralX4V3
+    let is_photo_or_portrait = matches!(
+        analysis.class,
+        ImageClass::Portrait
+            | ImageClass::Photo
+            | ImageClass::LowLightNoisy
+            | ImageClass::HdrWideGamut
+            | ImageClass::AlreadyHeavilyCompressed
+    ) || analysis.skin_tone_ratio > 0.04;
+
+    if is_photo_or_portrait {
+        return Some(RealEsrganModelKind::GeneralX4V3);
+    }
+
+    // 2. Anime, manga, flat illustrations, memes with sparse palettes use AnimeVideoV3
     let is_anime = match analysis.class {
         ImageClass::AnimeManga
         | ImageClass::Meme
@@ -304,11 +319,11 @@ pub fn select_realesrgan_model(
         | ImageClass::AlphaGraphic
         | ImageClass::CrispTextUi => true,
         _ => {
-            analysis.flat_pixel_ratio > 0.34
-                || (analysis.flat_pixel_ratio > 0.22 && analysis.color_saturation_mean > 0.16)
+            analysis.palette_sparsity > 0.55 && analysis.flat_pixel_ratio > 0.40
         }
     };
-    if is_anime || (prefer_fast_sw && (w * h) > 220_000) {
+
+    if is_anime {
         Some(RealEsrganModelKind::AnimeVideoV3)
     } else {
         Some(RealEsrganModelKind::GeneralX4V3)

@@ -4,7 +4,7 @@
 // and SSIM quality verification live strictly in Rust (`crates/chatw-media-core/src/ai/realesrgan.rs` & `app/src/storage/realesrgan_gpu.rs`).
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'rust-realesrgan-upscayl-v8';
+  const PIPELINE_VERSION = 'rust-realesrgan-upscayl-v9';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
     realesr_animevideov3: { id: 'realesr_animevideov3', cwsrUrl: '/models/realesr_animevideov3.cwsr', license: 'BSD-3-Clause', scale: 4 },
