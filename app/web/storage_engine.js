@@ -969,6 +969,7 @@
             src_height: Number(meta.src_height || 0),
             src_bytes: Number(meta.src_bytes || 0),
             super_res: Number(meta.super_res || 1),
+            match_pct: meta.match_pct != null ? Number(meta.match_pct) : null,
             byte_size: byteSize,
             blob,
             access_count: 1,
@@ -1007,6 +1008,7 @@
           src_height: rec.src_height || 0,
           src_bytes: rec.src_bytes || 0,
           super_res: rec.super_res || 1,
+          match_pct: rec.match_pct != null ? rec.match_pct : null,
           byte_size: rec.byte_size,
         };
       } catch (_) {

@@ -4,6 +4,9 @@ The neural network weight files in this directory:
   - cnn_2x_m_an.cwnn (packed from weights/anime4k/cnn-2x-m-an.json)
   - cnn_2x_m_rl.cwnn (packed from weights/anime4k/cnn-2x-m-rl.json)
   - cnn_restore_m_an.cwnn (packed from weights/anime4k/cnn-restore-m-an.json)
+  - cnn_2x_l_an.cwnn (packed from weights/anime4k/cnn-2x-l-an.json)
+  - cnn_2x_l_rl.cwnn (packed from weights/anime4k/cnn-2x-l-rl.json)
+  - cnn_restore_l_an.cwnn (packed from weights/anime4k/cnn-restore-l-an.json)
 
 are derived from:
   1. WebSR (https://github.com/sb2702/websr) — Copyright (c) 2023 Sam Bhattacharyya, MIT License

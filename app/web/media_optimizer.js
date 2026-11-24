@@ -369,9 +369,30 @@
     const qualityMode = opts.qualityMode || getUserMediaQualityMode(Boolean(opts.preserveOriginal));
     const effectiveOpts = { ...opts, qualityMode, preserveOriginal: Boolean(opts.preserveOriginal) || qualityMode === 'original' };
 
+    async function computeOrigProfileFromRaw(u8, mimeType) {
+      if (!window.__chatwWasmMedia || typeof window.__chatwWasmMedia.extractQualityProfile !== 'function') return null;
+      try {
+        const bmp = await createImageBitmap(new Blob([u8], { type: mimeType || 'image/png' }));
+        const c = document.createElement('canvas');
+        c.width = bmp.width;
+        c.height = bmp.height;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(bmp, 0, 0);
+        bmp.close();
+        const d = ctx.getImageData(0, 0, c.width, c.height).data;
+        const prof = window.__chatwWasmMedia.extractQualityProfile(new Uint8Array(d.buffer, d.byteOffset, d.byteLength), c.width, c.height);
+        return prof && prof.length > 2 ? prof : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
     if (!rawSniff.animated) {
       const workerRes = await optimizeInMediaWorker(rawU8, rawSniff.mime || fileOrBlob.type, effectiveOpts);
       if (workerRes && workerRes.bytesB64 && (workerRes.ext === 'avif' || effectiveOpts.preserveOriginal)) {
+        if (!effectiveOpts.preserveOriginal && !workerRes.origProfileJson) {
+          workerRes.origProfileJson = await computeOrigProfileFromRaw(rawU8, rawSniff.mime || fileOrBlob.type);
+        }
         return workerRes;
       }
     }
@@ -432,6 +453,18 @@
         const q = isCrisp ? 0.54 : (qualityMode === 'data_saver' ? 0.44 : 0.48);
         const nativeAvif = await tryNativeCanvasAvif(canvas, q);
         if (nativeAvif && nativeAvif.u8.byteLength < rawU8.byteLength) {
+          let origProfileJson = null;
+          if (window.__chatwWasmMedia && typeof window.__chatwWasmMedia.extractQualityProfile === 'function') {
+            try {
+              const oc = document.createElement('canvas');
+              oc.width = origW;
+              oc.height = origH;
+              const octx = oc.getContext('2d', { willReadFrequently: true });
+              octx.drawImage(bitmap, 0, 0);
+              const od = octx.getImageData(0, 0, origW, origH).data;
+              origProfileJson = window.__chatwWasmMedia.extractQualityProfile(new Uint8Array(od.buffer, od.byteOffset, od.byteLength), origW, origH) || null;
+            } catch (_) {}
+          }
           bitmap.close();
           return {
             bytesB64: bytesToB64(nativeAvif.u8),
@@ -445,6 +478,7 @@
             targetWidth: origW,
             targetHeight: origH,
             superResRecommended: tw < origW,
+            origProfileJson,
             blurDataUrl,
             thumbB64: null,
             thumbMime: null,
@@ -476,6 +510,7 @@
               targetWidth: res.targetWidth || origW,
               targetHeight: res.targetHeight || origH,
               superResRecommended: Boolean(res.superResRecommended ?? ((res.width || origW) < origW)),
+              origProfileJson: res.origProfileJson || null,
               blurDataUrl,
               thumbB64: null,
               thumbMime: null,

@@ -31,6 +31,9 @@ pub struct OptimizedMediaPayload {
     pub instant_preview_url: Option<String>,
     #[serde(default)]
     pub codec: Option<String>,
+    /// Compact (~95-byte) perceptual fingerprint of sender's original image for receiver closed-loop AI calibration.
+    #[serde(default)]
+    pub orig_profile_json: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -117,6 +120,7 @@ fn parse_optimized_payload(v: &serde_json::Value) -> Result<OptimizedMediaPayloa
         waveform: Vec::new(),
         instant_preview_url: v.get("instantPreviewUrl").and_then(|s| s.as_str()).map(str::to_string),
         codec: v.get("codec").and_then(|s| s.as_str()).map(str::to_string),
+        orig_profile_json: v.get("origProfileJson").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).map(str::to_string),
     })
 }
 
@@ -309,5 +313,6 @@ pub async fn stop_voice_recording() -> Result<OptimizedMediaPayload, String> {
         waveform,
         instant_preview_url: None,
         codec: Some("opus".into()),
+        orig_profile_json: None,
     })
 }

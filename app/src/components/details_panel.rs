@@ -578,6 +578,7 @@ fn SelfMediaThumb(
     let w = data.w;
     let h = data.h;
     let size = data.size;
+    let qp = data.qp.clone();
     let jump_id = msg_id.clone();
 
     rsx! {
@@ -588,18 +589,20 @@ fn SelfMediaThumb(
             onclick: move |_| {
                 if let Some(url) = src() {
                     *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
-                        src: url,
+                        src: url.clone(),
                         name: display_name.clone(),
                         width: w,
                         height: h,
                         size,
                         ai_restored: false,
-                        original_src: None,
+                        original_src: Some(url),
                         ai_model: None,
                         ai_scale: 1,
                         ai_out_size: 0,
                         is_sender_original: false,
                         compressed_size: size,
+                        orig_profile_json: qp.clone(),
+                        ai_match_pct: None,
                     });
                 } else {
                     on_jump_to.call(jump_id.clone());

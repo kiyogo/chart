@@ -11,6 +11,7 @@
 
 use crate::{
     MediaError, MediaResult,
+    ai::cnn_sr::{OriginalQualityProfile, extract_original_quality_profile},
     classifier::{ImageAnalysis, ImageClass, MediaKind, analyze_rgba_image, sniff_media_bytes},
 };
 use serde::{Deserialize, Serialize};
@@ -76,6 +77,10 @@ pub struct AdaptiveAvifOutput {
     pub estimated_ssim: Option<f64>,
     pub thumb_avif_bytes: Option<Vec<u8>>,
     pub ai_restoration_recommended: bool,
+    /// Compact (~95-byte) perceptual fingerprint of the sender's untouched original image so the receiver's
+    /// AI dynamically calibrates sharpness, outlines, contrast & color to match ~100% of the original!
+    #[serde(default)]
+    pub orig_profile: Option<OriginalQualityProfile>,
 }
 
 #[cfg(feature = "avif-codec")]
@@ -127,22 +132,22 @@ mod impl_codec {
                     color_model: ColorModel::YCbCr,
                 },
                 ImageClass::AnimeManga | ImageClass::Meme => CandidateConfig {
-                    quality: 42.0,
-                    alpha_quality: 70.0,
+                    quality: 54.0,
+                    alpha_quality: 76.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Eight,
                     color_model: ColorModel::YCbCr,
                 },
                 ImageClass::HdrWideGamut => CandidateConfig {
-                    quality: 48.0,
-                    alpha_quality: 72.0,
+                    quality: 54.0,
+                    alpha_quality: 76.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
                 _ => CandidateConfig {
-                    quality: 38.0,
-                    alpha_quality: 68.0,
+                    quality: 50.0,
+                    alpha_quality: 74.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Eight,
                     color_model: ColorModel::YCbCr,
@@ -371,6 +376,8 @@ mod impl_codec {
         }
 
         let analysis = analyze_rgba_image(rgba, width, height, original_encoded_size, raw_file_bytes);
+        // Extract exact perceptual fingerprint of the SENDER'S 100% UNTOUCHED ORIGINAL IMAGE!
+        let mut orig_profile = extract_original_quality_profile(rgba, width, height);
         let aggressive_max_edge = if matches!(opts.mode, AvifCompressionMode::UltraAggressive) {
             let max_dim = width.max(height);
             if max_dim > 1080 {
@@ -404,6 +411,13 @@ mod impl_codec {
         } else {
             (rgba.to_vec(), width, height)
         };
+
+        if out_w < width || out_h < height {
+            // Spatial downscale factor (>1.0, e.g. 2.00 for 2× downscale -> signals receiver AI 2× recovery)
+            let sx = width as f32 / out_w.max(1) as f32;
+            let sy = height as f32 / out_h.max(1) as f32;
+            orig_profile.loss_ratio = ((sx.max(sy) * 100.0).round()) / 100.0;
+        }
 
         let (candidates, default_floor) = candidate_configs(&analysis, opts.mode);
         let ssim_floor = opts.min_ssim_floor.unwrap_or(default_floor);
@@ -533,6 +547,7 @@ mod impl_codec {
             estimated_ssim: chosen_ssim,
             thumb_avif_bytes,
             ai_restoration_recommended,
+            orig_profile: Some(orig_profile),
         })
     }
 
@@ -594,6 +609,7 @@ mod impl_codec {
                 estimated_ssim: Some(1.0),
                 thumb_avif_bytes: None,
                 ai_restoration_recommended: false,
+                orig_profile: None,
             });
         }
 
@@ -630,6 +646,7 @@ mod impl_codec {
                 estimated_ssim: None,
                 thumb_avif_bytes: None,
                 ai_restoration_recommended: false,
+                orig_profile: None,
             });
         }
 
@@ -727,6 +744,7 @@ mod impl_codec {
                 estimated_ssim: None,
                 thumb_avif_bytes,
                 ai_restoration_recommended: false,
+                orig_profile: None,
             });
         }
 

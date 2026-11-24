@@ -3073,6 +3073,7 @@ pub fn Chat(
             waveform: Vec::new(),
             instant_preview_url: None,
             codec: None,
+            orig_profile_json: None,
         });
     });
 
@@ -3561,6 +3562,7 @@ pub fn Chat(
             waveform: Vec::new(),
             instant_preview_url: None,
             codec: None,
+            orig_profile_json: None,
         });
     });
 

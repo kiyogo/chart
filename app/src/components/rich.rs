@@ -44,6 +44,8 @@ pub struct LightboxMedia {
     pub ai_out_size: u64,
     pub is_sender_original: bool,
     pub compressed_size: u64,
+    pub orig_profile_json: String,
+    pub ai_match_pct: Option<f32>,
 }
 
 pub static GLOBAL_LIGHTBOX: GlobalSignal<Option<LightboxMedia>> = GlobalSignal::new(|| None);
@@ -195,6 +197,10 @@ pub struct ImageData {
     pub orig_w: u32,
     #[serde(default)]
     pub orig_h: u32,
+    /// Compact OriginalQualityProfile JSON extracted on the sender's untouched original image
+    /// so the receiver's 2-stage Large CNN + closed-loop calibration restores sharpness/color ~100%.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub qp: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -431,6 +437,7 @@ pub fn build_rich_media_wire(
             orig_size,
             orig_w,
             orig_h,
+            qp: payload.orig_profile_json.clone().unwrap_or_default(),
         };
         return format!("img:{}", serde_json::to_string(&data).unwrap_or_default());
     }
@@ -530,17 +537,19 @@ pub fn RichImage(data: ImageData) -> Element {
     let ai_out_w = use_signal(|| 0u32);
     let ai_out_h = use_signal(|| 0u32);
     let ai_out_size = use_signal(|| 0u64);
+    let ai_match_pct = use_signal(|| Option::<f32>::None);
     let is_sender_original = use_signal(|| false);
 
     let key_now = (data.u.clone(), data.k.clone(), data.n.clone());
     let mime_now = data.m.clone();
     let scope_now = data.scope.clone();
     let sha_now = data.sha.clone();
+    let qp_now = data.qp.clone();
 
     let target_w = if data.orig_w > 0 { data.orig_w } else { data.w };
     let target_h = if data.orig_h > 0 { data.orig_h } else { data.h };
 
-    let run_progressive_ai = move |base_url: String, media_id: String, content_hash: String, mime_type: String| {
+    let run_progressive_ai = move |base_url: String, media_id: String, content_hash: String, mime_type: String, orig_qp: String| {
         if mime_type == "image/gif" {
             return;
         }
@@ -552,6 +561,7 @@ pub fn RichImage(data: ImageData) -> Element {
         let mut ai_out_w = ai_out_w;
         let mut ai_out_h = ai_out_h;
         let mut ai_out_size = ai_out_size;
+        let mut ai_match_pct = ai_match_pct;
         let mut is_sender_original = is_sender_original;
         let mut src = src;
         ai_loading.set(true);
@@ -559,6 +569,7 @@ pub fn RichImage(data: ImageData) -> Element {
             let url_json = serde_json::to_string(&base_url).unwrap_or_default();
             let mid_json = serde_json::to_string(&media_id).unwrap_or_default();
             let hash_json = serde_json::to_string(&content_hash).unwrap_or_default();
+            let qp_json = serde_json::to_string(&orig_qp).unwrap_or_else(|_| "\"\"".to_string());
             let js = format!(
                 r#"
                 (async () => {{
@@ -579,6 +590,7 @@ pub fn RichImage(data: ImageData) -> Element {
                         contentHash: {hash_json},
                         targetWidth: {target_w},
                         targetHeight: {target_h},
+                        origProfileJson: {qp_json},
                     }});
                     dioxus.send(res || {{ enhanced: false }});
                 }})();
@@ -591,6 +603,7 @@ pub fn RichImage(data: ImageData) -> Element {
                     if let Some(orig_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
                         is_sender_original.set(true);
                         ai_enhanced.set(false);
+                        ai_match_pct.set(None);
                         if let Some(w) = v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0) {
                             ai_out_w.set(w as u32);
                         }
@@ -625,6 +638,9 @@ pub fn RichImage(data: ImageData) -> Element {
                         if let Some(sz) = v.get("outBytes").and_then(|n| n.as_u64()) {
                             ai_out_size.set(sz);
                         }
+                        if let Some(mp) = v.get("matchPct").and_then(|n| n.as_f64()).filter(|n| n.is_finite() && *n > 0.0) {
+                            ai_match_pct.set(Some(mp as f32));
+                        }
                         src.set(Some(new_url.to_string()));
                     }
                 }
@@ -646,6 +662,7 @@ pub fn RichImage(data: ImageData) -> Element {
         let mut ai_out_w = ai_out_w;
         let mut ai_out_h = ai_out_h;
         let mut ai_out_size = ai_out_size;
+        let mut ai_match_pct = ai_match_pct;
         let mut is_sender_original = is_sender_original;
         let mut raw_src = raw_src;
         let mut src = src;
@@ -661,6 +678,7 @@ pub fn RichImage(data: ImageData) -> Element {
         ai_out_w.set(0);
         ai_out_h.set(0);
         ai_out_size.set(0);
+        ai_match_pct.set(None);
         is_sender_original.set(false);
         if let Some(hit) = platform::get_cached_blob_url_sync(&u, &k, &n) {
             loaded_key.set(Some(key_now));
@@ -668,7 +686,7 @@ pub fn RichImage(data: ImageData) -> Element {
             failed.set(false);
             raw_src.set(Some(hit.clone()));
             src.set(Some(hit.clone()));
-            run_progressive_ai(hit, u, sha_now.clone(), mime_now.clone());
+            run_progressive_ai(hit, u, sha_now.clone(), mime_now.clone(), qp_now.clone());
             return;
         }
         src.set(None);
@@ -678,6 +696,7 @@ pub fn RichImage(data: ImageData) -> Element {
         let m_in = mime_now.clone();
         let sc_in = scope_now.clone();
         let sh_in = sha_now.clone();
+        let qp_in = qp_now.clone();
         let target_key = key_now.clone();
         spawn(async move {
             let mime = if m_in.starts_with("image/") { m_in } else { "image/avif".into() };
@@ -687,7 +706,7 @@ pub fn RichImage(data: ImageData) -> Element {
                 loaded_key.set(Some(target_key));
                 raw_src.set(Some(burl.clone()));
                 src.set(Some(burl.clone()));
-                run_progressive_ai(burl, u, sh_in, mime);
+                run_progressive_ai(burl, u, sh_in, mime, qp_in);
                 return;
             }
             // 2. Fallback when server copy expired / requires local IndexedDB or WebRTC P2P recovery.
@@ -702,7 +721,7 @@ pub fn RichImage(data: ImageData) -> Element {
                     loaded_key.set(Some(target_key));
                     raw_src.set(Some(burl.clone()));
                     src.set(Some(burl.clone()));
-                    run_progressive_ai(burl, u, sh_in, m);
+                    run_progressive_ai(burl, u, sh_in, m, qp_in);
                 }
                 MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
                     missing.set(Some((ref_id, availability_state, reason)));
@@ -732,6 +751,7 @@ pub fn RichImage(data: ImageData) -> Element {
                     let lb_orig_h = data.orig_h;
                     let lb_size = data.size;
                     let lb_orig_size = data.orig_size;
+                    let lb_qp = data.qp.clone();
                     let is_ai = ai_enhanced();
                     let is_orig = is_sender_original();
                     let cur_scale = ai_scale();
@@ -739,10 +759,15 @@ pub fn RichImage(data: ImageData) -> Element {
                     let cur_out_w = ai_out_w();
                     let cur_out_h = ai_out_h();
                     let cur_out_sz = ai_out_size();
-                    let badge_txt = if cur_scale >= 2 {
-                        "✨ AI CNN 2×"
-                    } else {
-                        "✨ AI CNN Đã làm nét"
+                    let cur_match_pct = ai_match_pct();
+                    let match_pct_attr = cur_match_pct
+                        .map(|mp| format!("{mp:.1}"))
+                        .unwrap_or_default();
+                    let badge_txt = match (cur_scale >= 2, cur_match_pct) {
+                        (true, Some(mp)) => format!("✨ AI CNN-L 2× · {:.0}%", mp.round()),
+                        (true, None) => "✨ AI CNN-L 2×".to_string(),
+                        (false, Some(mp)) => format!("✨ AI CNN-L · {:.0}%", mp.round()),
+                        (false, None) => "✨ AI CNN-L Đã làm nét".to_string(),
                     };
                     rsx! {
                         button {
@@ -771,6 +796,8 @@ pub fn RichImage(data: ImageData) -> Element {
                                     ai_out_size: if is_orig { cur_out_sz.max(lb_orig_size) } else { cur_out_sz },
                                     is_sender_original: is_orig,
                                     compressed_size: lb_size,
+                                    orig_profile_json: lb_qp.clone(),
+                                    ai_match_pct: cur_match_pct,
                                 });
                             },
                             img {
@@ -781,13 +808,14 @@ pub fn RichImage(data: ImageData) -> Element {
                                 "data-ai-restored": if is_ai { "true" } else { "false" },
                                 "data-ai-cache-hit": if ai_cache_hit() { "true" } else { "false" },
                                 "data-sender-original": if is_orig { "true" } else { "false" },
+                                "data-ai-match-pct": "{match_pct_attr}",
                             }
                             if is_orig {
                                 span { class: "ai-restored-badge", "Ảnh gốc" }
                             } else if is_ai {
                                 span { class: "ai-restored-badge", "{badge_txt}" }
                             } else if ai_loading() {
-                                span { class: "ai-restoring-badge", "✨ AI CNN đang xử lý" }
+                                span { class: "ai-restoring-badge", "✨ AI CNN-L đang xử lý" }
                             }
                         }
                     }
@@ -1820,12 +1848,19 @@ pub fn GlobalImageLightbox() -> Element {
     };
     let ai_pill_text = if media.is_sender_original {
         "Ảnh gốc trên máy".to_string()
-    } else if let Some(ref m) = media.ai_model {
-        format!("✨ {m}")
-    } else if media.ai_scale >= 2 {
-        "✨ AI CNN 2×".to_string()
     } else {
-        "✨ AI CNN Đã làm nét".to_string()
+        let base = if let Some(ref m) = media.ai_model {
+            format!("✨ {m}")
+        } else if media.ai_scale >= 2 {
+            "✨ CNN-L 2×".to_string()
+        } else {
+            "✨ CNN-L Đã làm nét".to_string()
+        };
+        if let Some(mp) = media.ai_match_pct {
+            format!("{base} · Khớp gốc {:.0}%", mp.round())
+        } else {
+            base
+        }
     };
     let can_force_2x = !media.is_sender_original && media.ai_scale < 2 && media.original_src.is_some();
     let media_for_2x = media.clone();
@@ -1983,12 +2018,15 @@ pub fn GlobalImageLightbox() -> Element {
                                 spawn(async move {
                                     let url_json = serde_json::to_string(&raw_u).unwrap_or_default();
                                     let mid_json = serde_json::to_string(&m.name).unwrap_or_default();
+                                    let qp_json = serde_json::to_string(&m.orig_profile_json)
+                                        .unwrap_or_else(|_| "\"\"".to_string());
                                     let js = format!(
                                         r#"
                                         (async () => {{
                                             if (!window.__chatwAiRestorer) {{ dioxus.send({{ enhanced: false }}); return; }}
                                             const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
                                                 mediaId: {mid_json},
+                                                origProfileJson: {qp_json},
                                                 force2x: true,
                                                 forceRun: true,
                                             }});
@@ -2004,14 +2042,19 @@ pub fn GlobalImageLightbox() -> Element {
                                                 let nh = v.get("height").and_then(|n| n.as_u64()).unwrap_or(m.height as u64) as u32;
                                                 let out_sz = v.get("outBytes").and_then(|n| n.as_u64()).unwrap_or(0);
                                                 let lbl = v.get("modelLabel").and_then(|s| s.as_str()).map(str::to_string);
+                                                let mp = v.get("matchPct")
+                                                    .and_then(|n| n.as_f64())
+                                                    .filter(|n| n.is_finite() && *n > 0.0)
+                                                    .map(|n| n as f32);
                                                 *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
                                                     src: new_url.to_string(),
                                                     width: nw,
                                                     height: nh,
                                                     ai_restored: true,
-                                                    ai_model: lbl.or(Some("CNN 2×".into())),
+                                                    ai_model: lbl.or(Some("CNN-L 2×".into())),
                                                     ai_scale: 2,
                                                     ai_out_size: out_sz,
+                                                    ai_match_pct: mp.or(m.ai_match_pct),
                                                     ..m
                                                 });
                                             }

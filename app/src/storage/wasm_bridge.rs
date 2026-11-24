@@ -8,7 +8,11 @@
 #[cfg(target_arch = "wasm32")]
 pub fn install_wasm_media_bridge() {
     use chatw_media_core::{
-        ai::cnn_sr::{CnnModelKind, raw_cnn_weights_bytes, run_cnn_sr_tiled},
+        ai::cnn_sr::{
+            CnnModelKind, OriginalQualityProfile, calibrate_to_original_profile_with_base,
+            extract_original_quality_profile, raw_cnn_weights_bytes, restore_guided_hq,
+            run_cnn_sr_tiled, upscale_catmull_rom_2x,
+        },
         avif::{AvifCompressionMode, AvifEncodeOptions, optimize_image_to_avif},
         classifier::ImageClass,
         dedup::hash_bytes_exact,
@@ -73,6 +77,11 @@ pub fn install_wasm_media_bridge() {
                     );
                     if let Some(ssim) = res.estimated_ssim {
                         let _ = Reflect::set(&out, &"estimatedSsim".into(), &JsValue::from(ssim));
+                    }
+                    if let Some(ref prof) = res.orig_profile {
+                        if let Ok(js_prof) = serde_json::to_string(prof) {
+                            let _ = Reflect::set(&out, &"origProfileJson".into(), &JsValue::from(js_prof));
+                        }
                     }
                 }
                 Err(err) => {
@@ -165,19 +174,97 @@ pub fn install_wasm_media_bridge() {
 
     // 6. getCnnWeights(modelKind?: string) -> Uint8Array (raw CWNN1 binary weights shared with WebGPU WGSL shaders)
     let weights_cb = Closure::<dyn Fn(JsValue) -> JsValue>::new(move |model_val: JsValue| {
-        let model_str = model_val.as_string().unwrap_or_else(|| "anime".into());
+        let model_str = model_val.as_string().unwrap_or_else(|| "anime_l".into());
         let kind = CnnModelKind::from_str_name(&model_str);
         Uint8Array::from(raw_cnn_weights_bytes(kind)).into()
     });
 
+    // 7. restoreImageGuided(rgba, w, h, want2x, preRestore, origProfileJson) -> { ok, rgba, width, height, scale, modelId, modelLabel, matchPct }
+    let guided_cb = Closure::<dyn Fn(Uint8Array, u32, u32, bool, bool, JsValue) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32, want_2x: bool, pre_restore: bool, prof_val: JsValue| {
+            let raw = rgba.to_vec();
+            let orig_prof: Option<OriginalQualityProfile> = prof_val
+                .as_string()
+                .filter(|s| !s.is_empty())
+                .and_then(|s| serde_json::from_str(&s).ok());
+            let out = Object::new();
+            match restore_guided_hq(&raw, width, height, want_2x, pre_restore, orig_prof.as_ref(), 192, None) {
+                Ok(res) => {
+                    let bytes = Uint8Array::from(res.rgba.as_slice());
+                    let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
+                    let _ = Reflect::set(&out, &"rgba".into(), &bytes.into());
+                    let _ = Reflect::set(&out, &"width".into(), &JsValue::from(res.width));
+                    let _ = Reflect::set(&out, &"height".into(), &JsValue::from(res.height));
+                    let _ = Reflect::set(&out, &"scale".into(), &JsValue::from(res.scale));
+                    let _ = Reflect::set(&out, &"modelId".into(), &JsValue::from(res.model_id));
+                    let _ = Reflect::set(&out, &"modelLabel".into(), &JsValue::from(res.model_label));
+                    let _ = Reflect::set(&out, &"matchPct".into(), &JsValue::from(res.match_pct));
+                }
+                Err(err) => {
+                    let _ = Reflect::set(&out, &"ok".into(), &JsValue::FALSE);
+                    let _ = Reflect::set(&out, &"error".into(), &JsValue::from(err.to_string()));
+                }
+            }
+            out.into()
+        },
+    );
+
+    // 8. calibrateToProfile(rgba, w, h, origProfileJson, srcRgba?, srcW?, srcH?) -> { ok, rgba, matchPct }
+    let calib_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue, JsValue, JsValue, JsValue) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32, prof_val: JsValue, src_val: JsValue, src_w_val: JsValue, src_h_val: JsValue| {
+            let mut buf = rgba.to_vec();
+            let orig_prof: Option<OriginalQualityProfile> = prof_val
+                .as_string()
+                .filter(|s| !s.is_empty())
+                .and_then(|s| serde_json::from_str(&s).ok());
+            let base_buf: Option<Vec<u8>> = if !src_val.is_undefined() && !src_val.is_null() {
+                let sw = src_w_val.as_f64().unwrap_or(0.0) as u32;
+                let sh = src_h_val.as_f64().unwrap_or(0.0) as u32;
+                let src_u8 = Uint8Array::new(&src_val).to_vec();
+                if sw * 2 == width && sh * 2 == height && src_u8.len() == (sw as usize * sh as usize * 4) {
+                    Some(upscale_catmull_rom_2x(&src_u8, sw, sh))
+                } else if sw == width && sh == height && src_u8.len() == buf.len() {
+                    Some(src_u8)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let match_pct = calibrate_to_original_profile_with_base(
+                &mut buf,
+                base_buf.as_deref(),
+                width,
+                height,
+                orig_prof.as_ref(),
+            );
+            let out = Object::new();
+            let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
+            let _ = Reflect::set(&out, &"rgba".into(), &Uint8Array::from(buf.as_slice()).into());
+            let _ = Reflect::set(&out, &"matchPct".into(), &JsValue::from(match_pct));
+            out.into()
+        },
+    );
+
+    // 9. extractQualityProfile(rgba, w, h) -> string (JSON OriginalQualityProfile)
+    let prof_cb = Closure::<dyn Fn(Uint8Array, u32, u32) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32| {
+            let prof = extract_original_quality_profile(&rgba.to_vec(), width, height);
+            JsValue::from(serde_json::to_string(&prof).unwrap_or_default())
+        },
+    );
+
     let _ = Reflect::set(&api, &"version".into(), &JsValue::from("chatw-media-core-v2"));
-    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("anime4k-crelu-8layer-v1"));
+    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("anime4k-crelu-15layer-guided-v4"));
     let _ = Reflect::set(&api, &"encodeAvifAdaptive".into(), enc_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"compressFileSmart".into(), cmp_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"decompressFileVerified".into(), dec_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"blake3Hex".into(), b3_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"restoreImageCnn".into(), cnn_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"getCnnWeights".into(), weights_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"restoreImageGuided".into(), guided_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"calibrateToProfile".into(), calib_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"extractQualityProfile".into(), prof_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&win, &"__chatwWasmMedia".into(), &api.into());
 
     enc_cb.forget();
@@ -186,6 +273,9 @@ pub fn install_wasm_media_bridge() {
     b3_cb.forget();
     cnn_cb.forget();
     weights_cb.forget();
+    guided_cb.forget();
+    calib_cb.forget();
+    prof_cb.forget();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
