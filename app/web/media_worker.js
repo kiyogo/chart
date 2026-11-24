@@ -62,12 +62,12 @@
     if (qualityMode === 'original') return null;
     const maxEdge = Math.max(w, h);
     if (qualityMode === 'data_saver') {
-      return maxEdge > 960 ? Math.round(maxEdge * 0.5) : (maxEdge > 640 ? 640 : null);
+      return maxEdge > 800 ? Math.round(maxEdge * 0.5) : (maxEdge > 540 ? 540 : null);
     }
-    if (maxEdge > 1080) {
+    if (maxEdge > 900) {
       return Math.round(maxEdge * 0.5);
-    } else if (maxEdge > 800) {
-      return 640;
+    } else if (maxEdge > 640) {
+      return 540;
     }
     return null;
   }
@@ -170,7 +170,7 @@
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(bitmap, 0, 0, tw, th);
 
-      const q = isCrisp ? 0.54 : (opts.qualityMode === 'data_saver' ? 0.44 : 0.48);
+      const q = isCrisp ? 0.44 : (opts.qualityMode === 'data_saver' ? 0.32 : 0.38);
       const avif = await tryGenuineAvif(canvas, q);
       bitmap.close();
 

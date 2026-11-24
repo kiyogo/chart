@@ -392,28 +392,28 @@ void main() {
 
   float localRange = max(max(mx2.r - mn2.r, mx2.g - mn2.g), mx2.b - mn2.b);
   float edgeRange5 = max(max(mx5.r - mn5.r, mx5.g - mn5.g), mx5.b - mn5.b);
-  float gate1 = smoothstep(0.010, 0.048, max(localRange, edgeRange5 * 0.75));
-  float gate2 = smoothstep(0.018, 0.085, edgeRange5);
+  float gate1 = smoothstep(0.008, 0.042, max(localRange, edgeRange5 * 0.75));
+  float gate2 = smoothstep(0.015, 0.075, edgeRange5);
 
   // Scale 1: High-power AMD FidelityFX CAS (numerically safe denominator >= 0.16, noise-gated on flat skin/sky)
   vec3 rcpM = 1.0 / max(mx, vec3(1e-4));
   vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) * rcpM, 0.0, 1.0));
-  float peak = -0.28 * uColor1.z * gate1;
-  vec3 w = max(amp * peak, vec3(-0.21));
+  float peak = -0.38 * uColor1.z * gate1;
+  vec3 w = max(amp * peak, vec3(-0.28));
   vec3 cas1 = clamp(((b + d + f + h) * w + e) / (1.0 + 4.0 * w), 0.0, 1.0);
 
   // Scale 2 & 3: 8-tap isotropic radius-2 deconvolution + radius-1 micro-detail boost
   vec3 avg1 = 0.25 * (b + d + f + h);
   vec3 avg2 = 0.15 * (b2 + d2 + f2 + h2) + 0.10 * (a2 + c2 + g2 + i2);
   vec3 deconv = cas1
-              + (cas1 - avg2) * (0.94 * uColor1.z * gate2)
-              + (cas1 - avg1) * (0.34 * uColor1.z * gate1);
+              + (cas1 - avg2) * (1.28 * uColor1.z * gate2)
+              + (cas1 - avg1) * (0.46 * uColor1.z * gate1);
 
   // Dark-ink / fine-line stroke tightener (pulls softened dark edges cleanly toward true local minimum mn5)
   float lDeconv = dot(deconv, vec3(0.299, 0.587, 0.114));
   float lAvg2 = dot(avg2, vec3(0.299, 0.587, 0.114));
-  float darkLine = clamp((lAvg2 - lDeconv) * 2.2, 0.0, 1.0) * smoothstep(0.14, 0.40, edgeRange5);
-  deconv = mix(deconv, mn5, darkLine * (0.22 * min(uColor1.z, 1.35)));
+  float darkLine = clamp((lAvg2 - lDeconv) * 2.8, 0.0, 1.0) * smoothstep(0.10, 0.38, edgeRange5);
+  deconv = mix(deconv, mn5, darkLine * (0.34 * min(uColor1.z, 1.70)));
 
   // STRICT zero-overshoot anti-ringing clamp inside [mn5, mx5] -> razor-sharp edges, ZERO white halos!
   vec3 sharp = clamp(deconv, mn5, mx5);
@@ -1578,8 +1578,8 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Spec 115 v8 ultra-sharp intensity knob: 1.32 for anime/illustration razor-sharp lines, 1.22 for photo ultra-crisp natural detail
-    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.32 } else { 1.22 };
+    // Spec 121 ultra-sharp intensity knob: 1.68 for anime/illustration razor-sharp lines, 1.55 for photo ultra-crisp natural detail
+    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.68 } else { 1.55 };
 
     let probe = probe_gpu();
     if probe.webgl2_available && (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {

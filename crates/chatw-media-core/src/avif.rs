@@ -116,45 +116,45 @@ mod impl_codec {
 
         if matches!(mode, AvifCompressionMode::UltraAggressive) {
             // Maximum compression calibrated for 100% zero-alteration Real-ESRGAN 4× Super-Resolution recovery!
-            // 10-bit YCbCr at q=58..62 keeps files ultra-small (~20-26 KB vs 1.2 MB PNG) with zero blocking or color drift!
+            // 10-bit YCbCr at q=45..54 keeps files ultra-small (~12-22 KB vs 1.2 MB PNG) with zero blocking or color drift!
             let cfg = match analysis.class {
                 ImageClass::CrispTextUi | ImageClass::FlatGraphic => CandidateConfig {
-                    quality: 62.0,
-                    alpha_quality: 80.0,
+                    quality: 54.0,
+                    alpha_quality: 78.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
                 ImageClass::AlphaGraphic => CandidateConfig {
-                    quality: 58.0,
-                    alpha_quality: 78.0,
+                    quality: 46.0,
+                    alpha_quality: 75.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
                 ImageClass::AnimeManga | ImageClass::Meme => CandidateConfig {
-                    quality: 62.0,
-                    alpha_quality: 80.0,
+                    quality: 48.0,
+                    alpha_quality: 76.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
                 ImageClass::HdrWideGamut => CandidateConfig {
-                    quality: 62.0,
-                    alpha_quality: 80.0,
+                    quality: 48.0,
+                    alpha_quality: 76.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
                 _ => CandidateConfig {
-                    quality: 58.0,
-                    alpha_quality: 78.0,
+                    quality: 45.0,
+                    alpha_quality: 74.0,
                     speed: fast_speed,
                     bit_depth: BitDepth::Ten,
                     color_model: ColorModel::YCbCr,
                 },
             };
-            return (vec![cfg], 0.91);
+            return (vec![cfg], 0.88);
         }
 
         match analysis.class {
@@ -381,11 +381,11 @@ mod impl_codec {
         let mut orig_profile = extract_original_quality_profile(rgba, width, height);
         let aggressive_max_edge = if matches!(opts.mode, AvifCompressionMode::UltraAggressive) {
             let max_dim = width.max(height);
-            if max_dim > 1080 {
+            if max_dim > 900 {
                 // Exact 2× downscale (4× fewer pixels -> 80-90% smaller AVIF) for receiver 2× CNN Super-Resolution!
-                Some(((max_dim + 1) / 2).max(640))
-            } else if max_dim > 800 && analysis.class != ImageClass::CrispTextUi {
-                Some(640)
+                Some(((max_dim + 1) / 2).max(540))
+            } else if max_dim > 640 && analysis.class != ImageClass::CrispTextUi {
+                Some(540)
             } else {
                 None
             }

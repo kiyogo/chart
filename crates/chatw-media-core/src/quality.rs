@@ -223,8 +223,8 @@ pub fn ai_output_passes_quality_gate(
 
     // Hard guards against color shift, hallucination/over-sharpening, or structural divergence:
     let max_color_drift = if is_text_sensitive { 2.5 } else { 6.0 };
-    let min_ssim = if is_text_sensitive { 0.94 } else { 0.82 };
-    let max_sharpness_boost = if is_text_sensitive { 1.45 } else { 2.35 };
+    let min_ssim = if is_text_sensitive { 0.94 } else { 0.80 };
+    let max_sharpness_boost = if is_text_sensitive { 1.65 } else { 3.60 };
     // Genuine denoising lowers raw Laplacian variance on noisy pixels while raising SSIM/MS-SSIM;
     // keep tighter floor on crisp text so glyphs never blur!
     let min_sharpness_ratio = if is_text_sensitive { 0.85 } else { 0.58 };

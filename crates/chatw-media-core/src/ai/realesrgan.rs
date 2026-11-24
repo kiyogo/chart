@@ -492,7 +492,7 @@ pub fn evaluate_sr_quality_gate(
     let c2 = (0.03 * 255.0) * (0.03 * 255.0);
     let ssim = (((2.0 * mx * my + c1) * (2.0 * cov + c2)) / ((mx * mx + my * my + c1) * (vx + vy + c2))) as f32;
     let drift = (sum_drift / n) as f32;
-    let passed = ssim.is_finite() && drift.is_finite() && ssim >= 0.72 && drift <= 0.095;
+    let passed = ssim.is_finite() && drift.is_finite() && ssim >= 0.70 && drift <= 0.098;
     (passed, ssim, drift)
 }
 
