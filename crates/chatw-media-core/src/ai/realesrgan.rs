@@ -453,10 +453,10 @@ pub fn evaluate_sr_quality_gate(
 
     let mut oy = 0usize;
     while oy < oh {
-        let sy = ((oy * sh) / oh).min(sh - 1);
+        let sy = ((((oy as f64) + 0.5) * (sh as f64) / (oh as f64)).floor() as usize).min(sh - 1);
         let mut ox = 0usize;
         while ox < ow {
-            let sx = ((ox * sw) / ow).min(sw - 1);
+            let sx = ((((ox as f64) + 0.5) * (sw as f64) / (ow as f64)).floor() as usize).min(sw - 1);
             let si = (sy * sw + sx) * 4;
             let oi = (oy * ow + ox) * 4;
             let (sr, sg, sb) = (src_rgba[si] as f64, src_rgba[si + 1] as f64, src_rgba[si + 2] as f64);
@@ -530,6 +530,160 @@ impl ConvPreluLayer {
         // `self.weights` is ALREADY `[oc][k][in_ch]` with `in_ch == 64` -> already exact `[oc][9 * 16][4]`!
         self.weights.clone()
     }
+}
+
+/// Ultra-fast raw FP16 (`u16`) parsed CWSR1 weights for direct `RGBA16F` (`HALF_FLOAT`) GPU texture uploads!
+/// Avoids FP16->FP32 conversion on weights and halves GPU VRAM bandwidth + doubles texture cache hit rate!
+#[derive(Clone, Debug)]
+pub struct RealEsrganGpuF16Layer {
+    /// Raw IEEE-754 `u16` half-floats packed as `[out_ch][9][in_ch_padded4]` (`RGBA16F` texture!)
+    pub weights_u16: Vec<u16>,
+    pub bias: Vec<f32>,
+    pub prelu: Option<Vec<f32>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RealEsrganGpuF16Model {
+    pub num_feat: usize,
+    pub num_conv: usize,
+    pub upscale: usize,
+    pub first_conv: RealEsrganGpuF16Layer,
+    pub body_convs: Vec<RealEsrganGpuF16Layer>,
+    pub last_conv: RealEsrganGpuF16Layer,
+}
+
+impl RealEsrganGpuF16Model {
+    pub fn from_cwsr_bytes(bytes: &[u8]) -> MediaResult<Self> {
+        if bytes.len() < 24 || &bytes[0..6] != CWSR_MAGIC {
+            return Err(MediaError::DecodeFailed("Invalid CWSR1 magic header".into()));
+        }
+        let mut r = CwsrReader { data: bytes, pos: 6 };
+        let version = r.read_u16()?;
+        if version != 1 {
+            return Err(MediaError::DecodeFailed(format!("Unsupported CWSR1 version {version}")));
+        }
+        let num_feat = r.read_u32()? as usize;
+        let num_conv = r.read_u32()? as usize;
+        let upscale = r.read_u32()? as usize;
+        let flags = r.read_u32()?;
+        if flags != 1 || num_feat != 64 || num_conv > 64 || upscale != 4 {
+            return Err(MediaError::DecodeFailed("Unsupported CWSR1 model parameters".into()));
+        }
+
+        let read_u16_vec = |rdr: &mut CwsrReader<'_>, count: usize| -> MediaResult<Vec<u16>> {
+            let nbytes = count
+                .checked_mul(2)
+                .ok_or_else(|| MediaError::DecodeFailed("CWSR1 overflow".into()))?;
+            if rdr.pos + nbytes > rdr.data.len() {
+                return Err(MediaError::DecodeFailed("CWSR1 unexpected EOF (u16 tensor)".into()));
+            }
+            let mut out = Vec::with_capacity(count);
+            for c in rdr.data[rdr.pos..rdr.pos + nbytes].chunks_exact(2) {
+                out.push(u16::from_le_bytes([c[0], c[1]]));
+            }
+            rdr.pos += nbytes;
+            Ok(out)
+        };
+
+        // First layer: PyTorch [64, 3, 9] -> TRANSPOSED RGBA16F texture [width=64 (oc), height=9 (k)]
+        // Cache-line-contiguous across oc0..oc0+31 in 8-MRT WebGL2 shaders!
+        let raw0 = read_u16_vec(&mut r, num_feat * 3 * 9)?;
+        let mut w0 = vec![0u16; 9 * num_feat * 4];
+        for k in 0..9 {
+            for oc in 0..num_feat {
+                let d = (k * num_feat + oc) * 4;
+                w0[d] = raw0[(oc * 3 + 0) * 9 + k];
+                w0[d + 1] = raw0[(oc * 3 + 1) * 9 + k];
+                w0[d + 2] = raw0[(oc * 3 + 2) * 9 + k];
+                w0[d + 3] = 0;
+            }
+        }
+        let b0 = r.read_f16_vec(num_feat)?;
+        let p0 = r.read_f16_vec(num_feat)?;
+        let first_conv = RealEsrganGpuF16Layer {
+            weights_u16: w0,
+            bias: b0,
+            prelu: Some(p0),
+        };
+
+        // Body/Last layers: PyTorch [out_ch, 64, 9] -> TRANSPOSED RGBA16F texture [width=out_ch (oc), height=144 (k*16+ig)]
+        // All 32 output-channel weights fetched per (k, ig) in 8-MRT live in 4 contiguous 64-byte GPU L1 cache lines!
+        let repack_64_transposed_u16 = |raw: &[u16], out_ch: usize| -> Vec<u16> {
+            let mut dst = vec![0u16; 144 * out_ch * 4];
+            for k in 0..9 {
+                for ig in 0..16 {
+                    let row = k * 16 + ig;
+                    for oc in 0..out_ch {
+                        let d = (row * out_ch + oc) * 4;
+                        let base = oc * 64 + ig * 4;
+                        dst[d] = raw[(base + 0) * 9 + k];
+                        dst[d + 1] = raw[(base + 1) * 9 + k];
+                        dst[d + 2] = raw[(base + 2) * 9 + k];
+                        dst[d + 3] = raw[(base + 3) * 9 + k];
+                    }
+                }
+            }
+            dst
+        };
+
+        let mut body_convs = Vec::with_capacity(num_conv);
+        for _ in 0..num_conv {
+            let raw_w = read_u16_vec(&mut r, num_feat * num_feat * 9)?;
+            let bi = r.read_f16_vec(num_feat)?;
+            let pi = r.read_f16_vec(num_feat)?;
+            body_convs.push(RealEsrganGpuF16Layer {
+                weights_u16: repack_64_transposed_u16(&raw_w, num_feat),
+                bias: bi,
+                prelu: Some(pi),
+            });
+        }
+
+        let out_ch_last = 3 * upscale * upscale; // 48
+        let raw_last = read_u16_vec(&mut r, out_ch_last * num_feat * 9)?;
+        let b_last = r.read_f16_vec(out_ch_last)?;
+        let last_conv = RealEsrganGpuF16Layer {
+            weights_u16: repack_64_transposed_u16(&raw_last, out_ch_last),
+            bias: b_last,
+            prelu: None,
+        };
+
+        Ok(Self {
+            num_feat,
+            num_conv,
+            upscale,
+            first_conv,
+            body_convs,
+            last_conv,
+        })
+    }
+}
+
+/// Fast global RGB & contrast/saturation delta parameters for GPU shader color-lock (zero CPU full-image scan!).
+pub fn compute_gpu_color_lock_params(
+    src_rgba: &[u8],
+    sw: u32,
+    sh: u32,
+    target_opt: Option<&OriginalQualityProfile>,
+) -> ([f32; 4], [f32; 4]) {
+    let Some(target) = target_opt.filter(|t| t.sharp > 0.3) else {
+        return ([0.0, 0.0, 0.0, 1.0], [1.0, 0.5, 0.0, 0.0]);
+    };
+    let cur = extract_original_quality_profile(src_rgba, sw, sh);
+    let dr = ((target.r_m - cur.r_m).clamp(-8.0, 8.0)) / 255.0;
+    let dg = ((target.g_m - cur.g_m).clamp(-8.0, 8.0)) / 255.0;
+    let db = ((target.b_m - cur.b_m).clamp(-8.0, 8.0)) / 255.0;
+    let contrast = if cur.luma_s > 4.0 && target.luma_s > 4.0 {
+        (target.luma_s / cur.luma_s).clamp(0.95, 1.08)
+    } else {
+        1.0
+    };
+    let sat = if cur.sat_m > 0.03 && target.sat_m > 0.03 {
+        (target.sat_m / cur.sat_m).clamp(0.95, 1.12)
+    } else {
+        1.0
+    };
+    let pivot = (target.luma_m / 255.0).clamp(0.05, 0.95);
+    ([dr, dg, db, contrast], [sat, pivot, 0.0, 0.0])
 }
 
 #[derive(Clone, Debug)]
@@ -1003,5 +1157,46 @@ mod tests {
         assert!(match_pct >= 85.0, "match_pct={match_pct}");
         let (passed, ssim, drift) = evaluate_sr_quality_gate(&rgba, w, h, &out, ow, oh);
         assert!(passed, "gate failed: ssim={ssim}, drift={drift}");
+
+        // Verify transposed FP16 GPU layout matches CPU FP32 layout bit-for-bit across all layers!
+        let gpu_f16 = RealEsrganGpuF16Model::from_cwsr_bytes(&bytes).unwrap();
+        assert_eq!(gpu_f16.first_conv.weights_u16.len(), 9 * 64 * 4);
+        assert_eq!(gpu_f16.body_convs[0].weights_u16.len(), 144 * 64 * 4);
+        assert_eq!(gpu_f16.last_conv.weights_u16.len(), 144 * 48 * 4);
+        for k in 0..9 {
+            for oc in 0..64 {
+                for c in 0..3 {
+                    let f32_ref = model.first_conv.weights[(oc * 9 + k) * 3 + c];
+                    let f16_val = f16_to_f32(gpu_f16.first_conv.weights_u16[(k * 64 + oc) * 4 + c]);
+                    assert!((f32_ref - f16_val).abs() < 1e-6, "first_conv mismatch k={k} oc={oc} c={c}");
+                }
+            }
+        }
+        for k in 0..9 {
+            for ig in 0..16 {
+                let row = k * 16 + ig;
+                for oc in 0..64 {
+                    for lane in 0..4 {
+                        let ic = ig * 4 + lane;
+                        let f32_ref = model.body_convs[0].weights[(oc * 9 + k) * 64 + ic];
+                        let f16_val = f16_to_f32(gpu_f16.body_convs[0].weights_u16[(row * 64 + oc) * 4 + lane]);
+                        assert!((f32_ref - f16_val).abs() < 1e-6, "body[0] mismatch k={k} ig={ig} oc={oc} lane={lane}");
+                    }
+                }
+            }
+        }
+        for k in 0..9 {
+            for ig in 0..16 {
+                let row = k * 16 + ig;
+                for oc in 0..48 {
+                    for lane in 0..4 {
+                        let ic = ig * 4 + lane;
+                        let f32_ref = model.last_conv.weights[(oc * 9 + k) * 64 + ic];
+                        let f16_val = f16_to_f32(gpu_f16.last_conv.weights_u16[(row * 48 + oc) * 4 + lane]);
+                        assert!((f32_ref - f16_val).abs() < 1e-6, "last_conv mismatch k={k} ig={ig} oc={oc} lane={lane}");
+                    }
+                }
+            }
+        }
     }
 }

@@ -153,6 +153,9 @@ pub fn install_wasm_media_bridge() {
         let _ = Reflect::set(&out, &"isSoftware".into(), &JsValue::from(info.is_software));
         let _ = Reflect::set(&out, &"renderer".into(), &JsValue::from(info.renderer));
         let _ = Reflect::set(&out, &"backend".into(), &JsValue::from(info.backend));
+        let _ = Reflect::set(&out, &"use8Mrt".into(), &JsValue::from(info.use_8mrt));
+        let _ = Reflect::set(&out, &"featFp16".into(), &JsValue::from(info.feat_fp16));
+        let _ = Reflect::set(&out, &"maxTexSize".into(), &JsValue::from(info.max_tex_size));
         out.into()
     });
 
@@ -210,10 +213,16 @@ pub fn install_wasm_media_bridge() {
                 match restore_image_realesrgan_rust(&raw, width, height, kind, &mbytes, orig_prof.as_ref(), on_progress).await {
                     Ok(res) => {
                         let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
-                        let _ = Reflect::set(&out, &"rgba".into(), &Uint8Array::from(res.rgba.as_slice()).into());
+                        if let Some(canvas) = res.canvas {
+                            let _ = Reflect::set(&out, &"canvas".into(), &canvas.into());
+                        }
+                        if let Some(rgba) = res.rgba {
+                            let _ = Reflect::set(&out, &"rgba".into(), &Uint8Array::from(rgba.as_slice()).into());
+                        }
                         let _ = Reflect::set(&out, &"width".into(), &JsValue::from(res.width));
                         let _ = Reflect::set(&out, &"height".into(), &JsValue::from(res.height));
                         let _ = Reflect::set(&out, &"scale".into(), &JsValue::from(res.scale));
+                        let _ = Reflect::set(&out, &"hasAlpha".into(), &JsValue::from(res.has_alpha));
                         let _ = Reflect::set(&out, &"modelId".into(), &JsValue::from(res.model_id));
                         let _ = Reflect::set(&out, &"modelLabel".into(), &JsValue::from(res.model_label));
                         let _ = Reflect::set(&out, &"backend".into(), &JsValue::from(res.backend));
@@ -258,7 +267,7 @@ pub fn install_wasm_media_bridge() {
     });
 
     let _ = Reflect::set(&api, &"version".into(), &JsValue::from("chatw-media-core-v2"));
-    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("rust-realesrgan-srvgg-upscayl-v6"));
+    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("rust-realesrgan-srvgg-upscayl-v7"));
     let _ = Reflect::set(&api, &"encodeAvifAdaptive".into(), enc_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"compressFileSmart".into(), cmp_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"decompressFileVerified".into(), dec_cb.as_ref().unchecked_ref());
