@@ -582,7 +582,7 @@ fn SelfMediaThumb(
     let media_h = data.h;
     let media_orig_w = data.orig_w;
     let media_orig_h = data.orig_h;
-    let media_can_ai = data.m != "image/gif";
+    let media_can_ai = data.m != "image/gif" && !data.m.starts_with("video/");
     let jump_id = msg_id.clone();
 
     rsx! {
@@ -601,7 +601,7 @@ fn SelfMediaThumb(
                         ai_restored: false,
                         original_src: Some(url),
                         is_sender_original: false,
-                        auto_enhance_on_open: false,
+                        auto_enhance_on_open: media_can_ai,
                         can_ai_enhance: media_can_ai,
                         width: media_w,
                         height: media_h,

@@ -618,6 +618,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
         let mut needs_on_demand_ai = needs_on_demand_ai;
         let mut is_sender_original = is_sender_original;
         let mut src = src;
+        let mut raw_src = raw_src;
 
         spawn(async move {
             let url_json = serde_json::to_string(&base_url).unwrap_or_default();
@@ -653,22 +654,42 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                             }}).catch(() => {{}});
                         }}
                     }};
-                    // 1. Sender keeps 100% untouched local original -> show immediately with zero AI overlay
+                    let inputUrl = {url_json};
+                    // 1. Sender local original check
                     if (window.__chatwMediaOpt && window.__chatwMediaOpt.getSenderOriginalFromCache) {{
                         const orig = await window.__chatwMediaOpt.getSenderOriginalFromCache({mid_json});
                         if (orig && orig.found && orig.url) {{
                             regDedup(true);
-                            dioxus.send({{ type: 'sender_orig', url: orig.url }});
-                            return;
+                            inputUrl = orig.url;
+                            if (window.__chatwAiRestorer && window.__chatwAiRestorer.isAiEnabled()) {{
+                                const cached = await window.__chatwAiRestorer.restoreImageFromUrl(orig.url, {{
+                                    mediaId: {mid_json},
+                                    contentHash: {hash_json},
+                                    targetWidth: {target_w},
+                                    targetHeight: {target_h},
+                                    origProfileJson: {qp_json},
+                                    cacheOnly: true,
+                                }});
+                                if (cached && cached.enhanced && cached.url) {{
+                                    dioxus.send({{ type: 'done', url: cached.url, cacheHit: true, origUrl: orig.url }});
+                                    return;
+                                }}
+                            }}
+                            if (!{auto_flag}) {{
+                                dioxus.send({{ type: 'sender_orig', url: orig.url }});
+                                return;
+                            }}
                         }}
                     }}
-                    regDedup(false);
+                    if (inputUrl === {url_json}) {{
+                        regDedup(false);
+                    }}
                     if (!window.__chatwAiRestorer || !window.__chatwAiRestorer.isAiEnabled()) {{
                         dioxus.send({{ type: 'noop' }});
                         return;
                     }}
                     // 2. Check persistent IndexedDB AI Output Cache first (< 3ms)
-                    const cached = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
+                    const cached = await window.__chatwAiRestorer.restoreImageFromUrl(inputUrl, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
                         targetWidth: {target_w},
@@ -677,7 +698,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         cacheOnly: true,
                     }});
                     if (cached && cached.enhanced && cached.url) {{
-                        dioxus.send({{ type: 'done', url: cached.url, cacheHit: true }});
+                        dioxus.send({{ type: 'done', url: cached.url, cacheHit: true, origUrl: inputUrl }});
                         return;
                     }}
                     // 3. New device / history image not cached yet -> show sleek corner SVG icon until user clicks!
@@ -687,7 +708,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     }}
                     // 4. Live incoming image (or user tapped corner icon) -> blurred + AI shimmer + live progress!
                     dioxus.send({{ type: 'start', pct: 3 }});
-                    const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
+                    const res = await window.__chatwAiRestorer.restoreImageFromUrl(inputUrl, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
                         targetWidth: {target_w},
@@ -698,8 +719,9 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                             try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
                         }},
                     }});
+                    console.log('LB AI ENHANCE RESULT:', res);
                     if (res && res.enhanced && res.url) {{
-                        dioxus.send({{ type: 'done', url: res.url, cacheHit: Boolean(res.cacheHit) }});
+                        dioxus.send({{ type: 'done', url: res.url, cacheHit: Boolean(res.cacheHit), origUrl: inputUrl }});
                     }} else {{
                         dioxus.send({{ type: 'failed' }});
                     }}
@@ -714,9 +736,10 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         if let Some(orig_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
                             is_sender_original.set(true);
                             ai_enhanced.set(false);
-                            needs_on_demand_ai.set(false);
+                            needs_on_demand_ai.set(true);
                             ai_loading.set(false);
                             src.set(Some(orig_url.to_string()));
+                            raw_src.set(Some(orig_url.to_string()));
                         }
                         break;
                     }
@@ -743,6 +766,9 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         let was_loading = *ai_loading.peek();
                         ai_progress.set(100);
                         needs_on_demand_ai.set(false);
+                        if let Some(orig_url) = v.get("origUrl").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
+                            raw_src.set(Some(orig_url.to_string()));
+                        }
                         if let Some(new_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
                             ai_enhanced.set(true);
                             ai_cache_hit.set(v.get("cacheHit").and_then(|b| b.as_bool()).unwrap_or(false));
@@ -876,11 +902,11 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     let lb_orig_h = data.orig_h;
                     let is_ai = ai_enhanced();
                     let is_orig = is_sender_original();
-                    let can_ai = !is_orig && data.m != "image/gif";
+                    let can_ai = data.m != "image/gif" && !data.m.starts_with("video/");
                     let is_loading = ai_loading();
                     let is_revealing = ai_revealing();
                     let pct_now = ai_progress();
-                    let show_corner_icon = needs_on_demand_ai() && !is_ai && !is_orig && !is_loading && !is_revealing;
+                    let show_corner_icon = needs_on_demand_ai() && !is_ai && !is_loading && !is_revealing && can_ai;
 
                     let corner_raw = lb_raw_src.clone();
                     let corner_mid = data.u.clone();
@@ -1013,6 +1039,9 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         "data-blur-b64": "{bb}",
                         aria_hidden: "true",
                     }
+                    div { class: "ai-gen-frost", aria_hidden: "true" }
+                    div { class: "ai-gen-aurora", aria_hidden: "true" }
+                    div { class: "ai-gen-dots-base", aria_hidden: "true" }
                     span { class: "rich-image-blur-spinner", span { class: "spinner" } }
                 }
             } else {
@@ -2406,7 +2435,7 @@ pub fn GlobalImageLightbox() -> Element {
     if *active_key.peek() != cur_key {
         let auto_enh = media_opt
             .as_ref()
-            .map(|m| m.auto_enhance_on_open && !m.ai_restored && !m.is_sender_original && m.can_ai_enhance)
+            .map(|m| m.auto_enhance_on_open && !m.ai_restored && m.can_ai_enhance)
             .unwrap_or(false);
         active_key.set(cur_key.clone());
         viewport.set(read_viewport_size());
@@ -2457,6 +2486,7 @@ pub fn GlobalImageLightbox() -> Element {
                             try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
                         }},
                     }});
+                    console.log('LB AI ENHANCE RESULT:', res);
                     if (res && res.enhanced && res.url) {{
                         dioxus.send({{ type: 'done', url: res.url }});
                     }} else {{
@@ -2514,18 +2544,30 @@ pub fn GlobalImageLightbox() -> Element {
                             }
                         } else {
                             upscaling_ai.set(false);
+                            if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
+                                cur.auto_enhance_on_open = false;
+                                *GLOBAL_LIGHTBOX.write() = Some(cur);
+                            }
                         }
                         break;
                     }
                     _ => {
                         upscaling_ai.set(false);
                         lb_revealing.set(false);
+                        if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
+                            cur.auto_enhance_on_open = false;
+                            *GLOBAL_LIGHTBOX.write() = Some(cur);
+                        }
                         break;
                     }
                 }
             }
             if *upscaling_ai.peek() {
                 upscaling_ai.set(false);
+                if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
+                    cur.auto_enhance_on_open = false;
+                    *GLOBAL_LIGHTBOX.write() = Some(cur);
+                }
             }
         });
     };
@@ -2536,7 +2578,7 @@ pub fn GlobalImageLightbox() -> Element {
             return;
         }
         if let Some(m) = GLOBAL_LIGHTBOX.peek().clone() {
-            if m.auto_enhance_on_open && !m.ai_restored && !m.is_sender_original && m.can_ai_enhance {
+            if m.auto_enhance_on_open && !m.ai_restored && m.can_ai_enhance {
                 run_lb_enhance(m);
             }
         }
@@ -2586,7 +2628,7 @@ pub fn GlobalImageLightbox() -> Element {
         return rsx! {};
     };
 
-    let can_toggle_ai = media.can_ai_enhance && !media.is_sender_original && media.original_src.is_some();
+    let can_toggle_ai = media.can_ai_enhance && media.original_src.is_some();
     let (vw, vh) = viewport();
     let (fb_w, fb_h) = fallback_nat();
     let eff_w = if media.width > 0 { media.width } else { fb_w };
