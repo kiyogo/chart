@@ -420,6 +420,29 @@ pub fn EnhanceToggleIcon(#[props(default = 18)] size: u32) -> Element {
     }
 }
 
+/// Custom vector SVG "Focus" reticle icon for activating on-device AI clarity / super-resolution.
+#[component]
+pub fn FocusIcon(#[props(default = 18)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            "aria-hidden": "true",
+            circle { cx: "12", cy: "12", r: "3" }
+            path { d: "M3 7V5a2 2 0 0 1 2-2h2" }
+            path { d: "M17 3h2a2 2 0 0 1 2 2v2" }
+            path { d: "M21 17v2a2 2 0 0 1-2 2h-2" }
+            path { d: "M7 21H5a2 2 0 0 1-2-2v-2" }
+        }
+    }
+}
+
 #[component]
 pub fn GoogleIcon() -> Element {
     rsx! {

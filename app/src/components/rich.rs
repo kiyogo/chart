@@ -17,7 +17,7 @@ use crate::{
         avatar::Avatar,
         icons::{
             BarChartIcon, BellIcon, CheckIcon, CloseIcon, DownloadIcon, DownloadMinimalIcon,
-            EnhanceToggleIcon, FileTextIcon, MicIcon, PlusIcon, RefreshIcon, RotateCwIcon,
+            EnhanceToggleIcon, FileTextIcon, FocusIcon, MicIcon, PlusIcon, RefreshIcon, RotateCwIcon,
             ZoomInIcon, ZoomOutIcon,
         },
     },
@@ -965,7 +965,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                             corner_h,
                                         );
                                     },
-                                    EnhanceToggleIcon { size: 15 }
+                                    FocusIcon { size: 18 }
                                 }
                             }
                         }
