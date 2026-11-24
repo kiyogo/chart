@@ -12953,19 +12953,19 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     overscroll-behavior-y: contain;
   }
 
-  /* ---- Spec 117: Compact LEFT Vertical Feature Rail (.app-rail) ---- */
+  /* ---- Spec 117 & 118: Seamless Borderless LEFT Vertical Feature Rail (.app-rail) ---- */
   .app-rail {
-    width: 56px;
-    min-width: 56px;
-    max-width: 56px;
+    width: 54px;
+    min-width: 54px;
+    max-width: 54px;
     height: calc(100dvh - 58px - env(safe-area-inset-bottom));
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
     padding: max(10px, env(safe-area-inset-top)) 0 8px;
     gap: 6px;
-    border-top: none;
-    border-right: 1px solid var(--border-subtle);
+    border: none !important;
+    box-shadow: none !important;
     background: var(--bg-sidebar);
     flex-shrink: 0;
   }
@@ -12980,6 +12980,11 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     height: 40px;
     flex-shrink: 0;
     margin-bottom: 2px;
+  }
+  .rail-brand svg {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 8px;
   }
   .rail-nav {
     flex: 1 1 0;
@@ -13000,18 +13005,20 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   }
   .rail-nav .rail-item {
     flex: 0 0 auto;
-    width: 42px;
-    min-width: 42px;
-    height: 42px;
-    border-radius: 13px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    border-radius: 12px;
   }
-  .rail-nav .rail-item svg {
-    width: 22px;
-    height: 22px;
+  /* Spec 118: 100% uniform icon sizing across ALL left rail buttons (including Settings gear!) */
+  .app-rail .rail-item:not(.has-logo) svg {
+    width: 24px !important;
+    height: 24px !important;
   }
-  .rail-nav .rail-item.has-logo svg {
-    width: 34px;
-    height: 34px;
+  .app-rail .rail-item.has-logo svg {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 8px;
   }
   .rail-pins {
     display: flex;
@@ -13020,7 +13027,7 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     gap: 6px;
     width: 100%;
     padding-top: 6px;
-    border-top: 1px solid var(--border-subtle);
+    border: none !important;
   }
   .rail-spacer {
     display: none;
@@ -13032,24 +13039,23 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     flex-direction: column;
     align-items: center;
     width: 100%;
-    padding: 6px 0 0;
-    border-left: none;
-    border-top: 1px solid var(--border-subtle);
+    padding: 4px 0 0;
+    border: none !important;
     flex-shrink: 0;
     gap: 4px;
   }
   .rail-bottom > .rail-item:not(.rail-mobile-in-bottom) {
     display: inline-flex;
-    width: 42px;
-    height: 42px;
-    min-width: 42px;
-    border-radius: 13px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    border-radius: 12px;
   }
   .rail-bottom > .rail-download-wrap {
     display: none !important;
   }
 
-  /* ---- Spec 117: Core 5-Tab Mobile Bottom Bar (.mobile-bottom-bar) ---- */
+  /* ---- Spec 117 & 118: Seamless Borderless Core 5-Tab Bottom Bar (.mobile-bottom-bar) ---- */
   .mobile-bottom-bar {
     position: fixed;
     left: 0;
@@ -13062,17 +13068,38 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     height: calc(58px + env(safe-area-inset-bottom));
     padding: 4px 4px max(6px, env(safe-area-inset-bottom));
     background: var(--bg-sidebar);
-    border-top: 1px solid var(--border-subtle);
+    border: none !important;
+    box-shadow: none !important;
   }
   .mobile-bottom-bar.hidden-mobile {
     display: none !important;
   }
+
+  /* Spec 118: Unified frosted white/dark glass across left rail + sidebar + bottom bar when wallpaper/glass is active */
+  html[data-panel-glass="true"] .app-rail,
+  html[data-panel-translucent="true"] .app-rail,
+  html[data-app-wp]:not([data-app-wp="none"]) .app-rail,
+  html[data-panel-glass="true"] .mobile-bottom-bar,
+  html[data-panel-translucent="true"] .mobile-bottom-bar,
+  html[data-app-wp]:not([data-app-wp="none"]) .mobile-bottom-bar {
+    background: color-mix(in srgb, var(--bg-surface) var(--panel-opacity, 72%), transparent) !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  html[data-panel-glass="true"] .app-rail:not(:has(.account-menu, .rail-menu, .menu-dismiss)),
+  html[data-app-wp]:not([data-app-wp="none"]) .app-rail:not(:has(.account-menu, .rail-menu, .menu-dismiss)),
+  html[data-panel-glass="true"] .mobile-bottom-bar,
+  html[data-app-wp]:not([data-app-wp="none"]) .mobile-bottom-bar {
+    backdrop-filter: blur(var(--panel-blur, 16px)) saturate(1.3) !important;
+    -webkit-backdrop-filter: blur(var(--panel-blur, 16px)) saturate(1.3) !important;
+  }
+
   .mobile-tab {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 3px;
     min-height: 48px;
     padding: 2px 2px;
     border: none;
@@ -13095,8 +13122,17 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
+    width: 24px;
     height: 24px;
+  }
+  /* Spec 118: Exact 22x22px uniform size for ALL 5 bottom bar icons including Account avatar */
+  .mobile-tab-icon svg,
+  .mobile-tab-icon .user-avatar {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    font-size: 0.6875rem !important;
   }
   .mobile-tab-icon .rail-count {
     top: -5px;
@@ -13330,7 +13366,7 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   .settings-mobile-bar {
     min-height: calc(54px + env(safe-area-inset-top));
     padding: max(10px, env(safe-area-inset-top)) 12px 10px;
-    border-bottom: 1px solid var(--border-subtle);
+    border: none !important;
   }
   .settings-nav {
     padding: 8px 10px max(16px, env(safe-area-inset-bottom));

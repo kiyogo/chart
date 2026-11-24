@@ -73,6 +73,16 @@ async function auditViewport(browser, vw, vh, tag, alice, bob, aliceLs, aliceCoo
       const r = el.getBoundingClientRect();
       return { label: el.getAttribute('aria-label') || '', w: Math.round(r.width), h: Math.round(r.height) };
     });
+    const leftOutlineSizes = [...document.querySelectorAll('.app-rail .rail-item:not(.has-logo) svg')]
+      .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 || r.height > 0; })
+      .map((el) => { const r = el.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; });
+    const leftLogoSizes = [...document.querySelectorAll('.app-rail .rail-brand svg, .app-rail .rail-item.has-logo svg')]
+      .filter((el) => getComputedStyle(el).display !== 'none')
+      .map((el) => { const r = el.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; });
+    const bottomIconSizes = [...document.querySelectorAll('.mobile-bottom-bar .mobile-tab-icon > svg, .mobile-bottom-bar .mobile-tab-icon .user-avatar')]
+      .map((el) => { const r = el.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; });
+    const railBorderR = rail ? getComputedStyle(rail).borderRightWidth : null;
+    const bottomBorderT = bottomBar ? getComputedStyle(bottomBar).borderTopWidth : null;
     return {
       scrollW: document.documentElement.scrollWidth,
       innerW: window.innerWidth,
@@ -83,6 +93,11 @@ async function auditViewport(browser, vw, vh, tag, alice, bob, aliceLs, aliceCoo
       bottomTabCount: bottomTabs.length,
       minBottomTabW: Math.min(...bottomTabs.map((x) => x.w)),
       minBottomTabH: Math.min(...bottomTabs.map((x) => x.h)),
+      railBorderR,
+      bottomBorderT,
+      leftOutlineSizes,
+      leftLogoSizes,
+      bottomIconSizes,
     };
   });
   console.log(`[${tag}] LIST_AUDIT:`, JSON.stringify(listAudit));
@@ -96,8 +111,52 @@ async function auditViewport(browser, vw, vh, tag, alice, bob, aliceLs, aliceCoo
   if (listAudit.minBottomTabW < 64 || listAudit.minBottomTabH < 44) {
     throw new Error(`[${tag}] Bottom tab touch targets too small: ${JSON.stringify(listAudit)}`);
   }
+  if (listAudit.railBorderR !== '0px' || listAudit.bottomBorderT !== '0px') {
+    throw new Error(`[${tag}] Harsh divider borders still present: rail=${listAudit.railBorderR} bottom=${listAudit.bottomBorderT}`);
+  }
+  if (listAudit.leftOutlineSizes.some((s) => s !== '24x24')) {
+    throw new Error(`[${tag}] Left outline icons not uniform 24x24: ${JSON.stringify(listAudit.leftOutlineSizes)}`);
+  }
+  if (listAudit.leftLogoSizes.some((s) => s !== '28x28')) {
+    throw new Error(`[${tag}] Left logo icons not uniform 28x28: ${JSON.stringify(listAudit.leftLogoSizes)}`);
+  }
+  if (listAudit.bottomIconSizes.some((s) => s !== '22x22')) {
+    throw new Error(`[${tag}] Bottom tab icons not uniform 22x22: ${JSON.stringify(listAudit.bottomIconSizes)}`);
+  }
   if (tag === '390x844') {
     await page.screenshot({ path: path.join(OUT_DIR, '02_conversations_390x844.png') });
+    // Also verify Light + Frosted Glass Wallpaper mode (Spec 118)
+    const glassAudit = await page.evaluate(() => {
+      const h = document.documentElement;
+      h.setAttribute('data-theme', 'light');
+      h.setAttribute('data-panel-glass', 'true');
+      h.setAttribute('data-app-wp', 'sunset');
+      h.style.setProperty('--panel-opacity', '62%');
+      h.style.setProperty('--panel-blur', '18px');
+      document.body.style.background = 'linear-gradient(135deg, #f5c6aa 0%, #c89f8c 50%, #7d8da6 100%)';
+      const railCs = getComputedStyle(document.querySelector('.app-rail'));
+      const barCs = getComputedStyle(document.querySelector('.mobile-bottom-bar'));
+      return {
+        railBg: railCs.backgroundColor,
+        railBlur: railCs.backdropFilter,
+        barBg: barCs.backgroundColor,
+        barBlur: barCs.backdropFilter,
+      };
+    });
+    console.log(`[${tag}] LIGHT_GLASS_AUDIT:`, JSON.stringify(glassAudit));
+    if (!glassAudit.barBlur || glassAudit.barBlur === 'none' || !glassAudit.railBlur || glassAudit.railBlur === 'none') {
+      throw new Error(`[${tag}] Frosted glass blur missing on rail/bottom bar: ${JSON.stringify(glassAudit)}`);
+    }
+    await page.screenshot({ path: path.join(OUT_DIR, '11_light_glass_wallpaper_390x844.png') });
+    await page.evaluate(() => {
+      const h = document.documentElement;
+      h.setAttribute('data-theme', 'dark');
+      h.removeAttribute('data-panel-glass');
+      h.removeAttribute('data-app-wp');
+      h.style.removeProperty('--panel-opacity');
+      h.style.removeProperty('--panel-blur');
+      document.body.style.background = '';
+    });
   }
 
   // Open DM chat with Bob
