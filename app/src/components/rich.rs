@@ -1042,6 +1042,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     div { class: "ai-gen-frost", aria_hidden: "true" }
                     div { class: "ai-gen-aurora", aria_hidden: "true" }
                     div { class: "ai-gen-dots-base", aria_hidden: "true" }
+                    div { class: "ai-gen-dots-wave", aria_hidden: "true" }
                     span { class: "rich-image-blur-spinner", span { class: "spinner" } }
                 }
             } else {

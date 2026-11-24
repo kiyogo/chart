@@ -3917,27 +3917,43 @@ body:has(.lightbox) .panel-resizer {
 }
 .ai-gen-dots-wave {
   position: absolute;
-  inset: -12% -55%;
+  inset: -10% -25%;
   z-index: 5;
   background: linear-gradient(
-    112deg,
-    transparent 26%,
-    rgba(96, 165, 250, 0.18) 41%,
-    rgba(224, 242, 254, 0.40) 50%,
-    rgba(167, 139, 250, 0.18) 59%,
-    transparent 74%
+    108deg,
+    transparent 32%,
+    rgba(56, 189, 248, 0.22) 42%,
+    rgba(96, 165, 250, 0.60) 47%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(192, 132, 252, 0.60) 53%,
+    rgba(168, 85, 247, 0.22) 58%,
+    transparent 68%
   );
-  mix-blend-mode: screen;
+  filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.85)) drop-shadow(0 0 6px rgba(255, 255, 255, 0.95));
   will-change: transform;
-  transform: translate3d(-45%, 0, 0);
-  animation: chatwAiSheenGlide 2.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform: translate3d(-60%, 0, 0);
+  animation: chatwAiSheenGlide 1.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  pointer-events: none;
+}
+.ai-gen-dots-wave::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  background: #FFFFFF;
+  box-shadow: 0 0 10px #FFFFFF, 0 0 20px #38BDF8, 0 0 36px #818CF8;
+  transform: skewX(-18deg);
+  opacity: 0.95;
+  pointer-events: none;
 }
 @keyframes chatwAiSheenGlide {
   0% {
-    transform: translate3d(-48%, 0, 0);
+    transform: translate3d(-62%, 0, 0);
   }
   100% {
-    transform: translate3d(48%, 0, 0);
+    transform: translate3d(62%, 0, 0);
   }
 }
 .ai-gen-pct {
