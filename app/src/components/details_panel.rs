@@ -595,6 +595,11 @@ fn SelfMediaThumb(
                         size,
                         ai_restored: false,
                         original_src: None,
+                        ai_model: None,
+                        ai_scale: 1,
+                        ai_out_size: 0,
+                        is_sender_original: false,
+                        compressed_size: size,
                     });
                 } else {
                     on_jump_to.call(jump_id.clone());

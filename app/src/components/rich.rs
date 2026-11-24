@@ -39,6 +39,11 @@ pub struct LightboxMedia {
     pub size: u64,
     pub ai_restored: bool,
     pub original_src: Option<String>,
+    pub ai_model: Option<String>,
+    pub ai_scale: u32,
+    pub ai_out_size: u64,
+    pub is_sender_original: bool,
+    pub compressed_size: u64,
 }
 
 pub static GLOBAL_LIGHTBOX: GlobalSignal<Option<LightboxMedia>> = GlobalSignal::new(|| None);
@@ -509,20 +514,23 @@ fn parse_blur_data_uri(raw: &str) -> Option<(&str, &str)> {
 
 #[component]
 pub fn RichImage(data: ImageData) -> Element {
-    let init_key = (data.u.clone(), data.k.clone(), data.n.clone());
     let init_cached = platform::get_cached_blob_url_sync(&data.u, &data.k, &data.n);
     let cached_raw = init_cached.clone();
     let src = use_signal(move || init_cached);
     let raw_src = use_signal(move || cached_raw);
-    let loaded_key = use_signal(move || {
-        if src.peek().is_some() { Some(init_key) } else { None }
-    });
+    let loaded_key = use_signal(|| Option::<(String, String, String)>::None);
     let missing = use_signal(|| Option::<(String, String, String)>::None);
     let mut rec_status = use_signal(|| Option::<String>::None);
     let failed = use_signal(|| false);
     let ai_enhanced = use_signal(|| false);
     let ai_loading = use_signal(|| false);
     let ai_cache_hit = use_signal(|| false);
+    let ai_model_label = use_signal(|| Option::<String>::None);
+    let ai_scale = use_signal(|| 1u32);
+    let ai_out_w = use_signal(|| 0u32);
+    let ai_out_h = use_signal(|| 0u32);
+    let ai_out_size = use_signal(|| 0u64);
+    let is_sender_original = use_signal(|| false);
 
     let key_now = (data.u.clone(), data.k.clone(), data.n.clone());
     let mime_now = data.m.clone();
@@ -539,6 +547,12 @@ pub fn RichImage(data: ImageData) -> Element {
         let mut ai_loading = ai_loading;
         let mut ai_enhanced = ai_enhanced;
         let mut ai_cache_hit = ai_cache_hit;
+        let mut ai_model_label = ai_model_label;
+        let mut ai_scale = ai_scale;
+        let mut ai_out_w = ai_out_w;
+        let mut ai_out_h = ai_out_h;
+        let mut ai_out_size = ai_out_size;
+        let mut is_sender_original = is_sender_original;
         let mut src = src;
         ai_loading.set(true);
         spawn(async move {
@@ -548,6 +562,14 @@ pub fn RichImage(data: ImageData) -> Element {
             let js = format!(
                 r#"
                 (async () => {{
+                    // Sender keeps their 100% untouched original file locally — show immediately without AI!
+                    if (window.__chatwMediaOpt && window.__chatwMediaOpt.getSenderOriginalFromCache) {{
+                        const orig = await window.__chatwMediaOpt.getSenderOriginalFromCache({mid_json});
+                        if (orig && orig.found && orig.url) {{
+                            dioxus.send({{ senderOriginal: true, url: orig.url, width: orig.width || 0, height: orig.height || 0, outBytes: orig.byteSize || 0 }});
+                            return;
+                        }}
+                    }}
                     if (!window.__chatwAiRestorer || !window.__chatwAiRestorer.isAiEnabled()) {{
                         dioxus.send({{ enhanced: false }});
                         return;
@@ -565,10 +587,44 @@ pub fn RichImage(data: ImageData) -> Element {
             let mut eval = dioxus::document::eval(&js);
             if let Ok(v) = eval.recv::<serde_json::Value>().await {
                 ai_loading.set(false);
+                if v.get("senderOriginal").and_then(|b| b.as_bool()) == Some(true) {
+                    if let Some(orig_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
+                        is_sender_original.set(true);
+                        ai_enhanced.set(false);
+                        if let Some(w) = v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0) {
+                            ai_out_w.set(w as u32);
+                        }
+                        if let Some(h) = v.get("height").and_then(|n| n.as_u64()).filter(|&n| n > 0) {
+                            ai_out_h.set(h as u32);
+                        }
+                        if let Some(sz) = v.get("outBytes").and_then(|n| n.as_u64()) {
+                            ai_out_size.set(sz);
+                        }
+                        src.set(Some(orig_url.to_string()));
+                    }
+                    return;
+                }
                 if v.get("enhanced").and_then(|b| b.as_bool()) == Some(true) {
                     if let Some(new_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
                         ai_enhanced.set(true);
                         ai_cache_hit.set(v.get("cacheHit").and_then(|b| b.as_bool()).unwrap_or(false));
+                        if let Some(lbl) = v.get("modelLabel").and_then(|s| s.as_str()) {
+                            ai_model_label.set(Some(lbl.to_string()));
+                        } else if let Some(mid) = v.get("modelId").and_then(|s| s.as_str()) {
+                            ai_model_label.set(Some(mid.to_string()));
+                        }
+                        if let Some(sc) = v.get("superRes").and_then(|n| n.as_u64()) {
+                            ai_scale.set(sc as u32);
+                        }
+                        if let Some(w) = v.get("width").and_then(|n| n.as_u64()).filter(|&n| n > 0) {
+                            ai_out_w.set(w as u32);
+                        }
+                        if let Some(h) = v.get("height").and_then(|n| n.as_u64()).filter(|&n| n > 0) {
+                            ai_out_h.set(h as u32);
+                        }
+                        if let Some(sz) = v.get("outBytes").and_then(|n| n.as_u64()) {
+                            ai_out_size.set(sz);
+                        }
                         src.set(Some(new_url.to_string()));
                     }
                 }
@@ -585,6 +641,12 @@ pub fn RichImage(data: ImageData) -> Element {
         let mut ai_enhanced = ai_enhanced;
         let mut ai_loading = ai_loading;
         let mut ai_cache_hit = ai_cache_hit;
+        let mut ai_model_label = ai_model_label;
+        let mut ai_scale = ai_scale;
+        let mut ai_out_w = ai_out_w;
+        let mut ai_out_h = ai_out_h;
+        let mut ai_out_size = ai_out_size;
+        let mut is_sender_original = is_sender_original;
         let mut raw_src = raw_src;
         let mut src = src;
         let mut loaded_key = loaded_key;
@@ -594,6 +656,12 @@ pub fn RichImage(data: ImageData) -> Element {
         ai_enhanced.set(false);
         ai_loading.set(false);
         ai_cache_hit.set(false);
+        ai_model_label.set(None);
+        ai_scale.set(1);
+        ai_out_w.set(0);
+        ai_out_h.set(0);
+        ai_out_size.set(0);
+        is_sender_original.set(false);
         if let Some(hit) = platform::get_cached_blob_url_sync(&u, &k, &n) {
             loaded_key.set(Some(key_now));
             missing.set(None);
@@ -663,7 +731,19 @@ pub fn RichImage(data: ImageData) -> Element {
                     let lb_orig_w = data.orig_w;
                     let lb_orig_h = data.orig_h;
                     let lb_size = data.size;
+                    let lb_orig_size = data.orig_size;
                     let is_ai = ai_enhanced();
+                    let is_orig = is_sender_original();
+                    let cur_scale = ai_scale();
+                    let cur_model = ai_model_label();
+                    let cur_out_w = ai_out_w();
+                    let cur_out_h = ai_out_h();
+                    let cur_out_sz = ai_out_size();
+                    let badge_txt = if cur_scale >= 2 {
+                        "✨ AI CNN 2×"
+                    } else {
+                        "✨ AI CNN Đã làm nét"
+                    };
                     rsx! {
                         button {
                             r#type: "button",
@@ -671,7 +751,9 @@ pub fn RichImage(data: ImageData) -> Element {
                             style: "{stage_style}",
                             aria_label: "See photos",
                             onclick: move |_| {
-                                let (disp_w, disp_h) = if is_ai && lb_orig_w > 0 && lb_orig_h > 0 {
+                                let (disp_w, disp_h) = if cur_out_w > 0 && cur_out_h > 0 {
+                                    (cur_out_w, cur_out_h)
+                                } else if (is_ai || is_orig) && lb_orig_w > 0 && lb_orig_h > 0 {
                                     (lb_orig_w, lb_orig_h)
                                 } else {
                                     (lb_w, lb_h)
@@ -684,6 +766,11 @@ pub fn RichImage(data: ImageData) -> Element {
                                     size: lb_size,
                                     ai_restored: is_ai,
                                     original_src: Some(lb_raw_src.clone()),
+                                    ai_model: cur_model.clone(),
+                                    ai_scale: cur_scale,
+                                    ai_out_size: if is_orig { cur_out_sz.max(lb_orig_size) } else { cur_out_sz },
+                                    is_sender_original: is_orig,
+                                    compressed_size: lb_size,
                                 });
                             },
                             img {
@@ -693,11 +780,14 @@ pub fn RichImage(data: ImageData) -> Element {
                                 decoding: "async",
                                 "data-ai-restored": if is_ai { "true" } else { "false" },
                                 "data-ai-cache-hit": if ai_cache_hit() { "true" } else { "false" },
+                                "data-sender-original": if is_orig { "true" } else { "false" },
                             }
-                            if is_ai {
-                                span { class: "ai-restored-badge", "✨ AI Đã làm nét" }
+                            if is_orig {
+                                span { class: "ai-restored-badge", "Ảnh gốc" }
+                            } else if is_ai {
+                                span { class: "ai-restored-badge", "{badge_txt}" }
                             } else if ai_loading() {
-                                span { class: "ai-restoring-badge", "✨ AI đang làm nét..." }
+                                span { class: "ai-restoring-badge", "✨ AI CNN đang xử lý" }
                             }
                         }
                     }
@@ -1546,6 +1636,7 @@ pub fn GlobalImageLightbox() -> Element {
     let mut drag_origin = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
     let mut did_drag = use_signal(|| false);
     let mut show_original = use_signal(|| false);
+    let mut upscaling_2x = use_signal(|| false);
     let mut active_src = use_signal(String::new);
     // Live layout (base_w, base_h, vw, vh) measured from `.lightbox-img` offsetWidth/offsetHeight
     let mut bounds = use_signal(|| (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64));
@@ -1554,6 +1645,7 @@ pub fn GlobalImageLightbox() -> Element {
     if *active_src.peek() != cur_src {
         active_src.set(cur_src.clone());
         show_original.set(false);
+        upscaling_2x.set(false);
         zoom.set(1.0);
         pan_x.set(0.0);
         pan_y.set(0.0);
@@ -1669,12 +1761,74 @@ pub fn GlobalImageLightbox() -> Element {
     } else {
         media.name.clone()
     };
-    let dims_label = match (media.width > 0 && media.height > 0, media.size > 0) {
-        (true, true) => format!("{} × {} · {}", media.width, media.height, format_bytes_human(media.size)),
-        (true, false) => format!("{} × {}", media.width, media.height),
-        (false, true) => format_bytes_human(media.size),
-        (false, false) => String::new(),
+    let dims_label = if media.is_sender_original {
+        let orig_sz = media.ai_out_size.max(media.size);
+        let dims = if media.width > 0 && media.height > 0 {
+            format!("{} × {}", media.width, media.height)
+        } else {
+            String::new()
+        };
+        if media.compressed_size > 0 && media.compressed_size < orig_sz {
+            format!(
+                "{}{}Gốc {} · Nén gửi {}",
+                dims,
+                if dims.is_empty() { "" } else { " · " },
+                format_bytes_human(orig_sz),
+                format_bytes_human(media.compressed_size)
+            )
+        } else {
+            format!(
+                "{}{}Gốc {}",
+                dims,
+                if dims.is_empty() { "" } else { " · " },
+                format_bytes_human(orig_sz)
+            )
+        }
+    } else if media.ai_restored && show_original() {
+        format!("Ảnh nén trước AI · {}", format_bytes_human(media.size))
+    } else if media.ai_restored {
+        let dims = if media.width > 0 && media.height > 0 {
+            format!("{} × {}", media.width, media.height)
+        } else {
+            String::new()
+        };
+        if media.ai_out_size > 0 && media.size > 0 {
+            format!(
+                "{}{}Tải {} → AI {}",
+                dims,
+                if dims.is_empty() { "" } else { " · " },
+                format_bytes_human(media.size),
+                format_bytes_human(media.ai_out_size)
+            )
+        } else if media.size > 0 {
+            format!(
+                "{}{}Tải {}",
+                dims,
+                if dims.is_empty() { "" } else { " · " },
+                format_bytes_human(media.size)
+            )
+        } else {
+            dims
+        }
+    } else {
+        match (media.width > 0 && media.height > 0, media.size > 0) {
+            (true, true) => format!("{} × {} · {}", media.width, media.height, format_bytes_human(media.size)),
+            (true, false) => format!("{} × {}", media.width, media.height),
+            (false, true) => format_bytes_human(media.size),
+            (false, false) => String::new(),
+        }
     };
+    let ai_pill_text = if media.is_sender_original {
+        "Ảnh gốc trên máy".to_string()
+    } else if let Some(ref m) = media.ai_model {
+        format!("✨ {m}")
+    } else if media.ai_scale >= 2 {
+        "✨ AI CNN 2×".to_string()
+    } else {
+        "✨ AI CNN Đã làm nét".to_string()
+    };
+    let can_force_2x = !media.is_sender_original && media.ai_scale < 2 && media.original_src.is_some();
+    let media_for_2x = media.clone();
 
     rsx! {
         div {
@@ -1810,11 +1964,65 @@ pub fn GlobalImageLightbox() -> Element {
                     if !dims_label.is_empty() {
                         span { class: "lightbox-dims", "{dims_label}" }
                     }
-                    if media.ai_restored {
-                        span { class: "lightbox-ai-pill", "✨ AI Đã làm nét" }
+                    if media.ai_restored || media.is_sender_original {
+                        span { class: "lightbox-ai-pill", "{ai_pill_text}" }
                     }
                 }
                 div { class: "lightbox-actions", role: "toolbar", aria_label: "Photo", onclick: move |e| e.stop_propagation(),
+                    if can_force_2x {
+                        button {
+                            r#type: "button",
+                            class: "lightbox-compare-btn",
+                            disabled: upscaling_2x(),
+                            aria_label: "Phóng nét AI CNN 2×",
+                            title: "Chạy mạng Neural CNN 2× Siêu phân giải trực tiếp trên thiết bị",
+                            onclick: move |_| {
+                                let m = media_for_2x.clone();
+                                let Some(raw_u) = m.original_src.clone() else { return; };
+                                upscaling_2x.set(true);
+                                spawn(async move {
+                                    let url_json = serde_json::to_string(&raw_u).unwrap_or_default();
+                                    let mid_json = serde_json::to_string(&m.name).unwrap_or_default();
+                                    let js = format!(
+                                        r#"
+                                        (async () => {{
+                                            if (!window.__chatwAiRestorer) {{ dioxus.send({{ enhanced: false }}); return; }}
+                                            const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
+                                                mediaId: {mid_json},
+                                                force2x: true,
+                                                forceRun: true,
+                                            }});
+                                            dioxus.send(res || {{ enhanced: false }});
+                                        }})();
+                                        "#
+                                    );
+                                    let mut eval = dioxus::document::eval(&js);
+                                    if let Ok(v) = eval.recv::<serde_json::Value>().await {
+                                        if v.get("enhanced").and_then(|b| b.as_bool()) == Some(true) {
+                                            if let Some(new_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
+                                                let nw = v.get("width").and_then(|n| n.as_u64()).unwrap_or(m.width as u64) as u32;
+                                                let nh = v.get("height").and_then(|n| n.as_u64()).unwrap_or(m.height as u64) as u32;
+                                                let out_sz = v.get("outBytes").and_then(|n| n.as_u64()).unwrap_or(0);
+                                                let lbl = v.get("modelLabel").and_then(|s| s.as_str()).map(str::to_string);
+                                                *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
+                                                    src: new_url.to_string(),
+                                                    width: nw,
+                                                    height: nh,
+                                                    ai_restored: true,
+                                                    ai_model: lbl.or(Some("CNN 2×".into())),
+                                                    ai_scale: 2,
+                                                    ai_out_size: out_sz,
+                                                    ..m
+                                                });
+                                            }
+                                        }
+                                    }
+                                    upscaling_2x.set(false);
+                                });
+                            },
+                            if upscaling_2x() { "Đang chạy CNN 2×" } else { "✨ CNN 2×" }
+                        }
+                    }
                     if media.ai_restored && media.original_src.is_some() {
                         button {
                             r#type: "button",

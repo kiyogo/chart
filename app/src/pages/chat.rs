@@ -3005,8 +3005,19 @@ pub fn Chat(
                         };
                         let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
                     }
-                    // Pre-register blob in memory pool so sender's confirmed bubble appears with 0 flicker & 0 re-download!
+                    // Copy sender's 100% untouched original file into sender's local app storage so sender sees crisp original!
                     if payload.media_kind == "image" {
+                        if let Some(ref p) = preview_key {
+                            let rid = resp["ref_id"].as_str().unwrap_or_default();
+                            crate::storage::media_opt::commit_sender_original(
+                                p,
+                                &url,
+                                &sealed.key_b64,
+                                &sealed.nonce_b64,
+                                rid,
+                            )
+                            .await;
+                        }
                         let _ = platform::register_cached_blob_url(
                             &url,
                             &sealed.key_b64,
@@ -3498,6 +3509,10 @@ pub fn Chat(
                         let _ = crate::storage::put_local_object(&meta, &bytes_for_cache).await;
                     }
                     if payload.media_kind == "image" {
+                        if let Some(ref p) = preview_key {
+                            let rid = resp["ref_id"].as_str().unwrap_or_default();
+                            crate::storage::media_opt::commit_sender_original(p, &url, "", "", rid).await;
+                        }
                         let _ = platform::register_cached_blob_url(&url, "", "", &bytes_for_cache, &payload.mime).await;
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
@@ -3591,6 +3606,10 @@ pub fn Chat(
                         let _ = crate::storage::put_local_object(&meta, &bytes_for_cache).await;
                     }
                     if payload.media_kind == "image" {
+                        if let Some(ref p) = preview_key {
+                            let rid = resp["ref_id"].as_str().unwrap_or_default();
+                            crate::storage::media_opt::commit_sender_original(p, &url, "", "", rid).await;
+                        }
                         let _ = platform::register_cached_blob_url(&url, "", "", &bytes_for_cache, &payload.mime).await;
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(

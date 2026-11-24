@@ -8,6 +8,7 @@
 #[cfg(target_arch = "wasm32")]
 pub fn install_wasm_media_bridge() {
     use chatw_media_core::{
+        ai::cnn_sr::{CnnModelKind, raw_cnn_weights_bytes, run_cnn_sr_tiled},
         avif::{AvifCompressionMode, AvifEncodeOptions, optimize_image_to_avif},
         classifier::ImageClass,
         dedup::hash_bytes_exact,
@@ -31,15 +32,15 @@ pub fn install_wasm_media_bridge() {
 
     let api = Object::new();
 
-    // 1. encodeAvifAdaptive(u8: Uint8Array, mode?: string) -> { ok, bytes, width, height, isCrispText, estimatedSsim, aiRecommended }
+    // 1. encodeAvifAdaptive(u8: Uint8Array, mode?: string) -> { ok, bytes, width, height, targetWidth, targetHeight, superResRecommended, isCrispText, estimatedSsim, aiRecommended }
     let enc_cb = Closure::<dyn Fn(Uint8Array, JsValue) -> JsValue>::new(
         move |input: Uint8Array, mode_val: JsValue| {
             let raw = input.to_vec();
-            let mode_str = mode_val.as_string().unwrap_or_else(|| "fast".into());
+            let mode_str = mode_val.as_string().unwrap_or_else(|| "ultra".into());
             let mode = match mode_str.as_str() {
                 "high" => AvifCompressionMode::HighQuality,
-                "ultra" => AvifCompressionMode::FastAdaptive, // FastAdaptive on single-thread WASM keeps UI responsive while outputting genuine AVIF
-                _ => AvifCompressionMode::FastAdaptive,
+                "balanced" => AvifCompressionMode::FastAdaptive,
+                "ultra" | "aggressive" | "fast" | _ => AvifCompressionMode::UltraAggressive,
             };
             let opts = AvifEncodeOptions {
                 mode,
@@ -56,10 +57,14 @@ pub fn install_wasm_media_bridge() {
                         res.analysis.class,
                         ImageClass::CrispTextUi | ImageClass::FlatGraphic | ImageClass::AlphaGraphic
                     );
+                    let super_res = res.width < res.target_width || res.height < res.target_height;
                     let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
                     let _ = Reflect::set(&out, &"bytes".into(), &bytes.into());
                     let _ = Reflect::set(&out, &"width".into(), &JsValue::from(res.width));
                     let _ = Reflect::set(&out, &"height".into(), &JsValue::from(res.height));
+                    let _ = Reflect::set(&out, &"targetWidth".into(), &JsValue::from(res.target_width));
+                    let _ = Reflect::set(&out, &"targetHeight".into(), &JsValue::from(res.target_height));
+                    let _ = Reflect::set(&out, &"superResRecommended".into(), &JsValue::from(super_res));
                     let _ = Reflect::set(&out, &"isCrispText".into(), &JsValue::from(is_crisp));
                     let _ = Reflect::set(
                         &out,
@@ -132,17 +137,55 @@ pub fn install_wasm_media_bridge() {
         JsValue::from(h.blake3_hex)
     });
 
+    // 5. restoreImageCnn(rgba: Uint8Array, width: u32, height: u32, modelKind?: string) -> { ok, rgba, width, height, scale, modelId }
+    let cnn_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32, model_val: JsValue| {
+            let raw = rgba.to_vec();
+            let model_str = model_val.as_string().unwrap_or_else(|| "auto".into());
+            let kind = CnnModelKind::from_str_name(&model_str);
+            let out = Object::new();
+            match run_cnn_sr_tiled(&raw, width, height, kind, 192, None) {
+                Ok(res) => {
+                    let bytes = Uint8Array::from(res.rgba.as_slice());
+                    let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
+                    let _ = Reflect::set(&out, &"rgba".into(), &bytes.into());
+                    let _ = Reflect::set(&out, &"width".into(), &JsValue::from(res.width));
+                    let _ = Reflect::set(&out, &"height".into(), &JsValue::from(res.height));
+                    let _ = Reflect::set(&out, &"scale".into(), &JsValue::from(res.scale));
+                    let _ = Reflect::set(&out, &"modelId".into(), &JsValue::from(res.model_id));
+                }
+                Err(err) => {
+                    let _ = Reflect::set(&out, &"ok".into(), &JsValue::FALSE);
+                    let _ = Reflect::set(&out, &"error".into(), &JsValue::from(err.to_string()));
+                }
+            }
+            out.into()
+        },
+    );
+
+    // 6. getCnnWeights(modelKind?: string) -> Uint8Array (raw CWNN1 binary weights shared with WebGPU WGSL shaders)
+    let weights_cb = Closure::<dyn Fn(JsValue) -> JsValue>::new(move |model_val: JsValue| {
+        let model_str = model_val.as_string().unwrap_or_else(|| "anime".into());
+        let kind = CnnModelKind::from_str_name(&model_str);
+        Uint8Array::from(raw_cnn_weights_bytes(kind)).into()
+    });
+
     let _ = Reflect::set(&api, &"version".into(), &JsValue::from("chatw-media-core-v2"));
+    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("anime4k-crelu-8layer-v1"));
     let _ = Reflect::set(&api, &"encodeAvifAdaptive".into(), enc_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"compressFileSmart".into(), cmp_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"decompressFileVerified".into(), dec_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"blake3Hex".into(), b3_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"restoreImageCnn".into(), cnn_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"getCnnWeights".into(), weights_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&win, &"__chatwWasmMedia".into(), &api.into());
 
     enc_cb.forget();
     cmp_cb.forget();
     dec_cb.forget();
     b3_cb.forget();
+    cnn_cb.forget();
+    weights_cb.forget();
 }
 
 #[cfg(not(target_arch = "wasm32"))]

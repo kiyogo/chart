@@ -20,6 +20,9 @@ use serde::{Deserialize, Serialize};
 pub enum AvifCompressionMode {
     /// Default: Multi-candidate ultra compression balancing smallest size with perceptual quality floor.
     UltraAdaptive,
+    /// Maximum compression (2× adaptive downscale + aggressive AVIF quantization) designed for
+    /// instant sender local-original display + on-device receiver 2× CNN Super-Resolution recovery!
+    UltraAggressive,
     /// Fast single-pass adaptive AVIF (ideal for constrained mobile/WASM latency budgets).
     FastAdaptive,
     /// High fidelity for documents, screenshots, HDR, and archival sharing.
@@ -58,6 +61,9 @@ pub struct AdaptiveAvifOutput {
     pub ext: &'static str,
     pub width: u32,
     pub height: u32,
+    /// Original pre-downscale target dimensions for receiver on-device 2× CNN Super-Resolution recovery.
+    pub target_width: u32,
+    pub target_height: u32,
     pub original_size: usize,
     pub optimized_size: usize,
     pub compression_ratio: f32,
@@ -92,14 +98,58 @@ mod impl_codec {
     fn candidate_configs(analysis: &ImageAnalysis, mode: AvifCompressionMode) -> (Vec<CandidateConfig>, f64) {
         let fast_speed = match mode {
             AvifCompressionMode::FastAdaptive => 8,
+            AvifCompressionMode::UltraAggressive => 6,
             AvifCompressionMode::UltraAdaptive => 6,
             AvifCompressionMode::HighQuality => 4,
         };
         let careful_speed = match mode {
             AvifCompressionMode::FastAdaptive => 7,
+            AvifCompressionMode::UltraAggressive => 6,
             AvifCompressionMode::UltraAdaptive => 5,
             AvifCompressionMode::HighQuality => 4,
         };
+
+        if matches!(mode, AvifCompressionMode::UltraAggressive) {
+            // Maximum compression calibrated for on-device 2× CNN Super-Resolution recovery!
+            let cfg = match analysis.class {
+                ImageClass::CrispTextUi | ImageClass::FlatGraphic => CandidateConfig {
+                    quality: 52.0,
+                    alpha_quality: 74.0,
+                    speed: fast_speed,
+                    bit_depth: BitDepth::Eight,
+                    color_model: ColorModel::YCbCr,
+                },
+                ImageClass::AlphaGraphic => CandidateConfig {
+                    quality: 46.0,
+                    alpha_quality: 72.0,
+                    speed: fast_speed,
+                    bit_depth: BitDepth::Eight,
+                    color_model: ColorModel::YCbCr,
+                },
+                ImageClass::AnimeManga | ImageClass::Meme => CandidateConfig {
+                    quality: 42.0,
+                    alpha_quality: 70.0,
+                    speed: fast_speed,
+                    bit_depth: BitDepth::Eight,
+                    color_model: ColorModel::YCbCr,
+                },
+                ImageClass::HdrWideGamut => CandidateConfig {
+                    quality: 48.0,
+                    alpha_quality: 72.0,
+                    speed: fast_speed,
+                    bit_depth: BitDepth::Ten,
+                    color_model: ColorModel::YCbCr,
+                },
+                _ => CandidateConfig {
+                    quality: 38.0,
+                    alpha_quality: 68.0,
+                    speed: fast_speed,
+                    bit_depth: BitDepth::Eight,
+                    color_model: ColorModel::YCbCr,
+                },
+            };
+            return (vec![cfg], 0.88);
+        }
 
         match analysis.class {
             ImageClass::CrispTextUi | ImageClass::FlatGraphic => {
@@ -120,7 +170,7 @@ mod impl_codec {
                         bit_depth: depth,
                         color_model: ColorModel::RGB,
                     }],
-                    AvifCompressionMode::UltraAdaptive => vec![
+                    AvifCompressionMode::UltraAdaptive | AvifCompressionMode::UltraAggressive => vec![
                         CandidateConfig {
                             quality: 74.0,
                             alpha_quality: 88.0,
@@ -184,7 +234,7 @@ mod impl_codec {
                         bit_depth: BitDepth::Ten,
                         color_model: ColorModel::YCbCr,
                     }],
-                    AvifCompressionMode::UltraAdaptive => vec![
+                    AvifCompressionMode::UltraAdaptive | AvifCompressionMode::UltraAggressive => vec![
                         CandidateConfig {
                             quality: 54.0,
                             alpha_quality: 78.0,
@@ -241,7 +291,7 @@ mod impl_codec {
                         bit_depth: BitDepth::Ten,
                         color_model: ColorModel::YCbCr,
                     }],
-                    AvifCompressionMode::UltraAdaptive => vec![
+                    AvifCompressionMode::UltraAdaptive | AvifCompressionMode::UltraAggressive => vec![
                         CandidateConfig {
                             quality: 48.0,
                             alpha_quality: 76.0,
@@ -321,7 +371,23 @@ mod impl_codec {
         }
 
         let analysis = analyze_rgba_image(rgba, width, height, original_encoded_size, raw_file_bytes);
-        let target_max_edge = opts.max_edge_override.or(analysis.recommended_max_edge);
+        let aggressive_max_edge = if matches!(opts.mode, AvifCompressionMode::UltraAggressive) {
+            let max_dim = width.max(height);
+            if max_dim > 1080 {
+                // Exact 2× downscale (4× fewer pixels -> 80-90% smaller AVIF) for receiver 2× CNN Super-Resolution!
+                Some(((max_dim + 1) / 2).max(640))
+            } else if max_dim > 800 && analysis.class != ImageClass::CrispTextUi {
+                Some(640)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let target_max_edge = opts
+            .max_edge_override
+            .or(aggressive_max_edge)
+            .or(analysis.recommended_max_edge);
 
         let (work_rgba, out_w, out_h) = if let Some(max_e) = target_max_edge {
             if width > max_e || height > max_e {
@@ -436,8 +502,13 @@ mod impl_codec {
         let orig_sz = original_encoded_size.max(1);
         let opt_sz = avif_bytes.len();
         let compression_ratio = (orig_sz as f32) / (opt_sz.max(1) as f32);
-        let ai_restoration_recommended = !analysis.has_text_risk
-            && (chosen_cfg.quality < 72.0 || analysis.class == ImageClass::AlreadyHeavilyCompressed || analysis.class == ImageClass::LowLightNoisy);
+        let was_downscaled = out_w < width || out_h < height;
+        let ai_restoration_recommended = was_downscaled
+            || matches!(opts.mode, AvifCompressionMode::UltraAggressive)
+            || (!analysis.has_text_risk
+                && (chosen_cfg.quality < 72.0
+                    || analysis.class == ImageClass::AlreadyHeavilyCompressed
+                    || analysis.class == ImageClass::LowLightNoisy));
 
         Ok(AdaptiveAvifOutput {
             avif_bytes,
@@ -445,6 +516,8 @@ mod impl_codec {
             ext: "avif",
             width: out_w,
             height: out_h,
+            target_width: width,
+            target_height: height,
             original_size: original_encoded_size,
             optimized_size: opt_sz,
             compression_ratio,
@@ -507,6 +580,8 @@ mod impl_codec {
                 ext: "avif",
                 width: w,
                 height: h,
+                target_width: w,
+                target_height: h,
                 original_size: bytes.len(),
                 optimized_size: bytes.len(),
                 compression_ratio: 1.0,
@@ -541,6 +616,8 @@ mod impl_codec {
                 ext: "avif",
                 width: 0,
                 height: 0,
+                target_width: 0,
+                target_height: 0,
                 original_size: bytes.len(),
                 optimized_size: bytes.len(),
                 compression_ratio: 1.0,
@@ -636,6 +713,8 @@ mod impl_codec {
                 ext: "avif",
                 width: w,
                 height: h,
+                target_width: w,
+                target_height: h,
                 original_size: bytes.len(),
                 optimized_size: opt_sz,
                 compression_ratio: (bytes.len().max(1) as f32) / (opt_sz.max(1) as f32),
@@ -807,5 +886,38 @@ mod tests {
         assert_eq!(second.ext, "avif");
         assert_eq!(second.avif_bytes, avif_input, "Must not re-encode already valid AVIF!");
         assert_eq!(second.compression_ratio, 1.0);
+    }
+
+    #[test]
+    fn ultra_aggressive_downscales_2x_and_marks_ai_recovery() {
+        let png = make_test_photo_png(1200, 800);
+        let fast = optimize_image_to_avif(
+            &png,
+            &AvifEncodeOptions {
+                mode: AvifCompressionMode::FastAdaptive,
+                generate_thumbnail: false,
+                ..Default::default()
+            },
+        )
+        .expect("fast encode");
+        let agg = optimize_image_to_avif(
+            &png,
+            &AvifEncodeOptions {
+                mode: AvifCompressionMode::UltraAggressive,
+                generate_thumbnail: false,
+                ..Default::default()
+            },
+        )
+        .expect("ultra aggressive encode");
+        assert_eq!(sniff_media_bytes(&agg.avif_bytes).ext, "avif");
+        assert_eq!((agg.target_width, agg.target_height), (1200, 800));
+        assert!(agg.width <= 640 && agg.width < 1200, "Expected 2x downscale, got {}x{}", agg.width, agg.height);
+        assert!(agg.ai_restoration_recommended);
+        assert!(
+            agg.avif_bytes.len() < fast.avif_bytes.len(),
+            "UltraAggressive ({}B) must be smaller than FastAdaptive ({}B)",
+            agg.avif_bytes.len(),
+            fast.avif_bytes.len()
+        );
     }
 }

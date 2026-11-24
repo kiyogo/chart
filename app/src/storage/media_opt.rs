@@ -184,6 +184,34 @@ pub fn release_pending_handle(handle_id: &str, revoke_url: bool) {
     ));
 }
 
+/// After an upload completes, save the sender's 100% untouched original file into local app storage
+/// so the sender immediately views their crisp original file & retains it across reloads.
+pub async fn commit_sender_original(
+    preview_url: &str,
+    download_url: &str,
+    key_b64: &str,
+    nonce_b64: &str,
+    ref_id: &str,
+) {
+    let p_json = serde_json::to_string(preview_url).unwrap_or_default();
+    let d_json = serde_json::to_string(download_url).unwrap_or_default();
+    let k_json = serde_json::to_string(key_b64).unwrap_or_default();
+    let n_json = serde_json::to_string(nonce_b64).unwrap_or_default();
+    let r_json = serde_json::to_string(ref_id).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            if (window.__chatwMediaOpt && window.__chatwMediaOpt.commitSenderOriginal) {{
+                await window.__chatwMediaOpt.commitSenderOriginal({p_json}, {d_json}, {k_json}, {n_json}, {r_json});
+            }}
+            dioxus.send(true);
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let _ = eval.recv::<bool>().await;
+}
+
 /// Pick and adaptively optimize image/video/audio/file from a DOM `<input type="file">`.
 pub async fn pick_and_optimize_from_input(
     input_id: &str,

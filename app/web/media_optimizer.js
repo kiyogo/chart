@@ -111,7 +111,18 @@
 
   // In-memory sender pending file registry for Instant Sender Original Preview (< 20ms)
   const pendingSenderFiles = new Map();
+  const previewUrlToFile = new Map();
+  const senderOriginalSession = new Map();
   let nextHandleSeq = 1;
+
+  function stashPreviewFile(previewUrl, file, width = 0, height = 0) {
+    if (!previewUrl || !file) return;
+    previewUrlToFile.set(previewUrl, { file, width, height });
+    while (previewUrlToFile.size > 32) {
+      const oldestKey = previewUrlToFile.keys().next().value;
+      previewUrlToFile.delete(oldestKey);
+    }
+  }
 
   async function probeVideoCodecs() {
     const caps = {
@@ -462,9 +473,9 @@
               isCrispText: Boolean(res.isCrispText ?? isCrisp),
               width: res.width || origW,
               height: res.height || origH,
-              targetWidth: origW,
-              targetHeight: origH,
-              superResRecommended: (res.width || origW) < origW,
+              targetWidth: res.targetWidth || origW,
+              targetHeight: res.targetHeight || origH,
+              superResRecommended: Boolean(res.superResRecommended ?? ((res.width || origW) < origW)),
               blurDataUrl,
               thumbB64: null,
               thumbMime: null,
@@ -569,6 +580,7 @@
     if (file.type.startsWith('image/')) {
       try {
         const res = await optimizeImageBlob(file, { preserveOriginal });
+        stashPreviewFile(previewUrl, file, res.targetWidth || res.width || 0, res.targetHeight || res.height || 0);
         return {
           ...res,
           fileName: file.name,
@@ -644,6 +656,7 @@
         } catch (_) {}
       }
       pendingSenderFiles.set(handleId, { file, previewUrl, mediaKind, width, height });
+      stashPreviewFile(previewUrl, file, width, height);
       return {
         handleId,
         instantPreviewUrl: previewUrl,
@@ -654,6 +667,73 @@
         width,
         height,
       };
+    },
+
+    // After upload succeeds, copy sender's 100% untouched original file into sender's own local app storage
+    // so the sender ALWAYS views their crisp original file immediately & on future reloads without downloading!
+    async commitSenderOriginal(previewUrl, downloadUrl, keyB64 = '', nonceB64 = '', refId = '') {
+      const entry = previewUrl ? previewUrlToFile.get(previewUrl) : null;
+      if (!entry || !entry.file || !downloadUrl) return { ok: false };
+      try {
+        const origBlob = entry.file;
+        const stableUrl = URL.createObjectURL(origBlob);
+        const rec = {
+          url: stableUrl,
+          width: entry.width || 0,
+          height: entry.height || 0,
+          byteSize: origBlob.size,
+          mime: origBlob.type || 'image/png',
+          provenance: 'sender_original',
+        };
+        senderOriginalSession.set(downloadUrl, rec);
+        while (senderOriginalSession.size > 48) {
+          const [oldK, oldV] = senderOriginalSession.entries().next().value;
+          senderOriginalSession.delete(oldK);
+          if (oldV && oldV.url) { try { URL.revokeObjectURL(oldV.url); } catch (_) {} }
+        }
+        // Persist untouched sender original in IndexedDB so even after full reload sender sees crisp original!
+        if (window.__chatwStorage && typeof window.__chatwStorage.putAiOutput === 'function') {
+          await window.__chatwStorage.putAiOutput(`sender_orig:${downloadUrl}`, origBlob, {
+            media_id: refId || downloadUrl,
+            model_id: 'sender_original',
+            model_label: 'Ảnh gốc trên máy',
+            backend: 'local_original',
+            width: entry.width || 0,
+            height: entry.height || 0,
+            src_bytes: origBlob.size,
+            super_res: 0,
+          }).catch(() => {});
+        }
+        return { ok: true, ...rec };
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+    },
+
+    async getSenderOriginalFromCache(downloadUrl) {
+      if (!downloadUrl) return { found: false };
+      if (senderOriginalSession.has(downloadUrl)) {
+        return { found: true, ...senderOriginalSession.get(downloadUrl) };
+      }
+      if (window.__chatwStorage && typeof window.__chatwStorage.getAiOutput === 'function') {
+        try {
+          const hit = await window.__chatwStorage.getAiOutput(`sender_orig:${downloadUrl}`);
+          if (hit && hit.found && hit.blob) {
+            const url = URL.createObjectURL(hit.blob);
+            const rec = {
+              url,
+              width: hit.width || 0,
+              height: hit.height || 0,
+              byteSize: hit.blob.size,
+              mime: hit.blob.type || 'image/png',
+              provenance: 'sender_original',
+            };
+            senderOriginalSession.set(downloadUrl, rec);
+            return { found: true, ...rec };
+          }
+        } catch (_) {}
+      }
+      return { found: false };
     },
 
     // Phase 2: Compress/encode the stashed sender file off-main-thread while sender already sees crisp original!
