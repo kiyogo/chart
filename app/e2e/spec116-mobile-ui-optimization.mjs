@@ -59,27 +59,43 @@ async function auditViewport(browser, vw, vh, tag, alice, bob, aliceLs, aliceCoo
   if (await ct.isVisible().catch(() => false)) await ct.click({ force: true }).catch(() => {});
   await page.waitForTimeout(350);
 
-  // Conversations list + bottom tab bar audit
+  // Conversations list + LEFT vertical feature rail + CORE bottom 5-tab bar audit (Spec 117)
   const listAudit = await page.evaluate(() => {
     const rail = document.querySelector('.app-rail');
-    const items = [...document.querySelectorAll('.rail-nav .rail-item')].map((el) => {
+    const railRect = rail ? rail.getBoundingClientRect() : null;
+    const bottomBar = document.querySelector('.mobile-bottom-bar');
+    const bottomRect = bottomBar ? bottomBar.getBoundingClientRect() : null;
+    const leftItems = [...document.querySelectorAll('.app-rail .rail-item')].filter((el) => getComputedStyle(el).display !== 'none').map((el) => {
       const r = el.getBoundingClientRect();
-      return { w: Math.round(r.width), h: Math.round(r.height) };
+      return { label: el.getAttribute('aria-label') || '', w: Math.round(r.width), h: Math.round(r.height) };
     });
-    const acc = document.querySelector('.rail-account')?.getBoundingClientRect();
+    const bottomTabs = [...document.querySelectorAll('.mobile-bottom-bar .mobile-tab')].filter((el) => getComputedStyle(el).display !== 'none').map((el) => {
+      const r = el.getBoundingClientRect();
+      return { label: el.getAttribute('aria-label') || '', w: Math.round(r.width), h: Math.round(r.height) };
+    });
     return {
       scrollW: document.documentElement.scrollWidth,
       innerW: window.innerWidth,
-      railH: rail ? Math.round(rail.getBoundingClientRect().height) : 0,
-      minItemW: Math.min(...items.map((x) => x.w)),
-      minItemH: Math.min(...items.map((x) => x.h)),
-      accW: acc ? Math.round(acc.width) : 0,
-      accH: acc ? Math.round(acc.height) : 0,
+      innerH: window.innerHeight,
+      leftRail: railRect ? { left: Math.round(railRect.left), w: Math.round(railRect.width), h: Math.round(railRect.height) } : null,
+      bottomBar: bottomRect ? { bottom: Math.round(bottomRect.bottom), w: Math.round(bottomRect.width), h: Math.round(bottomRect.height) } : null,
+      leftItemCount: leftItems.length,
+      bottomTabCount: bottomTabs.length,
+      minBottomTabW: Math.min(...bottomTabs.map((x) => x.w)),
+      minBottomTabH: Math.min(...bottomTabs.map((x) => x.h)),
     };
   });
   console.log(`[${tag}] LIST_AUDIT:`, JSON.stringify(listAudit));
   if (listAudit.scrollW > listAudit.innerW) throw new Error(`[${tag}] List horizontal overflow`);
-  if (listAudit.minItemW < 44 || listAudit.minItemH < 44) throw new Error(`[${tag}] Bottom rail touch targets too small: ${JSON.stringify(listAudit)}`);
+  if (!listAudit.leftRail || listAudit.leftRail.left !== 0 || listAudit.leftRail.w > 60 || listAudit.leftRail.h < 400) {
+    throw new Error(`[${tag}] Left feature rail geometry invalid: ${JSON.stringify(listAudit.leftRail)}`);
+  }
+  if (!listAudit.bottomBar || listAudit.bottomBar.w !== listAudit.innerW || listAudit.bottomTabCount !== 5) {
+    throw new Error(`[${tag}] Bottom core 5-tab bar invalid: ${JSON.stringify(listAudit)}`);
+  }
+  if (listAudit.minBottomTabW < 64 || listAudit.minBottomTabH < 44) {
+    throw new Error(`[${tag}] Bottom tab touch targets too small: ${JSON.stringify(listAudit)}`);
+  }
   if (tag === '390x844') {
     await page.screenshot({ path: path.join(OUT_DIR, '02_conversations_390x844.png') });
   }
@@ -157,10 +173,10 @@ async function auditViewport(browser, vw, vh, tag, alice, bob, aliceLs, aliceCoo
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
 
-    // Back to Conversations -> open Account menu bottom sheet -> Settings
+    // Back to Conversations -> open Account menu bottom sheet via bottom bar -> Settings
     await page.locator('.back-btn').first().click();
     await page.waitForTimeout(350);
-    await page.locator('.rail-account').first().click();
+    await page.locator('.mobile-tab-account').first().click();
     await page.waitForTimeout(250);
     await page.screenshot({ path: path.join(OUT_DIR, '07_account_sheet_390x844.png') });
     const settingsBtn = page.locator('.account-menu .menu-item', { hasText: /Cài đặt|Settings/i }).first();

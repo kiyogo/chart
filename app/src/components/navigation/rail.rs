@@ -89,6 +89,9 @@ pub fn AppRail(
     let qr_svg = render_qr_svg(&download_qr_url(), "#0F172A", "#FFFFFF");
     let mut cls = String::from("app-rail");
     if hidden_mobile { cls.push_str(" hidden-mobile"); }
+    let mob_bar_cls = if hidden_mobile { "mobile-bottom-bar hidden-mobile" } else { "mobile-bottom-bar" };
+    let mob_uname = current_username.clone();
+    let mob_avatar = current_avatar_url.clone();
 
     rsx! {
         nav { class: "{cls}", aria_label: "Main navigation",
@@ -98,7 +101,7 @@ pub fn AppRail(
             div { class: "rail-nav",
                 button {
                     r#type: "button",
-                    class: if in_dm { "rail-item active" } else { "rail-item" },
+                    class: if in_dm { "rail-item rail-mobile-in-bottom active" } else { "rail-item rail-mobile-in-bottom" },
                     "data-tip": "{t(\"nav.messages\")}",
                     aria_label: "{t(\"nav.messages\")}",
                     aria_current: if in_dm { "page" } else { "false" },
@@ -109,7 +112,7 @@ pub fn AppRail(
                 }
                 button {
                     r#type: "button",
-                    class: if in_friends { "rail-item active" } else { "rail-item" },
+                    class: if in_friends { "rail-item rail-mobile-in-bottom active" } else { "rail-item rail-mobile-in-bottom" },
                     "data-tip": "{t(\"nav.friends\")}",
                     aria_label: "{t(\"nav.friends\")}",
                     aria_current: if in_friends { "page" } else { "false" },
@@ -168,7 +171,7 @@ pub fn AppRail(
                 }
                 button {
                     r#type: "button",
-                    class: if in_search { "rail-item active" } else { "rail-item" },
+                    class: if in_search { "rail-item rail-mobile-in-bottom active" } else { "rail-item rail-mobile-in-bottom" },
                     "data-tip": "{t(\"nav.search\")}",
                     aria_label: "{t(\"nav.search\")}",
                     aria_current: if in_search { "page" } else { "false" },
@@ -306,7 +309,7 @@ pub fn AppRail(
             div { class: "rail-bottom",
                 button {
                     r#type: "button",
-                    class: if in_notifications { "rail-item compact active" } else { "rail-item compact" },
+                    class: if in_notifications { "rail-item compact rail-mobile-in-bottom active" } else { "rail-item compact rail-mobile-in-bottom" },
                     "data-tip": "Notifications",
                     aria_label: "Notifications",
                     onclick: move |_| {
@@ -411,7 +414,7 @@ pub fn AppRail(
                 }
                 button {
                     r#type: "button",
-                    class: "rail-account",
+                    class: "rail-account rail-mobile-in-bottom",
                     title: "Account: {current_username}",
                     aria_label: "My account",
                     aria_haspopup: "menu",
@@ -440,6 +443,80 @@ pub fn AppRail(
                         }
                     }
                 }
+            }
+        }
+        // Spec 117: Mobile-only compact bottom bar for the 5 core daily tabs while feature icons stay on the LEFT rail.
+        nav { class: "{mob_bar_cls}", aria_label: "Quick mobile navigation",
+            button {
+                r#type: "button",
+                class: if in_dm { "mobile-tab active" } else { "mobile-tab" },
+                aria_label: "{t(\"nav.messages\")}",
+                aria_current: if in_dm { "page" } else { "false" },
+                onclick: move |_| { menu_open.set(false); *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_select_dm.call(()); },
+                span { class: "mobile-tab-icon",
+                    MessageIcon { size: 22 }
+                    if unread_dm_count > 0 { span { class: "rail-count", "{badge(unread_dm_count)}" } }
+                }
+                span { class: "mobile-tab-label", "{t(\"nav.messages\")}" }
+            }
+            button {
+                r#type: "button",
+                class: if in_friends { "mobile-tab active" } else { "mobile-tab" },
+                aria_label: "{t(\"nav.friends\")}",
+                aria_current: if in_friends { "page" } else { "false" },
+                onclick: move |_| { menu_open.set(false); *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_select_friends.call(()); },
+                span { class: "mobile-tab-icon",
+                    FriendsIcon { size: 22 }
+                    if pending_friend_count > 0 { span { class: "rail-count", "{badge(pending_friend_count)}" } }
+                }
+                span { class: "mobile-tab-label", "{t(\"nav.friends\")}" }
+            }
+            button {
+                r#type: "button",
+                class: if in_search { "mobile-tab active" } else { "mobile-tab" },
+                aria_label: "{t(\"nav.search\")}",
+                aria_current: if in_search { "page" } else { "false" },
+                onclick: move |_| {
+                    menu_open.set(false);
+                    *ACTIVE_PLUGIN_PAGE.write() = None;
+                    *ACTIVE_LEFT_PLUGIN.write() = None;
+                    match on_select_search { Some(h) => h.call(()), None => on_quick_switch.call(()) }
+                },
+                span { class: "mobile-tab-icon", SearchIcon { size: 22 } }
+                span { class: "mobile-tab-label", "{t(\"nav.search\")}" }
+            }
+            button {
+                r#type: "button",
+                class: if in_notifications { "mobile-tab active" } else { "mobile-tab" },
+                aria_label: "Notifications",
+                aria_current: if in_notifications { "page" } else { "false" },
+                onclick: move |_| {
+                    menu_open.set(false);
+                    download_hover_open.set(false);
+                    *ACTIVE_PLUGIN_PAGE.write() = None;
+                    *ACTIVE_LEFT_PLUGIN.write() = None;
+                    if let Some(cb) = &on_select_notifications { cb.call(()); }
+                },
+                span { class: "mobile-tab-icon",
+                    BellIcon { size: 22 }
+                    if notif_count > 0 { span { class: "rail-count", "{badge(notif_count)}" } }
+                }
+                span { class: "mobile-tab-label", "Notifications" }
+            }
+            button {
+                r#type: "button",
+                class: if menu_open() { "mobile-tab mobile-tab-account active" } else { "mobile-tab mobile-tab-account" },
+                aria_label: "My account",
+                aria_haspopup: "menu",
+                aria_expanded: "{menu_open()}",
+                onclick: move |_| {
+                    download_hover_open.set(false);
+                    menu_open.set(!menu_open());
+                },
+                span { class: "mobile-tab-icon",
+                    Avatar { name: mob_uname.clone(), avatar_url: mob_avatar.clone(), size: 24 }
+                }
+                span { class: "mobile-tab-label", "Account" }
             }
         }
     }

@@ -12900,6 +12900,9 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.mobile-bottom-bar {
+  display: none;
+}
 
 @media (max-width: 767px) {
   html,
@@ -12916,6 +12919,11 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     min-height: 100dvh;
     max-width: 100vw;
     overflow: hidden;
+  }
+
+  /* Spec 117: Keep feature rail on the LEFT (vertical) while core 5 tabs sit at the BOTTOM */
+  .workspace-shell {
+    flex-direction: row !important;
   }
 
   /* Prevent iOS Safari auto-zoom on form field focus */
@@ -12945,57 +12953,168 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     overscroll-behavior-y: contain;
   }
 
-  /* ---- Native Bottom Tab Bar (.app-rail) ---- */
+  /* ---- Spec 117: Compact LEFT Vertical Feature Rail (.app-rail) ---- */
   .app-rail {
-    width: 100%;
-    min-height: calc(56px + env(safe-area-inset-bottom));
-    padding: 6px 8px max(8px, env(safe-area-inset-bottom));
+    width: 56px;
+    min-width: 56px;
+    max-width: 56px;
+    height: calc(100dvh - 58px - env(safe-area-inset-bottom));
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: max(10px, env(safe-area-inset-top)) 0 8px;
     gap: 6px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: none;
+    border-right: 1px solid var(--border-subtle);
     background: var(--bg-sidebar);
     flex-shrink: 0;
   }
+  .app-rail.hidden-mobile {
+    display: none !important;
+  }
+  .rail-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    margin-bottom: 2px;
+  }
   .rail-nav {
     flex: 1 1 0;
-    min-width: 0;
-    flex-direction: row;
+    min-height: 0;
+    width: 100%;
+    flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    gap: 4px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x proximity;
+    gap: 6px;
+    overflow-y: auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding: 0 2px;
+    padding: 2px 0;
   }
   .rail-nav::-webkit-scrollbar {
     display: none;
   }
   .rail-nav .rail-item {
     flex: 0 0 auto;
-    width: 46px;
-    min-width: 46px;
-    height: 44px;
-    border-radius: 14px;
-    scroll-snap-align: start;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    border-radius: 13px;
+  }
+  .rail-nav .rail-item svg {
+    width: 22px;
+    height: 22px;
+  }
+  .rail-nav .rail-item.has-logo svg {
+    width: 34px;
+    height: 34px;
+  }
+  .rail-pins {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .rail-spacer {
+    display: none;
+  }
+  .rail-mobile-in-bottom {
+    display: none !important;
   }
   .rail-bottom {
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
+    width: 100%;
+    padding: 6px 0 0;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
     flex-shrink: 0;
-    padding-left: 6px;
-    border-left: 1px solid var(--border-subtle);
+    gap: 4px;
   }
-  .rail-account {
-    width: 44px;
-    height: 44px;
-    margin: 0;
-    border-radius: 14px;
+  .rail-bottom > .rail-item:not(.rail-mobile-in-bottom) {
+    display: inline-flex;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    border-radius: 13px;
+  }
+  .rail-bottom > .rail-download-wrap {
+    display: none !important;
+  }
+
+  /* ---- Spec 117: Core 5-Tab Mobile Bottom Bar (.mobile-bottom-bar) ---- */
+  .mobile-bottom-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 80;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: stretch;
+    height: calc(58px + env(safe-area-inset-bottom));
+    padding: 4px 4px max(6px, env(safe-area-inset-bottom));
+    background: var(--bg-sidebar);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .mobile-bottom-bar.hidden-mobile {
+    display: none !important;
+  }
+  .mobile-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 48px;
+    padding: 2px 2px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 12px;
+    cursor: pointer;
+    position: relative;
+    min-width: 0;
+    transition: color 120ms ease, background-color 120ms ease, transform 90ms ease;
+  }
+  .mobile-tab:active {
+    transform: scale(0.95);
+  }
+  .mobile-tab.active {
+    color: var(--accent-text, var(--accent));
+  }
+  .mobile-tab-icon {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 28px;
+    height: 24px;
   }
+  .mobile-tab-icon .rail-count {
+    top: -5px;
+    right: -8px;
+  }
+  .mobile-tab-label {
+    font-size: 0.65625rem;
+    font-weight: 500;
+    line-height: 1.1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-tab.active .mobile-tab-label {
+    font-weight: 600;
+  }
+
   .account-menu.rail-menu {
     position: fixed;
     left: 8px;
@@ -13007,6 +13126,7 @@ html[data-surface-tone="dark"] .skeleton-avatar {
     border-radius: 16px;
     padding: 6px;
     box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.32);
+    z-index: calc(var(--z-popover, 200) + 10);
   }
   .account-menu .menu-item {
     min-height: 44px;
@@ -13016,16 +13136,22 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   }
 
   /* ---- Conversations List / Sidebar ---- */
+  .nav-sidebar {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100dvh;
+    padding-bottom: calc(58px + env(safe-area-inset-bottom));
+  }
   .sidebar-header {
-    padding: max(12px, env(safe-area-inset-top)) 14px 8px;
+    padding: max(12px, env(safe-area-inset-top)) 12px 8px;
     min-height: calc(52px + env(safe-area-inset-top));
   }
   .sidebar-header .icon-btn {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
   }
   .sidebar-search {
-    padding: 0 14px 10px;
+    padding: 0 12px 10px;
   }
   .sidebar-search input {
     min-height: 40px;
@@ -13034,9 +13160,9 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   .conversation-item,
   .conv-item,
   .chat-item {
-    min-height: 66px;
-    padding: 10px 14px;
-    gap: 12px;
+    min-height: 64px;
+    padding: 10px 12px;
+    gap: 10px;
     border-radius: 14px;
     transition: background-color 120ms ease, transform 90ms ease;
   }
@@ -13196,6 +13322,10 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   .partner-info-sidebar .profile-close {
     width: 42px;
     height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
   }
   .settings-mobile-bar {
     min-height: calc(54px + env(safe-area-inset-top));
