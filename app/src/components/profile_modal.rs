@@ -226,7 +226,7 @@ pub fn ProfileModal(
                                                 input {
                                                     id: "profile-avatar-input",
                                                     r#type: "file",
-                                                    accept: "image/*",
+                                                    accept: "image/png,image/jpeg,image/webp,image/avif,image/gif",
                                                     style: "display: none;",
                                                     onchange: move |_| {
                                                         notice.set(None);
@@ -242,6 +242,7 @@ pub fn ProfileModal(
                                                                     Err(_) => notice.set(Some((true, "Unable to load profile picture".into()))),
                                                                 },
                                                                 Err(e) if e == "no_file" => {}
+                                                                Err(e) if e == "svg_not_allowed" => notice.set(Some((true, "Không hỗ trợ gửi tệp SVG".into()))),
                                                                 Err(e) if e == "too_large" => notice.set(Some((true, "Animated cover photos must be less than 8 MB".into()))),
                                                                 Err(_) => notice.set(Some((true, "Unable to process images".into()))),
                                                             }
@@ -254,7 +255,7 @@ pub fn ProfileModal(
                                                 input {
                                                     id: "profile-banner-input",
                                                     r#type: "file",
-                                                    accept: "image/*",
+                                                    accept: "image/png,image/jpeg,image/webp,image/avif,image/gif",
                                                     style: "display: none;",
                                                     onchange: move |_| {
                                                         notice.set(None);
@@ -276,6 +277,7 @@ pub fn ProfileModal(
                                                                     Err(_) => notice.set(Some((true, "Unable to upload banner image".into()))),
                                                                 },
                                                                 Err(e) if e == "no_file" => {}
+                                                                Err(e) if e == "svg_not_allowed" => notice.set(Some((true, "Không hỗ trợ gửi tệp SVG".into()))),
                                                                 Err(_) => notice.set(Some((true, "Unable to process images".into()))),
                                                             }
                                                         });

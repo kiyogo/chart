@@ -575,6 +575,10 @@ pub struct DedupCheckReq {
     pub audio_fingerprint: Option<AudioFingerprint>,
     pub width: Option<u32>,
     pub height: Option<u32>,
+    #[serde(default)]
+    pub file_name: Option<String>,
+    #[serde(default)]
+    pub mime_type: Option<String>,
 }
 
 /// Privacy-enforced Smart Deduplication Check (`POST /api/storage/dedup/check`).
@@ -586,6 +590,9 @@ pub async fn handle_dedup_check(
 ) -> AppResult<Json<serde_json::Value>> {
     let user = auth_caller(&state, &headers).await?;
     authorize_write(&state.db, user.id, &req.scope_type, req.scope_id).await?;
+    if crate::storage::router::is_blocked_svg_upload(req.file_name.as_deref(), req.mime_type.as_deref(), None, None) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
+    }
 
     let probe_key = req
         .blake3_hex

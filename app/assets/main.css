@@ -3555,16 +3555,16 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .table-scroll td, .table-scroll th { padding: 6px 10px; white-space: nowrap; text-align: left; }
 .table-scroll tr:first-child td, .table-scroll th { background: var(--accent-soft); font-weight: var(--weight-semibold); position: sticky; top: 0; }
 .table-scroll tr:nth-child(even) td { background: color-mix(in srgb, var(--bg-hover) 60%, transparent); }
-.rich-image { max-width: min(22rem, 100%); border-radius: var(--radius-xl); overflow: hidden; background: var(--bg-surface-hover); contain: layout style; }
-.rich-image-btn { display: block; padding: 0; width: 100%; border: none; background: transparent; cursor: pointer; }
-.rich-image-stage { position: relative; display: block; width: 100%; overflow: hidden; border-radius: var(--radius-xl); background: var(--bg-surface-hover); isolation: isolate; contain: layout paint; }
+.rich-image { max-width: min(22rem, 100%); border-radius: var(--radius-xl); overflow: hidden; background: var(--bg-surface-hover); border: none !important; outline: none !important; box-shadow: none !important; contain: layout style; }
+.rich-image-btn { display: block; padding: 0; width: 100%; border: none !important; outline: none !important; box-shadow: none !important; background: transparent; cursor: pointer; }
+.rich-image-stage { position: relative; display: block; width: 100%; overflow: hidden; border-radius: var(--radius-xl); background: var(--bg-surface-hover); border: none !important; outline: none !important; box-shadow: none !important; isolation: isolate; contain: layout paint; }
 .rich-image-blur { display: block; width: 100%; height: 100%; max-height: 22rem; object-fit: cover; filter: blur(18px); transform: scale(1.08); transition: opacity 220ms ease; }
 .rich-image-stage.loaded .rich-image-blur { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
-.rich-image-full { position: relative; z-index: 1; display: block; width: 100%; height: 100%; max-width: 100%; max-height: 22rem; object-fit: cover; }
+.rich-image-full { position: relative; z-index: 1; display: block; width: 100%; height: 100%; max-width: 100%; max-height: 22rem; object-fit: cover; border: none !important; outline: none !important; box-shadow: none !important; }
 .rich-image-blur-spinner { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.14); }
 .rich-video-stage { position: relative; overflow: hidden; border-radius: 8px; }
 @keyframes cwMediaFadeIn { from { opacity: 0; } to { opacity: 1; } }
-.rich-image img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 22rem; object-fit: cover; }
+.rich-image img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 22rem; object-fit: cover; border: none !important; outline: none !important; box-shadow: none !important; }
 
 /* Spec 071: Interactive Voice Waveform, Virtual Spacers & Floating Scroll-to-Bottom Button */
 .voice-waveform {
@@ -3677,7 +3677,9 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   background: rgba(7, 9, 14, 0.95);
   overflow: hidden;
   user-select: none;
-  outline: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   contain: layout style;
   animation: cwLightboxFadeIn 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -3707,6 +3709,9 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   flex-shrink: 0;
   max-width: min(92vw, 1440px);
   max-height: 86vh;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   border-radius: 0 !important;
   overflow: visible;
   isolation: isolate;
@@ -3720,14 +3725,25 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   object-fit: contain;
   margin: 0;
   border: none !important;
+  outline: none !important;
   border-radius: 0 !important;
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.50);
+  box-shadow: none !important;
   transform-origin: center center;
   transition: none !important;
   will-change: transform;
   backface-visibility: hidden;
   -webkit-user-drag: none;
   cursor: grab;
+}
+body:has(.lightbox) #canvas-scrollbar-overlay {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+body:has(.lightbox) .panel-resizer {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 .lightbox-stage.can-pan .lightbox-img { cursor: grab; }
 .lightbox-stage.is-panning .lightbox-img,
@@ -3777,6 +3793,9 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   z-index: 3;
   overflow: hidden;
   pointer-events: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   border-radius: inherit;
   background: #090d18;
   contain: layout paint;
@@ -3790,6 +3809,9 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   position: absolute;
   inset: 0;
   z-index: 4;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   border-radius: 0 !important;
   transform-origin: center center;
   transition: opacity 360ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -3799,6 +3821,8 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
 .lightbox-ai-gen .ai-gen-blur-img,
 .lightbox-ai-gen .ai-gen-frost {
   border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 .ai-gen-overlay.is-revealing {
   opacity: 0;
@@ -3816,6 +3840,9 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   object-fit: cover;
   filter: blur(22px) saturate(1.42) contrast(1.06) brightness(0.78);
   transform: scale(1.14) translateZ(0);
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
@@ -3824,12 +3851,14 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   position: absolute;
   inset: 0;
   z-index: 2;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   background: radial-gradient(
     ellipse 82% 80% at 50% 48%,
     rgba(12, 18, 36, 0.16) 0%,
     rgba(7, 11, 24, 0.52) 100%
   );
-  box-shadow: inset 0 0 0 1px rgba(191, 219, 254, 0.14);
 }
 .ai-gen-aurora {
   position: absolute;
@@ -3909,9 +3938,10 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   color: rgba(248, 250, 252, 0.96);
-  background: rgba(8, 12, 24, 0.76);
-  border: 1px solid rgba(191, 219, 254, 0.18);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  background: rgba(8, 12, 24, 0.74);
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   contain: layout style;
 }
 .ai-gen-pct::before {
@@ -3956,7 +3986,9 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
   height: 28px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   background: rgba(9, 13, 24, 0.64);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -3965,11 +3997,10 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 140ms ease, transform 120ms ease, color 140ms ease, border-color 140ms ease;
+  transition: background-color 140ms ease, transform 120ms ease, color 140ms ease;
 }
 .rich-image-enhance-corner:hover {
   background: rgba(37, 99, 235, 0.88);
-  border-color: rgba(147, 197, 253, 0.45);
   color: #ffffff;
   transform: scale(1.06);
 }

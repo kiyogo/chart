@@ -330,7 +330,7 @@ void main() {
   fragColor = vec4(clamp(orig.rgb + vec3(rr, gg, bb), 0.0, 1.0), orig.a);
 }"#;
 
-// Zero-Alteration Wavelet Color Anchor + Dual-Scale Anti-Ringing AMD FidelityFX CAS (< 1.5ms on GPU!)
+// Zero-Alteration Wavelet Color Anchor + 3-Scale Anti-Ringing AMD FidelityFX CAS + Dark-Ink Tightener (Spec 115 v8)
 // Renders directly onto the WebGL2 default canvas (Y-flipped to top-down DOM canvas space) with ZERO 25MB readPixels!
 const GL_FIDELITY_CAS_FS: &str = r#"#version 300 es
 precision highp float;
@@ -375,25 +375,48 @@ void main() {
   vec3 mx2 = max(mx, max(max(a, c), max(g, i)));
   mx += mx2;
 
-  float localRange = max(max(mx2.r - mn2.r, mx2.g - mn2.g), mx2.b - mn2.b);
-  float gate1 = smoothstep(0.012, 0.055, localRange);
-
-  // AMD FidelityFX CAS reciprocal local-contrast adaptive sharpening (noise-gated, zero flat-area grain)
-  vec3 rcpM = 1.0 / max(mx, vec3(1e-4));
-  vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) * rcpM, 0.0, 1.0));
-  float peak = -0.20 * uColor1.z * gate1;
-  vec3 w = amp * peak;
-  vec3 cas1 = clamp(((b + d + f + h) * w + e) / (1.0 + 4.0 * w), 0.0, 1.0);
-
-  // 2. Radius-2 edge transition micro-crispening (tightens 4× Real-ESRGAN 2-3px strokes, STRICTLY clamped inside [mn2, mx2] -> ZERO halos!)
+  // 2. Full 8-tap isotropic radius-2 ring for true 5×5 edge endpoints [mn5, mx5]
+  //    On 4× SR outputs, a 1px input edge spans 3-4 output pixels, so clamping to [mn5, mx5]
+  //    lets deconvolution tighten blurred edge ramps to razor-sharp 1px transitions with ZERO halos!
+  vec3 a2 = fetchSr(op + ivec2(-2, -2), maxP);
   vec3 b2 = fetchSr(op + ivec2( 0, -2), maxP);
+  vec3 c2 = fetchSr(op + ivec2( 2, -2), maxP);
   vec3 d2 = fetchSr(op + ivec2(-2,  0), maxP);
   vec3 f2 = fetchSr(op + ivec2( 2,  0), maxP);
+  vec3 g2 = fetchSr(op + ivec2(-2,  2), maxP);
   vec3 h2 = fetchSr(op + ivec2( 0,  2), maxP);
-  vec3 avg2 = 0.25 * (b2 + d2 + f2 + h2);
-  float gate2 = smoothstep(0.020, 0.10, localRange);
-  vec3 sharp = cas1 + (cas1 - avg2) * (0.56 * uColor1.z * gate2);
-  sharp = clamp(sharp, max(vec3(0.0), mn2 - vec3(0.006)), min(vec3(1.0), mx2 + vec3(0.006)));
+  vec3 i2 = fetchSr(op + ivec2( 2,  2), maxP);
+
+  vec3 mn5 = min(mn2, min(min(min(b2, d2), min(f2, h2)), min(min(a2, c2), min(g2, i2))));
+  vec3 mx5 = max(mx2, max(max(max(b2, d2), max(f2, h2)), max(max(a2, c2), max(g2, i2))));
+
+  float localRange = max(max(mx2.r - mn2.r, mx2.g - mn2.g), mx2.b - mn2.b);
+  float edgeRange5 = max(max(mx5.r - mn5.r, mx5.g - mn5.g), mx5.b - mn5.b);
+  float gate1 = smoothstep(0.010, 0.048, max(localRange, edgeRange5 * 0.75));
+  float gate2 = smoothstep(0.018, 0.085, edgeRange5);
+
+  // Scale 1: High-power AMD FidelityFX CAS (numerically safe denominator >= 0.16, noise-gated on flat skin/sky)
+  vec3 rcpM = 1.0 / max(mx, vec3(1e-4));
+  vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) * rcpM, 0.0, 1.0));
+  float peak = -0.28 * uColor1.z * gate1;
+  vec3 w = max(amp * peak, vec3(-0.21));
+  vec3 cas1 = clamp(((b + d + f + h) * w + e) / (1.0 + 4.0 * w), 0.0, 1.0);
+
+  // Scale 2 & 3: 8-tap isotropic radius-2 deconvolution + radius-1 micro-detail boost
+  vec3 avg1 = 0.25 * (b + d + f + h);
+  vec3 avg2 = 0.15 * (b2 + d2 + f2 + h2) + 0.10 * (a2 + c2 + g2 + i2);
+  vec3 deconv = cas1
+              + (cas1 - avg2) * (0.94 * uColor1.z * gate2)
+              + (cas1 - avg1) * (0.34 * uColor1.z * gate1);
+
+  // Dark-ink / fine-line stroke tightener (pulls softened dark edges cleanly toward true local minimum mn5)
+  float lDeconv = dot(deconv, vec3(0.299, 0.587, 0.114));
+  float lAvg2 = dot(avg2, vec3(0.299, 0.587, 0.114));
+  float darkLine = clamp((lAvg2 - lDeconv) * 2.2, 0.0, 1.0) * smoothstep(0.14, 0.40, edgeRange5);
+  deconv = mix(deconv, mn5, darkLine * (0.22 * min(uColor1.z, 1.35)));
+
+  // STRICT zero-overshoot anti-ringing clamp inside [mn5, mx5] -> razor-sharp edges, ZERO white halos!
+  vec3 sharp = clamp(deconv, mn5, mx5);
 
   // 3. Wavelet Low-Frequency Color & Tone Anchor -> ZERO alteration to original colors/skin/blush/exposure!
   vec2 invDims = 1.0 / vec2(uSrDims);
@@ -417,8 +440,8 @@ void main() {
   float lumaT = dot(tLow, vec3(0.299, 0.587, 0.114));
   tLow = clamp(vec3(lumaT) + (tLow - vec3(lumaT)) * uColor1.x, 0.0, 1.0);
 
-  // Ultra-tight 96% identity anchor on smooth/skin/color regions; balanced 65% on jet-black ink strokes so outlines stay crisp!
-  float anchorW = mix(0.96, 0.65, smoothstep(0.10, 0.42, localRange));
+  // Ultra-tight 96% identity anchor on smooth/skin/color regions; 58% on high-contrast ink strokes so outlines stay razor-crisp!
+  float anchorW = mix(0.96, 0.58, smoothstep(0.08, 0.36, edgeRange5));
   vec3 deltaLow = clamp(tLow - srLow, vec3(-0.10), vec3(0.10)) * anchorW;
 
   fragColor = vec4(clamp(sharp + deltaLow, 0.0, 1.0), e4.a);
@@ -1555,8 +1578,8 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Sharpening intensity knob: 1.12 for anime/illustration razor-sharp lines, 1.00 for photo crisp natural detail
-    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.12 } else { 1.00 };
+    // Spec 115 v8 ultra-sharp intensity knob: 1.32 for anime/illustration razor-sharp lines, 1.22 for photo ultra-crisp natural detail
+    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.32 } else { 1.22 };
 
     let probe = probe_gpu();
     if probe.webgl2_available && (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {

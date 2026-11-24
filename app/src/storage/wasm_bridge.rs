@@ -379,7 +379,7 @@ pub fn install_wasm_media_bridge() {
     let warmup_cb = Closure::<dyn Fn() -> JsValue>::new(move || JsValue::from(warmup_gpu()));
 
     let _ = Reflect::set(&api, &"version".into(), &JsValue::from("chatw-media-core-v2"));
-    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("rust-realesrgan-srvgg-upscayl-v7"));
+    let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("rust-realesrgan-srvgg-upscayl-v8"));
     let _ = Reflect::set(&api, &"dedupEngine".into(), &JsValue::from("rust-hyper-dedup-fastcdc-pdq-mih-v1"));
     let _ = Reflect::set(&api, &"encodeAvifAdaptive".into(), enc_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"compressFileSmart".into(), cmp_cb.as_ref().unchecked_ref());

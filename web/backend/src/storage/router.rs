@@ -90,6 +90,62 @@ pub struct UploadMetaQuery {
     pub audio_fingerprint_json: Option<String>,
 }
 
+/// Spec 115: Strictly block `.svg` / `.svgz` / `image/svg+xml` / XML-SVG payloads across all upload & dedup paths.
+/// Only inspects raw bytes as SVG when trimmed content starts with `<` (after optional UTF-8 BOM/whitespace)
+/// so binary raster images, video, archives, and E2EE ciphertext never suffer false positives.
+pub fn is_blocked_svg_upload(
+    file_name: Option<&str>,
+    mime_type: Option<&str>,
+    content_type: Option<&str>,
+    bytes: Option<&[u8]>,
+) -> bool {
+    if let Some(name) = file_name {
+        let lower = name.trim().to_ascii_lowercase();
+        if lower.ends_with(".svg") || lower.ends_with(".svgz") {
+            return true;
+        }
+    }
+    for m in [mime_type, content_type].into_iter().flatten() {
+        let lower = m.trim().to_ascii_lowercase();
+        if lower.contains("svg") {
+            return true;
+        }
+    }
+    if let Some(raw) = bytes {
+        let mut slice = raw;
+        if slice.starts_with(&[0xEF, 0xBB, 0xBF]) {
+            slice = &slice[3..];
+        }
+        while let Some((&first, rest)) = slice.split_first() {
+            if first.is_ascii_whitespace() || first == 0 {
+                slice = rest;
+            } else {
+                break;
+            }
+        }
+        if slice.first() == Some(&b'<') {
+            let inspect_len = slice.len().min(4096);
+            let head = String::from_utf8_lossy(&slice[..inspect_len]).to_ascii_lowercase();
+            let has_svg_tag = head.starts_with("<svg")
+                && matches!(head.as_bytes().get(4), None | Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/' | b':'));
+            if has_svg_tag
+                || head.contains("<svg ")
+                || head.contains("<svg>")
+                || head.contains("<svg\t")
+                || head.contains("<svg\n")
+                || head.contains("<svg\r")
+                || head.contains("<svg/")
+                || head.contains("<!doctype svg")
+                || head.contains("http://www.w3.org/2000/svg")
+                || head.contains("https://www.w3.org/2000/svg")
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Shared ingestion helper used by BOTH legacy `/api/attachments` and new resumable chunked uploads.
 pub async fn ingest_media_bytes(
     pool: &PgPool,
@@ -102,6 +158,14 @@ pub async fn ingest_media_bytes(
 ) -> AppResult<serde_json::Value> {
     if bytes.is_empty() {
         return Err(AppError::BadRequest("empty_attachment"));
+    }
+    if is_blocked_svg_upload(
+        meta.file_name.as_deref(),
+        meta.mime_type.as_deref(),
+        Some(content_type_header),
+        Some(&bytes),
+    ) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
     }
 
     let scope_type = meta.scope_type.as_deref().unwrap_or("dm");
@@ -1082,6 +1146,9 @@ async fn handle_init_upload(
 ) -> AppResult<Json<serde_json::Value>> {
     let user = auth_caller(&state, &headers).await?;
     authorize_write(&state.db, user.id, &req.scope_type, req.scope_id).await?;
+    if is_blocked_svg_upload(Some(&req.file_name), Some(&req.mime_type), None, None) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
+    }
     if req.total_size <= 0 || req.total_size > 200 * 1024 * 1024 {
         return Err(AppError::BadRequest("invalid_total_size"));
     }
@@ -1804,6 +1871,9 @@ async fn handle_forward_reference(
     let src_fname: String = src.try_get("original_filename")?;
     let src_mime: String = src.try_get("mime_type")?;
     let src_size: i64 = src.try_get("byte_size")?;
+    if is_blocked_svg_upload(Some(&src_fname), Some(&src_mime), None, None) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
+    }
 
     sqlx::query(
         r#"
@@ -1917,4 +1987,43 @@ pub(crate) fn parse_byte_range(hdr: &str) -> Option<(u64, Option<u64>)> {
         Some(e.trim().parse::<u64>().ok()?)
     };
     Some((start, end))
+}
+
+#[cfg(test)]
+mod spec115_svg_block_tests {
+    use super::is_blocked_svg_upload;
+
+    #[test]
+    fn blocks_svg_by_extension_mime_or_xml_payload() {
+        assert!(is_blocked_svg_upload(Some("icon.svg"), None, None, None));
+        assert!(is_blocked_svg_upload(Some("VECTOR.SVGZ"), None, None, None));
+        assert!(is_blocked_svg_upload(Some("photo.png"), Some("image/svg+xml"), None, None));
+        assert!(is_blocked_svg_upload(Some("photo.png"), None, Some("image/svg+xml; charset=utf-8"), None));
+        assert!(is_blocked_svg_upload(
+            Some("renamed.png"),
+            Some("image/png"),
+            Some("image/png"),
+            Some(b"<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"10\" height=\"10\"/></svg>"),
+        ));
+        assert!(is_blocked_svg_upload(
+            Some("renamed.bin"),
+            Some("application/octet-stream"),
+            None,
+            Some(b"\xEF\xBB\xBF  <?xml version=\"1.0\"?><!-- c --><SVG viewBox=\"0 0 1 1\"></SVG>"),
+        ));
+        assert!(is_blocked_svg_upload(
+            Some("doctype.txt"),
+            Some("text/plain"),
+            None,
+            Some(b"<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">"),
+        ));
+    }
+
+    #[test]
+    fn allows_valid_raster_images_and_normal_files() {
+        let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
+        assert!(!is_blocked_svg_upload(Some("photo.png"), Some("image/png"), Some("image/png"), Some(png)));
+        assert!(!is_blocked_svg_upload(Some("notes.txt"), Some("text/plain"), None, Some(b"hello world")));
+        assert!(!is_blocked_svg_upload(Some("cipher.bin"), Some("application/octet-stream"), None, Some(&[0xde, 0xad, 0xbe, 0xef])));
+    }
 }

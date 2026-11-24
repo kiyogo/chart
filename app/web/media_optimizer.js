@@ -895,9 +895,65 @@
     },
   };
 
+  // Spec 115: Strictly block `.svg` / `.svgz` / `image/svg+xml` / XML-SVG payloads on all frontend pickers & paste paths.
+  function isBlockedSvgFile(fileName, mime, bytesU8) {
+    const fn = String(fileName || '').trim().toLowerCase();
+    if (fn.endsWith('.svg') || fn.endsWith('.svgz')) return true;
+    const mt = String(mime || '').trim().toLowerCase();
+    if (mt.includes('svg')) return true;
+    if (bytesU8 && bytesU8.length > 0) {
+      let off = 0;
+      if (bytesU8.length >= 3 && bytesU8[0] === 0xEF && bytesU8[1] === 0xBB && bytesU8[2] === 0xBF) off = 3;
+      while (
+        off < bytesU8.length &&
+        (bytesU8[off] === 0x20 || bytesU8[off] === 0x09 || bytesU8[off] === 0x0A || bytesU8[off] === 0x0D || bytesU8[off] === 0x00)
+      ) {
+        off++;
+      }
+      if (off < bytesU8.length && bytesU8[off] === 0x3C) {
+        const end = Math.min(bytesU8.length, off + 4096);
+        let head = '';
+        try {
+          head = new TextDecoder('utf-8', { fatal: false }).decode(bytesU8.subarray(off, end)).toLowerCase();
+        } catch (_) {
+          for (let i = off; i < end; i++) head += String.fromCharCode(bytesU8[i]);
+          head = head.toLowerCase();
+        }
+        if (
+          /^<svg(?:\s|>|\/|:|$)/.test(head) ||
+          /<svg(?:\s|>|\/|:)/.test(head) ||
+          head.includes('<!doctype svg') ||
+          head.includes('http://www.w3.org/2000/svg') ||
+          head.includes('https://www.w3.org/2000/svg')
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  async function isBlockedSvgBlob(file) {
+    if (!file) return false;
+    if (isBlockedSvgFile(file.name, file.type, null)) return true;
+    try {
+      const headBuf = await file.slice(0, 4096).arrayBuffer();
+      return isBlockedSvgFile(file.name, file.type, new Uint8Array(headBuf));
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function processSingleFile(file, preserveOriginal = false, existingPreviewUrl = null) {
+    if (await isBlockedSvgBlob(file)) {
+      return { error: 'svg_not_allowed' };
+    }
     const previewUrl = existingPreviewUrl || URL.createObjectURL(file);
     const rawArr = new Uint8Array(await file.arrayBuffer());
+    if (isBlockedSvgFile(file.name, file.type, rawArr)) {
+      if (!existingPreviewUrl) { try { URL.revokeObjectURL(previewUrl); } catch (_) {} }
+      return { error: 'svg_not_allowed' };
+    }
     const origBlake3 = window.__chatwWasmMedia && window.__chatwWasmMedia.blake3Hex
       ? window.__chatwWasmMedia.blake3Hex(rawArr)
       : '';
@@ -1029,6 +1085,8 @@
   window.__chatwMediaOpt = {
     optimizeImageBlob,
     probeVideoCodecs,
+    isBlockedSvgFile,
+    isBlockedSvgBlob,
 
     // Phase 1 of Instant Sender Original Preview: returns crisp local `blob:` URL in < 20ms!
     async pickInstantPreview(inputId) {
@@ -1036,6 +1094,9 @@
       if (!inp || !inp.files || !inp.files[0]) return { error: 'no_file' };
       const file = inp.files[0];
       inp.value = '';
+      if (await isBlockedSvgBlob(file)) {
+        return { error: 'svg_not_allowed' };
+      }
       const handleId = `pend_${Date.now().toString(36)}_${nextHandleSeq++}`;
       const previewUrl = URL.createObjectURL(file);
       const mediaKind = file.type.startsWith('image/')
@@ -1172,11 +1233,17 @@
       if (!inp || !inp.files || !inp.files[0]) return { error: 'no_file' };
       const file = inp.files[0];
       inp.value = '';
+      if (await isBlockedSvgBlob(file)) {
+        return { error: 'svg_not_allowed' };
+      }
       return await processSingleFile(file, preserveOriginal, null);
     },
 
     async optimizePastedBytes(b64, mime = 'image/png', fileName = 'image.png') {
       const u8 = b64ToBytes(b64);
+      if (isBlockedSvgFile(fileName, mime, u8)) {
+        return { error: 'svg_not_allowed' };
+      }
       const blob = new Blob([u8], { type: mime || 'image/png' });
       let file;
       try {

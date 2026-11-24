@@ -455,7 +455,7 @@ pub fn SettingsView(
                                                     input {
                                                         id: "avatar-file-input",
                                                         r#type: "file",
-                                                        accept: "image/*",
+                                                        accept: "image/png,image/jpeg,image/webp,image/avif,image/gif",
                                                         disabled: is_uploading_avatar(),
                                                         style: "display: none;",
                                                         onchange: move |_| {
@@ -468,6 +468,7 @@ pub fn SettingsView(
                                                                         Err(_) => avatar_error.set(Some("Unable to update avatar".into())),
                                                                     },
                                                                     Err(e) if e == "no_file" => {}
+                                                                    Err(e) if e == "svg_not_allowed" => avatar_error.set(Some("Không hỗ trợ gửi tệp SVG".into())),
                                                                     Err(_) => avatar_error.set(Some("Unable to process image file".into())),
                                                                 }
                                                                 is_uploading_avatar.set(false);
@@ -480,7 +481,7 @@ pub fn SettingsView(
                                                     input {
                                                         id: "banner-file-input",
                                                         r#type: "file",
-                                                        accept: "image/*",
+                                                        accept: "image/png,image/jpeg,image/webp,image/avif,image/gif",
                                                         disabled: is_uploading_banner(),
                                                         style: "display: none;",
                                                         onchange: move |_| {
@@ -493,6 +494,7 @@ pub fn SettingsView(
                                                                         Err(_) => banner_status.set(Some((true, "Unable to upload banner image".into()))),
                                                                     },
                                                                     Err(e) if e == "no_file" => {}
+                                                                    Err(e) if e == "svg_not_allowed" => banner_status.set(Some((true, "Không hỗ trợ gửi tệp SVG".into()))),
                                                                     Err(_) => banner_status.set(Some((true, "Unable to process banner image".into()))),
                                                                 }
                                                                 is_uploading_banner.set(false);

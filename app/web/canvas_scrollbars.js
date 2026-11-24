@@ -59,7 +59,8 @@
     overlayCanvas.style.width = '100vw';
     overlayCanvas.style.height = '100vh';
     overlayCanvas.style.pointerEvents = 'none';
-    overlayCanvas.style.zIndex = '99999';
+    // Keep strictly below `.lightbox` (z-index: 9999) so scrollbars NEVER paint on top of fullscreen image previews!
+    overlayCanvas.style.zIndex = '8000';
     overlayCanvas.style.display = 'block';
 
     ctx = overlayCanvas.getContext('2d', { alpha: true });
@@ -305,9 +306,19 @@
     }, delayMs);
   }
 
+  function isLightboxOpen() {
+    return Boolean(document.querySelector('.lightbox'));
+  }
+
   function render() {
     animFrameId = null;
     if (!ctx || !overlayCanvas) return;
+
+    if (isLightboxOpen()) {
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      activeEntries.clear();
+      return;
+    }
 
     const currentDpr = window.devicePixelRatio || 1;
     if (
@@ -424,6 +435,7 @@
 
   // Handle scroll events anywhere in the window
   window.addEventListener('scroll', function (e) {
+    if (isLightboxOpen()) return;
     initCanvas();
     const target = e.target;
     const el = (target === document || target === window) ? document.documentElement : target;
@@ -443,6 +455,11 @@
     lastPointerY = e.clientY;
     hasPointer = true;
 
+    if (isLightboxOpen()) {
+      clearAllHoverStates();
+      return;
+    }
+
     if (dragTarget) {
       handleDragMove(e);
       return;
@@ -458,6 +475,7 @@
   // Handle pointer down on thumb or track
   window.addEventListener('pointerdown', function (e) {
     if (e.button !== 0) return;
+    if (isLightboxOpen()) return;
     if (e.target && e.target.closest && e.target.closest('[data-resizer]')) return;
 
     const x = e.clientX;

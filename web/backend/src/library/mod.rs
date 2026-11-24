@@ -59,6 +59,10 @@ async fn upload_media(State(state): State<AppState>, headers: HeaderMap, body: B
     if body.is_empty() || body.len() > MAX_MEDIA_BYTES {
         return Err(AppError::BadRequest("invalid_media_size"));
     }
+    let ct = headers.get(axum::http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok());
+    if crate::storage::router::is_blocked_svg_upload(None, None, ct, Some(&body)) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
+    }
     let ext = sniff_image_ext(&body).ok_or(AppError::BadRequest("unsupported_media_format"))?;
     let dir = state.config.uploads_dir.join("media");
     tokio::fs::create_dir_all(&dir).await.map_err(|_| AppError::Internal)?;

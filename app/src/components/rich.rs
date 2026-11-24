@@ -69,6 +69,8 @@ pub struct LightboxMedia {
 pub static GLOBAL_LIGHTBOX: GlobalSignal<Option<LightboxMedia>> = GlobalSignal::new(|| None);
 /// Broadcast `(media_id, enhanced_blob_url)` when Lightbox finishes on-demand Real-ESRGAN 4× so chat bubbles sync immediately.
 pub static GLOBAL_AI_UPDATED: GlobalSignal<Option<(String, String)>> = GlobalSignal::new(|| None);
+/// Spec 115: Broadcast user-facing media validation notices (e.g. blocked `.svg` upload) to global toast banner.
+pub static GLOBAL_MEDIA_NOTICE: GlobalSignal<Option<String>> = GlobalSignal::new(|| None);
 
 /// Instant Sender Original Preview item shown in the message stream the millisecond a file is chosen,
 /// before AVIF compression, E2EE encryption, and S3/CAS upload complete (Spec 110).
@@ -1567,7 +1569,7 @@ pub fn ComposerTools(
                         input {
                             id: "{img_id}",
                             r#type: "file",
-                            accept: "image/*,video/mp4,video/webm",
+                            accept: "image/png,image/jpeg,image/webp,image/avif,image/gif,video/mp4,video/webm",
                             style: "display: none;",
                             onchange: move |_| {
                                 open.set(false);
@@ -1575,41 +1577,64 @@ pub fn ComposerTools(
                                 let orig = preserve_original();
                                 spawn(async move {
                                     // Phase 1 (< 20ms): Render crisp sender local original immediately before compression/E2EE/upload!
-                                    if let Ok(pick) = media_opt::pick_instant_preview(&fid).await {
-                                        let hid = pick.handle_id.clone();
-                                        push_pending_media(PendingSenderMedia {
-                                            handle_id: hid.clone(),
-                                            preview_url: pick.instant_preview_url.clone(),
-                                            file_name: pick.file_name.clone(),
-                                            media_kind: pick.media_kind.clone(),
-                                            width: pick.width.unwrap_or(0),
-                                            height: pick.height.unwrap_or(0),
-                                            status_label: "Đang tối ưu".into(),
-                                            failed: false,
-                                        });
-                                        platform::scroll_chat_to_bottom(false);
-                                        match media_opt::process_pending_handle(&hid, orig).await {
-                                            Ok(payload) => {
-                                                media_opt::release_pending_handle(&hid, false);
-                                                if let Some(h) = on_media {
-                                                    h.call(payload);
-                                                } else {
+                                    match media_opt::pick_instant_preview(&fid).await {
+                                        Ok(pick) => {
+                                            let hid = pick.handle_id.clone();
+                                            push_pending_media(PendingSenderMedia {
+                                                handle_id: hid.clone(),
+                                                preview_url: pick.instant_preview_url.clone(),
+                                                file_name: pick.file_name.clone(),
+                                                media_kind: pick.media_kind.clone(),
+                                                width: pick.width.unwrap_or(0),
+                                                height: pick.height.unwrap_or(0),
+                                                status_label: "Đang tối ưu".into(),
+                                                failed: false,
+                                            });
+                                            platform::scroll_chat_to_bottom(false);
+                                            match media_opt::process_pending_handle(&hid, orig).await {
+                                                Ok(payload) => {
+                                                    media_opt::release_pending_handle(&hid, false);
+                                                    if let Some(h) = on_media {
+                                                        h.call(payload);
+                                                    } else {
+                                                        remove_pending_media(&hid);
+                                                        on_image.call((payload.bytes, payload.mime));
+                                                    }
+                                                }
+                                                Err(e) if e.contains("svg_not_allowed") => {
+                                                    media_opt::release_pending_handle(&hid, true);
                                                     remove_pending_media(&hid);
-                                                    on_image.call((payload.bytes, payload.mime));
+                                                    *GLOBAL_MEDIA_NOTICE.write() = Some("Không hỗ trợ gửi tệp SVG".into());
+                                                }
+                                                Err(_) => {
+                                                    update_pending_media_status(&hid, "Xử lý thất bại", true);
                                                 }
                                             }
-                                            Err(_) => {
-                                                update_pending_media_status(&hid, "Xử lý thất bại", true);
+                                        }
+                                        Err(e) if e.contains("svg_not_allowed") => {
+                                            *GLOBAL_MEDIA_NOTICE.write() = Some("Không hỗ trợ gửi tệp SVG".into());
+                                        }
+                                        Err(_) => {
+                                            match media_opt::pick_and_optimize_from_input(&fid, orig).await {
+                                                Ok(payload) => {
+                                                    if let Some(h) = on_media {
+                                                        h.call(payload);
+                                                    } else {
+                                                        on_image.call((payload.bytes, payload.mime));
+                                                    }
+                                                }
+                                                Err(e) if e.contains("svg_not_allowed") => {
+                                                    *GLOBAL_MEDIA_NOTICE.write() = Some("Không hỗ trợ gửi tệp SVG".into());
+                                                }
+                                                Err(_) => match platform::read_selected_file_raw(&fid).await {
+                                                    Ok((bytes, mime)) => on_image.call((bytes, mime)),
+                                                    Err(e) if e.contains("svg_not_allowed") => {
+                                                        *GLOBAL_MEDIA_NOTICE.write() = Some("Không hỗ trợ gửi tệp SVG".into());
+                                                    }
+                                                    Err(_) => {}
+                                                },
                                             }
                                         }
-                                    } else if let Ok(payload) = media_opt::pick_and_optimize_from_input(&fid, orig).await {
-                                        if let Some(h) = on_media {
-                                            h.call(payload);
-                                        } else {
-                                            on_image.call((payload.bytes, payload.mime));
-                                        }
-                                    } else if let Ok((bytes, mime)) = platform::read_selected_file_raw(&fid).await {
-                                        on_image.call((bytes, mime));
                                     }
                                 });
                             },
@@ -1626,10 +1651,16 @@ pub fn ComposerTools(
                                     open.set(false);
                                     let fid = doc_id2.clone();
                                     spawn(async move {
-                                        if let Ok(payload) = media_opt::pick_and_optimize_from_input(&fid, true).await {
-                                            if let Some(h) = on_media {
-                                                h.call(payload);
+                                        match media_opt::pick_and_optimize_from_input(&fid, true).await {
+                                            Ok(payload) => {
+                                                if let Some(h) = on_media {
+                                                    h.call(payload);
+                                                }
                                             }
+                                            Err(e) if e.contains("svg_not_allowed") => {
+                                                *GLOBAL_MEDIA_NOTICE.write() = Some("Không hỗ trợ gửi tệp SVG".into());
+                                            }
+                                            Err(_) => {}
                                         }
                                     });
                                 },

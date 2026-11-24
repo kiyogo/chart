@@ -336,7 +336,13 @@ pub fn Composer(
                             _ => pending_table.set(Some(p.text.clone())),
                         }
                     }
-                    "error" => notice.set(Some("The photo is larger than 8 MB so it cannot be pasted".into())),
+                    "error" => {
+                        if p.text == "svg_not_allowed" {
+                            notice.set(Some("Không hỗ trợ gửi tệp SVG".into()));
+                        } else {
+                            notice.set(Some("The photo is larger than 8 MB so it cannot be pasted".into()));
+                        }
+                    }
                     _ => {}
                 }
             }

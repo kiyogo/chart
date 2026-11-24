@@ -281,6 +281,10 @@ async fn handle_upload_avatar(
     if body.len() > 5 * 1024 * 1024 {
         return Err(AppError::BadRequest("avatar_too_large"));
     }
+    let ct = headers.get(axum::http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok());
+    if crate::storage::router::is_blocked_svg_upload(None, None, ct, Some(&body)) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
+    }
     // Real magic-byte inspection + genuine 512x512 AVIF (or honest matching format) + 128x128 thumbnail.
     let body_vec = body.to_vec();
     let processed = tokio::task::spawn_blocking(move || crate::media_opt::process_avatar_honest(&body_vec))
@@ -338,6 +342,10 @@ async fn handle_upload_banner(
     }
     if body.len() > 8 * 1024 * 1024 {
         return Err(AppError::BadRequest("banner_too_large"));
+    }
+    let ct = headers.get(axum::http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok());
+    if crate::storage::router::is_blocked_svg_upload(None, None, ct, Some(&body)) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
     }
 
     let banner_dir = state.config.uploads_dir.join("banners");

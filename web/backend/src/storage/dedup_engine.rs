@@ -427,6 +427,10 @@ pub async fn handle_dedup_claim(
     let user = auth_caller(&state, &headers).await?;
     authorize_write(&state.db, user.id, &req.scope_type, req.scope_id).await?;
 
+    if crate::storage::router::is_blocked_svg_upload(req.file_name.as_deref(), req.mime_type.as_deref(), None, None) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
+    }
+
     let fname = req.file_name.as_deref().unwrap_or("attachment.bin");
     let plain_sha = decode_hex_32(req.sha256_plain.as_deref());
 
@@ -459,6 +463,9 @@ pub async fn handle_dedup_claim(
             let src_mime: String = src.try_get("mime_type")?;
             let use_name = req.file_name.as_deref().filter(|s| !s.is_empty()).unwrap_or(&src_name);
             let use_mime = req.mime_type.as_deref().filter(|s| !s.is_empty()).unwrap_or(&src_mime);
+            if crate::storage::router::is_blocked_svg_upload(Some(use_name), Some(use_mime), None, None) {
+                return Err(AppError::BadRequest("svg_upload_not_allowed"));
+            }
             let out = link_existing_object_for_user(
                 &state.db,
                 user.id,
@@ -829,6 +836,10 @@ pub struct CdcChunkSpec {
 pub struct CdcPlanReq {
     pub scope_type: String,
     pub scope_id: Option<Uuid>,
+    #[serde(default)]
+    pub file_name: Option<String>,
+    #[serde(default)]
+    pub mime_type: Option<String>,
     pub chunks: Vec<CdcChunkSpec>,
 }
 
@@ -841,6 +852,9 @@ pub async fn handle_cdc_plan(
 ) -> AppResult<Json<serde_json::Value>> {
     let user = auth_caller(&state, &headers).await?;
     authorize_write(&state.db, user.id, &req.scope_type, req.scope_id).await?;
+    if crate::storage::router::is_blocked_svg_upload(req.file_name.as_deref(), req.mime_type.as_deref(), None, None) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
+    }
     if req.chunks.is_empty() || req.chunks.len() > 2048 {
         return Err(AppError::BadRequest("invalid_cdc_chunk_count"));
     }
@@ -972,6 +986,9 @@ pub async fn handle_cdc_commit(
 ) -> AppResult<Json<serde_json::Value>> {
     let user = auth_caller(&state, &headers).await?;
     authorize_write(&state.db, user.id, &req.scope_type, req.scope_id).await?;
+    if crate::storage::router::is_blocked_svg_upload(req.file_name.as_deref(), req.mime_type.as_deref(), None, None) {
+        return Err(AppError::BadRequest("svg_upload_not_allowed"));
+    }
     if req.chunks.is_empty() || req.chunks.len() > 2048 {
         return Err(AppError::BadRequest("invalid_cdc_chunk_count"));
     }

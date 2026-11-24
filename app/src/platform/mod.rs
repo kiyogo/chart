@@ -256,6 +256,12 @@ pub async fn process_avatar_from_input(input_id: &str) -> Result<Vec<u8>, String
                 return;
             }
             const file = input.files[0];
+            if ((window.__chatwMediaOpt && window.__chatwMediaOpt.isBlockedSvgBlob && await window.__chatwMediaOpt.isBlockedSvgBlob(file)) ||
+                /\.(svg|svgz)$/i.test(file.name || '') || String(file.type || '').toLowerCase().includes('svg')) {
+                input.value = '';
+                dioxus.send({ error: 'svg_not_allowed' });
+                return;
+            }
             try {
                 let sourceWidth, sourceHeight, drawableSource;
                 if (typeof createImageBitmap === 'function') {
@@ -1232,6 +1238,12 @@ pub async fn process_banner_from_input(input_id: &str) -> Result<Vec<u8>, String
                 return;
             }
             const file = input.files[0];
+            if ((window.__chatwMediaOpt && window.__chatwMediaOpt.isBlockedSvgBlob && await window.__chatwMediaOpt.isBlockedSvgBlob(file)) ||
+                /\.(svg|svgz)$/i.test(file.name || '') || String(file.type || '').toLowerCase().includes('svg')) {
+                input.value = '';
+                dioxus.send({ error: 'svg_not_allowed' });
+                return;
+            }
             try {
                 const bitmap = await createImageBitmap(file);
                 const w = 960, h = 320;
@@ -1354,6 +1366,12 @@ pub async fn process_selected_sticker(input_id: &str) -> Result<(Vec<u8>, String
             const input = document.getElementById({id_json});
             if (!input || !input.files || input.files.length === 0) {{ dioxus.send({{ error: 'no_file' }}); return; }}
             const file = input.files[0];
+            if ((window.__chatwMediaOpt && window.__chatwMediaOpt.isBlockedSvgBlob && await window.__chatwMediaOpt.isBlockedSvgBlob(file)) ||
+                /\.(svg|svgz)$/i.test(file.name || '') || String(file.type || '').toLowerCase().includes('svg')) {{
+                input.value = '';
+                dioxus.send({{ error: 'svg_not_allowed' }});
+                return;
+            }}
             const toB64 = (buf) => {{
                 let s = ''; const bytes = new Uint8Array(buf);
                 for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
@@ -1406,6 +1424,10 @@ pub async fn read_selected_file_raw(input_id: &str) -> Result<(Vec<u8>, String),
             const input = document.getElementById({id_json});
             if (!input || !input.files || input.files.length === 0) {{ dioxus.send({{ error: 'no_file' }}); return; }}
             const file = input.files[0];
+            if ((window.__chatwMediaOpt && window.__chatwMediaOpt.isBlockedSvgBlob && await window.__chatwMediaOpt.isBlockedSvgBlob(file)) ||
+                /\.(svg|svgz)$/i.test(file.name || '') || String(file.type || '').toLowerCase().includes('svg')) {{
+                dioxus.send({{ error: 'svg_not_allowed' }}); input.value = ''; return;
+            }}
             if (file.size > 2 * 1024 * 1024) {{ dioxus.send({{ error: 'too_large' }}); input.value = ''; return; }}
             const buf = new Uint8Array(await file.arrayBuffer());
             let s = '';
@@ -1442,6 +1464,12 @@ pub async fn process_selected_wallpaper_webp(input_id: &str) -> Result<(Vec<u8>,
                 return;
             }}
             const file = input.files[0];
+            if ((window.__chatwMediaOpt && window.__chatwMediaOpt.isBlockedSvgBlob && await window.__chatwMediaOpt.isBlockedSvgBlob(file)) ||
+                /\.(svg|svgz)$/i.test(file.name || '') || String(file.type || '').toLowerCase().includes('svg')) {{
+                dioxus.send({{ error: 'svg_not_allowed' }});
+                input.value = '';
+                return;
+            }}
             const toB64 = (buf) => {{
                 let s = ''; const bytes = new Uint8Array(buf);
                 for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
@@ -1667,11 +1695,26 @@ pub fn paste_watch(input_id: &str, intercept_tables: bool) -> dioxus::document::
             el.addEventListener('paste', async (e) => {{
                 const cd = e.clipboardData;
                 if (!cd) return;
-                const file = [...(cd.files || [])].find((f) => f.type.startsWith('image/'));
+                const allFiles = [...(cd.files || [])];
+                for (const f of allFiles) {{
+                    const isSvg = (window.__chatwMediaOpt && window.__chatwMediaOpt.isBlockedSvgBlob && await window.__chatwMediaOpt.isBlockedSvgBlob(f))
+                        || /\.(svg|svgz)$/i.test(f.name || '')
+                        || String(f.type || '').toLowerCase().includes('svg');
+                    if (isSvg) {{
+                        e.preventDefault();
+                        dioxus.send({{ kind: 'error', text: 'svg_not_allowed' }});
+                        return;
+                    }}
+                }}
+                const file = allFiles.find((f) => f.type.startsWith('image/'));
                 if (file) {{
                     e.preventDefault();
                     if (file.size > 8 * 1024 * 1024) {{ dioxus.send({{ kind: 'error', text: 'too_large' }}); return; }}
                     const buf = new Uint8Array(await file.arrayBuffer());
+                    if (window.__chatwMediaOpt && window.__chatwMediaOpt.isBlockedSvgFile && window.__chatwMediaOpt.isBlockedSvgFile(file.name, file.type, buf)) {{
+                        dioxus.send({{ kind: 'error', text: 'svg_not_allowed' }});
+                        return;
+                    }}
                     let s = '';
                     for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
                     dioxus.send({{ kind: 'image', b64: btoa(s), mime: file.type }});

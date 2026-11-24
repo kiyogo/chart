@@ -333,6 +333,14 @@ pub fn Chat(
             });
         }
     });
+    // Spec 115: Surface blocked media notices (e.g. `.svg` rejected) in the global toast banner.
+    use_effect(move || {
+        let pending = crate::components::rich::GLOBAL_MEDIA_NOTICE.read().clone();
+        if let Some(msg) = pending {
+            *crate::components::rich::GLOBAL_MEDIA_NOTICE.write() = None;
+            toast.set(Some(msg));
+        }
+    });
 
     // Previews & Unread counts
     let saved_previews_init = load_saved_previews(&preview_storage_key);
