@@ -1735,7 +1735,12 @@ button.chat-header-identity:hover {
   max-width: 100%;
 }
 .message-row.sent .message-bubble { background: var(--msg-sent); color: var(--msg-sent-text); }
-.message-row.received .message-bubble { background: #FFFFFF !important; color: var(--msg-recv-text, #111827); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05); }
+.message-row.received .message-bubble {
+  background: var(--msg-recv, #FFFFFF);
+  color: var(--msg-recv-text, #111827);
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
 /* grouped corner shaping */
 .message-row.sent:not(.group-end) .message-bubble { border-bottom-right-radius: var(--radius-bubble-tail); }
 .message-row.sent:not(.group-start) .message-bubble { border-top-right-radius: var(--radius-bubble-tail); }
@@ -1763,22 +1768,23 @@ button.chat-header-identity:hover {
 .message-bubble.error-bubble,
 .message-row.sent .message-bubble.error-bubble,
 .message-row.received .message-bubble.error-bubble {
-  background: #FFFFFF !important;
-  color: #111827 !important;
+  background: var(--msg-recv, #FFFFFF);
+  color: var(--msg-recv-text, #111827);
   font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  border: 1px solid rgba(15, 23, 42, 0.10);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 .message-bubble.error-bubble *,
 .message-row.sent .message-bubble.error-bubble *,
 .message-row.received .message-bubble.error-bubble * {
-  color: #111827 !important;
+  color: inherit;
 }
 .message-row.sent .message-bubble.error-bubble .bubble-meta,
 .message-row.received .message-bubble.error-bubble .bubble-meta {
-  color: #64748B !important;
+  color: var(--msg-recv-meta, #64748B);
 }
 .message-bubble.deleted { font-style: italic; opacity: 0.75; }
 
@@ -4267,11 +4273,51 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
   background: rgba(250, 204, 21, 0.14);
   color: #FDE68A;
 }
+html[data-theme="dark"] .message-row.received .message-bubble,
+html[data-surface-tone="dark"] .message-row.received .message-bubble,
 .chat-column.wp-night .message-row.received .message-bubble,
 .chat-column[data-chat-tone="dark"] .message-row.received .message-bubble,
-.settings-preview-chat.wp-night .message-row.received .message-bubble {
-  background: rgba(30, 39, 60, 0.90);
-  color: #F1F4FA;
+.settings-preview-chat.wp-night .message-row.received .message-bubble,
+html[data-theme="dark"] .settings-preview-chat .message-row.received .message-bubble {
+  background: var(--msg-recv, rgba(30, 39, 60, 0.90)) !important;
+  color: var(--msg-recv-text, #F1F4FA) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+html[data-theme="dark"] .message-row.received .bubble-meta,
+html[data-surface-tone="dark"] .message-row.received .bubble-meta,
+.chat-column.wp-night .message-row.received .bubble-meta,
+.chat-column[data-chat-tone="dark"] .message-row.received .bubble-meta,
+.settings-preview-chat.wp-night .message-row.received .bubble-meta,
+html[data-theme="dark"] .settings-preview-chat .message-row.received .bubble-meta {
+  color: var(--msg-recv-meta, rgba(241, 244, 250, 0.74)) !important;
+}
+html[data-theme="dark"] .message-bubble.error-bubble,
+html[data-surface-tone="dark"] .message-bubble.error-bubble,
+.chat-column.wp-night .message-bubble.error-bubble,
+.chat-column[data-chat-tone="dark"] .message-bubble.error-bubble,
+.settings-preview-chat.wp-night .message-bubble.error-bubble,
+html[data-theme="dark"] .settings-preview-chat .message-bubble.error-bubble {
+  background: var(--msg-recv, rgba(30, 39, 60, 0.90)) !important;
+  color: var(--msg-recv-text, #F1F4FA) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+html[data-theme="dark"] .message-bubble.error-bubble *,
+html[data-surface-tone="dark"] .message-bubble.error-bubble *,
+.chat-column.wp-night .message-bubble.error-bubble *,
+.chat-column[data-chat-tone="dark"] .message-bubble.error-bubble *,
+.settings-preview-chat.wp-night .message-bubble.error-bubble *,
+html[data-theme="dark"] .settings-preview-chat .message-bubble.error-bubble * {
+  color: inherit !important;
+}
+html[data-theme="dark"] .message-bubble.error-bubble .bubble-meta,
+html[data-surface-tone="dark"] .message-bubble.error-bubble .bubble-meta,
+.chat-column.wp-night .message-bubble.error-bubble .bubble-meta,
+.chat-column[data-chat-tone="dark"] .message-bubble.error-bubble .bubble-meta,
+.settings-preview-chat.wp-night .message-bubble.error-bubble .bubble-meta,
+html[data-theme="dark"] .settings-preview-chat .message-bubble.error-bubble .bubble-meta {
+  color: var(--msg-recv-meta, rgba(241, 244, 250, 0.74)) !important;
 }
 .chat-column.wp-custom { background-color: var(--chat-wp-color, var(--bg-chat)); }
 .chat-column.wp-image { background-image: var(--chat-wp-image); background-size: cover; background-position: center; }
