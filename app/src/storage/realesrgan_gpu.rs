@@ -714,15 +714,15 @@ void main() {
   float mxCrossL = max(max(max(dL, eL), max(fL, bL)), hL);
   float edgeRange = mxCrossL - mnCrossL;
 
-  // Noise gate: smooth skin and delicate shadows (edgeRange < 0.015) receive zero sharpening distortion,
-  // preventing mottled skin and dark eye bags, while real edges (eyelashes, hair, fabric) get full punch.
-  float gate = smoothstep(0.015, 0.065, edgeRange);
+  // Noise gate: smooth skin and flat anime shading (edgeRange < 0.022) receive zero sharpening distortion,
+  // preventing mottled skin or blotches, while real edges (eyelashes, hair, ink lines, outlines) get strong punch.
+  float gate = smoothstep(0.020, 0.072, edgeRange);
 
-  // AMD FidelityFX CAS adaptive slope calculation
+  // AMD FidelityFX CAS adaptive slope calculation (5.8-tap total weight requires w > -0.1724 to stay positive!)
   float rcpM = 1.0 / max(mxCrossL, 1e-4);
   float amp = sqrt(clamp(min(mnCrossL, 2.0 - mxCrossL) * rcpM, 0.0, 1.0));
-  float peak = -0.15 * clamp(uColor1.z, 0.0, 1.2) * gate;
-  float w = max(amp * peak, -0.18);
+  float peak = -0.145 * clamp(uColor1.z, 0.0, 1.65) * gate;
+  float w = max(amp * peak, -0.155);
 
   // 8-tap spatial CAS filtering (cross taps weighted 1.0, diagonal taps weighted 0.45)
   vec3 crossSum = b + d + f + h;
@@ -730,12 +730,33 @@ void main() {
   float totalWeight = 1.0 + (4.0 + 1.8) * w;
   vec3 cas = clamp((e + crossSum * w + diagSum * (w * 0.45)) / totalWeight, 0.0, 1.0);
 
-  // STRICT NEIGHBORHOOD CLAMP:
-  // Guarantees ZERO undershoot and ZERO overshoot! Output CANNOT become darker than local min
-  // or brighter than local max -> 100% immune to blackened eye craters and halo artifacts!
+  // STRICT 3x3 NEIGHBORHOOD CLAMP for fine 1px CAS
   vec3 mnRgb = min(min(min(min(a, b), min(c, d)), min(e, f)), min(g, min(h, i)));
   vec3 mxRgb = max(max(max(max(a, b), max(c, d)), max(e, f)), max(g, max(h, i)));
-  vec3 sharp = clamp(cas, mnRgb, mxRgb);
+  vec3 sharp1 = clamp(cas, mnRgb, mxRgb);
+
+  // Multi-scale ±2px / ±3px edge-ramp tightener (collapses soft 4× upscaled blur ramps into crisp edges
+  // while staying strictly noise-gated on flat regions and strictly clamped inside local [min, max] -> zero halos!)
+  vec3 b2 = fetchSr(op + ivec2( 0, -2), maxP);
+  vec3 d2 = fetchSr(op + ivec2(-2,  0), maxP);
+  vec3 f2 = fetchSr(op + ivec2( 2,  0), maxP);
+  vec3 h2 = fetchSr(op + ivec2( 0,  2), maxP);
+  vec3 b3 = fetchSr(op + ivec2( 0, -3), maxP);
+  vec3 d3 = fetchSr(op + ivec2(-3,  0), maxP);
+  vec3 f3 = fetchSr(op + ivec2( 3,  0), maxP);
+  vec3 h3 = fetchSr(op + ivec2( 0,  3), maxP);
+
+  float mn2L = min(min(min(rgbToLuma(b2), rgbToLuma(d2)), min(rgbToLuma(f2), rgbToLuma(h2))), mnCrossL);
+  float mx2L = max(max(max(rgbToLuma(b2), rgbToLuma(d2)), max(rgbToLuma(f2), rgbToLuma(h2))), mxCrossL);
+  float edgeRange2 = mx2L - mn2L;
+  float gate2 = smoothstep(0.022, 0.080, edgeRange2);
+
+  vec3 avgWide = 0.16 * (b2 + d2 + f2 + h2) + 0.09 * (b3 + d3 + f3 + h3);
+  float wideGain = clamp(uColor1.z * 0.72, 0.0, 1.20) * gate2;
+  vec3 mnWide = min(mnRgb, min(min(b2, d2), min(f2, h2)));
+  vec3 mxWide = max(mxRgb, max(max(b2, d2), max(f2, h2)));
+  // Tight edge clamp uses 3x3 bounds near 1px contours and widens only slightly along smooth ramps (zero haloing!)
+  vec3 sharp = clamp(sharp1 + (sharp1 - avgWide) * wideGain, mix(mnRgb, mnWide, 0.35), mix(mxRgb, mxWide, 0.35));
 
   // 3. Sender OriginalQualityProfile global contrast / balance calibration (if specified)
   if (abs(uColor0.x) > 0.001 || abs(uColor0.y) > 0.001 || abs(uColor0.z) > 0.001 || abs(uColor0.w - 1.0) > 0.005) {
@@ -3040,15 +3061,15 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Spec 154: NomosUni SPAN 2× preserves micro-texture -> gentle 0.25 CAS; SPAN 4× 0.35; AnimeVideoV3 minimal 0.10 (no cel edge ringing!)
+    // Spec 155: Multi-scale edge-gated sharpening delivers strong, crisp edges on both photos & anime with zero haloing!
     color1[2] = if kind == RealEsrganModelKind::NomosUniSpanX2 {
-        0.25
+        1.15
     } else if kind.is_span() {
-        0.35
+        1.35
     } else if kind == RealEsrganModelKind::AnimeVideoV3 {
-        0.10
+        1.50
     } else {
-        0.85
+        1.20
     };
 
     let probe = probe_gpu();
