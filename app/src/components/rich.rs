@@ -125,8 +125,8 @@ pub fn PendingSenderMediaList() -> Element {
                     (String::new(), "position: relative;".to_string())
                 };
                 rsx! {
-                    div { key: "{key_id}", class: "message-row self pending-sender-media-row", "data-pending-media": "true",
-                        div { class: "message-content",
+                    div { key: "{key_id}", class: "message-row sent group-start group-end pending pending-sender-media-row", "data-pending-media": "true",
+                        div { class: "message-content-wrapper",
                             if item.media_kind == "image" && !item.preview_url.is_empty() {
                                 div { class: "rich-image", style: "{box_style}",
                                     div { class: "rich-image-stage loaded", style: "{stage_style}",
@@ -138,7 +138,10 @@ pub fn PendingSenderMediaList() -> Element {
                                         }
                                         div {
                                             class: if item.failed { "status-badge error" } else { "chip-privacy" },
-                                            style: "position: absolute; bottom: 8px; right: 8px; backdrop-filter: blur(8px);",
+                                            style: "position: absolute; bottom: 8px; right: 8px; z-index: 2; backdrop-filter: blur(8px); display: inline-flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.78); color: #fff;",
+                                            if !item.failed {
+                                                span { class: "spinner", style: "width: 12px; height: 12px; border-width: 2px;" }
+                                            }
                                             "{item.status_label}"
                                             if item.failed {
                                                 button {

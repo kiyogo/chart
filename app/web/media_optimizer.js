@@ -263,6 +263,7 @@
   let mediaWorker = null;
   let mediaWorkerReqId = 1;
   const mediaWorkerPending = new Map();
+  let nativeCanvasAvifSupport = null; // null = untested, true/false once probed
 
   function optimizeInMediaWorker(rawU8, mime, opts) {
     if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
@@ -278,6 +279,8 @@
           if (entry) {
             clearTimeout(entry.timer);
             mediaWorkerPending.delete(d.id);
+            if (d.avifUnsupportedInWorker) nativeCanvasAvifSupport = false;
+            else if (d.ok && d.codec === 'avif_native_canvas') nativeCanvasAvifSupport = true;
             entry.resolve(d.ok ? d : null);
           }
         };
@@ -392,7 +395,7 @@
       }
     }
 
-    if (!rawSniff.animated) {
+    if (!rawSniff.animated && nativeCanvasAvifSupport !== false) {
       const workerRes = await optimizeInMediaWorker(rawU8, rawSniff.mime || fileOrBlob.type, effectiveOpts);
       if (workerRes && workerRes.bytesB64 && (workerRes.ext === 'avif' || effectiveOpts.preserveOriginal)) {
         if (!effectiveOpts.preserveOriginal && !workerRes.origProfileJson) {
@@ -444,8 +447,8 @@
       const probe = await drawMultiStepResized(bitmap, probeW, probeH);
       isCrisp = detectCrispTextOrAlpha(probe).isCrisp;
 
-      // 1. Try native canvas genuine AVIF (only for still images)
-      if (!rawSniff.animated) {
+      // 1. Try native canvas genuine AVIF only when the browser supports image/avif export
+      if (!rawSniff.animated && nativeCanvasAvifSupport !== false) {
         const maxEdge = opts.maxDim || adaptiveMaxEdge(origW, origH, isCrisp, qualityMode);
         let tw = origW;
         let th = origH;
@@ -457,6 +460,11 @@
         const canvas = await drawMultiStepResized(bitmap, tw, th);
         const q = isCrisp ? 0.82 : (qualityMode === 'data_saver' ? 0.65 : 0.80);
         const nativeAvif = await tryNativeCanvasAvif(canvas, q);
+        if (nativeAvif) {
+          nativeCanvasAvifSupport = true;
+        } else {
+          nativeCanvasAvifSupport = false;
+        }
         if (nativeAvif && nativeAvif.u8.byteLength < rawU8.byteLength) {
           let origProfileJson = null;
           if (window.__chatwWasmMedia && typeof window.__chatwWasmMedia.extractQualityProfile === 'function') {
@@ -494,10 +502,11 @@
       bitmap.close();
     } catch (_) {}
 
-    // 2. Pure-Rust WASM `ravif`/`rav1e` Adaptive Ultra AVIF encoder (works on ALL browsers, incl. Animated AVIF `avis`!)
+    // 2. Pure-Rust WASM `ravif`/`rav1e` Adaptive AVIF encoder (yield one frame first so UI loading badge paints!)
     if (window.__chatwWasmMedia && typeof window.__chatwWasmMedia.encodeAvifAdaptive === 'function') {
       try {
-        const wasmMode = qualityMode === 'data_saver' ? 'fast' : 'ultra';
+        await new Promise((r) => setTimeout(r, 0));
+        const wasmMode = qualityMode === 'data_saver' ? 'aggressive' : (origW * origH > 400_000 ? 'fast' : 'ultra');
         const res = window.__chatwWasmMedia.encodeAvifAdaptive(rawU8, wasmMode);
         if (res && res.ok && res.bytes && res.bytes.byteLength > 0) {
           const avifU8 = res.bytes instanceof Uint8Array ? res.bytes : new Uint8Array(res.bytes);

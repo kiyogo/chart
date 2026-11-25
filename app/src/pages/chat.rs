@@ -2718,9 +2718,14 @@ pub fn Chat(
     let pkey_for_send = preview_storage_key.clone();
     let send_dm_text = use_callback(move |(raw_text, reply_to): (String, Option<String>)| {
         let Some(active) = active_friend() else {
+            toast.set(Some("No active conversation selected".into()));
             return;
         };
-        if raw_text.trim().is_empty() || user_keys().is_none() {
+        if raw_text.trim().is_empty() {
+            return;
+        }
+        if user_keys().is_none() {
+            toast.set(Some("This device does not yet have an encryption key".into()));
             return;
         }
         let uid = uid_for_send.clone();
@@ -2983,46 +2988,20 @@ pub fn Chat(
             .await
             {
                 Ok(out) => {
-                    if !out.ref_id.is_empty() && !payload.bytes.is_empty() {
-                        let meta = crate::storage::LocalObjectMeta {
-                            ref_id: out.ref_id.clone(),
-                            scope_type: "dm".into(),
-                            file_name: payload.file_name.clone(),
-                            mime_type: payload.mime.clone(),
-                            sha256_plain: Some(payload.sha256_plain.clone()),
-                            availability_state: out.availability_state.clone(),
-                        };
-                        let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
-                    }
-                    // Only commit untouched local original when sender actually holds a crisp original (NOT a copied blurry image!)
-                    if payload.media_kind == "image" {
-                        if !out.needs_sender_ai {
-                            if let Some(ref p) = preview_key {
-                                crate::storage::media_opt::commit_sender_original(
-                                    p,
-                                    &out.download_url,
-                                    &out.key_b64,
-                                    &out.nonce_b64,
-                                    &out.ref_id,
-                                )
-                                .await;
-                            }
-                        }
-                        if !payload.bytes.is_empty() {
-                            let _ = platform::register_cached_blob_url(
-                                &out.download_url,
-                                &out.key_b64,
-                                &out.nonce_b64,
-                                &payload.bytes,
-                                &payload.mime,
-                            )
-                            .await;
-                        }
+                    if payload.media_kind == "image" && !payload.bytes.is_empty() {
+                        let _ = platform::register_cached_blob_url(
+                            &out.download_url,
+                            &out.key_b64,
+                            &out.nonce_b64,
+                            &payload.bytes,
+                            &payload.mime,
+                        )
+                        .await;
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
-                        out.download_url,
-                        out.key_b64,
-                        out.nonce_b64,
+                        out.download_url.clone(),
+                        out.key_b64.clone(),
+                        out.nonce_b64.clone(),
                         "dm",
                         &payload,
                     );
@@ -3030,6 +3009,7 @@ pub fn Chat(
                         crate::components::rich::remove_pending_media(p);
                     }
                     send_dm_text.call((msg_str, None));
+                    persist_uploaded_media_bg("dm", preview_key, payload, out);
                 }
                 Err(err) => {
                     if let Some(ref p) = preview_key {
@@ -3511,31 +3491,13 @@ pub fn Chat(
             .await
             {
                 Ok(out) => {
-                    if !out.ref_id.is_empty() && !payload.bytes.is_empty() {
-                        let meta = crate::storage::LocalObjectMeta {
-                            ref_id: out.ref_id.clone(),
-                            scope_type: "group".into(),
-                            file_name: payload.file_name.clone(),
-                            mime_type: payload.mime.clone(),
-                            sha256_plain: Some(payload.sha256_plain.clone()),
-                            availability_state: "server_durable".into(),
-                        };
-                        let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
-                    }
-                    if payload.media_kind == "image" {
-                        if !out.needs_sender_ai {
-                            if let Some(ref p) = preview_key {
-                                crate::storage::media_opt::commit_sender_original(p, &out.download_url, &out.key_b64, &out.nonce_b64, &out.ref_id).await;
-                            }
-                        }
-                        if !payload.bytes.is_empty() {
-                            let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
-                        }
+                    if payload.media_kind == "image" && !payload.bytes.is_empty() {
+                        let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
-                        out.download_url,
-                        out.key_b64,
-                        out.nonce_b64,
+                        out.download_url.clone(),
+                        out.key_b64.clone(),
+                        out.nonce_b64.clone(),
                         "group",
                         &payload,
                     );
@@ -3543,6 +3505,7 @@ pub fn Chat(
                         crate::components::rich::remove_pending_media(p);
                     }
                     send_group_raw.call(msg_str);
+                    persist_uploaded_media_bg("group", preview_key, payload, out);
                 }
                 Err(err) => {
                     if let Some(ref p) = preview_key {
@@ -3632,31 +3595,13 @@ pub fn Chat(
             .await
             {
                 Ok(out) => {
-                    if !out.ref_id.is_empty() && !payload.bytes.is_empty() {
-                        let meta = crate::storage::LocalObjectMeta {
-                            ref_id: out.ref_id.clone(),
-                            scope_type: "channel".into(),
-                            file_name: payload.file_name.clone(),
-                            mime_type: payload.mime.clone(),
-                            sha256_plain: Some(payload.sha256_plain.clone()),
-                            availability_state: "server_durable".into(),
-                        };
-                        let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
-                    }
-                    if payload.media_kind == "image" {
-                        if !out.needs_sender_ai {
-                            if let Some(ref p) = preview_key {
-                                crate::storage::media_opt::commit_sender_original(p, &out.download_url, &out.key_b64, &out.nonce_b64, &out.ref_id).await;
-                            }
-                        }
-                        if !payload.bytes.is_empty() {
-                            let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
-                        }
+                    if payload.media_kind == "image" && !payload.bytes.is_empty() {
+                        let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
-                        out.download_url,
-                        out.key_b64,
-                        out.nonce_b64,
+                        out.download_url.clone(),
+                        out.key_b64.clone(),
+                        out.nonce_b64.clone(),
                         "channel",
                         &payload,
                     );
@@ -3671,6 +3616,7 @@ pub fn Chat(
                         });
                         platform::scroll_chat_to_bottom(false);
                     }
+                    persist_uploaded_media_bg("channel", preview_key, payload, out);
                 }
                 Err(err) => {
                     if let Some(ref p) = preview_key {
@@ -5908,6 +5854,45 @@ pub fn Chat(
             }
         }
     }
+}
+
+/// Persists local CAS copy and untouched sender original asynchronously without blocking message dispatch (Spec 151).
+fn persist_uploaded_media_bg(
+    scope_type: &'static str,
+    preview_key: Option<String>,
+    payload: crate::storage::media_opt::OptimizedMediaPayload,
+    out: crate::services::storage_sync::SmartUploadOutcome,
+) {
+    let availability = if scope_type == "dm" {
+        out.availability_state.clone()
+    } else {
+        "server_durable".to_string()
+    };
+    spawn(async move {
+        if !out.ref_id.is_empty() && !payload.bytes.is_empty() {
+            let meta = crate::storage::LocalObjectMeta {
+                ref_id: out.ref_id.clone(),
+                scope_type: scope_type.into(),
+                file_name: payload.file_name.clone(),
+                mime_type: payload.mime.clone(),
+                sha256_plain: Some(payload.sha256_plain.clone()),
+                availability_state: availability,
+            };
+            let _ = crate::storage::put_local_object(&meta, &payload.bytes).await;
+        }
+        if payload.media_kind == "image" && !out.needs_sender_ai {
+            if let Some(ref p) = preview_key {
+                crate::storage::media_opt::commit_sender_original(
+                    p,
+                    &out.download_url,
+                    &out.key_b64,
+                    &out.nonce_b64,
+                    &out.ref_id,
+                )
+                .await;
+            }
+        }
+    });
 }
 
 /// Maps backend attachment upload error codes to clear, localized UI messages (Spec 149 / Spec 150).

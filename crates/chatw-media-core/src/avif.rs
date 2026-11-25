@@ -100,18 +100,18 @@ mod impl_codec {
         color_model: ColorModel,
     }
 
-    fn candidate_configs(analysis: &ImageAnalysis, mode: AvifCompressionMode) -> (Vec<CandidateConfig>, f64) {
+    fn candidate_configs(analysis: &ImageAnalysis, mode: AvifCompressionMode, single_thread: bool) -> (Vec<CandidateConfig>, f64) {
         let fast_speed = match mode {
-            AvifCompressionMode::FastAdaptive => 8,
-            AvifCompressionMode::UltraAggressive => 6,
-            AvifCompressionMode::UltraAdaptive => 6,
-            AvifCompressionMode::HighQuality => 4,
+            AvifCompressionMode::FastAdaptive => if single_thread { 9 } else { 8 },
+            AvifCompressionMode::UltraAggressive => if single_thread { 8 } else { 6 },
+            AvifCompressionMode::UltraAdaptive => if single_thread { 8 } else { 6 },
+            AvifCompressionMode::HighQuality => if single_thread { 6 } else { 4 },
         };
         let careful_speed = match mode {
-            AvifCompressionMode::FastAdaptive => 7,
-            AvifCompressionMode::UltraAggressive => 6,
-            AvifCompressionMode::UltraAdaptive => 5,
-            AvifCompressionMode::HighQuality => 4,
+            AvifCompressionMode::FastAdaptive => if single_thread { 9 } else { 7 },
+            AvifCompressionMode::UltraAggressive => if single_thread { 8 } else { 6 },
+            AvifCompressionMode::UltraAdaptive => if single_thread { 8 } else { 5 },
+            AvifCompressionMode::HighQuality => if single_thread { 6 } else { 4 },
         };
 
         if matches!(mode, AvifCompressionMode::UltraAggressive) {
@@ -420,12 +420,14 @@ mod impl_codec {
             orig_profile.loss_ratio = ((sx.max(sy) * 100.0).round()) / 100.0;
         }
 
-        let (candidates, default_floor) = candidate_configs(&analysis, opts.mode);
+        let single_thread = opts.threads == Some(1);
+        let (candidates, default_floor) = candidate_configs(&analysis, opts.mode, single_thread);
         let ssim_floor = opts.min_ssim_floor.unwrap_or(default_floor);
 
-        // If the image is small enough to decode-verify quickly (<= 4 MP), run real rate-distortion SSIM selection;
-        // for ultra-large 4K/8K frames where decoding multiple 10-bit candidates would stall latency, use calibrated quality directly.
-        let do_rd_verify = candidates.len() > 1 && (out_w as u64) * (out_h as u64) <= 2_500_000;
+        // If the image is small enough to decode-verify quickly (and not single-threaded WASM on large frames),
+        // run real rate-distortion SSIM selection; otherwise use calibrated single-pass quality directly to avoid UI hangs.
+        let rd_pixel_budget = if single_thread { 400_000 } else { 2_500_000 };
+        let do_rd_verify = candidates.len() > 1 && (out_w as u64) * (out_h as u64) <= rd_pixel_budget;
 
         let mut chosen_bytes: Option<Vec<u8>> = None;
         let mut chosen_cfg = candidates[candidates.len() - 1];
