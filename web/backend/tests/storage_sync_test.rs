@@ -651,3 +651,92 @@ async fn scenario_15_to_25_devices_approval_sync_and_peer_recovery() {
 
     let _ = std::fs::remove_dir_all(&cfg.uploads_dir);
 }
+
+#[tokio::test]
+async fn spec158_cold_image_compression_after_15_days() {
+    let pool = setup_db().await;
+    let cfg = test_config("s158");
+    let (app, storage_reg) = build_app(pool.clone(), cfg.clone()).await;
+
+    let (alice, _, c_alice) = create_test_user(&pool, &cfg, "cold_alice").await;
+    let (bob, _, c_bob) = create_test_user(&pool, &cfg, "cold_bob").await;
+    make_friends(&pool, alice, bob).await;
+
+    let (gst, gval) = req_json(&app, "POST", "/api/groups", &c_alice, Some(json!({ "name": "Cold15dGroup" }))).await;
+    assert_eq!(gst, StatusCode::OK);
+    let gid = gval["id"].as_str().unwrap();
+    req_json(&app, "POST", &format!("/api/groups/{gid}/members"), &c_alice, Some(json!({ "user_id": bob }))).await;
+
+    let active_png = sample_meme_png(4101, 480, 360, 1, 0);
+    let cold_png = sample_meme_png(8202, 520, 390, 1, 0);
+    let (st_act, act_raw, _) = req_bytes(
+        &app,
+        "POST",
+        &format!("/api/attachments?scope_type=group&scope_id={gid}&is_e2ee=false&preserve_original=false&file_name=active15d.png"),
+        &c_alice,
+        "image/png",
+        active_png.clone(),
+        &[],
+    )
+    .await;
+    assert_eq!(st_act, StatusCode::OK);
+    let act_json: Value = serde_json::from_slice(&act_raw).unwrap();
+    let act_ref = act_json["ref_id"].as_str().unwrap();
+
+    let (st_cold, cold_raw, _) = req_bytes(
+        &app,
+        "POST",
+        &format!("/api/attachments?scope_type=group&scope_id={gid}&is_e2ee=false&preserve_original=false&file_name=cold15d.png"),
+        &c_alice,
+        "image/png",
+        cold_png.clone(),
+        &[],
+    )
+    .await;
+    assert_eq!(st_cold, StatusCode::OK);
+    let cold_json: Value = serde_json::from_slice(&cold_raw).unwrap();
+    let cold_ref = cold_json["ref_id"].as_str().unwrap();
+
+    // Backdate ONLY `cold_ref`'s object `last_accessed_at` by 16 days; keep `act_ref` at 5 days ago
+    sqlx::query(
+        "UPDATE media_objects SET last_accessed_at = now() - interval '5 days' WHERE id = (SELECT object_id FROM media_references WHERE id = $1::uuid)",
+    )
+    .bind(act_ref)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE media_objects SET last_accessed_at = now() - interval '16 days' WHERE id = (SELECT object_id FROM media_references WHERE id = $1::uuid)",
+    )
+    .bind(cold_ref)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let cold_report = storage::migration::compress_inactive_images_15d(&pool, &storage_reg, 15)
+        .await
+        .expect("cold compression ok");
+    assert_eq!(cold_report.compressed, 1);
+    assert!(cold_report.freed_bytes > 0);
+
+    // Active image (< 15d) MUST remain untouched byte-for-byte original PNG
+    let (st_get_act, got_act, _) = req_bytes(&app, "GET", &format!("/api/attachments/{act_ref}"), &c_bob, "", vec![], &[]).await;
+    assert_eq!(st_get_act, StatusCode::OK);
+    assert_eq!(got_act, active_png);
+
+    // Cold image (>= 15d) MUST be compressed to smaller AVIF (`ftypavif`) and flagged `avif_cold_15d`
+    let (st_get_cold, got_cold, _) = req_bytes(&app, "GET", &format!("/api/attachments/{cold_ref}"), &c_bob, "", vec![], &[]).await;
+    assert_eq!(st_get_cold, StatusCode::OK);
+    assert!(got_cold.len() < cold_png.len());
+    assert_eq!(&got_cold[4..8], b"ftyp");
+    let codec_row: String = sqlx::query_scalar(
+        "SELECT o.compression_codec FROM media_objects o JOIN media_references r ON r.object_id = o.id WHERE r.id = $1::uuid",
+    )
+    .bind(cold_ref)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(codec_row, "avif_cold_15d");
+
+    let _ = std::fs::remove_dir_all(&cfg.uploads_dir);
+}

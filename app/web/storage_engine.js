@@ -369,6 +369,19 @@
       await openDb();
       const persisted = await requestPersistence();
       const opfs = (await getOpfsRoot()) !== null;
+      // Schedule gentle 15-day cold image compaction once in background idle without stalling UI
+      if (!window.__chatwCold15dScheduled) {
+        window.__chatwCold15dScheduled = true;
+        const runIdle = () => {
+          setTimeout(() => {
+            if (window.__chatwStorage && typeof window.__chatwStorage.compressColdImages15d === 'function') {
+              window.__chatwStorage.compressColdImages15d(15, false).catch(() => {});
+            }
+          }, 8000);
+        };
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(runIdle, { timeout: 10000 });
+        else runIdle();
+      }
       return {
         ok: true,
         persisted,
@@ -401,14 +414,17 @@
           file_name: meta.file_name || 'file.bin',
           mime_type: meta.mime_type || 'application/octet-stream',
           byte_size: bytes.byteLength,
+          original_byte_size: Number(meta.original_byte_size || bytes.byteLength),
           sha256_plain: meta.sha256_plain || shaHex,
           availability_state: meta.availability_state || 'local_only',
           storage_tier: storedInOpfs ? 'opfs' : 'indexeddb',
           opfs_key: storedInOpfs ? opfsKey : null,
           blob: storedInOpfs ? null : bytes,
           thumb_b64: meta.thumb_b64 || null,
+          cold_compressed_15d: Boolean(meta.cold_compressed_15d || (meta.mime_type || '') === 'image/avif'),
+          created_at: Number(meta.created_at || now),
           updated_at: now,
-          last_accessed_at: now,
+          last_accessed_at: Number(meta.last_accessed_at || now),
         };
         await idbTx('objects', 'readwrite', (s) => s.put(record));
         try {
@@ -972,9 +988,10 @@
             match_pct: meta.match_pct != null ? Number(meta.match_pct) : null,
             byte_size: byteSize,
             blob,
+            cold_compressed_15d: Boolean(meta.cold_compressed_15d || (blob.type || '') === 'image/avif'),
             access_count: 1,
             created_at: now,
-            last_accessed_at: now,
+            last_accessed_at: Number(meta.last_accessed_at || now),
           }),
         );
         return { ok: true, byte_size: byteSize };
@@ -1127,6 +1144,153 @@
         video_segment_bytes: vidBytes,
         total_smart_cache_bytes: objBytes + aiBytes + vidBytes,
       };
+    },
+
+    // Spec 158: Compress local cached images (`objects` & `sender_orig:*`) untouched for >= 15 days
+    // off-main-thread via `/media_worker.js`, leaving active (< 15 days) images 100% untouched as-is.
+    async compressColdImages15d(idleDays = 15, dryRun = false) {
+      const days = Math.max(1, Number(idleDays) || 15);
+      const cutoffMs = Date.now() - days * 86400 * 1000;
+      const report = {
+        idle_days: days,
+        scanned: 0,
+        kept_active: 0,
+        compressed: 0,
+        skipped_already_compressed: 0,
+        freed_bytes: 0,
+      };
+
+      const encodeColdWorker = (u8, mime) => {
+        if (typeof Worker === 'undefined') return Promise.resolve(null);
+        return new Promise((resolve) => {
+          try {
+            const w = new Worker('/media_worker.js', { type: 'module' });
+            const timer = setTimeout(() => {
+              try { w.terminate(); } catch (_) {}
+              resolve(null);
+            }, 30000);
+            w.onmessage = (ev) => {
+              clearTimeout(timer);
+              try { w.terminate(); } catch (_) {}
+              resolve(ev.data && ev.data.ok ? ev.data : null);
+            };
+            w.onerror = () => {
+              clearTimeout(timer);
+              try { w.terminate(); } catch (_) {}
+              resolve(null);
+            };
+            const copy = new Uint8Array(u8);
+            w.postMessage(
+              { id: 1, task: 'optimize_image', buffer: copy.buffer, mime, opts: { qualityMode: 'ultra_optimized', forceCompress: true } },
+              [copy.buffer],
+            );
+          } catch (_) {
+            resolve(null);
+          }
+        });
+      };
+
+      const objs = await idbGetAll('objects').catch(() => []);
+      for (const meta of objs) {
+        const mime = String(meta.mime_type || '').toLowerCase();
+        if (!mime.startsWith('image/') || mime === 'image/svg+xml') continue;
+        report.scanned++;
+        if (mime === 'image/avif' || meta.cold_compressed_15d) {
+          report.skipped_already_compressed++;
+          continue;
+        }
+        const lastUsed = Number(meta.last_accessed_at || meta.updated_at || meta.created_at || Date.now());
+        if (lastUsed > cutoffMs) {
+          report.kept_active++;
+          continue;
+        }
+        if (dryRun) {
+          report.compressed++;
+          continue;
+        }
+        let raw = null;
+        if (meta.opfs_key) raw = await readOpfs(meta.opfs_key);
+        if (!raw && meta.blob) raw = meta.blob instanceof Uint8Array ? meta.blob : new Uint8Array(meta.blob);
+        if (!raw || raw.byteLength < 64) continue;
+
+        const wres = await encodeColdWorker(raw, mime);
+        if (wres && wres.ext === 'avif' && wres.bytesB64) {
+          const avifBytes = b64ToBytes(wres.bytesB64);
+          if (avifBytes.byteLength > 0 && avifBytes.byteLength < raw.byteLength) {
+            const newSha = await sha256Hex(avifBytes);
+            let storedOpfs = false;
+            if (meta.opfs_key) {
+              try { storedOpfs = await writeOpfs(meta.opfs_key, avifBytes); } catch (_) { storedOpfs = false; }
+            }
+            const nextRec = {
+              ...meta,
+              mime_type: 'image/avif',
+              original_byte_size: Number(meta.original_byte_size || raw.byteLength),
+              byte_size: avifBytes.byteLength,
+              sha256_plain: newSha,
+              blob: storedOpfs ? null : avifBytes,
+              cold_compressed_15d: true,
+              cold_compressed_at: Date.now(),
+              updated_at: Date.now(),
+            };
+            await idbTx('objects', 'readwrite', (s) => s.put(nextRec)).catch(() => {});
+            if (typeof caches !== 'undefined') {
+              try {
+                const cache = await caches.open(CACHE_NAME);
+                await cache.put('/__chatw_local/' + meta.ref_id, new Response(avifBytes, { headers: { 'Content-Type': 'image/avif' } }));
+              } catch (_) {}
+            }
+            report.compressed++;
+            report.freed_bytes += (raw.byteLength - avifBytes.byteLength);
+            continue;
+          }
+        }
+        await idbTx('objects', 'readwrite', (s) => s.put({ ...meta, cold_compressed_15d: true })).catch(() => {});
+      }
+
+      const aiRows = await idbGetAll('ai_outputs').catch(() => []);
+      for (const rec of aiRows) {
+        if (!String(rec.cache_key || '').startsWith('sender_orig:') || !rec.blob) continue;
+        const mime = String(rec.blob.type || 'image/png').toLowerCase();
+        if (!mime.startsWith('image/') || mime === 'image/svg+xml') continue;
+        report.scanned++;
+        if (mime === 'image/avif' || rec.cold_compressed_15d) {
+          report.skipped_already_compressed++;
+          continue;
+        }
+        const lastUsed = Number(rec.last_accessed_at || rec.created_at || Date.now());
+        if (lastUsed > cutoffMs) {
+          report.kept_active++;
+          continue;
+        }
+        if (dryRun) {
+          report.compressed++;
+          continue;
+        }
+        const raw = new Uint8Array(await rec.blob.arrayBuffer());
+        const wres = await encodeColdWorker(raw, mime);
+        if (wres && wres.ext === 'avif' && wres.bytesB64) {
+          const avifBytes = b64ToBytes(wres.bytesB64);
+          if (avifBytes.byteLength > 0 && avifBytes.byteLength < raw.byteLength) {
+            const avifBlob = new Blob([avifBytes], { type: 'image/avif' });
+            await idbTx('ai_outputs', 'readwrite', (s) =>
+              s.put({
+                ...rec,
+                blob: avifBlob,
+                byte_size: avifBlob.size,
+                cold_compressed_15d: true,
+                cold_compressed_at: Date.now(),
+              }),
+            ).catch(() => {});
+            report.compressed++;
+            report.freed_bytes += (raw.byteLength - avifBytes.byteLength);
+            continue;
+          }
+        }
+        await idbTx('ai_outputs', 'readwrite', (s) => s.put({ ...rec, cold_compressed_15d: true })).catch(() => {});
+      }
+
+      return report;
     },
   };
 })();

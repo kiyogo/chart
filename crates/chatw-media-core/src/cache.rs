@@ -351,6 +351,61 @@ impl IntelligentCacheIndex {
     }
 }
 
+/// Default inactivity threshold before uncompressed images transition to cold AVIF compression (15 days).
+pub const COLD_IMAGE_COMPRESSION_IDLE_DAYS: u64 = 15;
+pub const COLD_IMAGE_COMPRESSION_IDLE_SECS: u64 = COLD_IMAGE_COMPRESSION_IDLE_DAYS * 86_400;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColdImageDecision {
+    /// Accessed within the last 15 days — keep original image bytes completely untouched.
+    KeepActive { remaining_secs: u64 },
+    /// Unused for >= 15 days — compress to Adaptive AVIF cold storage.
+    CompressCold { idle_secs: u64 },
+    /// Already AVIF / animated AVIF / E2EE ciphertext.
+    SkipAlreadyCompressed,
+    /// Explicitly pinned against background cold transforms.
+    SkipPinned,
+    /// Non-image asset or SVG (excluded from raster cold compression).
+    SkipNotImage,
+}
+
+/// Evaluate whether an image should stay as-is (`< 15 days` since last user access)
+/// or be compressed (`>= 15 days` unused).
+pub fn evaluate_cold_image_policy(
+    last_accessed_secs: u64,
+    now_secs: u64,
+    mime_type: &str,
+    codec: &str,
+    is_pinned: bool,
+    idle_threshold_secs: Option<u64>,
+) -> ColdImageDecision {
+    let mime = mime_type.trim().to_ascii_lowercase();
+    let codec_lc = codec.trim().to_ascii_lowercase();
+    if !mime.starts_with("image/") || mime == "image/svg+xml" {
+        return ColdImageDecision::SkipNotImage;
+    }
+    if is_pinned {
+        return ColdImageDecision::SkipPinned;
+    }
+    if mime == "image/avif"
+        || codec_lc.starts_with("avif")
+        || codec_lc.starts_with("avis")
+        || codec_lc == "e2ee_ciphertext"
+    {
+        return ColdImageDecision::SkipAlreadyCompressed;
+    }
+    let threshold = idle_threshold_secs.unwrap_or(COLD_IMAGE_COMPRESSION_IDLE_SECS);
+    let idle_secs = now_secs.saturating_sub(last_accessed_secs);
+    if idle_secs < threshold {
+        ColdImageDecision::KeepActive {
+            remaining_secs: threshold - idle_secs,
+        }
+    } else {
+        ColdImageDecision::CompressCold { idle_secs }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,5 +532,42 @@ mod tests {
         let mut k2 = k1.clone();
         k2.model_version = "1.1.0".into();
         assert_ne!(k1.to_storage_key(), k2.to_storage_key());
+    }
+
+    #[test]
+    fn cold_image_policy_keeps_active_15d_and_compresses_after_15d_idle() {
+        let now = 1_800_000_000u64;
+        // 0 days & 14d 23h idle -> stays untouched as-is
+        assert_eq!(
+            evaluate_cold_image_policy(now, now, "image/jpeg", "jpg", false, None),
+            ColdImageDecision::KeepActive { remaining_secs: COLD_IMAGE_COMPRESSION_IDLE_SECS }
+        );
+        assert_eq!(
+            evaluate_cold_image_policy(now - (15 * 86_400 - 1), now, "image/png", "png", false, None),
+            ColdImageDecision::KeepActive { remaining_secs: 1 }
+        );
+        // Exactly 15 days idle -> compress
+        assert_eq!(
+            evaluate_cold_image_policy(now - 15 * 86_400, now, "image/png", "png", false, None),
+            ColdImageDecision::CompressCold { idle_secs: 15 * 86_400 }
+        );
+        // Re-accessed -> resets back to active
+        assert_eq!(
+            evaluate_cold_image_policy(now - 60, now, "image/webp", "webp", false, None),
+            ColdImageDecision::KeepActive { remaining_secs: 15 * 86_400 - 60 }
+        );
+        // Already AVIF / E2EE / pinned / non-image skipped cleanly
+        assert_eq!(
+            evaluate_cold_image_policy(now - 30 * 86_400, now, "image/avif", "avif_cold_15d", false, None),
+            ColdImageDecision::SkipAlreadyCompressed
+        );
+        assert_eq!(
+            evaluate_cold_image_policy(now - 30 * 86_400, now, "image/png", "png", true, None),
+            ColdImageDecision::SkipPinned
+        );
+        assert_eq!(
+            evaluate_cold_image_policy(now - 30 * 86_400, now, "video/mp4", "mp4", false, None),
+            ColdImageDecision::SkipNotImage
+        );
     }
 }

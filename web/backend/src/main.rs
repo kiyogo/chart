@@ -318,6 +318,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 interval.tick().await;
                 let _ = storage::migration::cleanup_relays_safely(&bg_state.db, &bg_state.storage).await;
+                let _ = storage::migration::compress_inactive_images_15d(&bg_state.db, &bg_state.storage, 15).await;
             }
         });
     }

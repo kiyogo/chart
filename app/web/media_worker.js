@@ -289,7 +289,8 @@ self.onmessage = async (ev) => {
     const { isCrisp } = detectCrispTextOrAlpha(pctx, probeCanvas.width, probeCanvas.height);
     const blurDataUrl = await makeMicroBlur(bitmap, origW, origH);
 
-    if (rawSniff.ext === 'avif' || opts.preserveOriginal || opts.qualityMode === 'original') {
+    const keepAsIsFresh = !opts.forceCompress && opts.qualityMode !== 'data_saver' && rawU8.byteLength <= 24 * 1024 * 1024;
+    if (rawSniff.ext === 'avif' || opts.preserveOriginal || opts.qualityMode === 'original' || keepAsIsFresh) {
       const finalMime = rawSniff.ext === 'avif'
         ? 'image/avif'
         : (rawSniff.mime !== 'application/octet-stream' ? rawSniff.mime : (mime || 'application/octet-stream'));

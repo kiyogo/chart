@@ -575,11 +575,13 @@ pub async fn ingest_media_bytes(
                     .await;
             }
         }
-    } else if !is_e2ee
+    } else if false
+        && !is_e2ee
         && !preserve_original
         && matches!(backend_kind, "local_cas" | "s3_ready")
         && matches!(sniffed.kind, MediaKind::Image | MediaKind::AnimatedImage)
     {
+        // Spec 158: Active images stay untouched on day 0 and compress automatically after 15 days idle via `compress_inactive_images_15d`.
         if let Ok(opt) = optimize_chat_image(&bytes) {
             if opt.bytes.len() < bytes.len() {
                 let opt_sha = sha256_bytes(&opt.bytes);
@@ -845,6 +847,29 @@ pub async fn serve_media_reference(
     let filename: String = row.try_get("original_filename")?;
     let safe_disp = sanitize_filename(&filename);
     let sha_hex = hex::encode(sha);
+
+    // Spec 158: Touch `last_accessed_at` on real media reads (throttled to 1h windows to avoid write amplification)
+    // so actively viewed images stay untouched indefinitely and only 15-day unused images compress.
+    if wanted != "thumb" {
+        let touch_pool = pool.clone();
+        let touch_oid = orig_object_id;
+        tokio::spawn(async move {
+            let _ = sqlx::query(
+                "UPDATE media_references SET last_accessed_at = now() WHERE id = $1 AND last_accessed_at < now() - interval '1 hour'",
+            )
+            .bind(ref_id)
+            .execute(&touch_pool)
+            .await;
+            if let Some(oid) = touch_oid {
+                let _ = sqlx::query(
+                    "UPDATE media_objects SET last_accessed_at = now() WHERE id = $1 AND last_accessed_at < now() - interval '1 hour'",
+                )
+                .bind(oid)
+                .execute(&touch_pool)
+                .await;
+            }
+        });
+    }
 
     if use_cdc {
         let oid = orig_object_id.ok_or(AppError::NotFound("cdc_object_missing"))?;

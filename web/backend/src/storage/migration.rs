@@ -19,6 +19,166 @@ pub struct IncompleteAndGcReport {
     pub gc_freed_bytes: u64,
 }
 
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct ColdCompressionReport {
+    pub scanned: u64,
+    pub compressed: u64,
+    pub skipped_already_small: u64,
+    pub freed_bytes: u64,
+}
+
+/// Spec 158: Compress non-E2EE images untouched by users for >= `idle_days` (default 15 days)
+/// into Adaptive AVIF (`avif_cold_15d`), while leaving recently used (< 15 days) images intact as-is.
+pub async fn compress_inactive_images_15d(
+    pool: &PgPool,
+    storage: &StorageRegistry,
+    idle_days: i32,
+) -> Result<ColdCompressionReport, sqlx::Error> {
+    use chatw_media_core::cache::{ColdImageDecision, evaluate_cold_image_policy};
+    let mut report = ColdCompressionReport::default();
+    let days = idle_days.max(1);
+    let now_secs = chrono::Utc::now().timestamp().max(0) as u64;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT id, storage_backend, storage_key, mime_type, COALESCE(compression_codec, '') AS codec,
+               byte_size, original_byte_size, is_pinned,
+               EXTRACT(EPOCH FROM last_accessed_at)::BIGINT AS last_acc_epoch
+        FROM media_objects
+        WHERE variant_kind = 'original'
+          AND is_pinned = FALSE
+          AND cold_compressed_at IS NULL
+          AND mime_type LIKE 'image/%'
+          AND mime_type <> 'image/avif'
+          AND mime_type <> 'image/svg+xml'
+          AND COALESCE(compression_codec, '') <> 'e2ee_ciphertext'
+          AND storage_backend IN ('local_cas', 's3_ready', 'existing')
+          AND COALESCE(is_cdc_assembled, FALSE) = FALSE
+          AND last_accessed_at <= now() - make_interval(days => $1)
+        ORDER BY last_accessed_at ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(days)
+    .fetch_all(pool)
+    .await?;
+
+    for row in rows {
+        report.scanned += 1;
+        let oid: Uuid = row.try_get("id")?;
+        let backend: String = row.try_get("storage_backend")?;
+        let old_key: String = row.try_get("storage_key")?;
+        let mime: String = row.try_get("mime_type")?;
+        let codec: String = row.try_get("codec")?;
+        let byte_size: i64 = row.try_get("byte_size")?;
+        let is_pinned: bool = row.try_get("is_pinned")?;
+        let last_acc: i64 = row.try_get("last_acc_epoch").unwrap_or(0);
+
+        let threshold_secs = (days as u64).saturating_mul(86_400);
+        match evaluate_cold_image_policy(last_acc.max(0) as u64, now_secs, &mime, &codec, is_pinned, Some(threshold_secs)) {
+            ColdImageDecision::CompressCold { .. } => {}
+            _ => continue,
+        }
+
+        let raw_res = match backend.as_str() {
+            "s3_ready" => storage.s3.get_object(&old_key).await,
+            "local_cas" => storage.local_cas.get_object(&old_key).await,
+            _ => storage.existing.get_object(&old_key).await,
+        };
+        let Ok(raw_bytes) = raw_res else {
+            continue;
+        };
+
+        let opt = match crate::media_opt::optimize_chat_image(&raw_bytes) {
+            Ok(o) if o.ext == "avif" && o.bytes.len() < raw_bytes.len() => o,
+            _ => {
+                report.skipped_already_small += 1;
+                let _ = sqlx::query("UPDATE media_objects SET cold_compressed_at = now() WHERE id = $1")
+                    .bind(oid)
+                    .execute(pool)
+                    .await;
+                continue;
+            }
+        };
+
+        let new_sha = super::sha256_bytes(&opt.bytes);
+        let new_b3: [u8; 32] = blake3::hash(&opt.bytes).into();
+        let new_key = match backend.as_str() {
+            "s3_ready" => format!("cas/{}", super::local_cas::LocalFileStorageAdapter::cas_key_for_sha(&new_b3, opt.ext)),
+            _ => super::local_cas::LocalFileStorageAdapter::cas_key_for_sha(&new_sha, opt.ext),
+        };
+
+        let put_ok = match backend.as_str() {
+            "s3_ready" => storage.s3.put_object(&new_key, opt.bytes.clone(), opt.mime, None).await.is_ok(),
+            "local_cas" => storage.local_cas.put_object(&new_key, opt.bytes.clone(), opt.mime, None).await.is_ok(),
+            _ => storage.existing.put_object(&new_key, opt.bytes.clone(), opt.mime, None).await.is_ok(),
+        };
+        if !put_ok {
+            continue;
+        }
+
+        let new_len = opt.bytes.len() as i64;
+        let orig_for_ratio = byte_size.max(raw_bytes.len() as i64).max(1) as f32;
+        let ratio = orig_for_ratio / (new_len.max(1) as f32);
+
+        let upd = sqlx::query(
+            r#"
+            UPDATE media_objects
+            SET storage_key = $2,
+                mime_type = 'image/avif',
+                file_ext = 'avif',
+                compression_codec = 'avif_cold_15d',
+                compression_ratio = $3,
+                quality_ssim = COALESCE($4, quality_ssim),
+                byte_size = $5,
+                width = COALESCE($6, width),
+                height = COALESCE($7, height),
+                cold_compressed_at = now()
+            WHERE id = $1 AND cold_compressed_at IS NULL
+            "#,
+        )
+        .bind(oid)
+        .bind(&new_key)
+        .bind(ratio)
+        .bind(opt.estimated_ssim)
+        .bind(new_len)
+        .bind(opt.width as i32)
+        .bind(opt.height as i32)
+        .execute(pool)
+        .await;
+
+        if let Ok(r) = upd {
+            if r.rows_affected() > 0 {
+                let _ = sqlx::query(
+                    "UPDATE media_references SET mime_type = 'image/avif', byte_size = $2, updated_at = now() WHERE object_id = $1",
+                )
+                .bind(oid)
+                .bind(new_len)
+                .execute(pool)
+                .await;
+
+                if new_key != old_key {
+                    let still_used: i64 = sqlx::query_scalar(
+                        "SELECT COUNT(*) FROM media_objects WHERE storage_backend = $1 AND storage_key = $2",
+                    )
+                    .bind(&backend)
+                    .bind(&old_key)
+                    .fetch_one(pool)
+                    .await
+                    .unwrap_or(1);
+                    if still_used == 0 {
+                        delete_physical_object(storage, &backend, &old_key).await;
+                    }
+                }
+                report.compressed += 1;
+                report.freed_bytes += (raw_bytes.len() as i64 - new_len).max(0) as u64;
+            }
+        }
+    }
+
+    Ok(report)
+}
+
 /// Delete a physical object from whichever backend owns it (`s3_ready`, `local_cas`, `temp_relay`, `encrypted_backup`).
 pub async fn delete_physical_object(storage: &StorageRegistry, backend: &str, key: &str) {
     match backend {

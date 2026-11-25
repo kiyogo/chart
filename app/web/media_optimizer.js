@@ -375,7 +375,10 @@
     }
 
     const qualityMode = opts.qualityMode || getUserMediaQualityMode(Boolean(opts.preserveOriginal));
-    const effectiveOpts = { ...opts, qualityMode, preserveOriginal: Boolean(opts.preserveOriginal) || qualityMode === 'original' };
+    // Spec 158: Keep active/fresh images untouched as-is on upload (`original_passthrough`) unless `forceCompress`
+    // (15-day cold archive), `data_saver` mode, or > 24 MB single-upload cap applies.
+    const keepAsIsFresh = !opts.forceCompress && qualityMode !== 'data_saver' && rawU8.byteLength <= 24 * 1024 * 1024;
+    const effectiveOpts = { ...opts, qualityMode, preserveOriginal: Boolean(opts.preserveOriginal) || qualityMode === 'original' || keepAsIsFresh };
 
     async function computeOrigProfileFromRaw(u8, mimeType) {
       if (!window.__chatwWasmMedia || typeof window.__chatwWasmMedia.extractQualityProfile !== 'function') return null;
