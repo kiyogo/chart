@@ -1,0 +1,20 @@
+Model: 4x-ClearRealityV1 (SPAN 4x Photorealistic Super-Resolution)
+Author: Kim2091
+Source: https://huggingface.co/Kim2091/ClearRealityV1
+Architecture: SPAN (Swift Parameter-free Attention Network, hongyuanyu/SPAN, CVPR NTIRE 2024)
+License: Apache License 2.0 (Apache-2.0)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Conversion notes:
+- Re-parameterized Conv3XC layers pre-fused to single 3x3 inference convolutions and stored in FP16 CWSP1 format (`clearreality_v1_x4.cwsp`, 852,596 bytes), verified against official NCNN FP16 weights.

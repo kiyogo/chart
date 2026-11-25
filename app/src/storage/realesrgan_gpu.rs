@@ -14,10 +14,13 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use chatw_media_core::ai::realesrgan::{
-    OriginalQualityProfile, RealEsrganGpuF16Model, RealEsrganModel, RealEsrganModelKind,
-    calibrate_color_preserve_sr, compute_gpu_color_lock_params, evaluate_sr_quality_gate,
-    f16_to_f32, run_realesrgan_tiled,
+use chatw_media_core::ai::{
+    realesrgan::{
+        OriginalQualityProfile, RealEsrganGpuF16Model, RealEsrganModel, RealEsrganModelKind,
+        calibrate_color_preserve_sr, compute_gpu_color_lock_params, evaluate_sr_quality_gate,
+        f16_to_f32, run_realesrgan_tiled,
+    },
+    span::{SpanGpuF16Model, SpanModel, run_span_tiled},
 };
 use js_sys::{Array, Float32Array, Object, Reflect, Uint16Array};
 use std::{cell::RefCell, collections::HashMap};
@@ -305,13 +308,14 @@ void main() {
   o4 = a4; o5 = a5; o6 = a6; o7 = a7;
 }"#;
 
-// PixelShuffle(4×) + nearest_4x(orig) -> RGBA8 intermediate `sr_tex`
+// PixelShuffle(4×) (+ optional nearest_4x(orig) when uAddOrig==1) -> RGBA8 intermediate `sr_tex`
 const GL_SHUFFLE4X_FS: &str = r#"#version 300 es
 precision highp float;
 precision highp sampler2D;
 precision highp sampler2DArray;
 uniform sampler2D uOrig;
 uniform sampler2DArray uHead;
+uniform int uAddOrig;
 out vec4 fragColor;
 
 void main() {
@@ -327,7 +331,329 @@ void main() {
   float gg = (c == 0) ? g4.x : ((c == 1) ? g4.y : ((c == 2) ? g4.z : g4.w));
   float bb = (c == 0) ? b4.x : ((c == 1) ? b4.y : ((c == 2) ? b4.z : b4.w));
   vec4 orig = texelFetch(uOrig, sp, 0);
-  fragColor = vec4(clamp(orig.rgb + vec3(rr, gg, bb), 0.0, 1.0), orig.a);
+  vec3 outRgb = (uAddOrig != 0) ? (orig.rgb + vec3(rr, gg, bb)) : vec3(rr, gg, bb);
+  fragColor = vec4(clamp(outRgb, 0.0, 1.0), orig.a);
+}"#;
+
+// Spec 142: Pure-Rust SPAN 4× (Swift Parameter-free Attention Network, 48ch = 12 RGBA slices) WebGL2 FP16 Shaders
+// 4-MRT fallback (16ch/pass = 3 draws) & 6-MRT fast path (24ch/pass = EXACTLY 2 uniform draws/layer!)
+const GL_SPAN_CONV_IN_4MRT_FS: &str = r#"#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D uSrc;
+uniform sampler2D uWeights;
+uniform vec4 uBias[4];
+uniform int uGroupBase;
+uniform int uNorm;
+uniform ivec2 uDims;
+layout(location = 0) out vec4 o0;
+layout(location = 1) out vec4 o1;
+layout(location = 2) out vec4 o2;
+layout(location = 3) out vec4 o3;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 a0 = uBias[0], a1 = uBias[1], a2 = uBias[2], a3 = uBias[3];
+  int oc0 = uGroupBase * 4;
+  for (int dy = -1; dy <= 1; dy++) {
+    int sy = p.y + dy;
+    if (sy < 0 || sy >= uDims.y) continue;
+    for (int dx = -1; dx <= 1; dx++) {
+      int sx = p.x + dx;
+      if (sx < 0 || sx >= uDims.x) continue;
+      int k = (dy + 1) * 3 + (dx + 1);
+      vec3 rgb = texelFetch(uSrc, ivec2(sx, sy), 0).rgb;
+      if (uNorm != 0) rgb = (rgb - vec3(0.4488, 0.4371, 0.4040)) * 255.0;
+      a0.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 0, k), 0).rgb);
+      a0.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 1, k), 0).rgb);
+      a0.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 2, k), 0).rgb);
+      a0.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 3, k), 0).rgb);
+      a1.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 4, k), 0).rgb);
+      a1.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 5, k), 0).rgb);
+      a1.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 6, k), 0).rgb);
+      a1.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 7, k), 0).rgb);
+      a2.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 8, k), 0).rgb);
+      a2.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 9, k), 0).rgb);
+      a2.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 10, k), 0).rgb);
+      a2.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 11, k), 0).rgb);
+      a3.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 12, k), 0).rgb);
+      a3.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 13, k), 0).rgb);
+      a3.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 14, k), 0).rgb);
+      a3.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 15, k), 0).rgb);
+    }
+  }
+  o0 = a0; o1 = a1; o2 = a2; o3 = a3;
+}"#;
+
+const GL_SPAN_CONV_IN_6MRT_FS: &str = r#"#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D uSrc;
+uniform sampler2D uWeights;
+uniform vec4 uBias[6];
+uniform int uGroupBase;
+uniform int uNorm;
+uniform ivec2 uDims;
+layout(location = 0) out vec4 o0;
+layout(location = 1) out vec4 o1;
+layout(location = 2) out vec4 o2;
+layout(location = 3) out vec4 o3;
+layout(location = 4) out vec4 o4;
+layout(location = 5) out vec4 o5;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 a0 = uBias[0], a1 = uBias[1], a2 = uBias[2], a3 = uBias[3], a4 = uBias[4], a5 = uBias[5];
+  int oc0 = uGroupBase * 4;
+  for (int dy = -1; dy <= 1; dy++) {
+    int sy = p.y + dy;
+    if (sy < 0 || sy >= uDims.y) continue;
+    for (int dx = -1; dx <= 1; dx++) {
+      int sx = p.x + dx;
+      if (sx < 0 || sx >= uDims.x) continue;
+      int k = (dy + 1) * 3 + (dx + 1);
+      vec3 rgb = texelFetch(uSrc, ivec2(sx, sy), 0).rgb;
+      if (uNorm != 0) rgb = (rgb - vec3(0.4488, 0.4371, 0.4040)) * 255.0;
+      a0.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 0, k), 0).rgb);
+      a0.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 1, k), 0).rgb);
+      a0.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 2, k), 0).rgb);
+      a0.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 3, k), 0).rgb);
+      a1.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 4, k), 0).rgb);
+      a1.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 5, k), 0).rgb);
+      a1.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 6, k), 0).rgb);
+      a1.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 7, k), 0).rgb);
+      a2.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 8, k), 0).rgb);
+      a2.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 9, k), 0).rgb);
+      a2.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 10, k), 0).rgb);
+      a2.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 11, k), 0).rgb);
+      a3.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 12, k), 0).rgb);
+      a3.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 13, k), 0).rgb);
+      a3.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 14, k), 0).rgb);
+      a3.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 15, k), 0).rgb);
+      a4.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 16, k), 0).rgb);
+      a4.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 17, k), 0).rgb);
+      a4.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 18, k), 0).rgb);
+      a4.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 19, k), 0).rgb);
+      a5.x += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 20, k), 0).rgb);
+      a5.y += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 21, k), 0).rgb);
+      a5.z += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 22, k), 0).rgb);
+      a5.w += dot(rgb, texelFetch(uWeights, ivec2(oc0 + 23, k), 0).rgb);
+    }
+  }
+  o0 = a0; o1 = a1; o2 = a2; o3 = a3; o4 = a4; o5 = a5;
+}"#;
+
+// uMode: 0 = linear, 1 = SiLU, 2 = SPAB fused residual attention (t3 + skip) * (sigmoid(t3) - 0.5)
+const GL_SPAN_CONV48_4MRT_FS: &str = r#"#version 300 es
+precision highp float;
+precision highp sampler2D;
+precision highp sampler2DArray;
+uniform sampler2DArray uSrc;
+uniform sampler2DArray uSkip;
+uniform sampler2D uWeights;
+uniform vec4 uBias[4];
+uniform int uGroupBase;
+uniform int uMode;
+uniform ivec2 uDims;
+layout(location = 0) out vec4 o0;
+layout(location = 1) out vec4 o1;
+layout(location = 2) out vec4 o2;
+layout(location = 3) out vec4 o3;
+vec4 silu(vec4 x) { return x / (vec4(1.0) + exp(-clamp(x, vec4(-20.0), vec4(20.0)))); }
+vec4 spab(vec4 t3, vec4 sk) {
+  vec4 att = vec4(1.0) / (vec4(1.0) + exp(-clamp(t3, vec4(-20.0), vec4(20.0)))) - vec4(0.5);
+  return (t3 + sk) * att;
+}
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 a0 = uBias[0], a1 = uBias[1], a2 = uBias[2], a3 = uBias[3];
+  int oc0 = uGroupBase * 4;
+  for (int dy = -1; dy <= 1; dy++) {
+    int sy = p.y + dy;
+    if (sy < 0 || sy >= uDims.y) continue;
+    for (int dx = -1; dx <= 1; dx++) {
+      int sx = p.x + dx;
+      if (sx < 0 || sx >= uDims.x) continue;
+      int kb = ((dy + 1) * 3 + (dx + 1)) * 12;
+      for (int ig = 0; ig < 12; ig++) {
+        vec4 v = texelFetch(uSrc, ivec3(sx, sy, ig), 0);
+        int row = kb + ig;
+        a0.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 0, row), 0));
+        a0.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 1, row), 0));
+        a0.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 2, row), 0));
+        a0.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 3, row), 0));
+        a1.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 4, row), 0));
+        a1.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 5, row), 0));
+        a1.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 6, row), 0));
+        a1.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 7, row), 0));
+        a2.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 8, row), 0));
+        a2.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 9, row), 0));
+        a2.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 10, row), 0));
+        a2.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 11, row), 0));
+        a3.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 12, row), 0));
+        a3.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 13, row), 0));
+        a3.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 14, row), 0));
+        a3.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 15, row), 0));
+      }
+    }
+  }
+  if (uMode == 1) {
+    o0 = silu(a0); o1 = silu(a1); o2 = silu(a2); o3 = silu(a3);
+  } else if (uMode == 2) {
+    o0 = spab(a0, texelFetch(uSkip, ivec3(p, uGroupBase + 0), 0));
+    o1 = spab(a1, texelFetch(uSkip, ivec3(p, uGroupBase + 1), 0));
+    o2 = spab(a2, texelFetch(uSkip, ivec3(p, uGroupBase + 2), 0));
+    o3 = spab(a3, texelFetch(uSkip, ivec3(p, uGroupBase + 3), 0));
+  } else {
+    o0 = a0; o1 = a1; o2 = a2; o3 = a3;
+  }
+}"#;
+
+const GL_SPAN_CONV48_6MRT_FS: &str = r#"#version 300 es
+precision highp float;
+precision highp sampler2D;
+precision highp sampler2DArray;
+uniform sampler2DArray uSrc;
+uniform sampler2DArray uSkip;
+uniform sampler2D uWeights;
+uniform vec4 uBias[6];
+uniform int uGroupBase;
+uniform int uMode;
+uniform ivec2 uDims;
+layout(location = 0) out vec4 o0;
+layout(location = 1) out vec4 o1;
+layout(location = 2) out vec4 o2;
+layout(location = 3) out vec4 o3;
+layout(location = 4) out vec4 o4;
+layout(location = 5) out vec4 o5;
+vec4 silu(vec4 x) { return x / (vec4(1.0) + exp(-clamp(x, vec4(-20.0), vec4(20.0)))); }
+vec4 spab(vec4 t3, vec4 sk) {
+  vec4 att = vec4(1.0) / (vec4(1.0) + exp(-clamp(t3, vec4(-20.0), vec4(20.0)))) - vec4(0.5);
+  return (t3 + sk) * att;
+}
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 a0 = uBias[0], a1 = uBias[1], a2 = uBias[2], a3 = uBias[3], a4 = uBias[4], a5 = uBias[5];
+  int oc0 = uGroupBase * 4;
+  for (int dy = -1; dy <= 1; dy++) {
+    int sy = p.y + dy;
+    if (sy < 0 || sy >= uDims.y) continue;
+    for (int dx = -1; dx <= 1; dx++) {
+      int sx = p.x + dx;
+      if (sx < 0 || sx >= uDims.x) continue;
+      int kb = ((dy + 1) * 3 + (dx + 1)) * 12;
+      for (int ig = 0; ig < 12; ig++) {
+        vec4 v = texelFetch(uSrc, ivec3(sx, sy, ig), 0);
+        int row = kb + ig;
+        a0.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 0, row), 0));
+        a0.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 1, row), 0));
+        a0.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 2, row), 0));
+        a0.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 3, row), 0));
+        a1.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 4, row), 0));
+        a1.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 5, row), 0));
+        a1.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 6, row), 0));
+        a1.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 7, row), 0));
+        a2.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 8, row), 0));
+        a2.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 9, row), 0));
+        a2.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 10, row), 0));
+        a2.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 11, row), 0));
+        a3.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 12, row), 0));
+        a3.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 13, row), 0));
+        a3.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 14, row), 0));
+        a3.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 15, row), 0));
+        a4.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 16, row), 0));
+        a4.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 17, row), 0));
+        a4.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 18, row), 0));
+        a4.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 19, row), 0));
+        a5.x += dot(v, texelFetch(uWeights, ivec2(oc0 + 20, row), 0));
+        a5.y += dot(v, texelFetch(uWeights, ivec2(oc0 + 21, row), 0));
+        a5.z += dot(v, texelFetch(uWeights, ivec2(oc0 + 22, row), 0));
+        a5.w += dot(v, texelFetch(uWeights, ivec2(oc0 + 23, row), 0));
+      }
+    }
+  }
+  if (uMode == 1) {
+    o0 = silu(a0); o1 = silu(a1); o2 = silu(a2); o3 = silu(a3); o4 = silu(a4); o5 = silu(a5);
+  } else if (uMode == 2) {
+    o0 = spab(a0, texelFetch(uSkip, ivec3(p, uGroupBase + 0), 0));
+    o1 = spab(a1, texelFetch(uSkip, ivec3(p, uGroupBase + 1), 0));
+    o2 = spab(a2, texelFetch(uSkip, ivec3(p, uGroupBase + 2), 0));
+    o3 = spab(a3, texelFetch(uSkip, ivec3(p, uGroupBase + 3), 0));
+    o4 = spab(a4, texelFetch(uSkip, ivec3(p, uGroupBase + 4), 0));
+    o5 = spab(a5, texelFetch(uSkip, ivec3(p, uGroupBase + 5), 0));
+  } else {
+    o0 = a0; o1 = a1; o2 = a2; o3 = a3; o4 = a4; o5 = a5;
+  }
+}"#;
+
+const GL_SPAN_CONV_CAT_4MRT_FS: &str = r#"#version 300 es
+precision highp float;
+precision highp sampler2D;
+precision highp sampler2DArray;
+uniform sampler2DArray uS0;
+uniform sampler2DArray uS1;
+uniform sampler2DArray uS2;
+uniform sampler2DArray uS3;
+uniform sampler2D uWeights;
+uniform vec4 uBias[4];
+uniform int uGroupBase;
+layout(location = 0) out vec4 o0;
+layout(location = 1) out vec4 o1;
+layout(location = 2) out vec4 o2;
+layout(location = 3) out vec4 o3;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 a0 = uBias[0], a1 = uBias[1], a2 = uBias[2], a3 = uBias[3];
+  int oc0 = uGroupBase * 4;
+  for (int ig = 0; ig < 12; ig++) {
+    vec4 v0 = texelFetch(uS0, ivec3(p, ig), 0);
+    vec4 v1 = texelFetch(uS1, ivec3(p, ig), 0);
+    vec4 v2 = texelFetch(uS2, ivec3(p, ig), 0);
+    vec4 v3 = texelFetch(uS3, ivec3(p, ig), 0);
+    int r0 = ig, r1 = 12 + ig, r2 = 24 + ig, r3 = 36 + ig;
+    #define SP_ACC(a, c, off) a.c += dot(v0, texelFetch(uWeights, ivec2(oc0 + off, r0), 0)) + dot(v1, texelFetch(uWeights, ivec2(oc0 + off, r1), 0)) + dot(v2, texelFetch(uWeights, ivec2(oc0 + off, r2), 0)) + dot(v3, texelFetch(uWeights, ivec2(oc0 + off, r3), 0));
+    SP_ACC(a0, x, 0) SP_ACC(a0, y, 1) SP_ACC(a0, z, 2) SP_ACC(a0, w, 3)
+    SP_ACC(a1, x, 4) SP_ACC(a1, y, 5) SP_ACC(a1, z, 6) SP_ACC(a1, w, 7)
+    SP_ACC(a2, x, 8) SP_ACC(a2, y, 9) SP_ACC(a2, z, 10) SP_ACC(a2, w, 11)
+    SP_ACC(a3, x, 12) SP_ACC(a3, y, 13) SP_ACC(a3, z, 14) SP_ACC(a3, w, 15)
+  }
+  o0 = a0; o1 = a1; o2 = a2; o3 = a3;
+}"#;
+
+const GL_SPAN_CONV_CAT_6MRT_FS: &str = r#"#version 300 es
+precision highp float;
+precision highp sampler2D;
+precision highp sampler2DArray;
+uniform sampler2DArray uS0;
+uniform sampler2DArray uS1;
+uniform sampler2DArray uS2;
+uniform sampler2DArray uS3;
+uniform sampler2D uWeights;
+uniform vec4 uBias[6];
+uniform int uGroupBase;
+layout(location = 0) out vec4 o0;
+layout(location = 1) out vec4 o1;
+layout(location = 2) out vec4 o2;
+layout(location = 3) out vec4 o3;
+layout(location = 4) out vec4 o4;
+layout(location = 5) out vec4 o5;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 a0 = uBias[0], a1 = uBias[1], a2 = uBias[2], a3 = uBias[3], a4 = uBias[4], a5 = uBias[5];
+  int oc0 = uGroupBase * 4;
+  for (int ig = 0; ig < 12; ig++) {
+    vec4 v0 = texelFetch(uS0, ivec3(p, ig), 0);
+    vec4 v1 = texelFetch(uS1, ivec3(p, ig), 0);
+    vec4 v2 = texelFetch(uS2, ivec3(p, ig), 0);
+    vec4 v3 = texelFetch(uS3, ivec3(p, ig), 0);
+    int r0 = ig, r1 = 12 + ig, r2 = 24 + ig, r3 = 36 + ig;
+    #define SP6_ACC(a, c, off) a.c += dot(v0, texelFetch(uWeights, ivec2(oc0 + off, r0), 0)) + dot(v1, texelFetch(uWeights, ivec2(oc0 + off, r1), 0)) + dot(v2, texelFetch(uWeights, ivec2(oc0 + off, r2), 0)) + dot(v3, texelFetch(uWeights, ivec2(oc0 + off, r3), 0));
+    SP6_ACC(a0, x, 0) SP6_ACC(a0, y, 1) SP6_ACC(a0, z, 2) SP6_ACC(a0, w, 3)
+    SP6_ACC(a1, x, 4) SP6_ACC(a1, y, 5) SP6_ACC(a1, z, 6) SP6_ACC(a1, w, 7)
+    SP6_ACC(a2, x, 8) SP6_ACC(a2, y, 9) SP6_ACC(a2, z, 10) SP6_ACC(a2, w, 11)
+    SP6_ACC(a3, x, 12) SP6_ACC(a3, y, 13) SP6_ACC(a3, z, 14) SP6_ACC(a3, w, 15)
+    SP6_ACC(a4, x, 16) SP6_ACC(a4, y, 17) SP6_ACC(a4, z, 18) SP6_ACC(a4, w, 19)
+    SP6_ACC(a5, x, 20) SP6_ACC(a5, y, 21) SP6_ACC(a5, z, 22) SP6_ACC(a5, w, 23)
+  }
+  o0 = a0; o1 = a1; o2 = a2; o3 = a3; o4 = a4; o5 = a5;
 }"#;
 
 // Pure-AI Neural Super-Resolution + Pristine AMD FidelityFX CAS (Spec 131)
@@ -853,6 +1179,69 @@ struct Shuffle4xProg {
     prog: WebGlProgram,
     u_orig: Option<WebGlUniformLocation>,
     u_head: Option<WebGlUniformLocation>,
+    u_add_orig: Option<WebGlUniformLocation>,
+}
+
+struct SpanConvInProg {
+    prog: WebGlProgram,
+    u_src: Option<WebGlUniformLocation>,
+    u_weights: Option<WebGlUniformLocation>,
+    u_bias: Option<WebGlUniformLocation>,
+    u_group_base: Option<WebGlUniformLocation>,
+    u_norm: Option<WebGlUniformLocation>,
+    u_dims: Option<WebGlUniformLocation>,
+}
+
+struct SpanConv48Prog {
+    prog: WebGlProgram,
+    u_src: Option<WebGlUniformLocation>,
+    u_skip: Option<WebGlUniformLocation>,
+    u_weights: Option<WebGlUniformLocation>,
+    u_bias: Option<WebGlUniformLocation>,
+    u_group_base: Option<WebGlUniformLocation>,
+    u_mode: Option<WebGlUniformLocation>,
+    u_dims: Option<WebGlUniformLocation>,
+}
+
+struct SpanConvCatProg {
+    prog: WebGlProgram,
+    u_s0: Option<WebGlUniformLocation>,
+    u_s1: Option<WebGlUniformLocation>,
+    u_s2: Option<WebGlUniformLocation>,
+    u_s3: Option<WebGlUniformLocation>,
+    u_weights: Option<WebGlUniformLocation>,
+    u_bias: Option<WebGlUniformLocation>,
+    u_group_base: Option<WebGlUniformLocation>,
+}
+
+struct GlSpanLayer {
+    tex: WebGlTexture,
+    bias: Vec<f32>,
+}
+
+struct GlUploadedSpanModel {
+    use_norm: bool,
+    conv_1: GlSpanLayer,
+    blocks: Vec<[GlSpanLayer; 3]>,
+    conv_2: GlSpanLayer,
+    conv_cat: GlSpanLayer,
+    upsampler: GlSpanLayer,
+}
+
+struct ActiveSpanTileGl {
+    tw: i32,
+    th: i32,
+    src_tex: WebGlTexture,
+    feat0: WebGlTexture,
+    b1_out: WebGlTexture,
+    b6_c1_act: WebGlTexture,
+    scratch_a: WebGlTexture,
+    scratch_b: WebGlTexture,
+    ping_c: WebGlTexture,
+    pong_d: WebGlTexture,
+    sr_tex: WebGlTexture,
+    /// Tracks which buffer holds the current SPAB block input: 0=feat0, 1=b1_out, 2=ping_c, 3=pong_d
+    cur_slot: u8,
 }
 
 struct FidelityCasProg {
@@ -916,6 +1305,12 @@ struct RealEsrganGlEngine {
     conv_in_8: Option<ConvInProg>,
     conv64_4: Conv64Prog,
     conv64_8: Option<Conv64Prog>,
+    span_in_4: SpanConvInProg,
+    span_in_6: Option<SpanConvInProg>,
+    span_48_4: SpanConv48Prog,
+    span_48_6: Option<SpanConv48Prog>,
+    span_cat_4: SpanConvCatProg,
+    span_cat_6: Option<SpanConvCatProg>,
     shuffle4x: Shuffle4xProg,
     fidelity_cas: FidelityCasProg,
     fsr1_easu: Fsr1EasuProg,
@@ -927,12 +1322,15 @@ struct RealEsrganGlEngine {
     rl_final: RlFinalProg,
     mrt1: Array,
     mrt4: Array,
+    mrt6: Option<Array>,
     mrt8: Option<Array>,
     vao: WebGlVertexArrayObject,
     fbo: WebGlFramebuffer,
     gate_fbo: WebGlFramebuffer,
     models: HashMap<String, GlUploadedModel>,
+    span_models: HashMap<String, GlUploadedSpanModel>,
     active_tile: Option<ActiveTileGl>,
+    active_span_tile: Option<ActiveSpanTileGl>,
 }
 
 thread_local! {
@@ -991,6 +1389,47 @@ fn build_conv64_prog(gl: &Gl, fs: &str) -> Result<Conv64Prog, String> {
         u_group_base: gl.get_uniform_location(&prog, "uGroupBase"),
         u_use_prelu: gl.get_uniform_location(&prog, "uUsePrelu"),
         u_dims: gl.get_uniform_location(&prog, "uDims"),
+        prog,
+    })
+}
+
+fn build_span_in_prog(gl: &Gl, fs: &str) -> Result<SpanConvInProg, String> {
+    let prog = compile_program(gl, GL_VS, fs)?;
+    Ok(SpanConvInProg {
+        u_src: gl.get_uniform_location(&prog, "uSrc"),
+        u_weights: gl.get_uniform_location(&prog, "uWeights"),
+        u_bias: gl.get_uniform_location(&prog, "uBias"),
+        u_group_base: gl.get_uniform_location(&prog, "uGroupBase"),
+        u_norm: gl.get_uniform_location(&prog, "uNorm"),
+        u_dims: gl.get_uniform_location(&prog, "uDims"),
+        prog,
+    })
+}
+
+fn build_span_48_prog(gl: &Gl, fs: &str) -> Result<SpanConv48Prog, String> {
+    let prog = compile_program(gl, GL_VS, fs)?;
+    Ok(SpanConv48Prog {
+        u_src: gl.get_uniform_location(&prog, "uSrc"),
+        u_skip: gl.get_uniform_location(&prog, "uSkip"),
+        u_weights: gl.get_uniform_location(&prog, "uWeights"),
+        u_bias: gl.get_uniform_location(&prog, "uBias"),
+        u_group_base: gl.get_uniform_location(&prog, "uGroupBase"),
+        u_mode: gl.get_uniform_location(&prog, "uMode"),
+        u_dims: gl.get_uniform_location(&prog, "uDims"),
+        prog,
+    })
+}
+
+fn build_span_cat_prog(gl: &Gl, fs: &str) -> Result<SpanConvCatProg, String> {
+    let prog = compile_program(gl, GL_VS, fs)?;
+    Ok(SpanConvCatProg {
+        u_s0: gl.get_uniform_location(&prog, "uS0"),
+        u_s1: gl.get_uniform_location(&prog, "uS1"),
+        u_s2: gl.get_uniform_location(&prog, "uS2"),
+        u_s3: gl.get_uniform_location(&prog, "uS3"),
+        u_weights: gl.get_uniform_location(&prog, "uWeights"),
+        u_bias: gl.get_uniform_location(&prog, "uBias"),
+        u_group_base: gl.get_uniform_location(&prog, "uGroupBase"),
         prog,
     })
 }
@@ -1107,10 +1546,34 @@ fn init_gl_engine() -> Result<RealEsrganGlEngine, String> {
         (None, None, false)
     };
 
+    let span_in_4 = build_span_in_prog(&gl, GL_SPAN_CONV_IN_4MRT_FS)?;
+    let span_48_4 = build_span_48_prog(&gl, GL_SPAN_CONV48_4MRT_FS)?;
+    let span_cat_4 = build_span_cat_prog(&gl, GL_SPAN_CONV_CAT_4MRT_FS)?;
+
+    let (span_in_6, span_48_6, span_cat_6, mrt6) = if max_draw >= 6 && max_att >= 6 {
+        match (
+            build_span_in_prog(&gl, GL_SPAN_CONV_IN_6MRT_FS),
+            build_span_48_prog(&gl, GL_SPAN_CONV48_6MRT_FS),
+            build_span_cat_prog(&gl, GL_SPAN_CONV_CAT_6MRT_FS),
+        ) {
+            (Ok(pi), Ok(p48), Ok(pc)) => {
+                let a = Array::new();
+                for j in 0..6u32 {
+                    a.push(&JsValue::from(Gl::COLOR_ATTACHMENT0 + j));
+                }
+                (Some(pi), Some(p48), Some(pc), Some(a))
+            }
+            _ => (None, None, None, None),
+        }
+    } else {
+        (None, None, None, None)
+    };
+
     let p_sh = compile_program(&gl, GL_VS, GL_SHUFFLE4X_FS)?;
     let shuffle4x = Shuffle4xProg {
         u_orig: gl.get_uniform_location(&p_sh, "uOrig"),
         u_head: gl.get_uniform_location(&p_sh, "uHead"),
+        u_add_orig: gl.get_uniform_location(&p_sh, "uAddOrig"),
         prog: p_sh,
     };
 
@@ -1217,6 +1680,12 @@ fn init_gl_engine() -> Result<RealEsrganGlEngine, String> {
         conv_in_8,
         conv64_4,
         conv64_8,
+        span_in_4,
+        span_in_6,
+        span_48_4,
+        span_48_6,
+        span_cat_4,
+        span_cat_6,
         shuffle4x,
         fidelity_cas,
         fsr1_easu,
@@ -1228,12 +1697,15 @@ fn init_gl_engine() -> Result<RealEsrganGlEngine, String> {
         rl_final,
         mrt1,
         mrt4,
+        mrt6,
         mrt8,
         vao,
         fbo,
         gate_fbo,
         models: HashMap::new(),
+        span_models: HashMap::new(),
         active_tile: None,
+        active_span_tile: None,
     })
 }
 
@@ -1716,6 +2188,7 @@ impl RealEsrganGlEngine {
         gl.active_texture(Gl::TEXTURE1);
         gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.head_tex));
         gl.uniform1i(self.shuffle4x.u_head.as_ref(), 1);
+        gl.uniform1i(self.shuffle4x.u_add_orig.as_ref(), 1);
         gl.draw_arrays(Gl::TRIANGLES, 0, 3);
 
         // Final Pass: Zero-Alteration Wavelet Color Anchor + Dual-Scale Anti-Ringing AMD FidelityFX CAS
@@ -1744,6 +2217,379 @@ impl RealEsrganGlEngine {
         gl.delete_texture(Some(&tile.ping));
         gl.delete_texture(Some(&tile.pong));
         gl.delete_texture(Some(&tile.head_tex));
+        gl.delete_texture(Some(&tile.sr_tex));
+        Ok(())
+    }
+
+    // =========================================================================
+    // Spec 142: Pure-Rust SPAN 4× (48ch = 12 RGBA slices, 6-MRT / 4-MRT FP16)
+    // =========================================================================
+
+    fn cleanup_active_span_tile(&mut self) {
+        if let Some(tile) = self.active_span_tile.take() {
+            let gl = &self.gl;
+            gl.delete_texture(Some(&tile.src_tex));
+            gl.delete_texture(Some(&tile.feat0));
+            gl.delete_texture(Some(&tile.b1_out));
+            gl.delete_texture(Some(&tile.b6_c1_act));
+            gl.delete_texture(Some(&tile.scratch_a));
+            gl.delete_texture(Some(&tile.scratch_b));
+            gl.delete_texture(Some(&tile.ping_c));
+            gl.delete_texture(Some(&tile.pong_d));
+            gl.delete_texture(Some(&tile.sr_tex));
+        }
+    }
+
+    fn run_span_conv48(
+        &self,
+        src: &WebGlTexture,
+        dst: &WebGlTexture,
+        skip: &WebGlTexture,
+        layer: &GlSpanLayer,
+        tw: i32,
+        th: i32,
+        mode: i32,
+    ) {
+        let gl = &self.gl;
+        gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
+        gl.viewport(0, 0, tw, th);
+        gl.active_texture(Gl::TEXTURE0);
+        gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(src));
+        gl.active_texture(Gl::TEXTURE1);
+        gl.bind_texture(Gl::TEXTURE_2D, Some(&layer.tex));
+        gl.active_texture(Gl::TEXTURE2);
+        gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(skip));
+
+        if let (Some(p6), Some(mrt6)) = (&self.span_48_6, &self.mrt6) {
+            gl.use_program(Some(&p6.prog));
+            gl.uniform1i(p6.u_src.as_ref(), 0);
+            gl.uniform1i(p6.u_weights.as_ref(), 1);
+            gl.uniform1i(p6.u_skip.as_ref(), 2);
+            gl.uniform1i(p6.u_mode.as_ref(), mode);
+            gl.uniform2i(p6.u_dims.as_ref(), tw, th);
+            gl.draw_buffers(mrt6);
+            for gb in (0..12).step_by(6) {
+                for j in 0..6 {
+                    gl.framebuffer_texture_layer(
+                        Gl::FRAMEBUFFER,
+                        Gl::COLOR_ATTACHMENT0 + j as u32,
+                        Some(dst),
+                        0,
+                        (gb + j) as i32,
+                    );
+                }
+                gl.uniform1i(p6.u_group_base.as_ref(), gb as i32);
+                gl.uniform4fv_with_f32_array(p6.u_bias.as_ref(), &layer.bias[gb * 4..gb * 4 + 24]);
+                gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+            }
+        } else {
+            let p4 = &self.span_48_4;
+            gl.use_program(Some(&p4.prog));
+            gl.uniform1i(p4.u_src.as_ref(), 0);
+            gl.uniform1i(p4.u_weights.as_ref(), 1);
+            gl.uniform1i(p4.u_skip.as_ref(), 2);
+            gl.uniform1i(p4.u_mode.as_ref(), mode);
+            gl.uniform2i(p4.u_dims.as_ref(), tw, th);
+            gl.draw_buffers(&self.mrt4);
+            for gb in (0..12).step_by(4) {
+                for j in 0..4 {
+                    gl.framebuffer_texture_layer(
+                        Gl::FRAMEBUFFER,
+                        Gl::COLOR_ATTACHMENT0 + j as u32,
+                        Some(dst),
+                        0,
+                        (gb + j) as i32,
+                    );
+                }
+                gl.uniform1i(p4.u_group_base.as_ref(), gb as i32);
+                gl.uniform4fv_with_f32_array(p4.u_bias.as_ref(), &layer.bias[gb * 4..gb * 4 + 16]);
+                gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+            }
+        }
+    }
+
+    fn begin_span_tile(&mut self, tile_rgba: &[u8], tw: usize, th: usize, model_id: &str) -> Result<usize, String> {
+        self.cleanup_active_span_tile();
+        let tw_i = tw as i32;
+        let th_i = th as i32;
+        let tile_ow = tw_i * 4;
+        let tile_oh = th_i * 4;
+
+        let gl = &self.gl;
+        let src_tex = upload_rgba8_tex2d(gl, tw_i, th_i, Some(tile_rgba), true)?;
+        let fmt = self.feat_internal_fmt;
+        let ty = self.feat_tex_type;
+        let feat0 = create_feat_tex_array(gl, tw_i, th_i, 12, fmt, ty)?;
+        let b1_out = create_feat_tex_array(gl, tw_i, th_i, 12, fmt, ty)?;
+        let b6_c1_act = create_feat_tex_array(gl, tw_i, th_i, 12, fmt, ty)?;
+        let scratch_a = create_feat_tex_array(gl, tw_i, th_i, 12, fmt, ty)?;
+        let scratch_b = create_feat_tex_array(gl, tw_i, th_i, 12, fmt, ty)?;
+        let ping_c = create_feat_tex_array(gl, tw_i, th_i, 12, fmt, ty)?;
+        let pong_d = create_feat_tex_array(gl, tw_i, th_i, 12, fmt, ty)?;
+        let sr_tex = upload_rgba8_tex2d(gl, tile_ow, tile_oh, None, true)?;
+
+        let m = self.span_models.get(model_id).ok_or("SPAN model not uploaded")?;
+        let norm_i = if m.use_norm { 1 } else { 0 };
+        let num_blocks = m.blocks.len();
+
+        gl.bind_vertex_array(Some(&self.vao));
+        gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
+        gl.viewport(0, 0, tw_i, th_i);
+        gl.active_texture(Gl::TEXTURE0);
+        gl.bind_texture(Gl::TEXTURE_2D, Some(&src_tex));
+        gl.active_texture(Gl::TEXTURE1);
+        gl.bind_texture(Gl::TEXTURE_2D, Some(&m.conv_1.tex));
+
+        if let (Some(p6), Some(mrt6)) = (&self.span_in_6, &self.mrt6) {
+            gl.use_program(Some(&p6.prog));
+            gl.uniform1i(p6.u_src.as_ref(), 0);
+            gl.uniform1i(p6.u_weights.as_ref(), 1);
+            gl.uniform1i(p6.u_norm.as_ref(), norm_i);
+            gl.uniform2i(p6.u_dims.as_ref(), tw_i, th_i);
+            gl.draw_buffers(mrt6);
+            for gb in (0..12).step_by(6) {
+                for j in 0..6 {
+                    gl.framebuffer_texture_layer(
+                        Gl::FRAMEBUFFER,
+                        Gl::COLOR_ATTACHMENT0 + j as u32,
+                        Some(&feat0),
+                        0,
+                        (gb + j) as i32,
+                    );
+                }
+                gl.uniform1i(p6.u_group_base.as_ref(), gb as i32);
+                gl.uniform4fv_with_f32_array(p6.u_bias.as_ref(), &m.conv_1.bias[gb * 4..gb * 4 + 24]);
+                gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+            }
+        } else {
+            let p4 = &self.span_in_4;
+            gl.use_program(Some(&p4.prog));
+            gl.uniform1i(p4.u_src.as_ref(), 0);
+            gl.uniform1i(p4.u_weights.as_ref(), 1);
+            gl.uniform1i(p4.u_norm.as_ref(), norm_i);
+            gl.uniform2i(p4.u_dims.as_ref(), tw_i, th_i);
+            gl.draw_buffers(&self.mrt4);
+            for gb in (0..12).step_by(4) {
+                for j in 0..4 {
+                    gl.framebuffer_texture_layer(
+                        Gl::FRAMEBUFFER,
+                        Gl::COLOR_ATTACHMENT0 + j as u32,
+                        Some(&feat0),
+                        0,
+                        (gb + j) as i32,
+                    );
+                }
+                gl.uniform1i(p4.u_group_base.as_ref(), gb as i32);
+                gl.uniform4fv_with_f32_array(p4.u_bias.as_ref(), &m.conv_1.bias[gb * 4..gb * 4 + 16]);
+                gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+            }
+        }
+
+        self.active_span_tile = Some(ActiveSpanTileGl {
+            tw: tw_i,
+            th: th_i,
+            src_tex,
+            feat0,
+            b1_out,
+            b6_c1_act,
+            scratch_a,
+            scratch_b,
+            ping_c,
+            pong_d,
+            sr_tex,
+            cur_slot: 0,
+        });
+        Ok(num_blocks)
+    }
+
+    fn step_span_block(&mut self, model_id: &str, block_idx: usize) -> Result<(), String> {
+        let tile = self.active_span_tile.as_ref().ok_or("no active SPAN tile")?;
+        let m = self.span_models.get(model_id).ok_or("SPAN model missing")?;
+        let blk = &m.blocks[block_idx];
+        let tw = tile.tw;
+        let th = tile.th;
+        let cur_slot = tile.cur_slot;
+        let cur_tex = match cur_slot {
+            0 => &tile.feat0,
+            1 => &tile.b1_out,
+            2 => &tile.ping_c,
+            _ => &tile.pong_d,
+        };
+        let t1_dst = if block_idx == m.blocks.len() - 1 {
+            &tile.b6_c1_act
+        } else {
+            &tile.scratch_a
+        };
+        let t2_dst = &tile.scratch_b;
+        let out_slot: u8 = if block_idx == 0 {
+            1
+        } else if cur_slot == 2 {
+            3
+        } else {
+            2
+        };
+        let out_dst = match out_slot {
+            1 => &tile.b1_out,
+            2 => &tile.ping_c,
+            _ => &tile.pong_d,
+        };
+
+        self.gl.bind_vertex_array(Some(&self.vao));
+        self.run_span_conv48(cur_tex, t1_dst, cur_tex, &blk[0], tw, th, 1); // c1_r + SiLU
+        self.run_span_conv48(t1_dst, t2_dst, cur_tex, &blk[1], tw, th, 1);  // c2_r + SiLU
+        self.run_span_conv48(t2_dst, out_dst, cur_tex, &blk[2], tw, th, 2); // c3_r + SPAB attention
+
+        if let Some(t) = self.active_span_tile.as_mut() {
+            t.cur_slot = out_slot;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finish_span_tile_to_canvas(
+        &mut self,
+        model_id: &str,
+        vx: i32,
+        vy: i32,
+        crop_x0: i32,
+        crop_y0: i32,
+        copy_w: i32,
+        copy_h: i32,
+        color0: [f32; 4],
+        color1: [f32; 4],
+    ) -> Result<(), String> {
+        let tile = self.active_span_tile.take().ok_or("no active SPAN tile")?;
+        let m = self.span_models.get(model_id).ok_or("SPAN model missing")?;
+        let tw = tile.tw;
+        let th = tile.th;
+        let tile_ow = tw * 4;
+        let tile_oh = th * 4;
+        let cur_tex = match tile.cur_slot {
+            0 => &tile.feat0,
+            1 => &tile.b1_out,
+            2 => &tile.ping_c,
+            _ => &tile.pong_d,
+        };
+
+        self.gl.bind_vertex_array(Some(&self.vao));
+        // 1. conv_2(b6_out) -> scratch_b
+        self.run_span_conv48(cur_tex, &tile.scratch_b, cur_tex, &m.conv_2, tw, th, 0);
+
+        // 2. conv_cat([feat0, conv_2(b6_out), b1_out, b6_c1_act]) -> scratch_a
+        {
+            let gl = &self.gl;
+            gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
+            gl.viewport(0, 0, tw, th);
+            gl.active_texture(Gl::TEXTURE0);
+            gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.feat0));
+            gl.active_texture(Gl::TEXTURE1);
+            gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.scratch_b));
+            gl.active_texture(Gl::TEXTURE2);
+            gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.b1_out));
+            gl.active_texture(Gl::TEXTURE3);
+            gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.b6_c1_act));
+            gl.active_texture(Gl::TEXTURE4);
+            gl.bind_texture(Gl::TEXTURE_2D, Some(&m.conv_cat.tex));
+
+            if let (Some(p6), Some(mrt6)) = (&self.span_cat_6, &self.mrt6) {
+                gl.use_program(Some(&p6.prog));
+                gl.uniform1i(p6.u_s0.as_ref(), 0);
+                gl.uniform1i(p6.u_s1.as_ref(), 1);
+                gl.uniform1i(p6.u_s2.as_ref(), 2);
+                gl.uniform1i(p6.u_s3.as_ref(), 3);
+                gl.uniform1i(p6.u_weights.as_ref(), 4);
+                gl.draw_buffers(mrt6);
+                for gb in (0..12).step_by(6) {
+                    for j in 0..6 {
+                        gl.framebuffer_texture_layer(
+                            Gl::FRAMEBUFFER,
+                            Gl::COLOR_ATTACHMENT0 + j as u32,
+                            Some(&tile.scratch_a),
+                            0,
+                            (gb + j) as i32,
+                        );
+                    }
+                    gl.uniform1i(p6.u_group_base.as_ref(), gb as i32);
+                    gl.uniform4fv_with_f32_array(p6.u_bias.as_ref(), &m.conv_cat.bias[gb * 4..gb * 4 + 24]);
+                    gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+                }
+            } else {
+                let p4 = &self.span_cat_4;
+                gl.use_program(Some(&p4.prog));
+                gl.uniform1i(p4.u_s0.as_ref(), 0);
+                gl.uniform1i(p4.u_s1.as_ref(), 1);
+                gl.uniform1i(p4.u_s2.as_ref(), 2);
+                gl.uniform1i(p4.u_s3.as_ref(), 3);
+                gl.uniform1i(p4.u_weights.as_ref(), 4);
+                gl.draw_buffers(&self.mrt4);
+                for gb in (0..12).step_by(4) {
+                    for j in 0..4 {
+                        gl.framebuffer_texture_layer(
+                            Gl::FRAMEBUFFER,
+                            Gl::COLOR_ATTACHMENT0 + j as u32,
+                            Some(&tile.scratch_a),
+                            0,
+                            (gb + j) as i32,
+                        );
+                    }
+                    gl.uniform1i(p4.u_group_base.as_ref(), gb as i32);
+                    gl.uniform4fv_with_f32_array(p4.u_bias.as_ref(), &m.conv_cat.bias[gb * 4..gb * 4 + 16]);
+                    gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+                }
+            }
+        }
+
+        // 3. upsampler.0(scratch_a) -> scratch_b
+        self.run_span_conv48(&tile.scratch_a, &tile.scratch_b, &tile.scratch_a, &m.upsampler, tw, th, 0);
+
+        // 4. PixelShuffle(4×) with uAddOrig=0 -> sr_tex (RGBA8, LINEAR filtered)
+        let gl = &self.gl;
+        let max_unbind = if self.mrt6.is_some() { 6u32 } else { 4u32 };
+        for j in 1..max_unbind {
+            gl.framebuffer_texture_2d(Gl::FRAMEBUFFER, Gl::COLOR_ATTACHMENT0 + j, Gl::TEXTURE_2D, None, 0);
+        }
+        gl.framebuffer_texture_2d(Gl::FRAMEBUFFER, Gl::COLOR_ATTACHMENT0, Gl::TEXTURE_2D, Some(&tile.sr_tex), 0);
+        gl.draw_buffers(&self.mrt1);
+        gl.viewport(0, 0, tile_ow, tile_oh);
+        gl.use_program(Some(&self.shuffle4x.prog));
+        gl.active_texture(Gl::TEXTURE0);
+        gl.bind_texture(Gl::TEXTURE_2D, Some(&tile.src_tex));
+        gl.uniform1i(self.shuffle4x.u_orig.as_ref(), 0);
+        gl.active_texture(Gl::TEXTURE1);
+        gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.scratch_b));
+        gl.uniform1i(self.shuffle4x.u_head.as_ref(), 1);
+        gl.uniform1i(self.shuffle4x.u_add_orig.as_ref(), 0);
+        gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+
+        // 5. Final Pass: Wavelet Color Anchor + Gentle Anti-Ringing CAS directly onto WebGL2 default canvas
+        gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+        gl.enable(Gl::SCISSOR_TEST);
+        gl.viewport(vx, vy, copy_w, copy_h);
+        gl.scissor(vx, vy, copy_w, copy_h);
+        gl.use_program(Some(&self.fidelity_cas.prog));
+        gl.active_texture(Gl::TEXTURE0);
+        gl.bind_texture(Gl::TEXTURE_2D, Some(&tile.sr_tex));
+        gl.uniform1i(self.fidelity_cas.u_sr.as_ref(), 0);
+        gl.active_texture(Gl::TEXTURE1);
+        gl.bind_texture(Gl::TEXTURE_2D, Some(&tile.src_tex));
+        gl.uniform1i(self.fidelity_cas.u_orig.as_ref(), 1);
+        gl.uniform2i(self.fidelity_cas.u_sr_dims.as_ref(), tile_ow, tile_oh);
+        gl.uniform2i(self.fidelity_cas.u_crop_origin.as_ref(), crop_x0, crop_y0);
+        gl.uniform2i(self.fidelity_cas.u_dst_origin.as_ref(), vx, vy);
+        gl.uniform2i(self.fidelity_cas.u_copy_dims.as_ref(), copy_w, copy_h);
+        gl.uniform4f(self.fidelity_cas.u_color0.as_ref(), color0[0], color0[1], color0[2], color0[3]);
+        gl.uniform4f(self.fidelity_cas.u_color1.as_ref(), color1[0], color1[1], color1[2], color1[3]);
+        gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+        gl.disable(Gl::SCISSOR_TEST);
+
+        gl.delete_texture(Some(&tile.src_tex));
+        gl.delete_texture(Some(&tile.feat0));
+        gl.delete_texture(Some(&tile.b1_out));
+        gl.delete_texture(Some(&tile.b6_c1_act));
+        gl.delete_texture(Some(&tile.scratch_a));
+        gl.delete_texture(Some(&tile.scratch_b));
+        gl.delete_texture(Some(&tile.ping_c));
+        gl.delete_texture(Some(&tile.pong_d));
         gl.delete_texture(Some(&tile.sr_tex));
         Ok(())
     }
@@ -2001,6 +2847,115 @@ async fn run_tile_gl_async(
     Ok(())
 }
 
+/// Uploads FP16 `SPAN` 4× weight textures incrementally (1 SPAB block per task slice) so cold-start
+/// never stalls the browser main thread!
+async fn ensure_span_model_uploaded_async(model_id: &str, model_bytes: &[u8]) -> Result<usize, String> {
+    if let Ok(Some(n)) = with_gl_engine(|eng| Ok(eng.span_models.get(model_id).map(|m| m.blocks.len()))) {
+        return Ok(n);
+    }
+    let parsed = SpanGpuF16Model::from_cwsp_bytes(model_bytes).map_err(|e| e.to_string())?;
+    yield_browser_task().await;
+
+    let conv_1_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 9, &parsed.conv_1.weights_u16))?;
+    let conv_1 = GlSpanLayer {
+        tex: conv_1_tex,
+        bias: parsed.conv_1.bias,
+    };
+
+    let mut blocks = Vec::with_capacity(parsed.blocks.len());
+    for blk in parsed.blocks {
+        let [c1, c2, c3] = blk;
+        let t1 = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 108, &c1.weights_u16))?;
+        let t2 = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 108, &c2.weights_u16))?;
+        let t3 = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 108, &c3.weights_u16))?;
+        blocks.push([
+            GlSpanLayer { tex: t1, bias: c1.bias },
+            GlSpanLayer { tex: t2, bias: c2.bias },
+            GlSpanLayer { tex: t3, bias: c3.bias },
+        ]);
+        yield_browser_task().await;
+    }
+
+    let conv_2_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 108, &parsed.conv_2.weights_u16))?;
+    let conv_cat_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 48, &parsed.conv_cat.weights_u16))?;
+    let up_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 108, &parsed.upsampler.weights_u16))?;
+    let num_blocks = blocks.len();
+
+    with_gl_engine(|eng| {
+        eng.span_models.entry(model_id.to_string()).or_insert(GlUploadedSpanModel {
+            use_norm: parsed.use_norm,
+            conv_1,
+            blocks,
+            conv_2: GlSpanLayer { tex: conv_2_tex, bias: parsed.conv_2.bias },
+            conv_cat: GlSpanLayer { tex: conv_cat_tex, bias: parsed.conv_cat.bias },
+            upsampler: GlSpanLayer { tex: up_tex, bias: parsed.upsampler.bias },
+        });
+        Ok(())
+    })?;
+    Ok(num_blocks)
+}
+
+/// Executes a single SPAN 4× tile asynchronously on WebGL2 (1 SPAB block per non-blocking GPU fence)
+/// so Chromium's UI & Lightbox remain 60–120fps smooth!
+#[allow(clippy::too_many_arguments)]
+async fn run_span_tile_gl_async(
+    tile_rgba: &[u8],
+    tw: usize,
+    th: usize,
+    model_id: &str,
+    model_bytes: &[u8],
+    vx: i32,
+    vy: i32,
+    crop_x0: i32,
+    crop_y0: i32,
+    copy_w: i32,
+    copy_h: i32,
+    color0: [f32; 4],
+    color1: [f32; 4],
+    prog_start: u32,
+    prog_end: u32,
+    on_progress: Option<&js_sys::Function>,
+) -> Result<(), String> {
+    ensure_span_model_uploaded_async(model_id, model_bytes).await?;
+    let num_blocks = with_gl_engine(|eng| eng.begin_span_tile(tile_rgba, tw, th, model_id))?;
+    let span = prog_end.saturating_sub(prog_start).max(1);
+    for bi in 0..num_blocks {
+        let fence_res = with_gl_engine(|eng| {
+            eng.step_span_block(model_id, bi)?;
+            Ok(eng.create_flush_fence())
+        });
+        let fence = match fence_res {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = with_gl_engine(|eng| {
+                    eng.cleanup_active_span_tile();
+                    Ok(())
+                });
+                return Err(e);
+            }
+        };
+        await_gl_fence_nonblocking(fence).await;
+        let pct = prog_start + (((bi + 1) as u32 * span * 85) / (num_blocks.max(1) as u32 * 100));
+        emit_progress(on_progress, pct.min(prog_end));
+    }
+    let fin_fence = match with_gl_engine(|eng| {
+        eng.finish_span_tile_to_canvas(model_id, vx, vy, crop_x0, crop_y0, copy_w, copy_h, color0, color1)?;
+        Ok(eng.create_flush_fence())
+    }) {
+        Ok(f) => f,
+        Err(e) => {
+            let _ = with_gl_engine(|eng| {
+                eng.cleanup_active_span_tile();
+                Ok(())
+            });
+            return Err(e);
+        }
+    };
+    await_gl_fence_nonblocking(fin_fence).await;
+    emit_progress(on_progress, prog_end);
+    Ok(())
+}
+
 /// Complete 100% Pure-Rust Ultra-Fast Real-ESRGAN 4× restoration pipeline (FP16 8-MRT WebGL2 Zero-Copy GPU -> Pure-Rust CPU fallback).
 pub async fn restore_image_realesrgan_rust(
     rgba: &[u8],
@@ -2031,37 +2986,65 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Spec 131 balanced AI enhancement knob: 1.0 for anime line art, 0.85 for general photo reconstruction
-    color1[2] = if kind == RealEsrganModelKind::AnimeVideoV3 { 1.0 } else { 0.85 };
+    // Spec 142: ClearReality SPAN already synthesizes crisp organic texture & eyelashes -> gentle 0.35 CAS; Anime 1.0; Legacy 0.85
+    color1[2] = if kind.is_span() {
+        0.35
+    } else if kind == RealEsrganModelKind::AnimeVideoV3 {
+        1.0
+    } else {
+        0.85
+    };
 
     let probe = probe_gpu();
     if probe.webgl2_available && (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {
         let prep_ok = with_gl_engine(|eng| eng.prepare_output_canvas(ow as u32, oh as u32));
         if prep_ok.is_ok() {
-            // Single-pass (0% halo waste!) on real GPU for images up to 600k pixels (e.g. 836×471 = 393k px -> 1 single pass!!);
+            // Single-pass (0% halo waste!) on real GPU for images up to 600k pixels (e.g. 512×384 = 196k px -> 1 single pass!!);
             // large 512px tiles above 600k px, or 160px tiles on software SwiftShader.
             let single_pass_ok = !probe.is_software && (w * h <= 600_000);
             let gpu_res: Result<(), String> = if single_pass_ok {
-                run_tile_gl_async(
-                    rgba,
-                    w,
-                    h,
-                    model_id,
-                    model_bytes,
-                    0,
-                    0,
-                    0,
-                    0,
-                    ow as i32,
-                    oh as i32,
-                    color0,
-                    color1,
-                    false,
-                    8,
-                    92,
-                    on_progress.as_ref(),
-                )
-                .await
+                if kind.is_span() {
+                    run_span_tile_gl_async(
+                        rgba,
+                        w,
+                        h,
+                        model_id,
+                        model_bytes,
+                        0,
+                        0,
+                        0,
+                        0,
+                        ow as i32,
+                        oh as i32,
+                        color0,
+                        color1,
+                        8,
+                        92,
+                        on_progress.as_ref(),
+                    )
+                    .await
+                } else {
+                    run_tile_gl_async(
+                        rgba,
+                        w,
+                        h,
+                        model_id,
+                        model_bytes,
+                        0,
+                        0,
+                        0,
+                        0,
+                        ow as i32,
+                        oh as i32,
+                        color0,
+                        color1,
+                        false,
+                        8,
+                        92,
+                        on_progress.as_ref(),
+                    )
+                    .await
+                }
             } else {
                 let tile = if probe.is_software { 160usize } else { 512usize };
                 let halo = 12usize;
@@ -2100,27 +3083,49 @@ pub async fn restore_image_realesrgan_rust(
 
                         let p0 = 8 + (done_tiles * 84) / total_tiles;
                         let p1 = 8 + ((done_tiles + 1) * 84) / total_tiles;
-                        if let Err(e) = run_tile_gl_async(
-                            &tile_in,
-                            tw,
-                            th,
-                            model_id,
-                            model_bytes,
-                            vx,
-                            vy,
-                            crop_x0,
-                            crop_y0,
-                            copy_w,
-                            copy_h,
-                            color0,
-                            color1,
-                            probe.is_software,
-                            p0,
-                            p1,
-                            on_progress.as_ref(),
-                        )
-                        .await
-                        {
+                        let tile_res = if kind.is_span() {
+                            run_span_tile_gl_async(
+                                &tile_in,
+                                tw,
+                                th,
+                                model_id,
+                                model_bytes,
+                                vx,
+                                vy,
+                                crop_x0,
+                                crop_y0,
+                                copy_w,
+                                copy_h,
+                                color0,
+                                color1,
+                                p0,
+                                p1,
+                                on_progress.as_ref(),
+                            )
+                            .await
+                        } else {
+                            run_tile_gl_async(
+                                &tile_in,
+                                tw,
+                                th,
+                                model_id,
+                                model_bytes,
+                                vx,
+                                vy,
+                                crop_x0,
+                                crop_y0,
+                                copy_w,
+                                copy_h,
+                                color0,
+                                color1,
+                                probe.is_software,
+                                p0,
+                                p1,
+                                on_progress.as_ref(),
+                            )
+                            .await
+                        };
+                        if let Err(e) = tile_res {
                             err_opt = Some(e);
                             break 'outer;
                         }
@@ -2161,6 +3166,17 @@ pub async fn restore_image_realesrgan_rust(
                     let match_pct = (((ssim.clamp(0.0, 1.0) * 0.55 + (1.0 - drift * 4.5).clamp(0.0, 1.0) * 0.45) * 1000.0).round() / 10.0)
                         .clamp(0.0, 100.0);
                     emit_progress(on_progress.as_ref(), 96);
+                    let backend_name = if kind.is_span() {
+                        if probe.is_software {
+                            "rust_webgl2_sw_span_4x"
+                        } else if probe.feat_fp16 {
+                            "rust_webgl2_gpu_fp16_6mrt_span_4x"
+                        } else {
+                            "rust_webgl2_gpu_span_4x"
+                        }
+                    } else {
+                        probe.backend
+                    };
                     return Ok(RealEsrganFullOutput {
                         canvas: Some(canvas_handle),
                         rgba: None,
@@ -2170,7 +3186,7 @@ pub async fn restore_image_realesrgan_rust(
                         has_alpha,
                         model_id,
                         model_label,
-                        backend: probe.backend,
+                        backend: backend_name,
                         ssim,
                         mean_color_drift: drift,
                         match_pct,
@@ -2182,9 +3198,17 @@ pub async fn restore_image_realesrgan_rust(
 
     // Pure-Rust CPU Fallback (if WebGL2 is unavailable or exceeded max texture size)
     emit_progress(on_progress.as_ref(), 25);
-    let model = RealEsrganModel::from_cwsr_bytes(model_bytes).map_err(|e| e.to_string())?;
-    let (mut out_rgba, _, _) = run_realesrgan_tiled(rgba, width, height, &model, 128, None)
-        .map_err(|e| e.to_string())?;
+    let (mut out_rgba, cpu_backend) = if kind.is_span() {
+        let model = SpanModel::from_cwsp_bytes(model_bytes).map_err(|e| e.to_string())?;
+        let (buf, _, _) = run_span_tiled(&model, rgba, width, height, 128, None, |_| {})
+            .map_err(|e| e.to_string())?;
+        (buf, "rust_wasm_cpu_span_4x")
+    } else {
+        let model = RealEsrganModel::from_cwsr_bytes(model_bytes).map_err(|e| e.to_string())?;
+        let (buf, _, _) = run_realesrgan_tiled(rgba, width, height, &model, 128, None)
+            .map_err(|e| e.to_string())?;
+        (buf, "rust_wasm_cpu_realesrgan_srvgg")
+    };
     emit_progress(on_progress.as_ref(), 92);
 
     let match_pct = calibrate_color_preserve_sr(&mut out_rgba, ow as u32, oh as u32, orig_profile);
@@ -2205,7 +3229,7 @@ pub async fn restore_image_realesrgan_rust(
         has_alpha,
         model_id,
         model_label,
-        backend: "rust_wasm_cpu_realesrgan_srvgg",
+        backend: cpu_backend,
         ssim,
         mean_color_drift: drift,
         match_pct,

@@ -1,11 +1,11 @@
-// Thin Browser DOM/IndexedDB Shell for ChatW's 100% Pure-Rust 4xLSDIRCompact3 (CC-BY-4.0) + FSR 1.0 WebGL2 GPU Engine (`window.__chatwWasmMedia`).
-// Spec 140: 4xLSDIRCompact3 (85K real photographs, 75% C3 compression-removal + 25% R3 restoration, 1.18 MB FP16, ~250ms GPU)
-// with automatic AMD FSR 1.0 EASU + RL Deconvolution fallback!
+// Thin Browser DOM/IndexedDB Shell for ChatW's 100% Pure-Rust 4x-ClearRealityV1 SPAN (Apache-2.0) + FSR 1.0 WebGL2 GPU Engine (`window.__chatwWasmMedia`).
+// Spec 142: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 EASU + RL Deconvolution -> Stage 2 ClearReality SPAN 4× (833 KB FP16, 6-MRT GPU) + Adaptive Optical RL Clarity!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'progressive-alg-then-lsdir3-rl-v18';
+  const PIPELINE_VERSION = 'progressive-alg-then-clearreality-span-v19';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
+    clearreality_span_x4: { id: 'clearreality_span_x4', cwsrUrl: '/models/clearreality_v1_x4.cwsp', license: 'Apache-2.0', scale: 4 },
     lsdir_compact3_x4: { id: 'lsdir_compact3_x4', cwsrUrl: '/models/lsdir_compact3_x4.cwsr', license: 'CC-BY-4.0', scale: 4 },
     fsr1_easu_rcas: { id: 'fsr1_easu_rcas', license: 'MIT', scale: 2 },
     fidelity_cas_1x: { id: 'fidelity_cas_1x', license: 'MIT', scale: 1 },
@@ -654,7 +654,9 @@
                   tctx.drawImage(res.canvas, 0, 0, pw, ph);
                   const aiImg = tctx.getImageData(0, 0, pw, ph);
                   const aiU8 = new Uint8Array(aiImg.data.buffer, aiImg.data.byteOffset, aiImg.data.byteLength);
-                  const postRl = await wasm.upscaleFsr1(aiU8, pw, ph, pw, ph, 1.15, null);
+                  // Adaptive Post-AI Optical RL Clarity: crisp 0.85 for low-res compressed photos (< 900px), gentle 0.45 for high-res originals
+                  const postRlStrength = maxDim < 900 ? 0.85 : 0.45;
+                  const postRl = await wasm.upscaleFsr1(aiU8, pw, ph, pw, ph, postRlStrength, null);
                   if (postRl && postRl.ok && postRl.canvas) {
                     res = {
                       ...res,

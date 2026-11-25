@@ -6,6 +6,7 @@ pub mod realesrgan;
 pub mod registry;
 pub mod router;
 pub mod spab_lite;
+pub mod span;
 pub mod tiling;
 pub mod video_ai;
 

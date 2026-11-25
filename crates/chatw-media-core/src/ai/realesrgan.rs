@@ -31,8 +31,10 @@ pub enum RealEsrganModelKind {
     AnimeVideoV3,
     /// `realesr-general-x4v3` DNI-35 (32×64ch, 4×, 2.31 MB FP16, BSD-3-Clause) — Legacy general model
     GeneralX4V3,
-    /// `4xLSDIRCompact3` (16×64ch, 4×, 1.18 MB FP16, CC-BY-4.0, Phhofm / 85K LSDIR real photos) — Primary Photo, Portrait & Compression-Removal 4× AI!
+    /// `4xLSDIRCompact3` (16×64ch, 4×, 1.18 MB FP16, CC-BY-4.0, Phhofm) — Compact Photo SR
     LsdirCompact3X4,
+    /// `4x-ClearRealityV1` (SPAN 6×SPAB 48ch, 4×, 833 KB FP16, Apache-2.0, Kim2091) — Ultra-Sharp Primary Photo & Portrait 4× AI!
+    ClearRealitySpanX4,
 }
 
 impl RealEsrganModelKind {
@@ -41,6 +43,7 @@ impl RealEsrganModelKind {
             Self::AnimeVideoV3 => "realesr_animevideov3",
             Self::GeneralX4V3 => "realesr_general_x4v3",
             Self::LsdirCompact3X4 => "lsdir_compact3_x4",
+            Self::ClearRealitySpanX4 => "clearreality_span_x4",
         }
     }
 
@@ -49,6 +52,7 @@ impl RealEsrganModelKind {
             Self::AnimeVideoV3 => "Real-ESRGAN Anime v3 (4×)",
             Self::GeneralX4V3 => "Real-ESRGAN Upscayl-Lite (4×)",
             Self::LsdirCompact3X4 => "LSDIR Photo Compact v3 (4×)",
+            Self::ClearRealitySpanX4 => "ClearReality SPAN (4×)",
         }
     }
 
@@ -57,6 +61,7 @@ impl RealEsrganModelKind {
             Self::AnimeVideoV3 => "/models/realesr_animevideov3.cwsr",
             Self::GeneralX4V3 => "/models/realesr_general_x4v3.cwsr",
             Self::LsdirCompact3X4 => "/models/lsdir_compact3_x4.cwsr",
+            Self::ClearRealitySpanX4 => "/models/clearreality_v1_x4.cwsp",
         }
     }
 
@@ -65,15 +70,21 @@ impl RealEsrganModelKind {
             Self::AnimeVideoV3 => "0.2.5.0",
             Self::GeneralX4V3 => "0.2.5.0-dni35",
             Self::LsdirCompact3X4 => "3.0-c75r25",
+            Self::ClearRealitySpanX4 => "1.0-span",
         }
+    }
+
+    pub fn is_span(self) -> bool {
+        matches!(self, Self::ClearRealitySpanX4)
     }
 
     pub fn from_str_name(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
-            "lsdir_compact3_x4" | "lsdir" | "compact3" | "photo" => Self::LsdirCompact3X4,
+            "clearreality_span_x4" | "clearreality" | "span" | "photo" => Self::ClearRealitySpanX4,
+            "lsdir_compact3_x4" | "lsdir" | "compact3" => Self::LsdirCompact3X4,
             "realesr_general_x4v3" | "general" | "upscayl-lite" => Self::GeneralX4V3,
             "realesr_animevideov3" | "anime" => Self::AnimeVideoV3,
-            _ => Self::LsdirCompact3X4,
+            _ => Self::ClearRealitySpanX4,
         }
     }
 }
@@ -309,14 +320,14 @@ pub fn select_realesrgan_model(
         if qp.luma_s < 1.2 && qp.sharp < 0.2 {
             return None;
         }
-        // Spec 140: Photos, portraits, and natural scenes strictly route to 4xLSDIRCompact3 (85K real photos, zero alien eyes!)
+        // Spec 142: Photos, portraits, and natural scenes strictly route to 4x-ClearRealityV1 SPAN (Apache-2.0, razor-sharp hair/eyes, zero alien creases!)
         if matches!(qp.cls.as_str(), "portrait" | "photo") {
-            return Some(RealEsrganModelKind::LsdirCompact3X4);
+            return Some(RealEsrganModelKind::ClearRealitySpanX4);
         }
         if qp.cls.as_str() == "anime" {
             return Some(RealEsrganModelKind::AnimeVideoV3);
         }
-        return Some(RealEsrganModelKind::LsdirCompact3X4);
+        return Some(RealEsrganModelKind::ClearRealitySpanX4);
     }
 
     let analysis = analyze_rgba_image(rgba, width, height, 0, None);
@@ -324,7 +335,7 @@ pub fn select_realesrgan_model(
         return None;
     }
 
-    // 1. Photos, portraits, real human faces, and natural scenes MUST use 4xLSDIRCompact3
+    // 1. Photos, portraits, real human faces, and natural scenes MUST use ClearRealitySpanX4 (SPAN 4×)
     let is_photo_or_portrait = matches!(
         analysis.class,
         ImageClass::Portrait
@@ -335,10 +346,10 @@ pub fn select_realesrgan_model(
     ) || analysis.skin_tone_ratio > 0.04;
 
     if is_photo_or_portrait {
-        return Some(RealEsrganModelKind::LsdirCompact3X4);
+        return Some(RealEsrganModelKind::ClearRealitySpanX4);
     }
 
-    // 2. Strictly pure flat anime/manga with sparse palette uses AnimeVideoV3; everything else uses 4xLSDIRCompact3
+    // 2. Strictly pure flat anime/manga with sparse palette uses AnimeVideoV3; everything else uses ClearRealitySpanX4
     let is_pure_anime = matches!(analysis.class, ImageClass::AnimeManga)
         && analysis.palette_sparsity > 0.60
         && analysis.flat_pixel_ratio > 0.45;
@@ -346,7 +357,7 @@ pub fn select_realesrgan_model(
     if is_pure_anime {
         Some(RealEsrganModelKind::AnimeVideoV3)
     } else {
-        Some(RealEsrganModelKind::LsdirCompact3X4)
+        Some(RealEsrganModelKind::ClearRealitySpanX4)
     }
 }
 
@@ -1264,18 +1275,18 @@ mod tests {
 
         assert_eq!(
             sel_no_qp,
-            Some(RealEsrganModelKind::LsdirCompact3X4),
-            "Human portrait must route to LsdirCompact3X4 without QP!"
+            Some(RealEsrganModelKind::ClearRealitySpanX4),
+            "Human portrait must route to ClearRealitySpanX4 without QP!"
         );
         assert_eq!(
             sel_qp,
-            Some(RealEsrganModelKind::LsdirCompact3X4),
-            "Human portrait must route to LsdirCompact3X4 with QP!"
+            Some(RealEsrganModelKind::ClearRealitySpanX4),
+            "Human portrait must route to ClearRealitySpanX4 with QP!"
         );
     }
 
     #[test]
-    fn high_detail_cosplay_portrait_routes_to_lsdir_compact3_x4() {
+    fn high_detail_cosplay_portrait_routes_to_clearreality_span_x4() {
         let p = "/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/.user_uploaded/media_1795545206648_e1cddb86.jpg";
         if !std::path::Path::new(p).exists() {
             return;
@@ -1292,7 +1303,7 @@ mod tests {
         let model_no_qp = select_realesrgan_model(&raw, w, h, None, false);
         let model_qp = select_realesrgan_model(&raw, w, h, Some(&qp), false);
 
-        assert_eq!(model_no_qp, Some(RealEsrganModelKind::LsdirCompact3X4));
-        assert_eq!(model_qp, Some(RealEsrganModelKind::LsdirCompact3X4));
+        assert_eq!(model_no_qp, Some(RealEsrganModelKind::ClearRealitySpanX4));
+        assert_eq!(model_qp, Some(RealEsrganModelKind::ClearRealitySpanX4));
     }
 }

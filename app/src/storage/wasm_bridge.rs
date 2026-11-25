@@ -178,7 +178,15 @@ pub fn install_wasm_media_bridge() {
             let probe = probe_gpu();
 
             let req_str = req_model_val.as_string().unwrap_or_default();
-            let chosen = if !req_str.is_empty() && (req_str == "realesr_animevideov3" || req_str == "realesr_general_x4v3") {
+            let chosen = if !req_str.is_empty()
+                && matches!(
+                    req_str.as_str(),
+                    "clearreality_span_x4"
+                        | "lsdir_compact3_x4"
+                        | "realesr_animevideov3"
+                        | "realesr_general_x4v3"
+                )
+            {
                 Some(RealEsrganModelKind::from_str_name(&req_str))
             } else {
                 select_realesrgan_model(&raw, width, height, orig_prof.as_ref(), probe.is_software)
@@ -302,7 +310,8 @@ pub fn install_wasm_media_bridge() {
         let blocked = ["codeformer", "rvrt", "apisr", "upscayl"].iter().any(|b| k.contains(b));
         let approved = matches!(
             k.as_str(),
-            "lsdir_compact3_x4"
+            "clearreality_span_x4"
+                | "lsdir_compact3_x4"
                 | "fsr1_easu_rcas"
                 | "fidelity_cas_1x"
                 | "realesr_animevideov3"
