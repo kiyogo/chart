@@ -3807,7 +3807,9 @@ body:has(.lightbox) .panel-resizer {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: linear-gradient(180deg, rgba(8, 10, 14, 0.72) 0%, rgba(8, 10, 14, 0.34) 56%, rgba(8, 10, 14, 0) 100%);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   pointer-events: none;
   z-index: 10001;
 }
