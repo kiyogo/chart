@@ -578,7 +578,7 @@
       let procW = 0;
       let procH = 0;
       let srcU8 = null;
-      const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 1080 : 960;
+      const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 900 : 800;
       try {
         const resp = await withTimeout(fetch(imageUrl), 10000, 'img_fetch');
         if (!resp.ok) return { enhanced: false, skipped: true, reason: 'fetch_failed', url: imageUrl };
@@ -764,16 +764,18 @@
                 } catch (_) {}
               }
 
-              // Spec 147: Snapshot Stage 2A canvas for non-blocking background Stage 2B Face Refinement (YuNet + GFPGANv1.4).
-              // We NEVER block `90% -> 100%` or starve `enqueueExclusive` waiting for 325 MB ONNX / WebGPU shader compile!
+              // Spec 156: Skip 325 MB ONNX face post-pass & heavy 2D canvas readback unless caller opted into
+              // background refinement (`onRefined`) AND source is tiny (< 480px); avoids 1000ms+ UI stalls on Lightbox!
               faceCandidateIsAnime = Boolean(sel.isAnime);
-              if (
-                res.canvas &&
+              const wantsBgFace =
+                typeof meta.onRefined === 'function' &&
+                maxDim < 480 &&
                 !faceCandidateIsAnime &&
                 window.__chatwFaceRestorer &&
-                typeof window.__chatwFaceRestorer.restoreFacesOnCanvas === 'function'
-              ) {
+                typeof window.__chatwFaceRestorer.restoreFacesOnCanvas === 'function';
+              if (res.canvas && wantsBgFace) {
                 try {
+                  await yieldUiSlice();
                   const snap = document.createElement('canvas');
                   snap.width = res.canvas.width;
                   snap.height = res.canvas.height;
@@ -782,6 +784,7 @@
                 } catch (_) {}
               }
               reportProgress(92);
+              await yieldUiSlice();
             }
           }
         } catch (_) {}
@@ -824,8 +827,9 @@
             );
           }
           if (bmp) {
+            const outEdgeCap = Math.max(1280, Math.min(3840, Number(meta.maxOutEdge) || 2560));
             const wEnc = await callAiMediaWorker(
-              { type: 'encode', bitmap: bmp, width: res.width, height: res.height, hasAlpha: Boolean(res.hasAlpha || hasAlpha), maxOutEdge: 3840 },
+              { type: 'encode', bitmap: bmp, width: res.width, height: res.height, hasAlpha: Boolean(res.hasAlpha || hasAlpha), maxOutEdge: outEdgeCap },
               [bmp],
             );
             if (wEnc && wEnc.ok && wEnc.blob) {

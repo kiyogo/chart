@@ -3082,9 +3082,8 @@ pub async fn restore_image_realesrgan_rust(
     if (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {
         let prep_ok = with_gl_engine(|eng| eng.prepare_output_canvas(ow as u32, oh as u32));
         if prep_ok.is_ok() {
-            // Single-pass (0% halo waste!) on real GPU for images up to 600k pixels (e.g. 512×384 = 196k px -> 1 single pass!!);
-            // large 512px tiles above 600k px.
-            let single_pass_ok = w * h <= 600_000;
+            // Single-pass (0% overlap halo overhead!) on real GPU for images up to 1.1M pixels (covers up to ~900x1200 / 1080x1000).
+            let single_pass_ok = w * h <= 1_100_000;
             let t_gpu_start = js_sys::Date::now();
             let max_gpu_budget_ms = 5500.0f64;
             let gpu_res: Result<(), String> = if single_pass_ok {
