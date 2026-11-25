@@ -1,0 +1,9 @@
+# Tasks — Spec 164
+
+- [x] T1. Create `crates/chatw-msg-store` shared Rust core (`model.rs`, `codec.rs`, `dict.rs`, `zstd22.rs`, `crypto.rs`, `incremental.rs`, `budget.rs`, `search.rs`, `scheduler.rs`) with native `libzstd` L22 + pure-Rust WASM `structured-zstd` L22 cross-compatibility.
+- [x] T2. Write comprehensive unit, security, fuzz/malformed, bomb, crash-recovery, eviction-comparison, and multi-scale benchmark suites in `crates/chatw-msg-store`.
+- [x] T3. Add DB migration `0040_message_chunks_and_encrypted_search.sql`, `web/backend/src/storage/message_chunks.rs`, S3 cold/conditional support, mutation hooks in `messages/mod.rs` & `groups/mod.rs`, background incremental tiering/compaction worker in `main.rs`, and `.kdata` compatibility.
+- [x] T4. Wire `crates/chatw-media-worker` WASM bindings (`Zstd-22`, encrypted Vietnamese search, adaptive budget), `app/web/media_worker.js`, `app/web/storage_engine.js` (IDB v6 + OPFS + L1/L2/L3 + incremental background runner + prefetch), `app/web/sw.js` offline App Shell, and PWA `manifest.json`.
+- [x] T5. Upgrade Native Desktop/Mobile parity (`app/src/storage/native.rs`, `app/src/storage/mod.rs`, `app/src/storage/sync_manager.rs`, `app/src/platform/mod.rs`), fix virtualized scroll-up pagination (`messages.rs`), and add cross-chunk lazy `jump_to_message` (`chat.rs`).
+- [x] T6. Upgrade `StorageSettingsPanel` (breakdown + 4 adaptive modes + safe clear cache), `SearchPage` & in-chat search panels (`details_panel.rs`) with real local encrypted Vietnamese full-text search & filters.
+- [x] T7. Add backend integration tests (leases, OCC conflict, 7-day gate, mutations/tombstones, Hot/Warm/Cold, encrypted search sync, RBAC/cross-account isolation), run full benchmark suite, `cargo fmt`, `cargo clippy`, all tests, WASM & release builds, cross-target checks, restart server, and push to `origin main`.

@@ -46,15 +46,45 @@ fn current_account_part() -> String {
 }
 
 fn cas_root() -> PathBuf {
-    let base = std::env::var("XDG_DATA_HOME")
+    // Platform-appropriate cache directory (keeps rebuildable cache out of iOS iCloud backups!)
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    let base = std::env::var("HOME")
+        .map(|h| PathBuf::from(h).join("Library").join("Caches"))
+        .unwrap_or_else(|_| std::env::temp_dir());
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    let base = std::env::var("XDG_CACHE_HOME")
         .or_else(|_| std::env::var("LOCALAPPDATA"))
+        .or_else(|_| std::env::var("XDG_DATA_HOME"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             std::env::var("HOME")
-                .map(|h| PathBuf::from(h).join(".local").join("share"))
+                .map(|h| PathBuf::from(h).join(".cache"))
                 .unwrap_or_else(|_| std::env::temp_dir())
         });
     base.join("chatw").join("cas").join(current_account_part())
+}
+
+pub fn native_cache_dir_for_account(account_part: &str) -> PathBuf {
+    let safe = if account_part.is_empty() {
+        current_account_part()
+    } else {
+        account_part.to_string()
+    };
+    cas_root()
+        .parent()
+        .map(|p| p.join(safe))
+        .unwrap_or_else(cas_root)
+}
+
+pub fn native_messages_dir_bytes() -> u64 {
+    let dir = cas_root().join("messages");
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return 0;
+    };
+    rd.flatten()
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum()
 }
 
 fn index_path() -> PathBuf {
@@ -442,7 +472,13 @@ fn outbox_path() -> PathBuf {
 
 pub async fn load_cached_messages_json(conv_key: &str) -> Option<(serde_json::Value, bool)> {
     let raw = std::fs::read_to_string(chat_cache_path(conv_key)).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let uid = crate::services::api::auth_me_cached_id().unwrap_or_default();
+    let decoded = if raw.starts_with("lenc:v1:") && !uid.is_empty() {
+        crate::crypto::e2ee::decrypt_account_local_data(&uid, &format!("msg_cache:{conv_key}"), &raw).ok()?
+    } else {
+        raw
+    };
+    let v: serde_json::Value = serde_json::from_str(&decoded).ok()?;
     let items = v.get("items")?.clone();
     let has_more = v.get("has_more").and_then(|b| b.as_bool()).unwrap_or(false);
     Some((items, has_more))
@@ -450,8 +486,76 @@ pub async fn load_cached_messages_json(conv_key: &str) -> Option<(serde_json::Va
 
 pub async fn save_cached_messages_json(conv_key: &str, items: &serde_json::Value, has_more: bool) {
     let path = chat_cache_path(conv_key);
-    let payload = serde_json::json!({ "items": items, "has_more": has_more });
-    let _ = atomic_write_file(&path, payload.to_string().as_bytes());
+    let payload = serde_json::json!({ "items": items, "has_more": has_more }).to_string();
+    let uid = crate::services::api::auth_me_cached_id().unwrap_or_default();
+    let to_write = if !uid.is_empty() {
+        crate::crypto::e2ee::encrypt_account_local_data(&uid, &format!("msg_cache:{conv_key}"), &payload)
+            .unwrap_or(payload)
+    } else {
+        payload
+    };
+    let _ = atomic_write_file(&path, to_write.as_bytes());
+}
+
+pub fn save_draft_native(conv_key: &str, text: &str) {
+    let safe = safe_blob_name(conv_key);
+    let path = cas_root().join("drafts").join(format!("{safe}.txt"));
+    if text.is_empty() {
+        let _ = std::fs::remove_file(path);
+    } else {
+        let uid = crate::services::api::auth_me_cached_id().unwrap_or_default();
+        let data = if !uid.is_empty() {
+            crate::crypto::e2ee::encrypt_account_local_data(&uid, &format!("draft:{conv_key}"), text)
+                .unwrap_or_else(|_| text.to_string())
+        } else {
+            text.to_string()
+        };
+        let _ = atomic_write_file(&path, data.as_bytes());
+    }
+}
+
+pub fn load_draft_native(conv_key: &str) -> String {
+    let safe = safe_blob_name(conv_key);
+    let path = cas_root().join("drafts").join(format!("{safe}.txt"));
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return String::new();
+    };
+    let uid = crate::services::api::auth_me_cached_id().unwrap_or_default();
+    if raw.starts_with("lenc:v1:") && !uid.is_empty() {
+        crate::crypto::e2ee::decrypt_account_local_data(&uid, &format!("draft:{conv_key}"), &raw)
+            .unwrap_or_default()
+    } else {
+        raw
+    }
+}
+
+pub fn save_dialogs_native(uid: &str, payload: &serde_json::Value) {
+    let path = cas_root().join("dialogs.enc");
+    let raw = payload.to_string();
+    let data = crate::crypto::e2ee::encrypt_account_local_data(uid, "dialogs_cache", &raw)
+        .unwrap_or(raw);
+    let _ = atomic_write_file(&path, data.as_bytes());
+}
+
+pub fn load_dialogs_native(uid: &str) -> Option<serde_json::Value> {
+    let path = cas_root().join("dialogs.enc");
+    let raw = std::fs::read_to_string(path).ok()?;
+    let dec = if raw.starts_with("lenc:v1:") {
+        crate::crypto::e2ee::decrypt_account_local_data(uid, "dialogs_cache", &raw).ok()?
+    } else {
+        raw
+    };
+    serde_json::from_str(&dec).ok()
+}
+
+pub fn wipe_session_native_cache() {
+    let root = cas_root();
+    let _ = std::fs::remove_dir_all(root.join("messages"));
+    let _ = std::fs::remove_dir_all(root.join("drafts"));
+    let _ = std::fs::remove_file(root.join("dialogs.enc"));
+    let _ = std::fs::remove_file(root.join("cursors.json"));
+    let _ = std::fs::remove_file(root.join("outbox.json"));
+    let _ = std::fs::remove_file(root.join("search_index.cwse1"));
 }
 
 pub async fn enqueue_outbox_item(entry: &OutboxEntry) {

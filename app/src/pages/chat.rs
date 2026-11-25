@@ -965,11 +965,20 @@ pub fn Chat(
                             }
                         });
                         if let Some(active) = active_friend.peek().clone() {
-                            let idb_k = format!("dm:{}:{}", my_id_sig.peek(), active.id);
+                            let uid_del = my_id_sig.peek().clone();
+                            let idb_k = format!("dm:{uid_del}:{}", active.id);
                             let snap = messages.peek().clone();
                             let more_now = *dm_has_more.peek();
+                            let del_mid = message_id.clone();
                             spawn(async move {
                                 crate::storage::save_cached_messages(&idb_k, &snap, more_now).await;
+                                crate::storage::msg_store::delete_message_from_search_index(&uid_del, &del_mid).await;
+                            });
+                        } else {
+                            let uid_del = my_id_sig.peek().clone();
+                            let del_mid = message_id.clone();
+                            spawn(async move {
+                                crate::storage::msg_store::delete_message_from_search_index(&uid_del, &del_mid).await;
                             });
                         }
                     }
@@ -2699,11 +2708,32 @@ pub fn Chat(
                             fresh.append(list);
                             *list = fresh;
                         });
+                        let snap_after = messages.peek().clone();
                         dm_cache.write().insert(
                             friend.id.clone(),
-                            (messages.peek().clone(), more, *partner_read_seq.peek(), chat_wallpaper.peek().clone()),
+                            (snap_after.clone(), more, *partner_read_seq.peek(), chat_wallpaper.peek().clone()),
                         );
                         platform::restore_chat_scroll_after_prepend();
+                        // Spec 164: Persist loaded older history & incrementally index into encrypted search!
+                        let uid_persist = uid.clone();
+                        let fid_persist = friend.id.clone();
+                        let idb_k = format!("dm:{uid_persist}:{fid_persist}");
+                        spawn(async move {
+                            crate::storage::save_cached_messages(&idb_k, &snap_after, more).await;
+                            let compact: Vec<_> = snap_after.iter().map(crate::storage::msg_store::dm_to_compact).collect();
+                            crate::storage::msg_store::index_messages_incremental(
+                                &uid_persist,
+                                chatw_msg_store::ScopeKind::Dm,
+                                &fid_persist,
+                                &compact,
+                                if more {
+                                    chatw_msg_store::SearchCoverageState::PartiallyIndexed
+                                } else {
+                                    chatw_msg_store::SearchCoverageState::IndexedComplete
+                                },
+                            )
+                            .await;
+                        });
                     }
                 }
             }

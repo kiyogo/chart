@@ -13,7 +13,9 @@ use crate::{
     models::{BotItem, DirectoryEntry, DirectoryResults, FriendItem, GroupItem, ServerItem, UserSearchResult},
     platform,
     services::{api, social},
+    storage::msg_store,
 };
+use chatw_msg_store::{ScopeKind, SearchCoverageState, SearchFilters, SearchHit};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Tab {
@@ -43,6 +45,9 @@ pub fn SearchPage(
     let tab = use_signal(|| Tab::All);
     let mut dir = use_signal(DirectoryResults::default);
     let mut people = use_signal(Vec::<UserSearchResult>::new);
+    let mut msg_hits = use_signal(Vec::<SearchHit>::new);
+    let mut msg_coverage = use_signal(|| SearchCoverageState::NotDownloaded);
+    let mut msg_latency_ms = use_signal(|| 0.0f64);
     let mut loading = use_signal(|| false);
     let mut seq = use_signal(|| 0u64);
     let mut status = use_signal(|| Option::<String>::None);
@@ -54,14 +59,25 @@ pub fn SearchPage(
             origin.set(platform::app_origin().await);
         });
     });
-    // Debounced remote search (directory always, people when 2+ characters).
+    // Debounced local encrypted Vietnamese message search + remote directory/people search.
     use_effect(move || {
         let q = query().trim().to_string();
         // peek: reading `seq` reactively here would re-run this effect forever.
         let my = *seq.peek() + 1;
         seq.set(my);
         spawn(async move {
-            platform::sleep_ms(250).await;
+            if q.chars().count() >= 2 {
+                let uid = api::auth_me_cached_id().unwrap_or_default();
+                let (resp, lat) = msg_store::search_local_messages(&uid, &q, SearchFilters::default(), 20).await;
+                if *seq.peek() == my {
+                    msg_hits.set(resp.hits);
+                    msg_coverage.set(resp.coverage);
+                    msg_latency_ms.set(lat);
+                }
+            } else {
+                msg_hits.set(Vec::new());
+            }
+            platform::sleep_ms(220).await;
             if *seq.peek() != my {
                 return;
             }
@@ -120,6 +136,55 @@ pub fn SearchPage(
                 div { class: "chat-banner", role: "status", span { "{msg}" } button { r#type: "button", class: "btn-ghost", onclick: move |_| status.set(None), "Close" } }
             }
             div { class: "search-results",
+                if !q.is_empty() && !msg_hits.read().is_empty() {
+                    section { class: "search-section",
+                        h2 { class: "search-section-title",
+                            "Tin nhắn cục bộ ({msg_hits.read().len()} · {msg_latency_ms():.1} ms)"
+                        }
+                        if msg_coverage() != SearchCoverageState::IndexedComplete {
+                            div { class: "settings-sublabel", "Đang tìm trên phần lịch sử đã lập chỉ mục cục bộ" }
+                        }
+                        div { class: "result-grid",
+                            for hit in msg_hits() {
+                                {
+                                    let h_scope = hit.scope_type;
+                                    let h_sid = hit.scope_id.clone();
+                                    let fr_match = friends.iter().find(|f| f.id == h_sid).cloned();
+                                    let grp_match = groups.iter().find(|g| g.id == h_sid).cloned();
+                                    let title = match h_scope {
+                                        ScopeKind::Dm => fr_match
+                                            .as_ref()
+                                            .and_then(|f| f.display_name.clone().filter(|s| !s.is_empty()).or_else(|| Some(f.username.clone())))
+                                            .unwrap_or_else(|| "Tin nhắn cá nhân".into()),
+                                        ScopeKind::Group => grp_match
+                                            .as_ref()
+                                            .map(|g| g.name.clone())
+                                            .unwrap_or_else(|| "Nhóm".into()),
+                                        ScopeKind::Channel => "Kênh".into(),
+                                    };
+                                    rsx! {
+                                        button {
+                                            key: "mh_{hit.message_id}",
+                                            r#type: "button",
+                                            class: "result-card",
+                                            onclick: move |_| {
+                                                if let Some(f) = fr_match.clone() {
+                                                    on_open_friend.call(f);
+                                                } else if let Some(g) = grp_match.clone() {
+                                                    on_open_group.call(g);
+                                                }
+                                            },
+                                            div { class: "result-info",
+                                                div { class: "result-name", "{title}" }
+                                                div { class: "result-sub", "{hit.snippet}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if show(Tab::Chats) && (!my_friends.is_empty() || !my_groups.is_empty() || !my_servers.is_empty()) {
                     section { class: "search-section",
                         h2 { class: "search-section-title", "Your conversations" }

@@ -3,6 +3,7 @@ pub mod browser;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 pub mod media_opt;
+pub mod msg_store;
 #[cfg(target_arch = "wasm32")]
 pub mod realesrgan_gpu;
 pub mod recovery;

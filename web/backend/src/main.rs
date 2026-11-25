@@ -353,6 +353,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    {
+        // Spec 164: Lease-protected bounded incremental message chunk compaction & Warm->Cold tiering
+        // (max 2 chunks per 5-minute tick, never compressing <7d messages or E2EE DMs!)
+        let tier_state = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(300));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                if let Err(e) = storage::message_chunks::run_incremental_server_tiering_tick(
+                    &tier_state.db,
+                    &tier_state.storage,
+                    2,
+                )
+                .await
+                {
+                    tracing::debug!(error = ?e, "spec164 incremental tiering tick");
+                }
+            }
+        });
+    }
     let public_pages = public_pages::routes().with_state(state.clone());
     admin::bootstrap_admins(&state.db).await;
 

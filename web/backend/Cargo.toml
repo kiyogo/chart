@@ -7,6 +7,7 @@ edition = "2024"
 argon2 = "0.5"
 axum = { version = "0.8.9", features = ["ws", "macros"] }
 chatw-media-core = { path = "../../crates/chatw-media-core", features = ["native-fast"] }
+chatw-msg-store = { path = "../../crates/chatw-msg-store", default-features = false, features = ["native-zstd"] }
 kiyo-kdata = { path = "../../crates/kiyo-kdata" }
 base64 = "0.22"
 blake3 = "1.8"

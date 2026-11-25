@@ -670,6 +670,23 @@ async fn handle_delete_message(
         }
     }
 
+    let dm_scope = format!(
+        "{}:{}",
+        msg.sender_id.min(msg.receiver_id),
+        msg.sender_id.max(msg.receiver_id)
+    );
+    crate::storage::message_chunks::record_message_mutation(
+        &state.db,
+        "dm",
+        &dm_scope,
+        message_id,
+        "recall",
+        user.id,
+        None,
+        None,
+    )
+    .await;
+
     let event = WsEvent::MessageDeleted { message_id };
     state.ws_hub.send_to_user(&msg.sender_id, event.clone()).await;
     state.ws_hub.send_to_user(&msg.receiver_id, event).await;
@@ -770,6 +787,23 @@ async fn handle_edit_message(
     )
     .execute(&state.db)
     .await?;
+
+    let dm_scope = format!(
+        "{}:{}",
+        msg.sender_id.min(msg.receiver_id),
+        msg.sender_id.max(msg.receiver_id)
+    );
+    crate::storage::message_chunks::record_message_mutation(
+        &state.db,
+        "dm",
+        &dm_scope,
+        message_id,
+        "edit",
+        user.id,
+        Some(&payload.recipient_envelope),
+        None,
+    )
+    .await;
 
     state
         .ws_hub

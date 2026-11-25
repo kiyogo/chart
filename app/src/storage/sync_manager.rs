@@ -571,6 +571,7 @@ pub async fn run_incremental_delta_sync_for_user(
     if user_id.is_empty() {
         return Ok(DeltaSyncOutcome::default());
     }
+    crate::storage::msg_store::bind_session_root_key_b64(user_id, &my_keys.root_key);
 
     let (mut dm_since, mut group_since, mut channel_since) = if full_resync {
         (0, 0, 0)
@@ -580,6 +581,8 @@ pub async fn run_incremental_delta_sync_for_user(
 
     let mut peer_cache: HashMap<String, PeerKeys> = HashMap::new();
     let mut grouped_dms: HashMap<String, Vec<DisplayMessage>> = HashMap::new();
+    let mut grouped_groups: HashMap<String, Vec<crate::models::GroupMessageItem>> = HashMap::new();
+    let mut grouped_channels: HashMap<String, Vec<crate::models::ChannelMessageItem>> = HashMap::new();
     let mut total_delta = 0usize;
     let mut total_dm_count = 0usize;
     let mut total_gp_count = 0usize;
@@ -705,6 +708,22 @@ pub async fn run_incremental_delta_sync_for_user(
             }
         }
 
+        // Spec 164: Also persist Group & Channel delta messages for offline access & local Vietnamese search!
+        if let Some(items) = gp_arr {
+            for item in items {
+                if let Ok(gm) = serde_json::from_value::<crate::models::GroupMessageItem>(item.clone()) {
+                    grouped_groups.entry(gm.group_id.clone()).or_default().push(gm);
+                }
+            }
+        }
+        if let Some(items) = ch_arr {
+            for item in items {
+                if let Ok(cm) = serde_json::from_value::<crate::models::ChannelMessageItem>(item.clone()) {
+                    grouped_channels.entry(cm.channel_id.clone()).or_default().push(cm);
+                }
+            }
+        }
+
         let progressed = dm_next > dm_since || gp_next > group_since || ch_next > channel_since;
         if !dm_had_decrypt_miss {
             dm_since = dm_next;
@@ -737,9 +756,72 @@ pub async fn run_incremental_delta_sync_for_user(
         let (mut cached, has_more) = load_cached_messages::<DisplayMessage>(&idb_key)
             .await
             .unwrap_or_else(|| (Vec::new(), decrypted_count >= 30));
+        let compact_for_idx: Vec<_> = msgs.iter().map(crate::storage::msg_store::dm_to_compact).collect();
         if merge_healed_dm_messages(&mut cached, msgs) {
             save_cached_messages(&idb_key, &cached, has_more).await;
         }
+        crate::storage::msg_store::index_messages_incremental(
+            user_id,
+            chatw_msg_store::ScopeKind::Dm,
+            &partner_id,
+            &compact_for_idx,
+            if has_more {
+                chatw_msg_store::SearchCoverageState::PartiallyIndexed
+            } else {
+                chatw_msg_store::SearchCoverageState::IndexedComplete
+            },
+        )
+        .await;
+    }
+
+    // Persist & index delta-synced Group & Channel messages for true offline + local search!
+    for (gid, mut gms) in grouped_groups {
+        gms.sort_by_key(|m| m.seq);
+        let compact: Vec<_> = gms.iter().map(crate::storage::msg_store::group_to_compact).collect();
+        let idb_key = format!("group:{user_id}:{gid}");
+        let (mut cached, has_more) = load_cached_messages::<crate::models::GroupMessageItem>(&idb_key)
+            .await
+            .unwrap_or_else(|| (Vec::new(), gms.len() >= 30));
+        let seen: std::collections::HashSet<String> = cached.iter().map(|m| m.id.clone()).collect();
+        for g in gms {
+            if !seen.contains(&g.id) {
+                cached.push(g);
+            }
+        }
+        cached.sort_by_key(|m| m.seq);
+        save_cached_messages(&idb_key, &cached, has_more).await;
+        crate::storage::msg_store::index_messages_incremental(
+            user_id,
+            chatw_msg_store::ScopeKind::Group,
+            &gid,
+            &compact,
+            chatw_msg_store::SearchCoverageState::PartiallyIndexed,
+        )
+        .await;
+    }
+    for (cid, mut cms) in grouped_channels {
+        cms.sort_by_key(|m| m.seq);
+        let compact: Vec<_> = cms.iter().map(crate::storage::msg_store::channel_to_compact).collect();
+        let idb_key = format!("channel:{user_id}:{cid}");
+        let (mut cached, has_more) = load_cached_messages::<crate::models::ChannelMessageItem>(&idb_key)
+            .await
+            .unwrap_or_else(|| (Vec::new(), cms.len() >= 30));
+        let seen: std::collections::HashSet<String> = cached.iter().map(|m| m.id.clone()).collect();
+        for c in cms {
+            if !seen.contains(&c.id) {
+                cached.push(c);
+            }
+        }
+        cached.sort_by_key(|m| m.seq);
+        save_cached_messages(&idb_key, &cached, has_more).await;
+        crate::storage::msg_store::index_messages_incremental(
+            user_id,
+            chatw_msg_store::ScopeKind::Channel,
+            &cid,
+            &compact,
+            chatw_msg_store::SearchCoverageState::PartiallyIndexed,
+        )
+        .await;
     }
 
     if total_delta > 0 {

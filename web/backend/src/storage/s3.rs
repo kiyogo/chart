@@ -239,6 +239,90 @@ impl S3CompatibleStorageAdapter {
         Err(StorageError::Backend(format!("S3 request failed after retries: {last_err}")))
     }
 
+    /// Spec 164: Upload object directly to a specified S3 storage class (e.g., `STANDARD_IA`, `GLACIER_IR`)
+    /// for Cold message chunk archival without breaking standard `StorageAdapter::put_object`.
+    pub async fn put_object_with_storage_class(
+        &self,
+        key: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+        storage_class: &str,
+    ) -> Result<StoredObjectMeta, StorageError> {
+        self.require_ready()?;
+        let (host, canonical_uri, base_url) = self.object_url_parts(key)?;
+        let sha_hex = hex::encode(sha256_bytes(&bytes));
+        let byte_size = bytes.len() as u64;
+        let resp = self
+            .send_with_retry(|| {
+                let headers = self.signed_headers_for("PUT", &canonical_uri, "", &host, &sha_hex, Utc::now())?;
+                let mut req = self
+                    .http
+                    .put(&base_url)
+                    .header("Content-Type", content_type)
+                    .header("x-amz-storage-class", storage_class)
+                    .body(bytes.clone());
+                for (k, v) in headers {
+                    req = req.header(k, v);
+                }
+                Ok(req)
+            })
+            .await?;
+        if !resp.status().is_success() {
+            return Err(StorageError::Backend(format!(
+                "S3 PUT storage_class={storage_class} status {}",
+                resp.status()
+            )));
+        }
+        Ok(StoredObjectMeta {
+            backend: "s3_ready".into(),
+            storage_key: key.to_string(),
+            byte_size,
+            sha256_hex: sha_hex,
+            content_type: content_type.to_string(),
+        })
+    }
+
+    /// Spec 164: Conditional PUT (`If-None-Match: *`) for S3/MinIO optimistic concurrency / immutability.
+    pub async fn put_object_if_absent(
+        &self,
+        key: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+    ) -> Result<Option<StoredObjectMeta>, StorageError> {
+        self.require_ready()?;
+        let (host, canonical_uri, base_url) = self.object_url_parts(key)?;
+        let sha_hex = hex::encode(sha256_bytes(&bytes));
+        let byte_size = bytes.len() as u64;
+        let resp = self
+            .send_with_retry(|| {
+                let headers = self.signed_headers_for("PUT", &canonical_uri, "", &host, &sha_hex, Utc::now())?;
+                let mut req = self
+                    .http
+                    .put(&base_url)
+                    .header("Content-Type", content_type)
+                    .header("If-None-Match", "*")
+                    .body(bytes.clone());
+                for (k, v) in headers {
+                    req = req.header(k, v);
+                }
+                Ok(req)
+            })
+            .await?;
+        if resp.status() == reqwest::StatusCode::PRECONDITION_FAILED {
+            return Ok(None);
+        }
+        if !resp.status().is_success() {
+            return Err(StorageError::Backend(format!("S3 conditional PUT status {}", resp.status())));
+        }
+        Ok(Some(StoredObjectMeta {
+            backend: "s3_ready".into(),
+            storage_key: key.to_string(),
+            byte_size,
+            sha256_hex: sha_hex,
+            content_type: content_type.to_string(),
+        }))
+    }
+
     /// Real S3 `InitiateMultipartUpload` (`POST /{key}?uploads`), returning S3 `UploadId`.
     pub async fn initiate_multipart_upload(
         &self,

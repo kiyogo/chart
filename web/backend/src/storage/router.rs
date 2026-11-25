@@ -60,6 +60,7 @@ pub fn routes() -> Router<AppState> {
         .route("/cleanup", post(handle_cleanup_relays))
         .route("/gc/incomplete", post(handle_gc_incomplete))
         .route("/migration/run", post(handle_run_migration))
+        .merge(crate::storage::message_chunks::routes())
 }
 
 #[derive(Deserialize, Default)]
@@ -999,6 +1000,9 @@ async fn handle_capabilities(State(state): State<AppState>, headers: HeaderMap) 
 fn default_media_quality_mode() -> String {
     "ultra_optimized".into()
 }
+fn default_storage_mode() -> String {
+    "auto".into()
+}
 fn default_true() -> bool {
     true
 }
@@ -1021,6 +1025,10 @@ struct PolicyPayload {
     pub auto_cache_cleanup: bool,
     #[serde(default = "default_true")]
     pub server_durable_dm: bool,
+    #[serde(default = "default_storage_mode")]
+    pub storage_mode: String,
+    #[serde(default = "default_true")]
+    pub compression_rollout_enabled: bool,
 }
 
 async fn handle_get_policy(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<PolicyPayload>> {
@@ -1039,7 +1047,9 @@ async fn handle_get_policy(State(state): State<AppState>, headers: HeaderMap) ->
                COALESCE(ai_enhancement_enabled, TRUE) AS ai_enhancement_enabled,
                COALESCE(data_saver_mode, FALSE) AS data_saver_mode,
                COALESCE(auto_cache_cleanup, TRUE) AS auto_cache_cleanup,
-               COALESCE(server_durable_dm, TRUE) AS server_durable_dm
+               COALESCE(server_durable_dm, TRUE) AS server_durable_dm,
+               COALESCE(storage_mode, 'auto') AS storage_mode,
+               COALESCE(compression_rollout_enabled, TRUE) AS compression_rollout_enabled
         FROM device_storage_policies WHERE user_id = $1
         "#,
     )
@@ -1058,6 +1068,8 @@ async fn handle_get_policy(State(state): State<AppState>, headers: HeaderMap) ->
         data_saver_mode: r.try_get("data_saver_mode")?,
         auto_cache_cleanup: r.try_get("auto_cache_cleanup")?,
         server_durable_dm: r.try_get("server_durable_dm")?,
+        storage_mode: r.try_get("storage_mode")?,
+        compression_rollout_enabled: r.try_get("compression_rollout_enabled")?,
     }))
 }
 
@@ -1073,6 +1085,9 @@ async fn handle_update_policy(
     if !matches!(p.media_quality_mode.as_str(), "ultra_optimized" | "data_saver" | "original") {
         return Err(AppError::BadRequest("invalid_media_quality_mode"));
     }
+    if !matches!(p.storage_mode.as_str(), "auto" | "space_saver" | "high_performance" | "custom") {
+        return Err(AppError::BadRequest("invalid_storage_mode"));
+    }
     if !(1..=720).contains(&p.dm_relay_ttl_hours) || p.cache_limit_mb < 0 {
         return Err(AppError::BadRequest("invalid_policy_bounds"));
     }
@@ -1081,8 +1096,8 @@ async fn handle_update_policy(
         INSERT INTO device_storage_policies
             (user_id, cache_limit_mb, auto_download_mode, dm_relay_ttl_hours, dm_encrypted_backup,
              require_device_approval, prefer_original_upload, media_quality_mode, ai_enhancement_enabled,
-             data_saver_mode, auto_cache_cleanup, server_durable_dm, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+             data_saver_mode, auto_cache_cleanup, server_durable_dm, storage_mode, compression_rollout_enabled, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now())
         ON CONFLICT (user_id) DO UPDATE SET
             cache_limit_mb = EXCLUDED.cache_limit_mb,
             auto_download_mode = EXCLUDED.auto_download_mode,
@@ -1095,6 +1110,8 @@ async fn handle_update_policy(
             data_saver_mode = EXCLUDED.data_saver_mode,
             auto_cache_cleanup = EXCLUDED.auto_cache_cleanup,
             server_durable_dm = EXCLUDED.server_durable_dm,
+            storage_mode = EXCLUDED.storage_mode,
+            compression_rollout_enabled = EXCLUDED.compression_rollout_enabled,
             updated_at = now()
         "#,
     )
@@ -1110,6 +1127,8 @@ async fn handle_update_policy(
     .bind(p.data_saver_mode)
     .bind(p.auto_cache_cleanup)
     .bind(p.server_durable_dm)
+    .bind(&p.storage_mode)
+    .bind(p.compression_rollout_enabled)
     .execute(&state.db)
     .await?;
     state

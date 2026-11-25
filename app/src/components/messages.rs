@@ -562,7 +562,9 @@ pub fn MessageList(
                                     virtual_scroll_top.set(next_top);
                                 }
                             }
-                            if !loading_initial && !pinning && top <= 180.0 && has_more && !loading_more && !is_virtualized {
+                            // Spec 164: Allow scroll-up lazy history loading even when virtualized (>120 msgs)
+                            // whenever the user scrolls to the top of the message stream!
+                            if !loading_initial && !pinning && top <= 180.0 && has_more && !loading_more {
                                 if let Some(h) = on_load_more {
                                     h.call(());
                                 }

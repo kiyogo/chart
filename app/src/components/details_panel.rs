@@ -66,6 +66,7 @@ pub fn DmDetailsPanel(
     let mut security_open = use_signal(|| false);
     let mut copied = use_signal(|| false);
     let mut ack_tick = use_signal(|| 0u32);
+    let mut chat_search_q = use_signal(String::new);
 
     let effective_my_uid: Option<String> = if !my_user_id.trim().is_empty() {
         Some(my_user_id.clone())
@@ -206,6 +207,56 @@ pub fn DmDetailsPanel(
                 }
 
                 ContactNoteEditor { key: "{user_id}", user_id: user_id.clone() }
+
+                div { class: "details-section",
+                    div { class: "details-section-title", "Tìm trong cuộc trò chuyện" }
+                    div { class: "search-field",
+                        SearchIcon { size: 15 }
+                        input {
+                            id: "dm-details-search-input",
+                            r#type: "search",
+                            placeholder: "Tìm tin nhắn tiếng Việt có hoặc không dấu",
+                            aria_label: "Search in conversation",
+                            value: "{chat_search_q}",
+                            oninput: move |e| chat_search_q.set(e.value()),
+                        }
+                    }
+                    {
+                        let q_norm = chatw_msg_store::fold_vietnamese_unicode(chat_search_q().trim());
+                        let hits: Vec<(String, String)> = if q_norm.chars().count() >= 2 {
+                            messages
+                                .iter()
+                                .rev()
+                                .filter(|m| chatw_msg_store::fold_vietnamese_unicode(&m.text).contains(&q_norm))
+                                .take(12)
+                                .map(|m| (m.id.clone(), m.text.chars().take(120).collect()))
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        rsx! {
+                            if !hits.is_empty() {
+                                div { class: "settings-list", style: "margin-top: 6px;",
+                                    for (mid, snippet) in hits {
+                                        {
+                                            let mid_c = mid.clone();
+                                            rsx! {
+                                                button {
+                                                    key: "dms_{mid}",
+                                                    r#type: "button",
+                                                    class: "settings-row",
+                                                    style: "width: 100%; text-align: left; cursor: pointer;",
+                                                    onclick: move |_| on_jump_to.call(mid_c.clone()),
+                                                    span { class: "settings-sublabel", "{snippet}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 div { class: "details-section",
                     button {
@@ -648,6 +699,7 @@ pub fn SelfDetailsPanel(
     let mut security_open = use_signal(|| false);
     let mut copied_fp = use_signal(|| false);
     let mut copied_link = use_signal(|| Option::<String>::None);
+    let mut self_search_q = use_signal(String::new);
 
     // Partition decrypted self-chat messages into real Photo/Video, Documents/Notes, Links & Pinned vaults.
     let mut media_items: Vec<SelfMediaEntry> = Vec::new();
@@ -836,7 +888,58 @@ pub fn SelfDetailsPanel(
                     }
                 }
 
-                // 3. Shared Storage Vault (Photo / Documents / Link / Pinned)
+                // 3. In-chat Vietnamese Full-Text Search (#self-details-search-input)
+                div { class: "details-section",
+                    div { class: "details-section-title", "Tìm kiếm" }
+                    div { class: "search-field",
+                        SearchIcon { size: 15 }
+                        input {
+                            id: "self-details-search-input",
+                            r#type: "search",
+                            placeholder: "Tìm ghi chú hoặc tin nhắn",
+                            aria_label: "Search saved messages",
+                            value: "{self_search_q}",
+                            oninput: move |e| self_search_q.set(e.value()),
+                        }
+                    }
+                    {
+                        let q_norm = chatw_msg_store::fold_vietnamese_unicode(self_search_q().trim());
+                        let hits: Vec<(String, String)> = if q_norm.chars().count() >= 2 {
+                            messages
+                                .iter()
+                                .rev()
+                                .filter(|m| chatw_msg_store::fold_vietnamese_unicode(&m.text).contains(&q_norm))
+                                .take(12)
+                                .map(|m| (m.id.clone(), m.text.chars().take(120).collect()))
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        rsx! {
+                            if !hits.is_empty() {
+                                div { class: "settings-list", style: "margin-top: 6px;",
+                                    for (mid, snippet) in hits {
+                                        {
+                                            let mid_c = mid.clone();
+                                            rsx! {
+                                                button {
+                                                    key: "selfs_{mid}",
+                                                    r#type: "button",
+                                                    class: "settings-row",
+                                                    style: "width: 100%; text-align: left; cursor: pointer;",
+                                                    onclick: move |_| on_jump_to.call(mid_c.clone()),
+                                                    span { class: "settings-sublabel", "{snippet}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Shared Storage Vault (Photo / Documents / Link / Pinned)
                 div { class: "details-section self-vault-section",
                     div { class: "details-section-title", "Storage" }
                     div { class: "self-vault-tabs", role: "tablist", aria_label: "Storage",

@@ -1,0 +1,35 @@
+[package]
+name = "chatw-msg-store"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Cross-platform incremental Zstandard Level 22 message chunk storage, E2EE encryption with side-channel padding, adaptive storage budgeting, W-TinyLFU smart cache, unified resource scheduler, and encrypted Vietnamese/multilingual full-text search index for ChatW."
+
+[features]
+default = ["pure-zstd"]
+# Native C libzstd (Level 22, reusable CCtx/DCtx, zdict) for Linux, macOS, Windows, Android, iOS, and Server.
+native-zstd = ["dep:zstd"]
+# Pure-Rust RFC 8878 Zstandard (Level 22, streaming, dictionaries, SIMD128) for WebAssembly and cross-verification.
+pure-zstd = ["dep:structured-zstd"]
+
+[dependencies]
+aes-gcm = "0.10"
+base64 = "0.22"
+blake3 = "1.8"
+hkdf = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+unicode-normalization = "0.1"
+uuid = { version = "1.29", features = ["serde"] }
+zeroize = { version = "1.8", features = ["derive"] }
+
+structured-zstd = { version = "0.4.4", default-features = false, features = ["std", "hash", "dict-builder", "kernel-scalar", "kernel-simd128"], optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+zstd = { version = "0.13", optional = true }
+getrandom = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+uuid = { version = "1.29", features = ["serde", "js"] }

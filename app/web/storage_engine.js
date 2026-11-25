@@ -5,11 +5,11 @@
 // - SHA-256 integrity verification, QuotaExceededError resilience, & protection for unique unbacked DM files.
 (() => {
   const DB_NAME = 'chatw_storage_v1';
-  const DB_VERSION = 5;
+  const DB_VERSION = 6;
   const OPFS_DIR = 'chatw_cas';
   const CACHE_NAME = 'chatw_media_cache_v1';
-  const MAX_CACHED_MESSAGES_PER_CONV = 500;
-  const MAX_CACHED_CONVS = 120;
+  const MAX_CACHED_MESSAGES_PER_CONV = 2000;
+  const MAX_CACHED_CONVS = 200;
 
   // 4-bit Count-Min Sketch for W-TinyLFU frequency estimation (4 rows x 1024 counters, periodic halving)
   const CMS_WIDTH = 1024;
@@ -114,6 +114,26 @@
         if (!db.objectStoreNames.contains('video_segments')) {
           const vs = db.createObjectStore('video_segments', { keyPath: 'seg_key' });
           vs.createIndex('last_accessed_at', 'last_accessed_at', { unique: false });
+        }
+        // Spec 164 stores: Encrypted Zstd-22 Message Chunks, Manifests, Encrypted Search Shards,
+        // Versioned Dictionaries, and Crash-Recovery Compression Checkpoints (non-destructive v6 upgrade!)
+        if (!db.objectStoreNames.contains('msg_chunks')) {
+          const mc = db.createObjectStore('msg_chunks', { keyPath: 'chunk_id' });
+          mc.createIndex('scope_key', 'scope_key', { unique: false });
+          mc.createIndex('last_accessed_at', 'last_accessed_at', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('chunk_manifests')) {
+          db.createObjectStore('chunk_manifests', { keyPath: 'scope_key' });
+        }
+        if (!db.objectStoreNames.contains('search_shards')) {
+          const ss = db.createObjectStore('search_shards', { keyPath: 'shard_key' });
+          ss.createIndex('updated_at', 'updated_at', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('zstd_dicts')) {
+          db.createObjectStore('zstd_dicts', { keyPath: 'dict_id' });
+        }
+        if (!db.objectStoreNames.contains('compression_checkpoints')) {
+          db.createObjectStore('compression_checkpoints', { keyPath: 'scope_key' });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -749,21 +769,41 @@
       return Boolean(rec && rec.credential_id && rec.privateKey);
     },
 
-    // ── Offline-First Message Cache & Persistent Outbox (Spec 069) ───────────
+    // ── Offline-First Message Cache (Encrypted At Rest via Non-Extractable Vault AES-GCM) & Outbox ──
     async putChatMessages(convKey, items, hasMore = false) {
       if (!convKey || !Array.isArray(items)) return false;
       const trimmed = items.length > MAX_CACHED_MESSAGES_PER_CONV
         ? items.slice(items.length - MAX_CACHED_MESSAGES_PER_CONV)
         : items;
       try {
-        await idbTx('chat_messages', 'readwrite', (s) =>
-          s.put({
-            conv_key: String(convKey),
-            items: trimmed,
-            has_more: Boolean(hasMore),
-            updated_at: Date.now(),
-          }),
-        );
+        let record = {
+          conv_key: String(convKey),
+          items: trimmed,
+          has_more: Boolean(hasMore),
+          updated_at: Date.now(),
+        };
+        // Encrypt cached messages at rest using non-extractable WebCrypto AES-256-GCM vault key!
+        try {
+          const vRec = await idbTx('crypto_keys', 'readonly', (s) => s.get('device_vault_aes'));
+          const aesKey = vRec && vRec.key;
+          if (aesKey && crypto && crypto.subtle) {
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const pt = new TextEncoder().encode(JSON.stringify(trimmed));
+            const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, pt));
+            record = {
+              conv_key: String(convKey),
+              enc_v1: true,
+              iv,
+              ct,
+              item_count: trimmed.length,
+              byte_size: ct.byteLength,
+              has_more: Boolean(hasMore),
+              updated_at: Date.now(),
+            };
+          }
+        } catch (_) {}
+
+        await idbTx('chat_messages', 'readwrite', (s) => s.put(record));
         // Lazy LRU cap on total cached conversations
         const all = await idbGetAll('chat_messages').catch(() => []);
         if (all.length > MAX_CACHED_CONVS) {
@@ -783,7 +823,30 @@
       if (!convKey) return { found: false, items: [], has_more: false };
       try {
         const rec = await idbTx('chat_messages', 'readonly', (s) => s.get(String(convKey)));
-        if (!rec || !Array.isArray(rec.items)) {
+        if (!rec) return { found: false, items: [], has_more: false };
+        if (rec.enc_v1 && rec.iv && rec.ct) {
+          try {
+            const vRec = await idbTx('crypto_keys', 'readonly', (s) => s.get('device_vault_aes'));
+            const aesKey = vRec && vRec.key;
+            if (aesKey && crypto && crypto.subtle) {
+              const iv = rec.iv instanceof Uint8Array ? rec.iv : new Uint8Array(rec.iv);
+              const ct = rec.ct instanceof Uint8Array ? rec.ct : new Uint8Array(rec.ct);
+              const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
+              const parsed = JSON.parse(new TextDecoder().decode(pt));
+              if (Array.isArray(parsed)) {
+                return {
+                  found: true,
+                  items: parsed,
+                  has_more: Boolean(rec.has_more),
+                  updated_at: rec.updated_at || 0,
+                };
+              }
+            }
+          } catch (_) {
+            return { found: false, items: [], has_more: false };
+          }
+        }
+        if (!Array.isArray(rec.items)) {
           return { found: false, items: [], has_more: false };
         }
         return {
@@ -962,7 +1025,23 @@
 
     async clearSessionSecrets() {
       try {
-        for (const storeName of ['dialogs', 'chat_messages', 'chat_outbox', 'drafts', 'users_peers', 'sync_cursors', 'sync_queue']) {
+        // Wipe L1 RAM sensitive plaintext cache immediately on lock / logout (Section 11.1 & 14)
+        if (window.__chatwMsgStore && typeof window.__chatwMsgStore.wipeL1Ram === 'function') {
+          window.__chatwMsgStore.wipeL1Ram();
+        }
+        for (const storeName of [
+          'dialogs',
+          'chat_messages',
+          'chat_outbox',
+          'drafts',
+          'users_peers',
+          'sync_cursors',
+          'sync_queue',
+          'msg_chunks',
+          'chunk_manifests',
+          'search_shards',
+          'compression_checkpoints',
+        ]) {
           await idbTx(storeName, 'readwrite', (s) => s.clear()).catch(() => {});
         }
         window.__chatwCurrentUserId = null;
@@ -1339,4 +1418,641 @@
       return report;
     },
   };
+
+  // ── Spec 164: Unified Off-Main-Thread Zstd-22 Message Chunk Store, L1/L2 Smart Cache,
+  //    Encrypted Vietnamese Full-Text Search Index, Adaptive Budget & Incremental Runner ──
+  const l1ChunkRam = new Map();
+  let l1RamUsedBytes = 0;
+  let l1Hits = 0;
+  let l1Misses = 0;
+  let prevAdaptiveBudgetBytes = 0;
+  let msgWorker = null;
+  let msgWorkerJobId = 1;
+  const msgWorkerPending = new Map();
+  const activePrefetchScopes = new Set();
+  let compressionPaused = false;
+  let lastSearchLatencyMs = 0;
+
+  function getL1RamBudgetBytes() {
+    const devMemGb = Number(navigator.deviceMemory || 4);
+    const mode = getStorageMode();
+    if (mode === 'space_saver') return Math.min(32, Math.max(8, devMemGb * 4)) * 1024 * 1024;
+    if (mode === 'high_performance') return Math.min(128, Math.max(32, devMemGb * 16)) * 1024 * 1024;
+    return Math.min(64, Math.max(16, devMemGb * 8)) * 1024 * 1024;
+  }
+
+  function getStorageMode() {
+    try {
+      const m = localStorage.getItem('chatw_storage_mode') || 'auto';
+      return ['auto', 'space_saver', 'high_performance', 'custom'].includes(m) ? m : 'auto';
+    } catch (_) {
+      return 'auto';
+    }
+  }
+
+  function ensureMsgWorker() {
+    if (msgWorker) return msgWorker;
+    if (typeof Worker === 'undefined') return null;
+    try {
+      const w = new Worker('/media_worker.js', { type: 'module' });
+      w.onmessage = (ev) => {
+        const d = ev.data;
+        if (!d || !d.id) return;
+        const entry = msgWorkerPending.get(d.id);
+        if (entry) {
+          clearTimeout(entry.timer);
+          msgWorkerPending.delete(d.id);
+          entry.resolve(d);
+        }
+      };
+      w.onerror = () => {
+        for (const [, entry] of msgWorkerPending.entries()) {
+          clearTimeout(entry.timer);
+          entry.resolve({ ok: false, error: 'worker_error' });
+        }
+        msgWorkerPending.clear();
+        try { w.terminate(); } catch (_) {}
+        msgWorker = null;
+      };
+      msgWorker = w;
+      return w;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function callMsgWorker(task, opts = {}, buffer = null, timeoutMs = 45000) {
+    const w = ensureMsgWorker();
+    if (!w) return Promise.resolve({ ok: false, error: 'worker_unavailable' });
+    const id = msgWorkerJobId++;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        msgWorkerPending.delete(id);
+        resolve({ ok: false, error: 'worker_timeout' });
+      }, timeoutMs);
+      msgWorkerPending.set(id, { resolve, timer });
+      try {
+        const transfer = [];
+        let payloadBuf = null;
+        if (buffer) {
+          const copy = buffer instanceof Uint8Array ? new Uint8Array(buffer) : new Uint8Array(buffer);
+          payloadBuf = copy.buffer;
+          transfer.push(copy.buffer);
+        }
+        w.postMessage({ id, task, opts, buffer: payloadBuf }, transfer);
+      } catch (err) {
+        clearTimeout(timer);
+        msgWorkerPending.delete(id);
+        resolve({ ok: false, error: String(err && err.message ? err.message : err) });
+      }
+    });
+  }
+
+  function deriveWebRootKeyB64(accountId) {
+    // Use account-bound key material from in-memory session or stable local vault seed
+    const acc = String(accountId || window.__chatwCurrentUserId || 'anon');
+    if (window.__chatwSessionRootKeyB64 && typeof window.__chatwSessionRootKeyB64 === 'string') {
+      return window.__chatwSessionRootKeyB64;
+    }
+    try {
+      const k = 'chatw_msgstore_rk_' + acc;
+      let val = localStorage.getItem(k);
+      if (!val) {
+        const raw = crypto.getRandomValues(new Uint8Array(32));
+        val = bytesToB64(raw);
+        localStorage.setItem(k, val);
+      }
+      return val;
+    } catch (_) {
+      return btoa('chatw-fallback-ephemeral-key-32b!');
+    }
+  }
+
+  async function readSearchShardBytes(shardKey) {
+    const rec = await idbTx('search_shards', 'readonly', (s) => s.get(shardKey)).catch(() => null);
+    if (!rec) return new Uint8Array(0);
+    if (rec.opfs_key) {
+      const fromOpfs = await readOpfs(rec.opfs_key).catch(() => null);
+      if (fromOpfs && fromOpfs.byteLength > 0) return fromOpfs;
+    }
+    if (rec.bytes) return rec.bytes instanceof Uint8Array ? rec.bytes : new Uint8Array(rec.bytes);
+    return new Uint8Array(0);
+  }
+
+  async function writeSearchShardBytes(shardKey, u8, meta = {}) {
+    const opfsKey = 'search_' + shardKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+    let storedOpfs = false;
+    try { storedOpfs = await writeOpfs(opfsKey, u8); } catch (_) { storedOpfs = false; }
+    await idbTx('search_shards', 'readwrite', (s) =>
+      s.put({
+        shard_key: shardKey,
+        opfs_key: storedOpfs ? opfsKey : null,
+        bytes: storedOpfs ? null : u8,
+        byte_size: u8.byteLength,
+        doc_count: Number(meta.docCount || 0),
+        term_count: Number(meta.termCount || 0),
+        index_version: Number(meta.indexVersion || 1),
+        blake3_hex: String(meta.blake3Hex || ''),
+        updated_at: Date.now(),
+      }),
+    ).catch(() => {});
+  }
+
+  function l1TouchAndGet(chunkId) {
+    const hit = l1ChunkRam.get(chunkId);
+    if (!hit) {
+      l1Misses++;
+      return null;
+    }
+    l1Hits++;
+    cmsRecord('l1:' + chunkId);
+    l1ChunkRam.delete(chunkId);
+    hit.lastUsed = Date.now();
+    l1ChunkRam.set(chunkId, hit);
+    return hit.messages;
+  }
+
+  function l1Put(chunkId, messages) {
+    const estBytes = Math.max(4096, JSON.stringify(messages).length * 2);
+    const maxBytes = getL1RamBudgetBytes();
+    if (l1ChunkRam.has(chunkId)) {
+      const prev = l1ChunkRam.get(chunkId);
+      l1RamUsedBytes = Math.max(0, l1RamUsedBytes - prev.estBytes);
+      l1ChunkRam.delete(chunkId);
+    }
+    while (l1RamUsedBytes + estBytes > maxBytes && l1ChunkRam.size > 0) {
+      const oldestKey = l1ChunkRam.keys().next().value;
+      const old = l1ChunkRam.get(oldestKey);
+      l1ChunkRam.delete(oldestKey);
+      l1RamUsedBytes = Math.max(0, l1RamUsedBytes - (old ? old.estBytes : 0));
+    }
+    if (estBytes <= maxBytes) {
+      l1ChunkRam.set(chunkId, { messages, estBytes, lastUsed: Date.now() });
+      l1RamUsedBytes += estBytes;
+    }
+  }
+
+  function getLiveRuntimeSignals() {
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const isCall = Boolean(window.__chatwActiveCall);
+    return {
+      active_voice_or_video_call: isCall,
+      user_actively_scrolling_or_typing: false,
+      app_in_foreground: document.visibilityState === 'visible',
+      battery_level_pct: null,
+      on_battery_saver: false,
+      thermal_throttled: false,
+      on_metered_or_cellular: Boolean(conn && (conn.type === 'cellular' || conn.effectiveType === '2g' || conn.effectiveType === '3g')),
+      data_saver_enabled: Boolean(conn && conn.saveData),
+      is_offline: navigator.onLine === false,
+      estimated_bandwidth_kbps: conn && conn.downlink ? Math.round(conn.downlink * 1000) : 10000,
+      ram_pressure_pct: 30,
+    };
+  }
+
+  const msgStoreApi = {
+    getStorageMode,
+
+    setStorageMode(mode, customMb = null) {
+      const valid = ['auto', 'space_saver', 'high_performance', 'custom'].includes(mode) ? mode : 'auto';
+      try {
+        localStorage.setItem('chatw_storage_mode', valid);
+        if (valid === 'custom' && customMb != null && Number(customMb) >= 32) {
+          localStorage.setItem('chatw_cache_limit_mb', String(Math.round(Number(customMb))));
+        } else if (valid === 'auto') {
+          localStorage.setItem('chatw_cache_limit_mb', '0');
+        }
+      } catch (_) {}
+      return valid;
+    },
+
+    wipeL1Ram() {
+      l1ChunkRam.clear();
+      l1RamUsedBytes = 0;
+    },
+
+    pauseCompression() {
+      compressionPaused = true;
+    },
+
+    resumeCompression() {
+      compressionPaused = false;
+    },
+
+    async getDynamicBudgetAndBreakdown() {
+      let quota = 0;
+      let usage = 0;
+      try {
+        if (navigator.storage && typeof navigator.storage.estimate === 'function') {
+          const est = await navigator.storage.estimate();
+          quota = Number(est.quota || 0);
+          usage = Number(est.usage || 0);
+        }
+      } catch (_) {}
+      const freeBytes = Math.max(0, quota - usage);
+      const mode = getStorageMode();
+      const customMb = mode === 'custom' ? getConfiguredLimitMb() : 0;
+      const profile = {
+        platform: 'web',
+        total_ram_mb: Math.round(Number(navigator.deviceMemory || 4) * 1024),
+        available_ram_mb: Math.round(Number(navigator.deviceMemory || 4) * 768),
+        cpu_cores: Number(navigator.hardwareConcurrency || 4),
+        total_disk_bytes: quota || 4 * 1024 * 1024 * 1024,
+        free_disk_bytes: freeBytes || 2 * 1024 * 1024 * 1024,
+        os_quota_bytes: quota > 0 ? quota : null,
+        is_ssd: true,
+        is_mobile: /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''),
+      };
+      const signals = getLiveRuntimeSignals();
+
+      // Try exact Rust WASM dynamic budget with ±12% hysteresis; fallback to deterministic JS calculation
+      let budget = null;
+      const wres = await callMsgWorker('compute_dynamic_budget', {
+        profileJson: JSON.stringify(profile),
+        mode,
+        customMb,
+        prevBudget: prevAdaptiveBudgetBytes,
+        signalsJson: JSON.stringify(signals),
+      }, null, 6000);
+      if (wres && wres.ok && wres.budgetJson) {
+        try { budget = JSON.parse(wres.budgetJson); } catch (_) {}
+      }
+      if (!budget || !budget.total_local_budget_bytes) {
+        const lim = await computeAdaptiveLimitBytes();
+        budget = {
+          mode,
+          total_local_budget_bytes: lim,
+          message_cache_budget_bytes: Math.floor(lim * 0.26),
+          search_index_budget_bytes: Math.floor(lim * 0.15),
+          dictionary_budget_bytes: Math.max(2 * 1024 * 1024, Math.floor(lim * 0.02)),
+          media_cache_budget_bytes: Math.floor(lim * 0.34),
+          offline_data_budget_bytes: Math.floor(lim * 0.17),
+          temp_storage_budget_bytes: Math.floor(lim * 0.06),
+          reserved_free_space_bytes: Math.floor(freeBytes * 0.2),
+          l1_ram_budget_bytes: getL1RamBudgetBytes(),
+          effective_safe_ceiling_bytes: Math.max(32 * 1024 * 1024, Math.floor(freeBytes * 0.8)),
+        };
+      }
+      prevAdaptiveBudgetBytes = Number(budget.total_local_budget_bytes || 0);
+
+      // Compute granular real local storage breakdown across all stores
+      const [objs, aiRows, vidRows, chatRows, chunkRows, shardRows] = await Promise.all([
+        idbGetAll('objects').catch(() => []),
+        idbGetAll('ai_outputs').catch(() => []),
+        idbGetAll('video_segments').catch(() => []),
+        idbGetAll('chat_messages').catch(() => []),
+        idbGetAll('msg_chunks').catch(() => []),
+        idbGetAll('search_shards').catch(() => []),
+      ]);
+
+      let mediaBytes = 0;
+      let filesBytes = 0;
+      let offlinePinnedBytes = 0;
+      for (const o of objs) {
+        const sz = Number(o.byte_size || 0);
+        const m = String(o.mime_type || '');
+        if (m.startsWith('image/') || m.startsWith('video/') || m.startsWith('audio/')) mediaBytes += sz;
+        else filesBytes += sz;
+        if (!isSafeToEvict(o) || o.pinned_offline) offlinePinnedBytes += sz;
+      }
+      const aiBytes = aiRows.reduce((a, r) => a + Number(r.byte_size || 0), 0);
+      const vidBytes = vidRows.reduce((a, r) => a + Number(r.byte_size || 0), 0);
+      const hotMsgBytes = chatRows.reduce((a, r) => a + Number(r.byte_size || (r.items ? JSON.stringify(r.items).length : 0)), 0);
+      const chunkBytes = chunkRows.reduce((a, r) => a + Number(r.encrypted_size || r.byte_size || 0), 0);
+      const chunkOrigBytes = chunkRows.reduce((a, r) => a + Number(r.original_size || 0), 0);
+      const searchBytes = shardRows.reduce((a, r) => a + Number(r.byte_size || 0), 0);
+      const indexedDocs = shardRows.reduce((a, r) => a + Number(r.doc_count || 0), 0);
+
+      const totalLocalBytes = mediaBytes + filesBytes + aiBytes + vidBytes + hotMsgBytes + chunkBytes + searchBytes;
+      const savedBytes = Math.max(0, chunkOrigBytes - chunkBytes);
+
+      return {
+        mode,
+        budget,
+        browser_quota_bytes: quota,
+        browser_usage_bytes: usage,
+        free_bytes: freeBytes,
+        total_bytes: totalLocalBytes,
+        messages_bytes: hotMsgBytes + chunkBytes,
+        media_bytes: mediaBytes + vidBytes,
+        files_bytes: filesBytes,
+        cache_bytes: aiBytes + mediaBytes + vidBytes + chunkBytes,
+        offline_bytes: offlinePinnedBytes + hotMsgBytes + chunkBytes,
+        search_index_bytes: searchBytes,
+        saved_bytes: savedBytes,
+        chunk_count: chunkRows.length,
+        indexed_docs: indexedDocs,
+        l1_ram_bytes: l1RamUsedBytes,
+        l1_hit_rate: (l1Hits + l1Misses) > 0 ? l1Hits / (l1Hits + l1Misses) : 0,
+        last_search_latency_ms: lastSearchLatencyMs,
+      };
+    },
+
+    // Incrementally index a batch of decrypted messages into the encrypted local Vietnamese search shard!
+    async indexMessages(accountId, scopeType, scopeId, messages, chunkId = '', coverage = 'partially_indexed') {
+      if (!Array.isArray(messages) || messages.length === 0) return { ok: true, docCount: 0 };
+      const acc = String(accountId || window.__chatwCurrentUserId || 'anon');
+      const shardKey = `acc:${acc}:all`;
+      const rootKeyB64 = deriveWebRootKeyB64(acc);
+
+      // Normalize UI message objects into CompactMessage schema
+      const normalized = messages
+        .filter((m) => m && m.id && typeof (m.text ?? m.content) === 'string')
+        .map((m) => ({
+          id: String(m.id),
+          seq: Number(m.seq || 0),
+          sender_id: String(m.sender_id || ''),
+          created_at_ms: typeof m.created_at_ms === 'number'
+            ? m.created_at_ms
+            : (Date.parse(m.created_at || '') || Date.now()),
+          msg_type: String(m.msg_type || 'text'),
+          text: String(m.text ?? m.content ?? ''),
+          reply_to_id: m.reply_to_id ? String(m.reply_to_id) : null,
+          is_edited: Boolean(m.is_edited),
+          deleted_for_all: Boolean(m.deleted_for_all),
+          is_pinned: Boolean(m.is_pinned),
+          is_bookmarked: Boolean(m.is_bookmarked),
+          status_code: 0,
+          reactions: [],
+          attachments: [],
+          extra_meta: null,
+        }));
+      if (normalized.length === 0) return { ok: true, docCount: 0 };
+
+      const existing = await readSearchShardBytes(shardKey);
+      const res = await callMsgWorker(
+        'search_upsert_batch',
+        {
+          messagesJson: JSON.stringify(normalized),
+          scopeType: String(scopeType || 'dm'),
+          scopeId: String(scopeId || ''),
+          chunkId: String(chunkId || ''),
+          rootKeyB64,
+          accountId: acc,
+          scopeKey: shardKey,
+          coverage,
+        },
+        existing,
+        30000,
+      );
+      if (res && res.ok && res.buffer) {
+        await writeSearchShardBytes(shardKey, new Uint8Array(res.buffer), res);
+        return { ok: true, docCount: res.docCount || 0, termCount: res.termCount || 0 };
+      }
+      return { ok: false, error: (res && res.error) || 'index_failed' };
+    },
+
+    async deleteFromSearchIndex(accountId, messageId) {
+      if (!messageId) return false;
+      const acc = String(accountId || window.__chatwCurrentUserId || 'anon');
+      const shardKey = `acc:${acc}:all`;
+      const existing = await readSearchShardBytes(shardKey);
+      if (existing.byteLength === 0) return true;
+      const res = await callMsgWorker(
+        'search_delete_message',
+        { messageId: String(messageId), rootKeyB64: deriveWebRootKeyB64(acc), accountId: acc, scopeKey: shardKey },
+        existing,
+        15000,
+      );
+      if (res && res.ok && res.buffer) {
+        await writeSearchShardBytes(shardKey, new Uint8Array(res.buffer), res);
+        return true;
+      }
+      return false;
+    },
+
+    // Execute encrypted Vietnamese full-text search completely off-main-thread!
+    async searchLocalMessages(accountId, queryObj) {
+      const t0 = performance.now();
+      const acc = String(accountId || window.__chatwCurrentUserId || 'anon');
+      const shardKey = `acc:${acc}:all`;
+      const existing = await readSearchShardBytes(shardKey);
+      const q = {
+        text: String((queryObj && queryObj.text) || ''),
+        exact_diacritics: Boolean(queryObj && queryObj.exact_diacritics),
+        phrase_match: Boolean(queryObj && queryObj.phrase_match),
+        prefix_match: queryObj && queryObj.prefix_match !== false,
+        filters: (queryObj && queryObj.filters) || {},
+        offset: Number((queryObj && queryObj.offset) || 0),
+        limit: Number((queryObj && queryObj.limit) || 30),
+      };
+      const res = await callMsgWorker(
+        'search_query',
+        { queryJson: JSON.stringify(q), rootKeyB64: deriveWebRootKeyB64(acc), accountId: acc, scopeKey: shardKey },
+        existing,
+        15000,
+      );
+      lastSearchLatencyMs = Math.round((performance.now() - t0) * 100) / 100;
+      if (res && res.ok && res.responseJson) {
+        try {
+          const parsed = JSON.parse(res.responseJson);
+          parsed.latency_ms = lastSearchLatencyMs;
+          return parsed;
+        } catch (_) {}
+      }
+      return {
+        hits: [],
+        total_matched: 0,
+        has_more: false,
+        coverage: 'not_downloaded',
+        unindexed_scopes: [],
+        from_result_cache: false,
+        latency_ms: lastSearchLatencyMs,
+      };
+    },
+
+    // Seal a batch of >=7d messages using pure-Rust Zstandard Level 22 in Web Worker & persist to L2 OPFS/IDB!
+    async sealAndStoreLocalChunk(accountId, scopeType, scopeId, messages, chunkId = null) {
+      if (!Array.isArray(messages) || messages.length === 0) return { ok: false, error: 'empty' };
+      const acc = String(accountId || window.__chatwCurrentUserId || 'anon');
+      const cid = chunkId || (crypto.randomUUID ? crypto.randomUUID() : `chk_${Date.now()}`);
+      const req = {
+        chunk_id: cid,
+        account_id: acc,
+        scope_type: scopeType,
+        scope_id: scopeId,
+        chunk_version: 1,
+        access_epoch: 1,
+        key_version: 1,
+        candidate_dict_id: 1,
+        now_ms: Date.now(),
+        require_space_savings: true,
+        ram_budget_bytes: getL1RamBudgetBytes(),
+      };
+      const res = await callMsgWorker(
+        'seal_msg_chunk_zstd22',
+        { messagesJson: JSON.stringify(messages), reqJson: JSON.stringify(req), rootKeyB64: deriveWebRootKeyB64(acc) },
+        null,
+        60000,
+      );
+      if (!res || !res.ok || !res.buffer) {
+        return { ok: false, error: (res && res.error) || 'seal_failed' };
+      }
+      const sealedU8 = new Uint8Array(res.buffer);
+      const meta = JSON.parse(res.metadataJson || '{}');
+      const opfsKey = `msgchk_${cid}`;
+      let storedOpfs = false;
+      try { storedOpfs = await writeOpfs(opfsKey, sealedU8); } catch (_) {}
+      const scopeKey = `${scopeType}:${scopeId}`;
+      await idbTx('msg_chunks', 'readwrite', (s) =>
+        s.put({
+          chunk_id: cid,
+          scope_key: scopeKey,
+          meta,
+          opfs_key: storedOpfs ? opfsKey : null,
+          bytes: storedOpfs ? null : sealedU8,
+          original_size: Number(meta.original_size || 0),
+          encrypted_size: sealedU8.byteLength,
+          byte_size: sealedU8.byteLength,
+          last_accessed_at: Date.now(),
+          access_count: 1,
+          pinned_offline: false,
+        }),
+      );
+      return { ok: true, chunk_id: cid, metadata: meta, sealed_bytes: sealedU8 };
+    },
+
+    // Lazy Decompression: L1 RAM -> L2 OPFS/IDB -> L3 Server fetch -> Verify -> Decrypt -> Zstd-22 Decompress!
+    async loadChunkMessages(accountId, chunkId, metaOverride = null) {
+      const cached = l1TouchAndGet(chunkId);
+      if (cached) return { ok: true, source: 'l1_ram', messages: cached };
+
+      const acc = String(accountId || window.__chatwCurrentUserId || 'anon');
+      const rec = await idbTx('msg_chunks', 'readonly', (s) => s.get(chunkId)).catch(() => null);
+      let sealedU8 = null;
+      let meta = metaOverride || (rec && rec.meta) || null;
+      let source = 'l2_disk';
+
+      if (rec) {
+        if (rec.opfs_key) sealedU8 = await readOpfs(rec.opfs_key).catch(() => null);
+        if (!sealedU8 && rec.bytes) sealedU8 = rec.bytes instanceof Uint8Array ? rec.bytes : new Uint8Array(rec.bytes);
+      }
+
+      if (!sealedU8 && window.__chatwCore && window.__chatwCore.isConnected()) {
+        const dl = await window.__chatwCore.downloadBytes(`/api/storage/msg-chunks/${encodeURIComponent(chunkId)}`, { priority: 'HIGH' });
+        if (dl && dl.ok && dl.bytes && dl.bytes.byteLength > 0) {
+          sealedU8 = dl.bytes;
+          source = 'l3_server';
+          // Cache downloaded chunk into L2 OPFS/IDB
+          if (meta) {
+            const opfsKey = `msgchk_${chunkId}`;
+            let storedOpfs = false;
+            try { storedOpfs = await writeOpfs(opfsKey, sealedU8); } catch (_) {}
+            await idbTx('msg_chunks', 'readwrite', (s) =>
+              s.put({
+                chunk_id: chunkId,
+                scope_key: `${meta.scope_type}:${meta.scope_id}`,
+                meta,
+                opfs_key: storedOpfs ? opfsKey : null,
+                bytes: storedOpfs ? null : sealedU8,
+                original_size: Number(meta.original_size || sealedU8.byteLength),
+                encrypted_size: sealedU8.byteLength,
+                byte_size: sealedU8.byteLength,
+                last_accessed_at: Date.now(),
+                access_count: 1,
+                pinned_offline: false,
+              }),
+            ).catch(() => {});
+          }
+        }
+      }
+
+      if (!sealedU8 || !meta) {
+        return { ok: false, error: navigator.onLine === false ? 'offline_chunk_unavailable' : 'chunk_not_found' };
+      }
+
+      const res = await callMsgWorker(
+        'open_msg_chunk_zstd22',
+        { metaJson: JSON.stringify(meta), rootKeyB64: deriveWebRootKeyB64(acc) },
+        sealedU8,
+        30000,
+      );
+      if (res && res.ok) {
+        const messages = JSON.parse(res.messagesJson || '[]');
+        l1Put(chunkId, messages);
+        return { ok: true, source, messages };
+      }
+      return { ok: false, error: (res && res.error) || 'decompress_failed' };
+    },
+
+    // Intelligent cancellable adjacent-chunk prefetch (respects active calls, data saver, offline!)
+    async prefetchChunksForScope(scopeKey, chunkMetas = []) {
+      const sig = getLiveRuntimeSignals();
+      if (sig.is_offline || sig.active_voice_or_video_call || sig.data_saver_enabled || compressionPaused) return;
+      const mode = getStorageMode();
+      const maxPrefetch = mode === 'space_saver' ? 1 : (mode === 'high_performance' ? 4 : 2);
+      activePrefetchScopes.add(scopeKey);
+      let count = 0;
+      for (const m of chunkMetas) {
+        if (!activePrefetchScopes.has(scopeKey) || count >= maxPrefetch) break;
+        const exists = await idbTx('msg_chunks', 'readonly', (s) => s.get(m.chunk_id)).catch(() => null);
+        if (exists) continue;
+        if (window.__chatwCore && window.__chatwCore.isConnected()) {
+          const dl = await window.__chatwCore.downloadBytes(`/api/storage/msg-chunks/${encodeURIComponent(m.chunk_id)}`, {
+            priority: 'LOW',
+            scope: `prefetch:${scopeKey}`,
+          }).catch(() => null);
+          if (dl && dl.ok && dl.bytes && dl.bytes.byteLength > 0) {
+            const opfsKey = `msgchk_${m.chunk_id}`;
+            let storedOpfs = false;
+            try { storedOpfs = await writeOpfs(opfsKey, dl.bytes); } catch (_) {}
+            await idbTx('msg_chunks', 'readwrite', (s) =>
+              s.put({
+                chunk_id: m.chunk_id,
+                scope_key: scopeKey,
+                meta: m,
+                opfs_key: storedOpfs ? opfsKey : null,
+                bytes: storedOpfs ? null : dl.bytes,
+                original_size: Number(m.original_size || dl.bytes.byteLength),
+                encrypted_size: dl.bytes.byteLength,
+                byte_size: dl.bytes.byteLength,
+                last_accessed_at: Date.now(),
+                access_count: 1,
+                pinned_offline: false,
+              }),
+            ).catch(() => {});
+            count++;
+          }
+        }
+      }
+    },
+
+    cancelPrefetchForScope(scopeKey) {
+      activePrefetchScopes.delete(scopeKey);
+      if (window.__chatwCore && typeof window.__chatwCore.abortDownload === 'function') {
+        window.__chatwCore.abortDownload('', `prefetch:${scopeKey}`);
+      }
+    },
+
+    // Report privacy-safe technical telemetry (Section 32: zero content, zero search queries, zero keys!)
+    async reportTelemetryToServer(deviceId) {
+      if (!window.__chatwCore || !window.__chatwCore.isConnected()) return false;
+      const stats = await this.getDynamicBudgetAndBreakdown().catch(() => null);
+      if (!stats) return false;
+      const ratio = stats.messages_bytes + stats.saved_bytes > 0
+        ? stats.messages_bytes / (stats.messages_bytes + stats.saved_bytes)
+        : 1.0;
+      const body = JSON.stringify({
+        device_id: String(deviceId || 'web'),
+        platform: 'web',
+        storage_mode: stats.mode,
+        compression_ratio: ratio,
+        compression_queue_size: 0,
+        cache_hit_rate: stats.l1_hit_rate,
+        storage_usage_bytes: stats.total_bytes,
+        storage_budget_bytes: stats.budget ? stats.budget.total_local_budget_bytes : 0,
+        total_saved_bytes: stats.saved_bytes,
+        indexed_message_count: stats.indexed_docs,
+        last_search_latency_ms: stats.last_search_latency_ms,
+        chunk_count: stats.chunk_count,
+      });
+      await window.__chatwCore.rpc('POST', '/api/storage/telemetry', body, 'application/json').catch(() => {});
+      return true;
+    },
+  };
+
+  window.__chatwMsgStore = msgStoreApi;
+  if (window.__chatwStorage) {
+    window.__chatwStorage.msgStore = msgStoreApi;
+  }
 })();

@@ -18,6 +18,9 @@ async fn req_json<T: serde::de::DeserializeOwned>(
 fn default_media_quality_mode() -> String {
     "ultra_optimized".into()
 }
+fn default_storage_mode() -> String {
+    "auto".into()
+}
 fn default_true() -> bool {
     true
 }
@@ -40,6 +43,10 @@ pub struct StoragePolicy {
     pub auto_cache_cleanup: bool,
     #[serde(default = "default_true")]
     pub server_durable_dm: bool,
+    #[serde(default = "default_storage_mode")]
+    pub storage_mode: String,
+    #[serde(default = "default_true")]
+    pub compression_rollout_enabled: bool,
 }
 
 impl Default for StoragePolicy {
@@ -56,6 +63,8 @@ impl Default for StoragePolicy {
             data_saver_mode: false,
             auto_cache_cleanup: true,
             server_durable_dm: true,
+            storage_mode: default_storage_mode(),
+            compression_rollout_enabled: true,
         }
     }
 }

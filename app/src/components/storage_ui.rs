@@ -13,14 +13,15 @@ use crate::{
     },
     storage::{
         DEVICE_TRUST_STATE, E2EE_RECOVERY_REQUIRED, PENDING_APPROVAL_ALERT, SYNC_PROGRESS,
-        LocalQuotaInfo, clear_safe_cache, format_bytes_human, get_quota_estimate, recovery,
-        sync_manager,
+        LocalQuotaInfo, clear_safe_cache, format_bytes_human, get_quota_estimate, msg_store,
+        recovery, sync_manager,
     },
 };
 
 #[component]
 pub fn StorageSettingsPanel() -> Element {
     let mut quota = use_signal(LocalQuotaInfo::default);
+    let mut breakdown = use_signal(msg_store::StorageBreakdown::default);
     let mut metrics = use_signal(|| Option::<serde_json::Value>::None);
     let mut caps = use_signal(|| Option::<serde_json::Value>::None);
     let mut ai_status = use_signal(|| Option::<serde_json::Value>::None);
@@ -32,6 +33,7 @@ pub fn StorageSettingsPanel() -> Element {
     let reload = move || {
         spawn(async move {
             quota.set(get_quota_estimate().await);
+            breakdown.set(msg_store::get_storage_breakdown().await);
             if let Ok(p) = storage_sync::get_policy().await {
                 sync_manager::apply_storage_policy_local(&p);
                 policy.set(p);
@@ -61,6 +63,7 @@ pub fn StorageSettingsPanel() -> Element {
     use_effect(move || reload());
 
     let q = quota();
+    let bd = breakdown();
     let p = policy();
     let m = metrics();
     let ai = ai_status();
@@ -100,6 +103,73 @@ pub fn StorageSettingsPanel() -> Element {
                 div { class: "settings-group",
                     div { class: "settings-group-title", "Device storage" }
                     div { class: "settings-list",
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Tổng dung lượng" }
+                            }
+                            span { class: "chip-privacy",
+                                "{format_bytes_human(bd.total_bytes.max(q.total_local_bytes))} / {format_bytes_human(bd.budget_bytes)}"
+                            }
+                        }
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Tin nhắn" }
+                            }
+                            span { class: "chip-privacy",
+                                "{format_bytes_human(bd.messages_bytes)} · {bd.chunk_count} khối · Giảm {format_bytes_human(bd.saved_bytes)}"
+                            }
+                        }
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Ảnh và video · Tệp" }
+                            }
+                            span { class: "chip-privacy",
+                                "{format_bytes_human(bd.media_bytes)} · {format_bytes_human(bd.files_bytes)}"
+                            }
+                        }
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Chỉ mục tìm kiếm · Ngoại tuyến" }
+                            }
+                            span { class: "chip-privacy",
+                                "{format_bytes_human(bd.search_index_bytes)} ({bd.indexed_docs}) · {format_bytes_human(bd.offline_bytes)}"
+                            }
+                        }
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Chế độ lưu trữ" }
+                            }
+                            select {
+                                class: "settings-select",
+                                aria_label: "Storage mode",
+                                value: "{p.storage_mode}",
+                                onchange: move |e| {
+                                    let mode = e.value();
+                                    let mut next = policy();
+                                    next.storage_mode = mode.clone();
+                                    if mode == "auto" {
+                                        next.cache_limit_mb = 0;
+                                    } else if mode == "space_saver" {
+                                        next.data_saver_mode = true;
+                                    }
+                                    policy.set(next.clone());
+                                    let custom_mb = if mode == "custom" {
+                                        Some(next.cache_limit_mb.max(32) as u64)
+                                    } else {
+                                        None
+                                    };
+                                    msg_store::set_storage_mode_local(&mode, custom_mb);
+                                    spawn(async move {
+                                        let _ = storage_sync::update_policy(&next).await;
+                                        breakdown.set(msg_store::get_storage_breakdown().await);
+                                    });
+                                },
+                                option { value: "auto", "Tự động" }
+                                option { value: "space_saver", "Tiết kiệm dung lượng" }
+                                option { value: "high_performance", "Hiệu năng cao" }
+                                option { value: "custom", "Tùy chỉnh" }
+                            }
+                        }
                         div { class: "settings-row",
                             div { class: "settings-row-text",
                                 span { class: "settings-label", "Saved" }
@@ -165,20 +235,29 @@ pub fn StorageSettingsPanel() -> Element {
                                 onchange: move |e| {
                                     if let Ok(mb) = e.value().parse::<i32>() {
                                         let mut next = policy();
-                                        next.cache_limit_mb = mb;
+                                        let safe_mb = if mb > 0 && bd.safe_ceiling_bytes > 0 {
+                                            mb.min(((bd.safe_ceiling_bytes / (1024 * 1024)) as i32).max(64))
+                                        } else {
+                                            mb
+                                        };
+                                        next.cache_limit_mb = safe_mb;
+                                        next.storage_mode = if safe_mb == 0 { "auto".into() } else { "custom".into() };
                                         policy.set(next.clone());
-                                        platform::storage_set("chatw_cache_limit_mb", &mb.to_string());
+                                        platform::storage_set("chatw_cache_limit_mb", &safe_mb.to_string());
+                                        msg_store::set_storage_mode_local(&next.storage_mode, if safe_mb > 0 { Some(safe_mb as u64) } else { None });
                                         spawn(async move {
                                             let _ = storage_sync::update_policy(&next).await;
+                                            breakdown.set(msg_store::get_storage_breakdown().await);
                                         });
                                     }
                                 },
+                                option { value: "0", "Tự động" }
+                                option { value: "256", "256 MB" }
                                 option { value: "500", "500 MB" }
                                 option { value: "1024", "1 GB" }
                                 option { value: "2048", "2 GB" }
                                 option { value: "5120", "5 GB" }
                                 option { value: "10240", "10 GB" }
-                                option { value: "0", "Unlimited" }
                             }
                         }
                         div { class: "settings-row",

@@ -1,6 +1,12 @@
 [workspace]
-members = ["web/backend", "app", "crates/kiyo-kdata", "crates/chatw-media-core", "crates/chatw-media-worker"]
+members = ["web/backend", "app", "crates/kiyo-kdata", "crates/chatw-media-core", "crates/chatw-media-worker", "crates/chatw-msg-store"]
 resolver = "2"
+
+[profile.dev.package.structured-zstd]
+opt-level = 3
+
+[profile.dev.package.chatw-msg-store]
+opt-level = 2
 
 [profile.dev.package.ravif]
 opt-level = 3

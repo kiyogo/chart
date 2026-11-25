@@ -1153,6 +1153,18 @@ async fn edit_message(
     .execute(&state.db)
     .await?;
 
+    crate::storage::message_chunks::record_message_mutation(
+        &state.db,
+        "group",
+        &group_id.to_string(),
+        message_id,
+        "edit",
+        user.id,
+        None,
+        Some(serde_json::json!({ "content": content })),
+    )
+    .await;
+
     Ok(Json(serde_json::json!({ "edited": true })))
 }
 
@@ -1189,6 +1201,18 @@ async fn delete_message(
     )
     .execute(&state.db)
     .await?;
+
+    crate::storage::message_chunks::record_message_mutation(
+        &state.db,
+        "group",
+        &group_id.to_string(),
+        message_id,
+        "delete",
+        user.id,
+        None,
+        None,
+    )
+    .await;
 
     Ok(Json(serde_json::json!({ "deleted": true })))
 }

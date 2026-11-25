@@ -2126,6 +2126,7 @@ pub async fn ensure_non_extractable_vault_key() {
 
 /// Wipe SharedWorker socket, SW media grants, `blob:` URL pool & session caches across all tabs on logout/lock.
 pub async fn wipe_client_session_on_logout() {
+    crate::storage::msg_store::wipe_sensitive_l1_and_session_key();
     #[cfg(target_arch = "wasm32")]
     {
         let mut ev = dioxus::document::eval(
@@ -2141,6 +2142,10 @@ pub async fn wipe_client_session_on_logout() {
             "#,
         );
         let _ = ev.recv::<bool>().await;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        crate::storage::native::wipe_session_native_cache();
     }
 }
 
@@ -2172,7 +2177,7 @@ pub async fn save_draft(conv_key: &str, text: &str) {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (conv_key, text);
+        crate::storage::native::save_draft_native(conv_key, text);
     }
 }
 
@@ -2201,8 +2206,7 @@ pub async fn load_draft(conv_key: &str) -> String {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = conv_key;
-        String::new()
+        crate::storage::native::load_draft_native(conv_key)
     }
 }
 
@@ -2218,7 +2222,7 @@ pub async fn save_dialogs_cache(uid: &str, payload: &serde_json::Value) {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (uid, payload);
+        crate::storage::native::save_dialogs_native(uid, payload);
     }
 }
 
@@ -2245,8 +2249,7 @@ pub async fn load_dialogs_cache(uid: &str) -> Option<serde_json::Value> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = uid;
-        None
+        crate::storage::native::load_dialogs_native(uid)
     }
 }
 

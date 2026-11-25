@@ -850,6 +850,7 @@ dependencies = [
  "base64 0.22.1",
  "blake3",
  "chatw-media-core",
+ "chatw-msg-store",
  "chrono",
  "dotenvy",
  "flate2",
@@ -891,6 +892,7 @@ dependencies = [
  "argon2",
  "base64 0.22.1",
  "chatw-media-core",
+ "chatw-msg-store",
  "chrono",
  "dioxus",
  "futures-channel",
@@ -954,10 +956,33 @@ dependencies = [
 name = "chatw-media-worker"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "blake3",
  "chatw-media-core",
+ "chatw-msg-store",
  "js-sys",
+ "serde",
  "serde_json",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "chatw-msg-store"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm 0.10.3",
+ "base64 0.22.1",
+ "blake3",
+ "getrandom 0.2.17",
+ "hkdf 0.12.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "structured-zstd",
+ "unicode-normalization",
+ "uuid",
+ "zeroize",
+ "zstd",
 ]
 
 [[package]]
@@ -5601,7 +5626,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ad9c5423459fa2f729b8d9235fab810aa29628b171467744fc86d21460ad70d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -7166,6 +7191,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "structured-zstd"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5541de742174ab5d5309a27acc720e231c4194ebb4a83e3671aaeb8736caad06"
+dependencies = [
+ "twox-hash",
+]
+
+[[package]]
 name = "subsecond"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8043,6 +8077,12 @@ dependencies = [
  "sha1 0.11.0",
  "thiserror 2.0.21",
 ]
+
+[[package]]
+name = "twox-hash"
+version = "2.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
 
 [[package]]
 name = "typeid"

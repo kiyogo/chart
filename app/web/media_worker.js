@@ -8,6 +8,12 @@ import initWorkerWasm, {
   computeImagePdq,
   blake3Hex,
   compressFileSmart,
+  sealMessageChunkZstd22,
+  openMessageChunkZstd22,
+  searchIndexUpsertBatch,
+  searchIndexDeleteMessage,
+  searchIndexQuery,
+  computeDynamicBudgetWasm,
 } from '/pkg/chatw_media_worker.js?v=__BUILD_TS__';
 
 const BUILD_VER = '__BUILD_TS__';
@@ -192,12 +198,131 @@ function computePdqFromBitmap(bitmap, origW, origH) {
 
 self.onmessage = async (ev) => {
   const { id, task = 'optimize_image', buffer, mime, opts = {} } = ev.data || {};
-  if (!id || !buffer) {
-    self.postMessage({ id, ok: false, error: 'missing_payload' });
+  if (!id) {
+    self.postMessage({ id, ok: false, error: 'missing_id' });
     return;
   }
   try {
     await ensureWorkerWasm();
+
+    // ── Spec 164 Off-Main-Thread Tasks (Pure-Rust Zstd-22 + Encrypted Vietnamese Search + Budget) ──
+    if (task === 'seal_msg_chunk_zstd22') {
+      const res = sealMessageChunkZstd22(
+        String(opts.messagesJson || '[]'),
+        String(opts.reqJson || '{}'),
+        String(opts.rootKeyB64 || ''),
+      );
+      if (res && res.ok && res.bytes) {
+        const outU8 = res.bytes instanceof Uint8Array ? res.bytes : new Uint8Array(res.bytes);
+        const copy = new Uint8Array(outU8);
+        self.postMessage({ id, ok: true, metadataJson: res.metadataJson, buffer: copy.buffer }, [copy.buffer]);
+      } else {
+        self.postMessage({ id, ok: false, error: (res && res.error) || 'seal_failed' });
+      }
+      return;
+    }
+
+    if (task === 'open_msg_chunk_zstd22') {
+      const sealedU8 = buffer ? new Uint8Array(buffer) : new Uint8Array(0);
+      const res = openMessageChunkZstd22(
+        String(opts.metaJson || '{}'),
+        sealedU8,
+        String(opts.rootKeyB64 || ''),
+      );
+      if (res && res.ok) {
+        self.postMessage({ id, ok: true, messagesJson: res.messagesJson || '[]' });
+      } else {
+        self.postMessage({ id, ok: false, error: (res && res.error) || 'open_failed' });
+      }
+      return;
+    }
+
+    if (task === 'search_upsert_batch') {
+      const existingU8 = buffer ? new Uint8Array(buffer) : new Uint8Array(0);
+      const res = searchIndexUpsertBatch(
+        existingU8,
+        String(opts.messagesJson || '[]'),
+        String(opts.scopeType || 'dm'),
+        String(opts.scopeId || ''),
+        String(opts.chunkId || ''),
+        String(opts.rootKeyB64 || ''),
+        String(opts.accountId || ''),
+        String(opts.scopeKey || 'all'),
+        String(opts.coverage || 'partially_indexed'),
+      );
+      if (res && res.ok && res.bytes) {
+        const outU8 = res.bytes instanceof Uint8Array ? res.bytes : new Uint8Array(res.bytes);
+        const copy = new Uint8Array(outU8);
+        self.postMessage(
+          {
+            id,
+            ok: true,
+            buffer: copy.buffer,
+            docCount: Number(res.docCount || 0),
+            termCount: Number(res.termCount || 0),
+            indexVersion: Number(res.indexVersion || 1),
+            blake3Hex: String(res.blake3Hex || ''),
+          },
+          [copy.buffer],
+        );
+      } else {
+        self.postMessage({ id, ok: false, error: (res && res.error) || 'search_upsert_failed' });
+      }
+      return;
+    }
+
+    if (task === 'search_delete_message') {
+      const existingU8 = buffer ? new Uint8Array(buffer) : new Uint8Array(0);
+      const res = searchIndexDeleteMessage(
+        existingU8,
+        String(opts.messageId || ''),
+        String(opts.rootKeyB64 || ''),
+        String(opts.accountId || ''),
+        String(opts.scopeKey || 'all'),
+      );
+      if (res && res.ok && res.bytes) {
+        const outU8 = res.bytes instanceof Uint8Array ? res.bytes : new Uint8Array(res.bytes);
+        const copy = new Uint8Array(outU8);
+        self.postMessage({ id, ok: true, buffer: copy.buffer, docCount: Number(res.docCount || 0) }, [copy.buffer]);
+      } else {
+        self.postMessage({ id, ok: false, error: (res && res.error) || 'search_delete_failed' });
+      }
+      return;
+    }
+
+    if (task === 'search_query') {
+      const existingU8 = buffer ? new Uint8Array(buffer) : new Uint8Array(0);
+      const res = searchIndexQuery(
+        existingU8,
+        String(opts.queryJson || '{}'),
+        String(opts.rootKeyB64 || ''),
+        String(opts.accountId || ''),
+        String(opts.scopeKey || 'all'),
+      );
+      if (res && res.ok) {
+        self.postMessage({ id, ok: true, responseJson: res.responseJson || '{}' });
+      } else {
+        self.postMessage({ id, ok: false, error: (res && res.error) || 'search_query_failed' });
+      }
+      return;
+    }
+
+    if (task === 'compute_dynamic_budget') {
+      const budgetJson = computeDynamicBudgetWasm(
+        String(opts.profileJson || '{}'),
+        String(opts.mode || 'auto'),
+        Number(opts.customMb || 0),
+        Number(opts.prevBudget || 0),
+        String(opts.signalsJson || '{}'),
+      );
+      self.postMessage({ id, ok: true, budgetJson: String(budgetJson || '{}') });
+      return;
+    }
+
+    if (!buffer) {
+      self.postMessage({ id, ok: false, error: 'missing_payload' });
+      return;
+    }
     const rawU8 = new Uint8Array(buffer);
 
     // Task 1: Off-main-thread cryptographic + perceptual fingerprint check (for local cross-chat dedup)

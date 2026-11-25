@@ -2,6 +2,7 @@ pub mod dedup_engine;
 pub mod encrypted_backup;
 pub mod existing;
 pub mod local_cas;
+pub mod message_chunks;
 pub mod migration;
 pub mod permissions;
 pub mod references;

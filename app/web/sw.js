@@ -7,7 +7,8 @@
 //    `/stickers/*`, SVG/CSS/JS/WASM assets so repeat boots make 0 redundant Fetch/XHR requests.
 
 const STREAM_PREFIXES = ['/stream/media/', '/stream/'];
-const STATIC_CACHE_NAME = 'chatw-static-v26';
+const STATIC_CACHE_NAME = 'chatw-static-v27';
+const SHELL_CACHE_NAME = 'chatw-shell-v27';
 const DEFAULT_GRANT_TTL_MS = 15 * 60 * 1000;
 const MAX_CHUNK_CACHE_ENTRIES = 64;
 const MAX_STREAM_SPAN = 1024 * 1024;
@@ -500,7 +501,34 @@ function isCacheableStaticAsset(pathname) {
     pathname.startsWith('/stickers/') ||
     pathname.startsWith('/wallpapers/') ||
     pathname.endsWith('.svg') ||
-    pathname.endsWith('.woff2')
+    pathname.endsWith('.woff2') ||
+    pathname === '/manifest.json'
+  );
+}
+
+function isOfflineAppShellAsset(pathname) {
+  return (
+    pathname === '/' ||
+    pathname === '/index.html' ||
+    pathname === '/boot.js' ||
+    pathname === '/pkg/chatw_app.js' ||
+    pathname === '/pkg/chatw_media_worker.js' ||
+    pathname === '/pkg/media_worker_wasm.bin' ||
+    pathname === '/storage_engine.js' ||
+    pathname === '/core_bridge.js' ||
+    pathname === '/core_worker.js' ||
+    pathname === '/media_worker.js' ||
+    pathname === '/media_optimizer.js' ||
+    pathname === '/media_stream_bridge.js' ||
+    pathname === '/ai_restorer.js' ||
+    pathname === '/face_restorer.js' ||
+    pathname === '/adaptive_surface.js' ||
+    pathname === '/i18n_runtime.js' ||
+    pathname === '/canvas_scrollbars.js' ||
+    pathname === '/panel_resizer.js' ||
+    pathname === '/custom_pickers.js' ||
+    pathname === '/living_motion.js' ||
+    pathname === '/plugin_runtime.js'
   );
 }
 
@@ -660,7 +688,31 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. App Shell & Static Assets Offline Cache (Pure Cache-First — 0 duplicate background re-fetches!)
+  // 2. App Shell Offline Resilience (Network-First with Cache Fallback so online gets fresh updates
+  //    and offline reloads boot immediately with local cached messages & encrypted search!)
+  if (event.request.method === 'GET' && isOfflineAppShellAsset(reqUrl.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(SHELL_CACHE_NAME);
+      try {
+        const net = await fetch(event.request);
+        if (net && net.ok) {
+          cache.put(event.request, net.clone()).catch(() => {});
+        }
+        return net;
+      } catch (_) {
+        const hit = await cache.match(event.request, { ignoreSearch: true });
+        if (hit) return hit;
+        if (event.request.mode === 'navigate') {
+          const idx = await cache.match('/index.html', { ignoreSearch: true }) || await cache.match('/');
+          if (idx) return idx;
+        }
+        throw new Error('offline_asset_not_cached');
+      }
+    })());
+    return;
+  }
+
+  // 3. Static Assets Offline Cache (Pure Cache-First — 0 duplicate background re-fetches!)
   if (event.request.method === 'GET' && isCacheableStaticAsset(reqUrl.pathname)) {
     event.respondWith((async () => {
       try {

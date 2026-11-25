@@ -1,0 +1,18 @@
+{
+  "name": "ChatW",
+  "short_name": "ChatW",
+  "description": "Private End-to-End Encrypted Messenger with Intelligent Local Storage & Offline Access",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
