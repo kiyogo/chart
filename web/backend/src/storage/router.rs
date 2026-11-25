@@ -1090,6 +1090,13 @@ async fn handle_update_policy(
     .bind(p.server_durable_dm)
     .execute(&state.db)
     .await?;
+    state
+        .ws_hub
+        .send_to_user(
+            &user.id,
+            crate::websocket::WsEvent::PrefsUpdated(serde_json::json!({ "kind": "policy" })),
+        )
+        .await;
     Ok(Json(p))
 }
 
@@ -1141,6 +1148,13 @@ async fn handle_update_conv_policy(
     .bind(p.dm_encrypted_backup)
     .execute(&state.db)
     .await?;
+    state
+        .ws_hub
+        .send_to_user(
+            &user.id,
+            crate::websocket::WsEvent::PrefsUpdated(serde_json::json!({ "kind": "policy" })),
+        )
+        .await;
     Ok(Json(p))
 }
 

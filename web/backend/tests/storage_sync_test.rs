@@ -740,3 +740,135 @@ async fn spec158_cold_image_compression_after_15_days() {
 
     let _ = std::fs::remove_dir_all(&cfg.uploads_dir);
 }
+
+#[tokio::test]
+async fn spec160_password_auth_register_login_and_change_works() {
+    let pool = setup_db().await;
+    let cfg = test_config("pw_auth");
+    let (app, _) = build_app(pool.clone(), cfg.clone()).await;
+
+    let extract_cookie = |hdrs: &header::HeaderMap| -> String {
+        hdrs.get(header::SET_COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.split(';').next())
+            .unwrap_or("")
+            .to_string()
+    };
+
+    let uname = format!(
+        "pwuser_{}",
+        Uuid::new_v4()
+            .simple()
+            .to_string()
+            .chars()
+            .take(10)
+            .collect::<String>()
+    );
+    let pw1 = "StrongPass!2026";
+    let pw2 = "NewStrongPass!2027";
+
+    // Providers report password enabled
+    let (st_prov, prov) = req_json(&app, "GET", "/api/auth/providers", "", None).await;
+    assert_eq!(st_prov, StatusCode::OK);
+    assert_eq!(prov["password"], true);
+
+    // 1. Register new account with username + password only
+    let (st_reg, _, reg_hdrs) = req_bytes(
+        &app,
+        "POST",
+        "/api/auth/register",
+        "",
+        "application/json",
+        serde_json::to_vec(&json!({ "username": uname, "password": pw1 })).unwrap(),
+        &[],
+    )
+    .await;
+    assert_eq!(st_reg, StatusCode::OK);
+    let reg_cookie = extract_cookie(&reg_hdrs);
+    assert!(!reg_cookie.is_empty());
+
+    // Duplicate username MUST be rejected (409)
+    let (st_dup, _) = req_json(
+        &app,
+        "POST",
+        "/api/auth/register",
+        "",
+        Some(json!({ "username": uname.to_uppercase(), "password": pw1 })),
+    )
+    .await;
+    assert_eq!(st_dup, StatusCode::CONFLICT);
+
+    // /api/auth/me reports has_password = true
+    let (st_me, me) = req_json(&app, "GET", "/api/auth/me", &reg_cookie, None).await;
+    assert_eq!(st_me, StatusCode::OK);
+    assert_eq!(me["has_password"], true);
+
+    // 2. Wrong password MUST be rejected; right password logs in cleanly
+    let (st_bad, _) = req_json(
+        &app,
+        "POST",
+        "/api/auth/login",
+        "",
+        Some(json!({ "username": uname, "password": "wrong-password" })),
+    )
+    .await;
+    assert_eq!(st_bad, StatusCode::BAD_REQUEST);
+
+    let (st_ok, _, login_hdrs) = req_bytes(
+        &app,
+        "POST",
+        "/api/auth/login",
+        "",
+        "application/json",
+        serde_json::to_vec(&json!({ "username": uname, "password": pw1 })).unwrap(),
+        &[],
+    )
+    .await;
+    assert_eq!(st_ok, StatusCode::OK);
+    let login_cookie = extract_cookie(&login_hdrs);
+    assert!(!login_cookie.is_empty());
+
+    // 3. Change password requires correct current_password when one is already set
+    let (st_ch_bad, _) = req_json(
+        &app,
+        "POST",
+        "/api/auth/password",
+        &login_cookie,
+        Some(json!({ "current_password": "wrong", "new_password": pw2 })),
+    )
+    .await;
+    assert_eq!(st_ch_bad, StatusCode::BAD_REQUEST);
+
+    let (st_ch_ok, _) = req_json(
+        &app,
+        "POST",
+        "/api/auth/password",
+        &login_cookie,
+        Some(json!({ "current_password": pw1, "new_password": pw2 })),
+    )
+    .await;
+    assert_eq!(st_ch_ok, StatusCode::OK);
+
+    // New password logs in; old password no longer works
+    let (st_old, _) = req_json(
+        &app,
+        "POST",
+        "/api/auth/login",
+        "",
+        Some(json!({ "username": uname, "password": pw1 })),
+    )
+    .await;
+    assert_eq!(st_old, StatusCode::BAD_REQUEST);
+
+    let (st_new, _) = req_json(
+        &app,
+        "POST",
+        "/api/auth/login",
+        "",
+        Some(json!({ "username": uname, "password": pw2 })),
+    )
+    .await;
+    assert_eq!(st_new, StatusCode::OK);
+
+    let _ = std::fs::remove_dir_all(&cfg.uploads_dir);
+}

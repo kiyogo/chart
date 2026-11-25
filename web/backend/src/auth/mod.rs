@@ -59,11 +59,25 @@ pub struct MeResponse {
     pub avatar_url: Option<String>,
     pub has_keys: bool,
     pub device_id: Option<Uuid>,
+    pub has_password: bool,
 }
 
 #[derive(serde::Deserialize)]
 pub struct DevLoginRequest {
     pub username: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct PasswordAuthRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(serde::Deserialize)]
+pub struct UpdateAccountPasswordRequest {
+    #[serde(default)]
+    pub current_password: Option<String>,
+    pub new_password: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -90,6 +104,9 @@ pub fn routes() -> Router<AppState> {
         .route("/oauth-ticket", post(handle_create_oauth_ticket))
         .route("/oauth-ticket/{ticket_id}", get(handle_check_oauth_ticket))
         .route("/dev-login", post(handle_dev_login))
+        .route("/register", post(handle_register_password))
+        .route("/login", post(handle_login_password))
+        .route("/password", post(handle_update_account_password))
         .route("/providers", get(handle_providers))
         .route("/me", get(handle_me))
         .route("/sessions", get(handle_list_sessions).delete(handle_delete_other_sessions))
@@ -157,12 +174,14 @@ async fn handle_check_oauth_ticket(
 pub struct ProvidersResponse {
     pub google: bool,
     pub dev: bool,
+    pub password: bool,
 }
 
 async fn handle_providers(State(state): State<AppState>) -> Json<ProvidersResponse> {
     Json(ProvidersResponse {
         google: state.config.google_configured,
         dev: state.config.dev_login_enabled,
+        password: true,
     })
 }
 
@@ -364,12 +383,21 @@ async fn handle_me(
     .await?
     .unwrap_or(0);
 
+    let has_password: bool = sqlx::query_scalar(
+        "SELECT password_hash IS NOT NULL FROM users WHERE id = $1",
+    )
+    .bind(user.id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(false);
+
     Ok(Json(MeResponse {
         id: user.id,
         username: user.username,
         avatar_url: user.avatar_url,
         has_keys: key_count > 0,
         device_id: user.device_id,
+        has_password,
     }))
 }
 
@@ -441,19 +469,155 @@ async fn handle_dev_login(
     };
     tx.commit().await?;
 
-    // Spec 011: two-step verification and login alerts apply to every login.
-    match crate::security::complete_login(&state, user_id, &headers).await? {
+    finish_login_response(&state, user_id, &headers).await
+}
+
+async fn finish_login_response(
+    state: &AppState,
+    user_id: Uuid,
+    headers: &HeaderMap,
+) -> AppResult<Response> {
+    match crate::security::complete_login(state, user_id, headers).await? {
         crate::security::LoginOutcome::Session(_, session_cookie) => {
             let mut response = StatusCode::OK.into_response();
-            response.headers_mut().insert(header::SET_COOKIE, session_cookie.parse().map_err(|_| AppError::Internal)?);
+            response.headers_mut().insert(
+                header::SET_COOKIE,
+                session_cookie.parse().map_err(|_| AppError::Internal)?,
+            );
             Ok(response)
         }
         crate::security::LoginOutcome::Challenge(_, challenge_cookie) => {
             let mut response = Json(serde_json::json!({ "requires_2fa": true })).into_response();
-            response.headers_mut().insert(header::SET_COOKIE, challenge_cookie.parse().map_err(|_| AppError::Internal)?);
+            response.headers_mut().insert(
+                header::SET_COOKIE,
+                challenge_cookie.parse().map_err(|_| AppError::Internal)?,
+            );
             Ok(response)
         }
     }
+}
+
+fn validate_account_password(password: &str) -> AppResult<()> {
+    let chars = password.chars().count();
+    if chars < 6 || password.len() > 128 {
+        return Err(AppError::BadRequest("invalid_password_length"));
+    }
+    Ok(())
+}
+
+async fn handle_register_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    crate::error::ApiJson(req): crate::error::ApiJson<PasswordAuthRequest>,
+) -> AppResult<Response> {
+    let (display_name, username_norm) =
+        crate::users::validate_and_normalize_username(&req.username)?;
+    validate_account_password(&req.password)?;
+    let phc = crate::backup::reauth::hash_argon2_phc(&req.password)?;
+
+    let user_id = Uuid::new_v4();
+    let local_sub = format!("local:{user_id}");
+    let res = sqlx::query(
+        "INSERT INTO users (id, google_sub, username, username_norm, password_hash)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(user_id)
+    .bind(&local_sub)
+    .bind(&display_name)
+    .bind(&username_norm)
+    .bind(&phc)
+    .execute(&state.db)
+    .await;
+
+    match res {
+        Ok(_) => {
+            crate::security::log_event(&state, user_id, "account_registered_password", &headers)
+                .await;
+            finish_login_response(&state, user_id, &headers).await
+        }
+        Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("23505") => {
+            Err(AppError::Conflict("username_taken"))
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+async fn handle_login_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    crate::error::ApiJson(req): crate::error::ApiJson<PasswordAuthRequest>,
+) -> AppResult<Response> {
+    let (_, username_norm) = crate::users::validate_and_normalize_username(&req.username)?;
+    if req.password.is_empty() || req.password.len() > 128 {
+        return Err(AppError::BadRequest("invalid_credentials"));
+    }
+
+    let row = sqlx::query(
+        "SELECT id, password_hash, suspended_at FROM users WHERE username_norm = $1",
+    )
+    .bind(&username_norm)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let Some(row) = row else {
+        // Perform a dummy Argon2 verification timing pass to avoid username enumeration timing side-channels.
+        let _ = crate::backup::reauth::verify_argon2_phc(
+            "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            &req.password,
+        );
+        return Err(AppError::BadRequest("invalid_credentials"));
+    };
+
+    use sqlx::Row;
+    let user_id: Uuid = row.try_get("id")?;
+    let suspended: Option<DateTime<Utc>> = row.try_get("suspended_at")?;
+    if suspended.is_some() {
+        return Err(AppError::Forbidden("account_suspended"));
+    }
+    let phc: Option<String> = row.try_get("password_hash")?;
+    let Some(phc) = phc else {
+        return Err(AppError::BadRequest("password_not_set_for_account"));
+    };
+    if !crate::backup::reauth::verify_argon2_phc(&phc, &req.password) {
+        crate::security::log_event(&state, user_id, "password_login_failed", &headers).await;
+        return Err(AppError::BadRequest("invalid_credentials"));
+    }
+
+    finish_login_response(&state, user_id, &headers).await
+}
+
+async fn handle_update_account_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    crate::error::ApiJson(req): crate::error::ApiJson<UpdateAccountPasswordRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    validate_account_password(&req.new_password)?;
+
+    let existing_phc: Option<String> =
+        sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1")
+            .bind(user.id)
+            .fetch_one(&state.db)
+            .await?;
+
+    if let Some(ref cur_phc) = existing_phc {
+        let cur = req.current_password.as_deref().unwrap_or("");
+        if !crate::backup::reauth::verify_argon2_phc(cur_phc, cur) {
+            return Err(AppError::BadRequest("wrong_current_password"));
+        }
+    }
+
+    let next_phc = crate::backup::reauth::hash_argon2_phc(&req.new_password)?;
+    sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
+        .bind(&next_phc)
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
+
+    crate::security::log_event(&state, user.id, "account_password_updated", &headers).await;
+    Ok(Json(serde_json::json!({ "ok": true, "has_password": true })))
 }
 
 #[derive(Serialize)]

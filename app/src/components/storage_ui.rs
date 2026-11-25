@@ -33,12 +33,7 @@ pub fn StorageSettingsPanel() -> Element {
         spawn(async move {
             quota.set(get_quota_estimate().await);
             if let Ok(p) = storage_sync::get_policy().await {
-                platform::storage_set("chatw_cache_limit_mb", &p.cache_limit_mb.to_string());
-                platform::storage_set("chatw_media_quality_mode", &p.media_quality_mode);
-                platform::storage_set(
-                    "chatw_ai_enhance",
-                    if p.ai_enhancement_enabled { "true" } else { "false" },
-                );
+                sync_manager::apply_storage_policy_local(&p);
                 policy.set(p);
             }
             if let Ok(m) = storage_sync::get_metrics().await {
@@ -1216,19 +1211,18 @@ pub fn E2eeUnlockRecoveryModal(
                 }
                 div { class: "modal-body",
                     if is_locked_vault {
-                        p { "The E2EE private key on this device is protected by the Argon2id password. Enter the password to decrypt the message." }
+                        p { "The E2EE private key on this device is protected by your password. Enter it to decrypt your messages." }
                     } else {
-                        p { "This account has end-to-end encryption enabled on another device. ChatW does not override the lock itself to protect the entire message history." }
+                        p { "Enter your account password (or E2EE backup password) to unlock end-to-end encryption on this device." }
                         if let Some(st) = trust_info.clone() {
                             if let Some(code) = st.verification_code {
-                                p { "Method 1 — Approve on old device logging in with confirmation code: ", strong { "{code}" } }
+                                p { "Or approve on an already-logged-in device with confirmation code: ", strong { "{code}" } }
                             }
                         }
-                        p { "Method 2 — Enter the E2EE key backup password (Argon2id) to decrypt directly on this machine:" }
                     }
                     input {
                         r#type: "password",
-                        placeholder: if is_locked_vault { "Enter the E2EE unlock password" } else { "Enter the E2EE key backup password" },
+                        placeholder: if is_locked_vault { "Enter your unlock password" } else { "Enter your account password" },
                         aria_label: "E2EE unlock password",
                         value: "{pass}",
                         oninput: move |e| {

@@ -45,6 +45,39 @@ type HmacSha256 = Hmac<Sha256>;
 /// Never persisted to disk/localStorage; explicitly wiped on lock/logout.
 static UNLOCKED_SESSION_KEYS: OnceLock<Mutex<HashMap<String, UserKeys>>> = OnceLock::new();
 
+/// Ephemeral in-memory account password entered during login/register/password-change.
+/// Used strictly to auto-wrap or auto-unwrap `user_key_backups` and zeroized immediately after use.
+static EPHEMERAL_ACCOUNT_PW: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn ephemeral_pw_store() -> &'static Mutex<Option<String>> {
+    EPHEMERAL_ACCOUNT_PW.get_or_init(|| Mutex::new(None))
+}
+
+pub fn set_ephemeral_account_password(pw: &str) {
+    if pw.is_empty() {
+        clear_ephemeral_account_password();
+        return;
+    }
+    if let Ok(mut guard) = ephemeral_pw_store().lock() {
+        if let Some(mut prev) = guard.take() {
+            prev.zeroize();
+        }
+        *guard = Some(pw.to_string());
+    }
+}
+
+pub fn get_ephemeral_account_password() -> Option<String> {
+    ephemeral_pw_store().lock().ok().and_then(|g| g.clone())
+}
+
+pub fn clear_ephemeral_account_password() {
+    if let Ok(mut guard) = ephemeral_pw_store().lock() {
+        if let Some(mut prev) = guard.take() {
+            prev.zeroize();
+        }
+    }
+}
+
 /// Per-conversation monotonic sending counters and replay-detection state in memory.
 static CONVO_SEND_COUNTERS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
 static SEEN_MESSAGE_IDS: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();

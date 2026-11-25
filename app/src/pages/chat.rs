@@ -153,9 +153,15 @@ pub fn Chat(
 ) -> Element {
     let preview_storage_key = format!("chatw_previews_{current_user_id}");
     let uid_for_prefs = current_user_id.clone();
-    let prefs_ctx = use_context_provider(move || PrefsCtx {
-        prefs: Signal::new(Prefs::load(&uid_for_prefs)),
-        user_id: Signal::new(uid_for_prefs.clone()),
+    let prefs_ctx = use_context_provider(move || {
+        let initial = Prefs::load(&uid_for_prefs);
+        platform::apply_appearance(&initial.to_appearance());
+        platform::apply_customization(&initial);
+        crate::i18n::set_language(&initial.language);
+        PrefsCtx {
+            prefs: Signal::new(initial),
+            user_id: Signal::new(uid_for_prefs.clone()),
+        }
     });
     let prefs = prefs_ctx.prefs;
     let mut quick_switch_open = use_signal(|| false);
@@ -1287,6 +1293,11 @@ pub fn Chat(
                         let newer = v.get("version").and_then(|x| x.as_i64()).unwrap_or(0) > crate::services::settings_sync::known_version();
                         if newer {
                             crate::services::settings_sync::pull(prefs_ctx).await;
+                        }
+                    }
+                    WsEvent::PrefsUpdated(v) if v.get("kind").and_then(|k| k.as_str()) == Some("policy") => {
+                        if let Ok(pol) = crate::services::storage_sync::get_policy().await {
+                            crate::storage::sync_manager::apply_storage_policy_local(&pol);
                         }
                     }
                     WsEvent::PrefsUpdated(v) if v.get("kind").and_then(|k| k.as_str()) == Some("contacts") => {

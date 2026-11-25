@@ -98,6 +98,16 @@ pub struct Prefs {
     pub sync_settings: bool,
     /// Spec 067: Show the Developer menu in Settings with advanced/technical tools (device-local).
     pub developer_mode: bool,
+
+    // Spec 160: Top-level appearance settings synced across devices
+    /// light | ash | dark | oled | system
+    pub theme: String,
+    /// blue | cyan | violet | green | orange | rose
+    pub accent: String,
+    /// compact | comfortable | spacious
+    pub density: String,
+    /// auto | 13..=20
+    pub font_size: String,
 }
 
 impl Default for Prefs {
@@ -154,6 +164,10 @@ impl Default for Prefs {
             avatar_fx_lists: "hover".to_string(),
             sync_settings: true,
             developer_mode: false,
+            theme: "system".to_string(),
+            accent: "blue".to_string(),
+            density: "comfortable".to_string(),
+            font_size: "auto".to_string(),
         }
     }
 }
@@ -247,6 +261,18 @@ impl Prefs {
             self.language = d.language;
         }
         pick(&mut self.avatar_fx_lists, &["always", "hover", "off"], "hover");
+        pick(&mut self.theme, &["light", "ash", "dark", "oled", "system"], "system");
+        pick(&mut self.accent, &["blue", "cyan", "violet", "green", "orange", "rose"], "blue");
+        pick(&mut self.density, &["compact", "comfortable", "spacious"], "comfortable");
+        if self.font_size != "auto"
+            && !self
+                .font_size
+                .parse::<u32>()
+                .map(|n| (13..=20).contains(&n))
+                .unwrap_or(false)
+        {
+            self.font_size = "auto".to_string();
+        }
         for (list, max) in [(&mut self.fav_stickers, 60), (&mut self.recent_stickers, 24), (&mut self.fav_gifs, 60)] {
             list.retain(|u| valid_media_path(u));
             dedupe(list);
@@ -285,6 +311,22 @@ impl Prefs {
         p
     }
 
+    pub fn to_appearance(&self) -> crate::platform::Appearance {
+        crate::platform::Appearance {
+            theme: self.theme.clone(),
+            accent: self.accent.clone(),
+            density: self.density.clone(),
+            font_size: self.font_size.clone(),
+        }
+    }
+
+    pub fn set_appearance(&mut self, a: &crate::platform::Appearance) {
+        self.theme = a.theme.clone();
+        self.accent = a.accent.clone();
+        self.density = a.density.clone();
+        self.font_size = a.font_size.clone();
+    }
+
     pub fn sanitize_pub(&mut self) {
         self.sanitize();
     }
@@ -310,6 +352,8 @@ impl PrefsCtx {
         f(&mut p);
         p.sanitize();
         p.save(&self.user_id.read());
+        let app = p.to_appearance();
+        crate::platform::apply_appearance(&app);
         crate::platform::apply_customization(&p);
         crate::i18n::set_language(&p.language);
         let sync = p.sync_settings;
@@ -323,6 +367,8 @@ impl PrefsCtx {
     pub fn apply_remote(mut self, p: Prefs) {
         use dioxus::prelude::*;
         p.save(&self.user_id.read());
+        let app = p.to_appearance();
+        crate::platform::apply_appearance(&app);
         crate::platform::apply_customization(&p);
         crate::i18n::set_language(&p.language);
         self.prefs.set(p);
@@ -371,5 +417,37 @@ mod tests {
         bad.font_family = "unknown-injected-font".to_string();
         bad.sanitize();
         assert_eq!(bad.font_family, "system");
+    }
+
+    #[test]
+    fn spec160_appearance_fields_sync_and_sanitize() {
+        let mut p = Prefs::default();
+        p.theme = "oled".into();
+        p.accent = "rose".into();
+        p.density = "compact".into();
+        p.font_size = "17".into();
+        p.sanitize();
+        let payload = p.sync_payload();
+        assert_eq!(payload["theme"], "oled");
+        assert_eq!(payload["accent"], "rose");
+        assert_eq!(payload["density"], "compact");
+        assert_eq!(payload["font_size"], "17");
+
+        let merged = Prefs::default().merged_with(&payload);
+        assert_eq!(merged.theme, "oled");
+        assert_eq!(merged.accent, "rose");
+        assert_eq!(merged.density, "compact");
+        assert_eq!(merged.font_size, "17");
+
+        let mut invalid = Prefs::default();
+        invalid.theme = "bogus".into();
+        invalid.accent = "neon".into();
+        invalid.density = "huge".into();
+        invalid.font_size = "99".into();
+        invalid.sanitize();
+        assert_eq!(invalid.theme, "system");
+        assert_eq!(invalid.accent, "blue");
+        assert_eq!(invalid.density, "comfortable");
+        assert_eq!(invalid.font_size, "auto");
     }
 }

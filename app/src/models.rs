@@ -15,12 +15,20 @@ pub struct MeResponse {
     pub has_keys: bool,
     #[serde(default)]
     pub device_id: Option<String>,
+    #[serde(default)]
+    pub has_password: bool,
+}
+
+fn default_true_provider() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProvidersResponse {
     pub google: bool,
     pub dev: bool,
+    #[serde(default = "default_true_provider")]
+    pub password: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

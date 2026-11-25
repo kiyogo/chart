@@ -30,9 +30,19 @@ pub struct ReauthMethodsResponse {
     pub locked_until: Option<String>,
 }
 
-fn argon2_instance() -> Argon2<'static> {
+pub(crate) fn argon2_instance() -> Argon2<'static> {
     let params = Params::new(19_456, 2, 1, Some(32)).expect("valid argon2 params");
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+}
+
+pub(crate) fn hash_argon2_phc(password: &str) -> AppResult<String> {
+    let mut salt_bytes = [0u8; 16];
+    getrandom::fill(&mut salt_bytes).map_err(|_| AppError::Internal)?;
+    let salt = SaltString::encode_b64(&salt_bytes).map_err(|_| AppError::Internal)?;
+    argon2_instance()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .map_err(|_| AppError::Internal)
 }
 
 pub fn hash_export_token(raw_token: &str) -> Vec<u8> {
@@ -186,13 +196,7 @@ pub async fn set_export_password(
         crate::security::require_second_factor(state, user_id, totp_or_backup, headers).await?;
     }
 
-    let mut salt_bytes = [0u8; 16];
-    getrandom::fill(&mut salt_bytes).map_err(|_| AppError::Internal)?;
-    let salt = SaltString::encode_b64(&salt_bytes).map_err(|_| AppError::Internal)?;
-    let phc = argon2_instance()
-        .hash_password(new_password.as_bytes(), &salt)
-        .map_err(|_| AppError::Internal)?
-        .to_string();
+    let phc = hash_argon2_phc(new_password)?;
 
     sqlx::query(
         "INSERT INTO user_export_credentials (user_id, password_phc, updated_at)
@@ -209,7 +213,7 @@ pub async fn set_export_password(
     Ok(())
 }
 
-fn verify_argon2_phc(phc: &str, candidate: &str) -> bool {
+pub(crate) fn verify_argon2_phc(phc: &str, candidate: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(phc) else {
         return false;
     };

@@ -526,10 +526,14 @@ pub fn AccountSecurity(
     let mut username = use_signal(|| current_username.clone());
     let mut dialog = use_signal(|| Option::<&'static str>::None);
     let mut device_count = use_signal(|| Option::<usize>::None);
+    let mut has_password = use_signal(|| false);
     use_effect(move || {
         spawn(async move {
             if let Ok(list) = library::sessions_list().await {
                 device_count.set(Some(list.len()));
+            }
+            if let Ok(me) = crate::services::api::auth_me().await {
+                has_password.set(me.has_password);
             }
         });
     });
@@ -562,6 +566,21 @@ pub fn AccountSecurity(
             div { class: "settings-col",
                 div { class: "settings-group",
                     div { class: "settings-list",
+                        div { class: "settings-row",
+                            div { class: "settings-row-text",
+                                span { class: "settings-label", "Account password & sync" }
+                                span { class: "settings-sublabel",
+                                    if has_password() {
+                                        "Sign in on any device using just your password to sync all messages and settings"
+                                    } else {
+                                        "Set an account password to sign in and sync all devices without extra codes"
+                                    }
+                                }
+                            }
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| dialog.set(Some("password")),
+                                if has_password() { "Change" } else { "Set password" }
+                            }
+                        }
                         div { class: "settings-row cw-brand-row",
                             crate::components::brand_logos::GoogleAuthLogo { size: 28 }
                             div { class: "settings-row-text",
@@ -606,6 +625,139 @@ pub fn AccountSecurity(
         }
         if dialog() == Some("devices") {
             DevicesDialog { on_close: move |_| dialog.set(None), on_count: move |n| device_count.set(Some(n)) }
+        }
+        if dialog() == Some("password") {
+            PasswordDialog {
+                has_password: has_password(),
+                current_user_id: current_user_id.clone(),
+                on_close: move |_| dialog.set(None),
+                on_saved: move |_| { has_password.set(true); },
+            }
+        }
+    }
+}
+
+#[component]
+fn PasswordDialog(
+    has_password: bool,
+    current_user_id: String,
+    on_close: EventHandler<()>,
+    on_saved: EventHandler<()>,
+) -> Element {
+    let mut current_pw = use_signal(String::new);
+    let mut new_pw = use_signal(String::new);
+    let mut confirm_pw = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let mut err = use_signal(|| Option::<String>::None);
+    let mut done = use_signal(|| false);
+
+    let submit = move |e: Event<FormData>| {
+        e.prevent_default();
+        if busy() {
+            return;
+        }
+        let n = new_pw();
+        if n.chars().count() < 6 || n.len() > 128 {
+            err.set(Some("Password must be between 6 and 128 characters".into()));
+            return;
+        }
+        if n != confirm_pw() {
+            err.set(Some("Passwords do not match".into()));
+            return;
+        }
+        let cur = current_pw();
+        if has_password && cur.is_empty() {
+            err.set(Some("Enter your current account password".into()));
+            return;
+        }
+        let uid = current_user_id.clone();
+        busy.set(true);
+        err.set(None);
+        spawn(async move {
+            let cur_opt = if has_password { Some(cur.as_str()) } else { None };
+            match crate::services::api::auth_set_password(cur_opt, &n).await {
+                Ok(()) => {
+                    if let Some(keys) = crate::crypto::e2ee::get_user_keys(Some(&uid)) {
+                        let _ = crate::storage::sync_manager::ensure_password_key_backup(&keys, &n, true).await;
+                    }
+                    crate::crypto::e2ee::clear_ephemeral_account_password();
+                    current_pw.set(String::new());
+                    new_pw.set(String::new());
+                    confirm_pw.set(String::new());
+                    done.set(true);
+                    on_saved.call(());
+                }
+                Err(e) => {
+                    let msg = match e.code.as_str() {
+                        "wrong_current_password" => "Current password is incorrect".to_string(),
+                        "invalid_password_length" => "Password must be between 6 and 128 characters".to_string(),
+                        _ => "Unable to update account password".to_string(),
+                    };
+                    err.set(Some(msg));
+                }
+            }
+            busy.set(false);
+        });
+    };
+
+    rsx! {
+        div { class: "modal-overlay", onclick: move |_| on_close.call(()),
+            div { class: "modal-dialog story-dialog", role: "dialog", aria_modal: "true", aria_label: "Account password", onclick: move |e| e.stop_propagation(),
+                onkeydown: move |e| if e.key() == Key::Escape { on_close.call(()) },
+                div { class: "story-art",
+                    button { r#type: "button", class: "icon-btn story-close", aria_label: "Close", onclick: move |_| on_close.call(()), CloseIcon {} }
+                    Illustration { kind: "user".to_string() }
+                }
+                if done() {
+                    div { class: "story-body",
+                        h3 { class: "story-title", "Account password updated" }
+                        p { class: "story-desc", "Your E2EE key backup is synced and protected by your account password. Use it to sign in cleanly on any device." }
+                    }
+                    div { class: "story-actions",
+                        button { r#type: "button", class: "btn-primary", onclick: move |_| on_close.call(()), "Done" }
+                    }
+                } else {
+                    form { class: "story-body", onsubmit: submit,
+                        h3 { class: "story-title", if has_password { "Change account password" } else { "Set account password" } }
+                        p { class: "story-desc", "Your password lets you sign in and restore all encrypted messages and settings automatically on any device." }
+                        if has_password {
+                            input {
+                                r#type: "password",
+                                placeholder: "Current password",
+                                aria_label: "Current password",
+                                autocomplete: "current-password",
+                                value: "{current_pw}",
+                                oninput: move |e| { current_pw.set(e.value()); err.set(None); },
+                            }
+                        }
+                        input {
+                            r#type: "password",
+                            placeholder: "New password (min 6 characters)",
+                            aria_label: "New password",
+                            autocomplete: "new-password",
+                            value: "{new_pw}",
+                            oninput: move |e| { new_pw.set(e.value()); err.set(None); },
+                        }
+                        input {
+                            r#type: "password",
+                            placeholder: "Confirm new password",
+                            aria_label: "Confirm new password",
+                            autocomplete: "new-password",
+                            value: "{confirm_pw}",
+                            oninput: move |e| { confirm_pw.set(e.value()); err.set(None); },
+                        }
+                        if let Some(m) = err() {
+                            div { class: "status-badge error", "{m}" }
+                        }
+                        div { class: "story-actions",
+                            button { r#type: "button", class: "btn-secondary", onclick: move |_| on_close.call(()), "Cancel" }
+                            button { r#type: "submit", class: "btn-primary", disabled: busy(),
+                                if busy() { "Saving" } else { "Save password" }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

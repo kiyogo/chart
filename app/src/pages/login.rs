@@ -7,11 +7,32 @@ use crate::{
     services::api,
 };
 
+fn auth_error_message(code: &str) -> String {
+    match code {
+        "username_taken" => "This username is already taken".to_string(),
+        "invalid_credentials" => "Incorrect username or password".to_string(),
+        "password_not_set_for_account" => {
+            "This account has no password yet. Sign in with Google or set a password in Settings".to_string()
+        }
+        "account_suspended" => "This account has been suspended".to_string(),
+        "invalid_password_length" => "Password must be at least 6 characters".to_string(),
+        "empty_username" | "invalid_username_length" | "illegal_character" => {
+            "Username must be 2 to 32 valid characters".to_string()
+        }
+        "" => "Authentication failed".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[component]
 pub fn Login(on_login_success: EventHandler<()>) -> Element {
     let mut loading = use_signal(|| false);
     let mut error = use_signal(|| Option::<String>::None);
     let mut dev_username = use_signal(String::new);
+    let mut pw_mode_register = use_signal(|| false);
+    let mut auth_username = use_signal(String::new);
+    let mut auth_password = use_signal(String::new);
+    let mut auth_password_confirm = use_signal(String::new);
     let mut providers = use_signal(|| Option::<ProvidersResponse>::None);
     // Spec 011: the second step (TOTP / backup code) after Google or test sign-in.
     let mut twofa = use_signal(|| false);
@@ -44,6 +65,53 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                 Ok(false) => {}
                 Err(msg) => error.set(Some(msg)),
             }
+        });
+    };
+
+    let handle_password_submit = move |evt: Event<FormData>| {
+        evt.prevent_default();
+        if loading() {
+            return;
+        }
+        let uname = auth_username().trim().to_string();
+        let pw = auth_password();
+        let is_reg = pw_mode_register();
+        if !(2..=32).contains(&uname.chars().count()) {
+            error.set(Some("Username must be 2 to 32 characters".to_string()));
+            return;
+        }
+        if pw.chars().count() < 6 || pw.len() > 128 {
+            error.set(Some("Password must be between 6 and 128 characters".to_string()));
+            return;
+        }
+        if is_reg && pw != auth_password_confirm() {
+            error.set(Some("Passwords do not match".to_string()));
+            return;
+        }
+        loading.set(true);
+        error.set(None);
+        spawn(async move {
+            let res = if is_reg {
+                api::auth_register(&uname, &pw).await
+            } else {
+                api::auth_login(&uname, &pw).await
+            };
+            match res {
+                Ok(()) => {
+                    crate::crypto::e2ee::set_ephemeral_account_password(&pw);
+                    auth_password.set(String::new());
+                    auth_password_confirm.set(String::new());
+                    if crate::services::security::twofa_pending().await {
+                        twofa.set(true);
+                    } else {
+                        on_login_success.call(());
+                    }
+                }
+                Err(err) => {
+                    error.set(Some(auth_error_message(&err.code)));
+                }
+            }
+            loading.set(false);
         });
     };
 
@@ -136,21 +204,103 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                             span { class: "brand-mark", LogoIcon { size: 22 } }
                             span { "chatw" }
                         }
-                        h1 { class: "auth-title", "Sign in" }
-                        p { class: "auth-subtitle", "Use your Google account to continue. The first time you log in, you'll choose a username." }
+                        h1 { class: "auth-title", if pw_mode_register() { "Create account" } else { "Sign in" } }
+                        p { class: "auth-subtitle", "Sign in with your account password to sync keys, chats, and settings across all devices automatically." }
                     }
 
-                    button {
-                        r#type: "button",
-                        class: "auth-btn-google",
-                        disabled: google_disabled || providers().is_none(),
-                        aria_label: "Continue with Google",
-                        onclick: handle_google_login,
-                        GoogleIcon {}
-                        span { "Continue with Google" }
+                    form {
+                        class: "auth-pw-form",
+                        onsubmit: handle_password_submit,
+                        div { class: "auth-mode-tabs", role: "tablist",
+                            button {
+                                r#type: "button",
+                                role: "tab",
+                                "aria-selected": if !pw_mode_register() { "true" } else { "false" },
+                                class: if !pw_mode_register() { "auth-mode-tab active" } else { "auth-mode-tab" },
+                                onclick: move |_| {
+                                    pw_mode_register.set(false);
+                                    error.set(None);
+                                },
+                                "Sign in"
+                            }
+                            button {
+                                r#type: "button",
+                                role: "tab",
+                                "aria-selected": if pw_mode_register() { "true" } else { "false" },
+                                class: if pw_mode_register() { "auth-mode-tab active" } else { "auth-mode-tab" },
+                                onclick: move |_| {
+                                    pw_mode_register.set(true);
+                                    error.set(None);
+                                },
+                                "Create account"
+                            }
+                        }
+                        input {
+                            r#type: "text",
+                            class: "auth-input",
+                            placeholder: "Username",
+                            aria_label: "Username",
+                            maxlength: "32",
+                            autocomplete: "username",
+                            value: "{auth_username}",
+                            oninput: move |evt| {
+                                auth_username.set(evt.value());
+                                error.set(None);
+                            },
+                        }
+                        input {
+                            r#type: "password",
+                            class: "auth-input",
+                            placeholder: "Account password (min 6 chars)",
+                            aria_label: "Password",
+                            maxlength: "128",
+                            autocomplete: if pw_mode_register() { "new-password" } else { "current-password" },
+                            value: "{auth_password}",
+                            oninput: move |evt| {
+                                auth_password.set(evt.value());
+                                error.set(None);
+                            },
+                        }
+                        if pw_mode_register() {
+                            input {
+                                r#type: "password",
+                                class: "auth-input",
+                                placeholder: "Confirm password",
+                                aria_label: "Confirm password",
+                                maxlength: "128",
+                                autocomplete: "new-password",
+                                value: "{auth_password_confirm}",
+                                oninput: move |evt| {
+                                    auth_password_confirm.set(evt.value());
+                                    error.set(None);
+                                },
+                            }
+                        }
+                        button {
+                            r#type: "submit",
+                            class: "auth-btn-primary",
+                            disabled: loading(),
+                            if loading() {
+                                span { class: "spinner" }
+                            } else if pw_mode_register() {
+                                "Create account"
+                            } else {
+                                "Sign in"
+                            }
+                        }
                     }
-                    if google_disabled {
-                        div { class: "form-hint", "The server has not configured Google login." }
+
+                    if !google_disabled {
+                        div { class: "auth-divider", span { "or" } }
+                        button {
+                            r#type: "button",
+                            class: "auth-btn-google",
+                            disabled: providers().is_none(),
+                            aria_label: "Continue with Google",
+                            onclick: handle_google_login,
+                            GoogleIcon {}
+                            span { "Continue with Google" }
+                        }
                     }
 
                     if let Some(err_msg) = error() {

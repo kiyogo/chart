@@ -178,8 +178,8 @@ pub fn SettingsView(
 
     let mut nav_query = use_signal(String::new);
     let mut has_detail = use_signal(|| false);
-    let mut appearance = use_signal(platform::load_appearance);
     let prefs_ctx = use_context::<crate::prefs::PrefsCtx>();
+    let appearance = move || prefs_ctx.prefs.read().to_appearance();
     let dev_mode = prefs_ctx.prefs.read().developer_mode;
 
     // Auto-redirect away from Developer tab if developer mode is turned off
@@ -189,11 +189,12 @@ pub fn SettingsView(
         tab()
     };
 
-    let mut update_appearance = move |f: &dyn Fn(&mut platform::Appearance)| {
-        let mut a = appearance();
-        f(&mut a);
-        platform::apply_appearance(&a);
-        appearance.set(a);
+    let update_appearance = move |f: &dyn Fn(&mut platform::Appearance)| {
+        prefs_ctx.update(|p| {
+            let mut a = p.to_appearance();
+            f(&mut a);
+            p.set_appearance(&a);
+        });
     };
     let mut is_uploading_avatar = use_signal(|| false);
     let mut avatar_error = use_signal(|| Option::<String>::None);
@@ -855,8 +856,7 @@ pub fn SettingsView(
                                                 AppearanceWallpapersGlass {
                                                     on_reset_appearance: move |_| {
                                                         let d = platform::Appearance::default();
-                                                        platform::apply_appearance(&d);
-                                                        appearance.set(d);
+                                                        prefs_ctx.update(|p| p.set_appearance(&d));
                                                     },
                                                 }
                                             }
@@ -1149,8 +1149,7 @@ pub fn SettingsView(
                                             has_keys: user_keys.is_some(),
                                             on_reset_appearance: move |_| {
                                                 let d = platform::Appearance::default();
-                                                platform::apply_appearance(&d);
-                                                appearance.set(d);
+                                                prefs_ctx.update(|p| p.set_appearance(&d));
                                             },
                                             on_disable_dev: move |_| {
                                                 prefs_ctx.update(|p| p.developer_mode = false);

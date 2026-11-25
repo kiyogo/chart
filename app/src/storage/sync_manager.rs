@@ -13,10 +13,11 @@ use zeroize::Zeroize;
 
 use crate::{
     crypto::e2ee::{
-        PeerKeys, UserKeys, build_signed_prekey_bundle, decrypt_chat_message, derive_argon2id_key,
-        export_user_keys_json, get_or_create_device_transport_pubkey,
+        PeerKeys, UserKeys, build_signed_prekey_bundle, clear_ephemeral_account_password,
+        decrypt_chat_message, derive_argon2id_key, export_user_keys_json,
+        get_ephemeral_account_password, get_or_create_device_transport_pubkey,
         get_or_verify_peer_keys_scoped, get_user_keys, import_user_keys_json,
-        unwrap_sync_key_on_device, wrap_sync_key_for_device,
+        sign_device_recovery_proof, unwrap_sync_key_on_device, wrap_sync_key_for_device,
     },
     models::{DisplayMessage, MessageStatus},
     platform,
@@ -101,8 +102,7 @@ pub fn encrypt_keys_for_backup(
 }
 
 #[allow(deprecated)]
-pub fn decrypt_keys_from_backup_v2(
-    user_id: &str,
+fn decrypt_backup_json(
     wrapped_b64: &str,
     salt_b64: &str,
     kdf_alg: Option<&str>,
@@ -111,7 +111,7 @@ pub fn decrypt_keys_from_backup_v2(
     kdf_parallelism: Option<i32>,
     iterations: i32,
     passphrase: &str,
-) -> Result<UserKeys, String> {
+) -> Result<String, String> {
     let salt = URL_SAFE_NO_PAD
         .decode(salt_b64)
         .map_err(|_| "invalid_salt_b64".to_string())?;
@@ -147,7 +147,7 @@ pub fn decrypt_keys_from_backup_v2(
             .map_err(|_| "invalid_utf8".to_string())?
             .to_string();
         plain.zeroize();
-        return import_user_keys_json(user_id, &json_str);
+        return Ok(json_str);
     }
 
     // Legacy fallback: decrypt historical SHA-256 backup seamlessly without data loss.
@@ -162,7 +162,109 @@ pub fn decrypt_keys_from_backup_v2(
         .map_err(|_| "invalid_utf8".to_string())?
         .to_string();
     plain.zeroize();
+    Ok(json_str)
+}
+
+pub fn decrypt_keys_from_backup_v2(
+    user_id: &str,
+    wrapped_b64: &str,
+    salt_b64: &str,
+    kdf_alg: Option<&str>,
+    kdf_mem_kib: Option<i32>,
+    kdf_time_cost: Option<i32>,
+    kdf_parallelism: Option<i32>,
+    iterations: i32,
+    passphrase: &str,
+) -> Result<UserKeys, String> {
+    let json_str = decrypt_backup_json(
+        wrapped_b64,
+        salt_b64,
+        kdf_alg,
+        kdf_mem_kib,
+        kdf_time_cost,
+        kdf_parallelism,
+        iterations,
+        passphrase,
+    )?;
     import_user_keys_json(user_id, &json_str)
+}
+
+pub fn apply_storage_policy_local(p: &storage_sync::StoragePolicy) {
+    platform::storage_set("chatw_cache_limit_mb", &p.cache_limit_mb.to_string());
+    platform::storage_set("chatw_media_quality_mode", &p.media_quality_mode);
+    platform::storage_set(
+        "chatw_ai_enhance",
+        if p.ai_enhancement_enabled { "true" } else { "false" },
+    );
+}
+
+pub async fn ensure_password_key_backup(
+    keys: &UserKeys,
+    account_password: &str,
+    force_overwrite: bool,
+) -> Result<(), String> {
+    if !force_overwrite {
+        if let Ok(bk) = storage_sync::get_key_backup().await
+            && bk.get("exists").and_then(|v| v.as_bool()).unwrap_or(false)
+            && let Some(kb) = bk.get("backup").filter(|v| !v.is_null())
+        {
+            let wrapped = kb["wrapped_keys_b64"].as_str().unwrap_or("");
+            let salt = kb["kdf_salt_b64"].as_str().unwrap_or("");
+            let kdf_alg = kb["kdf_alg"].as_str();
+            let mem = kb["kdf_mem_kib"].as_i64().map(|n| n as i32);
+            let time = kb["kdf_time_cost"].as_i64().map(|n| n as i32);
+            let par = kb["kdf_parallelism"].as_i64().map(|n| n as i32);
+            let iters = kb["kdf_iterations"].as_i64().unwrap_or(210_000) as i32;
+            if decrypt_backup_json(wrapped, salt, kdf_alg, mem, time, par, iters, account_password)
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+    }
+    let (wrapped, salt, _iters) = encrypt_keys_for_backup(keys, account_password)?;
+    storage_sync::put_key_backup_v2(
+        &wrapped,
+        &salt,
+        "argon2id-v1",
+        BACKUP_ARGON2_MEM_KIB as i32,
+        BACKUP_ARGON2_TIME_COST as i32,
+        BACKUP_ARGON2_PARALLELISM as i32,
+        210_000,
+        &keys.fingerprint_b64,
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| e.code)
+}
+
+pub async fn try_restore_keys_with_account_password(
+    user_id: &str,
+    account_password: &str,
+) -> Result<UserKeys, String> {
+    let bk = storage_sync::get_key_backup().await.map_err(|e| e.code)?;
+    let kb = bk
+        .get("backup")
+        .filter(|v| !v.is_null())
+        .ok_or_else(|| "missing_key_backup".to_string())?;
+    let wrapped = kb["wrapped_keys_b64"].as_str().unwrap_or("");
+    let salt = kb["kdf_salt_b64"].as_str().unwrap_or("");
+    let kdf_alg = kb["kdf_alg"].as_str();
+    let mem = kb["kdf_mem_kib"].as_i64().map(|n| n as i32);
+    let time = kb["kdf_time_cost"].as_i64().map(|n| n as i32);
+    let par = kb["kdf_parallelism"].as_i64().map(|n| n as i32);
+    let iters = kb["kdf_iterations"].as_i64().unwrap_or(210_000) as i32;
+    decrypt_keys_from_backup_v2(
+        user_id,
+        wrapped,
+        salt,
+        kdf_alg,
+        mem,
+        time,
+        par,
+        iters,
+        account_password,
+    )
 }
 
 pub fn decrypt_keys_from_backup(
@@ -397,7 +499,7 @@ pub async fn bootstrap_device_and_sync_for_user(
                             *E2EE_RECOVERY_REQUIRED.write() = None;
                             info.trust_state = "trusted".into();
                             is_trusted = true;
-                            *DEVICE_TRUST_STATE.write() = Some(info);
+                            *DEVICE_TRUST_STATE.write() = Some(info.clone());
                             active_keys = Some(recovered);
                             recovered_now = true;
                         }
@@ -406,8 +508,33 @@ pub async fn bootstrap_device_and_sync_for_user(
             }
         }
 
+        // If this device holds recovered E2EE keys yet landed in `pending` (e.g. approval flag on),
+        // submit cryptographic ECDSA key ownership proof so password sign-in grants trust automatically.
+        if !is_trusted
+            && let Some(ref k) = active_keys
+            && !info.device_id.is_empty()
+            && let Ok(proof) = sign_device_recovery_proof(k, &info.device_id)
+            && storage_sync::recover_lost_devices_with_proof(None, false, Some(&proof), false)
+                .await
+                .is_ok()
+        {
+            *E2EE_RECOVERY_REQUIRED.write() = None;
+            info.trust_state = "trusted".into();
+            is_trusted = true;
+            *DEVICE_TRUST_STATE.write() = Some(info.clone());
+            recovered_now = true;
+        }
+
         if is_trusted {
+            if let Ok(pol) = storage_sync::get_policy().await {
+                apply_storage_policy_local(&pol);
+            }
             if let Some(ref k) = active_keys {
+                if let Some(pw) = get_ephemeral_account_password() {
+                    if ensure_password_key_backup(k, &pw, false).await.is_ok() {
+                        clear_ephemeral_account_password();
+                    }
+                }
                 // Publish signed prekey bundle for E2EE v2 session setup.
                 let spk_marker = format!("chatw_spk_uploaded_{}", k.fingerprint_b64);
                 if platform::storage_get(&spk_marker).as_deref() != Some("1") {
