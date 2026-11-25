@@ -2,9 +2,10 @@
 // Spec 143: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 + RL -> Stage 2 Adaptive SPAN 4× (NomosUni AVIF / ClearRealityV1 / AnimeVideoV3) + Text/QR Guard + AbortSignal cancellation!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'adaptive-multi-span-avif-v20';
+  const PIPELINE_VERSION = 'adaptive-span2x-avif-v21';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
+    nomosuni_span_x2: { id: 'nomosuni_span_x2', cwsrUrl: '/models/nomosuni_span_x2.cwsp', license: 'CC-BY-4.0', scale: 2 },
     nomosuni_span_x4: { id: 'nomosuni_span_x4', cwsrUrl: '/models/nomosuni_span_x4.cwsp', license: 'CC-BY-4.0', scale: 4 },
     clearreality_span_x4: { id: 'clearreality_span_x4', cwsrUrl: '/models/clearreality_v1_x4.cwsp', license: 'Apache-2.0', scale: 4 },
     lsdir_compact3_x4: { id: 'lsdir_compact3_x4', cwsrUrl: '/models/lsdir_compact3_x4.cwsr', license: 'CC-BY-4.0', scale: 4 },
@@ -638,8 +639,9 @@
             const srOut = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress);
             if (srOut && srOut.ok && (srOut.canvas || srOut.rgba)) {
               res = srOut;
-              // Post-AI Optical RL Clarity Pass directly on clean, block-free 4× AI output!
-              if (res.canvas && typeof wasm.upscaleFsr1 === 'function') {
+              // Spec 144: Skip redundant Post-AI RL for `nomosuni_span_x2` (pure SPAN 2× + sender color lock is already razor-sharp with maximum true SSIM & zero eyelash/necklace degradation!)
+              // Apply gentle Post-AI Optical RL (0.55) ONLY on 4× models recovering tiny/heavily-crushed inputs (< 640px).
+              if (res.canvas && sel.modelId !== 'nomosuni_span_x2' && typeof wasm.upscaleFsr1 === 'function') {
                 try {
                   reportProgress(87);
                   await yieldUiSlice();
@@ -660,8 +662,7 @@
                   tctx.drawImage(res.canvas, 0, 0, pw, ph);
                   const aiImg = tctx.getImageData(0, 0, pw, ph);
                   const aiU8 = new Uint8Array(aiImg.data.buffer, aiImg.data.byteOffset, aiImg.data.byteLength);
-                  // Adaptive Post-AI Optical RL Clarity: gentle 0.65 for NomosUni/low-res AVIF, crisp 0.40 for ClearReality 4K
-                  const postRlStrength = sel.modelId === 'nomosuni_span_x4' || maxDim < 900 ? 0.65 : 0.40;
+                  const postRlStrength = 0.55;
                   const postRl = await wasm.upscaleFsr1(aiU8, pw, ph, pw, ph, postRlStrength, null);
                   if (postRl && postRl.ok && postRl.canvas) {
                     res = {

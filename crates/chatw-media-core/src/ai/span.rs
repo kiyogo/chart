@@ -66,14 +66,15 @@ pub fn pack_span_conv_in_weights(w_u16: &[u16]) -> Vec<u16> {
     out
 }
 
-/// Pack `48 -> 48` 3×3 FP16 weights into `[width=48, height=108]` RGBA16F (`row = k * 12 + ig`, `texel(oc, row) = 4 in channels`).
-pub fn pack_span_conv48_weights(w_u16: &[u16]) -> Vec<u16> {
-    let mut out = vec![0u16; SPAN_FEAT_CH * 108 * 4];
-    for oc in 0..SPAN_FEAT_CH {
+/// Pack `48 -> out_ch` (`12` for 2× padded to `16`, or `48` for 4×) 3×3 FP16 weights into `[width=pad_out, height=108]` RGBA16F.
+pub fn pack_span_conv_up_weights(w_u16: &[u16], out_ch: usize) -> Vec<u16> {
+    let pad_out = out_ch.div_ceil(16) * 16;
+    let mut out = vec![0u16; pad_out * 108 * 4];
+    for oc in 0..out_ch {
         for k in 0..9 {
             for ig in 0..12 {
                 let row = k * 12 + ig;
-                let dst = (row * SPAN_FEAT_CH + oc) * 4;
+                let dst = (row * pad_out + oc) * 4;
                 for c in 0..4 {
                     out[dst + c] = w_u16[(oc * SPAN_FEAT_CH + ig * 4 + c) * 9 + k];
                 }
@@ -81,6 +82,11 @@ pub fn pack_span_conv48_weights(w_u16: &[u16]) -> Vec<u16> {
         }
     }
     out
+}
+
+/// Pack `48 -> 48` 3×3 FP16 weights into `[width=48, height=108]` RGBA16F (`row = k * 12 + ig`, `texel(oc, row) = 4 in channels`).
+pub fn pack_span_conv48_weights(w_u16: &[u16]) -> Vec<u16> {
+    pack_span_conv_up_weights(w_u16, SPAN_FEAT_CH)
 }
 
 /// Pack `conv_cat` `192 -> 48` 1×1 FP16 weights into `[width=48, height=48]` RGBA16F (`row = src_idx * 12 + ig`).
@@ -151,12 +157,13 @@ impl SpanGpuF16Model {
         let scale = cur.read_u32()?;
         let feat_ch = cur.read_u32()? as usize;
         let flags = cur.read_u32()?;
-        if version != 1 || scale != SPAN_SCALE as u32 || feat_ch != SPAN_FEAT_CH {
+        if version != 1 || (scale != 2 && scale != 4) || feat_ch != SPAN_FEAT_CH {
             return Err(MediaError::InvalidParameter(format!(
                 "Unsupported CWSP header: version={version}, scale={scale}, feat_ch={feat_ch}"
             )));
         }
         let use_norm = (flags & 1) != 0;
+        let up_out_ch = 3 * (scale as usize) * (scale as usize);
 
         let conv1_w = cur.read_u16_vec(SPAN_FEAT_CH * 3 * 9)?;
         let conv1_b = cur.read_f16_as_f32_vec(SPAN_FEAT_CH)?;
@@ -194,10 +201,12 @@ impl SpanGpuF16Model {
             bias: cat_b,
         };
 
-        let up_w = cur.read_u16_vec(SPAN_FEAT_CH * SPAN_FEAT_CH * 9)?;
-        let up_b = cur.read_f16_as_f32_vec(SPAN_FEAT_CH)?;
+        let up_w = cur.read_u16_vec(up_out_ch * SPAN_FEAT_CH * 9)?;
+        let mut up_b = cur.read_f16_as_f32_vec(up_out_ch)?;
+        let pad_out = up_out_ch.div_ceil(16) * 16;
+        up_b.resize(pad_out, 0.0);
         let upsampler = SpanGpuF16Layer {
-            weights_u16: pack_span_conv48_weights(&up_w),
+            weights_u16: pack_span_conv_up_weights(&up_w, up_out_ch),
             bias: up_b,
         };
 
@@ -244,10 +253,11 @@ impl SpanModel {
         let scale = cur.read_u32()? as usize;
         let feat_ch = cur.read_u32()? as usize;
         let flags = cur.read_u32()?;
-        if version != 1 || scale != SPAN_SCALE || feat_ch != SPAN_FEAT_CH {
+        if version != 1 || (scale != 2 && scale != 4) || feat_ch != SPAN_FEAT_CH {
             return Err(MediaError::InvalidParameter("Unsupported CWSP1 config".into()));
         }
         let use_norm = (flags & 1) != 0;
+        let up_out_ch = 3 * scale * scale;
         let read_layer = |c: &mut CwspCursor<'_>, w_len: usize, b_len: usize| -> MediaResult<SpanCpuLayer> {
             Ok(SpanCpuLayer {
                 weights: c.read_f16_as_f32_vec(w_len)?,
@@ -264,7 +274,7 @@ impl SpanModel {
         }
         let conv_2 = read_layer(&mut cur, SPAN_FEAT_CH * SPAN_FEAT_CH * 9, SPAN_FEAT_CH)?;
         let conv_cat = read_layer(&mut cur, SPAN_FEAT_CH * (SPAN_FEAT_CH * 4), SPAN_FEAT_CH)?;
-        let upsampler = read_layer(&mut cur, SPAN_FEAT_CH * SPAN_FEAT_CH * 9, SPAN_FEAT_CH)?;
+        let upsampler = read_layer(&mut cur, up_out_ch * SPAN_FEAT_CH * 9, up_out_ch)?;
         Ok(Self {
             scale,
             feat_ch,
@@ -398,24 +408,27 @@ fn infer_span_tile_cpu(model: &SpanModel, tile_rgba: &[u8], w: usize, h: usize) 
         }
     }
 
-    let up = conv3x3_chw(&cat, SPAN_FEAT_CH, SPAN_FEAT_CH, w, h, &model.upsampler, false);
+    let scale = model.scale;
+    let s2 = scale * scale;
+    let up_out_ch = 3 * s2;
+    let up = conv3x3_chw(&cat, SPAN_FEAT_CH, up_out_ch, w, h, &model.upsampler, false);
 
-    // PixelShuffle(4) -> RGBA8
-    let ow = w * SPAN_SCALE;
-    let oh = h * SPAN_SCALE;
+    // PixelShuffle(scale) -> RGBA8
+    let ow = w * scale;
+    let oh = h * scale;
     let mut out = vec![255u8; ow * oh * 4];
     for sy in 0..h {
         for sx in 0..w {
             let si = sy * w + sx;
             let alpha = tile_rgba[si * 4 + 3];
-            for dy in 0..SPAN_SCALE {
-                let oy = sy * SPAN_SCALE + dy;
-                for dx in 0..SPAN_SCALE {
-                    let ox = sx * SPAN_SCALE + dx;
-                    let sub = dy * SPAN_SCALE + dx;
+            for dy in 0..scale {
+                let oy = sy * scale + dy;
+                for dx in 0..scale {
+                    let ox = sx * scale + dx;
+                    let sub = dy * scale + dx;
                     let r = (up[sub * hw + si].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
-                    let g = (up[(16 + sub) * hw + si].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
-                    let b = (up[(32 + sub) * hw + si].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+                    let g = (up[(s2 + sub) * hw + si].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+                    let b = (up[(2 * s2 + sub) * hw + si].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
                     let oi = (oy * ow + ox) * 4;
                     out[oi] = r;
                     out[oi + 1] = g;

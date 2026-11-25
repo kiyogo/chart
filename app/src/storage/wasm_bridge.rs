@@ -185,7 +185,8 @@ pub fn install_wasm_media_bridge() {
             let chosen = if !req_str.is_empty()
                 && matches!(
                     req_str.as_str(),
-                    "nomosuni_span_x4"
+                    "nomosuni_span_x2"
+                        | "nomosuni_span_x4"
                         | "clearreality_span_x4"
                         | "lsdir_compact3_x4"
                         | "realesr_animevideov3"
@@ -315,7 +316,8 @@ pub fn install_wasm_media_bridge() {
         let blocked = ["codeformer", "rvrt", "apisr", "upscayl"].iter().any(|b| k.contains(b));
         let approved = matches!(
             k.as_str(),
-            "nomosuni_span_x4"
+            "nomosuni_span_x2"
+                | "nomosuni_span_x4"
                 | "clearreality_span_x4"
                 | "lsdir_compact3_x4"
                 | "fsr1_easu_rcas"

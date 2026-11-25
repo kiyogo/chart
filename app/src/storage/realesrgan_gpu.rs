@@ -308,7 +308,7 @@ void main() {
   o4 = a4; o5 = a5; o6 = a6; o7 = a7;
 }"#;
 
-// PixelShuffle(4×) (+ optional nearest_4x(orig) when uAddOrig==1) -> RGBA8 intermediate `sr_tex`
+// PixelShuffle(scale=2 or 4) (+ optional nearest(orig) when uAddOrig==1) -> RGBA8 intermediate `sr_tex`
 const GL_SHUFFLE4X_FS: &str = r#"#version 300 es
 precision highp float;
 precision highp sampler2D;
@@ -316,20 +316,24 @@ precision highp sampler2DArray;
 uniform sampler2D uOrig;
 uniform sampler2DArray uHead;
 uniform int uAddOrig;
+uniform int uScale;
 out vec4 fragColor;
+
+float pickCh(ivec2 sp, int ch) {
+  vec4 v = texelFetch(uHead, ivec3(sp, ch >> 2), 0);
+  int c = ch & 3;
+  return (c == 0) ? v.x : ((c == 1) ? v.y : ((c == 2) ? v.z : v.w));
+}
 
 void main() {
   ivec2 op = ivec2(gl_FragCoord.xy);
-  ivec2 sp = op >> 2;
-  int sub = (op.y & 3) * 4 + (op.x & 3);
-  int g = sub >> 2;
-  int c = sub & 3;
-  vec4 r4 = texelFetch(uHead, ivec3(sp, g), 0);
-  vec4 g4 = texelFetch(uHead, ivec3(sp, 4 + g), 0);
-  vec4 b4 = texelFetch(uHead, ivec3(sp, 8 + g), 0);
-  float rr = (c == 0) ? r4.x : ((c == 1) ? r4.y : ((c == 2) ? r4.z : r4.w));
-  float gg = (c == 0) ? g4.x : ((c == 1) ? g4.y : ((c == 2) ? g4.z : g4.w));
-  float bb = (c == 0) ? b4.x : ((c == 1) ? b4.y : ((c == 2) ? b4.z : b4.w));
+  int s = (uScale == 2) ? 2 : 4;
+  int s2 = s * s;
+  ivec2 sp = op / s;
+  int sub = (op.y % s) * s + (op.x % s);
+  float rr = pickCh(sp, sub);
+  float gg = pickCh(sp, s2 + sub);
+  float bb = pickCh(sp, 2 * s2 + sub);
   vec4 orig = texelFetch(uOrig, sp, 0);
   vec3 outRgb = (uAddOrig != 0) ? (orig.rgb + vec3(rr, gg, bb)) : vec3(rr, gg, bb);
   fragColor = vec4(clamp(outRgb, 0.0, 1.0), orig.a);
@@ -1180,6 +1184,7 @@ struct Shuffle4xProg {
     u_orig: Option<WebGlUniformLocation>,
     u_head: Option<WebGlUniformLocation>,
     u_add_orig: Option<WebGlUniformLocation>,
+    u_scale: Option<WebGlUniformLocation>,
 }
 
 struct SpanConvInProg {
@@ -1220,6 +1225,7 @@ struct GlSpanLayer {
 }
 
 struct GlUploadedSpanModel {
+    scale: u32,
     use_norm: bool,
     conv_1: GlSpanLayer,
     blocks: Vec<[GlSpanLayer; 3]>,
@@ -1231,6 +1237,7 @@ struct GlUploadedSpanModel {
 struct ActiveSpanTileGl {
     tw: i32,
     th: i32,
+    scale: i32,
     src_tex: WebGlTexture,
     feat0: WebGlTexture,
     b1_out: WebGlTexture,
@@ -1574,6 +1581,7 @@ fn init_gl_engine() -> Result<RealEsrganGlEngine, String> {
         u_orig: gl.get_uniform_location(&p_sh, "uOrig"),
         u_head: gl.get_uniform_location(&p_sh, "uHead"),
         u_add_orig: gl.get_uniform_location(&p_sh, "uAddOrig"),
+        u_scale: gl.get_uniform_location(&p_sh, "uScale"),
         prog: p_sh,
     };
 
@@ -2195,6 +2203,7 @@ impl RealEsrganGlEngine {
         gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.head_tex));
         gl.uniform1i(self.shuffle4x.u_head.as_ref(), 1);
         gl.uniform1i(self.shuffle4x.u_add_orig.as_ref(), 1);
+        gl.uniform1i(self.shuffle4x.u_scale.as_ref(), 4);
         gl.draw_arrays(Gl::TRIANGLES, 0, 3);
 
         // Final Pass: Zero-Alteration Wavelet Color Anchor + Dual-Scale Anti-Ringing AMD FidelityFX CAS
@@ -2316,10 +2325,16 @@ impl RealEsrganGlEngine {
 
     fn begin_span_tile(&mut self, tile_rgba: &[u8], tw: usize, th: usize, model_id: &str) -> Result<usize, String> {
         self.cleanup_active_span_tile();
+        let m_info = self
+            .span_models
+            .get(model_id)
+            .map(|m| (m.scale as i32, if m.use_norm { 1 } else { 0 }, m.blocks.len()))
+            .ok_or("SPAN model not uploaded")?;
+        let (scale_i, norm_i, num_blocks) = m_info;
         let tw_i = tw as i32;
         let th_i = th as i32;
-        let tile_ow = tw_i * 4;
-        let tile_oh = th_i * 4;
+        let tile_ow = tw_i * scale_i;
+        let tile_oh = th_i * scale_i;
 
         let gl = &self.gl;
         let src_tex = upload_rgba8_tex2d(gl, tw_i, th_i, Some(tile_rgba), true)?;
@@ -2335,8 +2350,6 @@ impl RealEsrganGlEngine {
         let sr_tex = upload_rgba8_tex2d(gl, tile_ow, tile_oh, None, true)?;
 
         let m = self.span_models.get(model_id).ok_or("SPAN model not uploaded")?;
-        let norm_i = if m.use_norm { 1 } else { 0 };
-        let num_blocks = m.blocks.len();
 
         gl.bind_vertex_array(Some(&self.vao));
         gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
@@ -2394,6 +2407,7 @@ impl RealEsrganGlEngine {
         self.active_span_tile = Some(ActiveSpanTileGl {
             tw: tw_i,
             th: th_i,
+            scale: scale_i,
             src_tex,
             feat0,
             b1_out,
@@ -2468,8 +2482,9 @@ impl RealEsrganGlEngine {
         let m = self.span_models.get(model_id).ok_or("SPAN model missing")?;
         let tw = tile.tw;
         let th = tile.th;
-        let tile_ow = tw * 4;
-        let tile_oh = th * 4;
+        let scale_i = tile.scale;
+        let tile_ow = tw * scale_i;
+        let tile_oh = th * scale_i;
         let cur_tex = match tile.cur_slot {
             0 => &tile.feat0,
             1 => &tile.b1_out,
@@ -2545,10 +2560,41 @@ impl RealEsrganGlEngine {
             }
         }
 
-        // 3. upsampler.0(scratch_a) -> scratch_b
-        self.run_span_conv48(&tile.scratch_a, &tile.scratch_b, &tile.scratch_a, &m.upsampler, tw, th, 0);
+        // 3. upsampler.0(scratch_a) -> scratch_b (1x 4-MRT pass for 2× [12ch->16ch pad], or full 12 slices for 4× [48ch])
+        if scale_i == 2 {
+            let gl = &self.gl;
+            if self.mrt6.is_some() {
+                for j in 4..6u32 {
+                    gl.framebuffer_texture_2d(Gl::FRAMEBUFFER, Gl::COLOR_ATTACHMENT0 + j, Gl::TEXTURE_2D, None, 0);
+                }
+            }
+            gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
+            gl.viewport(0, 0, tw, th);
+            gl.active_texture(Gl::TEXTURE0);
+            gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.scratch_a));
+            gl.active_texture(Gl::TEXTURE1);
+            gl.bind_texture(Gl::TEXTURE_2D, Some(&m.upsampler.tex));
+            gl.active_texture(Gl::TEXTURE2);
+            gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.scratch_a));
+            let p4 = &self.span_48_4;
+            gl.use_program(Some(&p4.prog));
+            gl.uniform1i(p4.u_src.as_ref(), 0);
+            gl.uniform1i(p4.u_weights.as_ref(), 1);
+            gl.uniform1i(p4.u_skip.as_ref(), 2);
+            gl.uniform1i(p4.u_mode.as_ref(), 0);
+            gl.uniform2i(p4.u_dims.as_ref(), tw, th);
+            gl.draw_buffers(&self.mrt4);
+            for j in 0..4 {
+                gl.framebuffer_texture_layer(Gl::FRAMEBUFFER, Gl::COLOR_ATTACHMENT0 + j as u32, Some(&tile.scratch_b), 0, j as i32);
+            }
+            gl.uniform1i(p4.u_group_base.as_ref(), 0);
+            gl.uniform4fv_with_f32_array(p4.u_bias.as_ref(), &m.upsampler.bias[0..16]);
+            gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+        } else {
+            self.run_span_conv48(&tile.scratch_a, &tile.scratch_b, &tile.scratch_a, &m.upsampler, tw, th, 0);
+        }
 
-        // 4. PixelShuffle(4×) with uAddOrig=0 -> sr_tex (RGBA8, LINEAR filtered)
+        // 4. PixelShuffle(scale) with uAddOrig=0 -> sr_tex (RGBA8, LINEAR filtered)
         let gl = &self.gl;
         let max_unbind = if self.mrt6.is_some() { 6u32 } else { 4u32 };
         for j in 1..max_unbind {
@@ -2565,6 +2611,7 @@ impl RealEsrganGlEngine {
         gl.bind_texture(Gl::TEXTURE_2D_ARRAY, Some(&tile.scratch_b));
         gl.uniform1i(self.shuffle4x.u_head.as_ref(), 1);
         gl.uniform1i(self.shuffle4x.u_add_orig.as_ref(), 0);
+        gl.uniform1i(self.shuffle4x.u_scale.as_ref(), scale_i);
         gl.draw_arrays(Gl::TRIANGLES, 0, 3);
 
         // 5. Final Pass: Wavelet Color Anchor + Gentle Anti-Ringing CAS directly onto WebGL2 default canvas
@@ -2884,11 +2931,13 @@ async fn ensure_span_model_uploaded_async(model_id: &str, model_bytes: &[u8]) ->
 
     let conv_2_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 108, &parsed.conv_2.weights_u16))?;
     let conv_cat_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 48, &parsed.conv_cat.weights_u16))?;
-    let up_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, 48, 108, &parsed.upsampler.weights_u16))?;
+    let up_w_cols = if parsed.scale == 2 { 16 } else { 48 };
+    let up_tex = with_gl_engine(|eng| upload_weight_tex2d(&eng.gl, up_w_cols, 108, &parsed.upsampler.weights_u16))?;
     let num_blocks = blocks.len();
 
     with_gl_engine(|eng| {
         eng.span_models.entry(model_id.to_string()).or_insert(GlUploadedSpanModel {
+            scale: parsed.scale,
             use_norm: parsed.use_norm,
             conv_1,
             blocks,
@@ -2980,7 +3029,7 @@ pub async fn restore_image_realesrgan_rust(
 
     let model_id = kind.model_id();
     let model_label = kind.model_label();
-    let scale = 4usize;
+    let scale = kind.scale() as usize;
     let ow = w * scale;
     let oh = h * scale;
 
@@ -2992,8 +3041,10 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Spec 142: ClearReality SPAN already synthesizes crisp organic texture & eyelashes -> gentle 0.35 CAS; Anime 1.0; Legacy 0.85
-    color1[2] = if kind.is_span() {
+    // Spec 144: NomosUni SPAN 2× preserves exact original micro-texture -> gentle 0.25 CAS + exact sender color lock; SPAN 4× 0.35; Anime 1.0
+    color1[2] = if kind == RealEsrganModelKind::NomosUniSpanX2 {
+        0.25
+    } else if kind.is_span() {
         0.35
     } else if kind == RealEsrganModelKind::AnimeVideoV3 {
         1.0
@@ -3188,7 +3239,7 @@ pub async fn restore_image_realesrgan_rust(
                         rgba: None,
                         width: ow as u32,
                         height: oh as u32,
-                        scale: 4,
+                        scale: scale as u32,
                         has_alpha,
                         model_id,
                         model_label,
@@ -3231,7 +3282,7 @@ pub async fn restore_image_realesrgan_rust(
         rgba: Some(out_rgba),
         width: ow as u32,
         height: oh as u32,
-        scale: 4,
+        scale: scale as u32,
         has_alpha,
         model_id,
         model_label,

@@ -299,29 +299,29 @@ mod impl_codec {
                     }],
                     AvifCompressionMode::UltraAdaptive | AvifCompressionMode::UltraAggressive => vec![
                         CandidateConfig {
-                            quality: 74.0,
-                            alpha_quality: 84.0,
+                            quality: 76.0,
+                            alpha_quality: 86.0,
                             speed: fast_speed,
                             bit_depth: BitDepth::Ten,
                             color_model: ColorModel::YCbCr,
                         },
                         CandidateConfig {
-                            quality: 80.0,
-                            alpha_quality: 88.0,
+                            quality: 82.0,
+                            alpha_quality: 90.0,
                             speed: careful_speed,
                             bit_depth: BitDepth::Ten,
                             color_model: ColorModel::YCbCr,
                         },
                         CandidateConfig {
-                            quality: 86.0,
-                            alpha_quality: 92.0,
+                            quality: 88.0,
+                            alpha_quality: 94.0,
                             speed: careful_speed,
                             bit_depth: BitDepth::Ten,
                             color_model: ColorModel::YCbCr,
                         },
                     ],
                 };
-                (cands, if analysis.class == ImageClass::Portrait { 0.95 } else { 0.93 })
+                (cands, if analysis.class == ImageClass::Portrait { 0.96 } else { 0.94 })
             }
         }
     }

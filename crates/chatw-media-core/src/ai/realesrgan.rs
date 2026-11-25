@@ -33,10 +33,12 @@ pub enum RealEsrganModelKind {
     GeneralX4V3,
     /// `4xLSDIRCompact3` (16×64ch, 4×, 1.18 MB FP16, CC-BY-4.0, Phhofm) — Compact Photo SR
     LsdirCompact3X4,
-    /// `4x-ClearRealityV1` (SPAN 6×SPAB 48ch, 4×, 833 KB FP16, Apache-2.0, Kim2091) — Ultra-Sharp Clean/High-Res Photo & Portrait 4× AI!
+    /// `4x-ClearRealityV1` (SPAN 6×SPAB 48ch, 4×, 833 KB FP16, Apache-2.0, Kim2091) — Clean High-Res 4× Photo AI
     ClearRealitySpanX4,
-    /// `4xNomosUni_span_multijpg` (SPAN 6×SPAB 48ch, 4×, 833 KB FP16, CC-BY-4.0, Phhofm) — Heavy AVIF/JPEG Compression & Low-Res Photo 4× AI (zero crosshatch)!
+    /// `4xNomosUni_span_multijpg` (SPAN 6×SPAB 48ch, 4×, 833 KB FP16, CC-BY-4.0, Phhofm) — Heavy AVIF/JPEG Low-Res `< 640px` 4× Photo AI (zero crosshatch)
     NomosUniSpanX4,
+    /// `2xNomosUni_span_multijpg` (SPAN 6×SPAB 48ch, 2×, 802 KB FP16, CC-BY-4.0, Phhofm) — #1 True Ground-Truth Primary AVIF Photo & Portrait 2× AI!
+    NomosUniSpanX2,
 }
 
 impl RealEsrganModelKind {
@@ -47,6 +49,7 @@ impl RealEsrganModelKind {
             Self::LsdirCompact3X4 => "lsdir_compact3_x4",
             Self::ClearRealitySpanX4 => "clearreality_span_x4",
             Self::NomosUniSpanX4 => "nomosuni_span_x4",
+            Self::NomosUniSpanX2 => "nomosuni_span_x2",
         }
     }
 
@@ -57,6 +60,7 @@ impl RealEsrganModelKind {
             Self::LsdirCompact3X4 => "LSDIR Photo Compact v3 (4×)",
             Self::ClearRealitySpanX4 => "ClearReality SPAN (4×)",
             Self::NomosUniSpanX4 => "NomosUni AVIF SPAN (4×)",
+            Self::NomosUniSpanX2 => "NomosUni AVIF SPAN (2×)",
         }
     }
 
@@ -67,6 +71,7 @@ impl RealEsrganModelKind {
             Self::LsdirCompact3X4 => "/models/lsdir_compact3_x4.cwsr",
             Self::ClearRealitySpanX4 => "/models/clearreality_v1_x4.cwsp",
             Self::NomosUniSpanX4 => "/models/nomosuni_span_x4.cwsp",
+            Self::NomosUniSpanX2 => "/models/nomosuni_span_x2.cwsp",
         }
     }
 
@@ -77,21 +82,30 @@ impl RealEsrganModelKind {
             Self::LsdirCompact3X4 => "3.0-c75r25",
             Self::ClearRealitySpanX4 => "1.0-span",
             Self::NomosUniSpanX4 => "1.0-multijpg",
+            Self::NomosUniSpanX2 => "1.0-multijpg-2x",
+        }
+    }
+
+    pub fn scale(self) -> u32 {
+        match self {
+            Self::NomosUniSpanX2 => 2,
+            _ => 4,
         }
     }
 
     pub fn is_span(self) -> bool {
-        matches!(self, Self::ClearRealitySpanX4 | Self::NomosUniSpanX4)
+        matches!(self, Self::ClearRealitySpanX4 | Self::NomosUniSpanX4 | Self::NomosUniSpanX2)
     }
 
     pub fn from_str_name(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
+            "nomosuni_span_x2" | "nomosuni_2x" | "span_2x" => Self::NomosUniSpanX2,
             "nomosuni_span_x4" | "nomosuni" | "avif_span" => Self::NomosUniSpanX4,
             "clearreality_span_x4" | "clearreality" | "span" | "photo" => Self::ClearRealitySpanX4,
             "lsdir_compact3_x4" | "lsdir" | "compact3" => Self::LsdirCompact3X4,
             "realesr_general_x4v3" | "general" | "upscayl-lite" => Self::GeneralX4V3,
             "realesr_animevideov3" | "anime" => Self::AnimeVideoV3,
-            _ => Self::ClearRealitySpanX4,
+            _ => Self::NomosUniSpanX2,
         }
     }
 }
@@ -344,14 +358,17 @@ pub fn select_realesrgan_model_adaptive(
     } else {
         0.0
     };
-    let is_heavily_compressed_photo =
-        (src_bytes > 0 && source_bpp < 0.65 && max_edge <= 800) || (src_bytes > 0 && source_bpp < 0.30);
+    let needs_4x_upscale = max_edge < 640 && src_bytes > 0;
+    let is_ultra_crushed_low_res = src_bytes > 0 && source_bpp < 0.25 && max_edge <= 720;
 
-    let pick_photo_model = |is_crushed: bool| -> RealEsrganModelKind {
-        if is_crushed {
+    // Spec 144 True Ground-Truth Routing:
+    // - Photos/Portraits `>= 640px` -> `NomosUniSpanX2` (2× SPAN: #1 true full-ref SSIM & edge fidelity, preserves eyelashes/necklace/skin, zero crosshatch, 4× less VRAM!)
+    // - Tiny/heavily-crushed photos `< 640px` -> `NomosUniSpanX4` (4× SPAN: zero crosshatch, 2048×1536 recovery!)
+    let pick_photo_model = |crushed_tiny: bool| -> RealEsrganModelKind {
+        if crushed_tiny {
             RealEsrganModelKind::NomosUniSpanX4
         } else {
-            RealEsrganModelKind::ClearRealitySpanX4
+            RealEsrganModelKind::NomosUniSpanX2
         }
     };
 
@@ -364,14 +381,13 @@ pub fn select_realesrgan_model_adaptive(
             return None;
         }
         if matches!(qp.cls.as_str(), "portrait" | "photo") {
-            let downscaled_from_orig = qp.w > 0 && qp.h > 0 && (width < qp.w || height < qp.h);
-            let crushed = is_heavily_compressed_photo || downscaled_from_orig || (max_edge <= 720 && src_bytes > 0);
-            return Some(pick_photo_model(crushed));
+            let downscaled_small = qp.w > 0 && qp.h > 0 && max_edge < 640 && (width < qp.w || height < qp.h);
+            return Some(pick_photo_model(needs_4x_upscale || is_ultra_crushed_low_res || downscaled_small));
         }
         if qp.cls.as_str() == "anime" {
             return Some(RealEsrganModelKind::AnimeVideoV3);
         }
-        return Some(pick_photo_model(is_heavily_compressed_photo));
+        return Some(pick_photo_model(needs_4x_upscale || is_ultra_crushed_low_res));
     }
 
     let analysis = analyze_rgba_image(rgba, width, height, src_bytes, None);
@@ -394,10 +410,7 @@ pub fn select_realesrgan_model_adaptive(
     ) || analysis.skin_tone_ratio > 0.04;
 
     if is_photo_or_portrait {
-        let crushed = is_heavily_compressed_photo
-            || analysis.class == ImageClass::AlreadyHeavilyCompressed
-            || (max_edge <= 720 && src_bytes > 0);
-        return Some(pick_photo_model(crushed));
+        return Some(pick_photo_model(needs_4x_upscale || is_ultra_crushed_low_res));
     }
 
     // 2. Strictly pure flat anime/manga with sparse palette uses AnimeVideoV3; everything else uses adaptive SPAN
@@ -408,7 +421,7 @@ pub fn select_realesrgan_model_adaptive(
     if is_pure_anime {
         Some(RealEsrganModelKind::AnimeVideoV3)
     } else {
-        Some(pick_photo_model(is_heavily_compressed_photo))
+        Some(pick_photo_model(needs_4x_upscale || is_ultra_crushed_low_res))
     }
 }
 
@@ -1326,18 +1339,18 @@ mod tests {
 
         assert_eq!(
             sel_no_qp,
-            Some(RealEsrganModelKind::ClearRealitySpanX4),
-            "Human portrait must route to ClearRealitySpanX4 without QP!"
+            Some(RealEsrganModelKind::NomosUniSpanX2),
+            "Human portrait must route to NomosUniSpanX2 without QP!"
         );
         assert_eq!(
             sel_qp,
-            Some(RealEsrganModelKind::ClearRealitySpanX4),
-            "Human portrait must route to ClearRealitySpanX4 with QP!"
+            Some(RealEsrganModelKind::NomosUniSpanX2),
+            "Human portrait must route to NomosUniSpanX2 with QP!"
         );
     }
 
     #[test]
-    fn high_detail_cosplay_portrait_routes_to_clearreality_span_x4() {
+    fn high_detail_cosplay_portrait_routes_to_nomosuni_span_x2() {
         let p = "/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/.user_uploaded/media_1795545206648_e1cddb86.jpg";
         if !std::path::Path::new(p).exists() {
             return;
@@ -1354,8 +1367,8 @@ mod tests {
         let model_no_qp = select_realesrgan_model(&raw, w, h, None, false);
         let model_qp = select_realesrgan_model(&raw, w, h, Some(&qp), false);
 
-        assert_eq!(model_no_qp, Some(RealEsrganModelKind::ClearRealitySpanX4));
-        assert_eq!(model_qp, Some(RealEsrganModelKind::ClearRealitySpanX4));
+        assert_eq!(model_no_qp, Some(RealEsrganModelKind::NomosUniSpanX2));
+        assert_eq!(model_qp, Some(RealEsrganModelKind::NomosUniSpanX2));
     }
 
     #[test]
