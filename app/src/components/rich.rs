@@ -982,11 +982,12 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     let lb_orig_h = data.orig_h;
                     let is_ai = ai_enhanced();
                     let is_orig = is_sender_original();
-                    let can_ai = data.m != "image/gif" && !data.m.starts_with("video/");
+                    let can_ai = data.m != "image/gif" && !data.m.starts_with("video/") && data.m != "image/svg+xml";
                     let is_loading = ai_loading();
                     let is_revealing = ai_revealing();
                     let pct_now = ai_progress();
-                    let show_corner_icon = needs_on_demand_ai() && !is_ai && !is_loading && !is_revealing && can_ai && !is_orig && (lb_orig_w > lb_w || lb_w < 960);
+                    let can_on_demand = can_ai && !is_orig;
+                    let show_corner_icon = needs_on_demand_ai() && !is_ai && !is_loading && !is_revealing && can_on_demand;
 
                     let corner_raw = lb_raw_src.clone();
                     let corner_mid = data.u.clone();
@@ -1016,7 +1017,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                     ai_restored: is_ai,
                                     original_src: Some(lb_raw_src.clone()),
                                     is_sender_original: is_orig,
-                                    auto_enhance_on_open: show_corner_icon,
+                                    auto_enhance_on_open: !is_ai && can_on_demand,
                                     can_ai_enhance: can_ai,
                                     width: lb_w,
                                     height: lb_h,

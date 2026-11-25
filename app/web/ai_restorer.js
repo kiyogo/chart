@@ -700,6 +700,7 @@
 
       // STAGE 2: Adaptive Multi-Model Neural 4× Super-Resolution (`nomosuni_span_x4` for crushed/low-res AVIF, `clearreality_span_x4` for clean/high-res AVIF, `realesr_animevideov3` for anime, skip crisp text/QR!)
       let res = null;
+      let skipNeuralSr = false;
       let faceSnapCanvas = null;
       let faceCandidateIsAnime = false;
       if (meta.signal && meta.signal.aborted) {
@@ -710,10 +711,14 @@
         try {
           const sel = wasm.selectRealEsrganModel(srcU8, procW, procH, origProfileJson, meta.modelId || '', srcBytes);
           if (sel && sel.skip) {
-            if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
-            return { enhanced: false, skipped: true, reason: sel.reason || 'skipped', url: imageUrl };
-          }
-          if (sel && sel.modelId && sel.cwsrUrl) {
+            // If user opened image in Lightbox or clicked Enhance (`forceRun`), fall back to crisp edge-safe Luma CAS
+            // instead of aborting, so text/UI/large high-contrast images still visibly sharpen without neural hallucination.
+            if (!meta.forceRun || sel.reason === 'dimensions_out_of_ai_bounds') {
+              if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
+              return { enhanced: false, skipped: true, reason: sel.reason || 'skipped', url: imageUrl };
+            }
+            skipNeuralSr = true;
+          } else if (sel && sel.modelId && sel.cwsrUrl) {
             const pBase = stage1Delivered ? 30 : 4;
             const pSpan = stage1Delivered ? 54 : 80;
             reportProgress(pBase);
@@ -796,8 +801,8 @@
         } catch (_) {}
       }
 
-      const sharpness = 1.0;
-      if (!res && !stage1FallbackBlob && wasm && typeof wasm.upscaleFsr1 === 'function') {
+      const sharpness = skipNeuralSr ? 0.45 : 1.0;
+      if (!skipNeuralSr && !res && !stage1FallbackBlob && wasm && typeof wasm.upscaleFsr1 === 'function') {
         try {
           const gpuOut = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, sharpness, reportProgress);
           if (gpuOut && gpuOut.ok && (gpuOut.canvas || gpuOut.rgba)) {
@@ -809,14 +814,14 @@
 
       // Zero-stall off-main-thread encoding (or Stage 1 fallback if Stage 2 AI was offline/unavailable)
       const tEnc0 = performance.now();
-      let finalW = res ? res.width : stage1W;
-      let finalH = res ? res.height : stage1H;
-      let outBlob = !res && stage1FallbackBlob ? stage1FallbackBlob : null;
-      let modelId = res ? res.modelId : (targetW > procW ? 'fsr1_easu_rcas' : 'fidelity_cas_1x');
+      let finalW = res ? res.width : (skipNeuralSr ? targetW : stage1W);
+      let finalH = res ? res.height : (skipNeuralSr ? targetH : stage1H);
+      let outBlob = !skipNeuralSr && !res && stage1FallbackBlob ? stage1FallbackBlob : null;
+      let modelId = res ? res.modelId : (skipNeuralSr ? 'fidelity_cas_1x' : (targetW > procW ? 'fsr1_easu_rcas' : 'fidelity_cas_1x'));
       let modelLabel = res
         ? res.modelLabel
-        : (targetW > procW ? 'AMD FSR 1.0 EASU 2× + RL Deconvolution' : 'RL Optical Deconvolution (Native 1×)');
-      let backend = res ? res.backend : 'rust_webgl2_fsr1_rl_deconv';
+        : (skipNeuralSr ? 'Edge-Safe Luma CAS' : (targetW > procW ? 'AMD FSR 1.0 EASU 2× + RL Deconvolution' : 'RL Optical Deconvolution (Native 1×)'));
+      let backend = res ? res.backend : (skipNeuralSr ? 'cas_edge_safe' : 'rust_webgl2_fsr1_rl_deconv');
       let superRes = res ? (res.scale || (targetW > procW ? 2 : 1)) : (targetW > procW ? 2 : 1);
       let ssim = res ? Number(Number(res.ssim || 0.992).toFixed(4)) : 0.992;
       let meanColorDrift = res ? Number(Number(res.meanColorDrift || 0.002).toFixed(4)) : 0.002;
