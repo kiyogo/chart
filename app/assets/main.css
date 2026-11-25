@@ -6796,7 +6796,8 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   z-index: 8;
 }
 .note-plus-badge:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, var(--text-primary));
+  color: var(--text-primary);
 }
 .note-online-dot {
   position: absolute;
