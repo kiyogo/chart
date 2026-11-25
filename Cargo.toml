@@ -1,5 +1,5 @@
 [workspace]
-members = ["web/backend", "app", "crates/kiyo-kdata", "crates/chatw-media-core"]
+members = ["web/backend", "app", "crates/kiyo-kdata", "crates/chatw-media-core", "crates/chatw-media-worker"]
 resolver = "2"
 
 [profile.dev.package.ravif]

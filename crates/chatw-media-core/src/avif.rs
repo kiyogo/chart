@@ -102,16 +102,22 @@ mod impl_codec {
 
     fn candidate_configs(analysis: &ImageAnalysis, mode: AvifCompressionMode, single_thread: bool) -> (Vec<CandidateConfig>, f64) {
         let fast_speed = match mode {
-            AvifCompressionMode::FastAdaptive => if single_thread { 9 } else { 8 },
-            AvifCompressionMode::UltraAggressive => if single_thread { 8 } else { 6 },
-            AvifCompressionMode::UltraAdaptive => if single_thread { 8 } else { 6 },
+            AvifCompressionMode::FastAdaptive => if single_thread { 10 } else { 8 },
+            AvifCompressionMode::UltraAggressive => if single_thread { 9 } else { 6 },
+            AvifCompressionMode::UltraAdaptive => if single_thread { 9 } else { 6 },
             AvifCompressionMode::HighQuality => if single_thread { 6 } else { 4 },
         };
         let careful_speed = match mode {
-            AvifCompressionMode::FastAdaptive => if single_thread { 9 } else { 7 },
-            AvifCompressionMode::UltraAggressive => if single_thread { 8 } else { 6 },
+            AvifCompressionMode::FastAdaptive => if single_thread { 10 } else { 7 },
+            AvifCompressionMode::UltraAggressive => if single_thread { 9 } else { 6 },
             AvifCompressionMode::UltraAdaptive => if single_thread { 8 } else { 5 },
             AvifCompressionMode::HighQuality => if single_thread { 6 } else { 4 },
+        };
+        // In single-threaded WASM interactive fast mode, 8-bit rav1e cuts encoding CPU latency 2-3x while preserving crisp AVIF output.
+        let fast_photo_depth = if single_thread && matches!(mode, AvifCompressionMode::FastAdaptive) {
+            BitDepth::Eight
+        } else {
+            BitDepth::Ten
         };
 
         if matches!(mode, AvifCompressionMode::UltraAggressive) {
@@ -230,7 +236,7 @@ mod impl_codec {
                         quality: 68.0,
                         alpha_quality: 80.0,
                         speed: fast_speed,
-                        bit_depth: BitDepth::Ten,
+                        bit_depth: fast_photo_depth,
                         color_model: ColorModel::YCbCr,
                     }],
                     AvifCompressionMode::HighQuality => vec![CandidateConfig {
@@ -287,7 +293,7 @@ mod impl_codec {
                         quality: 74.0,
                         alpha_quality: 84.0,
                         speed: fast_speed,
-                        bit_depth: BitDepth::Ten,
+                        bit_depth: fast_photo_depth,
                         color_model: ColorModel::YCbCr,
                     }],
                     AvifCompressionMode::HighQuality => vec![CandidateConfig {

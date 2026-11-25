@@ -158,10 +158,49 @@ pub fn PendingSenderMediaList() -> Element {
                                         }
                                     }
                                 }
+                            } else if item.media_kind == "video" && !item.preview_url.is_empty() {
+                                div { class: "rich-image", style: "width: min(320px, 100%);",
+                                    div { class: "rich-image-stage loaded", style: "position: relative; background: #0f172a; min-height: 160px;",
+                                        video {
+                                            src: "{item.preview_url}",
+                                            muted: true,
+                                            playsinline: true,
+                                            preload: "metadata",
+                                            style: "display: block; width: 100%; max-height: 22rem; object-fit: cover; border-radius: var(--radius-xl);",
+                                        }
+                                        div {
+                                            class: if item.failed { "status-badge error" } else { "chip-privacy" },
+                                            style: "position: absolute; bottom: 8px; right: 8px; z-index: 2; backdrop-filter: blur(8px); display: inline-flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.78); color: #fff;",
+                                            if !item.failed {
+                                                span { class: "spinner", style: "width: 12px; height: 12px; border-width: 2px;" }
+                                            }
+                                            "Video · {item.status_label}"
+                                            if item.failed {
+                                                button {
+                                                    r#type: "button",
+                                                    class: "btn-secondary",
+                                                    style: "margin-left: 6px; padding: 2px 8px; font-size: 11px;",
+                                                    onclick: move |_| {
+                                                        media_opt::release_pending_handle(&rem_id, true);
+                                                        remove_pending_media(&rem_id);
+                                                    },
+                                                    "Đóng"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             } else {
                                 div { class: "rich-card",
                                     div { class: "rich-title", "{item.file_name}" }
-                                    div { class: if item.failed { "rich-body error" } else { "rich-body muted" }, "{item.status_label}" }
+                                    div {
+                                        class: if item.failed { "rich-body error" } else { "rich-body muted" },
+                                        style: "display: inline-flex; align-items: center; gap: 6px;",
+                                        if !item.failed {
+                                            span { class: "spinner", style: "width: 12px; height: 12px; border-width: 2px;" }
+                                        }
+                                        "{item.status_label}"
+                                    }
                                 }
                             }
                         }
@@ -641,7 +680,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     // so copying/pasting it into another chat NEVER creates a duplicate file on the server!
                     const regDedup = (isSenderOrigLocal) => {{
                         if (window.__chatwDedupLocal && window.__chatwDedupLocal.registerLoadedImageFromBlobUrl) {{
-                            window.__chatwDedupLocal.registerLoadedImageFromBlobUrl({url_json}, {{
+                            const run = () => window.__chatwDedupLocal.registerLoadedImageFromBlobUrl({url_json}, {{
                                 url: {mid_json},
                                 keyB64: {key_json},
                                 nonceB64: {nonce_json},
@@ -656,6 +695,8 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                 isAiRecovery: Boolean({qp_json}) || ({target_w} > {wire_w_reg}),
                                 isSenderOrigLocal: Boolean(isSenderOrigLocal),
                             }}).catch(() => {{}});
+                            if (typeof requestIdleCallback === 'function') requestIdleCallback(run, {{ timeout: 800 }});
+                            else setTimeout(run, 120);
                         }}
                     }};
                     let inputUrl = {url_json};

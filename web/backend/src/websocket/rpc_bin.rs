@@ -60,7 +60,7 @@ pub const FLAG_PADDED: u8 = 0x02;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(6);
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_RPCS: usize = 16;
-const MAX_RPC_BODY_BYTES: usize = 16 * 1024 * 1024;
+const MAX_RPC_BODY_BYTES: usize = 36 * 1024 * 1024;
 const COMPRESS_THRESHOLD: usize = 512;
 
 fn build_cwbf2_header(

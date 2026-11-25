@@ -265,13 +265,13 @@
   const mediaWorkerPending = new Map();
   let nativeCanvasAvifSupport = null; // null = untested, true/false once probed
 
-  function optimizeInMediaWorker(rawU8, mime, opts) {
-    if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+  function optimizeInMediaWorker(rawU8, mime, opts, task = 'optimize_image') {
+    if (typeof Worker === 'undefined') {
       return Promise.resolve(null);
     }
     try {
       if (!mediaWorker) {
-        mediaWorker = new Worker('/media_worker.js');
+        mediaWorker = new Worker('/media_worker.js', { type: 'module' });
         mediaWorker.onmessage = (ev) => {
           const d = ev.data;
           if (!d || !d.id) return;
@@ -280,7 +280,7 @@
             clearTimeout(entry.timer);
             mediaWorkerPending.delete(d.id);
             if (d.avifUnsupportedInWorker) nativeCanvasAvifSupport = false;
-            else if (d.ok && d.codec === 'avif_native_canvas') nativeCanvasAvifSupport = true;
+            else if (d.ok && (d.codec === 'avif_native_canvas' || d.codec === 'avif_native_canvas_worker')) nativeCanvasAvifSupport = true;
             entry.resolve(d.ok ? d : null);
           }
         };
@@ -299,9 +299,9 @@
         const timer = setTimeout(() => {
           mediaWorkerPending.delete(id);
           resolve(null);
-        }, 8000);
+        }, 30000);
         mediaWorkerPending.set(id, { resolve, timer });
-        mediaWorker.postMessage({ id, buffer: copy.buffer, mime, opts }, [copy.buffer]);
+        mediaWorker.postMessage({ id, task, buffer: copy.buffer, mime, opts }, [copy.buffer]);
       });
     } catch (_) {
       return Promise.resolve(null);
@@ -395,14 +395,13 @@
       }
     }
 
-    if (!rawSniff.animated && nativeCanvasAvifSupport !== false) {
-      const workerRes = await optimizeInMediaWorker(rawU8, rawSniff.mime || fileOrBlob.type, effectiveOpts);
-      if (workerRes && workerRes.bytesB64 && (workerRes.ext === 'avif' || effectiveOpts.preserveOriginal)) {
-        if (!effectiveOpts.preserveOriginal && !workerRes.origProfileJson) {
-          workerRes.origProfileJson = await computeOrigProfileFromRaw(rawU8, rawSniff.mime || fileOrBlob.type);
-        }
-        return workerRes;
+    // Offload both native AVIF & release WASM AVIF completely off the main thread when worker supports it
+    const workerRes = await optimizeInMediaWorker(rawU8, rawSniff.mime || fileOrBlob.type, effectiveOpts, 'optimize_image');
+    if (workerRes && workerRes.bytesB64 && (workerRes.ext === 'avif' || effectiveOpts.preserveOriginal || workerRes.codec === 'original_passthrough')) {
+      if (!effectiveOpts.preserveOriginal && !workerRes.origProfileJson && workerRes.codec === 'avif_native_canvas_worker') {
+        workerRes.origProfileJson = await computeOrigProfileFromRaw(rawU8, rawSniff.mime || fileOrBlob.type);
       }
+      return workerRes;
     }
 
     if (effectiveOpts.preserveOriginal) {
@@ -734,14 +733,14 @@
         try { URL.revokeObjectURL(objUrl); } catch (_) {}
         resolve(val);
       };
-      const timer = setTimeout(() => done(null), 3500);
+      const timer = setTimeout(() => done(null), 1200);
       v.onerror = () => done(null);
       v.onloadedmetadata = async () => {
         const dur = Number(v.duration || 0);
         const w = v.videoWidth || 0;
         const h = v.videoHeight || 0;
         if (!dur || !Number.isFinite(dur) || w < 8 || h < 8) { done(null); return; }
-        const pts = [0.15, 0.40, 0.65, 0.85].map((r) => Math.max(0.05, Math.min(dur - 0.05, dur * r)));
+        const pts = [0.20, 0.70].map((r) => Math.max(0.05, Math.min(dur - 0.05, dur * r)));
         const pw = Math.max(32, Math.min(160, w));
         const ph = Math.max(32, Math.round(pw * (h / Math.max(1, w))));
         const c = document.createElement('canvas');
@@ -753,7 +752,7 @@
             const onSeek = () => { v.removeEventListener('seeked', onSeek); res(true); };
             v.addEventListener('seeked', onSeek, { once: true });
             try { v.currentTime = t; } catch (_) { res(false); }
-            setTimeout(() => res(false), 600);
+            setTimeout(() => res(false), 350);
           });
           if (!ok) continue;
           try {
@@ -981,6 +980,16 @@
     }
   }
 
+  function inferMediaKind(file, sniff = null) {
+    const mt = String((file && file.type) || '').toLowerCase();
+    const sm = String((sniff && sniff.mime) || '').toLowerCase();
+    const ext = String((file && file.name && file.name.split('.').pop()) || '').toLowerCase();
+    if (mt.startsWith('image/') || sm.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif'].includes(ext)) return 'image';
+    if (mt.startsWith('video/') || sm.startsWith('video/') || ['mp4', 'webm', 'mov', 'mkv', 'm4v'].includes(ext)) return 'video';
+    if (mt.startsWith('audio/') || sm.startsWith('audio/') || ['mp3', 'ogg', 'opus', 'wav', 'flac', 'm4a'].includes(ext)) return 'audio';
+    return 'file';
+  }
+
   async function processSingleFile(file, preserveOriginal = false, existingPreviewUrl = null, skipLocalDedup = false) {
     if (await isBlockedSvgBlob(file)) {
       return { error: 'svg_not_allowed' };
@@ -991,14 +1000,32 @@
       if (!existingPreviewUrl) { try { URL.revokeObjectURL(previewUrl); } catch (_) {} }
       return { error: 'svg_not_allowed' };
     }
-    const origBlake3 = window.__chatwWasmMedia && window.__chatwWasmMedia.blake3Hex
-      ? window.__chatwWasmMedia.blake3Hex(rawArr)
-      : '';
-    const shaHexRaw = window.__chatwStorage ? await window.__chatwStorage.sha256Hex(rawArr) : '';
+    const sniffedKind = inferMediaKind(file, await sniffBytesFormat(rawArr));
+    const isImageKind = sniffedKind === 'image';
 
-    if (file.type.startsWith('image/')) {
+    // Run BLAKE3 + SHA-256 + PDQ off-main-thread in worker first when available (0ms UI block!).
+    let origBlake3 = '';
+    let shaHexRaw = '';
+    let pdq = null;
+    const fpWorker = rawArr.byteLength <= 24 * 1024 * 1024
+      ? await optimizeInMediaWorker(rawArr, file.type || (isImageKind ? 'image/png' : 'application/octet-stream'), { isImage: isImageKind }, 'compute_pdq_blake3')
+      : null;
+    if (fpWorker && fpWorker.ok) {
+      origBlake3 = fpWorker.origBlake3 || '';
+      shaHexRaw = fpWorker.sha256 || '';
+      pdq = fpWorker.pdq || null;
+    } else {
+      origBlake3 = window.__chatwWasmMedia && window.__chatwWasmMedia.blake3Hex
+        ? window.__chatwWasmMedia.blake3Hex(rawArr)
+        : '';
+      shaHexRaw = window.__chatwStorage ? await window.__chatwStorage.sha256Hex(rawArr) : '';
+      if (isImageKind) {
+        pdq = await computeImagePdqFromBytes(rawArr, file.type);
+      }
+    }
+
+    if (isImageKind) {
       try {
-        const pdq = await computeImagePdqFromBytes(rawArr, file.type);
         // 1. Check local authorized cross-chat dedup registry FIRST (catches copied/pasted/saved blurry OR enhanced images -> 0ms encode, 0B upload!)
         const localHit = skipLocalDedup ? null : findLocalAuthorizedMatch({ origBlake3, wireBlake3: origBlake3, sha256: shaHexRaw, pdq });
         if (localHit && localHit.refId) {
@@ -1063,7 +1090,7 @@
 
     const raw = rawArr;
     const shaHex = shaHexRaw;
-    const mediaKind = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
+    const mediaKind = sniffedKind;
 
     // Check exact cross-chat dedup for videos, audio & general files too!
     const localFileHit = skipLocalDedup ? null : findLocalAuthorizedMatch({ origBlake3, wireBlake3: origBlake3, sha256: shaHex, pdq: null });
@@ -1095,17 +1122,25 @@
     const videoFingerprintJson = mediaKind === 'video' ? await extractVideoFingerprint(file) : null;
     const audioFingerprintJson = mediaKind === 'audio' ? await extractAudioFingerprint(raw) : null;
 
-    // Lossless Smart File Compression (`CWCMP1` ZSTD/Brotli/LZMA2) for general files (documents, logs, JSON, code)
+    // Lossless Smart File Compression (`CWCMP1` ZSTD/Brotli/LZMA2) off-main-thread for general files
     let uploadBytes = raw;
     let fileCodec = 'raw';
-    if (mediaKind === 'file' && !preserveOriginal && window.__chatwWasmMedia && typeof window.__chatwWasmMedia.compressFileSmart === 'function') {
-      try {
-        const cmp = window.__chatwWasmMedia.compressFileSmart(raw);
-        if (cmp && cmp.ok && cmp.compressed && cmp.bytes && cmp.bytes.byteLength < raw.byteLength) {
-          uploadBytes = cmp.bytes instanceof Uint8Array ? cmp.bytes : new Uint8Array(cmp.bytes);
-          fileCodec = cmp.codec || 'cwcmp1';
-        }
-      } catch (_) {}
+    if (mediaKind === 'file' && !preserveOriginal) {
+      const wCmp = raw.byteLength <= 16 * 1024 * 1024
+        ? await optimizeInMediaWorker(raw, file.type || 'application/octet-stream', {}, 'compress_file')
+        : null;
+      if (wCmp && wCmp.ok && wCmp.compressed && wCmp.bytesB64) {
+        uploadBytes = b64ToBytes(wCmp.bytesB64);
+        fileCodec = wCmp.codec || 'cwcmp1';
+      } else if (!wCmp && window.__chatwWasmMedia && typeof window.__chatwWasmMedia.compressFileSmart === 'function') {
+        try {
+          const cmp = window.__chatwWasmMedia.compressFileSmart(raw);
+          if (cmp && cmp.ok && cmp.compressed && cmp.bytes && cmp.bytes.byteLength < raw.byteLength) {
+            uploadBytes = cmp.bytes instanceof Uint8Array ? cmp.bytes : new Uint8Array(cmp.bytes);
+            fileCodec = cmp.codec || 'cwcmp1';
+          }
+        } catch (_) {}
+      }
     }
 
     return {
@@ -1146,13 +1181,7 @@
       }
       const handleId = `pend_${Date.now().toString(36)}_${nextHandleSeq++}`;
       const previewUrl = URL.createObjectURL(file);
-      const mediaKind = file.type.startsWith('image/')
-        ? 'image'
-        : file.type.startsWith('video/')
-          ? 'video'
-          : file.type.startsWith('audio/')
-            ? 'audio'
-            : 'file';
+      const mediaKind = inferMediaKind(file);
       let width = 0;
       let height = 0;
       if (mediaKind === 'image') {

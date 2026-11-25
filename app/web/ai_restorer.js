@@ -718,7 +718,7 @@
                 try {
                   reportProgress(87);
                   await yieldUiSlice();
-                  const maxDisplayCap = Math.max(1024, Math.min(3840, Number(meta.maxDisplayEdge) || 3840));
+                  const maxDisplayCap = Math.max(1024, Math.min(1600, Number(meta.maxDisplayEdge) || 1600));
                   let pw = res.width;
                   let ph = res.height;
                   if (Math.max(pw, ph) > maxDisplayCap) {
