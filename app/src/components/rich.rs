@@ -633,6 +633,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             let js = format!(
                 r#"
                 (async () => {{
+                  try {{
                     // 0. Register this loaded image (even if blurry/un-enhanced!) in local cross-chat PDQ/BLAKE3 dedup index
                     // so copying/pasting it into another chat NEVER creates a duplicate file on the server!
                     const regDedup = (isSenderOrigLocal) => {{
@@ -728,6 +729,9 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     }} else {{
                         dioxus.send({{ type: 'failed' }});
                     }}
+                  }} catch (err) {{
+                    try {{ dioxus.send({{ type: 'failed', error: String(err) }}); }} catch (_) {{}}
+                  }}
                 }})();
                 "#
             );
@@ -803,6 +807,11 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         break;
                     }
                 }
+            }
+            // Guaranteed cleanup: if JS eval exited/aborted before emitting 'done'/'failed', never leave spinner stuck at 3%/90%
+            if *ai_loading.peek() {
+                ai_loading.set(false);
+                ai_revealing.set(false);
             }
         });
     };
@@ -2480,6 +2489,7 @@ pub fn GlobalImageLightbox() -> Element {
             let js = format!(
                 r#"
                 (async () => {{
+                  try {{
                     if (!window.__chatwAiRestorer) {{ dioxus.send({{ type: 'failed' }}); return; }}
                     // Let Lightbox Frame-0/Frame-1 paint smoothly at 60/120fps before kicking off GPU AI work!
                     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -2502,6 +2512,9 @@ pub fn GlobalImageLightbox() -> Element {
                     }} else {{
                         dioxus.send({{ type: 'failed' }});
                     }}
+                  }} catch (err) {{
+                    try {{ dioxus.send({{ type: 'failed', error: String(err) }}); }} catch (_) {{}}
+                  }}
                 }})();
                 "#
             );

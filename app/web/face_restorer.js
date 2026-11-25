@@ -22,7 +22,9 @@
 
   let ortPromise = null;
   let yunetSession = null;
+  let yunetInitPromise = null;
   let gfpganSession = null;
+  let gfpganInitPromise = null;
   let webgpuSupported = null;
   let gfpganDisabled = false;
 
@@ -68,21 +70,28 @@
   function loadOrt() {
     if (window.ort) return Promise.resolve(window.ort);
     if (ortPromise) return ortPromise;
-    ortPromise = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = ORT_SCRIPT_URL;
-      s.async = true;
-      s.onload = () => {
-        if (window.ort) {
-          window.ort.env.wasm.wasmPaths = ORT_WASM_PATHS;
-          window.ort.env.wasm.numThreads = 1;
-          resolve(window.ort);
-        } else {
-          reject(new Error('ORT loaded but window.ort missing'));
-        }
-      };
-      s.onerror = () => reject(new Error('Failed to load ONNX Runtime Web'));
-      document.head.appendChild(s);
+    ortPromise = withTimeout(
+      new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = ORT_SCRIPT_URL;
+        s.async = true;
+        s.onload = () => {
+          if (window.ort) {
+            window.ort.env.wasm.wasmPaths = ORT_WASM_PATHS;
+            window.ort.env.wasm.numThreads = 1;
+            resolve(window.ort);
+          } else {
+            reject(new Error('ORT loaded but window.ort missing'));
+          }
+        };
+        s.onerror = () => reject(new Error('Failed to load ONNX Runtime Web'));
+        document.head.appendChild(s);
+      }),
+      4500,
+      'ort_script_load',
+    ).catch((err) => {
+      ortPromise = null;
+      throw err;
     });
     return ortPromise;
   }
@@ -134,32 +143,44 @@
 
   async function getYunetSession(ort) {
     if (yunetSession) return yunetSession;
-    const bytes = await fetchModelBytesCached([YUNET_URL], 100_000, true);
-    if (!bytes) throw new Error('YuNet model unavailable');
-    yunetSession = await withTimeout(
-      ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] }),
-      4000,
-      'yunet_init',
-    );
-    return yunetSession;
+    if (yunetInitPromise) return yunetInitPromise;
+    yunetInitPromise = (async () => {
+      const bytes = await fetchModelBytesCached([YUNET_URL], 100_000, true);
+      if (!bytes) throw new Error('YuNet model unavailable');
+      yunetSession = await withTimeout(
+        ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] }),
+        4000,
+        'yunet_init',
+      );
+      return yunetSession;
+    })().catch((err) => {
+      yunetInitPromise = null;
+      throw err;
+    });
+    return yunetInitPromise;
   }
 
   async function getGfpganSession(ort) {
     if (gfpganDisabled) throw new Error('GFPGAN disabled after previous timeout');
     if (gfpganSession) return gfpganSession;
-    try {
-      const bytes = await fetchModelBytesCached(GFPGAN_URLS, 100_000_000, false);
-      if (!bytes) throw new Error('GFPGANv1.4 model unavailable');
-      gfpganSession = await withTimeout(
-        ort.InferenceSession.create(bytes, { executionProviders: ['webgpu'] }),
-        8000,
-        'gfpgan_init',
-      );
-      return gfpganSession;
-    } catch (err) {
-      gfpganDisabled = true;
-      throw err;
-    }
+    if (gfpganInitPromise) return gfpganInitPromise;
+    gfpganInitPromise = (async () => {
+      try {
+        const bytes = await fetchModelBytesCached(GFPGAN_URLS, 100_000_000, false);
+        if (!bytes) throw new Error('GFPGANv1.4 model unavailable');
+        gfpganSession = await withTimeout(
+          ort.InferenceSession.create(bytes, { executionProviders: ['webgpu'] }),
+          12000,
+          'gfpgan_init',
+        );
+        return gfpganSession;
+      } catch (err) {
+        gfpganDisabled = true;
+        gfpganInitPromise = null;
+        throw err;
+      }
+    })();
+    return gfpganInitPromise;
   }
 
   function iou(a, b) {
@@ -222,7 +243,11 @@
       detIn[2 * dhw + i] = detData[i * 4 + 0];
     }
 
-    const out = await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', detIn, [1, 3, detSize, detSize]) });
+    const out = await withTimeout(
+      sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', detIn, [1, 3, detSize, detSize]) }),
+      4000,
+      'yunet_run',
+    );
     const raw = [];
     for (const stride of [8, 16, 32]) {
       const cls = out[`cls_${stride}`].data;

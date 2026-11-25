@@ -2,7 +2,7 @@
 // Spec 143: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 + RL -> Stage 2 Adaptive SPAN 4× (NomosUni AVIF / ClearRealityV1 / AnimeVideoV3) + Text/QR Guard + AbortSignal cancellation!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v23';
+  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v24';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
     nomosuni_span_x2: { id: 'nomosuni_span_x2', cwsrUrl: '/models/nomosuni_span_x2.cwsp', license: 'CC-BY-4.0', scale: 2 },
@@ -38,10 +38,59 @@
     return Boolean(enabled);
   }
 
+  function withTimeout(promise, ms, label = 'op') {
+    let timer = null;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timeout:${label}:${ms}ms`)), ms);
+      }),
+    ]).finally(() => {
+      if (timer !== null) clearTimeout(timer);
+    });
+  }
+
   let queue = Promise.resolve();
-  function enqueueExclusive(fn) {
-    const next = queue.then(fn, fn);
+  let pendingMainJobs = 0;
+  let mainIdleResolvers = [];
+  function waitForMainQueueIdle() {
+    if (pendingMainJobs <= 0) return Promise.resolve();
+    return new Promise((resolve) => mainIdleResolvers.push(resolve));
+  }
+  function enqueueExclusive(fn, timeoutMs = 18000) {
+    pendingMainJobs++;
+    const runWithWatchdog = () =>
+      withTimeout(Promise.resolve().then(fn), timeoutMs, 'ai_restore_job')
+        .catch((err) => ({
+          enhanced: false,
+          skipped: true,
+          reason: 'job_timeout_or_error',
+          error: String(err),
+        }))
+        .finally(() => {
+          pendingMainJobs = Math.max(0, pendingMainJobs - 1);
+          if (pendingMainJobs === 0 && mainIdleResolvers.length > 0) {
+            const list = mainIdleResolvers;
+            mainIdleResolvers = [];
+            for (const r of list) r();
+          }
+        });
+    const next = queue.then(runWithWatchdog, runWithWatchdog);
     queue = next.catch(() => {});
+    return next;
+  }
+
+  // Dedicated low-priority background queue for Stage 2B Face Refinement (YuNet + GFPGANv1.4 WebGPU).
+  // Yields to all Stage 2A `enqueueExclusive` jobs first so visible chat images NEVER contend with 325 MB ONNX!
+  let faceBgQueue = Promise.resolve();
+  function enqueueFaceBg(fn) {
+    const runWhenIdle = async () => {
+      await waitForMainQueueIdle();
+      await yieldUiSlice();
+      return await fn();
+    };
+    const next = faceBgQueue.then(runWhenIdle, runWhenIdle);
+    faceBgQueue = next.catch(() => {});
     return next;
   }
 
@@ -72,9 +121,9 @@
         }
       } catch (_) {}
     }
-    const resp = await fetch(cwsrUrl, { cache: 'force-cache' });
+    const resp = await withTimeout(fetch(cwsrUrl, { cache: 'force-cache' }), 10000, 'model_fetch');
     if (!resp.ok) throw new Error(`Model fetch failed (${resp.status}): ${cwsrUrl}`);
-    const bytes = new Uint8Array(await resp.arrayBuffer());
+    const bytes = new Uint8Array(await withTimeout(resp.arrayBuffer(), 10000, 'model_read'));
     modelBytesMemCache.set(modelId, bytes);
     if (window.__chatwStorage && typeof window.__chatwStorage.putAiModel === 'function') {
       window.__chatwStorage.putAiModel(modelId, bytes, { version: version || '0.2.5.0' }).catch(() => {});
@@ -91,7 +140,7 @@
     let batteryLevel = null;
     try {
       if (typeof navigator.getBattery === 'function') {
-        const bat = await navigator.getBattery();
+        const bat = await withTimeout(navigator.getBattery(), 1000, 'battery');
         batteryLevel = bat.level;
         lowBattery = !bat.charging && bat.level <= 0.15;
       }
@@ -288,18 +337,40 @@
     }
   }
 
-  function callAiMediaWorker(payload, transfers = []) {
+  function callAiMediaWorker(payload, transfers = [], timeoutMs = 6000) {
     const w = getAiMediaWorker();
     if (!w) return Promise.resolve(null);
     return new Promise((resolve) => {
       const id = aiWorkerSeq++;
+      const timer = setTimeout(() => {
+        if (aiWorkerPending.has(id)) {
+          aiWorkerPending.delete(id);
+          // Recycle wedged worker so future calls never stall
+          try { w.terminate(); } catch (_) {}
+          if (aiMediaWorker === w) aiMediaWorker = null;
+          for (const p of aiWorkerPending.values()) {
+            try { clearTimeout(p.timer); } catch (_) {}
+            p.resolve(null);
+          }
+          aiWorkerPending.clear();
+          resolve(null);
+        }
+      }, timeoutMs);
       aiWorkerPending.set(id, {
-        resolve,
-        reject: () => resolve(null),
+        timer,
+        resolve: (val) => {
+          clearTimeout(timer);
+          resolve(val);
+        },
+        reject: () => {
+          clearTimeout(timer);
+          resolve(null);
+        },
       });
       try {
         w.postMessage({ ...payload, id }, transfers);
       } catch (_) {
+        clearTimeout(timer);
         aiWorkerPending.delete(id);
         resolve(null);
       }
@@ -402,7 +473,7 @@
       img.decoding = 'async';
       img.src = url;
       if (typeof img.decode === 'function') {
-        await img.decode();
+        await withTimeout(img.decode(), 2500, 'img_decode');
       }
     } catch (_) {}
   }
@@ -509,9 +580,9 @@
       let srcU8 = null;
       const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 1080 : 960;
       try {
-        const resp = await fetch(imageUrl);
+        const resp = await withTimeout(fetch(imageUrl), 10000, 'img_fetch');
         if (!resp.ok) return { enhanced: false, skipped: true, reason: 'fetch_failed', url: imageUrl };
-        const blob = await resp.blob();
+        const blob = await withTimeout(resp.blob(), 10000, 'img_blob');
         srcBytes = blob.size;
         // Offload decode + getImageData completely off the main thread!
         const wDec = await callAiMediaWorker({ type: 'decode', blob, maxInEdge });
@@ -617,6 +688,8 @@
 
       // STAGE 2: Adaptive Multi-Model Neural 4× Super-Resolution (`nomosuni_span_x4` for crushed/low-res AVIF, `clearreality_span_x4` for clean/high-res AVIF, `realesr_animevideov3` for anime, skip crisp text/QR!)
       let res = null;
+      let faceSnapCanvas = null;
+      let faceCandidateIsAnime = false;
       if (meta.signal && meta.signal.aborted) {
         return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
       }
@@ -676,38 +749,24 @@
                 } catch (_) {}
               }
 
-              // Spec 145: Stage 2B — Hybrid Face Expert (YuNet 228 KB MIT + GFPGANv1.4 Apache-2.0 WebGPU + Adaptive Elliptical Feathered Mask)
-              // Runs sequentially ONLY on non-anime photo/portrait canvases when WebGPU is available & face(s) are detected!
+              // Spec 147: Snapshot Stage 2A canvas for non-blocking background Stage 2B Face Refinement (YuNet + GFPGANv1.4).
+              // We NEVER block `90% -> 100%` or starve `enqueueExclusive` waiting for 325 MB ONNX / WebGPU shader compile!
+              faceCandidateIsAnime = Boolean(sel.isAnime);
               if (
                 res.canvas &&
-                !sel.isAnime &&
+                !faceCandidateIsAnime &&
                 window.__chatwFaceRestorer &&
                 typeof window.__chatwFaceRestorer.restoreFacesOnCanvas === 'function'
               ) {
                 try {
-                  reportProgress(90);
-                  await yieldUiSlice();
-                  let faceTimer = null;
-                  const faceOut = await Promise.race([
-                    window.__chatwFaceRestorer.restoreFacesOnCanvas(res.canvas, {
-                      srcMaxDim: maxDim,
-                      signal: meta.signal,
-                    }),
-                    new Promise((resolve) => {
-                      faceTimer = setTimeout(() => resolve({ applied: false, reason: 'face_stage_timeout' }), 9000);
-                    }),
-                  ]).finally(() => {
-                    if (faceTimer !== null) clearTimeout(faceTimer);
-                  });
-                  if (faceOut && faceOut.applied && faceOut.canvas) {
-                    res = {
-                      ...res,
-                      canvas: faceOut.canvas,
-                      modelLabel: `${res.modelLabel} + GFPGANv1.4`,
-                    };
-                  }
+                  const snap = document.createElement('canvas');
+                  snap.width = res.canvas.width;
+                  snap.height = res.canvas.height;
+                  snap.getContext('2d').drawImage(res.canvas, 0, 0);
+                  faceSnapCanvas = snap;
                 } catch (_) {}
               }
+              reportProgress(92);
             }
           }
         } catch (_) {}
@@ -891,6 +950,98 @@
           })
           .catch(() => {});
       }
+
+      // Spec 147: Non-blocking background Stage 2B Face Refinement (YuNet + GFPGANv1.4 WebGPU).
+      // Runs AFTER Stage 2A has already delivered 100% and released `enqueueExclusive`!
+      if (faceSnapCanvas && !faceCandidateIsAnime && window.__chatwFaceRestorer && typeof window.__chatwFaceRestorer.restoreFacesOnCanvas === 'function') {
+        const snapForBg = faceSnapCanvas;
+        const baseEntry = { ...entry };
+        const bgHasAlpha = Boolean((res && res.hasAlpha) || hasAlpha);
+        const bgOnRefined = typeof meta.onRefined === 'function' ? meta.onRefined : null;
+        const bgSignal = meta.signal;
+        enqueueFaceBg(async () => {
+          try {
+            if (bgSignal && bgSignal.aborted) return;
+            const faceOut = await withTimeout(
+              window.__chatwFaceRestorer.restoreFacesOnCanvas(snapForBg, {
+                srcMaxDim: maxDim,
+                signal: bgSignal,
+              }),
+              15000,
+              'bg_face_stage',
+            );
+            if (!faceOut || !faceOut.applied || !faceOut.canvas) return;
+            if (bgSignal && bgSignal.aborted) return;
+
+            let refBlob = null;
+            if (getAiMediaWorker()) {
+              try {
+                const bmp = await createImageBitmap(faceOut.canvas);
+                const wEnc = await callAiMediaWorker(
+                  { type: 'encode', bitmap: bmp, width: faceOut.canvas.width, height: faceOut.canvas.height, hasAlpha: bgHasAlpha, maxOutEdge: 3840 },
+                  [bmp],
+                  6000,
+                );
+                if (wEnc && wEnc.ok && wEnc.blob) refBlob = wEnc.blob;
+              } catch (_) {}
+            }
+            if (!refBlob) {
+              refBlob = await encodeCanvasBlob(faceOut.canvas, bgHasAlpha);
+            }
+            if (!refBlob || refBlob.size === 0) return;
+
+            const refUrl = URL.createObjectURL(refBlob);
+            await predecodeImageUrl(refUrl);
+            const refinedEntry = {
+              ...baseEntry,
+              url: refUrl,
+              modelLabel: `${baseEntry.modelLabel} + GFPGANv1.4`,
+              outBytes: refBlob.size,
+              facesRestored: faceOut.facesRestored || 1,
+            };
+            rememberSessionResult(cacheKey, refinedEntry);
+            if (window.__chatwStorage && typeof window.__chatwStorage.putAiOutput === 'function') {
+              window.__chatwStorage
+                .putAiOutput(cacheKey, refBlob, {
+                  media_id: mediaId,
+                  model_id: refinedEntry.modelId,
+                  model_label: refinedEntry.modelLabel,
+                  model_version: refinedEntry.modelVersion,
+                  backend: refinedEntry.backend,
+                  ssim: refinedEntry.ssim,
+                  compute_cost_ms: baseEntry.elapsedMs + (faceOut.gfpMs || 0),
+                  width: faceOut.canvas.width,
+                  height: faceOut.canvas.height,
+                  src_width: rawW,
+                  src_height: rawH,
+                  src_bytes: srcBytes,
+                  super_res: refinedEntry.superRes,
+                  match_pct: refinedEntry.matchPct,
+                })
+                .catch(() => {});
+            }
+            if (bgOnRefined) {
+              try { bgOnRefined(refUrl, refinedEntry); } catch (_) {}
+            }
+            // Seamlessly upgrade any live <img> element currently displaying the Stage 2A blob URL (chat bubble or Lightbox)
+            if (typeof document !== 'undefined' && baseEntry.url) {
+              try {
+                const imgs = document.querySelectorAll('img');
+                for (const el of imgs) {
+                  if (el.src === baseEntry.url) {
+                    el.src = refUrl;
+                  }
+                }
+              } catch (_) {}
+            }
+          } catch (_) {
+          } finally {
+            snapForBg.width = 0;
+            snapForBg.height = 0;
+          }
+        });
+      }
+
       return entry;
     });
   }
