@@ -3,7 +3,7 @@
 // ZERO neural GAN hallucination, ZERO plastic skin, ZERO alien eye distortions, ZERO oil-painting blobs, ZERO 3.6MB model downloads!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'fsr1-easu-rcas-v15';
+  const PIPELINE_VERSION = 'fsr1-rl-deconv-v16';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
     fsr1_easu_rcas: { id: 'fsr1_easu_rcas', license: 'MIT', scale: 2 },
@@ -565,7 +565,7 @@
         }
       }
 
-      const sharpness = 0.72;
+      const sharpness = 1.0;
       const tGpu0 = performance.now();
       let res = null;
       if (wasm && typeof wasm.upscaleFsr1 === 'function') {
