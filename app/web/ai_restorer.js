@@ -578,7 +578,7 @@
       let procW = 0;
       let procH = 0;
       let srcU8 = null;
-      const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 900 : 800;
+      const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 1024 : 800;
       try {
         const resp = await withTimeout(fetch(imageUrl), 10000, 'img_fetch');
         if (!resp.ok) return { enhanced: false, skipped: true, reason: 'fetch_failed', url: imageUrl };
