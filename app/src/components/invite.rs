@@ -161,7 +161,7 @@ pub fn InviteFriendsDialog(
     let q = fold(query().trim());
     let shown: Vec<FriendItem> = friends.iter().filter(|f| q.is_empty() || fold(&f.username).contains(&q)).cloned().collect();
     let link = code().map(|c| invite_url(&origin(), &kind, &c));
-    let (k1, n1, a1) = (kind.clone(), name.clone(), avatar_url.clone());
+    let (k1, t1, n1, a1) = (kind.clone(), target_id.clone(), name.clone(), avatar_url.clone());
     let send = move |_| {
         let Some(c) = code() else {
             return;
@@ -172,7 +172,7 @@ pub fn InviteFriendsDialog(
         busy.set(true);
         let card = InviteData {
             kind: k1.clone(),
-            code: c,
+            code: c.clone(),
             name: n1.clone(),
             avatar: a1.clone(),
             banner: banner(),
@@ -182,8 +182,12 @@ pub fn InviteFriendsDialog(
         let text = format!("invite:{}", serde_json::to_string(&card).unwrap_or_default());
         let me = my_id.clone();
         let targets = picked();
+        let k_inv = k1.clone();
+        let t_inv = t1.clone();
+        let c_inv = c.clone();
         spawn(async move {
             for fid in targets {
+                let _ = api::target_invites_create(&k_inv, &t_inv, &c_inv, &fid).await;
                 match dm::send_encrypted_dm(&me, &fid, &text, None).await {
                     Ok(_) => sent.with_mut(|s| s.push(fid.clone())),
                     Err(_) => error.set(Some("Some invitations could not be sent".into())),

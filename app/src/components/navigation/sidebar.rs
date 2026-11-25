@@ -119,6 +119,8 @@ pub fn NavigationSidebar(
     on_leave_voice: EventHandler<()>,
     /// Replaces the built-in direct message list (unified conversation list).
     #[props(default)] dm_content: Option<Element>,
+    /// Replaces the built-in Friends sidebar with the Spec 167 Contacts Directory menu.
+    #[props(default)] contacts_content: Option<Element>,
     /// Groups moved to Communities, listed above the servers.
     #[props(default)] community_groups: Vec<GroupItem>,
     #[props(default)] on_open_server_settings: Option<EventHandler<()>>,
@@ -191,7 +193,7 @@ pub fn NavigationSidebar(
                     span { class: "sidebar-title",
                         match &active_section {
                             NavSection::DirectMessages => "Messages",
-                            NavSection::Friends => "Friends",
+                            NavSection::Friends => "Contacts",
                             NavSection::Communities | NavSection::Server(_) => "Communities",
                             NavSection::Meet => "Meetings",
                             NavSection::Feed => "Feed",
@@ -273,6 +275,7 @@ pub fn NavigationSidebar(
 
             match active_section {
                 NavSection::DirectMessages if dm_content.is_some() => rsx! { {dm_content} },
+                NavSection::Friends if contacts_content.is_some() => rsx! { {contacts_content} },
                 NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Notifications | NavSection::Download => rsx! {},
                 NavSection::DirectMessages => rsx! {
                     div { class: "sidebar-search",

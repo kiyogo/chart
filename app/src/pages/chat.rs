@@ -263,12 +263,16 @@ pub fn Chat(
     let mut active_call_session = use_signal(|| Option::<CallSessionItem>::None);
     let mut incoming_call_session = use_signal(|| Option::<CallSessionItem>::None);
 
-    // Friends & Search
+    // Friends & Search / Contacts Directory (Spec 167)
     let mut friend_input = use_signal(String::new);
     let mut search_results = use_signal(Vec::<UserSearchResult>::new);
     let mut add_friend_status = use_signal(|| Option::<AddFriendStatus>::None);
     let mut is_adding_friend = use_signal(|| false);
     let mut pending_requests = use_signal(Vec::<PendingRequestItem>::new);
+    let mut sent_requests = use_signal(Vec::<crate::models::SentRequestItem>::new);
+    let mut target_invites = use_signal(crate::models::DirectTargetInvitesResponse::default);
+    let contacts_tab = use_signal(|| crate::components::contacts_view::ContactsTab::FriendsList);
+    let contacts_mobile_detail = use_signal(|| false);
 
     // Privacy, organisation, self chat ("Chính mình"), bots, business
     let my_id_sig = use_signal(|| current_user_id.clone());
@@ -417,6 +421,8 @@ pub fn Chat(
                 bots_res,
                 biz_res,
                 sess_res,
+                sent_req_res,
+                tinv_res,
                 _,
                 _,
             ) = futures_util::join!(
@@ -429,9 +435,17 @@ pub fn Chat(
                 social::bots_chats(),
                 social::business_get(),
                 library::sessions_list(),
+                api::friends_get_sent_requests(),
+                api::target_invites_list(),
                 crate::services::profile_ext::load_contacts(),
                 crate::services::settings_sync::pull(prefs_ctx),
             );
+            if let Ok(sr) = sent_req_res {
+                sent_requests.set(sr);
+            }
+            if let Ok(ti) = tinv_res {
+                target_invites.set(ti);
+            }
             if let Ok(me_prof) = me_prof_res {
                 my_status_text.set(me_prof.status_text.filter(|s| !s.trim().is_empty()));
                 my_status_emoji.set(me_prof.status_emoji.filter(|s| !s.trim().is_empty()));
@@ -4027,19 +4041,23 @@ pub fn Chat(
         }
     });
     let total_unread: usize = unread_counts.read().values().copied().sum();
-    let pending_len = pending_requests.read().len();
+    let pending_len = pending_requests.read().len() + target_invites.read().received.len();
     let active_mod_page = crate::components::plugins_view::ACTIVE_PLUGIN_PAGE.read().clone();
     let active_left_plugin = crate::components::plugins_view::ACTIVE_LEFT_PLUGIN.read().clone();
     let server_settings_active = server_settings_open() && selected_server().is_some();
-    let is_chat_selected = has_active_dm()
-        || active_group().is_some()
-        || selected_channel().is_some()
-        || active_ent_module().is_some()
-        || active_bot().is_some()
-        || active_mod_page.is_some()
-        || server_settings_active
-        || matches!(nav_section(), NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Notifications | NavSection::Download);
     let section = nav_section();
+    let is_chat_selected = if section == NavSection::Friends {
+        contacts_mobile_detail() || active_mod_page.is_some()
+    } else {
+        has_active_dm()
+            || active_group().is_some()
+            || selected_channel().is_some()
+            || active_ent_module().is_some()
+            || active_bot().is_some()
+            || active_mod_page.is_some()
+            || server_settings_active
+            || matches!(section, NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Notifications | NavSection::Download)
+    };
 
     let start_call = move |kind: &'static str, user: Option<String>, group: Option<String>| {
         spawn(async move {
@@ -4063,17 +4081,29 @@ pub fn Chat(
 
     let refresh_friend_state = move || {
         spawn(async move {
-            if let Ok(list) = api::friends_list().await {
+            let (fl, reqs, sreqs, tinvs) = futures_util::join!(
+                api::friends_list(),
+                api::friends_get_requests(),
+                api::friends_get_sent_requests(),
+                api::target_invites_list(),
+            );
+            if let Ok(list) = fl {
                 friends.set(list);
             }
-            if let Ok(reqs) = api::friends_get_requests().await {
+            if let Ok(reqs) = reqs {
                 pending_requests.set(reqs);
+            }
+            if let Ok(sreqs) = sreqs {
+                sent_requests.set(sreqs);
+            }
+            if let Ok(tinvs) = tinvs {
+                target_invites.set(tinvs);
             }
         });
     };
 
     let username_for_add = current_username.clone();
-    let add_friend_submit = move |_| {
+    let add_friend_submit = use_callback(move |_: ()| {
         let target = friend_input().trim().to_string();
         if target.is_empty() || is_adding_friend() {
             return;
@@ -4095,7 +4125,7 @@ pub fn Chat(
                     let msg = match err.code.as_str() {
                         "receiver_not_found" => "User not found",
                         "already_friends" => "The two were friends",
-                        "request_already_pending" => "Invitations have been sent before",
+                        "request_already_pending" | "request_already_sent" => "Invitations have been sent before",
                         _ => "Unable to send invitation",
                     };
                     add_friend_status.set(Some(AddFriendStatus { is_error: true, message: msg.to_string() }));
@@ -4103,7 +4133,7 @@ pub fn Chat(
             }
             is_adding_friend.set(false);
         });
-    };
+    });
 
     // Group role context (computed lazily only when a group is open — zero cost during DM switches!)
     let group_open_now = active_group().is_some();
@@ -4316,7 +4346,9 @@ pub fn Chat(
                 on_select_friends: move |_| {
                     set_if_changed(is_settings_open, false);
                     set_if_changed(server_settings_open, false);
+                    set_if_changed(contacts_mobile_detail, false);
                     set_if_changed(nav_section, NavSection::Friends);
+                    refresh_friend_state();
                 },
                 on_select_communities: move |_| {
                     set_if_changed(is_settings_open, false);
@@ -4457,6 +4489,52 @@ pub fn Chat(
                             },
                         }
                     },
+                    contacts_content: rsx! {
+                        crate::components::contacts_view::ContactsSidebarMenu {
+                            active_tab: contacts_tab(),
+                            friends: friends(),
+                            groups: groups(),
+                            servers: servers(),
+                            pending_requests: pending_requests(),
+                            sent_requests: sent_requests(),
+                            target_invites: target_invites(),
+                            friend_input: friend_input(),
+                            search_results: search_results(),
+                            on_select_tab: move |t| {
+                                set_if_changed(contacts_tab, t);
+                                set_if_changed(contacts_mobile_detail, true);
+                            },
+                            on_friend_input_change: move |v: String| {
+                                friend_input.set(v);
+                                add_friend_status.set(None);
+                            },
+                            on_select_friend: move |f: FriendItem| select_friend.call(f),
+                            on_select_group: move |g: GroupItem| select_group.call(g),
+                            on_select_server: move |s: ServerItem| select_server(s),
+                            on_send_friend_request_by_id: move |rid: String| {
+                                spawn(async move {
+                                    if api::friends_send_request_by_id(&rid).await.is_ok() {
+                                        search_results.with_mut(|list| {
+                                            for u in list.iter_mut() {
+                                                if u.id == rid {
+                                                    u.relationship = "pending_sent".to_string();
+                                                }
+                                            }
+                                        });
+                                        refresh_friend_state();
+                                    }
+                                });
+                            },
+                            on_accept_friend_request: move |rid: String| {
+                                spawn(async move {
+                                    if api::friends_accept_request(&rid).await.is_ok() {
+                                        refresh_friend_state();
+                                    }
+                                });
+                            },
+                            on_open_create_group: move |_| is_create_group_open.set(true),
+                        }
+                    },
                     community_groups: community_groups.clone(),
                     on_open_server_settings: move |_| {
                         is_settings_open.set(false);
@@ -4510,13 +4588,13 @@ pub fn Chat(
                     friend_input: friend_input(),
                     search_results: search_results(),
                     pending_requests: pending_requests(),
-                    add_friend_feedback: feedback,
+                    add_friend_feedback: feedback.clone(),
                     is_adding_friend: is_adding_friend(),
                     on_friend_input_change: move |v: String| {
                         friend_input.set(v);
                         add_friend_status.set(None);
                     },
-                    on_add_friend_submit: add_friend_submit,
+                    on_add_friend_submit: move |_| add_friend_submit.call(()),
                     on_send_friend_request_by_id: move |rid: String| {
                         spawn(async move {
                             if api::friends_send_request_by_id(&rid).await.is_ok() {
@@ -4782,6 +4860,118 @@ pub fn Chat(
                         key: "{download_target()}",
                         initial_target: download_target(),
                         on_back: move |_| nav_section.set(NavSection::DirectMessages),
+                    }
+                } else if section == NavSection::Friends {
+                    crate::components::contacts_view::ContactsMainPanel {
+                        active_tab: contacts_tab(),
+                        friends: friends(),
+                        groups: groups(),
+                        servers: servers(),
+                        pending_requests: pending_requests(),
+                        sent_requests: sent_requests(),
+                        target_invites: target_invites(),
+                        blocked_ids: blocked_ids(),
+                        friend_input: friend_input(),
+                        search_results: search_results(),
+                        add_friend_feedback: feedback.clone(),
+                        is_adding_friend: is_adding_friend(),
+                        on_mobile_back: move |_| set_if_changed(contacts_mobile_detail, false),
+                        on_select_tab: move |t| {
+                            set_if_changed(contacts_tab, t);
+                            set_if_changed(contacts_mobile_detail, true);
+                        },
+                        on_select_friend: move |f: FriendItem| select_friend.call(f),
+                        on_select_group: move |g: GroupItem| select_group.call(g),
+                        on_select_server: move |s: ServerItem| select_server(s),
+                        on_view_profile: move |uid: String| viewing_profile_user_id.set(Some(uid)),
+                        on_audio_call: move |uid: String| start_call("audio", Some(uid), None),
+                        on_video_call: move |uid: String| start_call("video", Some(uid), None),
+                        on_remove_friend: move |fid: String| {
+                            spawn(async move {
+                                if api::friends_remove(&fid).await.is_ok() {
+                                    friends.with_mut(|l| l.retain(|f| f.id != fid));
+                                    if active_friend.peek().as_ref().is_some_and(|f| f.id == fid) {
+                                        active_friend.set(None);
+                                    }
+                                    toast.set(Some("Friend removed".into()));
+                                } else {
+                                    toast.set(Some("Cannot be done".into()));
+                                }
+                            });
+                        },
+                        on_block: do_block,
+                        on_friend_input_change: move |v: String| {
+                            friend_input.set(v);
+                            add_friend_status.set(None);
+                        },
+                        on_add_friend_submit: move |_| add_friend_submit.call(()),
+                        on_send_friend_request_by_id: move |rid: String| {
+                            spawn(async move {
+                                if api::friends_send_request_by_id(&rid).await.is_ok() {
+                                    search_results.with_mut(|list| {
+                                        for u in list.iter_mut() {
+                                            if u.id == rid {
+                                                u.relationship = "pending_sent".to_string();
+                                            }
+                                        }
+                                    });
+                                    refresh_friend_state();
+                                }
+                            });
+                        },
+                        on_accept_friend_request: move |rid: String| {
+                            spawn(async move {
+                                if api::friends_accept_request(&rid).await.is_ok() {
+                                    refresh_friend_state();
+                                }
+                            });
+                        },
+                        on_delete_friend_request: move |rid: String| {
+                            spawn(async move {
+                                if api::friends_delete_request(&rid).await.is_ok() {
+                                    pending_requests.with_mut(|l| l.retain(|r| r.id != rid));
+                                    sent_requests.with_mut(|l| l.retain(|r| r.id != rid));
+                                    refresh_friend_state();
+                                }
+                            });
+                        },
+                        on_accept_target_invite: move |inv: crate::models::DirectTargetInviteItem| {
+                            spawn(async move {
+                                if api::target_invites_accept(&inv.id).await.is_ok() {
+                                    target_invites.with_mut(|ti| ti.received.retain(|x| x.id != inv.id));
+                                    if inv.kind == "server" {
+                                        if let Ok(list) = api::servers_list().await {
+                                            let joined = list.iter().find(|s| s.id == inv.target_id).cloned();
+                                            servers.set(list);
+                                            if let Some(s) = joined {
+                                                select_server(s);
+                                            }
+                                        }
+                                    } else if let Ok(list) = groups::groups_list().await {
+                                        let joined = list.iter().find(|g| g.id == inv.target_id).cloned();
+                                        groups.set(list);
+                                        if let Some(g) = joined {
+                                            select_group.call(g);
+                                        }
+                                    }
+                                } else {
+                                    toast.set(Some("Unable to accept invitation".into()));
+                                }
+                            });
+                        },
+                        on_delete_target_invite: move |inv_id: String| {
+                            spawn(async move {
+                                if api::target_invites_delete(&inv_id).await.is_ok() {
+                                    target_invites.with_mut(|ti| {
+                                        ti.received.retain(|x| x.id != inv_id);
+                                        ti.sent.retain(|x| x.id != inv_id);
+                                    });
+                                }
+                            });
+                        },
+                        on_open_invite_code: move |(k, c): (String, String)| invite_open.set(Some((k, c))),
+                        on_open_create_group: move |_| is_create_group_open.set(true),
+                        on_open_create_server: move |_| is_community_modal_open.set(true),
                     }
                 } else if let Some(b) = active_bot() {
                     BotChatView {

@@ -210,7 +210,7 @@
           if (r && r.ok && r.status === 200 && r.text) {
             const parsed = JSON.parse(r.text);
             if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
-              window.__chatwStorage.putStaticCache(cacheKey, 'v5', parsed).catch(() => {});
+              window.__chatwStorage.putStaticCache(cacheKey, 'v6', parsed).catch(() => {});
             }
             return parsed;
           }
@@ -224,7 +224,7 @@
     const parsed = await res.json();
     try {
       if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
-        window.__chatwStorage.putStaticCache(cacheKey, 'v5', parsed).catch(() => {});
+        window.__chatwStorage.putStaticCache(cacheKey, 'v6', parsed).catch(() => {});
       }
     } catch (_) {}
     return parsed;
@@ -233,7 +233,7 @@
   function fetchKeys() {
     if (keysData) return Promise.resolve(keysData);
     if (keysPromise) return keysPromise;
-    keysPromise = loadLocaleJson('/locales/_keys.json', 'i18n:_keys:v5')
+    keysPromise = loadLocaleJson('/locales/_keys.json', 'i18n:_keys:v6')
       .then((data) => {
         keysData = {
           exact: (data && data.exact) || [],
@@ -257,7 +257,7 @@
 
     const p = Promise.all([
       fetchKeys(),
-      loadLocaleJson(`/locales/${encodeURIComponent(code)}.json`, `i18n:pack:${code}:v5`),
+      loadLocaleJson(`/locales/${encodeURIComponent(code)}.json`, `i18n:pack:${code}:v6`),
     ])
       .then(([keys, data]) => {
         if (!keys || !data) throw new Error('Invalid locale payload');

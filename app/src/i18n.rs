@@ -221,7 +221,7 @@ pub const LANGUAGES: &[LanguageSpec] = &[
 /// Core canonical English strings mapped by stable legacy keys.
 const CORE_EN: &[(&str, &str)] = &[
     ("nav.messages", "Messages"),
-    ("nav.friends", "Friends"),
+    ("nav.friends", "Contacts"),
     ("nav.communities", "Communities"),
     ("nav.search", "Search"),
     ("nav.settings", "Settings"),

@@ -13,6 +13,7 @@ pub mod calls;
 pub mod chat_extras;
 pub mod community_ui;
 pub mod composer;
+pub mod contacts_view;
 pub mod demo_gallery;
 pub mod details_panel;
 pub mod download_view;

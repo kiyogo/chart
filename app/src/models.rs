@@ -64,8 +64,50 @@ pub struct PendingRequestItem {
     pub sender_id: String,
     pub sender_username: String,
     #[serde(default)]
+    pub sender_display_name: Option<String>,
+    #[serde(default)]
     pub sender_avatar_url: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SentRequestItem {
+    pub id: String,
+    pub receiver_id: String,
+    pub receiver_username: String,
+    #[serde(default)]
+    pub receiver_display_name: Option<String>,
+    #[serde(default)]
+    pub receiver_avatar_url: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DirectTargetInviteItem {
+    pub id: String,
+    pub kind: String,
+    pub target_id: String,
+    pub code: String,
+    pub target_name: String,
+    #[serde(default)]
+    pub target_avatar_url: Option<String>,
+    #[serde(default)]
+    pub member_count: i64,
+    pub peer_id: String,
+    pub peer_username: String,
+    #[serde(default)]
+    pub peer_display_name: Option<String>,
+    #[serde(default)]
+    pub peer_avatar_url: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DirectTargetInvitesResponse {
+    #[serde(default)]
+    pub received: Vec<DirectTargetInviteItem>,
+    #[serde(default)]
+    pub sent: Vec<DirectTargetInviteItem>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

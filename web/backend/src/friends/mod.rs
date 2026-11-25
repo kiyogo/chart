@@ -2,10 +2,11 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::HeaderMap,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
@@ -35,8 +36,49 @@ pub struct PendingRequestItem {
     pub id: Uuid,
     pub sender_id: Uuid,
     pub sender_username: String,
+    pub sender_display_name: Option<String>,
     pub sender_avatar_url: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+pub struct SentRequestItem {
+    pub id: Uuid,
+    pub receiver_id: Uuid,
+    pub receiver_username: String,
+    pub receiver_display_name: Option<String>,
+    pub receiver_avatar_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateTargetInvitePayload {
+    pub kind: String,
+    pub target_id: Uuid,
+    pub code: String,
+    pub invitee_id: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct DirectTargetInviteItem {
+    pub id: Uuid,
+    pub kind: String,
+    pub target_id: Uuid,
+    pub code: String,
+    pub target_name: String,
+    pub target_avatar_url: Option<String>,
+    pub member_count: i64,
+    pub peer_id: Uuid,
+    pub peer_username: String,
+    pub peer_display_name: Option<String>,
+    pub peer_avatar_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+pub struct DirectTargetInvitesResponse {
+    pub received: Vec<DirectTargetInviteItem>,
+    pub sent: Vec<DirectTargetInviteItem>,
 }
 
 #[derive(Serialize)]
@@ -64,7 +106,19 @@ pub fn routes() -> Router<AppState> {
             "/requests",
             post(handle_send_request).get(handle_list_requests),
         )
+        .route("/requests/sent", get(handle_list_sent_requests))
+        .route("/requests/{id}", delete(handle_delete_request))
         .route("/requests/{id}/accept", post(handle_accept_request))
+        .route(
+            "/target-invites",
+            get(handle_list_target_invites).post(handle_create_target_invite),
+        )
+        .route(
+            "/target-invites/{id}/accept",
+            post(handle_accept_target_invite),
+        )
+        .route("/target-invites/{id}", delete(handle_delete_target_invite))
+        .route("/{friend_id}", delete(handle_remove_friend))
         .route("/", get(handle_list_friends))
 }
 
@@ -245,31 +299,417 @@ async fn handle_list_requests(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
-        SELECT fr.id, fr.sender_id, u.username as "sender_username!", u.avatar_url as "sender_avatar_url", fr.created_at
+        SELECT fr.id, fr.sender_id, u.username, u.display_name, u.avatar_url, fr.created_at
         FROM friend_requests fr
         JOIN users u ON u.id = fr.sender_id
         WHERE fr.receiver_id = $1 AND fr.status = 'pending'
         ORDER BY fr.created_at DESC
         "#,
-        user.id
     )
+    .bind(user.id)
     .fetch_all(&state.db)
     .await?;
 
     let items = rows
         .into_iter()
         .map(|r| PendingRequestItem {
-            id: r.id,
-            sender_id: r.sender_id,
-            sender_username: r.sender_username,
-            sender_avatar_url: r.sender_avatar_url,
-            created_at: r.created_at,
+            id: r.get("id"),
+            sender_id: r.get("sender_id"),
+            sender_username: r.get::<Option<String>, _>("username").unwrap_or_default(),
+            sender_display_name: r.get("display_name"),
+            sender_avatar_url: r.get("avatar_url"),
+            created_at: r.get("created_at"),
         })
         .collect();
 
     Ok(Json(items))
+}
+
+async fn handle_list_sent_requests(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Vec<SentRequestItem>>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT fr.id, fr.receiver_id, u.username, u.display_name, u.avatar_url, fr.created_at
+        FROM friend_requests fr
+        JOIN users u ON u.id = fr.receiver_id
+        WHERE fr.sender_id = $1 AND fr.status = 'pending'
+        ORDER BY fr.created_at DESC
+        "#,
+    )
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let items = rows
+        .into_iter()
+        .map(|r| SentRequestItem {
+            id: r.get("id"),
+            receiver_id: r.get("receiver_id"),
+            receiver_username: r.get::<Option<String>, _>("username").unwrap_or_default(),
+            receiver_display_name: r.get("display_name"),
+            receiver_avatar_url: r.get("avatar_url"),
+            created_at: r.get("created_at"),
+        })
+        .collect();
+
+    Ok(Json(items))
+}
+
+/// Sender withdraws a sent friend request OR receiver declines a received friend request.
+async fn handle_delete_request(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(request_id): Path<Uuid>,
+) -> AppResult<Json<RequestResponse>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let res = sqlx::query(
+        r#"
+        DELETE FROM friend_requests
+        WHERE id = $1 AND status = 'pending' AND (sender_id = $2 OR receiver_id = $2)
+        "#,
+    )
+    .bind(request_id)
+    .bind(user.id)
+    .execute(&state.db)
+    .await?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("request_not_found"));
+    }
+
+    Ok(Json(RequestResponse {
+        id: request_id,
+        status: "removed".into(),
+    }))
+}
+
+/// Remove an existing friend from both users' contact lists.
+async fn handle_remove_friend(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(friend_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let u_a = user.id.min(friend_id);
+    let u_b = user.id.max(friend_id);
+
+    let mut tx = state.db.begin().await?;
+    let del = sqlx::query("DELETE FROM friendships WHERE user_a = $1 AND user_b = $2")
+        .bind(u_a)
+        .bind(u_b)
+        .execute(&mut *tx)
+        .await?;
+
+    if del.rows_affected() == 0 {
+        return Err(AppError::NotFound("friendship_not_found"));
+    }
+
+    sqlx::query(
+        "DELETE FROM friend_requests WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)",
+    )
+    .bind(user.id)
+    .bind(friend_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "ok": true, "friend_id": friend_id })))
+}
+
+async fn handle_create_target_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateTargetInvitePayload>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let kind = payload.kind.trim();
+    if kind != "group" && kind != "server" {
+        return Err(AppError::BadRequest("invalid_invite_kind"));
+    }
+    let code = payload.code.trim();
+    if code.is_empty() || code.len() > 64 {
+        return Err(AppError::BadRequest("invalid_invite_code"));
+    }
+    if payload.invitee_id == user.id {
+        return Err(AppError::BadRequest("cannot_invite_self"));
+    }
+    if crate::privacy::is_blocked_either(&state.db, user.id, payload.invitee_id).await? {
+        return Err(AppError::NotFound("invitee_not_found"));
+    }
+
+    // Verify inviter membership and invitee is not already a member
+    if kind == "group" {
+        let is_mem: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
+        )
+        .bind(payload.target_id)
+        .bind(user.id)
+        .fetch_optional(&state.db)
+        .await?;
+        if is_mem.is_none() {
+            return Err(AppError::Forbidden("not_a_group_member"));
+        }
+        let already: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
+        )
+        .bind(payload.target_id)
+        .bind(payload.invitee_id)
+        .fetch_optional(&state.db)
+        .await?;
+        if already.is_some() {
+            return Ok(Json(serde_json::json!({ "ok": true, "status": "already_member" })));
+        }
+    } else {
+        let is_mem: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2",
+        )
+        .bind(payload.target_id)
+        .bind(user.id)
+        .fetch_optional(&state.db)
+        .await?;
+        if is_mem.is_none() {
+            return Err(AppError::Forbidden("not_a_server_member"));
+        }
+        let already: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2",
+        )
+        .bind(payload.target_id)
+        .bind(payload.invitee_id)
+        .fetch_optional(&state.db)
+        .await?;
+        if already.is_some() {
+            return Ok(Json(serde_json::json!({ "ok": true, "status": "already_member" })));
+        }
+    }
+
+    let id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO direct_target_invites (id, kind, target_id, code, inviter_id, invitee_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+        ON CONFLICT (kind, target_id, invitee_id)
+        DO UPDATE SET
+            code = EXCLUDED.code,
+            inviter_id = EXCLUDED.inviter_id,
+            status = 'pending',
+            created_at = now()
+        "#,
+    )
+    .bind(id)
+    .bind(kind)
+    .bind(payload.target_id)
+    .bind(code)
+    .bind(user.id)
+    .bind(payload.invitee_id)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "ok": true, "id": id, "status": "pending" })))
+}
+
+async fn handle_list_target_invites(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<DirectTargetInvitesResponse>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let recv_rows = sqlx::query(
+        r#"
+        SELECT
+            d.id, d.kind, d.target_id, d.code, d.created_at,
+            CASE WHEN d.kind = 'group' THEN g.name ELSE s.name END AS target_name,
+            CASE WHEN d.kind = 'group' THEN g.avatar_url ELSE s.icon_url END AS target_avatar_url,
+            CASE
+                WHEN d.kind = 'group' THEN (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = d.target_id)
+                ELSE (SELECT COUNT(*) FROM server_members sm WHERE sm.server_id = d.target_id)
+            END AS member_count,
+            u.id AS peer_id,
+            u.username AS peer_username,
+            u.display_name AS peer_display_name,
+            u.avatar_url AS peer_avatar_url
+        FROM direct_target_invites d
+        JOIN users u ON u.id = d.inviter_id
+        LEFT JOIN groups g ON d.kind = 'group' AND g.id = d.target_id
+        LEFT JOIN servers s ON d.kind = 'server' AND s.id = d.target_id
+        WHERE d.invitee_id = $1
+          AND d.status = 'pending'
+          AND ((d.kind = 'group' AND g.id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id = d.target_id AND gm.user_id = $1))
+            OR (d.kind = 'server' AND s.id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM server_members sm WHERE sm.server_id = d.target_id AND sm.user_id = $1)))
+        ORDER BY d.created_at DESC
+        "#,
+    )
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let sent_rows = sqlx::query(
+        r#"
+        SELECT
+            d.id, d.kind, d.target_id, d.code, d.created_at,
+            CASE WHEN d.kind = 'group' THEN g.name ELSE s.name END AS target_name,
+            CASE WHEN d.kind = 'group' THEN g.avatar_url ELSE s.icon_url END AS target_avatar_url,
+            CASE
+                WHEN d.kind = 'group' THEN (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = d.target_id)
+                ELSE (SELECT COUNT(*) FROM server_members sm WHERE sm.server_id = d.target_id)
+            END AS member_count,
+            u.id AS peer_id,
+            u.username AS peer_username,
+            u.display_name AS peer_display_name,
+            u.avatar_url AS peer_avatar_url
+        FROM direct_target_invites d
+        JOIN users u ON u.id = d.invitee_id
+        LEFT JOIN groups g ON d.kind = 'group' AND g.id = d.target_id
+        LEFT JOIN servers s ON d.kind = 'server' AND s.id = d.target_id
+        WHERE d.inviter_id = $1
+          AND d.status = 'pending'
+          AND ((d.kind = 'group' AND g.id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id = d.target_id AND gm.user_id = d.invitee_id))
+            OR (d.kind = 'server' AND s.id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM server_members sm WHERE sm.server_id = d.target_id AND sm.user_id = d.invitee_id)))
+        ORDER BY d.created_at DESC
+        "#,
+    )
+    .bind(user.id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let map_row = |r: sqlx::postgres::PgRow| DirectTargetInviteItem {
+        id: r.get("id"),
+        kind: r.get("kind"),
+        target_id: r.get("target_id"),
+        code: r.get("code"),
+        target_name: r.get::<Option<String>, _>("target_name").unwrap_or_default(),
+        target_avatar_url: r.get("target_avatar_url"),
+        member_count: r.get::<Option<i64>, _>("member_count").unwrap_or(0),
+        peer_id: r.get("peer_id"),
+        peer_username: r.get::<Option<String>, _>("peer_username").unwrap_or_default(),
+        peer_display_name: r.get("peer_display_name"),
+        peer_avatar_url: r.get("peer_avatar_url"),
+        created_at: r.get("created_at"),
+    };
+
+    Ok(Json(DirectTargetInvitesResponse {
+        received: recv_rows.into_iter().map(map_row).collect(),
+        sent: sent_rows.into_iter().map(map_row).collect(),
+    }))
+}
+
+async fn handle_accept_target_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(invite_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let row = sqlx::query(
+        r#"
+        SELECT kind, target_id, code, invitee_id, status
+        FROM direct_target_invites
+        WHERE id = $1
+        "#,
+    )
+    .bind(invite_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("invite_not_found"))?;
+
+    let invitee_id: Uuid = row.get("invitee_id");
+    let status: String = row.get("status");
+    let kind: String = row.get("kind");
+    let target_id: Uuid = row.get("target_id");
+
+    if invitee_id != user.id {
+        return Err(AppError::Forbidden("not_invitee"));
+    }
+    if status != "pending" {
+        return Err(AppError::Conflict("invite_not_pending"));
+    }
+
+    if kind == "group" {
+        let blocked: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM group_blocks WHERE user_id = $1 AND group_id = $2",
+        )
+        .bind(user.id)
+        .bind(target_id)
+        .fetch_optional(&state.db)
+        .await?;
+        if blocked.is_some() {
+            return Err(AppError::Forbidden("blocked_from_group"));
+        }
+        sqlx::query(
+            "INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING",
+        )
+        .bind(target_id)
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
+    } else {
+        sqlx::query(
+            "INSERT INTO server_members (server_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(target_id)
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
+    }
+
+    sqlx::query("UPDATE direct_target_invites SET status = 'accepted' WHERE id = $1")
+        .bind(invite_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "status": "accepted",
+        "kind": kind,
+        "target_id": target_id
+    })))
+}
+
+async fn handle_delete_target_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(invite_id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let session_token =
+        parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    let res = sqlx::query(
+        r#"
+        DELETE FROM direct_target_invites
+        WHERE id = $1 AND status = 'pending' AND (inviter_id = $2 OR invitee_id = $2)
+        "#,
+    )
+    .bind(invite_id)
+    .bind(user.id)
+    .execute(&state.db)
+    .await?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("invite_not_found"));
+    }
+
+    Ok(Json(serde_json::json!({ "ok": true, "id": invite_id, "status": "removed" })))
 }
 
 async fn handle_accept_request(

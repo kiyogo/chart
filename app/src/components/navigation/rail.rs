@@ -141,7 +141,14 @@ pub fn AppRail(
                     "data-tip": "{t(\"nav.friends\")}",
                     aria_label: "{t(\"nav.friends\")}",
                     aria_current: if in_friends { "page" } else { "false" },
-                    onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_select_friends.call(()); },
+                    onmousedown: move |e| {
+                        if e.trigger_button() == Some(dioxus::html::input_data::MouseButton::Primary) {
+                            crate::storage::msg_store::perf_mark_interaction("nav:contacts");
+                            clear_plugin_overlays();
+                            on_select_friends.call(());
+                        }
+                    },
+                    onclick: move |_| { clear_plugin_overlays(); on_select_friends.call(()); },
                     span { class: "rail-icon", FriendsIcon { size: 28 }
                         if pending_friend_count > 0 { span { class: "rail-count", "{badge(pending_friend_count)}" } }
                     }

@@ -249,9 +249,75 @@ pub async fn friends_get_requests() -> Result<Vec<PendingRequestItem>, ApiError>
     get_json("/api/friends/requests").await
 }
 
+pub async fn friends_get_sent_requests() -> Result<Vec<crate::models::SentRequestItem>, ApiError> {
+    get_json("/api/friends/requests/sent").await
+}
+
 pub async fn friends_accept_request(id: &str) -> Result<RequestActionResponse, ApiError> {
     let encoded = urlencoding::encode(id);
     post_json(&format!("/api/friends/requests/{encoded}/accept"), json!({})).await
+}
+
+/// Withdraw a sent friend request or decline an incoming friend request.
+pub async fn friends_delete_request(id: &str) -> Result<RequestActionResponse, ApiError> {
+    let encoded = urlencoding::encode(id);
+    let (_, body) = platform::http_request(
+        "DELETE",
+        &format!("/api/friends/requests/{encoded}"),
+        None,
+        None,
+    )
+    .await?;
+    serde_json::from_str(&body).map_err(|_| ApiError {
+        code: "invalid_json".into(),
+        status: 200,
+    })
+}
+
+pub async fn friends_remove(friend_id: &str) -> Result<(), ApiError> {
+    let encoded = urlencoding::encode(friend_id);
+    platform::http_request("DELETE", &format!("/api/friends/{encoded}"), None, None)
+        .await
+        .map(|_| ())
+}
+
+pub async fn target_invites_list() -> Result<crate::models::DirectTargetInvitesResponse, ApiError> {
+    get_json("/api/friends/target-invites").await
+}
+
+pub async fn target_invites_create(
+    kind: &str,
+    target_id: &str,
+    code: &str,
+    invitee_id: &str,
+) -> Result<(), ApiError> {
+    post_empty(
+        "/api/friends/target-invites",
+        Some(json!({
+            "kind": kind,
+            "target_id": target_id,
+            "code": code,
+            "invitee_id": invitee_id,
+        })),
+    )
+    .await
+}
+
+pub async fn target_invites_accept(id: &str) -> Result<serde_json::Value, ApiError> {
+    let encoded = urlencoding::encode(id);
+    post_json(&format!("/api/friends/target-invites/{encoded}/accept"), json!({})).await
+}
+
+pub async fn target_invites_delete(id: &str) -> Result<(), ApiError> {
+    let encoded = urlencoding::encode(id);
+    platform::http_request(
+        "DELETE",
+        &format!("/api/friends/target-invites/{encoded}"),
+        None,
+        None,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn friends_list() -> Result<Vec<FriendItem>, ApiError> {

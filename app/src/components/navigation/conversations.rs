@@ -385,7 +385,7 @@ pub fn ConversationList(
                 }
                 if rest.is_empty() && rows.is_empty() {
                     div { class: "sidebar-empty",
-                        if friends.is_empty() && groups.is_empty() { "No conversation yet. Open the Friends section to make friends." } else { "No appropriate conversation" }
+                        if friends.is_empty() && groups.is_empty() { "No conversation yet. Open the Contacts section to make friends." } else { "No appropriate conversation" }
                     }
                 }
                 for r in rest { {render_row(r)} }
