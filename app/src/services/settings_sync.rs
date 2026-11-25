@@ -5,7 +5,7 @@
 //! preferences on top and retries once. The PIN lock never leaves the device
 //! (stripped here and again by the server).
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use serde_json::{Map, Value, json};
 
@@ -19,7 +19,14 @@ use crate::{
 
 thread_local! {
     static VERSION: Cell<i64> = const { Cell::new(-1) };
+    static VERSION_UID: RefCell<String> = const { RefCell::new(String::new()) };
     static GENERATION: Cell<u64> = const { Cell::new(0) };
+}
+
+pub fn reset_session_sync_state() {
+    VERSION.with(|v| v.set(-1));
+    VERSION_UID.with(|u| u.borrow_mut().clear());
+    GENERATION.with(|g| g.set(g.get().wrapping_add(1)));
 }
 
 pub fn known_version() -> i64 {
@@ -73,11 +80,11 @@ pub async fn pull(ctx: PrefsCtx) {
     if !local.sync_settings {
         return;
     }
-    if known_version() < 0 {
+    let same_uid = VERSION_UID.with(|u| *u.borrow() == uid);
+    if !same_uid || known_version() < 0 {
+        VERSION_UID.with(|u| *u.borrow_mut() = uid.clone());
         let pv = load_persisted_ver(&uid);
-        if pv >= 0 {
-            VERSION.with(|c| c.set(pv));
-        }
+        VERSION.with(|c| c.set(if pv >= 0 { pv } else { -1 }));
     }
     let Ok((data, version)) = fetch().await else { return };
     if version == 0 || is_dirty(&uid) {
@@ -110,8 +117,15 @@ pub fn schedule_push(ctx: &PrefsCtx) {
         if GENERATION.with(|g| g.get()) != generation {
             return;
         }
+        if crate::services::api::auth_me_cached_id().as_deref() != Some(uid.as_str()) {
+            return;
+        }
         let payload = ctx.prefs.peek().sync_payload();
-        let base = known_version().max(load_persisted_ver(&uid)).max(0);
+        let base = if VERSION_UID.with(|u| *u.borrow() == uid) {
+            known_version().max(load_persisted_ver(&uid)).max(0)
+        } else {
+            load_persisted_ver(&uid).max(0)
+        };
         match push(payload.clone(), base).await {
             Ok(v) => save_persisted_ver(&uid, v),
             Err(e) if e.status == 409 => {

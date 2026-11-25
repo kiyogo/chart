@@ -102,7 +102,11 @@ pub fn SignedInAccounts() -> Element {
                                 let id = id.clone();
                                 spawn(async move {
                                     match security::switch_account(&id).await {
-                                        Ok(()) => security::reload_app(),
+                                        Ok(()) => {
+                                            crate::crypto::e2ee::clear_ephemeral_account_password();
+                                            platform::wipe_client_session_on_logout().await;
+                                            security::reload_app();
+                                        }
                                         Err(e) => error.set(Some(security::error_text(&e.code))),
                                     }
                                 });
@@ -145,7 +149,11 @@ pub fn AccountSwitcher(on_close: EventHandler<()>) -> Element {
                             let id = id.clone();
                             spawn(async move {
                                 match security::switch_account(&id).await {
-                                    Ok(()) => security::reload_app(),
+                                    Ok(()) => {
+                                        crate::crypto::e2ee::clear_ephemeral_account_password();
+                                        platform::wipe_client_session_on_logout().await;
+                                        security::reload_app();
+                                    }
                                     Err(e) => error.set(Some(security::error_text(&e.code))),
                                 }
                             });
@@ -163,7 +171,11 @@ pub fn AccountSwitcher(on_close: EventHandler<()>) -> Element {
                     // Not tied to the menu: it closes before the request finishes.
                     dioxus::core::spawn_forever(async move {
                         match security::add_account().await {
-                            Ok(()) => security::reload_app(),
+                            Ok(()) => {
+                                crate::crypto::e2ee::clear_ephemeral_account_password();
+                                platform::wipe_client_session_on_logout().await;
+                                security::reload_app();
+                            }
                             Err(e) => error.set(Some(security::error_text(&e.code))),
                         }
                     });
@@ -177,6 +189,8 @@ pub fn AccountSwitcher(on_close: EventHandler<()>) -> Element {
                 onclick: move |_| {
                     dioxus::core::spawn_forever(async move {
                         let _ = security::logout_all().await;
+                        crate::crypto::e2ee::clear_ephemeral_account_password();
+                        platform::wipe_client_session_on_logout().await;
                         security::reload_app();
                     });
                 },

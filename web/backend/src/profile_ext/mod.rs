@@ -395,8 +395,8 @@ struct PutSettings {
     base_version: i64,
 }
 
-/// Keys that must never leave the device (PIN lock material).
-const DEVICE_ONLY_KEYS: [&str; 5] = ["pin_salt", "pin_hash", "lock_enabled", "lock_minutes", "lock_on_start"];
+/// Keys that must never leave the device (PIN lock material & developer mode).
+const DEVICE_ONLY_KEYS: [&str; 6] = ["pin_salt", "pin_hash", "lock_enabled", "lock_minutes", "lock_on_start", "developer_mode"];
 
 async fn put_settings(State(state): State<AppState>, headers: HeaderMap, Json(p): Json<PutSettings>) -> AppResult<Json<Value>> {
     let me = auth_user(&state, &headers).await?;

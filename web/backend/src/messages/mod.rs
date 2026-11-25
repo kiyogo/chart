@@ -200,12 +200,30 @@ async fn handle_send_message(
     recipient_env.verify_signature(&sender_keys.ecdsa_public)?;
     sender_env.verify_signature(&sender_keys.ecdsa_public)?;
 
-    // 10. Insert message into PostgreSQL (idempotent on message_id)
+    // 10. Insert message into PostgreSQL (strict idempotency scoped to same sender & receiver)
+    let existing = sqlx::query!(
+        "SELECT sender_id, receiver_id, seq, created_at FROM messages WHERE id = $1",
+        payload.message_id
+    )
+    .fetch_optional(&state.db)
+    .await?;
+
+    if let Some(ex) = existing {
+        if ex.sender_id != sender.id || ex.receiver_id != recipient_id {
+            return Err(AppError::Conflict("message_id_conflict"));
+        }
+        return Ok(Json(SendMessageResponse {
+            id: payload.message_id,
+            seq: ex.seq,
+            created_at: ex.created_at,
+        }));
+    }
+
     let row = sqlx::query!(
         r#"
         INSERT INTO messages (id, sender_id, receiver_id, recipient_envelope, sender_envelope, reply_to_id)
         VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
+        ON CONFLICT (id) DO NOTHING
         RETURNING seq, created_at
         "#,
         payload.message_id,
@@ -215,8 +233,29 @@ async fn handle_send_message(
         &sender_env_raw[..],
         payload.reply_to_id
     )
-    .fetch_one(&state.db)
+    .fetch_optional(&state.db)
     .await?;
+
+    let row = match row {
+        Some(r) => (r.seq, r.created_at),
+        None => {
+            let ex = sqlx::query!(
+                "SELECT sender_id, receiver_id, seq, created_at FROM messages WHERE id = $1",
+                payload.message_id
+            )
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or(AppError::Internal)?;
+            if ex.sender_id != sender.id || ex.receiver_id != recipient_id {
+                return Err(AppError::Conflict("message_id_conflict"));
+            }
+            return Ok(Json(SendMessageResponse {
+                id: payload.message_id,
+                seq: ex.seq,
+                created_at: ex.created_at,
+            }));
+        }
+    };
 
     // 11. Send real-time event to recipient via WebSocket
     state
@@ -225,12 +264,12 @@ async fn handle_send_message(
             &recipient_id,
             WsEvent::MessageNew {
                 id: payload.message_id,
-                seq: row.seq,
+                seq: row.0,
                 sender_id: sender.id,
                 recipient_id,
                 envelope: payload.recipient_envelope,
                 reply_to_id: payload.reply_to_id,
-                created_at: row.created_at,
+                created_at: row.1,
             },
         )
         .await;
@@ -243,12 +282,12 @@ async fn handle_send_message(
             &sender.id,
             WsEvent::MessageNew {
                 id: payload.message_id,
-                seq: row.seq,
+                seq: row.0,
                 sender_id: sender.id,
                 recipient_id,
                 envelope: payload.sender_envelope,
                 reply_to_id: payload.reply_to_id,
-                created_at: row.created_at,
+                created_at: row.1,
             },
         )
         .await;
@@ -256,8 +295,8 @@ async fn handle_send_message(
 
     Ok(Json(SendMessageResponse {
         id: payload.message_id,
-        seq: row.seq,
-        created_at: row.created_at,
+        seq: row.0,
+        created_at: row.1,
     }))
 }
 

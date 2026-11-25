@@ -161,7 +161,7 @@ async fn join_meet(
     }
 
     let found_id: Option<Uuid> = if let Ok(uuid_val) = Uuid::parse_str(&code) {
-        sqlx::query_scalar("SELECT id FROM call_sessions WHERE id = $1")
+        sqlx::query_scalar("SELECT id FROM call_sessions WHERE id = $1 AND meet_code IS NOT NULL")
             .bind(uuid_val)
             .fetch_optional(&state.db)
             .await?
@@ -536,6 +536,45 @@ async fn accept_call(
     Ok(Json(session_item))
 }
 
+async fn ensure_call_access(db: &sqlx::PgPool, call_id: Uuid, user_id: Uuid) -> AppResult<()> {
+    let session = sqlx::query!(
+        "SELECT caller_id, receiver_id, group_id FROM call_sessions WHERE id = $1",
+        call_id
+    )
+    .fetch_optional(db)
+    .await?
+    .ok_or(AppError::NotFound("call_not_found"))?;
+
+    if session.caller_id == user_id || session.receiver_id == Some(user_id) {
+        return Ok(());
+    }
+    let is_participant = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM call_participants WHERE call_id = $1 AND user_id = $2)",
+        call_id,
+        user_id
+    )
+    .fetch_one(db)
+    .await?
+    .unwrap_or(false);
+    if is_participant {
+        return Ok(());
+    }
+    if let Some(gid) = session.group_id {
+        let is_member = sqlx::query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2)",
+            gid,
+            user_id
+        )
+        .fetch_one(db)
+        .await?
+        .unwrap_or(false);
+        if is_member {
+            return Ok(());
+        }
+    }
+    Err(AppError::Forbidden("not_authorized_for_call"))
+}
+
 // 3. Reject call
 async fn reject_call(
     State(state): State<AppState>,
@@ -553,6 +592,8 @@ async fn reject_call(
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::NotFound("call_not_found"))?;
+
+    ensure_call_access(&state.db, call_id, user.id).await?;
 
     // Update status to rejected if 1:1
     if session.receiver_id.is_some() {
@@ -588,6 +629,7 @@ async fn end_call(
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    ensure_call_access(&state.db, call_id, user.id).await?;
 
     let targets = get_other_participants(&state.db, call_id, user.id).await?;
 
@@ -630,6 +672,7 @@ async fn leave_call(
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    ensure_call_access(&state.db, call_id, user.id).await?;
 
     sqlx::query!(
         "UPDATE call_participants SET left_at = now() WHERE call_id = $1 AND user_id = $2",
@@ -685,6 +728,7 @@ async fn relay_signal(
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    ensure_call_access(&state.db, call_id, user.id).await?;
 
     let event = WsEvent::CallSignal {
         call_id,

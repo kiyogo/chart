@@ -29,12 +29,14 @@
   }
 
   function isAiEnabled() {
-    const v = localStorage.getItem(STORAGE_PREF_AI_ENABLED);
+    const v = localStorage.getItem(STORAGE_PREF_AI_ENABLED) ?? localStorage.getItem('chatw_ai_enhance');
     return v === null ? true : v !== 'false';
   }
 
   function setAiEnabled(enabled) {
-    localStorage.setItem(STORAGE_PREF_AI_ENABLED, enabled ? 'true' : 'false');
+    const val = enabled ? 'true' : 'false';
+    localStorage.setItem(STORAGE_PREF_AI_ENABLED, val);
+    localStorage.setItem('chatw_ai_enhance', val);
     return Boolean(enabled);
   }
 

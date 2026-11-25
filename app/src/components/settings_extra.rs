@@ -678,7 +678,17 @@ fn PasswordDialog(
             match crate::services::api::auth_set_password(cur_opt, &n).await {
                 Ok(()) => {
                     if let Some(keys) = crate::crypto::e2ee::get_user_keys(Some(&uid)) {
-                        let _ = crate::storage::sync_manager::ensure_password_key_backup(&keys, &n, true).await;
+                        if let Err(e) = crate::storage::sync_manager::ensure_password_key_backup(&keys, &n, true).await {
+                            err.set(Some(format!("Password updated, but key backup sync failed ({e}). Try saving again.")));
+                            busy.set(false);
+                            on_saved.call(());
+                            return;
+                        }
+                    } else {
+                        err.set(Some("Password updated, unlock your local E2EE keys first to sync key backup.".into()));
+                        busy.set(false);
+                        on_saved.call(());
+                        return;
                     }
                     crate::crypto::e2ee::clear_ephemeral_account_password();
                     current_pw.set(String::new());

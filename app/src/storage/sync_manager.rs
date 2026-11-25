@@ -192,10 +192,9 @@ pub fn decrypt_keys_from_backup_v2(
 pub fn apply_storage_policy_local(p: &storage_sync::StoragePolicy) {
     platform::storage_set("chatw_cache_limit_mb", &p.cache_limit_mb.to_string());
     platform::storage_set("chatw_media_quality_mode", &p.media_quality_mode);
-    platform::storage_set(
-        "chatw_ai_enhance",
-        if p.ai_enhancement_enabled { "true" } else { "false" },
-    );
+    let ai_str = if p.ai_enhancement_enabled { "true" } else { "false" };
+    platform::storage_set("chatw_ai_enhance", ai_str);
+    platform::storage_set("chatw_ai_enhance_enabled", ai_str);
 }
 
 pub async fn ensure_password_key_backup(
@@ -204,22 +203,9 @@ pub async fn ensure_password_key_backup(
     force_overwrite: bool,
 ) -> Result<(), String> {
     if !force_overwrite {
-        if let Ok(bk) = storage_sync::get_key_backup().await
-            && bk.get("exists").and_then(|v| v.as_bool()).unwrap_or(false)
-            && let Some(kb) = bk.get("backup").filter(|v| !v.is_null())
-        {
-            let wrapped = kb["wrapped_keys_b64"].as_str().unwrap_or("");
-            let salt = kb["kdf_salt_b64"].as_str().unwrap_or("");
-            let kdf_alg = kb["kdf_alg"].as_str();
-            let mem = kb["kdf_mem_kib"].as_i64().map(|n| n as i32);
-            let time = kb["kdf_time_cost"].as_i64().map(|n| n as i32);
-            let par = kb["kdf_parallelism"].as_i64().map(|n| n as i32);
-            let iters = kb["kdf_iterations"].as_i64().unwrap_or(210_000) as i32;
-            if decrypt_backup_json(wrapped, salt, kdf_alg, mem, time, par, iters, account_password)
-                .is_ok()
-            {
-                return Ok(());
-            }
+        let bk = storage_sync::get_key_backup().await.map_err(|e| e.code)?;
+        if bk.get("exists").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return Ok(());
         }
     }
     let (wrapped, salt, _iters) = encrypt_keys_for_backup(keys, account_password)?;
@@ -420,9 +406,11 @@ pub async fn bootstrap_device_and_sync_for_user(
         Err(_) => get_client_device_info().await,
     };
 
-    // If this device doesn't have the account's E2EE keys yet, create an ephemeral device transport
-    // ECDH public key so an existing trusted device can wrap the account's keys into `wrapped_sync_key`.
-    let transport_pub = if keys.is_none() && !user_id.is_empty() {
+    let vault_locked = !user_id.is_empty() && crate::crypto::e2ee::has_locked_passphrase_vault(user_id);
+
+    // If this device doesn't have the account's E2EE keys yet (and not intentionally locked by passphrase),
+    // create an ephemeral device transport ECDH public key so an existing trusted device can wrap `wrapped_sync_key`.
+    let transport_pub = if keys.is_none() && !user_id.is_empty() && !vault_locked {
         get_or_create_device_transport_pubkey(user_id).ok()
     } else {
         None
@@ -476,8 +464,8 @@ pub async fn bootstrap_device_and_sync_for_user(
         *DEVICE_TRUST_STATE.write() = Some(info.clone());
 
         // If this device was approved while offline/reloading and now has a wrapped_sync_key waiting,
-        // unwrap and import the account's E2EE keys automatically.
-        if active_keys.is_none() && !user_id.is_empty() {
+        // unwrap and import the account's E2EE keys automatically (never downgrade a locked passphrase vault).
+        if active_keys.is_none() && !user_id.is_empty() && !vault_locked {
             if let Ok(cur) = storage_sync::current_device_status().await {
                 if let Some(lr) = cur.get("latest_request") {
                     let st = lr.get("status").and_then(|v| v.as_str()).unwrap_or("");

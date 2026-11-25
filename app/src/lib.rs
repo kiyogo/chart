@@ -167,11 +167,16 @@ pub fn App() -> Element {
         let uid = current_user().map(|u| u.id);
         spawn(async move {
             let _ = api::auth_logout().await;
+            api::set_cached_auth_user_id(None);
+            crate::services::settings_sync::reset_session_sync_state();
             platform::wipe_client_session_on_logout().await;
             clear_ephemeral_account_password();
             lock_and_wipe_session_keys(uid.as_deref());
             clear_legacy_active_key();
             *E2EE_RECOVERY_REQUIRED.write() = None;
+            *crate::storage::DEVICE_TRUST_STATE.write() = None;
+            *crate::storage::PENDING_APPROVAL_ALERT.write() = None;
+            *crate::storage::SYNC_PROGRESS.write() = Default::default();
             current_user.set(None);
             status.set(AuthStatus::Unauthenticated);
         });

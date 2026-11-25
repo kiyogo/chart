@@ -763,11 +763,6 @@ pub fn Chat(
                                 }
                         });
 
-                        let is_for_active = active_friend()
-                            .as_ref()
-                            .map(|af| af.id == partner_id)
-                            .unwrap_or(false);
-
                         let sender_ecdsa_raw = if is_from_me {
                             Some(keys.ecdsa_raw)
                         } else {
@@ -816,26 +811,43 @@ pub fn Chat(
                                     friends.peek().iter().find(|f| f.id == partner_id).map(|f| f.username.clone()).unwrap_or_default()
                                 };
                                 register_reminders(&uid, &[(split_device_prefix(&decrypted.text).1, place.clone())]);
+                                let win_active = platform::is_window_active().await;
+                                let is_for_active_now = active_friend()
+                                    .as_ref()
+                                    .map(|af| af.id == partner_id)
+                                    .unwrap_or(false);
+                                let viewing_dm_now = is_for_active_now
+                                    && nav_section() == NavSection::DirectMessages
+                                    && !is_settings_open();
                                 if !is_from_me {
-                                    notify_incoming("dm", partner_id.clone(), place.clone(), crate::components::messages::preview_text(&decrypted.text), is_for_active);
+                                    notify_incoming("dm", partner_id.clone(), place.clone(), crate::components::messages::preview_text(&decrypted.text), viewing_dm_now);
                                     maybe_auto_reply(partner_id.clone(), decrypted.text.clone());
-                                    if is_for_active && platform::is_window_active().await {
+                                    if viewing_dm_now && win_active {
                                         let pid = partner_id.clone();
                                         spawn(async move {
                                             let _ = social::mark_read(&pid, seq).await;
                                         });
                                     }
                                 }
-                                if is_for_active {
+                                if is_for_active_now {
                                     messages.with_mut(|list| {
                                         if !list.iter().any(|m| m.id == id) {
-                                            if is_from_me
-                                                && let Some(slot) = list.iter_mut().find(|m| {
-                                                    m.is_self
-                                                        && m.status == MessageStatus::Pending
-                                                        && m.text == decrypted.text
-                                                })
-                                            {
+                                            let expected_local = format!("local-{id}");
+                                            let slot_idx = if is_from_me {
+                                                list.iter()
+                                                    .position(|m| m.id == expected_local)
+                                                    .or_else(|| {
+                                                        list.iter().position(|m| {
+                                                            m.is_self
+                                                                && m.status == MessageStatus::Pending
+                                                                && m.text == decrypted.text
+                                                        })
+                                                    })
+                                            } else {
+                                                None
+                                            };
+                                            if let Some(idx) = slot_idx {
+                                                let slot = &mut list[idx];
                                                 slot.id = id.clone();
                                                 slot.seq = seq;
                                                 slot.created_at = created_at.clone();
@@ -865,10 +877,7 @@ pub fn Chat(
                                     });
                                     platform::scroll_chat_to_bottom(false);
 
-                                    if !is_from_me
-                                        && (nav_section() != NavSection::DirectMessages
-                                            || is_settings_open())
-                                    {
+                                    if !is_from_me && !viewing_dm_now {
                                         unread_counts.with_mut(|m| {
                                             *m.entry(partner_id.clone()).or_insert(0) += 1;
                                         });
@@ -880,7 +889,11 @@ pub fn Chat(
                                 }
                             }
                             Err(_) => {
-                                if is_for_active && !messages.read().iter().any(|m| m.id == id) {
+                                let is_for_active_now = active_friend()
+                                    .as_ref()
+                                    .map(|af| af.id == partner_id)
+                                    .unwrap_or(false);
+                                if is_for_active_now && !messages.read().iter().any(|m| m.id == id) {
                                     messages.with_mut(|list| {
                                         list.push(DisplayMessage {
                                             id: id.clone(),
@@ -889,12 +902,21 @@ pub fn Chat(
                                             recipient_id: recipient_id.clone(),
                                             text: "Cannot read on this device".to_string(),
                                             created_at: created_at.clone(),
-                                            is_self: false,
+                                            is_self: is_from_me,
                                             status: MessageStatus::Error,
                                             reply_to_id: None,
                                             reactions: Vec::new(),
                                             is_pinned: false,
                                         });
+                                    });
+                                }
+                                if !is_from_me
+                                    && !(is_for_active_now
+                                        && nav_section() == NavSection::DirectMessages
+                                        && !is_settings_open())
+                                {
+                                    unread_counts.with_mut(|m| {
+                                        *m.entry(partner_id.clone()).or_insert(0) += 1;
                                     });
                                 }
                             }
@@ -1012,18 +1034,26 @@ pub fn Chat(
                             }),
                         );
                         let is_active_group = active_group().as_ref().map(|g| g.id == msg.group_id).unwrap_or(false);
+                        let active_gc_matches = active_group_channel()
+                            .as_ref()
+                            .map(|c| c.id.as_str())
+                            == msg.channel_id.as_deref();
+                        let viewing_group_here = is_active_group
+                            && active_gc_matches
+                            && nav_section() == NavSection::DirectMessages
+                            && !is_settings_open();
                         let gname = groups.peek().iter().find(|g| g.id == msg.group_id).map(|g| g.name.clone()).unwrap_or_default();
                         last_previews.with_mut(|map| {
                             map.insert(msg.group_id.clone(), format!("{}: {}", msg.sender_username, crate::components::messages::preview_text(&msg.content)));
                         });
                         register_reminders(&uid, &[(msg.content.clone(), gname.clone())]);
                         if msg.sender_id != uid {
-                            if !is_active_group {
+                            if !viewing_group_here {
                                 unread_counts.with_mut(|m| *m.entry(msg.group_id.clone()).or_insert(0) += 1);
                             }
-                            notify_incoming("group", msg.group_id.clone(), gname.clone(), format!("{}: {}", msg.sender_username, crate::components::messages::preview_text(&msg.content)), is_active_group);
+                            notify_incoming("group", msg.group_id.clone(), gname.clone(), format!("{}: {}", msg.sender_username, crate::components::messages::preview_text(&msg.content)), viewing_group_here);
                         }
-                        if is_active_group
+                        if is_active_group && active_gc_matches
                         {
                             group_messages.with_mut(|list| {
                                 if !list.iter().any(|m| m.id == msg.id) {
@@ -2491,6 +2521,8 @@ pub fn Chat(
             };
             dm_cache.write().clear();
             peer_keys_cache.write().clear();
+            crate::services::dm::clear_peer_cache();
+            messages.write().clear();
             let uid = uid_for_resync.clone();
             let pkey = pkey_for_resync.clone();
             spawn(async move {
@@ -3020,7 +3052,14 @@ pub fn Chat(
                         crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
                         crate::components::rich::remove_pending_media(p);
                     }
-                    send_dm_text.call((msg_str, None));
+                    if active_friend().map(|f| f.id) == peer_id {
+                        send_dm_text.call((msg_str, None));
+                    } else if let Some(target_pid) = peer_id.clone() {
+                        let uid = my_id_sig.peek().clone();
+                        spawn(async move {
+                            let _ = crate::services::dm::send_encrypted_dm(&uid, &target_pid, &msg_str, None).await;
+                        });
+                    }
                     persist_uploaded_media_bg("dm", preview_key, payload, out);
                 }
                 Err(err) => {
@@ -4001,6 +4040,17 @@ pub fn Chat(
                     is_settings_open.set(false);
                     server_settings_open.set(false);
                     nav_section.set(NavSection::DirectMessages);
+                    if let Some(af) = active_friend.peek().as_ref() {
+                        let aid = af.id.clone();
+                        unread_counts.with_mut(|m| {
+                            m.remove(&aid);
+                        });
+                    } else if let Some(ag) = active_group.peek().as_ref() {
+                        let gid = ag.id.clone();
+                        unread_counts.with_mut(|m| {
+                            m.remove(&gid);
+                        });
+                    }
                 },
                 on_select_friends: move |_| {
                     is_settings_open.set(false);
@@ -4601,6 +4651,7 @@ pub fn Chat(
                                                 onclick: move |_| {
                                                     crate::crypto::e2ee::acknowledge_peer_key_change(Some(&my_uid_ack), &pid_ack);
                                                     peer_keys_cache.write().remove(&pid_ack);
+                                                    crate::services::dm::invalidate_peer_cache(&my_uid_ack, &pid_ack);
                                                     key_ack_tick.set(key_ack_tick() + 1);
                                                     toast.set(None);
                                                 },
@@ -4765,6 +4816,9 @@ pub fn Chat(
                                     my_user_id: current_user_id.clone(),
                                     on_key_verified: move |pid: String| {
                                         peer_keys_cache.write().remove(&pid);
+                                        if let Some(my_uid) = crate::services::api::auth_me_cached_id() {
+                                            crate::services::dm::invalidate_peer_cache(&my_uid, &pid);
+                                        }
                                         key_ack_tick.set(key_ack_tick() + 1);
                                         toast.set(None);
                                     },

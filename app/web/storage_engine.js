@@ -950,9 +950,12 @@
 
     async clearSessionSecrets() {
       try {
-        for (const storeName of ['dialogs', 'chat_messages', 'chat_outbox', 'drafts', 'users_peers']) {
+        for (const storeName of ['dialogs', 'chat_messages', 'chat_outbox', 'drafts', 'users_peers', 'sync_cursors']) {
           await idbTx(storeName, 'readwrite', (s) => s.clear()).catch(() => {});
         }
+        try {
+          localStorage.removeItem('chatw_last_delta_sync_v1');
+        } catch (_) {}
         return true;
       } catch (_) {
         return false;
@@ -1213,6 +1216,18 @@
         if (!raw && meta.blob) raw = meta.blob instanceof Uint8Array ? meta.blob : new Uint8Array(meta.blob);
         if (!raw || raw.byteLength < 64) continue;
 
+        // Never attempt image transcoding on CWLC1 encrypted E2EE cache envelopes.
+        if (
+          raw.byteLength >= 5 &&
+          raw[0] === 0x43 &&
+          raw[1] === 0x57 &&
+          raw[2] === 0x4c &&
+          raw[3] === 0x43 &&
+          raw[4] === 0x31
+        ) {
+          continue;
+        }
+
         const wres = await encodeColdWorker(raw, mime);
         if (wres && wres.ext === 'avif' && wres.bytesB64) {
           const avifBytes = b64ToBytes(wres.bytesB64);
@@ -1224,6 +1239,7 @@
             }
             const nextRec = {
               ...meta,
+              opfs_key: storedOpfs ? meta.opfs_key : null,
               mime_type: 'image/avif',
               original_byte_size: Number(meta.original_byte_size || raw.byteLength),
               byte_size: avifBytes.byteLength,

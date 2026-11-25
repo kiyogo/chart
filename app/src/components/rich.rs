@@ -623,10 +623,14 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
     let target_h = if data.orig_h > 0 { data.orig_h } else { data.h };
 
     // Sync immediately when Lightbox finishes enhancing this history image on-demand
-    let media_u_sync = data.u.clone();
+    let mut media_u_sync = use_signal(|| data.u.clone());
+    if *media_u_sync.peek() != data.u {
+        media_u_sync.set(data.u.clone());
+    }
     use_effect(move || {
+        let cur_u = media_u_sync();
         if let Some((mid, enh_url)) = GLOBAL_AI_UPDATED() {
-            if mid == media_u_sync && !enh_url.is_empty() {
+            if mid == cur_u && !enh_url.is_empty() {
                 let mut src = src;
                 let mut ai_enhanced = ai_enhanced;
                 let mut needs_on_demand_ai = needs_on_demand_ai;
@@ -2638,7 +2642,20 @@ pub fn GlobalImageLightbox() -> Element {
                                 upscaling_ai.set(false);
                             }
                         } else {
+                            if *active_key.peek() == key_at_start {
+                                upscaling_ai.set(false);
+                                if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
+                                    cur.auto_enhance_on_open = false;
+                                    *GLOBAL_LIGHTBOX.write() = Some(cur);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                    _ => {
+                        if *active_key.peek() == key_at_start {
                             upscaling_ai.set(false);
+                            lb_revealing.set(false);
                             if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
                                 cur.auto_enhance_on_open = false;
                                 *GLOBAL_LIGHTBOX.write() = Some(cur);
@@ -2646,18 +2663,9 @@ pub fn GlobalImageLightbox() -> Element {
                         }
                         break;
                     }
-                    _ => {
-                        upscaling_ai.set(false);
-                        lb_revealing.set(false);
-                        if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
-                            cur.auto_enhance_on_open = false;
-                            *GLOBAL_LIGHTBOX.write() = Some(cur);
-                        }
-                        break;
-                    }
                 }
             }
-            if !handed_off_reveal && *upscaling_ai.peek() {
+            if !handed_off_reveal && *active_key.peek() == key_at_start && *upscaling_ai.peek() {
                 upscaling_ai.set(false);
                 if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
                     cur.auto_enhance_on_open = false;

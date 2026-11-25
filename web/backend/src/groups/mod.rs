@@ -646,6 +646,13 @@ async fn update_member_role(
     }
 
     if payload.role == "owner" {
+        if target_user_id == user.id {
+            return Ok(Json(serde_json::json!({ "updated": true, "role": "owner" })));
+        }
+        let target_role = get_member_role(&state.db, group_id, target_user_id).await?;
+        if target_role.is_none() {
+            return Err(AppError::NotFound("member_not_found"));
+        }
         // Transfer ownership
         let mut tx = state.db.begin().await?;
         sqlx::query!(
@@ -674,7 +681,10 @@ async fn update_member_role(
 
         tx.commit().await?;
     } else if payload.role == "admin" || payload.role == "member" {
-        sqlx::query!(
+        if target_user_id == user.id {
+            return Err(AppError::BadRequest("owner_cannot_demote_self"));
+        }
+        let res = sqlx::query!(
             "UPDATE group_members SET role = $1 WHERE group_id = $2 AND user_id = $3",
             payload.role,
             group_id,
@@ -682,6 +692,9 @@ async fn update_member_role(
         )
         .execute(&state.db)
         .await?;
+        if res.rows_affected() == 0 {
+            return Err(AppError::NotFound("member_not_found"));
+        }
     } else {
         return Err(AppError::BadRequest("invalid_role"));
     }
@@ -1074,6 +1087,15 @@ async fn edit_message(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
+    let _role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    let content = payload.content.trim();
+    if content.is_empty() || content.len() > 4000 {
+        return Err(AppError::BadRequest("invalid_message_content"));
+    }
+
     let msg = sqlx::query!(
         "SELECT sender_id FROM group_messages WHERE id = $1 AND group_id = $2",
         message_id,
@@ -1089,7 +1111,7 @@ async fn edit_message(
 
     sqlx::query!(
         "UPDATE group_messages SET content = $1, is_edited = true WHERE id = $2",
-        payload.content.trim(),
+        content,
         message_id
     )
     .execute(&state.db)
@@ -1161,8 +1183,9 @@ async fn pin_message(
         message_id,
         group_id
     )
-    .fetch_one(&state.db)
-    .await?;
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("message_not_found"))?;
 
     Ok(Json(serde_json::json!({ "pinned": updated.is_pinned })))
 }
@@ -1401,6 +1424,18 @@ async fn toggle_reaction(
     let role = get_member_role(&state.db, group_id, user.id).await?;
     if role.is_none() {
         return Err(AppError::Forbidden("not_a_group_member"));
+    }
+
+    let belongs_to_group = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM group_messages WHERE id = $1 AND group_id = $2)",
+        message_id,
+        group_id
+    )
+    .fetch_one(&state.db)
+    .await?
+    .unwrap_or(false);
+    if !belongs_to_group {
+        return Err(AppError::NotFound("message_not_found"));
     }
 
     let emoji = payload.emoji.trim();

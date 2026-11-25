@@ -48,14 +48,23 @@ fn is_cookie_mutating_auth_path(path: &str) -> bool {
     let bare = path.split('?').next().unwrap_or(path);
     matches!(
         bare,
-        "/api/auth/dev-login"
+        "/api/auth/login"
+            | "/api/auth/register"
+            | "/api/auth/password"
+            | "/api/auth/dev-login"
             | "/api/auth/logout"
             | "/api/auth/logout-all"
             | "/api/auth/google"
             | "/api/auth/google/callback"
             | "/api/auth/providers"
             | "/api/auth/oauth-ticket"
+            | "/api/auth/2fa/pending"
+            | "/api/auth/2fa/verify"
+            | "/api/auth/accounts"
+            | "/api/auth/accounts/add"
+            | "/api/auth/accounts/switch"
     ) || bare.starts_with("/api/auth/oauth-ticket/")
+        || bare.starts_with("/api/auth/accounts/")
 }
 
 async fn try_core_worker_rpc(

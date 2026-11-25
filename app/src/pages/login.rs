@@ -59,6 +59,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
             return;
         }
         error.set(None);
+        crate::crypto::e2ee::clear_ephemeral_account_password();
         spawn(async move {
             match platform::start_google_oauth().await {
                 Ok(true) => on_login_success.call(()),
@@ -90,6 +91,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
         }
         loading.set(true);
         error.set(None);
+        crate::crypto::e2ee::clear_ephemeral_account_password();
         spawn(async move {
             let res = if is_reg {
                 api::auth_register(&uname, &pw).await
@@ -124,6 +126,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
         error.set(None);
         let uname = dev_username().trim().to_string();
         let uname_opt = if uname.is_empty() { None } else { Some(uname) };
+        crate::crypto::e2ee::clear_ephemeral_account_password();
         spawn(async move {
             match api::auth_dev_login(uname_opt).await {
                 Ok(()) => {
@@ -193,7 +196,10 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                     div { class: "auth-card",
                         crate::components::accounts::TwoFactorPrompt {
                             on_done: move |_| { twofa.set(false); on_login_success.call(()); },
-                            on_cancel: move |_| twofa.set(false),
+                            on_cancel: move |_| {
+                                crate::crypto::e2ee::clear_ephemeral_account_password();
+                                twofa.set(false);
+                            },
                         }
                     }
                 } else {

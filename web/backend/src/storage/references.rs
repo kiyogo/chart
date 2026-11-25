@@ -285,14 +285,28 @@ pub async fn handle_report_locations(
             "indexeddb"
         };
         let sha_bytes = decode_hex_32(item.sha256_hex.as_deref());
-        let exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM media_references WHERE id = $1 AND (owner_id = $2 OR scope_id = $2 OR scope_type IN ('group','channel')))",
+        let ref_row = sqlx::query(
+            "SELECT scope_type, scope_id, owner_id FROM media_references WHERE id = $1",
         )
         .bind(item.ref_id)
-        .bind(user.id)
-        .fetch_one(&state.db)
+        .fetch_optional(&state.db)
         .await?;
-        if !exists {
+        let Some(ref_row) = ref_row else {
+            continue;
+        };
+        let scope_type: String = ref_row.try_get("scope_type")?;
+        let scope_id: Option<Uuid> = ref_row.try_get("scope_id")?;
+        let owner_id: Uuid = ref_row.try_get("owner_id")?;
+        if super::permissions::authorize_read(
+            &state.db,
+            user.id,
+            &scope_type,
+            scope_id,
+            owner_id,
+        )
+        .await
+        .is_err()
+        {
             continue;
         }
         sqlx::query(

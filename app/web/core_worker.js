@@ -513,10 +513,60 @@
     return await promise;
   }
 
+  const CWCH3_MAGIC = new TextEncoder().encode('CWCH3');
+  const CWCH3_NONCE_PREFIX = new TextEncoder().encode('chatw-ch3-n!');
+  const CWCH3_HEADER_LEN = 34;
+
   async function decryptE2eeBlobInWorker(rawBytes, keyB64, nonceB64) {
     const keyBytes = b64ToU8(keyB64);
     const baseNonce = b64ToU8(nonceB64);
     const aesKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+
+    // Check CWCH3 HKDF-nonce chunked format (>= 512 KiB E2EE payloads)
+    let isCwch3 = rawBytes.byteLength >= CWCH3_HEADER_LEN;
+    for (let i = 0; isCwch3 && i < 5; i++) {
+      if (rawBytes[i] !== CWCH3_MAGIC[i]) isCwch3 = false;
+    }
+    if (isCwch3 && rawBytes[5] === 3) {
+      const dv = new DataView(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength);
+      const chunkCount = dv.getUint32(10, false);
+      const totalPlain = Number(dv.getBigUint64(14, false));
+      const mediaTag = rawBytes.subarray(22, 30);
+      const variantTag = rawBytes.subarray(30, 34);
+      const hkdfKey = await crypto.subtle.importKey('raw', keyBytes, 'HKDF', false, ['deriveBits']);
+      const out = new Uint8Array(totalPlain);
+      let pos = CWCH3_HEADER_LEN;
+      let writeOff = 0;
+      for (let idx = 0; idx < chunkCount; idx++) {
+        const ctLen = dv.getUint32(pos, false);
+        pos += 4;
+        const ct = rawBytes.subarray(pos, pos + ctLen);
+        pos += ctLen;
+        const info = new Uint8Array(28);
+        info.set(CWCH3_NONCE_PREFIX, 0);
+        info.set(mediaTag, 12);
+        info.set(variantTag, 20);
+        new DataView(info.buffer).setUint32(24, idx, false);
+        const cNonce = new Uint8Array(
+          await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: baseNonce, info }, hkdfKey, 96),
+        );
+        const aad = new Uint8Array(27);
+        aad.set(CWCH3_MAGIC, 0);
+        aad[5] = 3;
+        aad.set(mediaTag, 6);
+        aad.set(variantTag, 14);
+        const aadDv = new DataView(aad.buffer);
+        aadDv.setUint32(18, idx, false);
+        aadDv.setUint32(22, chunkCount, false);
+        aad[26] = idx === chunkCount - 1 ? 1 : 0;
+        const pt = new Uint8Array(
+          await crypto.subtle.decrypt({ name: 'AES-GCM', iv: cNonce, additionalData: aad }, aesKey, ct),
+        );
+        out.set(pt, writeOff);
+        writeOff += pt.byteLength;
+      }
+      return out;
+    }
 
     // Check CWCH2 chunked format
     let isCwch2 = rawBytes.byteLength >= CWCH2_HEADER_LEN;

@@ -17,6 +17,19 @@ thread_local! {
     static PEERS: std::cell::RefCell<std::collections::HashMap<String, PeerKeys>> = Default::default();
 }
 
+pub fn invalidate_peer_cache(my_id: &str, partner_id: &str) {
+    let cache_key = format!("{my_id}:{partner_id}");
+    PEERS.with(|p| {
+        p.borrow_mut().remove(&cache_key);
+    });
+}
+
+pub fn clear_peer_cache() {
+    PEERS.with(|p| {
+        p.borrow_mut().clear();
+    });
+}
+
 pub async fn send_encrypted_dm(my_id: &str, partner_id: &str, text: &str, reply_to: Option<&str>) -> Result<SentDm, String> {
     send_encrypted_dm_with_id(my_id, partner_id, text, reply_to, None).await
 }

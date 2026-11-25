@@ -125,6 +125,8 @@ pub async fn compress_inactive_images_15d(
             r#"
             UPDATE media_objects
             SET storage_key = $2,
+                sha256 = $8,
+                blake3 = $9,
                 mime_type = 'image/avif',
                 file_ext = 'avif',
                 compression_codec = 'avif_cold_15d',
@@ -144,16 +146,19 @@ pub async fn compress_inactive_images_15d(
         .bind(new_len)
         .bind(opt.width as i32)
         .bind(opt.height as i32)
+        .bind(&new_sha[..])
+        .bind(&new_b3[..])
         .execute(pool)
         .await;
 
         if let Ok(r) = upd {
             if r.rows_affected() > 0 {
                 let _ = sqlx::query(
-                    "UPDATE media_references SET mime_type = 'image/avif', byte_size = $2, updated_at = now() WHERE object_id = $1",
+                    "UPDATE media_references SET mime_type = 'image/avif', byte_size = $2, sha256_cipher = $3, updated_at = now() WHERE object_id = $1",
                 )
                 .bind(oid)
                 .bind(new_len)
+                .bind(&new_sha[..])
                 .execute(pool)
                 .await;
 
@@ -193,6 +198,9 @@ pub async fn delete_physical_object(storage: &StorageRegistry, backend: &str, ke
         }
         "encrypted_backup" => {
             let _ = storage.encrypted_backup.delete_object(key).await;
+        }
+        "existing" => {
+            let _ = storage.existing.delete_object(key).await;
         }
         _ => {}
     }

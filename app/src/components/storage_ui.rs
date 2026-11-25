@@ -258,7 +258,9 @@ pub fn StorageSettingsPanel() -> Element {
                                     let on = e.checked();
                                     let mut next = policy();
                                     next.ai_enhancement_enabled = on;
-                                    platform::storage_set("chatw_ai_enhance", if on { "true" } else { "false" });
+                                    let ai_str = if on { "true" } else { "false" };
+                                    platform::storage_set("chatw_ai_enhance", ai_str);
+                                    platform::storage_set("chatw_ai_enhance_enabled", ai_str);
                                     let _ = dioxus::document::eval(&format!(
                                         "if (window.__chatwAiRestorer) window.__chatwAiRestorer.setAiEnabled({});",
                                         if on { "true" } else { "false" }
@@ -1306,13 +1308,20 @@ pub fn E2eeUnlockRecoveryModal(
                                                     Ok(restored) => {
                                                         if let Some(did) = DEVICE_TRUST_STATE().map(|d| d.device_id) {
                                                             if let Ok(proof) = sign_device_recovery_proof(&restored, &did) {
-                                                                let _ = storage_sync::recover_lost_devices_with_proof(
+                                                                if storage_sync::recover_lost_devices_with_proof(
                                                                     None,
                                                                     false,
                                                                     Some(&proof),
                                                                     false,
                                                                 )
-                                                                .await;
+                                                                .await
+                                                                .is_ok()
+                                                                {
+                                                                    if let Some(mut st) = DEVICE_TRUST_STATE.peek().clone() {
+                                                                        st.trust_state = "trusted".into();
+                                                                        *DEVICE_TRUST_STATE.write() = Some(st);
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                         *E2EE_RECOVERY_REQUIRED.write() = None;
