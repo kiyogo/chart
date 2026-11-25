@@ -93,7 +93,7 @@ cp app/web/network_worker.js app/dist/network_worker.js
 cp app/web/network_bridge.js app/dist/network_bridge.js
 cp app/web/sw.js app/dist/sw.js
 cp app/web/media_stream_bridge.js app/dist/media_stream_bridge.js
-cp app/web/media_optimizer.js app/dist/media_optimizer.js
+sed "s|/media_worker.js|/media_worker.js?v=${TS}|g" app/web/media_optimizer.js > app/dist/media_optimizer.js
 cp app/web/plugin_runtime.js app/dist/plugin_runtime.js
 sed -e "s|/pkg/chatw_app.js|/pkg/chatw_app.js?v=${TS}|g" \
     -e "s|__BUILD_TS__|${TS}|g" \

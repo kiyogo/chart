@@ -10,7 +10,9 @@
 
 #[cfg(target_arch = "wasm32")]
 pub fn install_wasm_media_bridge() {
-    use crate::storage::realesrgan_gpu::{probe_gpu, restore_image_realesrgan_rust, warmup_gpu};
+    use crate::storage::realesrgan_gpu::{
+        probe_gpu, restore_image_realesrgan_rust, upscale_fsr1_rust, warmup_gpu,
+    };
     use chatw_media_core::{
         ai::realesrgan::{
             OriginalQualityProfile, RealEsrganModelKind, extract_original_quality_profile,
@@ -246,6 +248,46 @@ pub fn install_wasm_media_bridge() {
         },
     );
 
+    // 7b. upscaleFsr1(rgba, w, h, targetW, targetH, sharpness?, onProgress?) -> Promise<{ ok, canvas, ... }>
+    let fsr1_cb = Closure::<dyn Fn(Uint8Array, u32, u32, u32, u32, JsValue, JsValue) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32, target_w: u32, target_h: u32, sharp_val: JsValue, prog_val: JsValue| {
+            let raw = rgba.to_vec();
+            let sharpness = sharp_val.as_f64().map(|v| v as f32).unwrap_or(0.72);
+            let on_progress: Option<js_sys::Function> = prog_val.dyn_into::<js_sys::Function>().ok();
+
+            future_to_promise(async move {
+                let out = Object::new();
+                match upscale_fsr1_rust(&raw, width, height, target_w, target_h, sharpness, on_progress).await {
+                    Ok(res) => {
+                        let _ = Reflect::set(&out, &"ok".into(), &JsValue::TRUE);
+                        if let Some(canvas) = res.canvas {
+                            let _ = Reflect::set(&out, &"canvas".into(), &canvas.into());
+                        }
+                        if let Some(rgba) = res.rgba {
+                            let _ = Reflect::set(&out, &"rgba".into(), &Uint8Array::from(rgba.as_slice()).into());
+                        }
+                        let _ = Reflect::set(&out, &"width".into(), &JsValue::from(res.width));
+                        let _ = Reflect::set(&out, &"height".into(), &JsValue::from(res.height));
+                        let _ = Reflect::set(&out, &"scale".into(), &JsValue::from(res.scale));
+                        let _ = Reflect::set(&out, &"hasAlpha".into(), &JsValue::from(res.has_alpha));
+                        let _ = Reflect::set(&out, &"modelId".into(), &JsValue::from(res.model_id));
+                        let _ = Reflect::set(&out, &"modelLabel".into(), &JsValue::from(res.model_label));
+                        let _ = Reflect::set(&out, &"backend".into(), &JsValue::from(res.backend));
+                        let _ = Reflect::set(&out, &"ssim".into(), &JsValue::from(res.ssim));
+                        let _ = Reflect::set(&out, &"meanColorDrift".into(), &JsValue::from(res.mean_color_drift));
+                        let _ = Reflect::set(&out, &"matchPct".into(), &JsValue::from(res.match_pct));
+                    }
+                    Err(err) => {
+                        let _ = Reflect::set(&out, &"ok".into(), &JsValue::FALSE);
+                        let _ = Reflect::set(&out, &"error".into(), &JsValue::from(err));
+                    }
+                }
+                Ok(out.into())
+            })
+            .into()
+        },
+    );
+
     // 8. extractQualityProfile(rgba, w, h) -> string (JSON OriginalQualityProfile)
     let prof_cb = Closure::<dyn Fn(Uint8Array, u32, u32) -> JsValue>::new(
         move |rgba: Uint8Array, width: u32, height: u32| {
@@ -260,7 +302,9 @@ pub fn install_wasm_media_bridge() {
         let blocked = ["codeformer", "rvrt", "apisr", "upscayl"].iter().any(|b| k.contains(b));
         let approved = matches!(
             k.as_str(),
-            "realesr_animevideov3"
+            "fsr1_easu_rcas"
+                | "fidelity_cas_1x"
+                | "realesr_animevideov3"
                 | "realesr_general_x4v3"
                 | "spab_lite_builtin"
                 | "span_x2_s"
@@ -390,6 +434,7 @@ pub fn install_wasm_media_bridge() {
     let _ = Reflect::set(&api, &"warmupRealEsrganGpu".into(), warmup_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"selectRealEsrganModel".into(), select_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"restoreImageRealEsrgan".into(), restore_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"upscaleFsr1".into(), fsr1_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"extractQualityProfile".into(), prof_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"isModelLicenseAllowed".into(), lic_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"computeImagePdq".into(), pdq_cb.as_ref().unchecked_ref());
@@ -407,6 +452,7 @@ pub fn install_wasm_media_bridge() {
     warmup_cb.forget();
     select_cb.forget();
     restore_cb.forget();
+    fsr1_cb.forget();
     prof_cb.forget();
     lic_cb.forget();
     pdq_cb.forget();

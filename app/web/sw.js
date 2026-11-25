@@ -7,7 +7,7 @@
 //    `/stickers/*`, SVG/CSS/JS/WASM assets so repeat boots make 0 redundant Fetch/XHR requests.
 
 const STREAM_PREFIXES = ['/stream/media/', '/stream/'];
-const STATIC_CACHE_NAME = 'chatw-static-v14';
+const STATIC_CACHE_NAME = 'chatw-static-v15';
 const DEFAULT_GRANT_TTL_MS = 15 * 60 * 1000;
 const MAX_CHUNK_CACHE_ENTRIES = 64;
 const MAX_STREAM_SPAN = 1024 * 1024;
