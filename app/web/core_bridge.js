@@ -7,6 +7,32 @@
   const TEXT_DEC = new TextDecoder('utf-8');
   const MAX_BLOB_URLS = 250;
 
+  // Spec 166: Zero-overhead real click-to-DOM & click-to-paint latency recorder (`window.__chatwPerf`)
+  const perfSamples = [];
+  window.__chatwPerf = {
+    samples: perfSamples,
+    clear() { perfSamples.length = 0; },
+    summary() {
+      const byAction = {};
+      for (const s of perfSamples) {
+        (byAction[s.action] ||= []).push(s);
+      }
+      return byAction;
+    },
+  };
+  window.__chatwPerfMark = function (action) {
+    const t0 = performance.now();
+    const rec = { action: String(action || 'unknown'), t0, dom_ms: 0, paint_ms: 0 };
+    queueMicrotask(() => {
+      rec.dom_ms = Math.round((performance.now() - t0) * 1000) / 1000;
+    });
+    requestAnimationFrame(() => {
+      rec.paint_ms = Math.round((performance.now() - t0) * 1000) / 1000;
+    });
+    perfSamples.push(rec);
+    if (perfSamples.length > 64) perfSamples.shift();
+  };
+
   let port = null;
   let workerMode = 'none';
   let activeWsUrl = null;
@@ -948,22 +974,27 @@
     });
   }
 
-  // Also observe newly appended `<canvas data-blur-b64>` nodes (e.g. from innerHTML or Dioxus templates)
+  // Also observe newly appended `<canvas data-blur-b64>` nodes (batched to rAF so DOM switches stay <1ms!)
   if (typeof MutationObserver !== 'undefined') {
     const startBlurObserver = () => {
       if (!document.body) return;
       document.querySelectorAll('canvas[data-blur-b64]').forEach(paintBlurCanvas);
+      let pendingBlurScan = false;
       const mo = new MutationObserver((mutations) => {
-        for (const m of mutations) {
-          for (const node of m.addedNodes) {
-            if (node.nodeType !== 1) continue;
-            if (node.tagName === 'CANVAS' && node.hasAttribute('data-blur-b64')) {
-              paintBlurCanvas(node);
-            } else if (node.querySelectorAll) {
-              node.querySelectorAll('canvas[data-blur-b64]').forEach(paintBlurCanvas);
-            }
-          }
+        if (pendingBlurScan) return;
+        let hasEl = false;
+        for (let i = 0; i < mutations.length; i++) {
+          if (mutations[i].addedNodes.length > 0) { hasEl = true; break; }
         }
+        if (!hasEl) return;
+        pendingBlurScan = true;
+        requestAnimationFrame(() => {
+          pendingBlurScan = false;
+          document.querySelectorAll('canvas[data-blur-b64]:not([data-blur-painted])').forEach((c) => {
+            c.setAttribute('data-blur-painted', '1');
+            paintBlurCanvas(c);
+          });
+        });
       });
       mo.observe(document.body, { childList: true, subtree: true });
     };

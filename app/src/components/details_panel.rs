@@ -1,7 +1,19 @@
 //! Right-hand conversation details for a direct message: profile summary,
 //! quick actions, in-conversation search and a collapsible security section.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use dioxus::prelude::*;
+
+thread_local! {
+    /// Spec 166: Volatile L0 RAM profile cache for instant 0ms DmDetailsPanel switching.
+    /// Cleared on logout/lock alongside DM_DECRYPT_CACHE.
+    static PROFILE_RAM_CACHE: RefCell<HashMap<String, UserProfileResponse>> = RefCell::new(HashMap::new());
+}
+
+pub fn clear_profile_ram_cache() {
+    PROFILE_RAM_CACHE.with(|c| c.borrow_mut().clear());
+}
 
 use crate::{
     components::{
@@ -62,7 +74,8 @@ pub fn DmDetailsPanel(
     on_view_profile: EventHandler<()>,
     on_jump_to: EventHandler<String>,
 ) -> Element {
-    let mut profile = use_signal(|| Option::<UserProfileResponse>::None);
+    let init_profile = PROFILE_RAM_CACHE.with(|c| c.borrow().get(&user_id).cloned());
+    let mut profile = use_signal(move || init_profile);
     let mut security_open = use_signal(|| false);
     let mut copied = use_signal(|| false);
     let mut ack_tick = use_signal(|| 0u32);
@@ -74,29 +87,55 @@ pub fn DmDetailsPanel(
         crate::services::api::auth_me_cached_id()
     };
 
-    let mut loaded_uid = use_signal(String::new);
-    let mut auto_expanded_for = use_signal(String::new);
-    if *loaded_uid.peek() != user_id {
-        let uid = user_id.clone();
-        loaded_uid.set(uid.clone());
-        profile.set(None);
-        security_open.set(false);
+    let mut loaded_uid = use_hook(|| CopyValue::new(String::new()));
+    let mut auto_expanded_for = use_hook(|| CopyValue::new(String::new()));
+    let uid_eff = user_id.clone();
+    use_effect(use_reactive!(|uid_eff| {
+        if *loaded_uid.peek() == uid_eff {
+            return;
+        }
+        loaded_uid.set(uid_eff.clone());
+        let cached = PROFILE_RAM_CACHE.with(|c| c.borrow().get(&uid_eff).cloned());
+        if *profile.peek() != cached {
+            profile.set(cached.clone());
+        }
+        if *security_open.peek() {
+            security_open.set(false);
+        }
+        if cached.is_some() {
+            return;
+        }
+        let uid = uid_eff.clone();
         spawn(async move {
             if let Ok(p) = api::get_user_profile(&uid).await {
+                PROFILE_RAM_CACHE.with(|c| {
+                    let mut m = c.borrow_mut();
+                    if m.len() >= 256 {
+                        m.clear();
+                    }
+                    m.insert(uid.clone(), p.clone());
+                });
                 if *loaded_uid.peek() == uid {
                     profile.set(Some(p));
                 }
             }
         });
-    }
-    if fingerprint.is_some() && *auto_expanded_for.peek() != user_id {
-        let has_peer_alert = effective_my_uid.as_deref() != Some(user_id.as_str())
-            && crate::crypto::e2ee::get_peer_key_change_alert(effective_my_uid.as_deref(), &user_id).is_some();
-        if has_peer_alert {
-            auto_expanded_for.set(user_id.clone());
-            security_open.set(true);
+    }));
+    let fp_has_some = fingerprint.is_some();
+    let uid_alert = user_id.clone();
+    let my_uid_alert = effective_my_uid.clone();
+    use_effect(use_reactive!(|uid_alert, fp_has_some| {
+        if fp_has_some && *auto_expanded_for.peek() != uid_alert {
+            let has_peer_alert = my_uid_alert.as_deref() != Some(uid_alert.as_str())
+                && crate::crypto::e2ee::get_peer_key_change_alert(my_uid_alert.as_deref(), &uid_alert).is_some();
+            if has_peer_alert {
+                auto_expanded_for.set(uid_alert.clone());
+                if !*security_open.peek() {
+                    security_open.set(true);
+                }
+            }
         }
-    }
+    }));
 
     let p = profile();
     let display_name = p

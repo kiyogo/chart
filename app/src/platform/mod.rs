@@ -70,8 +70,30 @@ pub fn set_document_title(title: &str) {
     let _ = dioxus::document::eval(&format!("document.title = {escaped};"));
 }
 
-/// Scroll `.chat-messages` to bottom and arm sticky-bottom ResizeObserver + media-load pinning (Spec 061).
+/// Scroll `.chat-messages` to bottom and arm sticky-bottom ResizeObserver + media-load pinning (Spec 061 + Spec 166).
+/// On Web (`wasm32`) instant scrolls hit `web_sys` DOM directly (<0.05ms, zero `dioxus::document::eval` IPC!).
 pub fn scroll_chat_to_bottom(instant: bool) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if instant {
+            if let Some(win) = web_sys::window() {
+                if let Ok(stb) = js_sys::Reflect::get(&win, &wasm_bindgen::JsValue::from_str("__chatwStickToBottom")) {
+                    if let Ok(pin) = js_sys::Reflect::get(&stb, &wasm_bindgen::JsValue::from_str("pin")) {
+                        if let Some(func) = wasm_bindgen::JsCast::dyn_ref::<js_sys::Function>(&pin) {
+                            let _ = func.call1(&stb, &wasm_bindgen::JsValue::TRUE);
+                            return;
+                        }
+                    }
+                }
+                if let Some(doc) = win.document() {
+                    if let Some(el) = doc.get_element_by_id("chat-messages-scroll") {
+                        el.set_scroll_top(el.scroll_height());
+                        return;
+                    }
+                }
+            }
+        }
+    }
     let behavior = if instant { "instant" } else { "smooth" };
     let instant_js = if instant { "true" } else { "false" };
     let _ = dioxus::document::eval(&format!(

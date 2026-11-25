@@ -12,6 +12,65 @@ use chatw_msg_store::{
     SearchQuery, SearchResponse,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+/// Spec 166: L0 Volatile RAM Decrypted DM Plaintext Cache (keyed by `"{uid}:{msg_id}:{env_len}:{env_tail}"`).
+/// Eliminates redundant P-256 ECDH + ECDSA verify + AES-256-GCM decryption on conversation switches.
+/// Strictly volatile RAM — NEVER persisted to disk and IMMEDIATELY cleared on lock, logout, or key import.
+const DM_DECRYPT_CACHE_MAX: usize = 4096;
+static DM_DECRYPT_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+fn dm_decrypt_key(uid: &str, msg_id: &str, envelope: &str) -> String {
+    let tail_start = envelope.len().saturating_sub(16);
+    format!("{uid}:{msg_id}:{}:{}", envelope.len(), &envelope[tail_start..])
+}
+
+pub fn get_cached_decrypted_dm(uid: &str, msg_id: &str, envelope: &str) -> Option<String> {
+    let lock = DM_DECRYPT_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let guard = lock.lock().ok()?;
+    guard.get(&dm_decrypt_key(uid, msg_id, envelope)).cloned()
+}
+
+pub fn put_cached_decrypted_dm(uid: &str, msg_id: &str, envelope: &str, plaintext: &str) {
+    let lock = DM_DECRYPT_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut guard) = lock.lock() {
+        if guard.len() >= DM_DECRYPT_CACHE_MAX {
+            // Simple bounded clear-half eviction to stay strictly O(1) memory bounded
+            let to_drop: Vec<String> = guard.keys().take(DM_DECRYPT_CACHE_MAX / 2).cloned().collect();
+            for k in to_drop {
+                guard.remove(&k);
+            }
+        }
+        guard.insert(dm_decrypt_key(uid, msg_id, envelope), plaintext.to_string());
+    }
+}
+
+pub fn clear_decrypted_dm_cache() {
+    if let Some(lock) = DM_DECRYPT_CACHE.get()
+        && let Ok(mut guard) = lock.lock()
+    {
+        guard.clear();
+    }
+}
+
+/// Zero-overhead click-to-DOM & click-to-paint profiler hook (`window.__chatwPerf`) for Spec 166 verification.
+pub fn perf_mark_interaction(action: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(win) = web_sys::window() {
+            if let Ok(perf_fn) = js_sys::Reflect::get(&win, &wasm_bindgen::JsValue::from_str("__chatwPerfMark")) {
+                if let Some(func) = wasm_bindgen::JsCast::dyn_ref::<js_sys::Function>(&perf_fn) {
+                    let _ = func.call1(&win, &wasm_bindgen::JsValue::from_str(action));
+                }
+            }
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = action;
+    }
+}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct StorageBreakdown {
@@ -104,6 +163,7 @@ pub fn bind_session_root_key_b64(account_id: &str, root_key: &[u8; 32]) {
 }
 
 pub fn wipe_sensitive_l1_and_session_key() {
+    clear_decrypted_dm_cache();
     #[cfg(target_arch = "wasm32")]
     {
         let _ = dioxus::document::eval(

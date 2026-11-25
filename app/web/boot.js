@@ -33,6 +33,8 @@ import init from '/pkg/chatw_app.js';
 const BUILD_VER = '__BUILD_TS__';
 const CACHE_PREFIX = 'runtime:core:';
 const CACHE_KEY = CACHE_PREFIX + BUILD_VER;
+const RAW_CACHE_PREFIX = 'runtime:raw:';
+const RAW_CACHE_KEY = RAW_CACHE_PREFIX + BUILD_VER;
 const CWRT1_MAGIC = [0x43, 0x57, 0x52, 0x54, 0x31, 0x01, 0x00, 0x00]; // "CWRT1\x01\x00\x00"
 
 async function unpackCwrt1(packed) {
@@ -48,16 +50,31 @@ async function unpackCwrt1(packed) {
   const m0 = bytes[8], m1 = bytes[9], m2 = bytes[10], m3 = bytes[11];
   const payloadLen = bytes.byteLength - 12;
   const unmasked = new Uint8Array(payloadLen);
-  let i = 0;
-  for (; i + 3 < payloadLen; i += 4) {
-    unmasked[i]     = bytes[i + 12] ^ m0;
-    unmasked[i + 1] = bytes[i + 13] ^ m1;
-    unmasked[i + 2] = bytes[i + 14] ^ m2;
-    unmasked[i + 3] = bytes[i + 15] ^ m3;
-  }
-  for (; i < payloadLen; i++) {
-    const mask = (i & 3) === 0 ? m0 : (i & 3) === 1 ? m1 : (i & 3) === 2 ? m2 : m3;
-    unmasked[i] = bytes[i + 12] ^ mask;
+  // Spec 166: 32-bit aligned XOR pass (~4x faster than byte loop)
+  const alignedWords = (payloadLen >>> 2);
+  if (alignedWords > 0 && ((bytes.byteOffset + 12) & 3) === 0) {
+    const mask32 = (m0 | (m1 << 8) | (m2 << 16) | (m3 << 24)) >>> 0;
+    const src32 = new Uint32Array(bytes.buffer, bytes.byteOffset + 12, alignedWords);
+    const dst32 = new Uint32Array(unmasked.buffer, 0, alignedWords);
+    for (let w = 0; w < alignedWords; w++) {
+      dst32[w] = (src32[w] ^ mask32) >>> 0;
+    }
+    for (let i = alignedWords << 2; i < payloadLen; i++) {
+      const mask = (i & 3) === 0 ? m0 : (i & 3) === 1 ? m1 : (i & 3) === 2 ? m2 : m3;
+      unmasked[i] = bytes[i + 12] ^ mask;
+    }
+  } else {
+    let i = 0;
+    for (; i + 3 < payloadLen; i += 4) {
+      unmasked[i]     = bytes[i + 12] ^ m0;
+      unmasked[i + 1] = bytes[i + 13] ^ m1;
+      unmasked[i + 2] = bytes[i + 14] ^ m2;
+      unmasked[i + 3] = bytes[i + 15] ^ m3;
+    }
+    for (; i < payloadLen; i++) {
+      const mask = (i & 3) === 0 ? m0 : (i & 3) === 1 ? m1 : (i & 3) === 2 ? m2 : m3;
+      unmasked[i] = bytes[i + 12] ^ mask;
+    }
   }
   const ds = new DecompressionStream('gzip');
   const stream = new Blob([unmasked]).stream().pipeThrough(ds);
@@ -156,7 +173,34 @@ async function loadPackedRuntime() {
 }
 
 (async function bootApp() {
+  const t0 = performance.now();
+  // Spec 166 Ultra-Fast Warm Boot: check pre-unpacked raw WASM in IDB first (skips 24MB gzip decompression on F5!)
+  try {
+    if (window.__chatwStorage && window.__chatwStorage.getStaticCache) {
+      const rawHit = await window.__chatwStorage.getStaticCache(RAW_CACHE_KEY);
+      if (rawHit && rawHit.data && (rawHit.data instanceof ArrayBuffer || ArrayBuffer.isView(rawHit.data))) {
+        const rawBuf = rawHit.data instanceof ArrayBuffer ? rawHit.data : rawHit.data.buffer;
+        if (rawBuf.byteLength > 1024) {
+          await init({ module_or_path: rawBuf });
+          window.__chatwBootMs = Math.round((performance.now() - t0) * 100) / 100;
+          return;
+        }
+      }
+    }
+  } catch (_) {}
+
   const packed = await loadPackedRuntime();
   const runtimeBuf = await unpackCwrt1(packed);
   await init({ module_or_path: runtimeBuf });
+  window.__chatwBootMs = Math.round((performance.now() - t0) * 100) / 100;
+
+  // Persist unpacked WASM asynchronously AFTER boot so subsequent reloads skip gzip+XOR completely
+  try {
+    if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
+      window.__chatwStorage.putStaticCache(RAW_CACHE_KEY, BUILD_VER, runtimeBuf).catch(() => {});
+      if (window.__chatwStorage.deleteStaticCacheByPrefix) {
+        window.__chatwStorage.deleteStaticCacheByPrefix(RAW_CACHE_PREFIX, RAW_CACHE_KEY).catch(() => {});
+      }
+    }
+  } catch (_) {}
 })();

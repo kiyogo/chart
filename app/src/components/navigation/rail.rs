@@ -56,6 +56,8 @@ pub fn AppRail(
     #[props(default)] on_select_meet: Option<EventHandler<()>>,
     #[props(default)] on_select_notifications: Option<EventHandler<()>>,
     #[props(default)] on_select_download: Option<EventHandler<String>>,
+    #[props(default)] on_warm_settings: Option<EventHandler<()>>,
+    #[props(default)] is_settings_open: Option<Signal<bool>>,
 ) -> Element {
     let mut menu_open = use_signal(|| false);
     let mut download_hover_open = use_signal(|| false);
@@ -68,8 +70,19 @@ pub fn AppRail(
             }
         });
     });
+    let settings_active_now = is_settings_open.is_some_and(|s| s());
+    let active_section = if settings_active_now { NavSection::Settings } else { active_section };
     let active_mod_page = ACTIVE_PLUGIN_PAGE.read().clone();
     let active_left_plugin = ACTIVE_LEFT_PLUGIN.read().clone();
+    let hidden_mobile = hidden_mobile || (settings_active_now && active_left_plugin.is_none());
+    let clear_plugin_overlays = move || {
+        if ACTIVE_PLUGIN_PAGE.peek().is_some() {
+            *ACTIVE_PLUGIN_PAGE.write() = None;
+        }
+        if ACTIVE_LEFT_PLUGIN.peek().is_some() {
+            *ACTIVE_LEFT_PLUGIN.write() = None;
+        }
+    };
     let in_mod = active_mod_page.is_some();
     let in_left = !in_mod && active_left_plugin.is_some();
     let in_search = !in_mod && active_section == NavSection::Search;
@@ -86,7 +99,12 @@ pub fn AppRail(
     let custom_pages = enabled_rail_pages();
     let switch_to_dm = in_settings || matches!(active_section, NavSection::Search | NavSection::Feed | NavSection::VicoAi | NavSection::Meet | NavSection::Notifications | NavSection::Download);
     let notif_count = unread_dm_count + pending_friend_count;
-    let qr_svg = render_qr_svg(&download_qr_url(), "#0F172A", "#FFFFFF");
+    // Spec 166: Compute QR SVG strictly lazily ONLY when download popover is actually open!
+    let qr_svg = if download_hover_open() {
+        render_qr_svg(&download_qr_url(), "#0F172A", "#FFFFFF")
+    } else {
+        String::new()
+    };
     let mut cls = String::from("app-rail");
     if hidden_mobile { cls.push_str(" hidden-mobile"); }
     let mob_bar_cls = if hidden_mobile { "mobile-bottom-bar hidden-mobile" } else { "mobile-bottom-bar" };
@@ -105,7 +123,14 @@ pub fn AppRail(
                     "data-tip": "{t(\"nav.messages\")}",
                     aria_label: "{t(\"nav.messages\")}",
                     aria_current: if in_dm { "page" } else { "false" },
-                    onclick: move |_| { *ACTIVE_PLUGIN_PAGE.write() = None; *ACTIVE_LEFT_PLUGIN.write() = None; on_select_dm.call(()); },
+                    onmousedown: move |e| {
+                        if e.trigger_button() == Some(dioxus::html::input_data::MouseButton::Primary) {
+                            crate::storage::msg_store::perf_mark_interaction("nav:messages");
+                            clear_plugin_overlays();
+                            on_select_dm.call(());
+                        }
+                    },
+                    onclick: move |_| { clear_plugin_overlays(); on_select_dm.call(()); },
                     span { class: "rail-icon", MessageIcon { size: 28 }
                         if unread_dm_count > 0 { span { class: "rail-count", "{badge(unread_dm_count)}" } }
                     }
@@ -404,10 +429,22 @@ pub fn AppRail(
                     class: if in_settings { "rail-item compact active" } else { "rail-item compact" },
                     "data-tip": "{t(\"nav.settings\")}",
                     aria_label: "{t(\"nav.settings\")}",
+                    onmouseenter: move |_| {
+                        if let Some(cb) = &on_warm_settings {
+                            cb.call(());
+                        }
+                    },
+                    onmousedown: move |e| {
+                        if e.trigger_button() == Some(dioxus::html::input_data::MouseButton::Primary) {
+                            crate::storage::msg_store::perf_mark_interaction("open:settings");
+                            if *menu_open.peek() { menu_open.set(false); }
+                            clear_plugin_overlays();
+                            on_open_settings.call(());
+                        }
+                    },
                     onclick: move |_| {
-                        menu_open.set(false);
-                        *ACTIVE_PLUGIN_PAGE.write() = None;
-                        *ACTIVE_LEFT_PLUGIN.write() = None;
+                        if *menu_open.peek() { menu_open.set(false); }
+                        clear_plugin_overlays();
                         on_open_settings.call(());
                     },
                     span { class: "rail-icon", SettingsIcon { size: 26 } }

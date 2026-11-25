@@ -77,6 +77,7 @@ pub fn ConversationList(
     /// Self chat exists ("Chính mình").
     self_chat: bool,
     active_key: Option<String>,
+    #[props(default)] active_key_sig: Option<Memo<Option<String>>>,
     blocked: Vec<String>,
     on_open: EventHandler<ConvOpen>,
     /// (conv_type, conv_id, fields) for `/api/conversations/prefs`.
@@ -93,6 +94,7 @@ pub fn ConversationList(
     #[props(default)] my_status_emoji: Option<String>,
     #[props(default)] on_my_status_updated: Option<EventHandler<(Option<String>, Option<String>)>>,
     #[props(default)] on_note_reply: Option<EventHandler<(FriendItem, String)>>,
+    #[props(default)] on_prefetch: Option<EventHandler<ConvOpen>>,
     #[props(default = false)] loading: bool,
 ) -> Element {
     let mut query = use_signal(String::new);
@@ -233,10 +235,13 @@ pub fn ConversationList(
     let pinned: Vec<Row> = rows.iter().filter(|r| r.pinned_at.is_some()).cloned().collect();
     let rest: Vec<Row> = rows.iter().filter(|r| r.pinned_at.is_none()).cloned().collect();
 
+    let active_key_now = active_key_sig.map(|m| m()).unwrap_or(active_key);
     let labels_rows = labels.clone();
     let render_row = move |r: Row| {
-        let selected = active_key.as_deref() == Some(r.key.as_str());
+        let selected = active_key_now.as_deref() == Some(r.key.as_str());
         let open = r.open.clone();
+        let open_down = r.open.clone();
+        let open_hover = r.open.clone();
         let key_menu = r.key.clone();
         let key_ctx = r.key.clone();
         let menu_open = menu_for().as_deref() == Some(r.key.as_str());
@@ -256,6 +261,17 @@ pub fn ConversationList(
                     class: "{cls}",
                     style: "{np_style}",
                     "data-conv": "{r.key}",
+                    onmouseenter: move |_| {
+                        if let Some(cb) = &on_prefetch {
+                            cb.call(open_hover.clone());
+                        }
+                    },
+                    onmousedown: move |e| {
+                        if e.trigger_button() == Some(dioxus::html::input_data::MouseButton::Primary) {
+                            crate::storage::msg_store::perf_mark_interaction("switch:conv");
+                            on_open.call(open_down.clone());
+                        }
+                    },
                     onclick: move |_| on_open.call(open.clone()),
                     match &r.open {
                         ConvOpen::SelfChat => rsx! { span { class: "self-chat-avatar pride-voxel", aria_hidden: "true", SelfChatPrideAvatar {} } },

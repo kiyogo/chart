@@ -116,6 +116,197 @@ fn tab_label(t: SettingsTab) -> &'static str {
     NAV.iter().find(|x| x.0 == t).map(|x| x.1).unwrap_or("")
 }
 
+#[inline]
+fn tab_bit(t: SettingsTab) -> u16 {
+    1u16 << (t as u16)
+}
+
+#[inline]
+fn set_sig_if_changed<T: PartialEq + 'static>(mut sig: Signal<T>, val: T) {
+    if *sig.peek() != val {
+        sig.set(val);
+    }
+}
+
+#[component]
+fn SettingsPageShell(has_detail: Signal<bool>, children: Element) -> Element {
+    let hd = has_detail();
+    rsx! {
+        div { class: if hd { "settings-page has-detail" } else { "settings-page" },
+            if hd {
+                div { class: "settings-mobile-bar",
+                    button {
+                        r#type: "button",
+                        class: "icon-btn",
+                        aria_label: "Back to settings",
+                        onclick: move |_| set_sig_if_changed(has_detail, false),
+                        BackIcon {}
+                    }
+                    span { class: "settings-mobile-title", "Settings" }
+                }
+            }
+            {children}
+        }
+    }
+}
+
+#[component]
+fn SettingsNavPane(
+    tab: Signal<SettingsTab>,
+    mut mounted_tabs: Signal<u16>,
+    on_select: EventHandler<(SettingsTab, String)>,
+) -> Element {
+    let mut nav_query = use_signal(String::new);
+    let prefs_ctx = use_context::<crate::prefs::PrefsCtx>();
+    let dev_mode = prefs_ctx.prefs.read().developer_mode;
+    let cur = tab();
+    let effective_tab = if !dev_mode && cur == SettingsTab::Developer {
+        SettingsTab::About
+    } else {
+        cur
+    };
+    let visible_nav: Vec<(SettingsTab, &str)> = NAV
+        .iter()
+        .copied()
+        .filter(|(t, _)| *t != SettingsTab::Developer || dev_mode)
+        .collect();
+    let folded_q = crate::components::composer::fold(nav_query().trim());
+    let filtered_nav: Vec<(SettingsTab, &str)> = visible_nav
+        .iter()
+        .copied()
+        .filter(|(t, l)| {
+            folded_q.is_empty()
+                || crate::components::composer::fold(l).contains(&folded_q)
+                || tab_keywords(*t).contains(&folded_q)
+        })
+        .collect();
+
+    rsx! {
+        nav { class: "settings-nav", aria_label: "Settings categories",
+            div { class: "settings-search search-field",
+                SearchIcon { size: 16 }
+                input {
+                    r#type: "search",
+                    placeholder: "Search settings",
+                    aria_label: "Search settings",
+                    value: "{nav_query}",
+                    oninput: move |e| nav_query.set(e.value()),
+                    onkeydown: move |e| if e.key() == Key::Enter {
+                        let raw = nav_query.peek().clone();
+                        let q = crate::components::composer::fold(raw.trim());
+                        if let Some((t, _)) = NAV
+                            .iter()
+                            .copied()
+                            .filter(|(t, _)| *t != SettingsTab::Developer || prefs_ctx.prefs.peek().developer_mode)
+                            .find(|(t, l)| crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q))
+                        {
+                            on_select.call((t, raw));
+                        }
+                    },
+                }
+            }
+
+            if !folded_q.is_empty() && filtered_nav.is_empty() {
+                div { class: "sidebar-empty", "No matching settings found" }
+            }
+
+            for (t, label) in filtered_nav {
+                button {
+                    key: "{label}",
+                    r#type: "button",
+                    class: if effective_tab == t {
+                        if t == SettingsTab::Developer { "settings-nav-item settings-nav-dev active" } else { "settings-nav-item active" }
+                    } else {
+                        if t == SettingsTab::Developer { "settings-nav-item settings-nav-dev" } else { "settings-nav-item" }
+                    },
+                    aria_current: if effective_tab == t { "page" } else { "false" },
+                    onmouseenter: move |_| {
+                        let bit = tab_bit(t);
+                        let cur_mask = *mounted_tabs.peek();
+                        if (cur_mask & bit) == 0 {
+                            mounted_tabs.set(cur_mask | bit);
+                        }
+                    },
+                    onmousedown: move |e| {
+                        if e.trigger_button() == Some(dioxus::html::input_data::MouseButton::Primary) {
+                            crate::storage::msg_store::perf_mark_interaction("settings:tab");
+                            let raw = nav_query.peek().clone();
+                            on_select.call((t, raw));
+                        }
+                    },
+                    onclick: move |_| {
+                        let raw = nav_query.peek().clone();
+                        on_select.call((t, raw));
+                    },
+                    match t {
+                        SettingsTab::Account => rsx! { UserIcon {} },
+                        SettingsTab::PrivacySecurity => rsx! { ShieldIcon { size: 18 } },
+                        SettingsTab::ChatNotifications => rsx! { MessageIcon { size: 18 } },
+                        SettingsTab::Appearance => rsx! { PaletteIcon {} },
+                        SettingsTab::Language => rsx! { GlobeIcon { size: 18 } },
+                        SettingsTab::DataBackup => rsx! { CloudIcon { size: 18 } },
+                        SettingsTab::Creative => rsx! { SparkleIcon { size: 18 } },
+                        SettingsTab::About => rsx! { InfoIcon { size: 18 } },
+                        SettingsTab::Developer => rsx! { BoltIcon { size: 18 } },
+                    }
+                    span { "{label}" }
+                    span { class: "chevron", ChevronRightIcon { size: 16 } }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SettingsHeaderTitle(tab: Signal<SettingsTab>) -> Element {
+    let prefs_ctx = use_context::<crate::prefs::PrefsCtx>();
+    let dev_mode = prefs_ctx.prefs.read().developer_mode;
+    let cur = tab();
+    let effective_tab = if !dev_mode && cur == SettingsTab::Developer {
+        SettingsTab::About
+    } else {
+        cur
+    };
+    rsx! {
+        div {
+            h1 { class: "settings-page-title", "{tab_label(effective_tab)}" }
+        }
+    }
+}
+
+/// Spec 166: Isolated Keep-Alive tab panel. Subscribes via `Memo<bool>` so ONLY the
+/// outgoing and incoming tabs flip their `cw-keepalive-box` class (< 0.5ms!).
+#[component]
+fn SettingsKeepAlivePane(
+    tab: Signal<SettingsTab>,
+    mounted_tabs: Signal<u16>,
+    target: SettingsTab,
+    children: Element,
+) -> Element {
+    let prefs_ctx = use_context::<crate::prefs::PrefsCtx>();
+    let bit = tab_bit(target);
+    let is_mounted = use_memo(move || (mounted_tabs() & bit) != 0);
+    let is_active = use_memo(move || {
+        let cur = tab();
+        let dev_mode = prefs_ctx.prefs.read().developer_mode;
+        let eff = if !dev_mode && cur == SettingsTab::Developer {
+            SettingsTab::About
+        } else {
+            cur
+        };
+        eff == target
+    });
+    if !is_mounted() {
+        return rsx! {};
+    }
+    rsx! {
+        div {
+            class: if is_active() { "cw-keepalive-box" } else { "cw-keepalive-box hidden" },
+            {children}
+        }
+    }
+}
+
 /// Bilingual search keywords so finding any nested setting takes 1 keystroke.
 fn tab_keywords(t: SettingsTab) -> &'static str {
     match t {
@@ -142,6 +333,12 @@ fn SubTabBar(items: Vec<(&'static str, &'static str)>, active: &'static str, on_
                     role: "tab",
                     aria_selected: "{active == id}",
                     class: if active == id { "settings-subtab active" } else { "settings-subtab" },
+                    onmousedown: move |e| {
+                        if e.trigger_button() == Some(dioxus::html::input_data::MouseButton::Primary) {
+                            crate::storage::msg_store::perf_mark_interaction("settings:subtab");
+                            on_select.call(id);
+                        }
+                    },
                     onclick: move |_| on_select.call(id),
                     "{label}"
                 }
@@ -166,28 +363,47 @@ pub fn SettingsView(
     #[props(default)] on_lock_now: Option<EventHandler<()>>,
 ) -> Element {
     let on_replay_tour = on_replay_tour.unwrap_or_else(|| EventHandler::new(|_| {}));
-    let mut tab = use_signal(|| SettingsTab::Account);
-    let mut account_sub = use_signal(|| AccountSub::Profile);
-    let mut privacy_sub = use_signal(|| PrivacySub::Privacy);
-    let mut chat_sub = use_signal(|| ChatSub::Chat);
-    let mut appearance_sub = use_signal(|| AppearanceSub::Look);
-    let mut data_sub = use_signal(|| DataSub::Storage);
-    let mut creative_sub = use_signal(|| CreativeSub::Library);
-    let mut about_sub = use_signal(|| AboutSub::Overview);
-    let mut dev_sub = use_signal(|| DevSub::AdvancedExport);
+    let tab = use_signal(|| SettingsTab::Account);
+    let mut mounted_tabs = use_signal(|| tab_bit(SettingsTab::Account));
+    let mut tabs_prewarmed = use_hook(|| CopyValue::new(false));
+    let account_sub = use_signal(|| AccountSub::Profile);
+    let privacy_sub = use_signal(|| PrivacySub::Privacy);
+    let chat_sub = use_signal(|| ChatSub::Chat);
+    let appearance_sub = use_signal(|| AppearanceSub::Look);
+    let data_sub = use_signal(|| DataSub::Storage);
+    let creative_sub = use_signal(|| CreativeSub::Library);
+    let about_sub = use_signal(|| AboutSub::Overview);
+    let dev_sub = use_signal(|| DevSub::AdvancedExport);
 
-    let mut nav_query = use_signal(String::new);
-    let mut has_detail = use_signal(|| false);
+    let has_detail = use_signal(|| false);
     let prefs_ctx = use_context::<crate::prefs::PrefsCtx>();
     let appearance = move || prefs_ctx.prefs.read().to_appearance();
-    let dev_mode = prefs_ctx.prefs.read().developer_mode;
 
-    // Auto-redirect away from Developer tab if developer mode is turned off
-    let effective_tab = if !dev_mode && tab() == SettingsTab::Developer {
-        SettingsTab::About
-    } else {
-        tab()
-    };
+    // Spec 166: Stagger mounting core everyday Settings tabs in idle slices after Settings
+    // mounts (pre-warmed hidden at boot) so even the VERY FIRST click on any core tab is < 1ms!
+    use_effect(move || {
+        if *tabs_prewarmed.peek() {
+            return;
+        }
+        tabs_prewarmed.set(true);
+        spawn(async move {
+            for t in [
+                SettingsTab::PrivacySecurity,
+                SettingsTab::ChatNotifications,
+                SettingsTab::Appearance,
+                SettingsTab::Language,
+                SettingsTab::DataBackup,
+                SettingsTab::About,
+            ] {
+                platform::sleep_ms(55).await;
+                let bit = tab_bit(t);
+                let cur_mask = *mounted_tabs.peek();
+                if (cur_mask & bit) == 0 {
+                    mounted_tabs.set(cur_mask | bit);
+                }
+            }
+        });
+    });
 
     let update_appearance = move |f: &dyn Fn(&mut platform::Appearance)| {
         prefs_ctx.update(|p| {
@@ -209,190 +425,111 @@ pub fn SettingsView(
 
     // Deep-link sub-tab matching when navigating from search query
     let mut select_tab_for_query = move |t: SettingsTab, raw_q: &str| {
+        let bit = tab_bit(t);
+        let cur_mask = *mounted_tabs.peek();
+        if (cur_mask & bit) == 0 {
+            mounted_tabs.set(cur_mask | bit);
+        }
+        set_sig_if_changed(tab, t);
+        set_sig_if_changed(has_detail, true);
         let q = crate::components::composer::fold(raw_q.trim());
-        tab.set(t);
-        has_detail.set(true);
         if q.is_empty() {
             return;
         }
         match t {
             SettingsTab::Account => {
                 if q.contains("device") || q.contains("thiet bi") || q.contains("session") || q.contains("dang xuat") || q.contains("log out") {
-                    account_sub.set(AccountSub::Devices);
+                    set_sig_if_changed(account_sub, AccountSub::Devices);
                 } else if q.contains("business") || q.contains("kinh doanh") || q.contains("ban hang") || q.contains("san pham") {
-                    account_sub.set(AccountSub::Business);
+                    set_sig_if_changed(account_sub, AccountSub::Business);
                 } else {
-                    account_sub.set(AccountSub::Profile);
+                    set_sig_if_changed(account_sub, AccountSub::Profile);
                 }
             }
             SettingsTab::PrivacySecurity => {
                 if q.contains("lock") || q.contains("khoa") || q.contains("pin") {
-                    privacy_sub.set(PrivacySub::AppLock);
+                    set_sig_if_changed(privacy_sub, PrivacySub::AppLock);
                 } else if q.contains("security") || q.contains("bao mat") || q.contains("2fa") || q.contains("totp") || q.contains("xac minh") {
-                    privacy_sub.set(PrivacySub::Security);
+                    set_sig_if_changed(privacy_sub, PrivacySub::Security);
                 } else {
-                    privacy_sub.set(PrivacySub::Privacy);
+                    set_sig_if_changed(privacy_sub, PrivacySub::Privacy);
                 }
             }
             SettingsTab::ChatNotifications => {
                 if q.contains("notif") || q.contains("thong bao") || q.contains("sound") || q.contains("am bao") || q.contains("am thanh") {
-                    chat_sub.set(ChatSub::Notifications);
+                    set_sig_if_changed(chat_sub, ChatSub::Notifications);
                 } else if q.contains("auto") || q.contains("tu dong") || q.contains("vang mat") {
-                    chat_sub.set(ChatSub::AutoReply);
+                    set_sig_if_changed(chat_sub, ChatSub::AutoReply);
                 } else {
-                    chat_sub.set(ChatSub::Chat);
+                    set_sig_if_changed(chat_sub, ChatSub::Chat);
                 }
             }
             SettingsTab::Appearance => {
                 if q.contains("personal") || q.contains("custom") || q.contains("tuy chinh") || q.contains("ghim") || q.contains("hieu ung avatar") {
-                    appearance_sub.set(AppearanceSub::Personalize);
+                    set_sig_if_changed(appearance_sub, AppearanceSub::Personalize);
                 } else {
-                    appearance_sub.set(AppearanceSub::Look);
+                    set_sig_if_changed(appearance_sub, AppearanceSub::Look);
                 }
             }
             SettingsTab::DataBackup => {
                 if q.contains("cloud") || q.contains("dam may") || q.contains("drive") || q.contains("dropbox") || q.contains("s3") {
-                    data_sub.set(DataSub::Cloud);
+                    set_sig_if_changed(data_sub, DataSub::Cloud);
                 } else if q.contains("backup") || q.contains("sao luu") || q.contains("restore") || q.contains("khoi phuc") || q.contains("kdata") {
-                    data_sub.set(DataSub::Backup);
+                    set_sig_if_changed(data_sub, DataSub::Backup);
                 } else {
-                    data_sub.set(DataSub::Storage);
+                    set_sig_if_changed(data_sub, DataSub::Storage);
                 }
             }
             SettingsTab::Creative => {
                 if q.contains("draw") || q.contains("ve") || q.contains("studio") || q.contains("animation") {
-                    creative_sub.set(CreativeSub::Draw);
+                    set_sig_if_changed(creative_sub, CreativeSub::Draw);
                 } else if q.contains("inventory") || q.contains("kho") || q.contains("huy hieu") {
-                    creative_sub.set(CreativeSub::Inventory);
+                    set_sig_if_changed(creative_sub, CreativeSub::Inventory);
                 } else if q.contains("showcase") || q.contains("demo") || q.contains("xem thu") {
-                    creative_sub.set(CreativeSub::Showcase);
+                    set_sig_if_changed(creative_sub, CreativeSub::Showcase);
                 } else {
-                    creative_sub.set(CreativeSub::Library);
+                    set_sig_if_changed(creative_sub, CreativeSub::Library);
                 }
             }
             SettingsTab::About => {
                 if q.contains("terms") || q.contains("dieu khoan") || q.contains("thoa thuan") {
-                    about_sub.set(AboutSub::Terms);
+                    set_sig_if_changed(about_sub, AboutSub::Terms);
                 } else if q.contains("privacy") || q.contains("chinh sach") || q.contains("bao mat") {
-                    about_sub.set(AboutSub::Privacy);
+                    set_sig_if_changed(about_sub, AboutSub::Privacy);
                 } else if q.contains("community") || q.contains("tieu chuan") || q.contains("cong dong") {
-                    about_sub.set(AboutSub::Community);
+                    set_sig_if_changed(about_sub, AboutSub::Community);
                 } else if q.contains("vision") || q.contains("tam nhin") || q.contains("san pham") {
-                    about_sub.set(AboutSub::Vision);
+                    set_sig_if_changed(about_sub, AboutSub::Vision);
                 } else if q.contains("guide") || q.contains("huong dan") || q.contains("phim tat") || q.contains("faq") {
-                    about_sub.set(AboutSub::Guide);
+                    set_sig_if_changed(about_sub, AboutSub::Guide);
                 } else {
-                    about_sub.set(AboutSub::Overview);
+                    set_sig_if_changed(about_sub, AboutSub::Overview);
                 }
             }
             SettingsTab::Developer => {
                 if q.contains("key") || q.contains("khoa") || q.contains("fingerprint") || q.contains("van tay") || q.contains("e2ee") {
-                    dev_sub.set(DevSub::EncryptionKeys);
+                    set_sig_if_changed(dev_sub, DevSub::EncryptionKeys);
                 } else if q.contains("sync") || q.contains("dong bo") || q.contains("webrtc") || q.contains("recovery") {
-                    dev_sub.set(DevSub::SyncRecovery);
+                    set_sig_if_changed(dev_sub, DevSub::SyncRecovery);
                 } else if q.contains("ext") || q.contains("plugin") || q.contains("bot") || q.contains("tien ich") {
-                    dev_sub.set(DevSub::Extensions);
+                    set_sig_if_changed(dev_sub, DevSub::Extensions);
                 } else if q.contains("diag") || q.contains("chan doan") {
-                    dev_sub.set(DevSub::Diagnostics);
+                    set_sig_if_changed(dev_sub, DevSub::Diagnostics);
                 } else {
-                    dev_sub.set(DevSub::AdvancedExport);
+                    set_sig_if_changed(dev_sub, DevSub::AdvancedExport);
                 }
             }
             SettingsTab::Language => {}
         }
     };
 
-    let visible_nav: Vec<(SettingsTab, &str)> = NAV
-        .iter()
-        .copied()
-        .filter(|(t, _)| *t != SettingsTab::Developer || dev_mode)
-        .collect();
-
-    let folded_q = crate::components::composer::fold(nav_query().trim());
-    let filtered_nav: Vec<(SettingsTab, &str)> = visible_nav
-        .iter()
-        .copied()
-        .filter(|(t, l)| {
-            folded_q.is_empty()
-                || crate::components::composer::fold(l).contains(&folded_q)
-                || tab_keywords(*t).contains(&folded_q)
-        })
-        .collect();
-
     rsx! {
         div { class: "main-stage",
-            div { class: if has_detail() { "settings-page has-detail" } else { "settings-page" },
-                if has_detail() {
-                    div { class: "settings-mobile-bar",
-                        button {
-                            r#type: "button",
-                            class: "icon-btn",
-                            aria_label: "Back to settings",
-                            onclick: move |_| has_detail.set(false),
-                            BackIcon {}
-                        }
-                        span { class: "settings-mobile-title", "Settings" }
-                    }
-                }
-
-                // Compact Left Settings Sidebar (8 everyday items + conditional Developer item)
-                nav { class: "settings-nav", aria_label: "Settings categories",
-                    div { class: "settings-search search-field",
-                        SearchIcon { size: 16 }
-                        input {
-                            r#type: "search",
-                            placeholder: "Search settings",
-                            aria_label: "Search settings",
-                            value: "{nav_query}",
-                            oninput: move |e| nav_query.set(e.value()),
-                            onkeydown: move |e| if e.key() == Key::Enter {
-                                let raw = nav_query();
-                                let q = crate::components::composer::fold(raw.trim());
-                                if let Some((t, _)) = NAV
-                                    .iter()
-                                    .copied()
-                                    .filter(|(t, _)| *t != SettingsTab::Developer || prefs_ctx.prefs.read().developer_mode)
-                                    .find(|(t, l)| crate::components::composer::fold(l).contains(&q) || tab_keywords(*t).contains(&q))
-                                {
-                                    select_tab_for_query(t, &raw);
-                                }
-                            },
-                        }
-                    }
-
-                    if !folded_q.is_empty() && filtered_nav.is_empty() {
-                        div { class: "sidebar-empty", "No matching settings found" }
-                    }
-
-                    for (t, label) in filtered_nav {
-                        button {
-                            key: "{label}",
-                            r#type: "button",
-                            class: if effective_tab == t {
-                                if t == SettingsTab::Developer { "settings-nav-item settings-nav-dev active" } else { "settings-nav-item active" }
-                            } else {
-                                if t == SettingsTab::Developer { "settings-nav-item settings-nav-dev" } else { "settings-nav-item" }
-                            },
-                            aria_current: if effective_tab == t { "page" } else { "false" },
-                            onclick: move |_| {
-                                let raw = nav_query();
-                                select_tab_for_query(t, &raw);
-                            },
-                            match t {
-                                SettingsTab::Account => rsx! { UserIcon {} },
-                                SettingsTab::PrivacySecurity => rsx! { ShieldIcon { size: 18 } },
-                                SettingsTab::ChatNotifications => rsx! { MessageIcon { size: 18 } },
-                                SettingsTab::Appearance => rsx! { PaletteIcon {} },
-                                SettingsTab::Language => rsx! { GlobeIcon { size: 18 } },
-                                SettingsTab::DataBackup => rsx! { CloudIcon { size: 18 } },
-                                SettingsTab::Creative => rsx! { SparkleIcon { size: 18 } },
-                                SettingsTab::About => rsx! { InfoIcon { size: 18 } },
-                                SettingsTab::Developer => rsx! { BoltIcon { size: 18 } },
-                            }
-                            span { "{label}" }
-                            span { class: "chevron", ChevronRightIcon { size: 16 } }
-                        }
-                    }
+            SettingsPageShell { has_detail,
+                SettingsNavPane {
+                    tab,
+                    mounted_tabs,
+                    on_select: move |(t, raw): (SettingsTab, String)| select_tab_for_query(t, &raw),
                 }
 
                 div {
@@ -404,30 +541,27 @@ pub fn SettingsView(
                 // Right Settings Body
                 div { class: "settings-body",
                     div { class: "settings-content",
-                        div {
-                            h1 { class: "settings-page-title", "{tab_label(effective_tab)}" }
-                        }
+                        SettingsHeaderTitle { tab }
 
-                        match effective_tab {
-                            // 1. Account (Profile | Devices | Business)
-                            SettingsTab::Account => rsx! {
-                                SubTabBar {
-                                    items: vec![
-                                        ("profile", "Profile"),
-                                        ("devices", "Devices"),
-                                        ("business", "Business"),
-                                    ],
-                                    active: match account_sub() {
-                                        AccountSub::Profile => "profile",
-                                        AccountSub::Devices => "devices",
-                                        AccountSub::Business => "business",
-                                    },
-                                    on_select: move |id| match id {
-                                        "devices" => account_sub.set(AccountSub::Devices),
-                                        "business" => account_sub.set(AccountSub::Business),
-                                        _ => account_sub.set(AccountSub::Profile),
-                                    },
-                                }
+                        // 1. Account (Profile | Devices | Business)
+                        SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::Account,
+                            SubTabBar {
+                                items: vec![
+                                    ("profile", "Profile"),
+                                    ("devices", "Devices"),
+                                    ("business", "Business"),
+                                ],
+                                active: match account_sub() {
+                                    AccountSub::Profile => "profile",
+                                    AccountSub::Devices => "devices",
+                                    AccountSub::Business => "business",
+                                },
+                                on_select: move |id| match id {
+                                    "devices" => set_sig_if_changed(account_sub, AccountSub::Devices),
+                                    "business" => set_sig_if_changed(account_sub, AccountSub::Business),
+                                    _ => set_sig_if_changed(account_sub, AccountSub::Profile),
+                                },
+                            }
                                 match account_sub() {
                                     AccountSub::Profile => rsx! {
                                         div { class: "settings-profile-card",
@@ -547,10 +681,10 @@ pub fn SettingsView(
                                     },
                                     AccountSub::Business => rsx! { BusinessSettings {} },
                                 }
-                            },
+                            }
 
                             // 2. Privacy & security (Privacy | App lock | Security — everyday friendly controls)
-                            SettingsTab::PrivacySecurity => rsx! {
+                            SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::PrivacySecurity,
                                 SubTabBar {
                                     items: vec![
                                         ("privacy", "Privacy"),
@@ -563,9 +697,9 @@ pub fn SettingsView(
                                         PrivacySub::Security => "security",
                                     },
                                     on_select: move |id| match id {
-                                        "applock" => privacy_sub.set(PrivacySub::AppLock),
-                                        "security" => privacy_sub.set(PrivacySub::Security),
-                                        _ => privacy_sub.set(PrivacySub::Privacy),
+                                        "applock" => set_sig_if_changed(privacy_sub, PrivacySub::AppLock),
+                                        "security" => set_sig_if_changed(privacy_sub, PrivacySub::Security),
+                                        _ => set_sig_if_changed(privacy_sub, PrivacySub::Privacy),
                                     },
                                 }
                                 match privacy_sub() {
@@ -588,10 +722,10 @@ pub fn SettingsView(
                                         }
                                     },
                                 }
-                            },
+                            }
 
                             // 3. Chat & notifications (Chat | Notifications | Auto reply)
-                            SettingsTab::ChatNotifications => rsx! {
+                            SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::ChatNotifications,
                                 SubTabBar {
                                     items: vec![
                                         ("chat", "Chat"),
@@ -604,9 +738,9 @@ pub fn SettingsView(
                                         ChatSub::AutoReply => "autoreply",
                                     },
                                     on_select: move |id| match id {
-                                        "notifications" => chat_sub.set(ChatSub::Notifications),
-                                        "autoreply" => chat_sub.set(ChatSub::AutoReply),
-                                        _ => chat_sub.set(ChatSub::Chat),
+                                        "notifications" => set_sig_if_changed(chat_sub, ChatSub::Notifications),
+                                        "autoreply" => set_sig_if_changed(chat_sub, ChatSub::AutoReply),
+                                        _ => set_sig_if_changed(chat_sub, ChatSub::Chat),
                                     },
                                 }
                                 match chat_sub() {
@@ -614,10 +748,10 @@ pub fn SettingsView(
                                     ChatSub::Notifications => rsx! { NotificationSettings {} },
                                     ChatSub::AutoReply => rsx! { AutoReplySettings {} },
                                 }
-                            },
+                            }
 
                             // 4. Appearance (Theme & look | Personalize)
-                            SettingsTab::Appearance => rsx! {
+                            SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::Appearance,
                                 SubTabBar {
                                     items: vec![
                                         ("look", "Theme & look"),
@@ -628,8 +762,8 @@ pub fn SettingsView(
                                         AppearanceSub::Personalize => "personalize",
                                     },
                                     on_select: move |id| match id {
-                                        "personalize" => appearance_sub.set(AppearanceSub::Personalize),
-                                        _ => appearance_sub.set(AppearanceSub::Look),
+                                        "personalize" => set_sig_if_changed(appearance_sub, AppearanceSub::Personalize),
+                                        _ => set_sig_if_changed(appearance_sub, AppearanceSub::Look),
                                     },
                                 }
                                 match appearance_sub() {
@@ -869,13 +1003,15 @@ pub fn SettingsView(
                                         }
                                     },
                                 }
-                            },
+                            }
 
                             // 5. Language (197 world languages directly)
-                            SettingsTab::Language => rsx! { LanguageSettings {} },
+                            SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::Language,
+                                LanguageSettings {}
+                            }
 
                             // 6. Data & backup (Storage | Backup | Cloud)
-                            SettingsTab::DataBackup => rsx! {
+                            SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::DataBackup,
                                 SubTabBar {
                                     items: vec![
                                         ("storage", "Storage"),
@@ -888,9 +1024,9 @@ pub fn SettingsView(
                                         DataSub::Cloud => "cloud",
                                     },
                                     on_select: move |id| match id {
-                                        "backup" => data_sub.set(DataSub::Backup),
-                                        "cloud" => data_sub.set(DataSub::Cloud),
-                                        _ => data_sub.set(DataSub::Storage),
+                                        "backup" => set_sig_if_changed(data_sub, DataSub::Backup),
+                                        "cloud" => set_sig_if_changed(data_sub, DataSub::Cloud),
+                                        _ => set_sig_if_changed(data_sub, DataSub::Storage),
                                     },
                                 }
                                 match data_sub() {
@@ -898,10 +1034,10 @@ pub fn SettingsView(
                                     DataSub::Backup => rsx! { crate::components::backup_cloud_ui::BackupExportRestorePanel {} },
                                     DataSub::Cloud => rsx! { crate::components::backup_cloud_ui::CloudAccountsPanel {} },
                                 }
-                            },
+                            }
 
                             // 7. Creative (Library | Draw | Inventory | Showcase)
-                            SettingsTab::Creative => rsx! {
+                            SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::Creative,
                                 SubTabBar {
                                     items: vec![
                                         ("library", "Library"),
@@ -916,10 +1052,10 @@ pub fn SettingsView(
                                         CreativeSub::Showcase => "showcase",
                                     },
                                     on_select: move |id| match id {
-                                        "draw" => creative_sub.set(CreativeSub::Draw),
-                                        "inventory" => creative_sub.set(CreativeSub::Inventory),
-                                        "showcase" => creative_sub.set(CreativeSub::Showcase),
-                                        _ => creative_sub.set(CreativeSub::Library),
+                                        "draw" => set_sig_if_changed(creative_sub, CreativeSub::Draw),
+                                        "inventory" => set_sig_if_changed(creative_sub, CreativeSub::Inventory),
+                                        "showcase" => set_sig_if_changed(creative_sub, CreativeSub::Showcase),
+                                        _ => set_sig_if_changed(creative_sub, CreativeSub::Library),
                                     },
                                 }
                                 match creative_sub() {
@@ -934,10 +1070,10 @@ pub fn SettingsView(
                                         }
                                     },
                                 }
-                            },
+                            }
 
                             // 8. About (Overview — iOS/Android About + Developer mode toggle | Terms | Privacy | Community | Vision | Guide)
-                            SettingsTab::About => rsx! {
+                            SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::About,
                                 SubTabBar {
                                     items: vec![
                                         ("overview", "Overview"),
@@ -956,12 +1092,12 @@ pub fn SettingsView(
                                         AboutSub::Guide => "guide",
                                     },
                                     on_select: move |id| match id {
-                                        "terms" => about_sub.set(AboutSub::Terms),
-                                        "privacy" => about_sub.set(AboutSub::Privacy),
-                                        "community" => about_sub.set(AboutSub::Community),
-                                        "vision" => about_sub.set(AboutSub::Vision),
-                                        "guide" => about_sub.set(AboutSub::Guide),
-                                        _ => about_sub.set(AboutSub::Overview),
+                                        "terms" => set_sig_if_changed(about_sub, AboutSub::Terms),
+                                        "privacy" => set_sig_if_changed(about_sub, AboutSub::Privacy),
+                                        "community" => set_sig_if_changed(about_sub, AboutSub::Community),
+                                        "vision" => set_sig_if_changed(about_sub, AboutSub::Vision),
+                                        "guide" => set_sig_if_changed(about_sub, AboutSub::Guide),
+                                        _ => set_sig_if_changed(about_sub, AboutSub::Overview),
                                     },
                                 }
                                 match about_sub() {
@@ -969,15 +1105,20 @@ pub fn SettingsView(
                                         AboutOverviewPanel {
                                             has_keys: user_keys.is_some(),
                                             on_open_developer: move |_| {
-                                                tab.set(SettingsTab::Developer);
-                                                dev_sub.set(DevSub::AdvancedExport);
+                                                let bit = tab_bit(SettingsTab::Developer);
+                                                let cur_mask = *mounted_tabs.peek();
+                                                if (cur_mask & bit) == 0 {
+                                                    mounted_tabs.set(cur_mask | bit);
+                                                }
+                                                set_sig_if_changed(tab, SettingsTab::Developer);
+                                                set_sig_if_changed(dev_sub, DevSub::AdvancedExport);
                                             },
-                                            on_open_guide: move |_| about_sub.set(AboutSub::Guide),
+                                            on_open_guide: move |_| set_sig_if_changed(about_sub, AboutSub::Guide),
                                             on_replay_tour: move |_| on_replay_tour.call(()),
-                                            on_open_terms: move |_| about_sub.set(AboutSub::Terms),
-                                            on_open_privacy: move |_| about_sub.set(AboutSub::Privacy),
-                                            on_open_community: move |_| about_sub.set(AboutSub::Community),
-                                            on_open_vision: move |_| about_sub.set(AboutSub::Vision),
+                                            on_open_terms: move |_| set_sig_if_changed(about_sub, AboutSub::Terms),
+                                            on_open_privacy: move |_| set_sig_if_changed(about_sub, AboutSub::Privacy),
+                                            on_open_community: move |_| set_sig_if_changed(about_sub, AboutSub::Community),
+                                            on_open_vision: move |_| set_sig_if_changed(about_sub, AboutSub::Vision),
                                         }
                                     },
                                     AboutSub::Terms => rsx! {
@@ -994,10 +1135,10 @@ pub fn SettingsView(
                                     },
                                     AboutSub::Guide => rsx! { GuideSettings { on_replay_tour: move |_| on_replay_tour.call(()) } },
                                 }
-                            },
+                            }
 
                             // 9. Developer (Conditional — ALL advanced/technical/complex features consolidated cleanly)
-                            SettingsTab::Developer => rsx! {
+                            SettingsKeepAlivePane { tab, mounted_tabs, target: SettingsTab::Developer,
                                 SubTabBar {
                                     items: vec![
                                         ("export", "Advanced export"),
@@ -1014,11 +1155,11 @@ pub fn SettingsView(
                                         DevSub::Diagnostics => "diagnostics",
                                     },
                                     on_select: move |id| match id {
-                                        "keys" => dev_sub.set(DevSub::EncryptionKeys),
-                                        "sync" => dev_sub.set(DevSub::SyncRecovery),
-                                        "extensions" => dev_sub.set(DevSub::Extensions),
-                                        "diagnostics" => dev_sub.set(DevSub::Diagnostics),
-                                        _ => dev_sub.set(DevSub::AdvancedExport),
+                                        "keys" => set_sig_if_changed(dev_sub, DevSub::EncryptionKeys),
+                                        "sync" => set_sig_if_changed(dev_sub, DevSub::SyncRecovery),
+                                        "extensions" => set_sig_if_changed(dev_sub, DevSub::Extensions),
+                                        "diagnostics" => set_sig_if_changed(dev_sub, DevSub::Diagnostics),
+                                        _ => set_sig_if_changed(dev_sub, DevSub::AdvancedExport),
                                     },
                                 }
                                 match dev_sub() {
@@ -1153,14 +1294,18 @@ pub fn SettingsView(
                                             },
                                             on_disable_dev: move |_| {
                                                 prefs_ctx.update(|p| p.developer_mode = false);
-                                                tab.set(SettingsTab::About);
-                                                about_sub.set(AboutSub::Overview);
+                                                let bit = tab_bit(SettingsTab::About);
+                                                let cur_mask = *mounted_tabs.peek();
+                                                if (cur_mask & bit) == 0 {
+                                                    mounted_tabs.set(cur_mask | bit);
+                                                }
+                                                set_sig_if_changed(tab, SettingsTab::About);
+                                                set_sig_if_changed(about_sub, AboutSub::Overview);
                                             },
                                         }
                                     },
                                 }
-                            },
-                        }
+                            }
                     }
                 }
             }

@@ -560,7 +560,7 @@
     if (observer || !document.body) return;
     const target = document.getElementById('main') || document.body;
     observer = new MutationObserver((records) => {
-      if (muted) return;
+      if (muted || activeLang === 'en' || !activePack) return;
       for (let i = 0; i < records.length; i++) {
         const rec = records[i];
         if (rec.type === 'characterData') {

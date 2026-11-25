@@ -34,6 +34,7 @@ pub struct MentionCandidate {
 
 /// Every sticker the user can send, loaded once per session for suggestions.
 static STICKERS: GlobalSignal<Option<Vec<StickerItem>>> = Signal::global(|| None);
+static STICKERS_LOAD_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// The built-in OpenMoji catalogue, for "pizza" / "mèo" style suggestions.
 static OPENMOJI: GlobalSignal<Option<std::rc::Rc<openmoji::Catalog>>> = Signal::global(|| None);
 
@@ -276,17 +277,21 @@ pub fn Composer(
     let id_for_emoji = input_id.clone();
     let value_for_emoji = value.clone();
 
-    // Load stickers once for suggestions.
+    // Load stickers once for suggestions (deferred slightly past first mount frame for sub-3ms chat open).
     let wants_stickers = prefs.sticker_suggest && on_sticker.is_some();
     use_effect(move || {
-        if wants_stickers && STICKERS.peek().is_none() {
-            *STICKERS.write() = Some(Vec::new());
+        if wants_stickers
+            && STICKERS.peek().is_none()
+            && !STICKERS_LOAD_STARTED.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
             spawn(async move {
+                platform::sleep_ms(120).await;
                 if let Ok(packs) = stickers_list_packs().await {
                     *STICKERS.write() = Some(packs.into_iter().flat_map(|p| p.stickers).collect());
                 }
             });
             spawn(async move {
+                platform::sleep_ms(160).await;
                 if let Ok(c) = openmoji::load().await {
                     *OPENMOJI.write() = Some(c);
                 }

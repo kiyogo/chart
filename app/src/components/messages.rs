@@ -397,7 +397,7 @@ pub fn MessageList(
     let mut full_picker_for = use_signal(|| Option::<String>::None);
     let mut sticker_menu_for = use_signal(|| Option::<String>::None);
     let mut plugin_actions = use_signal(Vec::<crate::services::plugin_api::DynamicMessageAction>::new);
-    let mut loaded_installs_len = use_signal(|| usize::MAX);
+    let mut loaded_installs_len = use_hook(|| CopyValue::new(usize::MAX));
     let installs_len = crate::components::plugin_hub::PLUGIN_INSTALLATIONS().len();
     if *loaded_installs_len.peek() != installs_len {
         loaded_installs_len.set(installs_len);
@@ -408,17 +408,20 @@ pub fn MessageList(
             }
         });
     }
-    let mut scroll_checking = use_signal(|| false);
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut scroll_checking = use_hook(|| CopyValue::new(false));
     let mut virtual_scroll_top = use_signal(|| -1.0f64); // -1.0 = anchored to bottom
     let mut virtual_viewport_h = use_signal(|| 760.0f64);
     let mut away_from_bottom = use_signal(|| false);
     let mut unseen_while_scrolled = use_signal(|| 0usize);
-    let mut prev_total_seen = use_signal(|| 0usize);
+    let mut prev_total_seen = use_hook(|| CopyValue::new(0usize));
     let mut bench_synthetic_count = use_signal(|| 0usize);
 
-    // Expose virtual scroller stress-test trigger for 100,000-message E2E audit (Spec 071)
+    // Expose virtual scroller stress-test trigger for 100,000-message E2E audit (Spec 071).
+    // Deferred past the initial mount frame so opening a chat has zero JS eval overhead.
     use_effect(move || {
         spawn(async move {
+            platform::sleep_ms(120).await;
             let mut ev = dioxus::document::eval(
                 r#"
                 window.__chatwVirtualBenchSend = (n) => { try { dioxus.send(Number(n) || 0); } catch (_) {} };
@@ -519,6 +522,53 @@ pub fn MessageList(
             "data-total-messages": "{total_len}",
             "data-mounted-messages": "{count}",
             onscroll: move |_| {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    if let Some(win) = web_sys::window() {
+                        if let Some(doc) = win.document() {
+                            if let Some(el) = doc.get_element_by_id("chat-messages-scroll") {
+                                let pinning = js_sys::Reflect::get(&win, &"__chatwStickToBottom".into())
+                                    .ok()
+                                    .filter(|v| v.is_object())
+                                    .and_then(|obj| {
+                                        js_sys::Reflect::get(&obj, &"isPinning".into())
+                                            .ok()
+                                            .and_then(|f| wasm_bindgen::JsCast::dyn_into::<js_sys::Function>(f).ok())
+                                            .and_then(|func| func.call0(&obj).ok())
+                                            .and_then(|v| v.as_bool())
+                                    })
+                                    .unwrap_or(false);
+                                let top = el.scroll_top() as f64;
+                                let vh = el.client_height() as f64;
+                                let sh = el.scroll_height() as f64;
+                                let dist = (sh - top - vh).max(0.0);
+                                let away = dist > 260.0;
+                                if *away_from_bottom.peek() != away {
+                                    away_from_bottom.set(away);
+                                    if !away && *unseen_while_scrolled.peek() != 0 {
+                                        unseen_while_scrolled.set(0);
+                                    }
+                                }
+                                if is_virtualized {
+                                    if (*virtual_viewport_h.peek() - vh).abs() > 20.0 {
+                                        virtual_viewport_h.set(vh);
+                                    }
+                                    let next_top = if dist <= 16.0 { -1.0 } else { top };
+                                    if (*virtual_scroll_top.peek() - next_top).abs() > 48.0 || next_top < 0.0 {
+                                        virtual_scroll_top.set(next_top);
+                                    }
+                                }
+                                if !loading_initial && !pinning && top <= 180.0 && has_more && !loading_more {
+                                    if let Some(h) = on_load_more {
+                                        h.call(());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
+                #[cfg(not(target_arch = "wasm32"))]
                 if !*scroll_checking.peek() {
                     scroll_checking.set(true);
                     spawn(async move {

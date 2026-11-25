@@ -24,6 +24,10 @@ use chatw::{
 
 async fn security_headers_middleware(req: axum::extract::Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
+    let has_version_query = req
+        .uri()
+        .query()
+        .is_some_and(|q| q.starts_with("v=") || q.contains("&v="));
     let cache_path = path.clone();
     let is_plugin_sandbox = path == "/plugin-sandbox-frame";
     let is_service_worker = path == "/sw.js";
@@ -67,6 +71,14 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
     );
     let cache_val = if cache_path.as_str().starts_with("/api/") {
         "no-store, no-cache, must-revalidate"
+    } else if has_version_query
+        && (cache_path.as_str().ends_with(".js")
+            || cache_path.as_str().ends_with(".bin")
+            || cache_path.as_str().ends_with(".css")
+            || cache_path.as_str().starts_with("/pkg/"))
+    {
+        // Spec 166: Content-versioned `?v=<ts>` static assets are strictly immutable (0 HTTP 304 roundtrips!)
+        "public, max-age=31536000, immutable"
     } else if cache_path.as_str().starts_with("/uploads/avatars/") || cache_path.as_str().starts_with("/pkg/") {
         "public, max-age=3600"
     } else if matches!(cache_path.as_str(), "/robots.txt" | "/sitemap.xml" | "/llms.txt")
@@ -431,6 +443,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             header::HeaderName::from_static("x-backup-password"),
             header::HeaderName::from_static("x-chatw-stream-token"),
             header::HeaderName::from_static("x-ticket-secret"),
+            header::HeaderName::from_static("idempotency-key"),
         ]))
         .allow_credentials(true)
         .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _| {
