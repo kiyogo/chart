@@ -1,0 +1,11 @@
+Model: YuNet Face Detection (face_detection_yunet_2023mar.onnx)
+Source: https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
+License: MIT License
+
+Model: GFPGAN v1.4 (lazy-downloaded on demand; never bundled into app installer)
+Source: https://github.com/TencentARC/GFPGAN
+License: Apache License 2.0 (Apache-2.0)
+
+Runtime: ONNX Runtime Web (ort.all.min.js)
+Source: https://github.com/microsoft/onnxruntime
+License: MIT License

@@ -11,3 +11,5 @@ playwright-report/
 scratch/
 
 verify_*/
+app/public/models/GFPGANv1.4.onnx
+app/public/ort/*.wasm

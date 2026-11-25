@@ -70,6 +70,7 @@ sed -i "s|/custom_pickers.js|/custom_pickers.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/living_motion.js|/living_motion.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/adaptive_surface.js|/adaptive_surface.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/storage_engine.js|/storage_engine.js?v=${TS}|g" app/dist/index.html
+sed -i "s|/face_restorer.js|/face_restorer.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/ai_restorer.js|/ai_restorer.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/core_bridge.js|/core_bridge.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/media_stream_bridge.js|/media_stream_bridge.js?v=${TS}|g" app/dist/index.html
@@ -84,6 +85,7 @@ cp app/web/custom_pickers.js app/dist/custom_pickers.js
 cp app/web/living_motion.js app/dist/living_motion.js
 cp app/web/adaptive_surface.js app/dist/adaptive_surface.js
 cp app/web/storage_engine.js app/dist/storage_engine.js
+cp app/web/face_restorer.js app/dist/face_restorer.js
 cp app/web/ai_restorer.js app/dist/ai_restorer.js
 cp app/web/core_worker.js app/dist/core_worker.js
 cp app/web/runtime_worker.js app/dist/runtime_worker.js

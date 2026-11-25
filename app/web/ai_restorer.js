@@ -2,7 +2,7 @@
 // Spec 143: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 + RL -> Stage 2 Adaptive SPAN 4× (NomosUni AVIF / ClearRealityV1 / AnimeVideoV3) + Text/QR Guard + AbortSignal cancellation!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'adaptive-span2x-avif-v21';
+  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v22';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
     nomosuni_span_x2: { id: 'nomosuni_span_x2', cwsrUrl: '/models/nomosuni_span_x2.cwsp', license: 'CC-BY-4.0', scale: 2 },
@@ -671,6 +671,31 @@
                       width: postRl.width,
                       height: postRl.height,
                       modelLabel: `${res.modelLabel} + Optical RL`,
+                    };
+                  }
+                } catch (_) {}
+              }
+
+              // Spec 145: Stage 2B — Hybrid Face Expert (YuNet 228 KB MIT + GFPGANv1.4 Apache-2.0 WebGPU + Adaptive Elliptical Feathered Mask)
+              // Runs sequentially ONLY on non-anime photo/portrait canvases when WebGPU is available & face(s) are detected!
+              if (
+                res.canvas &&
+                !sel.isAnime &&
+                window.__chatwFaceRestorer &&
+                typeof window.__chatwFaceRestorer.restoreFacesOnCanvas === 'function'
+              ) {
+                try {
+                  reportProgress(90);
+                  await yieldUiSlice();
+                  const faceOut = await window.__chatwFaceRestorer.restoreFacesOnCanvas(res.canvas, {
+                    srcMaxDim: maxDim,
+                    signal: meta.signal,
+                  });
+                  if (faceOut && faceOut.applied && faceOut.canvas) {
+                    res = {
+                      ...res,
+                      canvas: faceOut.canvas,
+                      modelLabel: `${res.modelLabel} + GFPGANv1.4`,
                     };
                   }
                 } catch (_) {}
