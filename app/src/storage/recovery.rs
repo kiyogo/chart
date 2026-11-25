@@ -86,6 +86,26 @@ pub enum MediaFetchOutcome {
     Error(String),
 }
 
+/// Fast persistent local cache probe (OPFS/IndexedDB on Web, disk CAS + original device file fallback on Desktop/Mobile).
+/// Returns `Some((plain_bytes, mime))` with ZERO network requests when cached locally.
+pub async fn try_load_local_cache(
+    url: &str,
+    key_b64: &str,
+    fallback_mime: &str,
+    scope_type: &str,
+) -> Option<(Vec<u8>, String)> {
+    let rid = extract_ref_id(url)?;
+    let require_enc_cache = !key_b64.is_empty() || scope_type == "dm";
+    let (cached_bytes, cached_mime, _sha) = get_local_object(&rid).await?;
+    let plain_bytes = unwrap_local_e2ee_cache(&rid, cached_bytes, require_enc_cache)?;
+    let mime = if cached_mime != "application/octet-stream" {
+        cached_mime
+    } else {
+        fallback_mime.to_string()
+    };
+    Some((plain_bytes, mime))
+}
+
 /// Local-first fetch with transparent SHA-256 verification, E2EE decryption, and automatic cache hydration + ack.
 pub async fn load_or_fetch_media(
     url: &str,

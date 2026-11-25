@@ -715,8 +715,8 @@ void main() {
   float edgeRange = mxCrossL - mnCrossL;
 
   // Noise, shadow & isolated-grain gates:
-  // - Smooth skin (edgeRange < 0.025) stays silky untouched
-  // - Dark nostril/eyebag shadows (mxCrossL < 0.22) are shielded from red/dark speckle crunch
+  // - Smooth skin (edgeRange < 0.020) stays silky untouched
+  // - Dark nostril/eyebag shadows (mxCrossL < 0.24) are shielded from red/dark speckle crunch
   // - RCAS isolated-spike detector (`nz`) dampens single-pixel noise dots while preserving coherent hair/eye/ink edges!
   float aL = rgbToLuma(a);
   float cL = rgbToLuma(c);
@@ -724,30 +724,44 @@ void main() {
   float iL = rgbToLuma(i);
   float avgCrossL = 0.25 * (bL + dL + fL + hL);
   float nz = clamp(abs(avgCrossL - eL) / max(edgeRange, 1e-4), 0.0, 1.0);
-  float cleanEdge = 1.0 - 0.85 * nz;
-  float shadowSafe = smoothstep(0.08, 0.28, mxCrossL);
-  float gate = smoothstep(0.024, 0.085, edgeRange) * shadowSafe * cleanEdge;
+  float cleanEdge = 1.0 - 0.80 * nz;
+  float shadowSafe = smoothstep(0.07, 0.25, mxCrossL);
+  float gate = smoothstep(0.018, 0.070, edgeRange) * shadowSafe * cleanEdge;
 
-  // Safe Luma-only 8-tap FidelityFX CAS (5.8-tap weight bounded >= -0.155 so totalWeight >= +0.10)
-  // Applying sharpen delta strictly to luminance eliminates chromatic red/blue speckles completely!
+  // Dual-Scale Edge-Aware Luminance Sharpening (Spec 163):
+  // Stage A: Fine 1-pixel 8-tap Luma FidelityFX CAS (bounded >= -0.158 so totalWeight >= +0.0836)
+  float strength = clamp(uColor1.z, 0.0, 1.45);
   float rcpM = 1.0 / max(mxCrossL, 1e-4);
   float amp = sqrt(clamp(min(mnCrossL, 2.0 - mxCrossL) * rcpM, 0.0, 1.0));
-  float peak = -0.145 * clamp(uColor1.z, 0.0, 1.1) * gate;
-  float w = max(amp * peak, -0.152);
+  float peak = -0.162 * strength * gate;
+  float w = max(amp * peak, -0.158);
 
   float crossSumL = bL + dL + fL + hL;
   float diagSumL = aL + cL + gL + iL;
   float totalWeight = 1.0 + (4.0 + 1.8) * w;
   float casL = clamp((eL + crossSumL * w + diagSumL * (w * 0.45)) / totalWeight, 0.0, 1.0);
+
+  // Stage B: Medium 2-pixel Luma Micro-Clarity (restores crisp hair/eyelash/fabric/ink acutance on 2x/4x SR outputs)
+  float b2L = rgbToLuma(fetchSr(op + ivec2( 0, -2), maxP));
+  float d2L = rgbToLuma(fetchSr(op + ivec2(-2,  0), maxP));
+  float f2L = rgbToLuma(fetchSr(op + ivec2( 2,  0), maxP));
+  float h2L = rgbToLuma(fetchSr(op + ivec2( 0,  2), maxP));
+  float medBlurL = 0.25 * (b2L + d2L + f2L + h2L);
+  float medRaw = (eL - medBlurL) * (0.44 * strength) * gate;
+  float maxHalo = 0.11 * edgeRange + 0.028;
+  float medBoost = clamp(medRaw, -maxHalo, maxHalo);
+
   float mnL = min(min(min(min(aL, bL), min(cL, dL)), min(eL, fL)), min(gL, min(hL, iL)));
   float mxL = max(max(max(max(aL, bL), max(cL, dL)), max(eL, fL)), max(gL, max(hL, iL)));
-  float sharpL = clamp(casL, mnL, mxL);
+  float acutanceMargin = 0.065 * edgeRange * shadowSafe * cleanEdge;
+  float sharpL = clamp(casL + medBoost, max(0.0, mnL - acutanceMargin), min(1.0, mxL + acutanceMargin));
   vec3 lumaAdjusted = e + vec3(sharpL - eL);
 
-  // Strict 3x3 per-channel neighborhood clamp -> ZERO halo overshoot/undershoot, ZERO chroma speckles!
+  // Controlled soft-envelope RGB clamp -> dramatic crisp edge acutance with ZERO harsh ringing or chroma speckles!
   vec3 mnRgb = min(min(min(min(a, b), min(c, d)), min(e, f)), min(g, min(h, i)));
   vec3 mxRgb = max(max(max(max(a, b), max(c, d)), max(e, f)), max(g, max(h, i)));
-  vec3 sharp = clamp(lumaAdjusted, mnRgb, mxRgb);
+  vec3 rgbMargin = vec3(0.05 * edgeRange * shadowSafe * cleanEdge);
+  vec3 sharp = clamp(lumaAdjusted, max(vec3(0.0), mnRgb - rgbMargin), min(vec3(1.0), mxRgb + rgbMargin));
 
   // 3. Sender OriginalQualityProfile global contrast / balance calibration (if specified)
   if (abs(uColor0.x) > 0.001 || abs(uColor0.y) > 0.001 || abs(uColor0.z) > 0.001 || abs(uColor0.w - 1.0) > 0.005) {
@@ -986,16 +1000,26 @@ void main() {
   vec3 hitMin = min(mn4, e) / max(4.0 * mx4, vec3(1e-4));
   vec3 hitMax = (vec3(1.0) - max(mx4, e)) / min(4.0 * mn4 - vec3(4.0), vec3(-1e-4));
   vec3 lobeRgb = max(-hitMin, hitMax);
-  float lobe = max(-0.1875, min(max(lobeRgb.r, max(lobeRgb.g, lobeRgb.b)), 0.0));
-  float sharpScale = clamp(uSharpness, 0.0, 1.0);
+  float lobe = max(-0.195, min(max(lobeRgb.r, max(lobeRgb.g, lobeRgb.b)), 0.0));
+  float sharpScale = clamp(uSharpness, 0.0, 1.35);
   float w = lobe * sharpScale * nz * gate;
 
   vec3 rcas = (e + (b + d + f + h) * w) / (1.0 + 4.0 * w);
 
-  // Strict 3x3 neighborhood clamp: 0.000% dark eye rings, 0.000% halo artifacts!
+  // Dual-scale 2px luma micro-clarity for noticeably sharper fallback restoration without haloing
+  float b2L = fsrLuma(fetchIn(op + ivec2( 0, -2), maxP));
+  float d2L = fsrLuma(fetchIn(op + ivec2(-2,  0), maxP));
+  float f2L = fsrLuma(fetchIn(op + ivec2( 2,  0), maxP));
+  float h2L = fsrLuma(fetchIn(op + ivec2( 0,  2), maxP));
+  float shadowSafe = smoothstep(0.08, 0.25, mxCrossL);
+  float medBoost = clamp((eL - 0.25 * (b2L + d2L + f2L + h2L)) * 0.36 * sharpScale * nz * gate * shadowSafe, -(0.09 * rangeL + 0.02), 0.09 * rangeL + 0.02);
+  vec3 boosted = rcas + vec3(medBoost);
+
+  // Controlled soft-envelope clamp: crisp edge acutance with zero halo rings
   vec3 mnRgb = min(min(min(min(a, b), min(c, d)), min(e, f)), min(g, min(h, i)));
   vec3 mxRgb = max(max(max(max(a, b), max(c, d)), max(e, f)), max(g, max(h, i)));
-  vec3 outRgb = clamp(rcas, mnRgb, mxRgb);
+  vec3 margin = vec3(0.045 * rangeL * nz * shadowSafe);
+  vec3 outRgb = clamp(boosted, max(vec3(0.0), mnRgb - margin), min(vec3(1.0), mxRgb + margin));
 
   fragColor = vec4(outRgb, e4.a);
 }"#;
@@ -3055,15 +3079,16 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Spec 157: Balanced luma-only grain-safe CAS keeps portraits natural (zero nostril/skin crunch) and anime crisp!
+    // Spec 163: Strong dual-scale edge-aware luminance sharpening (1px CAS + 2px micro-clarity)
+    // delivers visibly crisper hair/eyelashes/textures/lineart while keeping smooth skin natural!
     color1[2] = if kind == RealEsrganModelKind::NomosUniSpanX2 {
-        0.50
+        1.12
     } else if kind.is_span() {
-        0.60
+        1.22
     } else if kind == RealEsrganModelKind::AnimeVideoV3 {
-        0.90
+        1.32
     } else {
-        0.75
+        1.18
     };
 
     let probe = probe_gpu();

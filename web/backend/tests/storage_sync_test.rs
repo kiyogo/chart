@@ -731,16 +731,25 @@ async fn spec158_cold_image_compression_after_15_days() {
     assert_eq!(cold_report.compressed, 1);
     assert!(cold_report.freed_bytes > 0);
 
-    // Active image (< 15d) MUST remain untouched byte-for-byte original PNG
-    let (st_get_act, got_act, _) = req_bytes(&app, "GET", &format!("/api/attachments/{act_ref}"), &c_bob, "", vec![], &[]).await;
+    // Active image (< 15d) MUST remain untouched byte-for-byte original PNG and NOT flagged cold
+    let (st_get_act, got_act, hdrs_act) = req_bytes(&app, "GET", &format!("/api/attachments/{act_ref}"), &c_bob, "", vec![], &[]).await;
     assert_eq!(st_get_act, StatusCode::OK);
     assert_eq!(got_act, active_png);
+    assert_eq!(
+        hdrs_act.get("x-chatw-cold-compressed").and_then(|v| v.to_str().ok()),
+        Some("0")
+    );
 
-    // Cold image (>= 15d) MUST be compressed to smaller AVIF (`ftypavif`) and flagged `avif_cold_15d`
-    let (st_get_cold, got_cold, _) = req_bytes(&app, "GET", &format!("/api/attachments/{cold_ref}"), &c_bob, "", vec![], &[]).await;
+    // Cold image (>= 15d) MUST be compressed to smaller AVIF (`ftypavif`), flagged `avif_cold_15d`,
+    // and return `x-chatw-cold-compressed: 1` so clients auto-run AI sharpening on cache miss / new device
+    let (st_get_cold, got_cold, hdrs_cold) = req_bytes(&app, "GET", &format!("/api/attachments/{cold_ref}"), &c_bob, "", vec![], &[]).await;
     assert_eq!(st_get_cold, StatusCode::OK);
     assert!(got_cold.len() < cold_png.len());
     assert_eq!(&got_cold[4..8], b"ftyp");
+    assert_eq!(
+        hdrs_cold.get("x-chatw-cold-compressed").and_then(|v| v.to_str().ok()),
+        Some("1")
+    );
     let codec_row: String = sqlx::query_scalar(
         "SELECT o.compression_codec FROM media_objects o JOIN media_references r ON r.object_id = o.id WHERE r.id = $1::uuid",
     )

@@ -28,16 +28,18 @@
 
   function scrollNow(el, behavior) {
     if (!el || window.__chatwPrependSnap) return;
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    if (Math.abs(maxTop - el.scrollTop) <= 1.5) return;
     sticky.lastProgAt = performance.now();
-    const target = el.scrollHeight;
-    if (behavior === 'smooth') {
+    if (behavior === 'smooth' && Math.abs(maxTop - el.scrollTop) > el.clientHeight * 1.5) {
       try {
-        el.scrollTo({ top: target, behavior: 'smooth' });
+        el.scrollTo({ top: maxTop, behavior: 'smooth' });
       } catch (_) {
-        el.scrollTop = target;
+        el.scrollTop = maxTop;
       }
     } else {
-      el.scrollTop = target;
+      // Snap cleanly without smooth animation colliding with ResizeObserver/MutationObserver (eliminates message jitter)
+      el.scrollTop = maxTop;
     }
   }
 
@@ -191,12 +193,12 @@
   window.__chatwStickToBottom = {
     pin(instant) {
       sticky.pinned = true;
-      sticky.pinLockUntil = performance.now() + 2800;
+      sticky.pinLockUntil = performance.now() + 1800;
       const run = () => {
         const el = document.getElementById('chat-messages-scroll');
         if (!el) return false;
         attachScroller(el, false);
-        scrollNow(el, instant ? 'instant' : 'smooth');
+        scrollNow(el, instant ? 'instant' : 'instant');
         return true;
       };
       const found = run();
@@ -205,12 +207,6 @@
       sticky.retryRaf = requestAnimationFrame(() => {
         sticky.retryRaf = 0;
         run();
-        requestAnimationFrame(() => {
-          if (sticky.pinned && !window.__chatwPrependSnap) {
-            const el = document.getElementById('chat-messages-scroll');
-            if (el) scrollNow(el, 'instant');
-          }
-        });
       });
       if (!found) {
         setTimeout(() => {

@@ -661,8 +661,11 @@ pub fn MessageList(
                                 let tally_for = tally.clone();
                                 let m_copy = msg.text.clone();
                                 let mid = msg.id.clone();
+                                // Spec 163: Stable DOM key strips `local-` prefix so optimistic `local-{uuid}` -> server `{uuid}`
+                                // updates in-place without unmounting/remounting `<RichImage>` or jittering messages above!
+                                let stable_key = msg.id.strip_prefix("local-").unwrap_or(&msg.id);
                                 rsx! {
-                                  div { key: "{msg.id}", style: "display: contents;",
+                                  div { key: "{stable_key}", style: "display: contents;",
                                     div { id: "msg-{msg.id}", class: "{row_cls}",
                                 div { class: "message-avatar-slot",
                                     if show_avatar {

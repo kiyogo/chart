@@ -2015,6 +2015,61 @@ pub async fn resolve_e2ee_blob_media_url(
     }
 }
 
+/// Synchronously bind an ALREADY-DECODED sender local device file `blob:` URL into `blobPool`
+/// so mounting the sent message reuses the exact decoded frame with ZERO flash and ZERO layout shift (Spec 163).
+pub fn register_existing_blob_url_sync(
+    url: &str,
+    key_b64: &str,
+    nonce_b64: &str,
+    existing_blob_url: &str,
+    mime: &str,
+    byte_len: usize,
+) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::{JsCast, JsValue};
+        if let Some(win) = web_sys::window()
+            && let Ok(core) = js_sys::Reflect::get(&win, &JsValue::from_str("__chatwCore"))
+            && let Ok(func) = js_sys::Reflect::get(&core, &JsValue::from_str("registerExistingBlobUrl"))
+                .and_then(|v| v.dyn_into::<js_sys::Function>())
+        {
+            let args = js_sys::Array::new();
+            args.push(&JsValue::from_str(url));
+            args.push(&JsValue::from_str(key_b64));
+            args.push(&JsValue::from_str(nonce_b64));
+            args.push(&JsValue::from_str(existing_blob_url));
+            args.push(&JsValue::from_str(mime));
+            args.push(&JsValue::from_f64(byte_len as f64));
+            let _ = func.apply(&core, &args);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (url, key_b64, nonce_b64, existing_blob_url, mime, byte_len);
+    }
+}
+
+/// Returns true if the server reported `X-ChatW-Cold-Compressed: 1` (image compressed after 15 days idle).
+pub fn is_url_cold_compressed(url: &str) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::{JsCast, JsValue};
+        if let Some(win) = web_sys::window()
+            && let Ok(core) = js_sys::Reflect::get(&win, &JsValue::from_str("__chatwCore"))
+            && let Ok(func) = js_sys::Reflect::get(&core, &JsValue::from_str("isColdCompressedUrl"))
+                .and_then(|v| v.dyn_into::<js_sys::Function>())
+            && let Ok(val) = func.call1(&core, &JsValue::from_str(url))
+        {
+            return val.as_bool().unwrap_or(false);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = url;
+    }
+    false
+}
+
 /// Register already-decrypted bytes into the shared deduplicated `blobPool` (prevents duplicate `blob:` URLs).
 pub async fn register_cached_blob_url(
     url: &str,

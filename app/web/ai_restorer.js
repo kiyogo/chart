@@ -2,7 +2,7 @@
 // Spec 143: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 + RL -> Stage 2 Adaptive SPAN 4× (NomosUni AVIF / ClearRealityV1 / AnimeVideoV3) + Text/QR Guard + AbortSignal cancellation!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v28';
+  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v29-crisp';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
     nomosuni_span_x2: { id: 'nomosuni_span_x2', cwsrUrl: '/models/nomosuni_span_x2.cwsp', license: 'CC-BY-4.0', scale: 2 },
@@ -257,45 +257,65 @@
                 w = tw;
                 h = th;
               }
-              const sharpness = msg.sharpness || 0.72;
+              const sharpness = msg.sharpness || 1.18;
               const dst = new Uint8ClampedArray(srcRgba.length);
               const stride = w * 4;
+              const lumaAt = (yRow, xCol) => {
+                const p = yRow + xCol;
+                return (0.299 * srcRgba[p] + 0.587 * srcRgba[p + 1] + 0.114 * srcRgba[p + 2]) / 255;
+              };
               for (let y = 0; y < h; y++) {
                 const y0 = Math.max(0, y - 1) * stride;
                 const y1 = y * stride;
                 const y2 = Math.min(h - 1, y + 1) * stride;
+                const ym2 = Math.max(0, y - 2) * stride;
+                const yp2 = Math.min(h - 1, y + 2) * stride;
                 for (let x = 0; x < w; x++) {
                   const x0 = Math.max(0, x - 1) * 4;
                   const x1 = x * 4;
                   const x2 = Math.min(w - 1, x + 1) * 4;
+                  const xm2 = Math.max(0, x - 2) * 4;
+                  const xp2 = Math.min(w - 1, x + 2) * 4;
                   const idx = y1 + x1;
                   dst[idx + 3] = srcRgba[idx + 3];
+                  const aL = lumaAt(y0, x0), bL = lumaAt(y0, x1), cL = lumaAt(y0, x2);
+                  const dL = lumaAt(y1, x0), eL = lumaAt(y1, x1), fL = lumaAt(y1, x2);
+                  const gL = lumaAt(y2, x0), hL = lumaAt(y2, x1), iL = lumaAt(y2, x2);
+                  const mnCross = Math.min(dL, eL, fL, bL, hL);
+                  const mxCross = Math.max(dL, eL, fL, bL, hL);
+                  const edgeRange = mxCross - mnCross;
+                  const avgCross = 0.25 * (bL + dL + fL + hL);
+                  const nz = Math.max(0, Math.min(1, Math.abs(avgCross - eL) / Math.max(edgeRange, 1e-4)));
+                  const cleanEdge = 1.0 - 0.80 * nz;
+                  const shadowSafe = Math.max(0, Math.min(1, (mxCross - 0.07) / 0.18));
+                  const gate = Math.max(0, Math.min(1, (edgeRange - 0.018) / 0.052)) * shadowSafe * cleanEdge;
+                  const rcpM = 1.0 / Math.max(mxCross, 1e-4);
+                  const amp = Math.sqrt(Math.max(0, Math.min(1, Math.min(mnCross, 2.0 - mxCross) * rcpM)));
+                  const weight = Math.max(amp * (-0.162 * sharpness * gate), -0.158);
+                  const totalWeight = 1.0 + 5.8 * weight;
+                  const casL = (eL + (bL + dL + fL + hL) * weight + (aL + cL + gL + iL) * (weight * 0.45)) / totalWeight;
+                  const medBlur = 0.25 * (lumaAt(ym2, x1) + lumaAt(y1, xm2) + lumaAt(y1, xp2) + lumaAt(yp2, x1));
+                  const maxHalo = 0.11 * edgeRange + 0.025;
+                  const medBoost = Math.max(-maxHalo, Math.min(maxHalo, (eL - medBlur) * 0.42 * sharpness * gate));
+                  const mnL = Math.min(aL, bL, cL, dL, eL, fL, gL, hL, iL);
+                  const mxL = Math.max(aL, bL, cL, dL, eL, fL, gL, hL, iL);
+                  const margin = 0.06 * edgeRange * shadowSafe * cleanEdge;
+                  const sharpL = Math.max(Math.max(0, mnL - margin), Math.min(Math.min(1, mxL + margin), casL + medBoost));
+                  const delta = (sharpL - eL) * 255;
                   for (let c = 0; c < 3; c++) {
-                    const a = srcRgba[y0 + x0 + c] / 255;
-                    const b = srcRgba[y0 + x1 + c] / 255;
-                    const c_top = srcRgba[y0 + x2 + c] / 255;
-                    const d = srcRgba[y1 + x0 + c] / 255;
-                    const e = srcRgba[idx + c] / 255;
-                    const f = srcRgba[y1 + x2 + c] / 255;
-                    const g = srcRgba[y2 + x0 + c] / 255;
-                    const h_bot = srcRgba[y2 + x1 + c] / 255;
-                    const i = srcRgba[y2 + x2 + c] / 255;
-                    const mnCross = Math.min(d, e, f, b, h_bot);
-                    const mxCross = Math.max(d, e, f, b, h_bot);
-                    const edgeRange = mxCross - mnCross;
-                    const gate = Math.max(0, Math.min(1, (edgeRange - 0.015) / 0.05));
-                    const rcpM = 1.0 / Math.max(mxCross, 1e-4);
-                    const amp = Math.sqrt(Math.max(0, Math.min(1, Math.min(mnCross, 2.0 - mxCross) * rcpM)));
-                    const peak = -0.15 * sharpness * gate;
-                    const weight = Math.max(amp * peak, -0.18);
-                    const crossSum = b + d + f + h_bot;
-                    const diagSum = a + c_top + g + i;
-                    const totalWeight = 1.0 + (4.0 + 1.8) * weight;
-                    const cas = (e + crossSum * weight + diagSum * (weight * 0.45)) / totalWeight;
-                    const mnRgb = Math.min(a, b, c_top, d, e, f, g, h_bot, i);
-                    const mxRgb = Math.max(a, b, c_top, d, e, f, g, h_bot, i);
-                    const clamped = Math.max(mnRgb, Math.min(mxRgb, cas));
-                    dst[idx + c] = Math.round(clamped * 255);
+                    const mnC = Math.min(
+                      srcRgba[y0 + x0 + c], srcRgba[y0 + x1 + c], srcRgba[y0 + x2 + c],
+                      srcRgba[y1 + x0 + c], srcRgba[idx + c], srcRgba[y1 + x2 + c],
+                      srcRgba[y2 + x0 + c], srcRgba[y2 + x1 + c], srcRgba[y2 + x2 + c],
+                    );
+                    const mxC = Math.max(
+                      srcRgba[y0 + x0 + c], srcRgba[y0 + x1 + c], srcRgba[y0 + x2 + c],
+                      srcRgba[y1 + x0 + c], srcRgba[idx + c], srcRgba[y1 + x2 + c],
+                      srcRgba[y2 + x0 + c], srcRgba[y2 + x1 + c], srcRgba[y2 + x2 + c],
+                    );
+                    const pad = margin * 200;
+                    const v = Math.max(Math.max(0, mnC - pad), Math.min(Math.min(255, mxC + pad), srcRgba[idx + c] + delta));
+                    dst[idx + c] = Math.round(v);
                   }
                 }
               }
@@ -666,7 +686,7 @@
       // when hardware WebGL2 runs Stage 2 directly, avoid redundant Stage-1 src swaps that cause decode/paint flicker.
       if (!canHardwareNeural && typeof meta.onStage1 === 'function' && wasm && typeof wasm.upscaleFsr1 === 'function') {
         try {
-          const s1Out = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, 1.0, null);
+          const s1Out = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, 1.22, null);
           if (s1Out && s1Out.ok && s1Out.canvas) {
             let s1Blob = null;
             if (getAiMediaWorker()) {
@@ -801,7 +821,7 @@
         } catch (_) {}
       }
 
-      const sharpness = skipNeuralSr ? 0.45 : 1.0;
+      const sharpness = skipNeuralSr ? 0.78 : 1.25;
       if (!skipNeuralSr && !res && !stage1FallbackBlob && wasm && typeof wasm.upscaleFsr1 === 'function') {
         try {
           const gpuOut = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, sharpness, reportProgress);

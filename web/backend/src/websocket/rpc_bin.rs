@@ -411,12 +411,20 @@ async fn invoke_internal_router(
     match router.clone().oneshot(req).await {
         Ok(resp) => {
             let status = resp.status().as_u16();
-            let ct = resp
+            let is_cold_15d = resp
+                .headers()
+                .get("x-chatw-cold-compressed")
+                .and_then(|v| v.to_str().ok())
+                == Some("1");
+            let mut ct = resp
                 .headers()
                 .get(header::CONTENT_TYPE)
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("application/octet-stream")
                 .to_string();
+            if is_cold_15d && !ct.contains("cold15d=1") {
+                ct.push_str(";cold15d=1");
+            }
             let total_from_range = resp
                 .headers()
                 .get(header::CONTENT_RANGE)

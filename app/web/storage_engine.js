@@ -244,8 +244,9 @@
 
   async function computeAdaptiveLimitBytes() {
     const cfgMb = getConfiguredLimitMb();
-    if (cfgMb === 0) return Number.MAX_SAFE_INTEGER;
-    let limitBytes = cfgMb * 1024 * 1024;
+    // Spec 163: Always enforce an adaptive ceiling proportional to real device/browser storage,
+    // even when Auto (0 MB) is selected, so we NEVER fill disk on Web/Android/iOS/Desktop!
+    let autoCapBytes = 512 * 1024 * 1024;
     try {
       if (navigator.storage && typeof navigator.storage.estimate === 'function') {
         const est = await navigator.storage.estimate();
@@ -253,17 +254,18 @@
         const usage = Number(est.usage || 0);
         if (quota > 0) {
           const freeBytes = Math.max(0, quota - usage);
-          // Reserve at least 15% of browser quota (min 64 MiB) so browser/OS never hits QuotaExceededError
-          const safeCap = Math.max(64 * 1024 * 1024, Math.floor(quota * 0.72));
-          if (freeBytes < 128 * 1024 * 1024) {
-            limitBytes = Math.min(limitBytes, Math.max(48 * 1024 * 1024, Math.floor(safeCap * 0.5)));
-          } else {
-            limitBytes = Math.min(limitBytes, safeCap);
+          // Reserve generous OS/browser headroom: auto target = 12% of available free quota (clamped 48 MiB..4 GiB)
+          const proportional = Math.floor(freeBytes * 0.12);
+          const safeCap = Math.max(32 * 1024 * 1024, Math.min(4 * 1024 * 1024 * 1024, Math.floor(quota * 0.65)));
+          autoCapBytes = Math.max(32 * 1024 * 1024, Math.min(safeCap, Math.max(64 * 1024 * 1024, proportional)));
+          if (freeBytes < 192 * 1024 * 1024) {
+            autoCapBytes = Math.min(autoCapBytes, Math.max(24 * 1024 * 1024, Math.floor(freeBytes * 0.35)));
           }
         }
       }
     } catch (_) {}
-    return limitBytes;
+    if (cfgMb === 0) return autoCapBytes;
+    return Math.min(cfgMb * 1024 * 1024, Math.max(autoCapBytes, 64 * 1024 * 1024));
   }
 
   // W-TinyLFU + Cost-Aware & Size-Aware eviction utility score (higher = more valuable to keep)

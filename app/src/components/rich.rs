@@ -125,71 +125,72 @@ pub fn PendingSenderMediaList() -> Element {
                     (String::new(), "position: relative;".to_string())
                 };
                 rsx! {
-                    div { key: "{key_id}", class: "message-row sent group-start group-end pending pending-sender-media-row", "data-pending-media": "true",
+                    div { key: "{key_id}", class: "message-row sent group-end pending-sender-media-row", "data-pending-media": "true",
                         div { class: "message-content-wrapper",
                             if item.media_kind == "image" && !item.preview_url.is_empty() {
-                                div { class: "rich-image", style: "{box_style}",
-                                    div { class: "rich-image-stage loaded", style: "{stage_style}",
-                                        img {
-                                            class: "rich-image-full",
-                                            src: "{item.preview_url}",
-                                            alt: "{item.file_name}",
-                                            "data-sender-original": "true",
-                                        }
-                                        div {
-                                            class: if item.failed { "status-badge error" } else { "chip-privacy" },
-                                            style: "position: absolute; bottom: 8px; right: 8px; z-index: 2; backdrop-filter: blur(8px); display: inline-flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.78); color: #fff;",
-                                            if !item.failed {
-                                                span { class: "spinner", style: "width: 12px; height: 12px; border-width: 2px;" }
+                                div { class: "message-rich",
+                                    div { class: "rich-image", style: "{box_style}",
+                                        div { class: "rich-image-btn rich-image-stage loaded", style: "{stage_style}",
+                                            img {
+                                                class: "rich-image-full",
+                                                src: "{item.preview_url}",
+                                                alt: "{item.file_name}",
+                                                decoding: "sync",
+                                                "data-sender-original": "true",
                                             }
-                                            "{item.status_label}"
                                             if item.failed {
-                                                button {
-                                                    r#type: "button",
-                                                    class: "btn-secondary",
-                                                    style: "margin-left: 6px; padding: 2px 8px; font-size: 11px;",
-                                                    onclick: move |_| {
-                                                        media_opt::release_pending_handle(&rem_id, true);
-                                                        remove_pending_media(&rem_id);
-                                                    },
-                                                    "Đóng"
+                                                div {
+                                                    class: "status-badge error",
+                                                    style: "position: absolute; bottom: 8px; right: 8px; z-index: 2; backdrop-filter: blur(8px); display: inline-flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.82); color: #fff;",
+                                                    "{item.status_label}"
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "btn-secondary",
+                                                        style: "margin-left: 6px; padding: 2px 8px; font-size: 11px;",
+                                                        onclick: move |_| {
+                                                            media_opt::release_pending_handle(&rem_id, true);
+                                                            remove_pending_media(&rem_id);
+                                                        },
+                                                        "Đóng"
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+                                span { class: "message-time-standalone", "\u{00A0}" }
                             } else if item.media_kind == "video" && !item.preview_url.is_empty() {
-                                div { class: "rich-image", style: "width: min(320px, 100%);",
-                                    div { class: "rich-image-stage loaded", style: "position: relative; background: #0f172a; min-height: 160px;",
-                                        video {
-                                            src: "{item.preview_url}",
-                                            muted: true,
-                                            playsinline: true,
-                                            preload: "metadata",
-                                            style: "display: block; width: 100%; max-height: 22rem; object-fit: cover; border-radius: var(--radius-xl);",
-                                        }
-                                        div {
-                                            class: if item.failed { "status-badge error" } else { "chip-privacy" },
-                                            style: "position: absolute; bottom: 8px; right: 8px; z-index: 2; backdrop-filter: blur(8px); display: inline-flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.78); color: #fff;",
-                                            if !item.failed {
-                                                span { class: "spinner", style: "width: 12px; height: 12px; border-width: 2px;" }
+                                div { class: "message-rich",
+                                    div { class: "rich-image", style: "width: min(320px, 100%);",
+                                        div { class: "rich-image-stage loaded", style: "position: relative; background: #0f172a; min-height: 160px;",
+                                            video {
+                                                src: "{item.preview_url}",
+                                                muted: true,
+                                                playsinline: true,
+                                                preload: "metadata",
+                                                style: "display: block; width: 100%; max-height: 22rem; object-fit: cover; border-radius: var(--radius-xl);",
                                             }
-                                            "Video · {item.status_label}"
                                             if item.failed {
-                                                button {
-                                                    r#type: "button",
-                                                    class: "btn-secondary",
-                                                    style: "margin-left: 6px; padding: 2px 8px; font-size: 11px;",
-                                                    onclick: move |_| {
-                                                        media_opt::release_pending_handle(&rem_id, true);
-                                                        remove_pending_media(&rem_id);
-                                                    },
-                                                    "Đóng"
+                                                div {
+                                                    class: "status-badge error",
+                                                    style: "position: absolute; bottom: 8px; right: 8px; z-index: 2; backdrop-filter: blur(8px); display: inline-flex; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.82); color: #fff;",
+                                                    "Video · {item.status_label}"
+                                                    button {
+                                                        r#type: "button",
+                                                        class: "btn-secondary",
+                                                        style: "margin-left: 6px; padding: 2px 8px; font-size: 11px;",
+                                                        onclick: move |_| {
+                                                            media_opt::release_pending_handle(&rem_id, true);
+                                                            remove_pending_media(&rem_id);
+                                                        },
+                                                        "Đóng"
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+                                span { class: "message-time-standalone", "\u{00A0}" }
                             } else {
                                 div { class: "rich-card",
                                     div { class: "rich-title", "{item.file_name}" }
@@ -926,25 +927,54 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
         let target_key = key_now.clone();
         spawn(async move {
             let mime = if m_in.starts_with("image/") { m_in } else { "image/avif".into() };
-            if let Some(burl) = platform::resolve_e2ee_blob_media_url(&u, &k, &n, &mime, "HIGH").await {
-                loaded_key.set(Some(target_key));
-                raw_src.set(Some(burl.clone()));
-                src.set(Some(burl.clone()));
-                run_ai_pipeline(burl, u, sh_in, mime, qp_in, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
-                return;
-            }
             let scope = if sc_in.is_empty() {
                 if k.is_empty() { "group" } else { "dm" }
             } else {
                 sc_in.as_str()
             };
+            // 1. Persistent Local App Cache FIRST (OPFS/IndexedDB on Web; disk CAS + device original path on Desktop/Mobile).
+            // Zero server traffic when cached locally!
+            if let Some((cached_bytes, cached_mime)) = recovery::try_load_local_cache(&u, &k, &mime, scope).await {
+                let burl = platform::register_cached_blob_url(&u, &k, &n, &cached_bytes, &cached_mime).await;
+                loaded_key.set(Some(target_key));
+                raw_src.set(Some(burl.clone()));
+                src.set(Some(burl.clone()));
+                run_ai_pipeline(burl, u, sh_in, cached_mime, qp_in, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
+                return;
+            }
+            // 2. Local cache miss (receiver first view, cache evicted/cleared, or new device):
+            // Fetch from server, persist into adaptive local cache, and if the server cold-compressed the image
+            // after 15 days idle (`X-ChatW-Cold-Compressed: 1` or compressed AVIF), automatically AI-sharpen + cache!
+            if let Some(burl) = platform::resolve_e2ee_blob_media_url(&u, &k, &n, &mime, "HIGH").await {
+                let server_cold = platform::is_url_cold_compressed(&u);
+                // Persist downloaded E2EE/DM image into persistent local cache in background on Web
+                if !k.is_empty() {
+                    let u_bg = u.clone();
+                    let k_bg = k.clone();
+                    let n_bg = n.clone();
+                    let m_bg = mime.clone();
+                    let sc_bg = scope.to_string();
+                    spawn(async move {
+                        let _ = recovery::load_or_fetch_media(&u_bg, &k_bg, &n_bg, &m_bg, &sc_bg, "original").await;
+                    });
+                }
+                let auto_ai = is_live_incoming || server_cold || mime == "image/avif";
+                loaded_key.set(Some(target_key));
+                raw_src.set(Some(burl.clone()));
+                src.set(Some(burl.clone()));
+                run_ai_pipeline(burl, u, sh_in, mime, qp_in, auto_ai, k, n, fname_in, wire_w_in, wire_h_in);
+                return;
+            }
             match recovery::load_or_fetch_media(&u, &k, &n, &mime, scope, "original").await {
-                MediaFetchOutcome::Ready { bytes, mime: m, .. } => {
+                MediaFetchOutcome::Ready { bytes, mime: m, source } => {
+                    let server_cold = platform::is_url_cold_compressed(&u);
+                    let from_server_compressed = source == "server" && (server_cold || m == "image/avif");
+                    let auto_ai = is_live_incoming || from_server_compressed;
                     let burl = platform::register_cached_blob_url(&u, &k, &n, &bytes, &m).await;
                     loaded_key.set(Some(target_key));
                     raw_src.set(Some(burl.clone()));
                     src.set(Some(burl.clone()));
-                    run_ai_pipeline(burl, u, sh_in, m, qp_in, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
+                    run_ai_pipeline(burl, u, sh_in, m, qp_in, auto_ai, k, n, fname_in, wire_w_in, wire_h_in);
                 }
                 MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
                     missing.set(Some((ref_id, availability_state, reason)));
@@ -1689,6 +1719,7 @@ pub fn ComposerTools(
                                     match media_opt::pick_instant_preview(&fid).await {
                                         Ok(pick) => {
                                             let hid = pick.handle_id.clone();
+                                            let is_img = pick.media_kind == "image";
                                             push_pending_media(PendingSenderMedia {
                                                 handle_id: hid.clone(),
                                                 preview_url: pick.instant_preview_url.clone(),
@@ -1696,11 +1727,13 @@ pub fn ComposerTools(
                                                 media_kind: pick.media_kind.clone(),
                                                 width: pick.width.unwrap_or(0),
                                                 height: pick.height.unwrap_or(0),
-                                                status_label: "Đang tối ưu".into(),
+                                                status_label: String::new(),
                                                 failed: false,
                                             });
-                                            platform::scroll_chat_to_bottom(false);
-                                            match media_opt::process_pending_handle(&hid, orig).await {
+                                            platform::scroll_chat_to_bottom(true);
+                                            // Spec 163: Always upload fresh images uncompressed (`preserve_original = true`);
+                                            // server only compresses images untouched for >= 15 days.
+                                            match media_opt::process_pending_handle(&hid, orig || is_img).await {
                                                 Ok(payload) => {
                                                     media_opt::release_pending_handle(&hid, false);
                                                     if let Some(h) = on_media {

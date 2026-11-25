@@ -2881,7 +2881,7 @@ pub fn Chat(
             m.insert(active.id.clone(), wire_text.clone());
             persist_previews(&pkey, m);
         });
-        platform::scroll_chat_to_bottom(false);
+        platform::scroll_chat_to_bottom(true);
         platform::focus_chat_input();
 
         let outbox_entry = crate::storage::OutboxEntry {
@@ -2911,6 +2911,7 @@ pub fn Chat(
                     crate::storage::remove_outbox_item(&client_id).await;
                     platform::save_draft(&idb_key, "").await;
                     platform::broadcast_tab_sync("dm_sent", serde_json::json!({ "partner_id": active.id, "id": sent.id }));
+                    let mut appended_new_msg = false;
                     if active_friend.peek().as_ref().map(|f| f.id.as_str()) == Some(active.id.as_str()) {
                         messages.with_mut(|list| {
                             let ws_already_has = list.iter().any(|m| m.id == sent.id);
@@ -2922,6 +2923,7 @@ pub fn Chat(
                                 slot.created_at = sent.created_at.clone();
                                 slot.status = MessageStatus::Sent;
                             } else {
+                                appended_new_msg = true;
                                 list.push(DisplayMessage {
                                     id: sent.id.clone(),
                                     seq: sent.seq,
@@ -2945,7 +2947,9 @@ pub fn Chat(
                         crate::storage::save_cached_messages(&idb_key, &snap, more_now).await;
                     }
                     register_reminders(&uid, &[(raw_text.clone(), active.username.clone())]);
-                    platform::scroll_chat_to_bottom(false);
+                    if appended_new_msg {
+                        platform::scroll_chat_to_bottom(true);
+                    }
                 }
                 Err(code) => {
                     let is_transient_offline = matches!(
@@ -3090,9 +3094,6 @@ pub fn Chat(
         let peer_id = active_friend().map(|f| f.id);
         let preview_key = payload.instant_preview_url.clone();
         spawn(async move {
-            if let Some(ref p) = preview_key {
-                crate::components::rich::update_pending_media_status(p, "Đang gửi", false);
-            }
             match crate::services::storage_sync::upload_or_claim_media_for_scope(
                 "dm",
                 peer_id.as_deref(),
@@ -3102,15 +3103,29 @@ pub fn Chat(
             .await
             {
                 Ok(out) => {
-                    if payload.media_kind == "image" && !payload.bytes.is_empty() {
-                        let _ = platform::register_cached_blob_url(
-                            &out.download_url,
-                            &out.key_b64,
-                            &out.nonce_b64,
-                            &payload.bytes,
-                            &payload.mime,
-                        )
-                        .await;
+                    // Spec 163: Reuse the ALREADY-DECODED sender local file preview URL directly in blobPool
+                    // and senderOriginalSession BEFORE swapping PendingSenderMedia -> real message in the same tick!
+                    if payload.media_kind == "image" {
+                        if let Some(ref p) = preview_key {
+                            platform::register_existing_blob_url_sync(
+                                &out.download_url,
+                                &out.key_b64,
+                                &out.nonce_b64,
+                                p,
+                                &payload.mime,
+                                payload.bytes.len(),
+                            );
+                            crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
+                        } else if !payload.bytes.is_empty() {
+                            let _ = platform::register_cached_blob_url(
+                                &out.download_url,
+                                &out.key_b64,
+                                &out.nonce_b64,
+                                &payload.bytes,
+                                &payload.mime,
+                            )
+                            .await;
+                        }
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
                         out.download_url.clone(),
@@ -3119,10 +3134,6 @@ pub fn Chat(
                         "dm",
                         &payload,
                     );
-                    if let Some(ref p) = preview_key {
-                        crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
-                        crate::components::rich::remove_pending_media(p);
-                    }
                     if active_friend().map(|f| f.id) == peer_id {
                         send_dm_text.call((msg_str, None));
                     } else if let Some(target_pid) = peer_id.clone() {
@@ -3130,6 +3141,9 @@ pub fn Chat(
                         spawn(async move {
                             let _ = crate::services::dm::send_encrypted_dm(&uid, &target_pid, &msg_str, None).await;
                         });
+                    }
+                    if let Some(ref p) = preview_key {
+                        crate::components::rich::remove_pending_media(p);
                     }
                     persist_uploaded_media_bg("dm", preview_key, payload, out);
                 }
@@ -3601,9 +3615,6 @@ pub fn Chat(
                 toast.set(Some("No group selected".into()));
                 return;
             };
-            if let Some(ref p) = preview_key {
-                crate::components::rich::update_pending_media_status(p, "Đang gửi", false);
-            }
             match crate::services::storage_sync::upload_or_claim_media_for_scope(
                 "group",
                 Some(&group_id),
@@ -3613,8 +3624,20 @@ pub fn Chat(
             .await
             {
                 Ok(out) => {
-                    if payload.media_kind == "image" && !payload.bytes.is_empty() {
-                        let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
+                    if payload.media_kind == "image" {
+                        if let Some(ref p) = preview_key {
+                            platform::register_existing_blob_url_sync(
+                                &out.download_url,
+                                &out.key_b64,
+                                &out.nonce_b64,
+                                p,
+                                &payload.mime,
+                                payload.bytes.len(),
+                            );
+                            crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
+                        } else if !payload.bytes.is_empty() {
+                            let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
+                        }
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
                         out.download_url.clone(),
@@ -3623,11 +3646,10 @@ pub fn Chat(
                         "group",
                         &payload,
                     );
+                    send_group_raw.call(msg_str);
                     if let Some(ref p) = preview_key {
-                        crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
                         crate::components::rich::remove_pending_media(p);
                     }
-                    send_group_raw.call(msg_str);
                     persist_uploaded_media_bg("group", preview_key, payload, out);
                 }
                 Err(err) => {
@@ -3706,9 +3728,6 @@ pub fn Chat(
                 toast.set(Some("Channel not selected".into()));
                 return;
             };
-            if let Some(ref p) = preview_key {
-                crate::components::rich::update_pending_media_status(p, "Đang gửi", false);
-            }
             match crate::services::storage_sync::upload_or_claim_media_for_scope(
                 "channel",
                 Some(&channel_id),
@@ -3718,8 +3737,20 @@ pub fn Chat(
             .await
             {
                 Ok(out) => {
-                    if payload.media_kind == "image" && !payload.bytes.is_empty() {
-                        let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
+                    if payload.media_kind == "image" {
+                        if let Some(ref p) = preview_key {
+                            platform::register_existing_blob_url_sync(
+                                &out.download_url,
+                                &out.key_b64,
+                                &out.nonce_b64,
+                                p,
+                                &payload.mime,
+                                payload.bytes.len(),
+                            );
+                            crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
+                        } else if !payload.bytes.is_empty() {
+                            let _ = platform::register_cached_blob_url(&out.download_url, &out.key_b64, &out.nonce_b64, &payload.bytes, &payload.mime).await;
+                        }
                     }
                     let msg_str = crate::components::rich::build_rich_media_wire(
                         out.download_url.clone(),
@@ -3728,17 +3759,18 @@ pub fn Chat(
                         "channel",
                         &payload,
                     );
-                    if let Some(ref p) = preview_key {
-                        crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
-                        crate::components::rich::remove_pending_media(p);
-                    }
                     if let Ok(msg) = api::channels_post_message(&channel_id, &msg_str).await {
                         channel_messages.with_mut(|list| {
                             if !list.iter().any(|m| m.id == msg.id) {
                                 list.push(msg);
                             }
                         });
-                        platform::scroll_chat_to_bottom(false);
+                        if let Some(ref p) = preview_key {
+                            crate::components::rich::remove_pending_media(p);
+                        }
+                        platform::scroll_chat_to_bottom(true);
+                    } else if let Some(ref p) = preview_key {
+                        crate::components::rich::remove_pending_media(p);
                     }
                     persist_uploaded_media_bg("channel", preview_key, payload, out);
                 }

@@ -22,6 +22,7 @@
   /** @type {Map<string, { blobUrl: string, mime: string, size: number, lastUsed: number }>} */
   const blobPool = new Map();
   const blobInFlight = new Map();
+  const coldCompressedUrls = new Set();
 
   let lastStats = {
     mode: 'initializing',
@@ -256,6 +257,7 @@
       }
     }
     blobPool.clear();
+    coldCompressedUrls.clear();
   }
 
   function bytesToB64(u8) {
@@ -495,7 +497,41 @@
       return blobUrl;
     },
 
-    // Returns a `blob:` URL backed by SharedWorker Priority DownloadManager + LRU pool.
+    // Spec 163: Reuse an ALREADY-DECODED sender local device file `blob:` URL directly so handing off from
+    // instant local preview to the sent message causes ZERO decode latency, ZERO flash, and ZERO layout shift.
+    registerExistingBlobUrl(url, keyB64, nonceB64, existingBlobUrl, mime = 'image/png', size = 0) {
+      if (!url || !existingBlobUrl || typeof existingBlobUrl !== 'string' || !existingBlobUrl.startsWith('blob:')) {
+        return null;
+      }
+      const cacheKey = this.makeBlobCacheKey(url, keyB64 || '', nonceB64 || '');
+      evictBlobPoolIfNeeded();
+      blobPool.set(cacheKey, {
+        blobUrl: existingBlobUrl,
+        mime: mime || 'image/png',
+        size: Number(size || 0),
+        lastUsed: Date.now(),
+      });
+      return existingBlobUrl;
+    },
+
+    // Silently swap an in-memory `blobPool` entry to the persisted local cache blob URL once pre-decoded.
+    replaceCachedBlobUrlSilently(url, keyB64, nonceB64, newBlobUrl, mime = 'image/png', size = 0) {
+      if (!url || !newBlobUrl || typeof newBlobUrl !== 'string' || !newBlobUrl.startsWith('blob:')) return false;
+      const cacheKey = this.makeBlobCacheKey(url, keyB64 || '', nonceB64 || '');
+      blobPool.set(cacheKey, {
+        blobUrl: newBlobUrl,
+        mime: mime || 'image/png',
+        size: Number(size || 0),
+        lastUsed: Date.now(),
+      });
+      return true;
+    },
+
+    isColdCompressedUrl(url) {
+      return Boolean(url && coldCompressedUrls.has(String(url)));
+    },
+
+    // Returns a `blob:` URL backed by Persistent Local App Cache -> SharedWorker Priority DownloadManager + LRU pool.
     // Guarantees ZERO `/uploads/...` or `/api/attachments/...` URLs ever leak into DOM `<img>` or CSS.
     async downloadMediaBlobUrl(url, opts = {}) {
       if (!url || typeof url !== 'string') return null;
@@ -513,22 +549,61 @@
       }
 
       const promise = (async () => {
-        // Ensure SharedWorker is ready when authenticated before pulling bytes
+        const refMatch = !opts.keyB64 ? /^\/api\/attachments\/([0-9a-f-]{36})/i.exec(url) : null;
+        const plainRefId = refMatch ? refMatch[1] : null;
+        // 1. Check persistent local app cache (OPFS/IDB) FIRST for non-E2EE group/channel/public media
+        if (plainRefId && window.__chatwStorage && typeof window.__chatwStorage.getObject === 'function') {
+          try {
+            const loc = await window.__chatwStorage.getObject(plainRefId);
+            if (loc && loc.found && loc.bytesB64) {
+              const u8 = b64ToBytes(loc.bytesB64);
+              const mime = (loc.mime_type && loc.mime_type !== 'application/octet-stream')
+                ? loc.mime_type
+                : (opts.mime || 'application/octet-stream');
+              evictBlobPoolIfNeeded();
+              const blobUrl = URL.createObjectURL(new Blob([u8], { type: mime }));
+              blobPool.set(cacheKey, { blobUrl, mime, size: u8.byteLength, lastUsed: Date.now() });
+              return blobUrl;
+            }
+          } catch (_) {}
+        }
+
+        // 2. Cache miss -> download from server via CWBF2 SharedWorker
         if (!this.isConnected() && this.hasAuthHint()) {
           await this.waitUntilReady(2000).catch(() => {});
         }
         const res = await this.downloadBytes(url, opts);
         if (!res.ok || !res.bytes || res.bytes.byteLength === 0) return null;
+        const rawCt = String(res.contentType || '');
+        const wasCold15d = rawCt.includes('cold15d=1');
+        if (wasCold15d) {
+          coldCompressedUrls.add(String(url));
+        }
+        const cleanCt = rawCt.split(';')[0].trim();
         // Double-check pool in case another path registered it while in flight
         const again = blobPool.get(cacheKey);
         if (again) return again.blobUrl;
         evictBlobPoolIfNeeded();
-        const mime = (opts.mime && opts.mime !== 'application/octet-stream')
-          ? opts.mime
-          : (res.contentType || 'application/octet-stream');
+        const mime = (cleanCt && cleanCt !== 'application/octet-stream')
+          ? cleanCt
+          : ((opts.mime && opts.mime !== 'application/octet-stream') ? opts.mime : 'application/octet-stream');
         const blob = new Blob([res.bytes], { type: mime });
         const blobUrl = URL.createObjectURL(blob);
         blobPool.set(cacheKey, { blobUrl, mime, size: res.bytes.byteLength, lastUsed: Date.now() });
+
+        // 3. Persist downloaded receiver/server media into adaptive local app cache (OPFS/IDB) in background!
+        if (plainRefId && window.__chatwStorage && typeof window.__chatwStorage.putObject === 'function') {
+          window.__chatwStorage.putObject(
+            {
+              ref_id: plainRefId,
+              scope_type: opts.scope || 'group',
+              file_name: `media_${plainRefId}`,
+              mime_type: mime,
+              availability_state: 'server_durable',
+            },
+            bytesToB64(res.bytes),
+          ).catch(() => {});
+        }
         return blobUrl;
       })().finally(() => {
         blobInFlight.delete(cacheKey);

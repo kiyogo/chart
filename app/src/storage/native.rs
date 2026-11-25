@@ -23,6 +23,8 @@ struct NativeEntry {
     sha256_plain: String,
     availability_state: String,
     last_accessed_at: u64,
+    #[serde(default)]
+    source_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -204,9 +206,32 @@ fn get_real_available_disk_space(dir: &std::path::Path) -> u64 {
     16 * 1024 * 1024 * 1024
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn get_real_available_disk_space(dir: &std::path::Path) -> u64 {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetDiskFreeSpaceExW(
+            lpDirectoryName: *const u16,
+            lpFreeBytesAvailableToCaller: *mut u64,
+            lpTotalNumberOfBytes: *mut u64,
+            lpTotalNumberOfFreeBytes: *mut u64,
+        ) -> i32;
+    }
+    let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let mut free_avail: u64 = 0;
+    let mut total: u64 = 0;
+    let mut total_free: u64 = 0;
+    let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut free_avail, &mut total, &mut total_free) };
+    if ok != 0 && free_avail > 0 {
+        return free_avail;
+    }
+    4 * 1024 * 1024 * 1024
+}
+
+#[cfg(not(any(unix, windows)))]
 fn get_real_available_disk_space(_dir: &std::path::Path) -> u64 {
-    16 * 1024 * 1024 * 1024
+    4 * 1024 * 1024 * 1024
 }
 
 pub async fn put_local_object(meta: &LocalObjectMeta, bytes: &[u8]) -> Result<String, String> {
@@ -248,6 +273,7 @@ pub async fn put_local_object(meta: &LocalObjectMeta, bytes: &[u8]) -> Result<St
         }
     }
 
+    let prev_source_path = state.entries.get(&meta.ref_id).and_then(|e| e.source_path.clone());
     state.entries.insert(
         meta.ref_id.clone(),
         NativeEntry {
@@ -259,6 +285,7 @@ pub async fn put_local_object(meta: &LocalObjectMeta, bytes: &[u8]) -> Result<St
             sha256_plain: meta.sha256_plain.clone().unwrap_or(sha),
             availability_state: meta.availability_state.clone(),
             last_accessed_at: now,
+            source_path: prev_source_path,
         },
     );
     save_state(&state);
@@ -270,7 +297,22 @@ pub async fn get_local_object(ref_id: &str) -> Option<(Vec<u8>, String, String)>
     let mut state = load_state();
     let entry = state.entries.get_mut(ref_id)?;
     let safe_id = safe_blob_name(ref_id);
-    let bytes = std::fs::read(cas_root().join("blobs").join(&safe_id)).ok()?;
+    let blob_path = cas_root().join("blobs").join(&safe_id);
+    let bytes = match std::fs::read(&blob_path) {
+        Ok(b) => b,
+        Err(_) => {
+            // Spec 163: If the app cache blob was evicted/missing on desktop/mobile, check if sender's
+            // original local device file still exists with matching SHA-256 and silently re-cache it!
+            let sp = entry.source_path.as_deref()?;
+            let orig = std::fs::read(sp).ok()?;
+            let orig_sha = sha256_hex(&orig);
+            if !entry.sha256_plain.is_empty() && orig_sha != entry.sha256_plain {
+                return None;
+            }
+            let _ = atomic_write_file(&blob_path, &orig);
+            orig
+        }
+    };
     let actual_sha = sha256_hex(&bytes);
     if !entry.sha256_plain.is_empty() && actual_sha != entry.sha256_plain {
         return None;

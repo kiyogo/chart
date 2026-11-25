@@ -382,9 +382,9 @@
     }
 
     const qualityMode = opts.qualityMode || getUserMediaQualityMode(Boolean(opts.preserveOriginal));
-    // Spec 158: Keep active/fresh images untouched as-is on upload (`original_passthrough`) unless `forceCompress`
-    // (15-day cold archive), `data_saver` mode, or > 24 MB single-upload cap applies.
-    const keepAsIsFresh = !opts.forceCompress && qualityMode !== 'data_saver' && rawU8.byteLength <= 24 * 1024 * 1024;
+    // Spec 158 & Spec 163: Always send fresh images directly to server uncompressed (`original_passthrough`);
+    // compression only runs when `forceCompress` is set (15-day cold archive).
+    const keepAsIsFresh = !opts.forceCompress && rawU8.byteLength <= 24 * 1024 * 1024;
     const effectiveOpts = { ...opts, qualityMode, preserveOriginal: Boolean(opts.preserveOriginal) || qualityMode === 'original' || keepAsIsFresh };
 
     async function computeOrigProfileFromRaw(u8, mimeType) {
@@ -1222,7 +1222,11 @@
       try {
         if (senderOriginalSession.has(downloadUrl)) return true;
         const origBlob = entry.file;
-        const stableUrl = URL.createObjectURL(origBlob);
+        // Spec 163: Reuse the ALREADY-DECODED `previewUrl` directly so transitioning from local preview
+        // to the real sent message performs ZERO re-decode and ZERO visual flicker!
+        const stableUrl = (typeof previewUrl === 'string' && previewUrl.startsWith('blob:'))
+          ? previewUrl
+          : URL.createObjectURL(origBlob);
         senderOriginalSession.set(downloadUrl, {
           url: stableUrl,
           width: entry.width || 0,
@@ -1243,7 +1247,7 @@
     },
 
     // After upload succeeds, copy sender's 100% untouched original file into sender's own local app storage
-    // so the sender ALWAYS views their crisp original file immediately & on future reloads without downloading!
+    // and silently swap the session cache entry to the persisted local cache copy once decoded (zero UI notice).
     async commitSenderOriginal(previewUrl, downloadUrl, keyB64 = '', nonceB64 = '', refId = '') {
       const entry = previewUrl ? previewUrlToFile.get(previewUrl) : null;
       if (!entry || !entry.file || !downloadUrl || entry.allowSenderOriginal === false) return { ok: false };
@@ -1251,7 +1255,9 @@
         const origBlob = entry.file;
         let rec = senderOriginalSession.get(downloadUrl);
         if (!rec) {
-          const stableUrl = URL.createObjectURL(origBlob);
+          const stableUrl = (typeof previewUrl === 'string' && previewUrl.startsWith('blob:'))
+            ? previewUrl
+            : URL.createObjectURL(origBlob);
           rec = {
             url: stableUrl,
             width: entry.width || 0,
@@ -1261,11 +1267,6 @@
             provenance: 'sender_original',
           };
           senderOriginalSession.set(downloadUrl, rec);
-          while (senderOriginalSession.size > 48) {
-            const [oldK, oldV] = senderOriginalSession.entries().next().value;
-            senderOriginalSession.delete(oldK);
-            if (oldV && oldV.url) { try { URL.revokeObjectURL(oldV.url); } catch (_) {} }
-          }
         }
         // Persist untouched sender original in IndexedDB so even after full reload sender sees crisp original!
         if (window.__chatwStorage && typeof window.__chatwStorage.putAiOutput === 'function') {
@@ -1279,6 +1280,33 @@
             src_bytes: origBlob.size,
             super_res: 0,
           }).catch(() => {});
+          // Silently verify cached copy and pre-decode before updating in-memory references (zero flicker)
+          if (typeof window.__chatwStorage.getAiOutput === 'function') {
+            const cachedHit = await window.__chatwStorage.getAiOutput(`sender_orig:${downloadUrl}`).catch(() => null);
+            if (cachedHit && cachedHit.found && cachedHit.blob) {
+              const cachedUrl = URL.createObjectURL(cachedHit.blob);
+              try {
+                const probeImg = new Image();
+                probeImg.decoding = 'async';
+                probeImg.src = cachedUrl;
+                if (typeof probeImg.decode === 'function') await probeImg.decode().catch(() => {});
+              } catch (_) {}
+              const oldUrl = rec.url;
+              rec = { ...rec, url: cachedUrl, provenance: 'sender_cache' };
+              senderOriginalSession.set(downloadUrl, rec);
+              if (window.__chatwCore && typeof window.__chatwCore.replaceCachedBlobUrlSilently === 'function') {
+                window.__chatwCore.replaceCachedBlobUrlSilently(downloadUrl, keyB64, nonceB64, cachedUrl, rec.mime, cachedHit.blob.size);
+              }
+              // Quietly swap any mounted <img> showing the temporary file URL to the persisted cache URL
+              try {
+                if (oldUrl && oldUrl !== cachedUrl && typeof document !== 'undefined') {
+                  const imgs = document.querySelectorAll(`img[src="${oldUrl}"]`);
+                  imgs.forEach((img) => { img.src = cachedUrl; });
+                  setTimeout(() => { try { URL.revokeObjectURL(oldUrl); } catch (_) {} }, 1500);
+                }
+              } catch (_) {}
+            }
+          }
         }
         return { ok: true, ...rec };
       } catch (e) {

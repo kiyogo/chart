@@ -800,7 +800,7 @@ pub async fn serve_media_reference(
         r#"
         SELECT r.owner_id, r.scope_type, r.scope_id, r.original_filename, r.mime_type, r.deleted_for_all,
                r.object_id, r.optimized_object_id, r.thumb_object_id,
-               o.storage_backend AS orig_backend, o.storage_key AS orig_key, o.mime_type AS orig_mime, o.sha256 AS orig_sha, o.byte_size AS orig_size, COALESCE(o.is_cdc_assembled, FALSE) AS orig_is_cdc,
+               o.storage_backend AS orig_backend, o.storage_key AS orig_key, o.mime_type AS orig_mime, o.sha256 AS orig_sha, o.byte_size AS orig_size, COALESCE(o.is_cdc_assembled, FALSE) AS orig_is_cdc, (o.cold_compressed_at IS NOT NULL) AS orig_is_cold,
                opt.storage_backend AS opt_backend, opt.storage_key AS opt_key, opt.mime_type AS opt_mime, opt.sha256 AS opt_sha, opt.byte_size AS opt_size,
                th.storage_backend AS th_backend, th.storage_key AS th_key, th.mime_type AS th_mime, th.sha256 AS th_sha, th.byte_size AS th_size
         FROM media_references r
@@ -827,6 +827,8 @@ pub async fn serve_media_reference(
 
     let wanted = variant.unwrap_or("original");
     let orig_is_cdc: bool = row.try_get("orig_is_cdc").unwrap_or(false);
+    let orig_is_cold: bool = row.try_get("orig_is_cold").unwrap_or(false);
+    let cold_hdr: String = if orig_is_cold { "1".into() } else { "0".into() };
     let orig_object_id: Option<Uuid> = row.try_get("object_id")?;
     let (backend, key, mime, sha, total_size, use_cdc) = if wanted == "thumb" && row.try_get::<Option<String>, _>("th_key")?.is_some() {
         (
@@ -901,6 +903,7 @@ pub async fn serve_media_reference(
                     (header::ACCEPT_RANGES, "bytes".into()),
                     (header::CONTENT_DISPOSITION, format!("inline; filename=\"{safe_disp}\"")),
                     (header::HeaderName::from_static("x-content-sha256"), sha_hex),
+                    (header::HeaderName::from_static("x-chatw-cold-compressed"), cold_hdr),
                 ],
                 chunk,
             )
@@ -914,6 +917,7 @@ pub async fn serve_media_reference(
                 (header::ACCEPT_RANGES, "bytes".into()),
                 (header::CONTENT_DISPOSITION, format!("inline; filename=\"{safe_disp}\"")),
                 (header::HeaderName::from_static("x-content-sha256"), sha_hex),
+                (header::HeaderName::from_static("x-chatw-cold-compressed"), cold_hdr),
             ],
             full_bytes,
         )
@@ -939,6 +943,7 @@ pub async fn serve_media_reference(
                 (header::ACCEPT_RANGES, "bytes".into()),
                 (header::CONTENT_DISPOSITION, format!("inline; filename=\"{safe_disp}\"")),
                 (header::HeaderName::from_static("x-content-sha256"), sha_hex),
+                (header::HeaderName::from_static("x-chatw-cold-compressed"), cold_hdr),
             ],
             chunk,
         )
@@ -961,6 +966,7 @@ pub async fn serve_media_reference(
             (header::ACCEPT_RANGES, "bytes".into()),
             (header::CONTENT_DISPOSITION, format!("inline; filename=\"{safe_disp}\"")),
             (header::HeaderName::from_static("x-content-sha256"), sha_hex),
+            (header::HeaderName::from_static("x-chatw-cold-compressed"), cold_hdr),
         ],
         body,
     )
