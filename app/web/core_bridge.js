@@ -379,17 +379,21 @@
         bodyToSend = body;
       }
 
+      const pathStr = String(path);
+      const isUploadRpc = pathStr.startsWith('/api/attachments') || pathStr.startsWith('/api/storage/');
+      const rpcTimeoutMs = isUploadRpc ? 45000 : 18000;
       const res = await callWorker(
         {
           type: 'rpc_call',
           method: String(method || 'GET').toUpperCase(),
-          path: String(path),
+          path: pathStr,
           contentType: contentType || (typeof body === 'string' ? 'application/json' : ''),
           headers: extraHeaders || {},
           body: bodyToSend,
+          timeoutMs: rpcTimeoutMs,
         },
         transfer,
-        18000,
+        rpcTimeoutMs,
       );
       if (!res.ok) {
         if (!simulatedOffline) {

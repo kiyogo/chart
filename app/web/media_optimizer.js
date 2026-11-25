@@ -113,9 +113,16 @@
   const senderOriginalSession = new Map();
   let nextHandleSeq = 1;
 
-  function stashPreviewFile(previewUrl, file, width = 0, height = 0) {
+  function stashPreviewFile(previewUrl, file, width = 0, height = 0, opts = {}) {
     if (!previewUrl || !file) return;
-    previewUrlToFile.set(previewUrl, { file, width, height });
+    const prev = previewUrlToFile.get(previewUrl) || {};
+    previewUrlToFile.set(previewUrl, {
+      file,
+      width: width || prev.width || 0,
+      height: height || prev.height || 0,
+      preserveOriginal: opts.preserveOriginal !== undefined ? Boolean(opts.preserveOriginal) : Boolean(prev.preserveOriginal),
+      allowSenderOriginal: opts.allowSenderOriginal !== undefined ? Boolean(opts.allowSenderOriginal) : (prev.allowSenderOriginal !== undefined ? prev.allowSenderOriginal : true),
+    });
     while (previewUrlToFile.size > 32) {
       const oldestKey = previewUrlToFile.keys().next().value;
       previewUrlToFile.delete(oldestKey);
@@ -841,8 +848,24 @@
     }, true);
   }
 
+  function removeLocalDedupEntry(refId) {
+    if (!refId) return false;
+    const existed = localDedupEntries.delete(refId);
+    if (lastCopiedHint && lastCopiedHint.refId === refId) {
+      lastCopiedHint = null;
+    }
+    if (existed) saveLocalDedupToStorage();
+    return existed;
+  }
+
   window.__chatwDedupLocal = {
     registerMedia: registerLocalDedupEntry,
+    removeMedia: removeLocalDedupEntry,
+    clear: () => {
+      localDedupEntries.clear();
+      lastCopiedHint = null;
+      saveLocalDedupToStorage();
+    },
     findMatch: findLocalAuthorizedMatch,
     listCount: () => localDedupEntries.size,
     async registerLoadedImageFromBlobUrl(blobUrl, meta = {}) {
@@ -949,7 +972,7 @@
     }
   }
 
-  async function processSingleFile(file, preserveOriginal = false, existingPreviewUrl = null) {
+  async function processSingleFile(file, preserveOriginal = false, existingPreviewUrl = null, skipLocalDedup = false) {
     if (await isBlockedSvgBlob(file)) {
       return { error: 'svg_not_allowed' };
     }
@@ -968,12 +991,14 @@
       try {
         const pdq = await computeImagePdqFromBytes(rawArr, file.type);
         // 1. Check local authorized cross-chat dedup registry FIRST (catches copied/pasted/saved blurry OR enhanced images -> 0ms encode, 0B upload!)
-        const localHit = findLocalAuthorizedMatch({ origBlake3, wireBlake3: origBlake3, sha256: shaHexRaw, pdq });
+        const localHit = skipLocalDedup ? null : findLocalAuthorizedMatch({ origBlake3, wireBlake3: origBlake3, sha256: shaHexRaw, pdq });
         if (localHit && localHit.refId) {
           const needsSenderAi = Boolean(localHit.isAiRecovery || localHit.qp || !localHit.isSenderOrigLocal);
-          if (!needsSenderAi) {
-            stashPreviewFile(previewUrl, file, localHit.origW || (pdq ? pdq.width : 0), localHit.origH || (pdq ? pdq.height : 0));
-          }
+          // Always retain source file handle for automatic claim-miss fallback while preserving sender-original safety flag.
+          stashPreviewFile(previewUrl, file, localHit.origW || (pdq ? pdq.width : 0), localHit.origH || (pdq ? pdq.height : 0), {
+            preserveOriginal,
+            allowSenderOriginal: !needsSenderAi,
+          });
           return {
             bytesB64: '',
             mime: localHit.mime || 'image/avif',
@@ -1005,7 +1030,10 @@
         }
 
         const res = await optimizeImageBlob(file, { preserveOriginal });
-        stashPreviewFile(previewUrl, file, res.targetWidth || res.width || 0, res.targetHeight || res.height || 0);
+        stashPreviewFile(previewUrl, file, res.targetWidth || res.width || 0, res.targetHeight || res.height || 0, {
+          preserveOriginal,
+          allowSenderOriginal: true,
+        });
         return {
           ...res,
           fileName: stripFileExtension(file.name),
@@ -1029,8 +1057,12 @@
     const mediaKind = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
 
     // Check exact cross-chat dedup for videos, audio & general files too!
-    const localFileHit = findLocalAuthorizedMatch({ origBlake3, wireBlake3: origBlake3, sha256: shaHex, pdq: null });
+    const localFileHit = skipLocalDedup ? null : findLocalAuthorizedMatch({ origBlake3, wireBlake3: origBlake3, sha256: shaHex, pdq: null });
     if (localFileHit && localFileHit.refId) {
+      stashPreviewFile(previewUrl, file, localFileHit.width || 0, localFileHit.height || 0, {
+        preserveOriginal,
+        allowSenderOriginal: true,
+      });
       return {
         bytesB64: '',
         mime: localFileHit.mime || file.type || 'application/octet-stream',
@@ -1140,7 +1172,7 @@
     // so the sender ALWAYS views their crisp original file immediately & on future reloads without downloading!
     async commitSenderOriginal(previewUrl, downloadUrl, keyB64 = '', nonceB64 = '', refId = '') {
       const entry = previewUrl ? previewUrlToFile.get(previewUrl) : null;
-      if (!entry || !entry.file || !downloadUrl) return { ok: false };
+      if (!entry || !entry.file || !downloadUrl || entry.allowSenderOriginal === false) return { ok: false };
       try {
         const origBlob = entry.file;
         const stableUrl = URL.createObjectURL(origBlob);
@@ -1209,6 +1241,14 @@
       if (!entry) return { error: 'pending_handle_not_found' };
       const res = await processSingleFile(entry.file, preserveOriginal, entry.previewUrl);
       return { ...res, handleId };
+    },
+
+    // Recover automatically when a cached local dedup reference misses or fails authorization on the server.
+    async reencodeFromPreviewUrl(previewUrl, preserveOriginal = null) {
+      const entry = previewUrl ? previewUrlToFile.get(previewUrl) : null;
+      if (!entry || !entry.file) return { error: 'preview_source_not_found' };
+      const pres = preserveOriginal === null ? Boolean(entry.preserveOriginal) : Boolean(preserveOriginal);
+      return await processSingleFile(entry.file, pres, previewUrl, true);
     },
 
     // Return sender's original crisp local bytes so sender's local cache stores the true original!

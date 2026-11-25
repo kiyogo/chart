@@ -250,13 +250,16 @@ pub fn decode_cwbf2_encrypted(
 }
 
 fn is_safe_internal_path(path: &str) -> bool {
-    if path.is_empty() || path.len() > 2048 || !path.starts_with('/') {
+    if path.is_empty() || path.len() > 8192 || !path.starts_with('/') {
         return false;
     }
-    if path.contains("..") || path.contains('\\') || path.contains('\0') {
+    if path.contains('\0') {
         return false;
     }
     let bare = path.split('?').next().unwrap_or(path);
+    if bare.contains("..") || bare.contains('\\') {
+        return false;
+    }
     if bare == "/api/ws" || bare.starts_with("/stream/") {
         return false;
     }
@@ -657,9 +660,17 @@ pub async fn handle_socket_rpc_bin(
                             let resp_bytes = if let Some((method, path, ct, hdrs, body)) = parse_rpc_call_payload(&payload) {
                                 let (status, resp_ct, resp_body, _) =
                                     invoke_internal_router(&st, &ck, method, &path, &ct, &hdrs, body).await;
-                                if status >= 400 && path.starts_with("/api/messages") {
+                                if status >= 400
+                                    && (path.starts_with("/api/messages")
+                                        || path.starts_with("/api/attachments")
+                                        || path.starts_with("/api/storage/")
+                                        || path.starts_with("/api/dm/")
+                                        || path.starts_with("/api/groups")
+                                        || path.starts_with("/api/channels"))
+                                {
                                     let preview = std::str::from_utf8(&resp_body).unwrap_or("");
-                                    tracing::warn!(%path, status, body = %preview, "cwbf2 rpc /api/messages rejected");
+                                    let path_preview: String = path.chars().take(240).collect();
+                                    tracing::warn!(path = %path_preview, status, body = %preview, "cwbf2 rpc rejected");
                                 }
                                 encode_rpc_response(status, &resp_ct, &resp_body)
                             } else {
@@ -839,11 +850,15 @@ mod tests {
 
         // Internal path validation blocks traversal, /api/ws recursion, and /stream/ bypass
         assert!(is_safe_internal_path("/api/messages/123?limit=30"));
+        assert!(is_safe_internal_path("/api/attachments/upload?file_name=photo..v2.png&mime=image/png"));
+        let long_upload = format!("/api/attachments/upload?meta={}", "a".repeat(2600));
+        assert!(is_safe_internal_path(&long_upload));
         assert!(is_safe_internal_path("/uploads/avatars/u1.avif"));
         assert!(is_safe_internal_path("/locales/vi.json"));
         assert!(!is_safe_internal_path("/api/ws"));
         assert!(!is_safe_internal_path("/stream/abc"));
         assert!(!is_safe_internal_path("/api/../etc/passwd"));
+        assert!(!is_safe_internal_path("/api/attachments/upload\0?x=1"));
     }
 
     #[test]

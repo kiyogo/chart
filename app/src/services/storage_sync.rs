@@ -488,7 +488,46 @@ pub async fn upload_or_claim_media_for_scope(
     }
 
     if payload.bytes.is_empty() {
-        return Err("empty_payload_after_claim_miss".into());
+        if let Some(ref stale_ref_id) = payload.copied_from_ref_id {
+            crate::storage::media_opt::evict_local_dedup_entry(stale_ref_id);
+        }
+        let mut recovered = None;
+        if let Some(ref preview_url) = payload.instant_preview_url {
+            match crate::storage::media_opt::reencode_from_preview_url(preview_url).await {
+                Ok(fresh) if !fresh.bytes.is_empty() => {
+                    web_sys::console::warn_1(
+                        &format!(
+                            "[chatw] stale local dedup claim miss ({:?}); re-encoded {} bytes for upload",
+                            payload.copied_from_ref_id,
+                            fresh.bytes.len()
+                        )
+                        .into(),
+                    );
+                    recovered = Some(fresh);
+                }
+                Ok(_) => {
+                    web_sys::console::warn_1(
+                        &"[chatw] reencode_from_preview_url returned empty bytes".into(),
+                    );
+                }
+                Err(e) => {
+                    web_sys::console::warn_1(
+                        &format!("[chatw] reencode_from_preview_url failed: {e}").into(),
+                    );
+                }
+            }
+        }
+        match recovered {
+            Some(fresh) => {
+                *payload = fresh;
+            }
+            None => {
+                if let Some(ref stale_ref_id) = payload.copied_from_ref_id {
+                    return Err(format!("empty_payload_after_claim_miss:{stale_ref_id}"));
+                }
+                return Err("empty_payload_after_claim_miss".into());
+            }
+        }
     }
 
     // STEP 2A: E2EE DM Path -> Zero-Knowledge Convergent MLE + Proof-of-Ownership Claim (`0 bytes` upload across users!)

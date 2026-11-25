@@ -268,6 +268,34 @@ pub async fn process_pending_handle(
     parse_optimized_payload(&v)
 }
 
+/// Remove a stale or unauthorized reference from the browser's local dedup index.
+pub fn evict_local_dedup_entry(ref_id: &str) {
+    let rid_json = serde_json::to_string(ref_id).unwrap_or_default();
+    let _ = dioxus::document::eval(&format!(
+        "(() => {{ if (window.__chatwDedupLocal && window.__chatwDedupLocal.removeMedia) window.__chatwDedupLocal.removeMedia({rid_json}); }})()"
+    ));
+}
+
+/// Re-encode the stashed source file for `preview_url` bypassing local dedup when a server claim misses.
+pub async fn reencode_from_preview_url(preview_url: &str) -> Result<OptimizedMediaPayload, String> {
+    let url_json = serde_json::to_string(preview_url).unwrap_or_default();
+    let js = format!(
+        r#"
+        (async () => {{
+            if (!window.__chatwMediaOpt || !window.__chatwMediaOpt.reencodeFromPreviewUrl) {{
+                dioxus.send({{ error: 'optimizer_unavailable' }});
+                return;
+            }}
+            const res = await window.__chatwMediaOpt.reencodeFromPreviewUrl({url_json});
+            dioxus.send(res);
+        }})();
+        "#
+    );
+    let mut eval = dioxus::document::eval(&js);
+    let v: serde_json::Value = eval.recv().await.map_err(|e| e.to_string())?;
+    parse_optimized_payload(&v)
+}
+
 pub fn release_pending_handle(handle_id: &str, revoke_url: bool) {
     let hid_json = serde_json::to_string(handle_id).unwrap_or_default();
     let rev = if revoke_url { "true" } else { "false" };

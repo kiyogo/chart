@@ -5910,9 +5910,11 @@ pub fn Chat(
     }
 }
 
-/// Maps backend attachment upload error codes to clear, localized UI messages (Spec 149).
+/// Maps backend attachment upload error codes to clear, localized UI messages (Spec 149 / Spec 150).
 fn upload_error_message(code: &str, channel_mode: bool) -> String {
-    match code {
+    let clean = code.trim();
+    web_sys::console::error_1(&format!("[chatw] upload error (channel={channel_mode}): {clean}").into());
+    match clean {
         "unauthorized" => "Session expired. Please sign in again".into(),
         "not_friends" => "Unable to send: you two are not friends yet".into(),
         "blocked" => "Unable to send: one of you has blocked the other".into(),
@@ -5920,7 +5922,12 @@ fn upload_error_message(code: &str, channel_mode: bool) -> String {
             "You don't have permission to do this in the group".into()
         }
         "payload_too_large" => "File larger than 25 MB".into(),
-        _ if channel_mode => "Unable to upload files to channel".into(),
+        "svg_not_allowed" => "SVG files are not supported".into(),
+        "network_error" | "worker_call_timeout" | "rpc_timeout" | "ws_handshake_timeout" | "ws_offline" => {
+            "Connection interrupted, please try again".into()
+        }
+        _ if channel_mode && clean.is_empty() => "Unable to upload files to channel".into(),
+        _ if !clean.is_empty() => format!("Unable to send ({clean})"),
         _ => "Unable to upload file".into(),
     }
 }

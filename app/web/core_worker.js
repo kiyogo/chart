@@ -897,7 +897,8 @@
             ? new Uint8Array(body)
             : (typeof body === 'string' ? TEXT_ENC.encode(body) : new Uint8Array(0));
           const reqPayload = encodeRpcCall(method, path, contentType || '', headers || {}, bodyU8);
-          const rawRes = await sendRpcRaw(OP_RPC_CALL, reqPayload, true, 18000);
+          const timeoutMs = Number(msg.timeoutMs) > 0 ? Number(msg.timeoutMs) : 18000;
+          const rawRes = await sendRpcRaw(OP_RPC_CALL, reqPayload, true, timeoutMs);
           const parsed = decodeRpcRes(rawRes);
           stats.rpcCallsCompleted += 1;
           const outCopy = new Uint8Array(parsed.body);
