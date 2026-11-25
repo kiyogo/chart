@@ -3031,11 +3031,17 @@ pub fn Chat(
                     }
                     send_dm_text.call((msg_str, None));
                 }
-                Err(_) => {
+                Err(err) => {
                     if let Some(ref p) = preview_key {
                         crate::components::rich::update_pending_media_status(p, "Gửi thất bại", true);
                     }
-                    toast.set(Some("Unable to upload file".into()));
+                    if err == "unauthorized" {
+                        toast.set(Some("Session expired. Please sign in again".into()));
+                        platform::wipe_client_session_on_logout().await;
+                        on_logout.call(());
+                    } else {
+                        toast.set(Some(upload_error_message(&err, false)));
+                    }
                 }
             }
         });
@@ -3538,11 +3544,17 @@ pub fn Chat(
                     }
                     send_group_raw.call(msg_str);
                 }
-                Err(_) => {
+                Err(err) => {
                     if let Some(ref p) = preview_key {
                         crate::components::rich::update_pending_media_status(p, "Gửi thất bại", true);
                     }
-                    toast.set(Some("Unable to upload file".into()));
+                    if err == "unauthorized" {
+                        toast.set(Some("Session expired. Please sign in again".into()));
+                        platform::wipe_client_session_on_logout().await;
+                        on_logout.call(());
+                    } else {
+                        toast.set(Some(upload_error_message(&err, false)));
+                    }
                 }
             }
         });
@@ -3660,11 +3672,17 @@ pub fn Chat(
                         platform::scroll_chat_to_bottom(false);
                     }
                 }
-                Err(_) => {
+                Err(err) => {
                     if let Some(ref p) = preview_key {
                         crate::components::rich::update_pending_media_status(p, "Gửi thất bại", true);
                     }
-                    toast.set(Some("Unable to upload files to channel".into()));
+                    if err == "unauthorized" {
+                        toast.set(Some("Session expired. Please sign in again".into()));
+                        platform::wipe_client_session_on_logout().await;
+                        on_logout.call(());
+                    } else {
+                        toast.set(Some(upload_error_message(&err, true)));
+                    }
                 }
             }
         });
@@ -5829,7 +5847,7 @@ pub fn Chat(
                 },
             }
         }
-        if tour_open() {
+        if tour_open() && !locked() && crate::storage::E2EE_RECOVERY_REQUIRED.read().is_none() {
             WelcomeTour {
                 on_close: { let k = tour_key.clone(); move |_| { platform::storage_set(&k, "done"); tour_open.set(false); } },
             }
@@ -5889,6 +5907,21 @@ pub fn Chat(
                 }
             }
         }
+    }
+}
+
+/// Maps backend attachment upload error codes to clear, localized UI messages (Spec 149).
+fn upload_error_message(code: &str, channel_mode: bool) -> String {
+    match code {
+        "unauthorized" => "Session expired. Please sign in again".into(),
+        "not_friends" => "Unable to send: you two are not friends yet".into(),
+        "blocked" => "Unable to send: one of you has blocked the other".into(),
+        "not_a_group_member" | "forbidden" | "channel_media_disabled" => {
+            "You don't have permission to do this in the group".into()
+        }
+        "payload_too_large" => "File larger than 25 MB".into(),
+        _ if channel_mode => "Unable to upload files to channel".into(),
+        _ => "Unable to upload file".into(),
     }
 }
 

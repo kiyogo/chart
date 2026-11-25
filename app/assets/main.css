@@ -9531,6 +9531,17 @@ html[data-surface-tone="dark"] .cw-picker-popover {
 .sidebar-section-btn:hover svg {
   color: var(--text-secondary) !important;
 }
+.app-toast .icon-btn:not(.danger):not(.btn-danger):not(.profile-close),
+.app-toast .icon-btn:not(.danger):not(.btn-danger):not(.profile-close) svg {
+  color: var(--bg-elevated) !important;
+  background: transparent !important;
+  border-radius: var(--radius-full);
+}
+.app-toast .icon-btn:not(.danger):not(.btn-danger):not(.profile-close):hover,
+.app-toast .icon-btn:not(.danger):not(.btn-danger):not(.profile-close):focus-visible {
+  background: color-mix(in srgb, var(--bg-elevated) 18%, transparent) !important;
+  color: var(--bg-elevated) !important;
+}
 .rail-item:not(.has-logo),
 .rail-item:not(.has-logo):hover,
 .rail-item.active:not(.has-logo),

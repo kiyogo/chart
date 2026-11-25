@@ -16,11 +16,10 @@
 
 use chatw_media_core::ai::{
     realesrgan::{
-        OriginalQualityProfile, RealEsrganGpuF16Model, RealEsrganModel, RealEsrganModelKind,
-        calibrate_color_preserve_sr, compute_gpu_color_lock_params, evaluate_sr_quality_gate,
-        f16_to_f32, run_realesrgan_tiled,
+        OriginalQualityProfile, RealEsrganGpuF16Model, RealEsrganModelKind,
+        compute_gpu_color_lock_params, evaluate_sr_quality_gate, f16_to_f32,
     },
-    span::{SpanGpuF16Model, SpanModel, run_span_tiled},
+    span::SpanGpuF16Model,
 };
 use js_sys::{Array, Float32Array, Object, Reflect, Uint16Array};
 use std::{cell::RefCell, collections::HashMap};

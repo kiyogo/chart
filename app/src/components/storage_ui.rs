@@ -1192,7 +1192,7 @@ pub fn E2eeUnlockRecoveryModal(
     if !is_locked_vault && auto_sync_grace() {
         return rsx! {
             div {
-                class: "toast",
+                class: "app-toast",
                 "data-testid": "e2ee-auto-sync-pill",
                 role: "status",
                 "Device sync"
