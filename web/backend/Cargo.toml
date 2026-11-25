@@ -25,6 +25,7 @@ sha1 = "0.10"
 aes-gcm = "0.10"
 jsonwebtoken = { version = "11.1.0", features = ["rust_crypto"] }
 p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
+redis = { version = "0.32", features = ["tokio-comp", "connection-manager", "script"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "json", "form", "stream"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1.0.229", features = ["derive"] }

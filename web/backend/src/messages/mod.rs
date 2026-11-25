@@ -28,7 +28,7 @@ pub struct SendMessagePayload {
     pub reply_to_id: Option<Uuid>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SendMessageResponse {
     pub id: Uuid,
     pub seq: i64,
@@ -96,6 +96,28 @@ async fn handle_send_message(
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let sender = authenticate_session(&state.db, &state.config, session_token).await?;
+
+    // Spec 165 (Section 39): HTTP Idempotency-Key deduplication for retry safety
+    let idem_key = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= 128)
+        .map(str::to_string);
+    if let Some(ref key) = idem_key {
+        let cached: Option<serde_json::Value> = sqlx::query_scalar(
+            "SELECT response_json FROM http_idempotency_keys WHERE user_id = $1 AND idempotency_key = $2 AND expires_at > now()",
+        )
+        .bind(sender.id)
+        .bind(key)
+        .fetch_optional(&state.db)
+        .await?;
+        if let Some(json_val) = cached
+            && let Ok(resp) = serde_json::from_value::<SendMessageResponse>(json_val)
+        {
+            return Ok(Json(resp));
+        }
+    }
 
     let recipient_id = payload.recipient_id;
     let is_self_chat = sender.id == recipient_id;
@@ -257,47 +279,85 @@ async fn handle_send_message(
         }
     };
 
-    // 11. Send real-time event to recipient via WebSocket
-    state
-        .ws_hub
-        .send_to_user(
-            &recipient_id,
-            WsEvent::MessageNew {
-                id: payload.message_id,
-                seq: row.0,
-                sender_id: sender.id,
-                recipient_id,
-                envelope: payload.recipient_envelope,
-                reply_to_id: payload.reply_to_id,
-                created_at: row.1,
-            },
-        )
-        .await;
-
-    // Send real-time event to sender (for other active sessions / tabs of sender)
-    if !is_self_chat {
-    state
-        .ws_hub
-        .send_to_user(
-            &sender.id,
-            WsEvent::MessageNew {
-                id: payload.message_id,
-                seq: row.0,
-                sender_id: sender.id,
-                recipient_id,
-                envelope: payload.sender_envelope,
-                reply_to_id: payload.reply_to_id,
-                created_at: row.1,
-            },
+    // 11. Persist durable WS event log entries (guarantees zero lost events on WS drop or Valkey restart)
+    let recipient_ws_event = WsEvent::MessageNew {
+        id: payload.message_id,
+        seq: row.0,
+        sender_id: sender.id,
+        recipient_id,
+        envelope: payload.recipient_envelope,
+        reply_to_id: payload.reply_to_id,
+        created_at: row.1,
+    };
+    let scope_norm = format!("{u_a}:{u_b}");
+    if let Ok(ev_json) = serde_json::to_value(&recipient_ws_event) {
+        let _ = crate::websocket::record_durable_ws_event(
+            &state.db,
+            recipient_id,
+            "message.new",
+            Some("dm"),
+            Some(&scope_norm),
+            Some(payload.message_id),
+            ev_json,
         )
         .await;
     }
 
-    Ok(Json(SendMessageResponse {
+    // Send real-time event to recipient via WebSocket (+ Valkey Pub/Sub multi-node fan-out)
+    state
+        .ws_hub
+        .send_to_user(&recipient_id, recipient_ws_event)
+        .await;
+
+    // Send real-time event to sender (for other active sessions / tabs of sender)
+    if !is_self_chat {
+        let sender_ws_event = WsEvent::MessageNew {
+            id: payload.message_id,
+            seq: row.0,
+            sender_id: sender.id,
+            recipient_id,
+            envelope: payload.sender_envelope,
+            reply_to_id: payload.reply_to_id,
+            created_at: row.1,
+        };
+        if let Ok(ev_json) = serde_json::to_value(&sender_ws_event) {
+            let _ = crate::websocket::record_durable_ws_event(
+                &state.db,
+                sender.id,
+                "message.new",
+                Some("dm"),
+                Some(&scope_norm),
+                Some(payload.message_id),
+                ev_json,
+            )
+            .await;
+        }
+        state.ws_hub.send_to_user(&sender.id, sender_ws_event).await;
+    }
+
+    let response = SendMessageResponse {
         id: payload.message_id,
         seq: row.0,
         created_at: row.1,
-    }))
+    };
+    if let Some(ref key) = idem_key
+        && let Ok(resp_json) = serde_json::to_value(&response)
+    {
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO http_idempotency_keys (user_id, idempotency_key, method, route_path, status_code, response_json)
+            VALUES ($1, $2, 'POST', '/api/messages/', 200, $3)
+            ON CONFLICT (user_id, idempotency_key) DO NOTHING
+            "#,
+        )
+        .bind(sender.id)
+        .bind(key)
+        .bind(resp_json)
+        .execute(&state.db)
+        .await;
+    }
+
+    Ok(Json(response))
 }
 
 async fn handle_get_messages(

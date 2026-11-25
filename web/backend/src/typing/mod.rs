@@ -56,6 +56,12 @@ async fn handle_typing(
         return Err(AppError::Forbidden("not_friends"));
     }
 
+    // Record ephemeral typing indicator in Valkey (8s TTL) for multi-node state consistency.
+    state
+        .valkey
+        .set_typing(user.id, friend_id, payload.is_typing)
+        .await;
+
     let event = if payload.is_typing {
         WsEvent::TypingStart { user_id: user.id }
     } else {

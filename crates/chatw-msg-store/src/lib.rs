@@ -18,6 +18,8 @@ pub mod incremental;
 pub mod model;
 pub mod scheduler;
 pub mod search;
+#[cfg(all(feature = "sqlite-sqlcipher", not(target_arch = "wasm32")))]
+pub mod sqlite_store;
 pub mod zstd22;
 
 pub use budget::*;
@@ -28,6 +30,8 @@ pub use incremental::*;
 pub use model::*;
 pub use scheduler::*;
 pub use search::*;
+#[cfg(all(feature = "sqlite-sqlcipher", not(target_arch = "wasm32")))]
+pub use sqlite_store::*;
 pub use zstd22::*;
 
 /// Complete end-to-end verified sealed message chunk output.

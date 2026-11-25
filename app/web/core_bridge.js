@@ -107,6 +107,53 @@
     return port;
   }
 
+  let lastDurableEventId = 0;
+  const seenDurableEventIds = new Set();
+
+  function trackWsEventId(rawJson) {
+    try {
+      const ev = JSON.parse(rawJson);
+      const eid = Number(ev && ev.data && ev.data.event_id);
+      if (eid > 0) {
+        if (seenDurableEventIds.has(eid)) return false;
+        seenDurableEventIds.add(eid);
+        if (seenDurableEventIds.size > 4096) {
+          const first = seenDurableEventIds.values().next().value;
+          seenDurableEventIds.delete(first);
+        }
+        if (eid > lastDurableEventId) lastDurableEventId = eid;
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  async function catchUpMissedEventsAfterReconnect() {
+    if (lastDurableEventId <= 0 || isEffectivelyOffline()) return;
+    try {
+      const res = await window.__chatwCore.rpc(
+        'GET',
+        `/api/sync/events?after_event_id=${encodeURIComponent(String(lastDurableEventId))}&limit=200`,
+      );
+      if (!res || !res.ok || res.status !== 200 || !res.text) return;
+      const body = JSON.parse(res.text);
+      const list = Array.isArray(body && body.events) ? body.events : [];
+      for (const item of list) {
+        const eid = Number(item && item.event_id);
+        if (eid > 0 && seenDurableEventIds.has(eid)) continue;
+        if (eid > 0) {
+          seenDurableEventIds.add(eid);
+          if (eid > lastDurableEventId) lastDurableEventId = eid;
+        }
+        if (item && item.payload && typeof item.payload === 'object') {
+          const raw = JSON.stringify(item.payload);
+          for (const cb of wsListeners) {
+            try { cb(raw); } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   function attachPortHandlers(p) {
     p.onmessage = (ev) => {
       const d = ev.data;
@@ -114,6 +161,7 @@
       if (d.type === 'ws_event' && typeof d.rawJson === 'string') {
         if (d.stats) lastStats = { ...lastStats, ...d.stats, workerActive: true };
         else lastStats.binaryEventsDecrypted += 1;
+        if (!trackWsEventId(d.rawJson)) return;
         for (const cb of wsListeners) {
           try { cb(d.rawJson); } catch (_) {}
         }
@@ -126,6 +174,7 @@
         }
         window.dispatchEvent(new CustomEvent('chatw:ws-state', { detail: { ...lastStats } }));
         if (!wasReady && isReady) {
+          catchUpMissedEventsAfterReconnect();
           window.dispatchEvent(new CustomEvent('chatw:online-flush', { detail: { source: 'core_worker_connected' } }));
         }
       } else if (d.type === 'rpc_reply' && d.callId) {
@@ -409,9 +458,7 @@
         rpcTimeoutMs,
       );
       if (!res.ok) {
-        if (!simulatedOffline) {
-          console.warn('[chatw-core] rpc failed:', method, path, res.error || 'network_error', { connected: lastStats.connected, workerMode });
-        }
+        lastStats.lastError = res.error || 'network_error';
         return { ok: false, status: 0, error: res.error || 'network_error', text: '' };
       }
       const u8 = new Uint8Array(res.bodyBuffer || 0);
@@ -427,14 +474,25 @@
     async rpcFromRust(method, path, jsonBody, rawB64, rawContentType) {
       let body = null;
       let ct = '';
+      const extraHeaders = {};
       if (rawB64) {
         body = b64ToBytes(rawB64);
         ct = rawContentType || 'application/octet-stream';
       } else if (jsonBody !== null && jsonBody !== undefined) {
         body = String(jsonBody);
         ct = 'application/json';
+        // Spec 165 (Section 39): Attach automatic Idempotency-Key on HTTP message send & chunk commits!
+        const mUpper = String(method || '').toUpperCase();
+        const pStr = String(path || '');
+        if (mUpper === 'POST' && (pStr === '/api/messages' || pStr === '/api/messages/' || pStr === '/api/storage/msg-chunks/commit')) {
+          try {
+            const parsed = JSON.parse(body);
+            const idPart = parsed && (parsed.message_id || parsed.chunk_id);
+            if (idPart) extraHeaders['Idempotency-Key'] = `${pStr.includes('chunk') ? 'chk' : 'msg'}-${idPart}`;
+          } catch (_) {}
+        }
       }
-      const res = await this.rpc(method, path, body, ct);
+      const res = await this.rpc(method, path, body, ct, extraHeaders);
       if (!res.ok) {
         return { ok: false, status: 0, error: res.error || 'network_error', text: '' };
       }

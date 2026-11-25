@@ -11,6 +11,8 @@ default = ["pure-zstd"]
 native-zstd = ["dep:zstd"]
 # Pure-Rust RFC 8878 Zstandard (Level 22, streaming, dictionaries, SIMD128) for WebAssembly and cross-verification.
 pure-zstd = ["dep:structured-zstd"]
+# Unified encrypted native local database: SQLite + SQLCipher (AES-256) + FTS5 (Android, iOS, Windows, Linux, macOS).
+sqlite-sqlcipher = ["dep:rusqlite"]
 
 [dependencies]
 aes-gcm = "0.10"
@@ -28,6 +30,7 @@ structured-zstd = { version = "0.4.4", default-features = false, features = ["st
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd = { version = "0.13", optional = true }
+rusqlite = { version = "0.37", features = ["bundled-sqlcipher", "modern_sqlite"], optional = true }
 getrandom = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

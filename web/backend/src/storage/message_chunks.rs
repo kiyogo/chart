@@ -549,6 +549,21 @@ async fn handle_acquire_lease(
         authorize_message_scope(&state.db, user.id, &req.scope_type, &req.scope_id).await?;
     let lease_key = format!("chunk:{}:{norm_scope_id}:{owner_scope_key}", kind.as_str());
     let ttl = req.ttl_secs.unwrap_or(120).clamp(15, 600);
+    let valkey_token = format!("{}:{}", user.id, req.device_id.trim());
+
+    // Fast-path ephemeral distributed lock in Valkey (if connected); rejects concurrent contention in <1ms.
+    // PostgreSQL `compression_leases` remains the durable fencing-token authority if Valkey restarts!
+    if let Some(false) = state
+        .valkey
+        .try_acquire_lock(&lease_key, &valkey_token, ttl as u64)
+        .await
+    {
+        return Ok(Json(serde_json::json!({
+            "acquired": false,
+            "lease_key": lease_key,
+            "reason": "lease_held_by_another_device",
+        })));
+    }
 
     let row = sqlx::query(
         r#"
@@ -638,6 +653,11 @@ async fn handle_renew_lease(
 
     match updated {
         Some(r) => {
+            let valkey_token = format!("{}:{}", user.id, req.device_id.trim());
+            let _ = state
+                .valkey
+                .renew_lock(&req.lease_key, &valkey_token, ttl as u64)
+                .await;
             let until: DateTime<Utc> = r.try_get("leased_until")?;
             Ok(Json(serde_json::json!({
                 "renewed": true,
@@ -680,6 +700,11 @@ async fn handle_release_lease(
     .bind(req.checkpoint)
     .execute(&state.db)
     .await?;
+
+    if res.rows_affected() > 0 {
+        let valkey_token = format!("{}:{}", user.id, req.device_id.trim());
+        state.valkey.release_lock(&req.lease_key, &valkey_token).await;
+    }
 
     Ok(Json(serde_json::json!({ "released": res.rows_affected() > 0 })))
 }
@@ -726,6 +751,27 @@ async fn handle_commit_chunk(
     Json(req): Json<CommitChunkReq>,
 ) -> AppResult<Response> {
     let user = auth_user(&state, &headers).await?;
+
+    // Spec 165 (Section 39): HTTP Idempotency-Key deduplication for chunk commit retries
+    let idem_key = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= 128)
+        .map(str::to_string);
+    if let Some(ref key) = idem_key {
+        let cached: Option<serde_json::Value> = sqlx::query_scalar(
+            "SELECT response_json FROM http_idempotency_keys WHERE user_id = $1 AND idempotency_key = $2 AND expires_at > now()",
+        )
+        .bind(user.id)
+        .bind(key)
+        .fetch_optional(&state.db)
+        .await?;
+        if let Some(val) = cached {
+            return Ok((StatusCode::OK, Json(val)).into_response());
+        }
+    }
+
     let (kind, norm_scope_id, owner_scope_key) =
         authorize_message_scope(&state.db, user.id, &req.scope_type, &req.scope_id).await?;
 
@@ -786,24 +832,30 @@ async fn handle_commit_chunk(
         chunk_id
     );
 
-    // Step 1 (Section 25.1): Store chunk blob durably BEFORE committing manifest transaction
-    let (storage_backend, stored_meta) = if state.storage.s3.config().is_ready() {
-        let m = state
-            .storage
-            .s3
-            .put_object(&storage_key, raw_bytes.clone(), "application/octet-stream", None)
-            .await
-            .map_err(|_| AppError::Internal)?;
-        ("s3_ready", m)
-    } else {
-        let m = state
-            .storage
-            .local_cas
-            .put_object(&storage_key, raw_bytes.clone(), "application/octet-stream", None)
-            .await
-            .map_err(|_| AppError::Internal)?;
-        ("local_cas", m)
-    };
+    // Step 1 (Spec 165 Section 36): Store small chunks (<= threshold, default 16 KiB) inline in
+    // PostgreSQL (`pg_inline`) to avoid Object Storage PUT/GET request overhead, and store larger
+    // chunks exclusively in MinIO/S3 or local CAS — ZERO duplication (enforced by DB CHECK constraint!).
+    let store_inline = raw_bytes.len() <= state.config.small_chunk_inline_threshold_bytes;
+    let (storage_backend, final_storage_key, inline_payload_opt): (&str, String, Option<Vec<u8>>) =
+        if store_inline {
+            ("pg_inline", format!("pg_inline:{chunk_id}"), Some(raw_bytes.clone()))
+        } else if state.storage.s3.config().is_ready() {
+            let m = state
+                .storage
+                .s3
+                .put_object(&storage_key, raw_bytes.clone(), "application/octet-stream", None)
+                .await
+                .map_err(|_| AppError::Internal)?;
+            ("s3_ready", m.storage_key, None)
+        } else {
+            let m = state
+                .storage
+                .local_cas
+                .put_object(&storage_key, raw_bytes.clone(), "application/octet-stream", None)
+                .await
+                .map_err(|_| AppError::Internal)?;
+            ("local_cas", m.storage_key, None)
+        };
 
     // Step 2: Atomic PostgreSQL Transaction with OCC (`manifest_version` Compare-And-Swap!)
     let mut tx = state.db.begin().await?;
@@ -824,11 +876,13 @@ async fn handle_commit_chunk(
     let cur_ver = existing_ver.unwrap_or(0);
     if cur_ver != req.expected_manifest_version {
         tx.rollback().await?;
-        // Clean up orphan blob we just uploaded since commit conflicted
-        let _ = match storage_backend {
-            "s3_ready" => state.storage.s3.delete_object(&stored_meta.storage_key).await,
-            _ => state.storage.local_cas.delete_object(&stored_meta.storage_key).await,
-        };
+        // Clean up orphan external blob if we uploaded one before discovering OCC conflict
+        if !store_inline {
+            let _ = match storage_backend {
+                "s3_ready" => state.storage.s3.delete_object(&final_storage_key).await,
+                _ => state.storage.local_cas.delete_object(&final_storage_key).await,
+            };
+        }
         return Ok((
             StatusCode::CONFLICT,
             Json(serde_json::json!({
@@ -851,14 +905,16 @@ async fn handle_commit_chunk(
             original_size, serialized_size, compressed_size, padded_size, encrypted_size,
             message_count, seq_start, seq_end, first_created_at, last_created_at,
             encryption_version, key_version, is_e2ee, nonce_b64, plaintext_blake3_hex,
-            ciphertext_blake3_hex, storage_tier, storage_backend, storage_key, sync_state, sealed_meta_b64
+            ciphertext_blake3_hex, storage_tier, storage_backend, storage_key, inline_payload,
+            sync_state, sealed_meta_b64
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7,
             $8, 'zstd', $9, $10,
             $11, $12, $13, $14, $15,
             $16, $17, $18, $19, $20,
             $21, $22, $23, $24, $25,
-            $26, 'warm', $27, $28, 'committed', $29
+            $26, 'warm', $27, $28, $29,
+            'committed', $30
         )
         "#,
     )
@@ -889,7 +945,8 @@ async fn handle_commit_chunk(
     .bind(req.plaintext_blake3_hex.trim())
     .bind(&actual_ct_b3)
     .bind(storage_backend)
-    .bind(&stored_meta.storage_key)
+    .bind(&final_storage_key)
+    .bind(inline_payload_opt.as_deref())
     .bind(req.sealed_meta_b64.as_deref())
     .execute(&mut *tx)
     .await?;
@@ -988,21 +1045,72 @@ async fn handle_commit_chunk(
 
     tx.commit().await?;
 
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "committed": true,
-            "chunk_id": chunk_id,
-            "manifest_version": next_ver,
-            "storage_tier": "warm",
-            "encrypted_size": raw_bytes.len(),
-            "saved_bytes": req.original_size - (raw_bytes.len() as i64),
-        })),
+    // Invalidate non-sensitive Valkey manifest metadata cache & notify devices via WebSocket + durable log!
+    let cache_key = format!("manifest:{}:{norm_scope_id}:{owner_scope_key}", kind.as_str());
+    state.valkey.cache_del(&cache_key).await;
+
+    let ev_id = crate::websocket::record_durable_ws_event(
+        &state.db,
+        user.id,
+        "manifest.updated",
+        Some(kind.as_str()),
+        Some(&norm_scope_id),
+        None,
+        serde_json::json!({
+            "type": "manifest.updated",
+            "data": {
+                "scope_type": kind.as_str(),
+                "scope_id": norm_scope_id,
+                "manifest_version": next_ver,
+                "chunk_id": chunk_id,
+            }
+        }),
     )
-        .into_response())
+    .await;
+
+    state
+        .ws_hub
+        .send_to_user(
+            &user.id,
+            crate::websocket::WsEvent::ManifestUpdated {
+                scope_type: kind.as_str().to_string(),
+                scope_id: norm_scope_id.clone(),
+                manifest_version: next_ver,
+                chunk_id: Some(chunk_id),
+                event_id: ev_id,
+            },
+        )
+        .await;
+
+    let resp_json = serde_json::json!({
+        "committed": true,
+        "chunk_id": chunk_id,
+        "manifest_version": next_ver,
+        "storage_tier": "warm",
+        "storage_placement": if store_inline { "pg_inline" } else { "object_storage" },
+        "encrypted_size": raw_bytes.len(),
+        "saved_bytes": req.original_size - (raw_bytes.len() as i64),
+    });
+
+    if let Some(ref key) = idem_key {
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO http_idempotency_keys (user_id, idempotency_key, method, route_path, status_code, response_json)
+            VALUES ($1, $2, 'POST', '/api/storage/msg-chunks/commit', 200, $3)
+            ON CONFLICT (user_id, idempotency_key) DO NOTHING
+            "#,
+        )
+        .bind(user.id)
+        .bind(key)
+        .bind(&resp_json)
+        .execute(&state.db)
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(resp_json)).into_response())
 }
 
-// ── 5. Download Chunk Blob (Warm/Cold + Access Promotion) ────────────────────────────────────────
+// ── 5. Download Chunk Blob (Warm/Cold + Inline PG + Access Promotion) ────────────────────────────
 
 async fn handle_download_chunk(
     State(state): State<AppState>,
@@ -1014,7 +1122,7 @@ async fn handle_download_chunk(
     let row = sqlx::query(
         r#"
         SELECT scope_type, scope_id, owner_scope_key, owner_id, chunk_version,
-               storage_tier, storage_backend, storage_key, ciphertext_blake3_hex, is_e2ee
+               storage_tier, storage_backend, storage_key, inline_payload, ciphertext_blake3_hex, is_e2ee
         FROM message_chunks
         WHERE id = $1 AND superseded_at IS NULL
         "#,
@@ -1041,11 +1149,13 @@ async fn handle_download_chunk(
 
     let storage_backend: String = row.try_get("storage_backend")?;
     let storage_key: String = row.try_get("storage_key")?;
+    let inline_payload: Option<Vec<u8>> = row.try_get("inline_payload")?;
     let tier: String = row.try_get("storage_tier")?;
     let chunk_version: i32 = row.try_get("chunk_version")?;
     let ct_b3: String = row.try_get("ciphertext_blake3_hex")?;
 
     let bytes = match storage_backend.as_str() {
+        "pg_inline" => inline_payload.ok_or(AppError::NotFound("chunk_blob_missing"))?,
         "s3_ready" => state
             .storage
             .s3
@@ -1202,6 +1312,40 @@ async fn handle_append_mutation(
     .bind(seq)
     .execute(&state.db)
     .await;
+
+    if let Some(cid) = req.chunk_id {
+        let ev_id = crate::websocket::record_durable_ws_event(
+            &state.db,
+            user.id,
+            "chunk.changed",
+            Some(kind.as_str()),
+            Some(&norm_scope_id),
+            Some(req.message_id),
+            serde_json::json!({
+                "type": "chunk.changed",
+                "data": {
+                    "scope_type": kind.as_str(),
+                    "scope_id": norm_scope_id,
+                    "chunk_id": cid,
+                    "action": req.op_type,
+                }
+            }),
+        )
+        .await;
+        state
+            .ws_hub
+            .send_to_user(
+                &user.id,
+                crate::websocket::WsEvent::ChunkChanged {
+                    scope_type: kind.as_str().to_string(),
+                    scope_id: norm_scope_id,
+                    chunk_id: cid,
+                    action: req.op_type,
+                    event_id: ev_id,
+                },
+            )
+            .await;
+    }
 
     Ok(Json(serde_json::json!({ "mutation_seq": seq })))
 }
@@ -1785,6 +1929,7 @@ async fn handle_get_telemetry(
 
     let orig_b: i64 = chunk_summary.try_get("total_orig_bytes")?;
     let stored_b: i64 = chunk_summary.try_get("total_stored_bytes")?;
+    let valkey_health = state.valkey.health_snapshot().await;
 
     Ok(Json(serde_json::json!({
         "devices": devices,
@@ -1795,7 +1940,9 @@ async fn handle_get_telemetry(
             "total_original_bytes": orig_b,
             "total_stored_bytes": stored_b,
             "saved_bytes": (orig_b - stored_b).max(0),
-        }
+            "small_chunk_inline_threshold_bytes": state.config.small_chunk_inline_threshold_bytes,
+        },
+        "valkey": valkey_health,
     })))
 }
 

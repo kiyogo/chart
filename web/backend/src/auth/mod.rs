@@ -11,7 +11,7 @@ use axum::{
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -40,32 +40,6 @@ pub struct OAuthTicketEntry {
     pub created_at: std::time::Instant,
 }
 
-static LOGIN_RATE_LIMITER: OnceLock<std::sync::Mutex<std::collections::HashMap<String, Vec<std::time::Instant>>>> =
-    OnceLock::new();
-
-fn check_and_record_login_rate_limit(keys: &[String], max_attempts: usize, window: std::time::Duration) -> AppResult<()> {
-    let lock = LOGIN_RATE_LIMITER.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let mut map = lock.lock().unwrap_or_else(|e| e.into_inner());
-    let now = std::time::Instant::now();
-    if map.len() > 4096 {
-        map.retain(|_, ts| {
-            ts.retain(|t| now.duration_since(*t) < window);
-            !ts.is_empty()
-        });
-    }
-    for key in keys {
-        let entries = map.entry(key.clone()).or_default();
-        entries.retain(|t| now.duration_since(*t) < window);
-        if entries.len() >= max_attempts {
-            return Err(AppError::TooManyRequests);
-        }
-    }
-    for key in keys {
-        map.entry(key.clone()).or_default().push(now);
-    }
-    Ok(())
-}
-
 pub type OAuthTicketStore =
     Arc<tokio::sync::RwLock<std::collections::HashMap<Uuid, OAuthTicketEntry>>>;
 
@@ -80,6 +54,7 @@ pub struct AppState {
     pub storage: Arc<crate::storage::StorageRegistry>,
     pub sfu: Arc<crate::calls::sfu::SfuHandle>,
     pub rpc_router: Arc<std::sync::OnceLock<axum::Router>>,
+    pub valkey: Arc<crate::cache::ValkeyCoordinator>,
 }
 
 #[derive(Serialize)]
@@ -638,7 +613,11 @@ async fn handle_register_password(
     crate::error::ApiJson(req): crate::error::ApiJson<PasswordAuthRequest>,
 ) -> AppResult<Response> {
     let ip_key = format!("reg:ip:{}", crate::security::ip_masked_with_trust(&headers, state.config.trust_proxy));
-    check_and_record_login_rate_limit(&[ip_key], 20, std::time::Duration::from_secs(900))?;
+    state
+        .valkey
+        .check_rate_limit(&[ip_key], 20, std::time::Duration::from_secs(900))
+        .await
+        .map_err(|_| AppError::TooManyRequests)?;
     let (display_name, username_norm) =
         crate::users::validate_and_normalize_username(&req.username)?;
     validate_account_password(&req.password)?;
@@ -683,7 +662,11 @@ async fn handle_login_password(
     let (_, username_norm) = crate::users::validate_and_normalize_username(&req.username)?;
     let ip_key = format!("login:ip:{}", crate::security::ip_masked_with_trust(&headers, state.config.trust_proxy));
     let user_key = format!("login:u:{username_norm}");
-    check_and_record_login_rate_limit(&[ip_key, user_key], 15, std::time::Duration::from_secs(900))?;
+    state
+        .valkey
+        .check_rate_limit(&[ip_key, user_key], 15, std::time::Duration::from_secs(900))
+        .await
+        .map_err(|_| AppError::TooManyRequests)?;
 
     if req.password.is_empty() || req.password.len() > 128 {
         return Err(AppError::BadRequest("invalid_credentials"));

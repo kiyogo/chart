@@ -44,6 +44,8 @@ fn create_test_config() -> Config {
         trust_proxy: false,
         dev_login_enabled: false,
         google_configured: false,
+        valkey_url: None,
+        small_chunk_inline_threshold_bytes: 16384,
     }
 }
 
@@ -62,6 +64,7 @@ async fn build_test_app(pool: sqlx::PgPool, config: Config) -> axum::Router {
         storage: Arc::new(chatw::storage::StorageRegistry::from_uploads_dir(&config.uploads_dir)),
         sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
         rpc_router: Arc::new(std::sync::OnceLock::new()),
+        valkey: Arc::new(chatw::cache::ValkeyCoordinator::disabled()),
     };
 
     axum::Router::new()

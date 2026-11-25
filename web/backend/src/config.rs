@@ -22,6 +22,11 @@ pub struct Config {
     pub dev_login_enabled: bool,
     /// False when Google credentials are placeholders, so the UI can avoid a dead-end redirect.
     pub google_configured: bool,
+    /// Optional Valkey/Redis RESP URL for ephemeral presence, typing, locks, rate limits & WS Pub/Sub.
+    pub valkey_url: Option<String>,
+    /// Maximum encrypted chunk byte length stored inline in PostgreSQL (`pg_inline`) instead of Object Storage.
+    /// Chunks strictly larger than this threshold go to MinIO/S3 or local CAS with ZERO duplication.
+    pub small_chunk_inline_threshold_bytes: usize,
 }
 
 fn var(name: &str) -> Result<String, String> {
@@ -116,6 +121,14 @@ impl Config {
             && !google_client_id.starts_with("dev-")
             && !google_client_id.starts_with("your-");
 
+        let valkey_url = env::var("VALKEY_URL")
+            .ok()
+            .or_else(|| env::var("REDIS_URL").ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let small_chunk_inline_threshold_bytes: usize =
+            parse("SMALL_CHUNK_INLINE_THRESHOLD_BYTES", "16384")?;
+
         Ok(Self {
             database_url: var("DATABASE_URL")?,
             db_max_connections: parse("DB_MAX_CONNECTIONS", "10")?,
@@ -133,6 +146,8 @@ impl Config {
             trust_proxy: parse("TRUST_PROXY", "false")?,
             dev_login_enabled: dev_login_requested,
             google_configured,
+            valkey_url,
+            small_chunk_inline_threshold_bytes,
         })
     }
 

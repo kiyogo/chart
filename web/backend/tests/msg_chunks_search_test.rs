@@ -52,6 +52,8 @@ fn test_config(tag: &str) -> Config {
         trust_proxy: false,
         dev_login_enabled: false,
         google_configured: false,
+        valkey_url: None,
+        small_chunk_inline_threshold_bytes: 16384,
     }
 }
 
@@ -70,6 +72,7 @@ async fn setup_app(tag: &str) -> (sqlx::PgPool, axum::Router, Arc<storage::Stora
         storage: storage_reg.clone(),
         sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
         rpc_router: Arc::new(std::sync::OnceLock::new()),
+        valkey: Arc::new(chatw::cache::ValkeyCoordinator::disabled()),
     };
     let router = axum::Router::new()
         .nest("/api/storage", storage::router::routes())

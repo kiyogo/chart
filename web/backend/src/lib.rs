@@ -5,6 +5,7 @@ pub mod auth;
 pub mod backup;
 pub mod bots;
 pub mod business;
+pub mod cache;
 pub mod calls;
 pub mod cloud;
 pub mod community;

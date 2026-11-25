@@ -91,8 +91,9 @@ pub fn bind_session_root_key_b64(account_id: &str, root_key: &[u8; 32]) {
         use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
         let rk_b64 = B64.encode(root_key);
         if let (Ok(a_js), Ok(k_js)) = (serde_json::to_string(account_id), serde_json::to_string(&rk_b64)) {
+            // Pass into private closure inside storage_engine.js — NEVER leave raw key on window!
             let _ = dioxus::document::eval(&format!(
-                "window.__chatwCurrentUserId = {a_js}; window.__chatwSessionRootKeyB64 = {k_js};"
+                "window.__chatwCurrentUserId = {a_js}; if (window.__chatwMsgStore && window.__chatwMsgStore.bindSessionKey) {{ window.__chatwMsgStore.bindSessionKey({a_js}, {k_js}); }} else {{ window.__chatwSessionRootKeyB64 = {k_js}; }}"
             ));
         }
     }
@@ -373,19 +374,22 @@ pub fn channel_to_compact(m: &crate::models::ChannelMessageItem) -> CompactMessa
 mod native_impl {
     use super::*;
     use chatw_msg_store::{
-        DeviceCapabilityProfile, L1ChunkCache, LocalSearchIndex, PlatformKind, ResourceSignals,
-        StorageMode, compute_dynamic_storage_budget, derive_search_index_key,
+        DeviceCapabilityProfile, EncryptedSqliteStore, L1ChunkCache, PlatformKind, ResourceSignals,
+        StorageMode, compute_dynamic_storage_budget,
     };
     use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
     use std::time::Instant;
     use zeroize::Zeroize;
 
+    /// Unified Native Local Storage Runtime (Spec 165 Sections 37 & 38):
+    /// ONE single encrypted SQLite + SQLCipher + FTS5 database per account across
+    /// Android, iOS, Windows, Linux, and macOS — zero duplicate local DBs!
     struct NativeRuntimeState {
         account_id: String,
         root_key: [u8; 32],
         has_key: bool,
-        index: LocalSearchIndex,
+        db: Option<EncryptedSqliteStore>,
         l1: L1ChunkCache,
         prev_budget: Option<u64>,
         last_search_ms: f64,
@@ -399,7 +403,7 @@ mod native_impl {
                 account_id: String::new(),
                 root_key: [0u8; 32],
                 has_key: false,
-                index: LocalSearchIndex::new(),
+                db: None,
                 l1: L1ChunkCache::new(64 * 1024 * 1024),
                 prev_budget: None,
                 last_search_ms: 0.0,
@@ -407,12 +411,12 @@ mod native_impl {
         })
     }
 
-    fn search_shard_path(account_id: &str) -> PathBuf {
+    fn account_db_dir(account_id: &str) -> PathBuf {
         let safe: String = account_id
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
             .collect();
-        crate::storage::native::native_cache_dir_for_account(&safe).join("search_index.cwse1")
+        crate::storage::native::native_cache_dir_for_account(&safe)
     }
 
     fn current_platform() -> PlatformKind {
@@ -448,13 +452,13 @@ mod native_impl {
         st.account_id = account_id.to_string();
         st.root_key = *key;
         st.has_key = true;
-        // Hydrate encrypted search shard from native disk on boot if present!
-        let path = search_shard_path(account_id);
-        if let Ok(bytes) = std::fs::read(&path) {
-            if let Ok(skey) = derive_search_index_key(&st.root_key, account_id, 1) {
-                if let Ok(idx) = LocalSearchIndex::open_encrypted_shard(&skey, account_id, "all", 1, &bytes) {
-                    st.index = idx;
-                }
+        let dir = account_db_dir(account_id);
+        match EncryptedSqliteStore::open_or_recover(&dir, account_id, &st.root_key, 1) {
+            Ok((store, _recovered)) => {
+                st.db = Some(store);
+            }
+            Err(_) => {
+                st.db = None;
             }
         }
     }
@@ -464,7 +468,7 @@ mod native_impl {
         st.l1.wipe_sensitive();
         st.root_key.zeroize();
         st.has_key = false;
-        st.index = LocalSearchIndex::new();
+        st.db = None;
     }
 
     pub fn index_messages(
@@ -475,32 +479,23 @@ mod native_impl {
         coverage: SearchCoverageState,
     ) {
         let Ok(mut st) = state_lock().lock() else { return; };
-        for (i, m) in messages.iter().enumerate() {
-            st.index.upsert_message(scope_type, scope_id, None, None, i as u32, m);
-        }
-        st.index.set_scope_coverage(&format!("{}:{scope_id}", scope_type.as_str()), coverage);
-        if st.has_key && !account_id.is_empty() {
-            if let Ok(skey) = derive_search_index_key(&st.root_key, account_id, 1) {
-                if let Ok(sealed) = st.index.seal_encrypted_shard(&skey, account_id, "all", 1) {
-                    let path = search_shard_path(account_id);
-                    if let Some(p) = path.parent() {
-                        let _ = std::fs::create_dir_all(p);
-                    }
-                    let _ = std::fs::write(&path, sealed);
-                }
+        if st.db.is_none() && st.has_key && !account_id.is_empty() {
+            let dir = account_db_dir(account_id);
+            if let Ok((store, _)) =
+                EncryptedSqliteStore::open_or_recover(&dir, account_id, &st.root_key, 1)
+            {
+                st.db = Some(store);
             }
+        }
+        if let Some(ref mut db) = st.db {
+            let _ = db.upsert_messages_batch(scope_type, scope_id, None, messages, coverage);
         }
     }
 
-    pub fn delete_from_index(account_id: &str, message_id: &str) {
+    pub fn delete_from_index(_account_id: &str, message_id: &str) {
         let Ok(mut st) = state_lock().lock() else { return; };
-        st.index.delete_message(message_id);
-        if st.has_key && !account_id.is_empty() {
-            if let Ok(skey) = derive_search_index_key(&st.root_key, account_id, 1) {
-                if let Ok(sealed) = st.index.seal_encrypted_shard(&skey, account_id, "all", 1) {
-                    let _ = std::fs::write(search_shard_path(account_id), sealed);
-                }
-            }
+        if let Some(ref mut db) = st.db {
+            let _ = db.delete_message(message_id);
         }
     }
 
@@ -509,7 +504,11 @@ mod native_impl {
         let Ok(mut st) = state_lock().lock() else {
             return (empty_search_resp(), 0.0);
         };
-        let resp = st.index.search(query, None).unwrap_or_else(|_| empty_search_resp());
+        let resp = st
+            .db
+            .as_ref()
+            .and_then(|db| db.search_fts5(query).ok())
+            .unwrap_or_else(empty_search_resp);
         let ms = t0.elapsed().as_secs_f64() * 1000.0;
         st.last_search_ms = ms;
         (resp, ms)
@@ -537,38 +536,39 @@ mod native_impl {
         } else {
             None
         };
-        let (prev_b, indexed_docs, last_ms, shard_bytes) = {
+        let (prev_b, db_stats, last_ms) = {
             let st = state_lock().lock().ok();
             let prev = st.as_ref().and_then(|s| s.prev_budget);
-            let docs = st.as_ref().map(|s| s.index.doc_count() as u64).unwrap_or(0);
-            let lms = st.as_ref().map(|s| s.last_search_ms).unwrap_or(0.0);
-            let sb = st
+            let stats = st
                 .as_ref()
-                .and_then(|s| std::fs::metadata(search_shard_path(&s.account_id)).ok())
-                .map(|m| m.len())
-                .unwrap_or(0);
-            (prev, docs, lms, sb)
+                .and_then(|s| s.db.as_ref().map(|d| d.stats()))
+                .unwrap_or_default();
+            let lms = st.as_ref().map(|s| s.last_search_ms).unwrap_or(0.0);
+            (prev, stats, lms)
         };
         let budget = compute_dynamic_storage_budget(&profile, mode, custom_mb, prev_b, &signals);
         if let Ok(mut st) = state_lock().lock() {
             st.prev_budget = Some(budget.total_local_budget_bytes);
             st.l1.set_max_bytes(budget.l1_ram_budget_bytes);
+            if let Some(ref db) = st.db {
+                let _ = db.evict_chunks_to_budget(budget.message_cache_budget_bytes);
+            }
         }
-        let msg_bytes = crate::storage::native::native_messages_dir_bytes();
+        let msg_bytes = db_stats.db_file_bytes + db_stats.external_chunks_bytes;
         StorageBreakdown {
             mode: mode_str,
             browser_quota_bytes: q.browser_quota_bytes,
             free_bytes: free,
-            total_bytes: q.total_local_bytes + msg_bytes + shard_bytes,
+            total_bytes: q.total_local_bytes + msg_bytes,
             messages_bytes: msg_bytes,
             media_bytes: q.disposable_cache_bytes,
             files_bytes: q.pinned_unique_bytes,
-            cache_bytes: q.disposable_cache_bytes,
+            cache_bytes: q.disposable_cache_bytes + db_stats.external_chunks_bytes,
             offline_bytes: q.pinned_unique_bytes + msg_bytes,
-            search_index_bytes: shard_bytes,
-            saved_bytes: 0,
-            chunk_count: 0,
-            indexed_docs,
+            search_index_bytes: db_stats.db_file_bytes,
+            saved_bytes: db_stats.saved_bytes,
+            chunk_count: db_stats.chunk_count,
+            indexed_docs: db_stats.fts_doc_count,
             budget_bytes: budget.total_local_budget_bytes,
             safe_ceiling_bytes: budget.effective_safe_ceiling_bytes,
             last_search_latency_ms: last_ms,

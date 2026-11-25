@@ -383,6 +383,32 @@ pub enum WsEvent {
     /// Realtime multi-device / server / group Plugin & Permission Sync event.
     #[serde(rename = "plugin.sync")]
     PluginSync(serde_json::Value),
+    /// Spec 165 (Section 39): Message Chunk Manifest updated (small notice; client fetches details via HTTP).
+    #[serde(rename = "manifest.updated")]
+    ManifestUpdated {
+        scope_type: String,
+        scope_id: String,
+        manifest_version: i64,
+        chunk_id: Option<Uuid>,
+        event_id: Option<i64>,
+    },
+    /// Spec 165 (Section 39): Message Chunk compacted / tier promoted / mutated.
+    #[serde(rename = "chunk.changed")]
+    ChunkChanged {
+        scope_type: String,
+        scope_id: String,
+        chunk_id: Uuid,
+        action: String,
+        event_id: Option<i64>,
+    },
+    /// Spec 165 (Section 39): Scope / group / channel / device permission changed.
+    #[serde(rename = "permissions.changed")]
+    PermissionsChanged {
+        scope_type: String,
+        scope_id: String,
+        reason: String,
+        event_id: Option<i64>,
+    },
 }
 
 struct WsClientConn {
@@ -396,6 +422,7 @@ pub struct WsHub {
     next_id: AtomicU64,
     total_connections: AtomicUsize,
     max_connections: usize,
+    valkey: RwLock<Option<Arc<crate::cache::ValkeyCoordinator>>>,
 }
 
 impl WsHub {
@@ -405,7 +432,17 @@ impl WsHub {
             next_id: AtomicU64::new(1),
             total_connections: AtomicUsize::new(0),
             max_connections,
+            valkey: RwLock::new(None),
         }
+    }
+
+    pub async fn attach_valkey(&self, valkey: Arc<crate::cache::ValkeyCoordinator>) {
+        let mut guard = self.valkey.write().await;
+        *guard = Some(valkey);
+    }
+
+    async fn get_valkey(&self) -> Option<Arc<crate::cache::ValkeyCoordinator>> {
+        self.valkey.read().await.clone()
     }
 
     pub async fn register(
@@ -435,19 +472,33 @@ impl WsHub {
             },
         );
         self.total_connections.fetch_add(1, Ordering::Relaxed);
+        drop(clients);
+
+        if let Some(vk) = self.get_valkey().await {
+            vk.set_user_online(user_id, device_id).await;
+        }
 
         Some((conn_id, rx))
     }
 
     pub async fn unregister(&self, user_id: &Uuid, conn_id: u64) {
-        let mut clients = self.clients.write().await;
-        if let Some(user_conns) = clients.get_mut(user_id)
-            && user_conns.remove(&conn_id).is_some()
+        let mut now_empty = false;
         {
-            if user_conns.is_empty() {
-                clients.remove(user_id);
+            let mut clients = self.clients.write().await;
+            if let Some(user_conns) = clients.get_mut(user_id)
+                && user_conns.remove(&conn_id).is_some()
+            {
+                if user_conns.is_empty() {
+                    clients.remove(user_id);
+                    now_empty = true;
+                }
+                self.total_connections.fetch_sub(1, Ordering::Relaxed);
             }
-            self.total_connections.fetch_sub(1, Ordering::Relaxed);
+        }
+        if now_empty
+            && let Some(vk) = self.get_valkey().await
+        {
+            vk.clear_user_online(*user_id).await;
         }
     }
 
@@ -490,16 +541,8 @@ impl WsHub {
         }
     }
 
-    pub async fn send_to_user(&self, user_id: &Uuid, event: WsEvent) {
-        let clients = self.clients.read().await;
-        if let Some(user_conns) = clients.get(user_id) {
-            for c in user_conns.values() {
-                let _ = c.tx.try_send(event.clone());
-            }
-        }
-    }
-
-    pub async fn send_to_users(&self, user_ids: &[Uuid], event: WsEvent) {
+    /// Deliver directly to local in-process WebSocket connections without re-publishing to Valkey.
+    pub async fn deliver_local_users(&self, user_ids: &[Uuid], event: WsEvent) {
         let clients = self.clients.read().await;
         for uid in user_ids {
             if let Some(user_conns) = clients.get(uid) {
@@ -510,10 +553,55 @@ impl WsHub {
         }
     }
 
+    pub async fn send_to_user(&self, user_id: &Uuid, event: WsEvent) {
+        self.deliver_local_users(&[*user_id], event.clone()).await;
+        if let Some(vk) = self.get_valkey().await {
+            vk.publish_ws_event(&[*user_id], &event).await;
+        }
+    }
+
+    pub async fn send_to_users(&self, user_ids: &[Uuid], event: WsEvent) {
+        self.deliver_local_users(user_ids, event.clone()).await;
+        if let Some(vk) = self.get_valkey().await {
+            vk.publish_ws_event(user_ids, &event).await;
+        }
+    }
+
     pub async fn online_user_ids(&self) -> std::collections::HashSet<Uuid> {
         let clients = self.clients.read().await;
         clients.keys().copied().collect()
     }
+}
+
+/// Persist an important realtime/sync event durably into PostgreSQL `ws_event_log` so
+/// clients reconnecting after a WebSocket drop OR a Valkey restart can catch up cleanly
+/// via `GET /api/sync/events?after_event_id=` without ever losing a single event!
+pub async fn record_durable_ws_event(
+    db: &sqlx::PgPool,
+    user_id: Uuid,
+    event_type: &str,
+    scope_type: Option<&str>,
+    scope_id: Option<&str>,
+    message_id: Option<Uuid>,
+    payload: serde_json::Value,
+) -> Option<i64> {
+    sqlx::query_scalar(
+        r#"
+        INSERT INTO ws_event_log (user_id, event_type, scope_type, scope_id, message_id, payload)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING event_id
+        "#,
+    )
+    .bind(user_id)
+    .bind(event_type)
+    .bind(scope_type)
+    .bind(scope_id)
+    .bind(message_id)
+    .bind(payload)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
 }
 
 pub fn routes() -> Router<AppState> {

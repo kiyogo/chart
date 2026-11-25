@@ -36,6 +36,7 @@ pub fn device_routes() -> Router<AppState> {
 pub fn sync_routes() -> Router<AppState> {
     Router::new()
         .route("/delta", get(handle_delta_sync))
+        .route("/events", get(handle_sync_events))
         .route("/phase-status", post(handle_update_phase_status))
 }
 
@@ -955,6 +956,65 @@ async fn handle_get_key_backup(
 // -----------------------------------------------------------------------------
 // Incremental Cursor Delta Sync (Phase A / Phase B)
 // -----------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct EventsSyncQuery {
+    pub after_event_id: Option<i64>,
+    pub limit: Option<i64>,
+}
+
+/// Spec 165 (Section 39): Ordered, deduplicated HTTP gap-recovery endpoint after WebSocket
+/// disconnect or Valkey restart. Returns durable events strictly newer than `after_event_id`.
+async fn handle_sync_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<EventsSyncQuery>,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = caller(&state, &headers).await?;
+    let after_id = q.after_event_id.unwrap_or(0).max(0);
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT event_id, event_type, scope_type, scope_id, message_id, payload, created_at
+        FROM ws_event_log
+        WHERE user_id = $1 AND event_id > $2
+        ORDER BY event_id ASC
+        LIMIT $3
+        "#,
+    )
+    .bind(user.id)
+    .bind(after_id)
+    .bind(limit + 1)
+    .fetch_all(&state.db)
+    .await?;
+
+    let has_more = (rows.len() as i64) > limit;
+    let mut latest_event_id = after_id;
+    let mut events = Vec::with_capacity(rows.len().min(limit as usize));
+    for r in rows.into_iter().take(limit as usize) {
+        let eid: i64 = r.try_get("event_id")?;
+        latest_event_id = latest_event_id.max(eid);
+        let ts: chrono::DateTime<chrono::Utc> =
+            r.try_get("created_at").unwrap_or_else(|_| chrono::Utc::now());
+        events.push(serde_json::json!({
+            "event_id": eid,
+            "event_type": r.try_get::<String, _>("event_type").unwrap_or_default(),
+            "scope_type": r.try_get::<Option<String>, _>("scope_type").ok().flatten(),
+            "scope_id": r.try_get::<Option<String>, _>("scope_id").ok().flatten(),
+            "message_id": r.try_get::<Option<Uuid>, _>("message_id").ok().flatten(),
+            "payload": r.try_get::<serde_json::Value, _>("payload").unwrap_or(serde_json::Value::Null),
+            "created_at_ms": ts.timestamp_millis(),
+        }));
+    }
+
+    Ok(Json(serde_json::json!({
+        "after_event_id": after_id,
+        "latest_event_id": latest_event_id,
+        "has_more": has_more,
+        "events": events,
+    })))
+}
 
 #[derive(Deserialize)]
 struct DeltaQuery {

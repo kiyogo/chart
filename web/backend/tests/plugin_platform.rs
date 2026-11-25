@@ -50,6 +50,8 @@ fn test_config(tag: &str) -> Config {
         trust_proxy: false,
         dev_login_enabled: false,
         google_configured: false,
+        valkey_url: None,
+        small_chunk_inline_threshold_bytes: 16384,
     }
 }
 
@@ -68,6 +70,7 @@ async fn setup_app() -> (Router, sqlx::PgPool, AppState) {
         storage: storage_reg,
         sfu: Arc::new(chatw::calls::sfu::SfuHandle::new()),
         rpc_router: Arc::new(std::sync::OnceLock::new()),
+        valkey: Arc::new(chatw::cache::ValkeyCoordinator::disabled()),
     };
     plugins::marketplace::seed_official_catalog(&state.db).await;
 

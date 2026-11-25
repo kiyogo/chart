@@ -1508,24 +1508,64 @@
     });
   }
 
-  function deriveWebRootKeyB64(accountId) {
-    // Use account-bound key material from in-memory session or stable local vault seed
+  // Private in-memory key vault (NEVER exposed on window.* and NEVER persisted plaintext in localStorage!)
+  const sessionRootKeyCache = new Map();
+
+  // Scrub any legacy unprotected localStorage fallback keys immediately on load (Spec 165 Section 37 & 40)
+  try {
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('chatw_msgstore_rk_')) toRemove.push(k);
+    }
+    for (const k of toRemove) localStorage.removeItem(k);
+  } catch (_) {}
+
+  async function resolveVaultRootKeyB64(accountId) {
     const acc = String(accountId || window.__chatwCurrentUserId || 'anon');
+    if (sessionRootKeyCache.has(acc)) {
+      return sessionRootKeyCache.get(acc);
+    }
+    // Absorb any one-time bootstrap key handed off from WASM and scrub window global immediately!
     if (window.__chatwSessionRootKeyB64 && typeof window.__chatwSessionRootKeyB64 === 'string') {
-      return window.__chatwSessionRootKeyB64;
+      const k = window.__chatwSessionRootKeyB64;
+      try { delete window.__chatwSessionRootKeyB64; } catch (_) { window.__chatwSessionRootKeyB64 = null; }
+      sessionRootKeyCache.set(acc, k);
+      return k;
     }
+    // Wrap per-account vault seed with non-extractable WebCrypto AES-256-GCM (`device_vault_aes`)
     try {
-      const k = 'chatw_msgstore_rk_' + acc;
-      let val = localStorage.getItem(k);
-      if (!val) {
-        const raw = crypto.getRandomValues(new Uint8Array(32));
-        val = bytesToB64(raw);
-        localStorage.setItem(k, val);
+      await api.ensureNonExtractableVaultKey();
+      const vRec = await idbTx('crypto_keys', 'readonly', (s) => s.get('device_vault_aes'));
+      const vaultKey = vRec && vRec.key;
+      if (vaultKey && vaultKey.extractable === false && crypto && crypto.subtle) {
+        const wrapId = 'msgstore_wrapped_rk_' + acc;
+        const wrapped = await idbTx('crypto_keys', 'readonly', (s) => s.get(wrapId)).catch(() => null);
+        if (wrapped && wrapped.iv && wrapped.ct) {
+          const rawBuf = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: new Uint8Array(wrapped.iv) },
+            vaultKey,
+            new Uint8Array(wrapped.ct),
+          );
+          const b64 = bytesToB64(new Uint8Array(rawBuf));
+          sessionRootKeyCache.set(acc, b64);
+          return b64;
+        }
+        const fresh = crypto.getRandomValues(new Uint8Array(32));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, vaultKey, fresh);
+        await idbTx('crypto_keys', 'readwrite', (s) =>
+          s.put({ id: wrapId, iv: Array.from(iv), ct: Array.from(new Uint8Array(ct)), created_at: Date.now() }),
+        ).catch(() => {});
+        const b64 = bytesToB64(fresh);
+        sessionRootKeyCache.set(acc, b64);
+        return b64;
       }
-      return val;
-    } catch (_) {
-      return btoa('chatw-fallback-ephemeral-key-32b!');
-    }
+    } catch (_) {}
+    // Ephemeral session-only fallback (never written to localStorage!)
+    const eph = bytesToB64(crypto.getRandomValues(new Uint8Array(32)));
+    sessionRootKeyCache.set(acc, eph);
+    return eph;
   }
 
   async function readSearchShardBytes(shardKey) {
@@ -1626,9 +1666,16 @@
       return valid;
     },
 
+    bindSessionKey(accountId, rootKeyB64) {
+      if (accountId && typeof rootKeyB64 === 'string' && rootKeyB64.length >= 32) {
+        sessionRootKeyCache.set(String(accountId), rootKeyB64);
+      }
+    },
+
     wipeL1Ram() {
       l1ChunkRam.clear();
       l1RamUsedBytes = 0;
+      sessionRootKeyCache.clear();
     },
 
     pauseCompression() {
@@ -1753,7 +1800,7 @@
       if (!Array.isArray(messages) || messages.length === 0) return { ok: true, docCount: 0 };
       const acc = String(accountId || window.__chatwCurrentUserId || 'anon');
       const shardKey = `acc:${acc}:all`;
-      const rootKeyB64 = deriveWebRootKeyB64(acc);
+      const rootKeyB64 = await resolveVaultRootKeyB64(acc);
 
       // Normalize UI message objects into CompactMessage schema
       const normalized = messages
@@ -1810,7 +1857,7 @@
       if (existing.byteLength === 0) return true;
       const res = await callMsgWorker(
         'search_delete_message',
-        { messageId: String(messageId), rootKeyB64: deriveWebRootKeyB64(acc), accountId: acc, scopeKey: shardKey },
+        { messageId: String(messageId), rootKeyB64: await resolveVaultRootKeyB64(acc), accountId: acc, scopeKey: shardKey },
         existing,
         15000,
       );
@@ -1838,7 +1885,7 @@
       };
       const res = await callMsgWorker(
         'search_query',
-        { queryJson: JSON.stringify(q), rootKeyB64: deriveWebRootKeyB64(acc), accountId: acc, scopeKey: shardKey },
+        { queryJson: JSON.stringify(q), rootKeyB64: await resolveVaultRootKeyB64(acc), accountId: acc, scopeKey: shardKey },
         existing,
         15000,
       );
@@ -1881,7 +1928,7 @@
       };
       const res = await callMsgWorker(
         'seal_msg_chunk_zstd22',
-        { messagesJson: JSON.stringify(messages), reqJson: JSON.stringify(req), rootKeyB64: deriveWebRootKeyB64(acc) },
+        { messagesJson: JSON.stringify(messages), reqJson: JSON.stringify(req), rootKeyB64: await resolveVaultRootKeyB64(acc) },
         null,
         60000,
       );
@@ -1963,7 +2010,7 @@
 
       const res = await callMsgWorker(
         'open_msg_chunk_zstd22',
-        { metaJson: JSON.stringify(meta), rootKeyB64: deriveWebRootKeyB64(acc) },
+        { metaJson: JSON.stringify(meta), rootKeyB64: await resolveVaultRootKeyB64(acc) },
         sealedU8,
         30000,
       );

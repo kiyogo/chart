@@ -94,7 +94,7 @@ web-sys = { version = "0.3", features = [
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libc = "0.2"
 chatw-media-core = { path = "../crates/chatw-media-core", features = ["native-fast"] }
-chatw-msg-store = { path = "../crates/chatw-msg-store", default-features = false, features = ["native-zstd"] }
+chatw-msg-store = { path = "../crates/chatw-msg-store", default-features = false, features = ["native-zstd", "sqlite-sqlcipher"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 openssl = { version = "0.10", features = ["vendored"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "cookies"] }

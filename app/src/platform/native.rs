@@ -314,6 +314,19 @@ pub async fn http_request(
     if let Some((bytes, content_type)) = raw_body {
         req = req.header("Content-Type", content_type).body(bytes);
     } else if let Some(body) = json_body {
+        // Spec 165 (Section 39): Automatic Idempotency-Key on HTTP message send & chunk commits
+        if method.eq_ignore_ascii_case("POST")
+            && (path == "/api/messages"
+                || path == "/api/messages/"
+                || path == "/api/storage/msg-chunks/commit")
+            && let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+        {
+            if let Some(mid) = v.get("message_id").and_then(|s| s.as_str()) {
+                req = req.header("Idempotency-Key", format!("msg-{mid}"));
+            } else if let Some(cid) = v.get("chunk_id").and_then(|s| s.as_str()) {
+                req = req.header("Idempotency-Key", format!("chk-{cid}"));
+            }
+        }
         req = req.header("Content-Type", "application/json").body(body);
     }
 

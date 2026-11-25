@@ -253,6 +253,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 5. Initialize shared state
     let ws_hub = Arc::new(WsHub::new(config.max_ws_connections));
+    let valkey = Arc::new(chatw::cache::ValkeyCoordinator::connect(config.valkey_url.clone()).await);
+    ws_hub.attach_valkey(valkey.clone()).await;
+    valkey.spawn_ws_pubsub_listener(ws_hub.clone());
     let jwks_cache = Arc::new(tokio::sync::RwLock::new(GoogleJwksCache::new()));
     let oauth_tickets = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
     let http_client = reqwest::Client::builder()
@@ -272,6 +275,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         storage: storage_registry,
         sfu,
         rpc_router: rpc_router.clone(),
+        valkey,
     };
 
     // 6. Build API router
