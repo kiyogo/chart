@@ -304,6 +304,16 @@ pub fn release_pending_handle(handle_id: &str, revoke_url: bool) {
     ));
 }
 
+/// Synchronously register the sender's crisp original Blob URL into `senderOriginalSession`
+/// right before mounting the sent message so Frame 0 hits local original cache with zero flash.
+pub fn register_sender_original_sync(preview_url: &str, download_url: &str) {
+    let p_json = serde_json::to_string(preview_url).unwrap_or_default();
+    let d_json = serde_json::to_string(download_url).unwrap_or_default();
+    let _ = dioxus::document::eval(&format!(
+        "(() => {{ if (window.__chatwMediaOpt && window.__chatwMediaOpt.registerSenderOriginalSync) window.__chatwMediaOpt.registerSenderOriginalSync({p_json}, {d_json}); }})()"
+    ));
+}
+
 /// After an upload completes, save the sender's 100% untouched original file into local app storage
 /// so the sender immediately views their crisp original file & retains it across reloads.
 pub async fn commit_sender_original(

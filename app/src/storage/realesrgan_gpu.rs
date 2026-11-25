@@ -3040,13 +3040,13 @@ pub async fn restore_image_realesrgan_rust(
 
     // Fast (< 2ms on tiny input) global OriginalQualityProfile RGB/contrast/saturation lock parameters for GPU shader
     let (color0, mut color1) = compute_gpu_color_lock_params(rgba, width, height, orig_profile);
-    // Spec 144: NomosUni SPAN 2× preserves exact original micro-texture -> gentle 0.25 CAS + exact sender color lock; SPAN 4× 0.35; Anime 1.0
+    // Spec 154: NomosUni SPAN 2× preserves micro-texture -> gentle 0.25 CAS; SPAN 4× 0.35; AnimeVideoV3 minimal 0.10 (no cel edge ringing!)
     color1[2] = if kind == RealEsrganModelKind::NomosUniSpanX2 {
         0.25
     } else if kind.is_span() {
         0.35
     } else if kind == RealEsrganModelKind::AnimeVideoV3 {
-        1.0
+        0.10
     } else {
         0.85
     };

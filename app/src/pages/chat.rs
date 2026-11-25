@@ -3006,6 +3006,7 @@ pub fn Chat(
                         &payload,
                     );
                     if let Some(ref p) = preview_key {
+                        crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
                         crate::components::rich::remove_pending_media(p);
                     }
                     send_dm_text.call((msg_str, None));
@@ -3502,6 +3503,7 @@ pub fn Chat(
                         &payload,
                     );
                     if let Some(ref p) = preview_key {
+                        crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
                         crate::components::rich::remove_pending_media(p);
                     }
                     send_group_raw.call(msg_str);
@@ -3606,6 +3608,7 @@ pub fn Chat(
                         &payload,
                     );
                     if let Some(ref p) = preview_key {
+                        crate::storage::media_opt::register_sender_original_sync(p, &out.download_url);
                         crate::components::rich::remove_pending_media(p);
                     }
                     if let Ok(msg) = api::channels_post_message(&channel_id, &msg_str).await {

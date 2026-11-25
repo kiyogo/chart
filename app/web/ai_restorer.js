@@ -651,9 +651,17 @@
       let stage1W = targetW;
       let stage1H = targetH;
 
-      // STAGE 1: Instant Algorithmic Sharpening (< 40ms GPU — AMD FSR 1.0 EASU 2× + Regularized RL Deconvolution)
-      // Immediately renders crisp natural edges on screen while Stage 2 4× AI refines to 4K in the background!
-      if (typeof meta.onStage1 === 'function' && wasm && typeof wasm.upscaleFsr1 === 'function') {
+      const canHardwareNeural = Boolean(
+        hw.webgl2Available &&
+        !hw.webgl2Software &&
+        wasm &&
+        typeof wasm.selectRealEsrganModel === 'function' &&
+        typeof wasm.restoreImageRealEsrgan === 'function',
+      );
+
+      // STAGE 1: Run upfront only when hardware WebGL2 neural SR is unavailable;
+      // when hardware WebGL2 runs Stage 2 directly, avoid redundant Stage-1 src swaps that cause decode/paint flicker.
+      if (!canHardwareNeural && typeof meta.onStage1 === 'function' && wasm && typeof wasm.upscaleFsr1 === 'function') {
         try {
           const s1Out = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, 1.0, null);
           if (s1Out && s1Out.ok && s1Out.canvas) {
@@ -712,9 +720,16 @@
             const srOut = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress);
             if (srOut && srOut.ok && (srOut.canvas || srOut.rgba)) {
               res = srOut;
-              // Spec 144: Skip redundant Post-AI RL for `nomosuni_span_x2` (pure SPAN 2× + sender color lock is already razor-sharp with maximum true SSIM & zero eyelash/necklace degradation!)
-              // Apply gentle Post-AI Optical RL (0.55) ONLY on 4× models recovering tiny/heavily-crushed inputs (< 640px).
-              if (res.canvas && sel.modelId !== 'nomosuni_span_x2' && typeof wasm.upscaleFsr1 === 'function') {
+              // Spec 154: Neural SPAN & AnimeVideoV3 outputs already have clean learned edges;
+              // applying 1:1 Post-AI Richardson-Lucy deconvolution introduces overshoot halos and wavy flat-color ripples.
+              if (
+                res.canvas &&
+                !sel.isAnime &&
+                !String(sel.modelId || '').includes('span') &&
+                !String(sel.modelId || '').includes('anime') &&
+                Math.max(procW, procH) < 360 &&
+                typeof wasm.upscaleFsr1 === 'function'
+              ) {
                 try {
                   reportProgress(87);
                   await yieldUiSlice();

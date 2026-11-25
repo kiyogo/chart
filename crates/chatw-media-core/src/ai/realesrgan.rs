@@ -269,17 +269,29 @@ fn extract_profile_with_kernel_stride(
         }
     }
 
-    // 1. Photos, portraits, real human faces, and natural scenes MUST NEVER be categorized as anime!
-    let is_human_or_photo = matches!(
-        analysis.class,
-        ImageClass::Portrait
-            | ImageClass::Photo
-            | ImageClass::LowLightNoisy
-            | ImageClass::HdrWideGamut
-            | ImageClass::AlreadyHeavilyCompressed
-    ) || analysis.skin_tone_ratio > 0.04;
+    // 1. Detect cel-shaded anime / manga / flat digital illustrations BEFORE portrait skin-tone heuristic,
+    // because anime characters with peach skin often exceed `skin_tone_ratio > 0.04` while still having `AnimeManga` or `FlatGraphic` structure
+    // (excluding synthetic 2-color test solids with palette_sparsity >= 0.98).
+    let is_anime_art = matches!(analysis.class, ImageClass::AnimeManga)
+        || (matches!(analysis.class, ImageClass::FlatGraphic)
+            && analysis.flat_pixel_ratio < 0.95
+            && analysis.palette_sparsity < 0.98
+            && (sat_m > 0.20 || analysis.sharp_edge_ratio > 0.005));
 
-    let cls = if is_human_or_photo {
+    // 2. Real photos, portraits, real human faces, and natural scenes MUST NOT route to anime!
+    let is_human_or_photo = !is_anime_art
+        && (matches!(
+            analysis.class,
+            ImageClass::Portrait
+                | ImageClass::Photo
+                | ImageClass::LowLightNoisy
+                | ImageClass::HdrWideGamut
+                | ImageClass::AlreadyHeavilyCompressed
+        ) || analysis.skin_tone_ratio > 0.04);
+
+    let cls = if is_anime_art {
+        "anime"
+    } else if is_human_or_photo {
         if analysis.class == ImageClass::Portrait || analysis.skin_tone_ratio > 0.04 {
             "portrait"
         } else {
@@ -399,7 +411,20 @@ pub fn select_realesrgan_model_adaptive(
         return None;
     }
 
-    // 1. Photos, portraits, real human faces, and natural scenes
+    // 1. Cel-shaded anime/manga & flat multi-tone digital illustrations (evaluate BEFORE skin_tone_ratio so anime characters do not route to photo/portrait!)
+    let is_pure_anime = (matches!(analysis.class, ImageClass::AnimeManga)
+        || (matches!(analysis.class, ImageClass::FlatGraphic)
+            && analysis.flat_pixel_ratio < 0.95
+            && analysis.palette_sparsity < 0.98
+            && (analysis.color_saturation_mean > 0.20 || analysis.sharp_edge_ratio > 0.005)))
+        && analysis.palette_sparsity > 0.52
+        && analysis.flat_pixel_ratio > 0.35;
+
+    if is_pure_anime {
+        return Some(RealEsrganModelKind::AnimeVideoV3);
+    }
+
+    // 2. Photos, portraits, real human faces, and natural scenes
     let is_photo_or_portrait = matches!(
         analysis.class,
         ImageClass::Portrait
@@ -413,16 +438,7 @@ pub fn select_realesrgan_model_adaptive(
         return Some(pick_photo_model(needs_4x_upscale || is_ultra_crushed_low_res));
     }
 
-    // 2. Strictly pure flat anime/manga with sparse palette uses AnimeVideoV3; everything else uses adaptive SPAN
-    let is_pure_anime = matches!(analysis.class, ImageClass::AnimeManga)
-        && analysis.palette_sparsity > 0.60
-        && analysis.flat_pixel_ratio > 0.45;
-
-    if is_pure_anime {
-        Some(RealEsrganModelKind::AnimeVideoV3)
-    } else {
-        Some(pick_photo_model(needs_4x_upscale || is_ultra_crushed_low_res))
-    }
+    Some(pick_photo_model(needs_4x_upscale || is_ultra_crushed_low_res))
 }
 
 /// Lock global RGB balance, luma contrast (`luma_s`), and HSV chroma saturation (`sat_m`) to sender's original!
@@ -1405,5 +1421,34 @@ mod tests {
         let qp_doc = extract_original_quality_profile(&doc, tw, th);
         let sel_doc = select_realesrgan_model_adaptive(&doc, tw, th, 8_000, Some(&qp_doc), false);
         assert_eq!(sel_doc, None, "Crisp text/QR must skip neural SR to prevent distortion");
+    }
+
+    #[test]
+    fn anime_illustration_with_skin_tones_routes_to_anime_model() {
+        let p = "/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/verify_spec154/crop_orig.png";
+        if !std::path::Path::new(p).exists() {
+            return;
+        }
+        let img = match image::open(p) {
+            Ok(im) => im.to_rgba8(),
+            Err(_) => return,
+        };
+        let (w, h) = img.dimensions();
+        let raw = img.into_raw();
+        let analysis = analyze_rgba_image(&raw, w, h, 40_000, None);
+        let qp = extract_original_quality_profile(&raw, w, h);
+        eprintln!(
+            "crop_orig analysis={:?} flat={:.3} sat={:.3} pal={:.3} skin={:.3} outline_r={:.4} cls={}",
+            analysis.class,
+            analysis.flat_pixel_ratio,
+            analysis.color_saturation_mean,
+            analysis.palette_sparsity,
+            analysis.skin_tone_ratio,
+            qp.outline_r,
+            qp.cls
+        );
+        let sel = select_realesrgan_model_adaptive(&raw, w, h, 40_000, Some(&qp), false);
+        assert_eq!(qp.cls, "anime");
+        assert_eq!(sel, Some(RealEsrganModelKind::AnimeVideoV3));
     }
 }

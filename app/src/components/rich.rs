@@ -203,6 +203,7 @@ pub fn PendingSenderMediaList() -> Element {
                                     }
                                 }
                             }
+                            span { class: "message-time-standalone", style: "visibility: hidden;", aria_hidden: "true", "00:00" }
                         }
                     }
                 }
@@ -783,6 +784,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                 "#
             );
             let mut eval = dioxus::document::eval(&js);
+            let mut handed_off_reveal = false;
             while let Ok(v) = eval.recv::<serde_json::Value>().await {
                 let ev_type = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
                 match ev_type {
@@ -809,6 +811,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         ai_progress.set(v.get("pct").and_then(|n| n.as_u64()).unwrap_or(3) as u32);
                     }
                     "stage1" => {
+                        // Software-only fallback emitted only when WebGL2 Stage 2 cannot run.
                         if let Some(s1_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
                             src.set(Some(s1_url.to_string()));
                         }
@@ -834,12 +837,21 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                             src.set(Some(new_url.to_string()));
                         }
                         if was_loading {
-                            ai_revealing.set(true);
-                            ai_loading.set(false);
+                            handed_off_reveal = true;
                             let mut rev_sig = ai_revealing;
+                            let mut load_sig = ai_loading;
                             spawn(async move {
-                                let mut ev = dioxus::document::eval("await new Promise((r) => setTimeout(r, 350)); dioxus.send(1);");
-                                let _ = ev.recv::<i32>().await;
+                                // Hold opaque `.ai-gen-overlay` until the newly swapped `decoding="sync"` <img> paints for 2 rAF frames.
+                                let mut ev1 = dioxus::document::eval(
+                                    "await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); dioxus.send(1);",
+                                );
+                                let _ = ev1.recv::<i32>().await;
+                                rev_sig.set(true);
+                                load_sig.set(false);
+                                let mut ev2 = dioxus::document::eval(
+                                    "await new Promise((r) => setTimeout(r, 350)); dioxus.send(1);",
+                                );
+                                let _ = ev2.recv::<i32>().await;
                                 rev_sig.set(false);
                             });
                         } else {
@@ -856,7 +868,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                 }
             }
             // Guaranteed cleanup: if JS eval exited/aborted before emitting 'done'/'failed', never leave spinner stuck at 3%/90%
-            if *ai_loading.peek() {
+            if !handed_off_reveal && *ai_loading.peek() {
                 ai_loading.set(false);
                 ai_revealing.set(false);
             }
@@ -1012,7 +1024,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                 class: if is_loading { "rich-image-full is-ai-generating" } else { "rich-image-full" },
                                 src: "{s}",
                                 alt: "Image",
-                                decoding: "async",
+                                decoding: "sync",
                                 "data-media-ref": "{dom_ref_id}",
                                 "data-ai-restored": if is_ai { "true" } else { "false" },
                                 "data-ai-cache-hit": if ai_cache_hit() { "true" } else { "false" },
@@ -2566,23 +2578,10 @@ pub fn GlobalImageLightbox() -> Element {
                 "#
             );
             let mut eval = dioxus::document::eval(&js);
+            let mut handed_off_reveal = false;
             while let Ok(v) = eval.recv::<serde_json::Value>().await {
                 match v.get("type").and_then(|s| s.as_str()).unwrap_or("") {
-                    "stage1" => {
-                        if let Some(s1_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
-                            let still_same = GLOBAL_LIGHTBOX
-                                .peek()
-                                .as_ref()
-                                .map(|cur| cur.media_id == m.media_id && cur.original_src == m.original_src)
-                                .unwrap_or(false);
-                            if still_same {
-                                *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
-                                    src: s1_url.to_string(),
-                                    ..m.clone()
-                                });
-                            }
-                        }
-                    }
+                    "stage1" => {}
                     "progress" => {
                         if let Some(p) = v.get("pct").and_then(|n| n.as_u64()) {
                             let p32 = (p as u32).min(100);
@@ -2604,22 +2603,33 @@ pub fn GlobalImageLightbox() -> Element {
                                 .map(|cur| cur.media_id == m.media_id && cur.original_src == m.original_src)
                                 .unwrap_or(false);
                             if still_same {
+                                handed_off_reveal = true;
                                 *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
                                     src: new_url.to_string(),
                                     ai_restored: true,
                                     auto_enhance_on_open: false,
                                     ..m.clone()
                                 });
-                                lb_revealing.set(true);
-                                upscaling_ai.set(false);
                                 let mut rev_sig = lb_revealing;
+                                let mut up_sig = upscaling_ai;
                                 let active_key_ref = active_key;
                                 let expected_key = key_at_start.clone();
                                 spawn(async move {
-                                    let mut ev = dioxus::document::eval(
+                                    let mut ev1 = dioxus::document::eval(
+                                        "await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); dioxus.send(1);",
+                                    );
+                                    let _ = ev1.recv::<i32>().await;
+                                    if *active_key_ref.peek() == expected_key {
+                                        rev_sig.set(true);
+                                        up_sig.set(false);
+                                    } else {
+                                        up_sig.set(false);
+                                        return;
+                                    }
+                                    let mut ev2 = dioxus::document::eval(
                                         "await new Promise((r) => setTimeout(r, 350)); dioxus.send(1);",
                                     );
-                                    let _ = ev.recv::<i32>().await;
+                                    let _ = ev2.recv::<i32>().await;
                                     if *active_key_ref.peek() == expected_key {
                                         rev_sig.set(false);
                                     }
@@ -2647,7 +2657,7 @@ pub fn GlobalImageLightbox() -> Element {
                     }
                 }
             }
-            if *upscaling_ai.peek() {
+            if !handed_off_reveal && *upscaling_ai.peek() {
                 upscaling_ai.set(false);
                 if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
                     cur.auto_enhance_on_open = false;
@@ -2939,6 +2949,7 @@ pub fn GlobalImageLightbox() -> Element {
                                 style: "{img_style}",
                                 src: "{cur_display_src}",
                                 alt: "Image",
+                                decoding: "sync",
                                 draggable: "false",
                                 "data-media-ref": "{crate::storage::extract_ref_id(&media.media_id).unwrap_or_default()}",
                                 onload: move |_| {

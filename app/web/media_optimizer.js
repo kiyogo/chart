@@ -1206,6 +1206,32 @@
       };
     },
 
+    registerSenderOriginalSync(previewUrl, downloadUrl) {
+      const entry = previewUrl ? previewUrlToFile.get(previewUrl) : null;
+      if (!entry || !entry.file || !downloadUrl || entry.allowSenderOriginal === false) return false;
+      try {
+        if (senderOriginalSession.has(downloadUrl)) return true;
+        const origBlob = entry.file;
+        const stableUrl = URL.createObjectURL(origBlob);
+        senderOriginalSession.set(downloadUrl, {
+          url: stableUrl,
+          width: entry.width || 0,
+          height: entry.height || 0,
+          byteSize: origBlob.size,
+          mime: origBlob.type || 'image/png',
+          provenance: 'sender_original',
+        });
+        while (senderOriginalSession.size > 48) {
+          const [oldK, oldV] = senderOriginalSession.entries().next().value;
+          senderOriginalSession.delete(oldK);
+          if (oldV && oldV.url) { try { URL.revokeObjectURL(oldV.url); } catch (_) {} }
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+
     // After upload succeeds, copy sender's 100% untouched original file into sender's own local app storage
     // so the sender ALWAYS views their crisp original file immediately & on future reloads without downloading!
     async commitSenderOriginal(previewUrl, downloadUrl, keyB64 = '', nonceB64 = '', refId = '') {
@@ -1213,20 +1239,23 @@
       if (!entry || !entry.file || !downloadUrl || entry.allowSenderOriginal === false) return { ok: false };
       try {
         const origBlob = entry.file;
-        const stableUrl = URL.createObjectURL(origBlob);
-        const rec = {
-          url: stableUrl,
-          width: entry.width || 0,
-          height: entry.height || 0,
-          byteSize: origBlob.size,
-          mime: origBlob.type || 'image/png',
-          provenance: 'sender_original',
-        };
-        senderOriginalSession.set(downloadUrl, rec);
-        while (senderOriginalSession.size > 48) {
-          const [oldK, oldV] = senderOriginalSession.entries().next().value;
-          senderOriginalSession.delete(oldK);
-          if (oldV && oldV.url) { try { URL.revokeObjectURL(oldV.url); } catch (_) {} }
+        let rec = senderOriginalSession.get(downloadUrl);
+        if (!rec) {
+          const stableUrl = URL.createObjectURL(origBlob);
+          rec = {
+            url: stableUrl,
+            width: entry.width || 0,
+            height: entry.height || 0,
+            byteSize: origBlob.size,
+            mime: origBlob.type || 'image/png',
+            provenance: 'sender_original',
+          };
+          senderOriginalSession.set(downloadUrl, rec);
+          while (senderOriginalSession.size > 48) {
+            const [oldK, oldV] = senderOriginalSession.entries().next().value;
+            senderOriginalSession.delete(oldK);
+            if (oldV && oldV.url) { try { URL.revokeObjectURL(oldV.url); } catch (_) {} }
+          }
         }
         // Persist untouched sender original in IndexedDB so even after full reload sender sees crisp original!
         if (window.__chatwStorage && typeof window.__chatwStorage.putAiOutput === 'function') {
