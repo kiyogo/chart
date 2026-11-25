@@ -24,17 +24,41 @@
   let yunetSession = null;
   let gfpganSession = null;
   let webgpuSupported = null;
+  let gfpganDisabled = false;
+
+  function withTimeout(promise, ms, label) {
+    let timer = null;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timeout:${label}:${ms}ms`)), ms);
+      }),
+    ]).finally(() => {
+      if (timer !== null) clearTimeout(timer);
+    });
+  }
 
   async function isWebGpuAvailable() {
+    if (gfpganDisabled) return false;
     if (webgpuSupported !== null) return webgpuSupported;
     try {
       if (!navigator.gpu) {
         webgpuSupported = false;
         return false;
       }
-      const adapter = await navigator.gpu.requestAdapter();
-      webgpuSupported = Boolean(adapter);
-      return webgpuSupported;
+      const adapter = await withTimeout(navigator.gpu.requestAdapter(), 1500, 'gpu_adapter');
+      if (!adapter || adapter.isFallbackAdapter) {
+        webgpuSupported = false;
+        return false;
+      }
+      const device = await withTimeout(adapter.requestDevice(), 1500, 'gpu_device');
+      if (!device) {
+        webgpuSupported = false;
+        return false;
+      }
+      try { device.destroy(); } catch (_) {}
+      webgpuSupported = true;
+      return true;
     } catch (_) {
       webgpuSupported = false;
       return false;
@@ -63,16 +87,18 @@
     return ortPromise;
   }
 
-  async function fetchModelBytesCached(urls, minBytes = 100_000) {
+  async function fetchModelBytesCached(urls, minBytes = 100_000, allowCachePut = true) {
     let cache = null;
-    try {
-      if (typeof caches !== 'undefined') cache = await caches.open(MODEL_CACHE_NAME);
-    } catch (_) {}
+    if (allowCachePut) {
+      try {
+        if (typeof caches !== 'undefined') cache = await caches.open(MODEL_CACHE_NAME);
+      } catch (_) {}
+    }
 
     const cacheKey = urls[0];
     if (cache) {
       try {
-        const hit = await cache.match(cacheKey);
+        const hit = await withTimeout(cache.match(cacheKey), 1500, 'cache_match');
         if (hit && hit.ok) {
           const buf = await hit.arrayBuffer();
           if (buf.byteLength >= minBytes) return new Uint8Array(buf);
@@ -82,13 +108,22 @@
 
     for (const url of urls) {
       try {
-        const resp = await fetch(url, { mode: url.startsWith('http') ? 'cors' : 'same-origin' });
+        const resp = await withTimeout(
+          fetch(url, { mode: url.startsWith('http') ? 'cors' : 'same-origin', cache: 'force-cache' }),
+          6000,
+          'model_fetch',
+        );
         if (!resp.ok) continue;
-        const buf = await resp.arrayBuffer();
+        const buf = await withTimeout(resp.arrayBuffer(), 6000, 'model_read');
         if (buf.byteLength < minBytes) continue;
-        if (cache) {
+        // Only write small models (< 50 MB) to CacheStorage; large ONNX blobs use browser HTTP cache to avoid disk-quota hangs!
+        if (cache && allowCachePut && buf.byteLength < 50_000_000) {
           try {
-            await cache.put(cacheKey, new Response(buf.slice(0), { headers: { 'Content-Type': 'application/octet-stream' } }));
+            await withTimeout(
+              cache.put(cacheKey, new Response(buf.slice(0), { headers: { 'Content-Type': 'application/octet-stream' } })),
+              2000,
+              'cache_put',
+            );
           } catch (_) {}
         }
         return new Uint8Array(buf);
@@ -99,18 +134,32 @@
 
   async function getYunetSession(ort) {
     if (yunetSession) return yunetSession;
-    const bytes = await fetchModelBytesCached([YUNET_URL], 100_000);
+    const bytes = await fetchModelBytesCached([YUNET_URL], 100_000, true);
     if (!bytes) throw new Error('YuNet model unavailable');
-    yunetSession = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] });
+    yunetSession = await withTimeout(
+      ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] }),
+      4000,
+      'yunet_init',
+    );
     return yunetSession;
   }
 
   async function getGfpganSession(ort) {
+    if (gfpganDisabled) throw new Error('GFPGAN disabled after previous timeout');
     if (gfpganSession) return gfpganSession;
-    const bytes = await fetchModelBytesCached(GFPGAN_URLS, 100_000_000);
-    if (!bytes) throw new Error('GFPGANv1.4 model unavailable');
-    gfpganSession = await ort.InferenceSession.create(bytes, { executionProviders: ['webgpu'] });
-    return gfpganSession;
+    try {
+      const bytes = await fetchModelBytesCached(GFPGAN_URLS, 100_000_000, false);
+      if (!bytes) throw new Error('GFPGANv1.4 model unavailable');
+      gfpganSession = await withTimeout(
+        ort.InferenceSession.create(bytes, { executionProviders: ['webgpu'] }),
+        8000,
+        'gfpgan_init',
+      );
+      return gfpganSession;
+    } catch (err) {
+      gfpganDisabled = true;
+      throw err;
+    }
   }
 
   function iou(a, b) {
@@ -300,7 +349,11 @@
           gfpIn[2 * ghw + i] = (alignU8[i * 4 + 2] / 255 - 0.5) * 2;
         }
 
-        const outMap = await gfpSess.run({ [gfpSess.inputNames[0]]: new ort.Tensor('float32', gfpIn, [1, 3, 512, 512]) });
+        const outMap = await withTimeout(
+          gfpSess.run({ [gfpSess.inputNames[0]]: new ort.Tensor('float32', gfpIn, [1, 3, 512, 512]) }),
+          6000,
+          'gfpgan_run',
+        );
         const gfpOut = outMap[gfpSess.outputNames[0]].data;
 
         // Local skin-tone color lock + smooth cosine-feathered elliptical mask (ZERO box seam, ZERO background touch!)
