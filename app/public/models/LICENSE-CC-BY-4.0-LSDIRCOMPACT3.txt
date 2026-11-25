@@ -1,0 +1,10 @@
+Model: 4xLSDIRCompact3 (`lsdir_compact3_x4.cwsr`)
+Author: Philip Hofmann (Phhofm)
+Source: https://github.com/Phhofm/models/tree/main/4xLSDIRCompact/Version3
+OpenModelDB: https://openmodeldb.info/models/4x-LSDIRCompact-v2
+Architecture: SRVGGNetCompact (num_feat=64, num_conv=16, upscale=4, FP16)
+Dataset: LSDIR (Large Scale Dataset for Image Restoration — 85,000 real photographs), 75% C3 + 25% R3 interpolation.
+License: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Converted losslessly from official NCNN FP16 release weights (`4xLSDIRCompact3_fp16.bin`) to ChatW CWSR1 FP16 format.

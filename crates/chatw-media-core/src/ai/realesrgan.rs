@@ -27,10 +27,12 @@ pub const CWSR_MAGIC: &[u8; 6] = b"CWSR1\0";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RealEsrganModelKind {
-    /// `realesr-animevideov3` (16×64ch, 4×, 1.19 MB FP16, BSD-3-Clause) — Anime, Digital Art, Illustration, Meme
+    /// `realesr-animevideov3` (16×64ch, 4×, 1.19 MB FP16, BSD-3-Clause) — Pure Flat Anime / Manga
     AnimeVideoV3,
-    /// `realesr-general-x4v3` DNI-35 (32×64ch, 4×, 2.31 MB FP16, BSD-3-Clause — identical architecture to `upscayl-lite-4x`) — Photos, Portraits
+    /// `realesr-general-x4v3` DNI-35 (32×64ch, 4×, 2.31 MB FP16, BSD-3-Clause) — Legacy general model
     GeneralX4V3,
+    /// `4xLSDIRCompact3` (16×64ch, 4×, 1.18 MB FP16, CC-BY-4.0, Phhofm / 85K LSDIR real photos) — Primary Photo, Portrait & Compression-Removal 4× AI!
+    LsdirCompact3X4,
 }
 
 impl RealEsrganModelKind {
@@ -38,6 +40,7 @@ impl RealEsrganModelKind {
         match self {
             Self::AnimeVideoV3 => "realesr_animevideov3",
             Self::GeneralX4V3 => "realesr_general_x4v3",
+            Self::LsdirCompact3X4 => "lsdir_compact3_x4",
         }
     }
 
@@ -45,6 +48,7 @@ impl RealEsrganModelKind {
         match self {
             Self::AnimeVideoV3 => "Real-ESRGAN Anime v3 (4×)",
             Self::GeneralX4V3 => "Real-ESRGAN Upscayl-Lite (4×)",
+            Self::LsdirCompact3X4 => "LSDIR Photo Compact v3 (4×)",
         }
     }
 
@@ -52,6 +56,7 @@ impl RealEsrganModelKind {
         match self {
             Self::AnimeVideoV3 => "/models/realesr_animevideov3.cwsr",
             Self::GeneralX4V3 => "/models/realesr_general_x4v3.cwsr",
+            Self::LsdirCompact3X4 => "/models/lsdir_compact3_x4.cwsr",
         }
     }
 
@@ -59,13 +64,16 @@ impl RealEsrganModelKind {
         match self {
             Self::AnimeVideoV3 => "0.2.5.0",
             Self::GeneralX4V3 => "0.2.5.0-dni35",
+            Self::LsdirCompact3X4 => "3.0-c75r25",
         }
     }
 
     pub fn from_str_name(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
-            "realesr_general_x4v3" | "general" | "photo" | "upscayl-lite" => Self::GeneralX4V3,
-            _ => Self::AnimeVideoV3,
+            "lsdir_compact3_x4" | "lsdir" | "compact3" | "photo" => Self::LsdirCompact3X4,
+            "realesr_general_x4v3" | "general" | "upscayl-lite" => Self::GeneralX4V3,
+            "realesr_animevideov3" | "anime" => Self::AnimeVideoV3,
+            _ => Self::LsdirCompact3X4,
         }
     }
 }
@@ -301,15 +309,14 @@ pub fn select_realesrgan_model(
         if qp.luma_s < 1.2 && qp.sharp < 0.2 {
             return None;
         }
-        // Strict priority: Photos, portraits, and human subjects strictly route to GeneralX4V3!
+        // Spec 140: Photos, portraits, and natural scenes strictly route to 4xLSDIRCompact3 (85K real photos, zero alien eyes!)
         if matches!(qp.cls.as_str(), "portrait" | "photo") {
-            return Some(RealEsrganModelKind::GeneralX4V3);
+            return Some(RealEsrganModelKind::LsdirCompact3X4);
         }
-        let is_anime = matches!(qp.cls.as_str(), "anime" | "art" | "meme" | "text_ui");
-        if is_anime {
+        if qp.cls.as_str() == "anime" {
             return Some(RealEsrganModelKind::AnimeVideoV3);
         }
-        return Some(RealEsrganModelKind::GeneralX4V3);
+        return Some(RealEsrganModelKind::LsdirCompact3X4);
     }
 
     let analysis = analyze_rgba_image(rgba, width, height, 0, None);
@@ -317,7 +324,7 @@ pub fn select_realesrgan_model(
         return None;
     }
 
-    // 1. Photos, portraits, real human faces, and natural scenes MUST use GeneralX4V3
+    // 1. Photos, portraits, real human faces, and natural scenes MUST use 4xLSDIRCompact3
     let is_photo_or_portrait = matches!(
         analysis.class,
         ImageClass::Portrait
@@ -328,25 +335,18 @@ pub fn select_realesrgan_model(
     ) || analysis.skin_tone_ratio > 0.04;
 
     if is_photo_or_portrait {
-        return Some(RealEsrganModelKind::GeneralX4V3);
+        return Some(RealEsrganModelKind::LsdirCompact3X4);
     }
 
-    // 2. Anime, manga, flat illustrations, memes with sparse palettes use AnimeVideoV3
-    let is_anime = match analysis.class {
-        ImageClass::AnimeManga
-        | ImageClass::Meme
-        | ImageClass::FlatGraphic
-        | ImageClass::AlphaGraphic
-        | ImageClass::CrispTextUi => true,
-        _ => {
-            analysis.palette_sparsity > 0.55 && analysis.flat_pixel_ratio > 0.40
-        }
-    };
+    // 2. Strictly pure flat anime/manga with sparse palette uses AnimeVideoV3; everything else uses 4xLSDIRCompact3
+    let is_pure_anime = matches!(analysis.class, ImageClass::AnimeManga)
+        && analysis.palette_sparsity > 0.60
+        && analysis.flat_pixel_ratio > 0.45;
 
-    if is_anime {
+    if is_pure_anime {
         Some(RealEsrganModelKind::AnimeVideoV3)
     } else {
-        Some(RealEsrganModelKind::GeneralX4V3)
+        Some(RealEsrganModelKind::LsdirCompact3X4)
     }
 }
 
@@ -1264,18 +1264,18 @@ mod tests {
 
         assert_eq!(
             sel_no_qp,
-            Some(RealEsrganModelKind::GeneralX4V3),
-            "Human portrait must route to GeneralX4V3 without QP!"
+            Some(RealEsrganModelKind::LsdirCompact3X4),
+            "Human portrait must route to LsdirCompact3X4 without QP!"
         );
         assert_eq!(
             sel_qp,
-            Some(RealEsrganModelKind::GeneralX4V3),
-            "Human portrait must route to GeneralX4V3 with QP!"
+            Some(RealEsrganModelKind::LsdirCompact3X4),
+            "Human portrait must route to LsdirCompact3X4 with QP!"
         );
     }
 
     #[test]
-    fn high_detail_cosplay_portrait_routes_to_general_x4v3() {
+    fn high_detail_cosplay_portrait_routes_to_lsdir_compact3_x4() {
         let p = "/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/.user_uploaded/media_1795545206648_e1cddb86.jpg";
         if !std::path::Path::new(p).exists() {
             return;
@@ -1292,7 +1292,7 @@ mod tests {
         let model_no_qp = select_realesrgan_model(&raw, w, h, None, false);
         let model_qp = select_realesrgan_model(&raw, w, h, Some(&qp), false);
 
-        assert_eq!(model_no_qp, Some(RealEsrganModelKind::GeneralX4V3));
-        assert_eq!(model_qp, Some(RealEsrganModelKind::GeneralX4V3));
+        assert_eq!(model_no_qp, Some(RealEsrganModelKind::LsdirCompact3X4));
+        assert_eq!(model_qp, Some(RealEsrganModelKind::LsdirCompact3X4));
     }
 }

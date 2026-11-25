@@ -302,7 +302,8 @@ pub fn install_wasm_media_bridge() {
         let blocked = ["codeformer", "rvrt", "apisr", "upscayl"].iter().any(|b| k.contains(b));
         let approved = matches!(
             k.as_str(),
-            "fsr1_easu_rcas"
+            "lsdir_compact3_x4"
+                | "fsr1_easu_rcas"
                 | "fidelity_cas_1x"
                 | "realesr_animevideov3"
                 | "realesr_general_x4v3"
