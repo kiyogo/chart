@@ -650,6 +650,7 @@
       const tGpu0 = performance.now();
       let stage1Delivered = false;
       let stage1FallbackBlob = null;
+      let stage1ObjectUrl = null;
       let stage1W = targetW;
       let stage1H = targetH;
 
@@ -690,6 +691,7 @@
               stage1Delivered = true;
               reportProgress(28);
               try { meta.onStage1(s1Url); } catch (_) {}
+              stage1ObjectUrl = s1Url;
               await yieldUiSlice();
             }
           }
@@ -701,12 +703,14 @@
       let faceSnapCanvas = null;
       let faceCandidateIsAnime = false;
       if (meta.signal && meta.signal.aborted) {
+        if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
         return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
       }
       if (hw.webgl2Available && !hw.webgl2Software && wasm && typeof wasm.selectRealEsrganModel === 'function' && typeof wasm.restoreImageRealEsrgan === 'function') {
         try {
           const sel = wasm.selectRealEsrganModel(srcU8, procW, procH, origProfileJson, meta.modelId || '', srcBytes);
           if (sel && sel.skip) {
+            if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
             return { enhanced: false, skipped: true, reason: sel.reason || 'skipped', url: imageUrl };
           }
           if (sel && sel.modelId && sel.cwsrUrl) {
@@ -917,10 +921,12 @@
 
       const encodeMs = Math.round(performance.now() - tEnc0);
       if (!outBlob || outBlob.size === 0) {
+        if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
         return { enhanced: false, skipped: true, reason: 'output_encode_failed', url: imageUrl };
       }
       const outUrl = URL.createObjectURL(outBlob);
       await predecodeImageUrl(outUrl);
+      if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
       reportProgress(100);
 
       const elapsedMs = Math.round(performance.now() - t0);

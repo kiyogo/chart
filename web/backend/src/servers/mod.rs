@@ -548,14 +548,24 @@ async fn handle_list_channels(
     )
     .await?;
 
+    let is_admin = permissions::has_server_permission(
+        &state.db,
+        server_id,
+        user.id,
+        perm_flags::ADMINISTRATOR,
+    )
+    .await?;
+
     let rows = sqlx::query!(
         r#"
         SELECT id, server_id, category_id, name, channel_type, position, is_private, created_at
         FROM channels
         WHERE server_id = $1
+          AND ($2::bool OR NOT is_private)
         ORDER BY position ASC, created_at ASC
         "#,
-        server_id
+        server_id,
+        is_admin
     )
     .fetch_all(&state.db)
     .await?;
@@ -1041,15 +1051,24 @@ async fn handle_get_channel_messages(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
-    // Fetch channel to find its server_id
+    // Fetch channel to find its server_id and privacy
     let ch = sqlx::query!(
-        "SELECT server_id FROM channels WHERE id = $1",
+        "SELECT server_id, is_private FROM channels WHERE id = $1",
         channel_id
     )
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::NotFound("channel_not_found"))?;
 
+    if ch.is_private {
+        permissions::require_server_permission(
+            &state.db,
+            ch.server_id,
+            user.id,
+            perm_flags::ADMINISTRATOR,
+        )
+        .await?;
+    }
     permissions::require_server_permission(
         &state.db,
         ch.server_id,
@@ -1117,13 +1136,22 @@ async fn handle_post_channel_message(
     }
 
     let ch = sqlx::query!(
-        "SELECT server_id FROM channels WHERE id = $1",
+        "SELECT server_id, is_private FROM channels WHERE id = $1",
         channel_id
     )
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::NotFound("channel_not_found"))?;
 
+    if ch.is_private {
+        permissions::require_server_permission(
+            &state.db,
+            ch.server_id,
+            user.id,
+            perm_flags::ADMINISTRATOR,
+        )
+        .await?;
+    }
     permissions::require_server_permission(
         &state.db,
         ch.server_id,
@@ -1174,13 +1202,27 @@ async fn handle_post_channel_message(
         created_at: row.created_at,
     };
 
-    // Broadcast to all server members via WebSocket
-    let member_ids = sqlx::query_scalar!(
+    // Broadcast to authorized server members via WebSocket (never leak private channel messages)
+    let all_members = sqlx::query_scalar!(
         "SELECT user_id FROM server_members WHERE server_id = $1",
         ch.server_id
     )
     .fetch_all(&state.db)
     .await?;
+    let member_ids = if ch.is_private {
+        let mut admins = Vec::new();
+        for mid in all_members {
+            if permissions::has_server_permission(&state.db, ch.server_id, mid, perm_flags::ADMINISTRATOR)
+                .await
+                .unwrap_or(false)
+            {
+                admins.push(mid);
+            }
+        }
+        admins
+    } else {
+        all_members
+    };
 
     state
         .ws_hub

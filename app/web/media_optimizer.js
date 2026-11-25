@@ -126,6 +126,13 @@
     while (previewUrlToFile.size > 32) {
       const oldestKey = previewUrlToFile.keys().next().value;
       previewUrlToFile.delete(oldestKey);
+      let stillPending = false;
+      for (const p of pendingSenderFiles.values()) {
+        if (p && p.previewUrl === oldestKey) { stillPending = true; break; }
+      }
+      if (!stillPending && String(oldestKey).startsWith('blob:')) {
+        try { URL.revokeObjectURL(oldestKey); } catch (_) {}
+      }
     }
   }
 

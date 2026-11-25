@@ -121,11 +121,15 @@ pub async fn authorize_channel_access(
     .ok_or(AppError::NotFound("channel_not_found"))?;
 
     let server_id: Uuid = row.try_get("server_id")?;
+    let is_private: bool = row.try_get("is_private").unwrap_or(false);
     let retention: String = row.try_get("media_retention_policy").unwrap_or_else(|_| "durable".into());
     if required_perm == perm_flags::SEND_MESSAGES && retention == "no_media" {
         return Err(AppError::Forbidden("channel_media_disabled"));
     }
 
+    if is_private {
+        server_perms::require_server_permission(pool, server_id, user_id, perm_flags::ADMINISTRATOR).await?;
+    }
     server_perms::require_server_permission(pool, server_id, user_id, perm_flags::VIEW_CHANNELS).await?;
     if required_perm != perm_flags::VIEW_CHANNELS {
         server_perms::require_server_permission(pool, server_id, user_id, required_perm).await?;

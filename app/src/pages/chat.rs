@@ -373,7 +373,7 @@ pub fn Chat(
         let reqs = pending_requests.read().len();
         let combined = total_unread + reqs;
         if combined > 0 {
-            platform::set_document_title("chatw");
+            platform::set_document_title(&format!("({combined}) chatw"));
         } else {
             platform::set_document_title("chatw");
         }
@@ -952,6 +952,15 @@ pub fn Chat(
                             for m in list.iter_mut() {
                                 if m.id == message_id {
                                     m.text = "[Message has been revoked]".to_string();
+                                }
+                            }
+                        });
+                        dm_cache.with_mut(|cache| {
+                            for (_, (cached_msgs, _, _, _)) in cache.iter_mut() {
+                                for m in cached_msgs.iter_mut() {
+                                    if m.id == message_id {
+                                        m.text = "[Message has been revoked]".to_string();
+                                    }
                                 }
                             }
                         });
@@ -1955,6 +1964,10 @@ pub fn Chat(
                     channel_has_more.set(more);
                     if !older.is_empty() {
                         platform::snapshot_chat_scroll_height().await;
+                        if selected_channel.peek().as_ref().map(|c| c.id.as_str()) != Some(cid.as_str()) {
+                            channel_loading_more.set(false);
+                            return;
+                        }
                         channel_messages.with_mut(|list| {
                             let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
                             let mut fresh: Vec<ChannelMessageItem> = older.into_iter().filter(|m| !existing.contains(&m.id)).collect();
@@ -2029,13 +2042,16 @@ pub fn Chat(
         let gid = grp.id.clone();
         let gid2 = grp.id.clone();
         spawn(async move {
-            if let Ok(st) = social::group_settings(&gid2).await {
+            let is_still_group = || {
+                active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid2.as_str())
+            };
+            if let Ok(st) = social::group_settings(&gid2).await && is_still_group() {
                 group_settings.set(Some(st));
             }
-            if let Ok(m) = groups::groups_get_members(&gid2).await {
+            if let Ok(m) = groups::groups_get_members(&gid2).await && is_still_group() {
                 group_members.set(m);
             }
-            if let Ok(w) = social::wallpaper_get("group", &gid2).await {
+            if let Ok(w) = social::wallpaper_get("group", &gid2).await && is_still_group() {
                 chat_wallpaper.set(w);
             }
         });
@@ -2136,6 +2152,10 @@ pub fn Chat(
                     group_has_more.set(more);
                     if !older.is_empty() {
                         platform::snapshot_chat_scroll_height().await;
+                        if active_group.peek().as_ref().map(|g| g.id.as_str()) != Some(gid.as_str()) {
+                            group_loading_more.set(false);
+                            return;
+                        }
                         group_messages.with_mut(|list| {
                             let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
                             let mut fresh: Vec<GroupMessageItem> = older.into_iter().filter(|m| !existing.contains(&m.id)).collect();
@@ -2169,31 +2189,43 @@ pub fn Chat(
         server_members.set(Vec::new());
         server_roles.set(Vec::new());
         spawn(async move {
+            let is_still_server = || {
+                selected_server.peek().as_ref().map(|s| s.id.as_str()) == Some(srv.id.as_str())
+            };
             let vw = platform::get_viewport_width().await;
+            if !is_still_server() {
+                return;
+            }
             is_server_members_open.set(vw >= 1100);
             if srv.is_enterprise {
-                if let Ok(ecfg) = enterprise::get_config(&srv.id).await {
+                if let Ok(ecfg) = enterprise::get_config(&srv.id).await && is_still_server() {
                     enterprise_config.set(Some(ecfg));
                 }
             }
-            if let Ok(cats) = api::servers_get_categories(&srv.id).await {
+            if let Ok(cats) = api::servers_get_categories(&srv.id).await && is_still_server() {
                 server_categories.set(cats);
             }
-            if let Ok(ms) = api::servers_get_members(&srv.id).await {
+            if let Ok(ms) = api::servers_get_members(&srv.id).await && is_still_server() {
                 server_members.set(ms);
             }
-            if let Ok(rs) = social::server_roles(&srv.id).await {
+            if let Ok(rs) = social::server_roles(&srv.id).await && is_still_server() {
                 server_roles.set(rs);
+            }
+            if !is_still_server() {
+                return;
             }
             // Community emoji / stickers for the pickers, my permissions, and the welcome screen.
             crate::services::community::activate(&srv.id).await;
-            if let Ok((bits, _)) = social::server_my_permissions(&srv.id).await {
+            if !is_still_server() {
+                return;
+            }
+            if let Ok((bits, _)) = social::server_my_permissions(&srv.id).await && is_still_server() {
                 can_manage_channels.set(bits & 4 != 0);
             }
-            if let Some(w) = crate::components::community_ui::should_show_welcome(&srv.id).await {
+            if let Some(w) = crate::components::community_ui::should_show_welcome(&srv.id).await && is_still_server() {
                 welcome_for.set(Some((srv.id.clone(), w)));
             }
-            if let Ok(chs) = api::servers_get_channels(&srv.id).await {
+            if let Ok(chs) = api::servers_get_channels(&srv.id).await && is_still_server() {
                 let first_text = chs.iter().find(|c| c.channel_type == "text").cloned();
                 channels.set(chs);
                 // On wide screens open the first text channel if the user hasn't already picked a channel or enterprise module.
@@ -2348,6 +2380,9 @@ pub fn Chat(
                         }
                         return;
                     };
+                    if active_friend.peek().as_ref().map(|f| f.id.as_str()) != Some(friend.id.as_str()) {
+                        return;
+                    }
                     partner_fingerprint.set(Some(pk_resp.fingerprint.clone()));
                     let Ok(pk) = crate::crypto::e2ee::get_or_verify_peer_keys_scoped(
                         Some(&uid),
@@ -2622,6 +2657,10 @@ pub fn Chat(
                     dm_has_more.set(more);
                     if !older.is_empty() {
                         platform::snapshot_chat_scroll_height().await;
+                        if active_friend.peek().as_ref().map(|f| f.id.as_str()) != Some(friend.id.as_str()) {
+                            dm_loading_more.set(false);
+                            return;
+                        }
                         messages.with_mut(|list| {
                             let existing: HashSet<String> = list.iter().map(|m| m.id.clone()).collect();
                             let mut fresh: Vec<DisplayMessage> = older.into_iter().filter(|m| !existing.contains(&m.id)).collect();
@@ -5720,7 +5759,14 @@ pub fn Chat(
                                         Ok(_) => {
                                             privacy.with_mut(|p| p.self_chat = false);
                                             let me = my_id_sig.peek().clone();
+                                            dm_cache.write().remove(&me);
+                                            last_previews.with_mut(|m| { m.remove(&me); });
+                                            let idb_k = format!("dm:{me}:{me}");
+                                            spawn(async move {
+                                                crate::storage::save_cached_messages::<DisplayMessage>(&idb_k, &[], false).await;
+                                            });
                                             if active_friend.peek().as_ref().is_some_and(|f| f.id == me) {
+                                                messages.write().clear();
                                                 active_friend.set(None);
                                             }
                                             last_previews.with_mut(|m| { m.remove(&me); });
