@@ -1715,6 +1715,12 @@ where
 {
     GL_ENGINE.with(|cell| {
         let mut slot = cell.borrow_mut();
+        // Auto-recover from WebGL2 GPU Device Lost (`isContextLost() == true`) without permanent failure!
+        if let Some(Ok(eng)) = slot.as_ref() {
+            if eng.gl.is_context_lost() {
+                *slot = None;
+            }
+        }
         if slot.is_none() {
             *slot = Some(init_gl_engine());
         }

@@ -15,10 +15,14 @@ pub enum DeviceTier {
 #[serde(rename_all = "snake_case")]
 pub enum AccelerationBackend {
     WebGpu,
+    WebGl2,
     Vulkan,
+    NcnnVulkan,
+    Cuda,
     Metal,
     DirectMl,
     NnApi,
+    Qnn,
     CoreMl,
     OnnxCpuSimd,
     SpabLiteCpuSimd,

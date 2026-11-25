@@ -1,0 +1,10 @@
+Model: 4xNomosUni_span_multijpg (SPAN 4x Multi-Compression Super-Resolution)
+Author: Philip Hofmann (Phhofm / Helaman)
+Source: https://github.com/Phhofm/models/releases/tag/4xNomosUni_span_multijpg
+Architecture: SPAN (Swift Parameter-free Attention Network, hongyuanyu/SPAN, CVPR NTIRE 2024)
+License: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Conversion notes:
+- Re-parameterized Conv3XC layers pre-fused to single 3x3 inference convolutions and stored in FP16 CWSP1 format (`nomosuni_span_x4.cwsp`, 852,596 bytes).
+- Trained specifically with multiscale & heavy compression artifacts to eliminate AVIF/JPEG ringing without crosshatch artifacts.

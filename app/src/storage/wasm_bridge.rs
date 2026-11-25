@@ -14,9 +14,12 @@ pub fn install_wasm_media_bridge() {
         probe_gpu, restore_image_realesrgan_rust, upscale_fsr1_rust, warmup_gpu,
     };
     use chatw_media_core::{
-        ai::realesrgan::{
-            OriginalQualityProfile, RealEsrganModelKind, extract_original_quality_profile,
-            select_realesrgan_model,
+        ai::{
+            realesrgan::{
+                OriginalQualityProfile, RealEsrganModelKind, extract_original_quality_profile,
+                select_realesrgan_model_adaptive,
+            },
+            registry::ModelRegistry,
         },
         avif::{AvifCompressionMode, AvifEncodeOptions, optimize_image_to_avif},
         classifier::ImageClass,
@@ -166,9 +169,9 @@ pub fn install_wasm_media_bridge() {
         out.into()
     });
 
-    // 6. selectRealEsrganModel(rgba, w, h, origProfileJson, requestedModelId?) -> { skip, reason, modelId, modelLabel, cwsrUrl, version }
-    let select_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue, JsValue) -> JsValue>::new(
-        move |rgba: Uint8Array, width: u32, height: u32, prof_val: JsValue, req_model_val: JsValue| {
+    // 6. selectRealEsrganModel(rgba, w, h, origProfileJson, requestedModelId?, srcBytes?) -> { skip, reason, modelId, modelLabel, cwsrUrl, version }
+    let select_cb = Closure::<dyn Fn(Uint8Array, u32, u32, JsValue, JsValue, JsValue) -> JsValue>::new(
+        move |rgba: Uint8Array, width: u32, height: u32, prof_val: JsValue, req_model_val: JsValue, src_bytes_val: JsValue| {
             let out = Object::new();
             let raw = rgba.to_vec();
             let orig_prof: Option<OriginalQualityProfile> = prof_val
@@ -176,12 +179,14 @@ pub fn install_wasm_media_bridge() {
                 .filter(|s| !s.is_empty())
                 .and_then(|s| serde_json::from_str(&s).ok());
             let probe = probe_gpu();
+            let src_bytes = src_bytes_val.as_f64().map(|v| v.max(0.0) as usize).unwrap_or(0);
 
             let req_str = req_model_val.as_string().unwrap_or_default();
             let chosen = if !req_str.is_empty()
                 && matches!(
                     req_str.as_str(),
-                    "clearreality_span_x4"
+                    "nomosuni_span_x4"
+                        | "clearreality_span_x4"
                         | "lsdir_compact3_x4"
                         | "realesr_animevideov3"
                         | "realesr_general_x4v3"
@@ -189,7 +194,7 @@ pub fn install_wasm_media_bridge() {
             {
                 Some(RealEsrganModelKind::from_str_name(&req_str))
             } else {
-                select_realesrgan_model(&raw, width, height, orig_prof.as_ref(), probe.is_software)
+                select_realesrgan_model_adaptive(&raw, width, height, src_bytes, orig_prof.as_ref(), probe.is_software)
             };
 
             match chosen {
@@ -203,7 +208,7 @@ pub fn install_wasm_media_bridge() {
                 }
                 None => {
                     let _ = Reflect::set(&out, &"skip".into(), &JsValue::TRUE);
-                    let _ = Reflect::set(&out, &"reason".into(), &JsValue::from("solid_flat_image"));
+                    let _ = Reflect::set(&out, &"reason".into(), &JsValue::from("crisp_text_qr_or_uniform_image"));
                 }
             }
             out.into()
@@ -310,12 +315,17 @@ pub fn install_wasm_media_bridge() {
         let blocked = ["codeformer", "rvrt", "apisr", "upscayl"].iter().any(|b| k.contains(b));
         let approved = matches!(
             k.as_str(),
-            "clearreality_span_x4"
+            "nomosuni_span_x4"
+                | "clearreality_span_x4"
                 | "lsdir_compact3_x4"
                 | "fsr1_easu_rcas"
                 | "fidelity_cas_1x"
                 | "realesr_animevideov3"
                 | "realesr_general_x4v3"
+                | "realesrgan_x4plus"
+                | "realesrgan_anime_6b"
+                | "scunet-denoise-x1"
+                | "fsrcnn-x2-fast"
                 | "spab_lite_builtin"
                 | "span_x2_s"
                 | "realesrgan_x2plus"
@@ -323,6 +333,12 @@ pub fn install_wasm_media_bridge() {
                 | "nanovsr_lite"
         );
         JsValue::from(!blocked && approved)
+    });
+
+    // 9b. getModelRegistryJson() -> string (canonical Rust ModelRegistry JSON manifest)
+    let reg_cb = Closure::<dyn Fn() -> JsValue>::new(move || {
+        let reg = ModelRegistry::canonical();
+        JsValue::from(serde_json::to_string(reg.list()).unwrap_or_else(|_| "[]".into()))
     });
 
     // 10. computeImagePdq(rgba, w, h) -> { pdqHex, quality, captionBandHash, colorMomentHash, aspectRatioMilli, mihBands }
@@ -447,6 +463,7 @@ pub fn install_wasm_media_bridge() {
     let _ = Reflect::set(&api, &"upscaleFsr1".into(), fsr1_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"extractQualityProfile".into(), prof_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"isModelLicenseAllowed".into(), lic_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"getModelRegistryJson".into(), reg_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"computeImagePdq".into(), pdq_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"computePowProof".into(), pow_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"computeFastCdc".into(), cdc_cb.as_ref().unchecked_ref());
@@ -465,6 +482,7 @@ pub fn install_wasm_media_bridge() {
     fsr1_cb.forget();
     prof_cb.forget();
     lic_cb.forget();
+    reg_cb.forget();
     pdq_cb.forget();
     pow_cb.forget();
     cdc_cb.forget();

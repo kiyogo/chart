@@ -33,8 +33,10 @@ pub enum RealEsrganModelKind {
     GeneralX4V3,
     /// `4xLSDIRCompact3` (16×64ch, 4×, 1.18 MB FP16, CC-BY-4.0, Phhofm) — Compact Photo SR
     LsdirCompact3X4,
-    /// `4x-ClearRealityV1` (SPAN 6×SPAB 48ch, 4×, 833 KB FP16, Apache-2.0, Kim2091) — Ultra-Sharp Primary Photo & Portrait 4× AI!
+    /// `4x-ClearRealityV1` (SPAN 6×SPAB 48ch, 4×, 833 KB FP16, Apache-2.0, Kim2091) — Ultra-Sharp Clean/High-Res Photo & Portrait 4× AI!
     ClearRealitySpanX4,
+    /// `4xNomosUni_span_multijpg` (SPAN 6×SPAB 48ch, 4×, 833 KB FP16, CC-BY-4.0, Phhofm) — Heavy AVIF/JPEG Compression & Low-Res Photo 4× AI (zero crosshatch)!
+    NomosUniSpanX4,
 }
 
 impl RealEsrganModelKind {
@@ -44,6 +46,7 @@ impl RealEsrganModelKind {
             Self::GeneralX4V3 => "realesr_general_x4v3",
             Self::LsdirCompact3X4 => "lsdir_compact3_x4",
             Self::ClearRealitySpanX4 => "clearreality_span_x4",
+            Self::NomosUniSpanX4 => "nomosuni_span_x4",
         }
     }
 
@@ -53,6 +56,7 @@ impl RealEsrganModelKind {
             Self::GeneralX4V3 => "Real-ESRGAN Upscayl-Lite (4×)",
             Self::LsdirCompact3X4 => "LSDIR Photo Compact v3 (4×)",
             Self::ClearRealitySpanX4 => "ClearReality SPAN (4×)",
+            Self::NomosUniSpanX4 => "NomosUni AVIF SPAN (4×)",
         }
     }
 
@@ -62,6 +66,7 @@ impl RealEsrganModelKind {
             Self::GeneralX4V3 => "/models/realesr_general_x4v3.cwsr",
             Self::LsdirCompact3X4 => "/models/lsdir_compact3_x4.cwsr",
             Self::ClearRealitySpanX4 => "/models/clearreality_v1_x4.cwsp",
+            Self::NomosUniSpanX4 => "/models/nomosuni_span_x4.cwsp",
         }
     }
 
@@ -71,15 +76,17 @@ impl RealEsrganModelKind {
             Self::GeneralX4V3 => "0.2.5.0-dni35",
             Self::LsdirCompact3X4 => "3.0-c75r25",
             Self::ClearRealitySpanX4 => "1.0-span",
+            Self::NomosUniSpanX4 => "1.0-multijpg",
         }
     }
 
     pub fn is_span(self) -> bool {
-        matches!(self, Self::ClearRealitySpanX4)
+        matches!(self, Self::ClearRealitySpanX4 | Self::NomosUniSpanX4)
     }
 
     pub fn from_str_name(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
+            "nomosuni_span_x4" | "nomosuni" | "avif_span" => Self::NomosUniSpanX4,
             "clearreality_span_x4" | "clearreality" | "span" | "photo" => Self::ClearRealitySpanX4,
             "lsdir_compact3_x4" | "lsdir" | "compact3" => Self::LsdirCompact3X4,
             "realesr_general_x4v3" | "general" | "upscayl-lite" => Self::GeneralX4V3,
@@ -299,12 +306,28 @@ fn extract_profile_with_kernel_stride(
     }
 }
 
-/// Automatically select the optimal Real-ESRGAN model (`AnimeVideoV3` vs `GeneralX4V3`).
-/// Returns `None` ONLY for nearly-solid uniform images where AI is unnecessary.
+/// Automatically select the optimal neural super-resolution model based on content class, resolution, and AVIF compression ratio.
+/// Returns `None` for nearly-solid uniform images or crisp text/document/QR screenshots to prevent neural hallucination.
 pub fn select_realesrgan_model(
     rgba: &[u8],
     width: u32,
     height: u32,
+    orig_profile: Option<&OriginalQualityProfile>,
+    prefer_fast_sw: bool,
+) -> Option<RealEsrganModelKind> {
+    select_realesrgan_model_adaptive(rgba, width, height, 0, orig_profile, prefer_fast_sw)
+}
+
+/// Adaptive compression-aware & content-aware model selector (Spec 143):
+/// - Crisp documents / screenshots / QR codes (`text_ui` / `CrispTextUi`) -> `None` (zero text/QR hallucination!)
+/// - Heavily compressed or low-resolution AVIF/JPEG photos (`max_edge <= 720` or `bpp < 0.65`) -> `NomosUniSpanX4` (erases AV1 ringing with ZERO diagonal crosshatch!)
+/// - Clean high-resolution photos & portraits (`max_edge > 720` and clean `bpp`) -> `ClearRealitySpanX4` (studio 4K hair/eyelashes!)
+/// - Pure flat cel-shaded anime / manga -> `AnimeVideoV3`.
+pub fn select_realesrgan_model_adaptive(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    src_bytes: usize,
     orig_profile: Option<&OriginalQualityProfile>,
     prefer_fast_sw: bool,
 ) -> Option<RealEsrganModelKind> {
@@ -315,27 +338,52 @@ pub fn select_realesrgan_model(
     }
 
     let _ = prefer_fast_sw; // Content semantics strictly dictate model choice; never force anime onto real human photos!
+    let max_edge = width.max(height);
+    let source_bpp = if src_bytes > 0 {
+        (src_bytes as f32 * 8.0) / ((w * h).max(1) as f32)
+    } else {
+        0.0
+    };
+    let is_heavily_compressed_photo =
+        (src_bytes > 0 && source_bpp < 0.65 && max_edge <= 800) || (src_bytes > 0 && source_bpp < 0.30);
+
+    let pick_photo_model = |is_crushed: bool| -> RealEsrganModelKind {
+        if is_crushed {
+            RealEsrganModelKind::NomosUniSpanX4
+        } else {
+            RealEsrganModelKind::ClearRealitySpanX4
+        }
+    };
 
     if let Some(qp) = orig_profile {
         if qp.luma_s < 1.2 && qp.sharp < 0.2 {
             return None;
         }
-        // Spec 142: Photos, portraits, and natural scenes strictly route to 4x-ClearRealityV1 SPAN (Apache-2.0, razor-sharp hair/eyes, zero alien creases!)
+        // Protect crisp text, documents, screenshots, and QR codes from neural hallucination!
+        if qp.cls.as_str() == "text_ui" {
+            return None;
+        }
         if matches!(qp.cls.as_str(), "portrait" | "photo") {
-            return Some(RealEsrganModelKind::ClearRealitySpanX4);
+            let downscaled_from_orig = qp.w > 0 && qp.h > 0 && (width < qp.w || height < qp.h);
+            let crushed = is_heavily_compressed_photo || downscaled_from_orig || (max_edge <= 720 && src_bytes > 0);
+            return Some(pick_photo_model(crushed));
         }
         if qp.cls.as_str() == "anime" {
             return Some(RealEsrganModelKind::AnimeVideoV3);
         }
-        return Some(RealEsrganModelKind::ClearRealitySpanX4);
+        return Some(pick_photo_model(is_heavily_compressed_photo));
     }
 
-    let analysis = analyze_rgba_image(rgba, width, height, 0, None);
+    let analysis = analyze_rgba_image(rgba, width, height, src_bytes, None);
     if analysis.flat_pixel_ratio > 0.985 && analysis.sharp_edge_ratio < 0.001 {
         return None;
     }
+    // Zero-hallucination guard for crisp text, screenshots, documents, and QR codes!
+    if matches!(analysis.class, ImageClass::CrispTextUi) && analysis.skin_tone_ratio < 0.02 && analysis.flat_pixel_ratio > 0.50 {
+        return None;
+    }
 
-    // 1. Photos, portraits, real human faces, and natural scenes MUST use ClearRealitySpanX4 (SPAN 4×)
+    // 1. Photos, portraits, real human faces, and natural scenes
     let is_photo_or_portrait = matches!(
         analysis.class,
         ImageClass::Portrait
@@ -346,10 +394,13 @@ pub fn select_realesrgan_model(
     ) || analysis.skin_tone_ratio > 0.04;
 
     if is_photo_or_portrait {
-        return Some(RealEsrganModelKind::ClearRealitySpanX4);
+        let crushed = is_heavily_compressed_photo
+            || analysis.class == ImageClass::AlreadyHeavilyCompressed
+            || (max_edge <= 720 && src_bytes > 0);
+        return Some(pick_photo_model(crushed));
     }
 
-    // 2. Strictly pure flat anime/manga with sparse palette uses AnimeVideoV3; everything else uses ClearRealitySpanX4
+    // 2. Strictly pure flat anime/manga with sparse palette uses AnimeVideoV3; everything else uses adaptive SPAN
     let is_pure_anime = matches!(analysis.class, ImageClass::AnimeManga)
         && analysis.palette_sparsity > 0.60
         && analysis.flat_pixel_ratio > 0.45;
@@ -357,7 +408,7 @@ pub fn select_realesrgan_model(
     if is_pure_anime {
         Some(RealEsrganModelKind::AnimeVideoV3)
     } else {
-        Some(RealEsrganModelKind::ClearRealitySpanX4)
+        Some(pick_photo_model(is_heavily_compressed_photo))
     }
 }
 
@@ -1305,5 +1356,41 @@ mod tests {
 
         assert_eq!(model_no_qp, Some(RealEsrganModelKind::ClearRealitySpanX4));
         assert_eq!(model_qp, Some(RealEsrganModelKind::ClearRealitySpanX4));
+    }
+
+    #[test]
+    fn crushed_low_res_avif_routes_to_nomosuni_span_and_crisp_text_skips_ai() {
+        // 1. Crushed 512x384 AVIF portrait (13 KB, bpp ~ 0.54) must route to NomosUniSpanX4 to prevent diagonal crosshatch!
+        let (w, h) = (512u32, 384u32);
+        let mut portrait = vec![255u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                if y < 96 {
+                    portrait[i] = 20; portrait[i + 1] = 18; portrait[i + 2] = 22;
+                } else {
+                    portrait[i] = 232; portrait[i + 1] = 185; portrait[i + 2] = 160;
+                }
+            }
+        }
+        let sel_crushed = select_realesrgan_model_adaptive(&portrait, w, h, 13_500, None, false);
+        assert_eq!(sel_crushed, Some(RealEsrganModelKind::NomosUniSpanX4));
+
+        // 2. Crisp black-on-white document / QR screenshot must return None (zero text/QR hallucination!)
+        let (tw, th) = (256u32, 256u32);
+        let mut doc = vec![255u8; (tw * th * 4) as usize];
+        for row in (16..240).step_by(16) {
+            for x in 16..240 {
+                if (x / 4) % 2 == 0 {
+                    for dy in 0..3 {
+                        let i = (((row + dy) * tw + x) * 4) as usize;
+                        doc[i] = 10; doc[i + 1] = 10; doc[i + 2] = 10;
+                    }
+                }
+            }
+        }
+        let qp_doc = extract_original_quality_profile(&doc, tw, th);
+        let sel_doc = select_realesrgan_model_adaptive(&doc, tw, th, 8_000, Some(&qp_doc), false);
+        assert_eq!(sel_doc, None, "Crisp text/QR must skip neural SR to prevent distortion");
     }
 }

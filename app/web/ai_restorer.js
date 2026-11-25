@@ -1,10 +1,11 @@
-// Thin Browser DOM/IndexedDB Shell for ChatW's 100% Pure-Rust 4x-ClearRealityV1 SPAN (Apache-2.0) + FSR 1.0 WebGL2 GPU Engine (`window.__chatwWasmMedia`).
-// Spec 142: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 EASU + RL Deconvolution -> Stage 2 ClearReality SPAN 4× (833 KB FP16, 6-MRT GPU) + Adaptive Optical RL Clarity!
+// Thin Browser DOM/IndexedDB Shell for ChatW's 100% Pure-Rust Adaptive Multi-Model AI Restoration Engine (`window.__chatwWasmMedia`).
+// Spec 143: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 + RL -> Stage 2 Adaptive SPAN 4× (NomosUni AVIF / ClearRealityV1 / AnimeVideoV3) + Text/QR Guard + AbortSignal cancellation!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'progressive-alg-then-clearreality-span-v19';
+  const PIPELINE_VERSION = 'adaptive-multi-span-avif-v20';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
+    nomosuni_span_x4: { id: 'nomosuni_span_x4', cwsrUrl: '/models/nomosuni_span_x4.cwsp', license: 'CC-BY-4.0', scale: 4 },
     clearreality_span_x4: { id: 'clearreality_span_x4', cwsrUrl: '/models/clearreality_v1_x4.cwsp', license: 'Apache-2.0', scale: 4 },
     lsdir_compact3_x4: { id: 'lsdir_compact3_x4', cwsrUrl: '/models/lsdir_compact3_x4.cwsr', license: 'CC-BY-4.0', scale: 4 },
     fsr1_easu_rcas: { id: 'fsr1_easu_rcas', license: 'MIT', scale: 2 },
@@ -613,13 +614,14 @@
         } catch (_) {}
       }
 
-      // STAGE 2: 4× Photo AI Super-Resolution (`4xLSDIRCompact3`, 1.18 MB, CC-BY-4.0) + Post-AI Optical RL Clarity!
-      // 1) 4xLSDIRCompact3 erases 100% of 8x8 AVIF/JPEG compression blocks and upscales 4× (2048×1536 / 3840×2880).
-      // 2) Post-AI 1× Edge-Masked Luma RL Optical Clarity eliminates denoiser softness for razor-sharp hair, eyes & lashes!
+      // STAGE 2: Adaptive Multi-Model Neural 4× Super-Resolution (`nomosuni_span_x4` for crushed/low-res AVIF, `clearreality_span_x4` for clean/high-res AVIF, `realesr_animevideov3` for anime, skip crisp text/QR!)
       let res = null;
+      if (meta.signal && meta.signal.aborted) {
+        return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
+      }
       if (wasm && typeof wasm.selectRealEsrganModel === 'function' && typeof wasm.restoreImageRealEsrgan === 'function') {
         try {
-          const sel = wasm.selectRealEsrganModel(srcU8, procW, procH, origProfileJson, meta.modelId || '');
+          const sel = wasm.selectRealEsrganModel(srcU8, procW, procH, origProfileJson, meta.modelId || '', srcBytes);
           if (sel && sel.skip) {
             return { enhanced: false, skipped: true, reason: sel.reason || 'skipped', url: imageUrl };
           }
@@ -628,6 +630,9 @@
             const pSpan = stage1Delivered ? 54 : 80;
             reportProgress(pBase);
             const modelBytes = await loadModelBytesCached(sel.modelId, sel.cwsrUrl, sel.version);
+            if (meta.signal && meta.signal.aborted) {
+              return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
+            }
             await yieldUiSlice();
             const scaledProgress = (pct) => reportProgress(pBase + Math.round((Number(pct) || 0) * pSpan / 100));
             const srOut = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress);
@@ -638,10 +643,11 @@
                 try {
                   reportProgress(87);
                   await yieldUiSlice();
+                  const maxDisplayCap = Math.max(1024, Math.min(3840, Number(meta.maxDisplayEdge) || 3840));
                   let pw = res.width;
                   let ph = res.height;
-                  if (Math.max(pw, ph) > 3840) {
-                    const r = 3840 / Math.max(pw, ph);
+                  if (Math.max(pw, ph) > maxDisplayCap) {
+                    const r = maxDisplayCap / Math.max(pw, ph);
                     pw = Math.round(pw * r);
                     ph = Math.round(ph * r);
                   }
@@ -654,8 +660,8 @@
                   tctx.drawImage(res.canvas, 0, 0, pw, ph);
                   const aiImg = tctx.getImageData(0, 0, pw, ph);
                   const aiU8 = new Uint8Array(aiImg.data.buffer, aiImg.data.byteOffset, aiImg.data.byteLength);
-                  // Adaptive Post-AI Optical RL Clarity: crisp 0.85 for low-res compressed photos (< 900px), gentle 0.45 for high-res originals
-                  const postRlStrength = maxDim < 900 ? 0.85 : 0.45;
+                  // Adaptive Post-AI Optical RL Clarity: gentle 0.65 for NomosUni/low-res AVIF, crisp 0.40 for ClearReality 4K
+                  const postRlStrength = sel.modelId === 'nomosuni_span_x4' || maxDim < 900 ? 0.65 : 0.40;
                   const postRl = await wasm.upscaleFsr1(aiU8, pw, ph, pw, ph, postRlStrength, null);
                   if (postRl && postRl.ok && postRl.canvas) {
                     res = {
