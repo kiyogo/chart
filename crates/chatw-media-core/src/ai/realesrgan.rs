@@ -270,13 +270,14 @@ fn extract_profile_with_kernel_stride(
     }
 
     // 1. Detect cel-shaded anime / manga / flat digital illustrations BEFORE portrait skin-tone heuristic,
-    // because anime characters with peach skin often exceed `skin_tone_ratio > 0.04` while still having `AnimeManga` or `FlatGraphic` structure
-    // (excluding synthetic 2-color test solids with palette_sparsity >= 0.98).
+    // because anime characters with peach skin often exceed `skin_tone_ratio > 0.04` while still having `AnimeManga`,
+    // `FlatGraphic`, or strong comic ink outlines (`outline_r >= 0.012 && sat_m >= 0.28`).
     let is_anime_art = matches!(analysis.class, ImageClass::AnimeManga)
         || (matches!(analysis.class, ImageClass::FlatGraphic)
             && analysis.flat_pixel_ratio < 0.95
             && analysis.palette_sparsity < 0.98
-            && (sat_m > 0.20 || analysis.sharp_edge_ratio > 0.005));
+            && (sat_m > 0.20 || analysis.sharp_edge_ratio > 0.005))
+        || (outline_r >= 0.012 && sat_m >= 0.28);
 
     // 2. Real photos, portraits, real human faces, and natural scenes MUST NOT route to anime!
     let is_human_or_photo = !is_anime_art
@@ -330,6 +331,42 @@ fn extract_profile_with_kernel_stride(
         outline_r,
         loss_ratio: 1.0,
     }
+}
+
+/// Fast comic/cel-art dark ink outline density estimator shared by profile & adaptive routing.
+fn compute_dark_outline_ratio(rgba: &[u8], width: u32, height: u32) -> f32 {
+    let w = width as usize;
+    let h = height as usize;
+    if w < 8 || h < 8 || rgba.len() < w * h * 4 {
+        return 0.0;
+    }
+    let step = ((w.max(h) / 96).max(1)).min(8);
+    let ks = (w.min(h) / 160).max(1).min(2);
+    let pad = (ks * 2).max(2);
+    let luma_at = |px: usize, py: usize| -> f64 {
+        let i = (py * w + px) * 4;
+        0.299 * (rgba[i] as f64) + 0.587 * (rgba[i + 1] as f64) + 0.114 * (rgba[i + 2] as f64)
+    };
+    let mut dark_outline = 0u64;
+    let mut count = 0u64;
+    let mut y = pad;
+    while y + pad < h {
+        let mut x = pad;
+        while x + pad < w {
+            let yc = luma_at(x, y);
+            let yl = luma_at(x - ks, y);
+            let yr = luma_at(x + ks, y);
+            let yu = luma_at(x, y - ks);
+            let yd = luma_at(x, y + ks);
+            if yc < 95.0 && (yl.max(yr).max(yu).max(yd) - yc) > 55.0 {
+                dark_outline += 1;
+            }
+            count += 1;
+            x += step;
+        }
+        y += step;
+    }
+    ((dark_outline as f64 / count.max(1) as f64 * 10000.0).round() / 10000.0) as f32
 }
 
 /// Automatically select the optimal neural super-resolution model based on content class, resolution, and AVIF compression ratio.
@@ -412,13 +449,15 @@ pub fn select_realesrgan_model_adaptive(
     }
 
     // 1. Cel-shaded anime/manga & flat multi-tone digital illustrations (evaluate BEFORE skin_tone_ratio so anime characters do not route to photo/portrait!)
-    let is_pure_anime = (matches!(analysis.class, ImageClass::AnimeManga)
+    let outline_r = compute_dark_outline_ratio(rgba, width, height);
+    let is_pure_anime = ((matches!(analysis.class, ImageClass::AnimeManga)
         || (matches!(analysis.class, ImageClass::FlatGraphic)
             && analysis.flat_pixel_ratio < 0.95
             && analysis.palette_sparsity < 0.98
             && (analysis.color_saturation_mean > 0.20 || analysis.sharp_edge_ratio > 0.005)))
         && analysis.palette_sparsity > 0.52
-        && analysis.flat_pixel_ratio > 0.35;
+        && analysis.flat_pixel_ratio > 0.35)
+        || (outline_r >= 0.012 && analysis.color_saturation_mean >= 0.28);
 
     if is_pure_anime {
         return Some(RealEsrganModelKind::AnimeVideoV3);
@@ -1378,6 +1417,11 @@ mod tests {
         let (w, h) = img.dimensions();
         let raw = img.into_raw();
         let qp = extract_original_quality_profile(&raw, w, h);
+        let a = analyze_rgba_image(&raw, w, h, 200_000, None);
+        eprintln!(
+            "cosplay e1cddb86 analysis={:?} flat={:.3} sat={:.3} pal={:.3} skin={:.3} outline_r={:.4} cls={}",
+            a.class, a.flat_pixel_ratio, a.color_saturation_mean, a.palette_sparsity, a.skin_tone_ratio, qp.outline_r, qp.cls
+        );
         assert_eq!(qp.cls, "portrait");
 
         let model_no_qp = select_realesrgan_model(&raw, w, h, None, false);
@@ -1450,5 +1494,21 @@ mod tests {
         let sel = select_realesrgan_model_adaptive(&raw, w, h, 40_000, Some(&qp), false);
         assert_eq!(qp.cls, "anime");
         assert_eq!(sel, Some(RealEsrganModelKind::AnimeVideoV3));
+
+        let full_p = "/home/ngson/.gemini/antigravity/brain/0565c121-6c93-4251-b0a9-4ed58288b3ea/verify_spec154/luffy_full_banner.png";
+        if std::path::Path::new(full_p).exists() {
+            let fim = image::open(full_p).unwrap().to_rgba8();
+            let (fw, fh) = fim.dimensions();
+            let fraw = fim.into_raw();
+            let fa = analyze_rgba_image(&fraw, fw, fh, 30_000, None);
+            let fqp = extract_original_quality_profile(&fraw, fw, fh);
+            let fsel = select_realesrgan_model_adaptive(&fraw, fw, fh, 30_000, Some(&fqp), false);
+            eprintln!(
+                "luffy_full analysis={:?} flat={:.3} sat={:.3} pal={:.3} skin={:.3} outline_r={:.4} cls={} sel={:?}",
+                fa.class, fa.flat_pixel_ratio, fa.color_saturation_mean, fa.palette_sparsity, fa.skin_tone_ratio, fqp.outline_r, fqp.cls, fsel
+            );
+            assert_eq!(fqp.cls, "anime");
+            assert_eq!(fsel, Some(RealEsrganModelKind::AnimeVideoV3));
+        }
     }
 }

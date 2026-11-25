@@ -4020,7 +4020,7 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
 }
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn.lightbox-enhance-toggle.is-active {
   color: #60a5fa !important;
-  background: rgba(59, 130, 246, 0.22) !important;
+  background: transparent !important;
 }
 .lightbox-actions {
   display: inline-flex;
@@ -4032,7 +4032,7 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
   box-shadow: none !important;
   background: transparent !important;
 }
-/* 100% uniform borderless top-right Telegram-style icon buttons (Spec 080 / Spec 083) */
+/* 100% uniform borderless top-right Telegram-style icon buttons (Spec 080 / Spec 159: zero white circle or hover effect) */
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn,
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-download,
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-close {
@@ -4058,7 +4058,8 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
   flex-shrink: 0;
   cursor: pointer;
   text-decoration: none;
-  transition: background-color 140ms ease, color 140ms ease, opacity 140ms ease, transform 110ms ease;
+  transform: none !important;
+  transition: none !important;
 }
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-rotate,
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-close {
@@ -4079,22 +4080,29 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn:hover:not(:disabled),
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-download:hover,
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-close:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  color: #FFFFFF !important;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.88) !important;
   border: none !important;
   box-shadow: none !important;
+  transform: none !important;
+}
+.lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn.lightbox-enhance-toggle.is-active:hover:not(:disabled) {
+  background: transparent !important;
+  color: #60a5fa !important;
+  transform: none !important;
 }
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn:active:not(:disabled),
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-download:active,
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-close:active {
-  background: rgba(255, 255, 255, 0.24) !important;
-  color: #FFFFFF !important;
-  transform: scale(0.93);
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+  transform: none !important;
 }
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn:focus-visible,
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-zoom-readout:focus-visible {
-  background: rgba(255, 255, 255, 0.18) !important;
+  background: transparent !important;
   outline: none !important;
+  box-shadow: none !important;
 }
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-tool-btn:disabled {
   opacity: 0.34 !important;
@@ -4122,15 +4130,18 @@ html[data-reduce-motion="true"] .ai-gen-pct::before {
   justify-content: center;
   cursor: pointer;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
-  transition: background-color 140ms ease, color 140ms ease, transform 110ms ease;
+  transform: none !important;
+  transition: none !important;
 }
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-zoom-readout:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  color: #FFFFFF !important;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.90) !important;
+  transform: none !important;
 }
 .lightbox .lightbox-topbar .lightbox-actions .lightbox-zoom-readout:active {
-  background: rgba(255, 255, 255, 0.24) !important;
-  transform: scale(0.95);
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.90) !important;
+  transform: none !important;
 }
 .chat-column:has(.lightbox, .modal-overlay),
 .chat-messages:has(.lightbox, .modal-overlay) {

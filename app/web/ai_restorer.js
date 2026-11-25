@@ -2,7 +2,7 @@
 // Spec 143: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 + RL -> Stage 2 Adaptive SPAN 4× (NomosUni AVIF / ClearRealityV1 / AnimeVideoV3) + Text/QR Guard + AbortSignal cancellation!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v25';
+  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v28';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
     nomosuni_span_x2: { id: 'nomosuni_span_x2', cwsrUrl: '/models/nomosuni_span_x2.cwsp', license: 'CC-BY-4.0', scale: 2 },
