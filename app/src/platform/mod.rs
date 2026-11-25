@@ -1641,9 +1641,20 @@ pub fn focus_selector(selector: &str) {
 
 /// Public origin of the web app (for shareable links).
 pub async fn app_origin() -> String {
-    let mut ev = dioxus::document::eval("dioxus.send(window.location.origin || '');");
-    let o = ev.recv::<String>().await.unwrap_or_default();
-    if o.starts_with("http") { o } else { api_base() }
+    #[cfg(feature = "desktop")]
+    {
+        return api_base();
+    }
+    #[cfg(not(feature = "desktop"))]
+    {
+        let mut ev = dioxus::document::eval("dioxus.send(window.location.origin || '');");
+        let o = ev.recv::<String>().await.unwrap_or_default();
+        if o.starts_with("http") && !o.contains("dioxus.localhost") && !o.contains("ipc.localhost") {
+            o
+        } else {
+            api_base()
+        }
+    }
 }
 
 /// Share a link with the OS share sheet when available, otherwise copy it.
@@ -1980,7 +1991,26 @@ pub async fn resolve_e2ee_blob_media_url(
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (key_b64, nonce_b64, mime, priority);
+        let _ = priority;
+        if !key_b64.is_empty() {
+            if let crate::storage::recovery::MediaFetchOutcome::Ready { bytes, mime: resolved_mime, .. } =
+                crate::storage::recovery::load_or_fetch_media(
+                    url,
+                    key_b64,
+                    nonce_b64,
+                    if mime.is_empty() { "application/octet-stream" } else { mime },
+                    "dm",
+                    "original",
+                )
+                .await
+            {
+                let obj_url = media_bytes_to_object_url(&bytes, &resolved_mime).await;
+                if !obj_url.is_empty() {
+                    return Some(obj_url);
+                }
+            }
+            return None;
+        }
         Some(resolve_asset_url(url))
     }
 }

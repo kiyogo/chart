@@ -42,8 +42,8 @@ pub fn routes() -> Router<AppState> {
         .route("/{group_id}/block", post(manage::block_group).delete(manage::unblock_group))
         .route("/{group_id}/invite-link", get(manage::get_invite_link))
         .route("/{group_id}/invite-link/regenerate", post(manage::regenerate_invite_link))
-        .route("/{group_id}/avatar", post(upload_group_avatar))
-        .route("/{group_id}/banner", post(upload_group_banner))
+        .route("/{group_id}/avatar", post(upload_group_avatar).layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024)))
+        .route("/{group_id}/banner", post(upload_group_banner).layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024)))
         .route("/", post(create_group).get(list_my_groups))
         .route("/join/{code}", post(join_by_invite))
         .route(
@@ -902,13 +902,30 @@ async fn list_messages(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
-    let role = get_member_role(&state.db, group_id, user.id).await?;
-    if role.is_none() {
-        return Err(AppError::Forbidden("not_a_group_member"));
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+
+    if let Some(ch_id) = query.channel_id {
+        let is_priv: Option<bool> = sqlx::query_scalar(
+            "SELECT is_private FROM group_channels WHERE id = $1 AND group_id = $2",
+        )
+        .bind(ch_id)
+        .bind(group_id)
+        .fetch_optional(&state.db)
+        .await?;
+        match is_priv {
+            None => return Err(AppError::NotFound("channel_not_found")),
+            Some(true) if !matches!(role.as_str(), "owner" | "admin") => {
+                return Err(AppError::Forbidden("private_channel_admin_only"));
+            }
+            _ => {}
+        }
     }
 
     let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let before_seq = query.before_seq.unwrap_or(i64::MAX);
+    let is_group_admin = matches!(role.as_str(), "owner" | "admin");
 
     let rows = sqlx::query!(
         r#"
@@ -919,8 +936,10 @@ async fn list_messages(
         FROM group_messages m
         JOIN users u ON m.sender_id = u.id
         LEFT JOIN bots b ON b.id = m.bot_id
+        LEFT JOIN group_channels gc ON gc.id = m.channel_id
         WHERE m.group_id = $1
           AND ($2::uuid IS NULL OR m.channel_id = $2)
+          AND ($5::bool OR m.channel_id IS NULL OR COALESCE(gc.is_private, FALSE) = FALSE)
           AND m.seq < $3
         ORDER BY m.seq DESC
         LIMIT $4
@@ -928,7 +947,8 @@ async fn list_messages(
         group_id,
         query.channel_id,
         before_seq,
-        limit
+        limit,
+        is_group_admin
     )
     .fetch_all(&state.db)
     .await?;
@@ -1014,6 +1034,22 @@ async fn send_message(
 
     if payload.content.trim().is_empty() {
         return Err(AppError::BadRequest("empty_message"));
+    }
+    if let Some(ch_id) = payload.channel_id {
+        let is_priv: Option<bool> = sqlx::query_scalar(
+            "SELECT is_private FROM group_channels WHERE id = $1 AND group_id = $2",
+        )
+        .bind(ch_id)
+        .bind(group_id)
+        .fetch_optional(&state.db)
+        .await?;
+        match is_priv {
+            None => return Err(AppError::NotFound("channel_not_found")),
+            Some(true) if !matches!(role.as_str(), "owner" | "admin") => {
+                return Err(AppError::Forbidden("private_channel_admin_only"));
+            }
+            _ => {}
+        }
     }
 
     let msg_id = Uuid::new_v4();
@@ -1288,20 +1324,21 @@ async fn list_channels(
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
-    let role = get_member_role(&state.db, group_id, user.id).await?;
-    if role.is_none() {
-        return Err(AppError::Forbidden("not_a_group_member"));
-    }
+    let role = get_member_role(&state.db, group_id, user.id)
+        .await?
+        .ok_or(AppError::Forbidden("not_a_group_member"))?;
+    let is_group_admin = matches!(role.as_str(), "owner" | "admin");
 
     let rows = sqlx::query_as!(
         GroupChannelItem,
         r#"
         SELECT id, group_id, category_id, name, description, channel_type, position, is_private, created_at
         FROM group_channels
-        WHERE group_id = $1
+        WHERE group_id = $1 AND ($2::bool OR NOT is_private)
         ORDER BY position ASC, created_at ASC
         "#,
-        group_id
+        group_id,
+        is_group_admin
     )
     .fetch_all(&state.db)
     .await?;

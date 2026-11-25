@@ -104,16 +104,20 @@ pub fn DmDetailsPanel(
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| username.clone());
     let effects_on = use_context::<PrefsCtx>().prefs.read().profile_effects;
-    let c1 = p.as_ref().and_then(|p| p.profile_color.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| "var(--accent)".into());
-    let c2 = p.as_ref().and_then(|p| p.profile_accent.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| c1.clone());
+    let safe_color = |c: &str| {
+        (c.starts_with('#') && (c.len() == 4 || c.len() == 7) && c[1..].chars().all(|ch| ch.is_ascii_hexdigit()))
+            || c == "var(--accent)"
+    };
+    let c1 = p.as_ref().and_then(|p| p.profile_color.clone()).filter(|c| safe_color(c)).unwrap_or_else(|| "var(--accent)".into());
+    let c2 = p.as_ref().and_then(|p| p.profile_accent.clone()).filter(|c| safe_color(c)).unwrap_or_else(|| c1.clone());
     let effect = p.as_ref().and_then(|p| p.profile_effect.clone()).unwrap_or_else(|| "none".into());
-    let custom_fx_url = p.as_ref().and_then(|p| p.custom_effect_url.clone()).filter(|u| !u.is_empty());
+    let custom_fx_url = p.as_ref().and_then(|p| p.custom_effect_url.clone()).filter(|u| platform::safe_asset_path(u));
     let custom_fx_anim = p.as_ref().and_then(|p| p.custom_effect_anim.clone()).unwrap_or_else(|| "none".into());
     let decoration = p.as_ref().and_then(|p| p.avatar_decoration.clone());
     let banner_style = p
         .as_ref()
         .and_then(|p| p.custom_banner_url.clone())
-        .filter(|u| !u.is_empty())
+        .filter(|u| platform::safe_asset_path(u))
         .map(|u| format!("background-image: url('{}');", platform::resolve_asset_url(&u)))
         .unwrap_or_else(|| format!("background: linear-gradient(135deg, {c1}, {c2});"));
     let status_line = p.as_ref().map(|p| {

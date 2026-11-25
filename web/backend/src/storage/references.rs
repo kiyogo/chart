@@ -407,11 +407,24 @@ pub async fn handle_delete_reference(
     Ok(Json(serde_json::json!({ "deleted_scope": "everyone", "ref_id": ref_id })))
 }
 
+async fn require_admin(state: &AppState, user_id: Uuid) -> AppResult<()> {
+    let is_admin: bool = sqlx::query_scalar("SELECT is_admin FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .unwrap_or(false);
+    if !is_admin {
+        return Err(AppError::Forbidden("admin_required"));
+    }
+    Ok(())
+}
+
 pub async fn handle_storage_metrics(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<serde_json::Value>> {
     let user = auth_caller(&state, &headers).await?;
+    require_admin(&state, user.id).await?;
 
     let user_refs = sqlx::query(
         r#"
@@ -551,7 +564,8 @@ pub async fn handle_cleanup_relays(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<migration::RelayCleanupOutcome>> {
-    let _user = auth_caller(&state, &headers).await?;
+    let user = auth_caller(&state, &headers).await?;
+    require_admin(&state, user.id).await?;
     let outcome = migration::cleanup_relays_safely(&state.db, &state.storage).await?;
     Ok(Json(outcome))
 }
@@ -566,7 +580,8 @@ pub async fn handle_run_migration(
     headers: HeaderMap,
     body: Option<Json<RunMigrationReq>>,
 ) -> AppResult<Json<migration::MigrationJobResult>> {
-    let _user = auth_caller(&state, &headers).await?;
+    let user = auth_caller(&state, &headers).await?;
+    require_admin(&state, user.id).await?;
     let dry_run = body.and_then(|b| b.0.dry_run).unwrap_or(true);
     let res = migration::execute_migration_job(&state.db, &state.storage, dry_run).await?;
     Ok(Json(res))
@@ -1015,7 +1030,8 @@ pub async fn handle_gc_incomplete(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<migration::IncompleteAndGcReport>> {
-    let _user = auth_caller(&state, &headers).await?;
+    let user = auth_caller(&state, &headers).await?;
+    require_admin(&state, user.id).await?;
     let report = migration::cleanup_incomplete_uploads_and_gc(&state.db, &state.storage).await?;
     Ok(Json(report))
 }

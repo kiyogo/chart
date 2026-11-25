@@ -47,7 +47,8 @@ where
     let w = width as usize;
     let h = height as usize;
     let s = scale.max(1) as usize;
-    if w == 0 || h == 0 || src_rgba.len() < w * h * 4 {
+    let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+    if w == 0 || h == 0 || req_bytes.is_none_or(|n| src_rgba.len() < n) {
         return Err(MediaError::EmptyInput);
     }
 
@@ -55,10 +56,12 @@ where
     let ov = (overlap as usize).min(ts / 3);
     let stride = (ts - ov * 2).max(16);
 
-    let out_w = w * s;
-    let out_h = h * s;
-    let mut accum_rgba = vec![0.0f32; out_w * out_h * 4];
-    let mut accum_weight = vec![0.0f32; out_w * out_h];
+    let out_w = w.checked_mul(s).ok_or_else(|| MediaError::InvalidParameter("tile_out_w_overflow".into()))?;
+    let out_h = h.checked_mul(s).ok_or_else(|| MediaError::InvalidParameter("tile_out_h_overflow".into()))?;
+    let out_pix = out_w.checked_mul(out_h).ok_or_else(|| MediaError::InvalidParameter("tile_out_pix_overflow".into()))?;
+    let out_rgba_len = out_pix.checked_mul(4).ok_or_else(|| MediaError::InvalidParameter("tile_out_rgba_overflow".into()))?;
+    let mut accum_rgba = vec![0.0f32; out_rgba_len];
+    let mut accum_weight = vec![0.0f32; out_pix];
 
     let mut y0 = 0usize;
     while y0 < h {

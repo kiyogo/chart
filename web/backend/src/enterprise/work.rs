@@ -128,6 +128,41 @@ pub async fn create_project(
         }
     }
 
+    if let Some(dept_id) = p.department_id {
+        let ok: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM enterprise_departments WHERE id = $1 AND server_id = $2)",
+        )
+        .bind(dept_id)
+        .bind(server_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_department"));
+        }
+    }
+    if let Some(mgr_id) = p.manager_user_id {
+        let ok: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2)",
+        )
+        .bind(server_id)
+        .bind(mgr_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_manager"));
+        }
+    }
+    if let Some(ref sd) = p.start_date {
+        if !sd.trim().is_empty() && !valid_ymd(sd) {
+            return Err(AppError::BadRequest("invalid_start_date"));
+        }
+    }
+    if let Some(ref dd) = p.due_date {
+        if !dd.trim().is_empty() && !valid_ymd(dd) {
+            return Err(AppError::BadRequest("invalid_due_date"));
+        }
+    }
+
     let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO enterprise_projects (
@@ -147,8 +182,8 @@ pub async fn create_project(
     .bind(priority)
     .bind(p.manager_user_id.or(Some(uid)))
     .bind(p.linked_channel_id)
-    .bind(p.start_date.filter(|s| valid_ymd(s)))
-    .bind(p.due_date.filter(|s| valid_ymd(s)))
+    .bind(p.start_date.filter(|s| !s.trim().is_empty()))
+    .bind(p.due_date.filter(|s| !s.trim().is_empty()))
     .bind(p.milestones.unwrap_or_else(|| json!([])))
     .bind(p.member_ids.unwrap_or_else(|| vec![uid]))
     .bind(uid)
@@ -181,7 +216,12 @@ pub async fn update_project(
             return Err(AppError::BadRequest("invalid_project_status"));
         }
     }
-    sqlx::query(
+    if let Some(ref pr) = p.priority {
+        if !["low", "medium", "high", "urgent"].contains(&pr.as_str()) {
+            return Err(AppError::BadRequest("invalid_priority"));
+        }
+    }
+    let res = sqlx::query(
         r#"
         UPDATE enterprise_projects
         SET status = COALESCE($3, status),
@@ -197,6 +237,9 @@ pub async fn update_project(
     .bind(p.milestones)
     .execute(&state.db)
     .await?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("project_not_found"));
+    }
     emit_enterprise(&state, server_id, "projects.updated", json!({ "id": proj_id })).await;
     Ok(Json(json!({ "updated": true })))
 }
@@ -377,6 +420,36 @@ pub async fn create_task(
         }
     }
 
+    if let Some(proj_id) = p.project_id {
+        let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_projects WHERE id = $1 AND server_id = $2)")
+            .bind(proj_id)
+            .bind(server_id)
+            .fetch_one(&state.db)
+            .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_project_id"));
+        }
+    }
+    if let Some(dept_id) = p.department_id {
+        let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_departments WHERE id = $1 AND server_id = $2)")
+            .bind(dept_id)
+            .bind(server_id)
+            .fetch_one(&state.db)
+            .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_department_id"));
+        }
+    }
+    if let Some(parent_id) = p.parent_task_id {
+        let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_tasks WHERE id = $1 AND server_id = $2)")
+            .bind(parent_id)
+            .bind(server_id)
+            .fetch_one(&state.db)
+            .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_parent_task_id"));
+        }
+    }
     if let Some(ch_id) = p.source_channel_id {
         let ch_srv: Option<Uuid> = sqlx::query_scalar("SELECT server_id FROM channels WHERE id = $1")
             .bind(ch_id)
@@ -385,6 +458,22 @@ pub async fn create_task(
         if ch_srv != Some(server_id) {
             return Err(AppError::BadRequest("invalid_source_channel"));
         }
+        crate::storage::permissions::authorize_channel_access(&state.db, uid, ch_id, base_perm::VIEW_CHANNELS).await?;
+    }
+    if let Some(msg_id) = p.source_message_id {
+        let msg_ch: Option<(Uuid, Uuid, bool)> = sqlx::query_as(
+            "SELECT cm.channel_id, c.server_id, c.is_private FROM channel_messages cm JOIN channels c ON c.id = cm.channel_id WHERE cm.id = $1",
+        )
+        .bind(msg_id)
+        .fetch_optional(&state.db)
+        .await?;
+        let Some((msg_ch_id, msg_srv_id, _is_priv)) = msg_ch else {
+            return Err(AppError::BadRequest("invalid_source_message"));
+        };
+        if msg_srv_id != server_id || p.source_channel_id.is_some_and(|cid| cid != msg_ch_id) {
+            return Err(AppError::BadRequest("invalid_source_message"));
+        }
+        crate::storage::permissions::authorize_channel_access(&state.db, uid, msg_ch_id, base_perm::VIEW_CHANNELS).await?;
     }
 
     let mut tx = state.db.begin().await?;
@@ -488,7 +577,14 @@ pub async fn update_task(
         }
     }
 
+    if let Some(ref dd) = p.due_date
+        && !dd.trim().is_empty()
+        && !valid_ymd(dd)
+    {
+        return Err(AppError::BadRequest("invalid_due_date"));
+    }
     let next_done = p.status.as_deref() == Some("done");
+    let clear_completed = p.status.as_deref().is_some_and(|s| s != "done");
     sqlx::query(
         r#"
         UPDATE enterprise_tasks
@@ -499,7 +595,7 @@ pub async fn update_task(
             assignee_id = COALESCE($7, assignee_id),
             due_date = COALESCE($8, due_date),
             checklist = COALESCE($9, checklist),
-            completed_at = CASE WHEN $10 THEN COALESCE(completed_at, now()) ELSE completed_at END,
+            completed_at = CASE WHEN $10 THEN COALESCE(completed_at, now()) WHEN $11 THEN NULL ELSE completed_at END,
             updated_at = now()
         WHERE id = $1 AND server_id = $2
         "#,
@@ -511,9 +607,10 @@ pub async fn update_task(
     .bind(p.status.as_deref())
     .bind(p.priority.as_deref())
     .bind(p.assignee_id)
-    .bind(p.due_date.filter(|d| valid_ymd(d)))
+    .bind(p.due_date.filter(|d| !d.trim().is_empty()))
     .bind(p.checklist)
     .bind(next_done)
+    .bind(clear_completed)
     .execute(&state.db)
     .await?;
 
@@ -551,7 +648,21 @@ pub async fn list_task_comments(
     Path((server_id, task_id)): Path<(Uuid, Uuid)>,
 ) -> AppResult<Json<Vec<TaskCommentItem>>> {
     let uid = auth_user(&state, &headers).await?;
-    let _ctx = load_ctx(&state.db, server_id, uid).await?;
+    let ctx = load_ctx(&state.db, server_id, uid).await?;
+    let is_all = ctx.is_admin() || ctx.has(ent_perm::ASSIGN_TASKS) || ctx.has(ent_perm::APPROVE_TASKS) || ctx.has(ent_perm::VIEW_REPORTS);
+    let can_see: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM enterprise_tasks t WHERE t.id = $1 AND t.server_id = $2 AND ($3::bool OR t.assignee_id = $4 OR t.created_by = $4 OR $4 = ANY(t.participant_ids) OR $4 = ANY(t.watcher_ids) OR (t.department_id IS NOT NULL AND t.department_id = ANY($5))))",
+    )
+    .bind(task_id)
+    .bind(server_id)
+    .bind(is_all)
+    .bind(uid)
+    .bind(&ctx.dept_ids)
+    .fetch_one(&state.db)
+    .await?;
+    if !can_see {
+        return Err(AppError::Forbidden("task_access_denied"));
+    }
     let rows: Vec<TaskCommentItem> = sqlx::query_as(
         r#"
         SELECT c.id, c.task_id, c.author_id, u.username AS author_name, c.content, c.created_at
@@ -581,7 +692,21 @@ pub async fn add_task_comment(
     Json(p): Json<NewCommentReq>,
 ) -> AppResult<Json<Value>> {
     let uid = auth_user(&state, &headers).await?;
-    let _ctx = load_ctx(&state.db, server_id, uid).await?;
+    let ctx = load_ctx(&state.db, server_id, uid).await?;
+    let is_all = ctx.is_admin() || ctx.has(ent_perm::ASSIGN_TASKS) || ctx.has(ent_perm::APPROVE_TASKS) || ctx.has(ent_perm::VIEW_REPORTS);
+    let can_see: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM enterprise_tasks t WHERE t.id = $1 AND t.server_id = $2 AND ($3::bool OR t.assignee_id = $4 OR t.created_by = $4 OR $4 = ANY(t.participant_ids) OR $4 = ANY(t.watcher_ids) OR (t.department_id IS NOT NULL AND t.department_id = ANY($5))))",
+    )
+    .bind(task_id)
+    .bind(server_id)
+    .bind(is_all)
+    .bind(uid)
+    .bind(&ctx.dept_ids)
+    .fetch_one(&state.db)
+    .await?;
+    if !can_see {
+        return Err(AppError::Forbidden("task_access_denied"));
+    }
     let content = clean_req(&p.content, 1, 2000, "invalid_comment")?;
 
     let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_tasks WHERE id = $1 AND server_id = $2)")

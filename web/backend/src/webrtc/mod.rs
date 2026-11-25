@@ -57,9 +57,63 @@ async fn handle_webrtc_signal(
     };
 
     if let Some(target_uid) = payload.target_user_id {
+        if target_uid != user.id {
+            let blocked: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM user_blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1))",
+            )
+            .bind(user.id)
+            .bind(target_uid)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(false);
+            if blocked {
+                return Err(AppError::Forbidden("blocked"));
+            }
+            let allowed_peer: bool = sqlx::query_scalar(
+                r#"
+                SELECT EXISTS(
+                    SELECT 1 FROM friendships WHERE (user_a = LEAST($1, $2) AND user_b = GREATEST($1, $2))
+                ) OR EXISTS(
+                    SELECT 1 FROM call_sessions c
+                    LEFT JOIN call_participants pa ON pa.call_id = c.id AND pa.user_id = $1
+                    LEFT JOIN call_participants pb ON pb.call_id = c.id AND pb.user_id = $2
+                    WHERE c.status IN ('ringing', 'active')
+                      AND ((c.caller_id = $1 AND c.receiver_id = $2) OR (c.caller_id = $2 AND c.receiver_id = $1) OR (pa.user_id IS NOT NULL AND pb.user_id IS NOT NULL))
+                ) OR EXISTS(
+                    SELECT 1 FROM voice_states va
+                    JOIN voice_states vb ON vb.channel_id = va.channel_id
+                    WHERE va.user_id = $1 AND vb.user_id = $2
+                ) OR EXISTS(
+                    SELECT 1 FROM recovery_requests rr
+                    WHERE ((rr.requester_user_id = $1 AND rr.target_user_id = $2) OR (rr.requester_user_id = $2 AND rr.target_user_id = $1))
+                      AND rr.status IN ('pending', 'transferring')
+                )
+                "#,
+            )
+            .bind(user.id)
+            .bind(target_uid)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(false);
+            if !allowed_peer {
+                return Err(AppError::Forbidden("not_authorized_signal_target"));
+            }
+        }
         // Direct P2P WebRTC Signal
         state.ws_hub.send_to_user(&target_uid, event).await;
     } else if let Some(ch_id) = payload.channel_id {
+        crate::storage::permissions::authorize_channel_access(&state.db, user.id, ch_id, perm_flags::CONNECT_VOICE).await?;
+        let in_voice: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM voice_states WHERE channel_id = $1 AND user_id = $2)",
+        )
+        .bind(ch_id)
+        .bind(user.id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(false);
+        if !in_voice {
+            return Err(AppError::Forbidden("not_in_voice_channel"));
+        }
         // Voice Channel WebRTC Signal -> relay to all participants in voice channel
         let participants = sqlx::query_scalar!(
             "SELECT user_id FROM voice_states WHERE channel_id = $1 AND user_id != $2",
@@ -87,7 +141,7 @@ async fn handle_join_voice_channel(
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
     let ch = sqlx::query!(
-        "SELECT server_id, channel_type FROM channels WHERE id = $1",
+        "SELECT server_id, channel_type, is_private FROM channels WHERE id = $1",
         channel_id
     )
     .fetch_optional(&state.db)
@@ -98,6 +152,15 @@ async fn handle_join_voice_channel(
         return Err(AppError::BadRequest("not_a_voice_channel"));
     }
 
+    if ch.is_private {
+        permissions::require_server_permission(
+            &state.db,
+            ch.server_id,
+            user.id,
+            perm_flags::ADMINISTRATOR,
+        )
+        .await?;
+    }
     permissions::require_server_permission(
         &state.db,
         ch.server_id,
@@ -206,11 +269,20 @@ async fn handle_get_voice_participants(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
-    let ch = sqlx::query!("SELECT server_id FROM channels WHERE id = $1", channel_id)
+    let ch = sqlx::query!("SELECT server_id, is_private FROM channels WHERE id = $1", channel_id)
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::NotFound("channel_not_found"))?;
 
+    if ch.is_private {
+        permissions::require_server_permission(
+            &state.db,
+            ch.server_id,
+            user.id,
+            perm_flags::ADMINISTRATOR,
+        )
+        .await?;
+    }
     permissions::require_server_permission(
         &state.db,
         ch.server_id,
@@ -233,10 +305,27 @@ async fn handle_update_voice_state(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
-    let ch = sqlx::query!("SELECT server_id FROM channels WHERE id = $1", channel_id)
+    let ch = sqlx::query!("SELECT server_id, is_private FROM channels WHERE id = $1", channel_id)
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::NotFound("channel_not_found"))?;
+
+    if ch.is_private {
+        permissions::require_server_permission(
+            &state.db,
+            ch.server_id,
+            user.id,
+            perm_flags::ADMINISTRATOR,
+        )
+        .await?;
+    }
+    permissions::require_server_permission(
+        &state.db,
+        ch.server_id,
+        user.id,
+        perm_flags::CONNECT_VOICE,
+    )
+    .await?;
 
     let row = sqlx::query!(
         r#"

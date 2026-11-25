@@ -90,6 +90,14 @@ async fn handle_register_device(
         .filter(|p| matches!(*p, "web" | "desktop" | "mobile" | "cli"))
         .unwrap_or("web");
 
+    if let Some(ref pk_b64) = req.ecdh_public_b64 {
+        crate::crypto::validate_p256_public_key_b64(pk_b64)
+            .map_err(|_| AppError::BadRequest("invalid_ecdh_public_key"))?;
+    }
+    if let Some(ref pk_b64) = req.ecdsa_public_b64 {
+        crate::crypto::validate_p256_public_key_b64(pk_b64)
+            .map_err(|_| AppError::BadRequest("invalid_ecdsa_public_key"))?;
+    }
     let ecdh = decode_b64_opt(req.ecdh_public_b64.as_deref(), 65);
     let ecdsa = decode_b64_opt(req.ecdsa_public_b64.as_deref(), 65);
     let fp = decode_b64_opt(req.key_fingerprint_b64.as_deref(), 32);
@@ -163,9 +171,9 @@ async fn handle_register_device(
         (did, state_str)
     } else {
         let did = Uuid::new_v4();
-        // Keep new devices without local E2EE identity keys in `pending` until a trusted device
-        // transfers `wrapped_sync_key` (automatically when !require_approval, or manually when opted in).
-        let initial_trust = if other_trusted_count > 0 && (require_approval || needs_key_sync) {
+        // When other trusted devices already exist, require explicit approval or cryptographic
+        // key-ownership proof (submitted immediately via `/api/devices/recover-lost` if keys were unwrapped).
+        let initial_trust = if other_trusted_count > 0 && (require_approval || needs_key_sync || has_account_keys) {
             "pending"
         } else {
             "trusted"
@@ -627,7 +635,8 @@ struct RecoverLostReq {
     /// over `b"chatw-recover-device-v1:" || current_device_id.as_bytes()`.
     #[serde(default)]
     pub recovery_proof_b64: Option<String>,
-    /// Explicit confirmation when no 2FA and no E2EE key backup exist and all prior devices are lost.
+    /// Legacy field kept for JSON backward compatibility; emergency bypass is no longer permitted when trusted devices exist.
+    #[allow(dead_code)]
     #[serde(default)]
     pub confirm_emergency_reset: bool,
 }
@@ -704,15 +713,7 @@ async fn handle_recover_lost_devices(
         }
 
         if !proof_verified {
-            let has_backup: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM user_key_backups WHERE user_id = $1)",
-            )
-            .bind(user.id)
-            .fetch_one(&state.db)
-            .await?;
-            if has_backup || !req.confirm_emergency_reset {
-                return Err(AppError::Forbidden("recovery_proof_or_2fa_required"));
-            }
+            return Err(AppError::Forbidden("recovery_proof_or_2fa_required"));
         }
     }
 
@@ -991,15 +992,18 @@ async fn handle_delta_sync(
     let group_since = q.group_since.unwrap_or(0);
     let channel_since = q.channel_since.unwrap_or(0);
 
-    // 1. DM incremental deltas (exclude deleted_for_all so deleted messages never resurrect on sync)
+    // 1. DM incremental deltas (emit cleared tombstones for deleted_for_all so offline devices remove them)
     let dm_rows = sqlx::query(
         r#"
         SELECT id, seq, sender_id, receiver_id, reply_to_id, is_pinned, is_edited, deleted_for_all, created_at,
-               CASE WHEN sender_id = $1 THEN sender_envelope ELSE recipient_envelope END AS env
+               CASE
+                   WHEN deleted_for_all THEN ''::bytea
+                   WHEN sender_id = $1 THEN sender_envelope
+                   ELSE recipient_envelope
+               END AS env
         FROM messages
         WHERE (sender_id = $1 OR receiver_id = $1)
           AND seq > $2
-          AND deleted_for_all = FALSE
         ORDER BY seq ASC
         LIMIT $3
         "#,
@@ -1089,24 +1093,43 @@ async fn handle_delta_sync(
     .await?;
 
     let mut max_channel_seq = channel_since;
-    let channel_messages: Vec<serde_json::Value> = channel_rows
-        .into_iter()
-        .map(|r| {
-            let seq: i64 = r.try_get("seq").unwrap_or(0);
-            max_channel_seq = max_channel_seq.max(seq);
-            serde_json::json!({
-                "id": r.try_get::<Uuid, _>("id").ok(),
-                "seq": seq,
-                "channel_id": r.try_get::<Uuid, _>("channel_id").ok(),
-                "sender_id": r.try_get::<Uuid, _>("sender_id").ok(),
-                "content": r.try_get::<String, _>("content").unwrap_or_default(),
-                "reply_to_id": r.try_get::<Option<Uuid>, _>("reply_to_id").ok().flatten(),
-                "is_pinned": r.try_get::<bool, _>("is_pinned").unwrap_or(false),
-                "is_edited": r.try_get::<bool, _>("is_edited").unwrap_or(false),
-                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
-            })
-        })
-        .collect();
+    let mut chan_perm_cache: std::collections::HashMap<Uuid, bool> = std::collections::HashMap::new();
+    let mut channel_messages: Vec<serde_json::Value> = Vec::with_capacity(channel_rows.len());
+    for r in channel_rows {
+        let seq: i64 = r.try_get("seq").unwrap_or(0);
+        max_channel_seq = max_channel_seq.max(seq);
+        let Ok(cid) = r.try_get::<Uuid, _>("channel_id") else {
+            continue;
+        };
+        let allowed = if let Some(&cached) = chan_perm_cache.get(&cid) {
+            cached
+        } else {
+            let ok = crate::storage::permissions::authorize_channel_access(
+                &state.db,
+                user.id,
+                cid,
+                crate::models::permissions::VIEW_CHANNELS,
+            )
+            .await
+            .is_ok();
+            chan_perm_cache.insert(cid, ok);
+            ok
+        };
+        if !allowed {
+            continue;
+        }
+        channel_messages.push(serde_json::json!({
+            "id": r.try_get::<Uuid, _>("id").ok(),
+            "seq": seq,
+            "channel_id": cid,
+            "sender_id": r.try_get::<Uuid, _>("sender_id").ok(),
+            "content": r.try_get::<String, _>("content").unwrap_or_default(),
+            "reply_to_id": r.try_get::<Option<Uuid>, _>("reply_to_id").ok().flatten(),
+            "is_pinned": r.try_get::<bool, _>("is_pinned").unwrap_or(false),
+            "is_edited": r.try_get::<bool, _>("is_edited").unwrap_or(false),
+            "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
+        }));
+    }
 
     if let Some(did) = user.device_id {
         let _ = sqlx::query(
@@ -1474,6 +1497,19 @@ async fn handle_respond_recovery_request(
         _ => return Err(AppError::BadRequest("invalid_recovery_action")),
     };
 
+    if let Some(relay_ref_id) = req.relay_ref_id {
+        let owns_relay: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM media_references WHERE id = $1 AND owner_id = $2)",
+        )
+        .bind(relay_ref_id)
+        .bind(user.id)
+        .fetch_one(&state.db)
+        .await?;
+        if !owns_relay {
+            return Err(AppError::Forbidden("invalid_relay_ref_id"));
+        }
+    }
+
     let mode = req
         .transport_mode
         .as_deref()
@@ -1648,16 +1684,23 @@ async fn handle_complete_recovery_request(
         .await;
     }
 
-    // Safely release temporary recovery relay blob if one was created for this request.
+    // Safely release temporary recovery relay blob if one was created for this request by the target peer.
     if let Some(r_id) = relay_ref {
-        if let Ok(Some(oid)) = sqlx::query_scalar::<_, Option<Uuid>>("SELECT object_id FROM media_references WHERE id = $1")
+        if let Ok(Some(oid)) = sqlx::query_scalar::<_, Option<Uuid>>(
+            "SELECT object_id FROM media_references WHERE id = $1 AND owner_id = $2",
+        )
             .bind(r_id)
-            .fetch_one(&state.db)
+            .bind(target_uid)
+            .fetch_optional(&state.db)
             .await
+            .map(|opt| opt.flatten())
         {
             let _ = migration::release_object_reference(&state.db, &state.storage, oid).await;
-            let _ = sqlx::query("UPDATE media_references SET object_id = NULL, deleted_for_all = TRUE WHERE id = $1")
+            let _ = sqlx::query(
+                "UPDATE media_references SET object_id = NULL, deleted_for_all = TRUE WHERE id = $1 AND owner_id = $2",
+            )
                 .bind(r_id)
+                .bind(target_uid)
                 .execute(&state.db)
                 .await;
         }

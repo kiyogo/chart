@@ -178,8 +178,8 @@ pub fn AttendancePanel(server_id: String, cfg: EnterpriseConfig, refresh_tick: u
                             tr { key: "{row.id}",
                                 td { "{row.work_date}" }
                                 td { "{row.username}" }
-                                td { "{row.check_in_at.as_deref().map(|s| &s[11..19]).unwrap_or(\"-\")}" }
-                                td { "{row.check_out_at.as_deref().map(|s| &s[11..19]).unwrap_or(\"-\")}" }
+                                td { "{row.check_in_at.as_deref().and_then(|s| s.get(11..19)).unwrap_or(\"-\")}" }
+                                td { "{row.check_out_at.as_deref().and_then(|s| s.get(11..19)).unwrap_or(\"-\")}" }
                                 td { "{enterprise::vn_work_mode(&row.work_mode)}" }
                                 td { span { class: "ent-pill ok", "{enterprise::vn_att_status(&row.status)}" } }
                             }

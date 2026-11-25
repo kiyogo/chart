@@ -1741,7 +1741,10 @@ where
             }
         }
         if slot.is_none() {
-            *slot = Some(init_gl_engine());
+            match init_gl_engine() {
+                Ok(eng) => *slot = Some(Ok(eng)),
+                Err(e) => return Err(e), // Do not permanently latch transient GPU init errors
+            }
         }
         match slot.as_mut().unwrap() {
             Ok(eng) => f(eng),

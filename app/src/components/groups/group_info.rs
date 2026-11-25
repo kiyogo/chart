@@ -284,7 +284,7 @@ pub fn GroupInfoPanel(
         }
     };
 
-    let banner_bg_style = if let Some(ref b) = cur_group().banner_url.filter(|s| !s.is_empty()) {
+    let banner_bg_style = if let Some(ref b) = cur_group().banner_url.filter(|s| platform::safe_asset_path(s)) {
         format!("background-image: url('{}'); background-size: cover; background-position: center;", platform::resolve_asset_url(b))
     } else {
         "background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 70%, #1e1b4b), color-mix(in srgb, #6366f1 60%, #0f172a));".to_string()
@@ -368,7 +368,7 @@ pub fn GroupInfoPanel(
                     }
 
                     if is_uploading() {
-                        div { style: "font-size: 12px; color: var(--accent); margin-top: 4px;", "Đang tải ảnh lên..." }
+                        div { style: "font-size: 12px; color: var(--accent); margin-top: 4px;", "Đang tải ảnh lên" }
                     }
 
                     // Name and Description (view vs edit mode)
@@ -383,7 +383,7 @@ pub fn GroupInfoPanel(
                             }
                             textarea {
                                 class: "form-input group-desc-input",
-                                placeholder: "Mô tả nhóm...",
+                                placeholder: "Mô tả nhóm",
                                 rows: "2",
                                 value: "{edit_desc()}",
                                 oninput: move |e: FormEvent| edit_desc.set(e.value()),
@@ -593,7 +593,7 @@ pub fn GroupInfoPanel(
                                 }
                             }
                         } else {
-                            div { style: "padding: 16px; color: var(--text-secondary); text-align: center;", "Đang tải cài đặt..." }
+                            div { style: "padding: 16px; color: var(--text-secondary); text-align: center;", "Đang tải cài đặt" }
                         }
                     }
                 } else {
@@ -604,7 +604,7 @@ pub fn GroupInfoPanel(
                             input {
                                 r#type: "text",
                                 class: "group-search-input",
-                                placeholder: "Tìm kiếm thành viên...",
+                                placeholder: "Tìm kiếm thành viên",
                                 value: "{search_query()}",
                                 oninput: move |e: FormEvent| search_query.set(e.value()),
                             }

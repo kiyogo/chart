@@ -55,14 +55,13 @@
       }
       const device = await withTimeout(adapter.requestDevice(), 1500, 'gpu_device');
       if (!device) {
-        webgpuSupported = false;
         return false;
       }
       try { device.destroy(); } catch (_) {}
       webgpuSupported = true;
       return true;
     } catch (_) {
-      webgpuSupported = false;
+      // Transient WebGPU error/timeout: allow retrying on future enhance calls instead of permanently latching false
       return false;
     }
   }

@@ -495,6 +495,7 @@ pub async fn upload_or_claim_media_for_scope(
         if let Some(ref preview_url) = payload.instant_preview_url {
             match crate::storage::media_opt::reencode_from_preview_url(preview_url).await {
                 Ok(fresh) if !fresh.bytes.is_empty() => {
+                    #[cfg(target_arch = "wasm32")]
                     web_sys::console::warn_1(
                         &format!(
                             "[chatw] stale local dedup claim miss ({:?}); re-encoded {} bytes for upload",
@@ -506,14 +507,17 @@ pub async fn upload_or_claim_media_for_scope(
                     recovered = Some(fresh);
                 }
                 Ok(_) => {
+                    #[cfg(target_arch = "wasm32")]
                     web_sys::console::warn_1(
                         &"[chatw] reencode_from_preview_url returned empty bytes".into(),
                     );
                 }
                 Err(e) => {
+                    #[cfg(target_arch = "wasm32")]
                     web_sys::console::warn_1(
                         &format!("[chatw] reencode_from_preview_url failed: {e}").into(),
                     );
+                    let _ = e;
                 }
             }
         }

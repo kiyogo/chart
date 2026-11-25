@@ -349,6 +349,9 @@ async fn handle_get_messages(
     .await?;
 
     let msg_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    if msg_ids.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
     let reaction_rows = sqlx::query!(
         r#"
         SELECT message_id, emoji, user_id
@@ -817,6 +820,9 @@ async fn handle_get_pinned_messages(
     .await?;
 
     let msg_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    if msg_ids.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
     let reaction_rows = sqlx::query!(
         r#"
         SELECT message_id, emoji, user_id

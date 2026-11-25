@@ -198,6 +198,10 @@ async fn get_pack(
     .await?
     .ok_or(AppError::NotFound("pack_not_found"))?;
 
+    if p.author_id.is_some() && p.author_id != Some(_user.id) {
+        return Err(AppError::Forbidden("not_pack_author"));
+    }
+
     let stickers_rows = sqlx::query!(
         r#"
         SELECT id, pack_id, name, file_url, is_animated, created_at
@@ -244,6 +248,12 @@ async fn create_pack(
 
     if payload.name.trim().is_empty() {
         return Err(AppError::BadRequest("pack_name_empty"));
+    }
+    if let Some(ref c) = payload.cover_url {
+        let trimmed = c.trim();
+        if !trimmed.is_empty() && (!trimmed.starts_with("/uploads/stickers/") || trimmed.contains("..") || trimmed.len() > 300) {
+            return Err(AppError::BadRequest("invalid_cover_url"));
+        }
     }
 
     let pack_id = Uuid::new_v4();

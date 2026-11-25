@@ -52,7 +52,7 @@ pub async fn compress_inactive_images_15d(
           AND mime_type <> 'image/avif'
           AND mime_type <> 'image/svg+xml'
           AND COALESCE(compression_codec, '') <> 'e2ee_ciphertext'
-          AND storage_backend IN ('local_cas', 's3_ready', 'existing')
+          AND storage_backend IN ('local_cas', 's3_ready', 'legacy')
           AND COALESCE(is_cdc_assembled, FALSE) = FALSE
           AND last_accessed_at <= now() - make_interval(days => $1)
         ORDER BY last_accessed_at ASC
@@ -124,7 +124,8 @@ pub async fn compress_inactive_images_15d(
         let upd = sqlx::query(
             r#"
             UPDATE media_objects
-            SET storage_key = $2,
+            SET cas_scope = 'cold15d:' || id::text,
+                storage_key = $2,
                 sha256 = $8,
                 blake3 = $9,
                 mime_type = 'image/avif',
@@ -153,6 +154,10 @@ pub async fn compress_inactive_images_15d(
 
         if let Ok(r) = upd {
             if r.rows_affected() > 0 {
+                let _ = sqlx::query("DELETE FROM media_dedup_indexes WHERE object_id = $1")
+                    .bind(oid)
+                    .execute(pool)
+                    .await;
                 let _ = sqlx::query(
                     "UPDATE media_references SET mime_type = 'image/avif', byte_size = $2, sha256_cipher = $3, updated_at = now() WHERE object_id = $1",
                 )
@@ -447,7 +452,7 @@ pub async fn cleanup_incomplete_uploads_and_gc(
         report.gc_scanned_objects += 1;
         let mut tx = pool.begin().await?;
         let row = sqlx::query(
-            "SELECT ref_count, storage_backend, storage_key, byte_size, COALESCE(is_pinned, FALSE) AS is_pinned FROM media_objects WHERE id = $1 FOR UPDATE",
+            "SELECT ref_count, storage_backend, storage_key, byte_size, COALESCE(is_pinned, FALSE) AS is_pinned, COALESCE(is_cdc_assembled, FALSE) AS is_cdc FROM media_objects WHERE id = $1 FOR UPDATE",
         )
         .bind(oid)
         .fetch_optional(&mut *tx)
@@ -458,6 +463,7 @@ pub async fn cleanup_incomplete_uploads_and_gc(
         };
         let rc: i32 = r.try_get("ref_count")?;
         let is_pinned: bool = r.try_get("is_pinned")?;
+        let is_cdc: bool = r.try_get("is_cdc")?;
         if rc > 0 || is_pinned {
             if is_pinned {
                 report.gc_skipped_pinned += 1;
@@ -468,15 +474,68 @@ pub async fn cleanup_incomplete_uploads_and_gc(
         let backend: String = r.try_get("storage_backend")?;
         let key: String = r.try_get("storage_key")?;
         let byte_size: i64 = r.try_get("byte_size")?;
+        let mut dead_cdc_chunks: Vec<(String, String)> = Vec::new();
+        if is_cdc {
+            let chunk_hashes: Vec<Vec<u8>> = sqlx::query_scalar(
+                "SELECT chunk_blake3 FROM media_cdc_recipes WHERE object_id = $1 ORDER BY chunk_blake3 ASC",
+            )
+            .bind(oid)
+            .fetch_all(&mut *tx)
+            .await?;
+            for ch in chunk_hashes {
+                if let Ok(Some(updated)) = sqlx::query(
+                    "UPDATE media_cdc_chunks SET ref_count = GREATEST(0, ref_count - 1) WHERE chunk_blake3 = $1 RETURNING ref_count, storage_backend, storage_key",
+                )
+                .bind(&ch)
+                .fetch_optional(&mut *tx)
+                .await
+                {
+                    let c_rc: i32 = updated.try_get("ref_count").unwrap_or(1);
+                    if c_rc == 0 {
+                        dead_cdc_chunks.push((
+                            updated.try_get::<String, _>("storage_backend").unwrap_or_default(),
+                            updated.try_get::<String, _>("storage_key").unwrap_or_default(),
+                        ));
+                    }
+                }
+            }
+        }
         sqlx::query("DELETE FROM media_objects WHERE id = $1")
             .bind(oid)
             .execute(&mut *tx)
             .await?;
+        if !dead_cdc_chunks.is_empty() {
+            let _ = sqlx::query("DELETE FROM media_cdc_chunks WHERE ref_count = 0")
+                .execute(&mut *tx)
+                .await;
+        }
         tx.commit().await?;
 
-        delete_physical_object(storage, &backend, &key).await;
+        if is_cdc {
+            for (cb, ck) in dead_cdc_chunks {
+                delete_physical_object(storage, &cb, &ck).await;
+            }
+        } else {
+            delete_physical_object(storage, &backend, &key).await;
+        }
         report.gc_deleted_objects += 1;
         report.gc_freed_bytes += byte_size.max(0) as u64;
+    }
+
+    // Sweep stale uncommitted CDC chunks with ref_count = 0 older than 2 hours
+    if let Ok(stale_chunks) = sqlx::query(
+        "DELETE FROM media_cdc_chunks WHERE ref_count = 0 AND created_at < now() - interval '2 hours' RETURNING storage_backend, storage_key, byte_size",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        for sc in stale_chunks {
+            let sb: String = sc.try_get("storage_backend").unwrap_or_default();
+            let sk: String = sc.try_get("storage_key").unwrap_or_default();
+            let sz: i32 = sc.try_get("byte_size").unwrap_or(0);
+            delete_physical_object(storage, &sb, &sk).await;
+            report.gc_freed_bytes += sz.max(0) as u64;
+        }
     }
 
     Ok(report)

@@ -242,13 +242,23 @@ mod impl_flac {
         Ok(out)
     }
 
-    /// Decode genuine FLAC bytes back to exact PCM samples using `claxon`.
+    /// Decode genuine FLAC bytes back to exact PCM samples using `claxon`, bounded to prevent OOM bombs.
     pub fn decode_flac_to_pcm(flac_bytes: &[u8]) -> MediaResult<DecodedFlacPcm> {
+        const MAX_FLAC_SAMPLES: usize = 48_000 * 2 * 60 * 15; // 15 min stereo @ 48 kHz
         let mut reader = claxon::FlacReader::new(Cursor::new(flac_bytes))
             .map_err(|e| MediaError::AudioCodecFailed(format!("flac open: {e}")))?;
         let info = reader.streaminfo();
+        if let Some(total) = info.samples {
+            let est = total.saturating_mul(info.channels as u64);
+            if est > MAX_FLAC_SAMPLES as u64 {
+                return Err(MediaError::AudioCodecFailed("flac_exceeds_sample_limit".into()));
+            }
+        }
         let mut samples = Vec::new();
         for s in reader.samples() {
+            if samples.len() >= MAX_FLAC_SAMPLES {
+                return Err(MediaError::AudioCodecFailed("flac_exceeds_sample_limit".into()));
+            }
             samples.push(s.map_err(|e| MediaError::AudioCodecFailed(format!("flac sample: {e}")))?);
         }
         Ok(DecodedFlacPcm {

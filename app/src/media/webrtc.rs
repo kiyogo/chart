@@ -476,6 +476,9 @@ pub async fn start_local_media(is_video: bool) -> Result<(), String> {
             }}
 
             if (!stream || mgr.disposed || !mgr.pc) {{
+                if (stream) {{
+                    try {{ stream.getTracks().forEach((t) => t.stop()); }} catch {{}}
+                }}
                 dioxus.send({{ ok: true, no_hardware: true }});
                 return;
             }}

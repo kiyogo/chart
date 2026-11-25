@@ -366,7 +366,8 @@ pub fn analyze_rgba_image(
         })
         .unwrap_or(false);
 
-    if width < 4 || height < 4 || rgba.len() < px_count * 4 {
+    let total_rgba = (width as usize).checked_mul(height as usize).and_then(|p| p.checked_mul(4));
+    if width < 4 || height < 4 || total_rgba.is_none_or(|n| rgba.len() < n) {
         return ImageAnalysis {
             width,
             height,

@@ -1048,11 +1048,12 @@ pub async fn restore_backup_archive(
         .await
         .map_err(|_| AppError::Internal)??;
 
-    // Cross-account anti-impersonation check: never import another user's private backup into this account!
-    if let Some(ref mf) = decoded.manifest {
-        if mf.owner_user_id != user_id {
-            return Err(AppError::Forbidden("backup_belongs_to_another_account"));
-        }
+    // Cross-account anti-impersonation check: manifest is mandatory and must belong to the caller.
+    let Some(ref mf) = decoded.manifest else {
+        return Err(AppError::BadRequest("missing_backup_manifest"));
+    };
+    if mf.owner_user_id != user_id {
+        return Err(AppError::Forbidden("backup_belongs_to_another_account"));
     }
 
     let mode = opts.mode.as_str();
@@ -1422,11 +1423,24 @@ pub async fn restore_backup_archive(
             .await?;
 
             let ref_id = entry.ref_id.unwrap_or_else(Uuid::new_v4);
+            let existing_owner: Option<Uuid> = sqlx::query_scalar(
+                "SELECT owner_id FROM media_references WHERE id = $1",
+            )
+            .bind(ref_id)
+            .fetch_optional(pool)
+            .await?;
+            if let Some(owner) = existing_owner
+                && owner != user_id
+            {
+                skipped_unauthorized_messages += 1;
+                continue;
+            }
             let filename = entry.logical_path.rsplit('/').next().unwrap_or("restored.bin");
             sqlx::query(
                 "INSERT INTO media_references (id, owner_id, scope_type, scope_id, object_id, original_filename, mime_type, byte_size, sha256_plain, storage_tier, availability_state)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'server_durable', 'backed_up_encrypted')
-                 ON CONFLICT (id) DO UPDATE SET object_id = COALESCE(media_references.object_id, EXCLUDED.object_id), availability_state = 'backed_up_encrypted', updated_at = now()",
+                 ON CONFLICT (id) DO UPDATE SET object_id = COALESCE(media_references.object_id, EXCLUDED.object_id), availability_state = 'backed_up_encrypted', updated_at = now()
+                 WHERE media_references.owner_id = EXCLUDED.owner_id",
             )
             .bind(ref_id)
             .bind(user_id)

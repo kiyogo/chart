@@ -160,17 +160,12 @@ async fn join_meet(
         return Err(AppError::BadRequest("invalid_meet_code"));
     }
 
-    let found_id: Option<Uuid> = if let Ok(uuid_val) = Uuid::parse_str(&code) {
-        sqlx::query_scalar("SELECT id FROM call_sessions WHERE id = $1 AND meet_code IS NOT NULL")
-            .bind(uuid_val)
-            .fetch_optional(&state.db)
-            .await?
-    } else {
-        sqlx::query_scalar("SELECT id FROM call_sessions WHERE LOWER(meet_code) = $1")
-            .bind(&code)
-            .fetch_optional(&state.db)
-            .await?
-    };
+    let found_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM call_sessions WHERE LOWER(meet_code) = $1 AND status IN ('ringing', 'active')",
+    )
+    .bind(&code)
+    .fetch_optional(&state.db)
+    .await?;
 
     let call_id = found_id.ok_or(AppError::NotFound("meet_not_found"))?;
 
@@ -467,6 +462,18 @@ async fn accept_call(
         if !is_member {
             return Err(AppError::Forbidden("not_a_group_member"));
         }
+    } else if session.caller_id != user.id {
+        let joined_meet = sqlx::query_scalar!(
+            "SELECT 1 FROM call_participants WHERE call_id = $1 AND user_id = $2",
+            call_id,
+            user.id
+        )
+        .fetch_optional(&state.db)
+        .await?
+        .is_some();
+        if !joined_meet {
+            return Err(AppError::Forbidden("not_authorized_for_call"));
+        }
     }
 
     // Update status to active
@@ -538,27 +545,13 @@ async fn accept_call(
 
 async fn ensure_call_access(db: &sqlx::PgPool, call_id: Uuid, user_id: Uuid) -> AppResult<()> {
     let session = sqlx::query!(
-        "SELECT caller_id, receiver_id, group_id FROM call_sessions WHERE id = $1",
+        "SELECT caller_id, receiver_id, group_id, status FROM call_sessions WHERE id = $1",
         call_id
     )
     .fetch_optional(db)
     .await?
     .ok_or(AppError::NotFound("call_not_found"))?;
 
-    if session.caller_id == user_id || session.receiver_id == Some(user_id) {
-        return Ok(());
-    }
-    let is_participant = sqlx::query_scalar!(
-        "SELECT EXISTS(SELECT 1 FROM call_participants WHERE call_id = $1 AND user_id = $2)",
-        call_id,
-        user_id
-    )
-    .fetch_one(db)
-    .await?
-    .unwrap_or(false);
-    if is_participant {
-        return Ok(());
-    }
     if let Some(gid) = session.group_id {
         let is_member = sqlx::query_scalar!(
             "SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2)",
@@ -568,9 +561,26 @@ async fn ensure_call_access(db: &sqlx::PgPool, call_id: Uuid, user_id: Uuid) -> 
         .fetch_one(db)
         .await?
         .unwrap_or(false);
-        if is_member {
-            return Ok(());
-        }
+        return if is_member {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden("not_authorized_for_call"))
+        };
+    }
+
+    if session.caller_id == user_id || session.receiver_id == Some(user_id) {
+        return Ok(());
+    }
+    let is_participant = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM call_participants WHERE call_id = $1 AND user_id = $2 AND left_at IS NULL)",
+        call_id,
+        user_id
+    )
+    .fetch_one(db)
+    .await?
+    .unwrap_or(false);
+    if is_participant {
+        return Ok(());
     }
     Err(AppError::Forbidden("not_authorized_for_call"))
 }
@@ -739,6 +749,7 @@ async fn relay_signal(
     };
 
     if let Some(target_uid) = payload.target_user_id {
+        ensure_call_access(&state.db, call_id, target_uid).await?;
         state.ws_hub.send_to_user(&target_uid, event).await;
     } else {
         // Send to all other active participants
@@ -972,7 +983,7 @@ async fn sfu_join(
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
     let is_participant = sqlx::query_scalar!(
-        "SELECT 1 FROM call_participants WHERE call_id = $1 AND user_id = $2",
+        "SELECT 1 FROM call_participants WHERE call_id = $1 AND user_id = $2 AND left_at IS NULL",
         call_id,
         user.id
     )
@@ -980,31 +991,32 @@ async fn sfu_join(
     .await?
     .is_some();
 
-    if !is_participant {
-        let allowed_session = sqlx::query!(
-            "SELECT caller_id, receiver_id, group_id, meet_code FROM call_sessions WHERE id = $1",
-            call_id
+    let allowed_session = sqlx::query!(
+        "SELECT caller_id, receiver_id, group_id, status FROM call_sessions WHERE id = $1",
+        call_id
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound("call_not_found"))?;
+
+    if !matches!(allowed_session.status.as_str(), "ringing" | "active") {
+        return Err(AppError::BadRequest("call_not_active"));
+    }
+
+    if let Some(gid) = allowed_session.group_id {
+        let is_member = sqlx::query_scalar!(
+            "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
+            gid,
+            user.id
         )
         .fetch_optional(&state.db)
         .await?
-        .ok_or(AppError::NotFound("call_not_found"))?;
-
-        let mut allowed = allowed_session.caller_id == user.id
-            || allowed_session.receiver_id == Some(user.id)
-            || allowed_session.meet_code.is_some();
-
-        if !allowed {
-            if let Some(gid) = allowed_session.group_id {
-                allowed = sqlx::query_scalar!(
-                    "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
-                    gid,
-                    user.id
-                )
-                .fetch_optional(&state.db)
-                .await?
-                .is_some();
-            }
+        .is_some();
+        if !is_member {
+            return Err(AppError::Forbidden("not_authorized_for_call"));
         }
+    } else if !is_participant {
+        let allowed = allowed_session.caller_id == user.id || allowed_session.receiver_id == Some(user.id);
         if !allowed {
             return Err(AppError::Forbidden("not_authorized_for_call"));
         }

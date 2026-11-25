@@ -147,6 +147,21 @@ pub fn is_blocked_svg_upload(
 }
 
 /// Shared ingestion helper used by BOTH legacy `/api/attachments` and new resumable chunked uploads.
+fn sanitize_non_e2ee_mime(raw: &str) -> String {
+    let base = raw.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    if base.is_empty()
+        || base.contains("html")
+        || base.contains("svg")
+        || base.contains("xml")
+        || base.contains("javascript")
+        || base.contains("ecmascript")
+    {
+        "application/octet-stream".into()
+    } else {
+        raw.trim().to_string()
+    }
+}
+
 pub async fn ingest_media_bytes(
     pool: &PgPool,
     storage: &StorageRegistry,
@@ -217,9 +232,9 @@ pub async fn ingest_media_bytes(
             .unwrap_or_else(|| if !content_type_header.is_empty() { content_type_header } else { "application/octet-stream" })
             .to_string()
     } else if !content_type_header.is_empty() && content_type_header != "application/octet-stream" {
-        content_type_header.to_string()
+        sanitize_non_e2ee_mime(content_type_header)
     } else if sniffed.mime != "application/octet-stream" {
-        sniffed.mime.to_string()
+        sanitize_non_e2ee_mime(sniffed.mime)
     } else {
         "application/octet-stream".into()
     };
@@ -342,7 +357,7 @@ pub async fn ingest_media_bytes(
 
     let mut tx = pool.begin().await?;
     let existing_obj = sqlx::query(
-        "SELECT id, storage_key, storage_backend FROM media_objects WHERE cas_scope = $1 AND variant_kind = 'original'",
+        "SELECT id, storage_key, storage_backend FROM media_objects WHERE cas_scope = $1 AND variant_kind = 'original' AND cold_compressed_at IS NULL",
     )
     .bind(&cas_scope)
     .fetch_optional(&mut *tx)
@@ -366,6 +381,7 @@ pub async fn ingest_media_bytes(
             FROM media_dedup_indexes d
             JOIN media_objects o ON o.id = d.object_id
             WHERE d.scope_class = 'shared_non_e2ee' AND d.is_e2ee = FALSE
+              AND o.cold_compressed_at IS NULL
               AND (d.blake3 = $1 OR d.sha256 = $2 OR ($3::bytea IS NOT NULL AND (d.orig_blake3 = $3 OR d.blake3 = $3)))
             LIMIT 1
             "#,
@@ -436,7 +452,7 @@ pub async fn ingest_media_bytes(
             storage.s3.put_object(&ex_key, bytes.clone(), &actual_mime, None).await
                 .map_err(|_| AppError::Internal)?;
         }
-        sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL WHERE id = $1")
+        sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL, last_accessed_at = now() WHERE id = $1")
             .bind(oid)
             .execute(&mut *tx)
             .await?;
@@ -1314,7 +1330,7 @@ async fn handle_init_upload(
                 }
             }
 
-            sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL WHERE id = $1")
+            sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL, last_accessed_at = now() WHERE id = $1")
                 .bind(obj_id)
                 .execute(&mut *tx)
                 .await?;
@@ -1624,7 +1640,14 @@ async fn handle_complete_upload(
             "download_url": format!("/api/attachments/{ref_id}"),
         })));
     }
-    if row.try_get::<String, _>("status")? != "active" {
+    let claimed = sqlx::query(
+        "UPDATE transfer_sessions SET status = 'completing' WHERE id = $1 AND user_id = $2 AND status = 'active' RETURNING id",
+    )
+    .bind(transfer_id)
+    .bind(user.id)
+    .fetch_optional(&state.db)
+    .await?;
+    if claimed.is_none() {
         return Err(AppError::BadRequest("transfer_not_active"));
     }
 
@@ -1636,6 +1659,10 @@ async fn handle_complete_upload(
     .fetch_one(&state.db)
     .await?;
     if uploaded_count != total_chunks as i64 {
+        let _ = sqlx::query("UPDATE transfer_sessions SET status = 'active' WHERE id = $1 AND status = 'completing'")
+            .bind(transfer_id)
+            .execute(&state.db)
+            .await;
         return Err(AppError::BadRequest("missing_chunks"));
     }
 
@@ -1695,6 +1722,8 @@ async fn handle_complete_upload(
         let actual_ext = if is_e2ee { "enc" } else { "bin" };
         let ingest_scope = if scope_type == "recovery_relay" { "dm" } else { scope_type.as_str() };
 
+        let safe_mime = if is_e2ee { mime_type.clone() } else { sanitize_non_e2ee_mime(&mime_type) };
+        let storage_tier = if scope_type == "encrypted_backup" { "encrypted_backup" } else { "server_durable" };
         let mut tx = state.db.begin().await?;
         sqlx::query(
             r#"
@@ -1709,7 +1738,7 @@ async fn handle_complete_upload(
         .bind(&sha_arr[..])
         .bind(plain_sha.as_ref().map(|p| &p[..]))
         .bind(s3_key)
-        .bind(&mime_type)
+        .bind(&safe_mime)
         .bind(actual_ext)
         .bind(if is_e2ee { "e2ee_ciphertext" } else { "s3_multipart" })
         .bind(expected_size)
@@ -1721,7 +1750,7 @@ async fn handle_complete_upload(
             INSERT INTO media_references
                 (id, owner_id, scope_type, scope_id, message_id, object_id, original_filename, mime_type,
                  byte_size, sha256_plain, sha256_cipher, storage_tier, availability_state)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'server_durable', 'server_durable')
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'server_durable')
             "#,
         )
         .bind(ref_id)
@@ -1731,10 +1760,11 @@ async fn handle_complete_upload(
         .bind(b.message_id)
         .bind(oid)
         .bind(&original_filename)
-        .bind(&mime_type)
+        .bind(&safe_mime)
         .bind(expected_size)
         .bind(plain_sha.as_ref().map(|p| &p[..]))
         .bind(&sha_arr[..])
+        .bind(storage_tier)
         .execute(&mut *tx)
         .await?;
 
@@ -1750,7 +1780,7 @@ async fn handle_complete_upload(
         .bind(&compat_path)
         .bind(&original_filename)
         .bind(expected_size)
-        .bind(&mime_type)
+        .bind(&safe_mime)
         .bind(ingest_scope)
         .bind(scope_id)
         .execute(&mut *tx)
@@ -1769,9 +1799,9 @@ async fn handle_complete_upload(
             "uploader_id": user.id,
             "file_name": original_filename,
             "file_size": expected_size,
-            "mime_type": mime_type,
+            "mime_type": safe_mime,
             "sha256": sha_hex,
-            "storage_tier": "server_durable",
+            "storage_tier": storage_tier,
             "storage_backend": "s3_ready",
             "availability_state": "server_durable",
             "deduplicated": false,
@@ -1788,13 +1818,22 @@ async fn handle_complete_upload(
         .map_err(|_| AppError::Internal)?;
 
     if assembled.len() as i64 != expected_size {
+        let _ = sqlx::query("UPDATE transfer_sessions SET status = 'active' WHERE id = $1 AND status = 'completing'")
+            .bind(transfer_id)
+            .execute(&state.db)
+            .await;
         return Err(AppError::BadRequest("size_mismatch"));
     }
     if let Some(exp) = expected_sha.filter(|v| v.len() == 32) {
         if sha256_bytes(&assembled).as_slice() != exp.as_slice() {
+            let _ = sqlx::query("UPDATE transfer_sessions SET status = 'active' WHERE id = $1 AND status = 'completing'")
+                .bind(transfer_id)
+                .execute(&state.db)
+                .await;
             return Err(AppError::BadRequest("integrity_mismatch"));
         }
     }
+    let _ = state.storage.local_cas.abort_chunks(&multipart_id).await;
 
     let ingest_scope = if scope_type == "recovery_relay" { "dm" } else { scope_type.as_str() };
     let res = ingest_media_bytes(
@@ -1878,7 +1917,7 @@ async fn handle_forward_reference(
     let mut tx = state.db.begin().await?;
     for id_opt in [obj_id, opt_id, thumb_id] {
         if let Some(oid) = id_opt {
-            sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL WHERE id = $1")
+            sqlx::query("UPDATE media_objects SET ref_count = ref_count + 1, gc_eligible_at = NULL, last_accessed_at = now() WHERE id = $1")
                 .bind(oid)
                 .execute(&mut *tx)
                 .await?;

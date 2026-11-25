@@ -146,6 +146,8 @@ pub struct PluginNetFetchReq {
     /// Set true by sandbox host whenever the plugin session read decrypted E2EE content.
     #[serde(default)]
     pub e2ee_tainted: bool,
+    #[serde(default)]
+    pub scope_id: Option<Uuid>,
 }
 
 fn default_get() -> String {
@@ -1154,7 +1156,7 @@ pub async fn has_active_grant(
             if sid == Some(target) {
                 return Ok(true);
             }
-        } else if st != "conversation" || matches!(permission, "e2ee.egress_external" | "e2ee.store_external") {
+        } else if st != "conversation" && !matches!(permission, "e2ee.egress_external" | "e2ee.store_external") {
             return Ok(true);
         }
     }

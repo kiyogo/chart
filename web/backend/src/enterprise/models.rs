@@ -198,10 +198,28 @@ pub fn safe_upload_url(u: &str) -> bool {
 
 pub fn safe_webhook_url(u: &str) -> bool {
     let t = u.trim();
-    (t.starts_with("https://") || t.starts_with("http://"))
-        && t.len() <= 400
-        && !t.contains("169.254.169.254")
-        && !t.contains("metadata.google")
+    if t.is_empty() || t.len() > 400 || t.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    let Ok(parsed) = reqwest::Url::parse(t) else {
+        return false;
+    };
+    if !matches!(parsed.scheme(), "https" | "http") || !parsed.username().is_empty() || parsed.password().is_some() {
+        return false;
+    }
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let unbracketed = host.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    if unbracketed == "localhost" || unbracketed.ends_with(".local") || unbracketed.ends_with(".internal") || unbracketed == "metadata.google.internal" {
+        return false;
+    }
+    if let Ok(ip) = unbracketed.parse::<std::net::IpAddr>()
+        && crate::plugins::security::is_blocked_ip(ip)
+    {
+        return false;
+    }
+    true
 }
 
 pub fn csv_escape(cell: &str) -> String {

@@ -456,13 +456,18 @@ where
 {
     let w = width as usize;
     let h = height as usize;
-    if w == 0 || h == 0 || rgba.len() < w * h * 4 {
+    let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+    if w == 0 || h == 0 || req_bytes.is_none_or(|n| rgba.len() < n) {
         return Err(MediaError::InvalidParameter("Invalid RGBA dimensions for SPAN".into()));
     }
     let scale = model.scale;
-    let ow = w * scale;
-    let oh = h * scale;
-    let mut out = vec![0u8; ow * oh * 4];
+    let ow = w.checked_mul(scale).ok_or_else(|| MediaError::InvalidParameter("SPAN output width overflow".into()))?;
+    let oh = h.checked_mul(scale).ok_or_else(|| MediaError::InvalidParameter("SPAN output height overflow".into()))?;
+    let out_len = ow
+        .checked_mul(oh)
+        .and_then(|p| p.checked_mul(4))
+        .ok_or_else(|| MediaError::InvalidParameter("SPAN output buffer overflow".into()))?;
+    let mut out = vec![0u8; out_len];
     let tile = tile_size.clamp(64, 384);
     let pad = 12usize;
     let cols = w.div_ceil(tile);

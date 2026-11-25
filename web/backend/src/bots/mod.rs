@@ -237,7 +237,13 @@ async fn create_bot(State(state): State<AppState>, headers: HeaderMap, Json(p): 
         hint
     )
     .execute(&state.db)
-    .await?;
+    .await
+    .map_err(|e| match &e {
+        sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some("23505") => {
+            AppError::Conflict("bot_username_taken")
+        }
+        _ => AppError::from(e),
+    })?;
     let _ = crate::audit::log_audit_event(&state.db, uid, "bot_created", Some("bot"), Some(&id.to_string()), None, None, None).await;
     let mut b = fetch_bot(&state.db, id).await?;
     b.token = Some(token);

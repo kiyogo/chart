@@ -176,6 +176,28 @@ async fn list_feed(
         LEFT JOIN feed_posts rp_orig ON rp_orig.id = p.repost_of_id
         LEFT JOIN users ru ON ru.id = rp_orig.author_id
         WHERE p.parent_id IS NULL
+          AND (
+              p.repost_of_id IS NULL
+              OR (
+                  ru.suspended_at IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM user_blocks b
+                      WHERE (b.blocker_id = $1 AND b.blocked_id = rp_orig.author_id)
+                         OR (b.blocker_id = rp_orig.author_id AND b.blocked_id = $1)
+                  )
+                  AND (
+                      rp_orig.author_id = $1
+                      OR rp_orig.visibility = 'public'
+                      OR (
+                          rp_orig.visibility = 'friends'
+                          AND EXISTS (
+                              SELECT 1 FROM friendships f
+                              WHERE f.user_a = LEAST($1, rp_orig.author_id) AND f.user_b = GREATEST($1, rp_orig.author_id)
+                          )
+                      )
+                  )
+              )
+          )
           AND NOT EXISTS (
               SELECT 1 FROM user_blocks b
               WHERE (b.blocker_id = $1 AND b.blocked_id = p.author_id)
@@ -370,6 +392,9 @@ async fn create_post(
             if rep_meta.1 == "self" {
                 return Err(AppError::Forbidden("cannot_repost_private_post"));
             }
+            if rep_meta.1 == "friends" && !are_friends(&state.db, me, rep_meta.0).await? {
+                return Err(AppError::Forbidden("post_friends_only"));
+            }
         }
     }
 
@@ -385,15 +410,17 @@ async fn create_post(
     .fetch_one(&state.db)
     .await?;
 
-    let state_bg = state.clone();
-    tokio::spawn(async move {
-        notify_friends_feed(
-            &state_bg,
-            me,
-            json!({ "kind": "post.created", "id": id, "parent_id": p.parent_id }),
-        )
-        .await;
-    });
+    if visibility != "self" {
+        let state_bg = state.clone();
+        tokio::spawn(async move {
+            notify_friends_feed(
+                &state_bg,
+                me,
+                json!({ "kind": "post.created", "id": id, "parent_id": p.parent_id }),
+            )
+            .await;
+        });
+    }
 
     Ok(Json(json!({ "id": id })))
 }

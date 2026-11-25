@@ -964,6 +964,14 @@ pub fn Chat(
                                 }
                             }
                         });
+                        if let Some(active) = active_friend.peek().clone() {
+                            let idb_k = format!("dm:{}:{}", my_id_sig.peek(), active.id);
+                            let snap = messages.peek().clone();
+                            let more_now = *dm_has_more.peek();
+                            spawn(async move {
+                                crate::storage::save_cached_messages(&idb_k, &snap, more_now).await;
+                            });
+                        }
                     }
                     WsEvent::MessageEdited {
                         message_id,
@@ -1156,10 +1164,27 @@ pub fn Chat(
                             active_call_session.set(Some(sess));
                         }
                     }
-                    WsEvent::CallRejected(_) | WsEvent::CallEnded(_) => {
-                        incoming_call_session.set(None);
-                        active_call_session.set(None);
-                        media::stop_all_media();
+                    WsEvent::CallRejected(val) | WsEvent::CallEnded(val) => {
+                        let ev_call_id = val
+                            .get("call_id")
+                            .or_else(|| val.get("session_id"))
+                            .or_else(|| val.get("id"))
+                            .and_then(|v| v.as_str());
+                        let match_incoming = incoming_call_session
+                            .peek()
+                            .as_ref()
+                            .is_some_and(|s| ev_call_id.is_none_or(|cid| s.id == cid));
+                        let match_active = active_call_session
+                            .peek()
+                            .as_ref()
+                            .is_some_and(|s| ev_call_id.is_none_or(|cid| s.id == cid));
+                        if match_incoming {
+                            incoming_call_session.set(None);
+                        }
+                        if match_active {
+                            active_call_session.set(None);
+                            media::stop_all_media();
+                        }
                     }
                     WsEvent::CallSignal(val) => {
                         let call_id = val.get("call_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -2082,8 +2107,15 @@ pub fn Chat(
                     platform::scroll_chat_to_bottom(true);
                 }
             }
-            let _ = groups::groups_list_categories(&gid).await.map(|cats| group_categories.set(cats));
+            if let Ok(cats) = groups::groups_list_categories(&gid).await
+                && active_group.peek().as_ref().map(|g| g.id.as_str()) == Some(gid.as_str())
+            {
+                group_categories.set(cats);
+            }
             let fetched = if let Ok(chs) = groups::groups_list_channels(&gid).await {
+                if active_group.peek().as_ref().map(|g| g.id.as_str()) != Some(gid.as_str()) {
+                    return;
+                }
                 let first = chs.first().cloned();
                 group_channels.set(chs);
                 active_group_channel.set(first.clone());
@@ -6012,6 +6044,7 @@ fn persist_uploaded_media_bg(
 /// Maps backend attachment upload error codes to clear, localized UI messages (Spec 149 / Spec 150).
 fn upload_error_message(code: &str, channel_mode: bool) -> String {
     let clean = code.trim();
+    #[cfg(target_arch = "wasm32")]
     web_sys::console::error_1(&format!("[chatw] upload error (channel={channel_mode}): {clean}").into());
     match clean {
         "unauthorized" => "Session expired. Please sign in again".into(),

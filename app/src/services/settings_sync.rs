@@ -129,9 +129,16 @@ pub fn schedule_push(ctx: &PrefsCtx) {
         match push(payload.clone(), base).await {
             Ok(v) => save_persisted_ver(&uid, v),
             Err(e) if e.status == 409 => {
-                // Someone else wrote first: adopt their version, keep my latest change on top.
-                if let Ok((_, v)) = fetch().await {
-                    if let Ok(nv) = push(payload, v).await {
+                // Someone else wrote first: fetch remote, merge with latest local prefs, and push under new version.
+                if let Ok((remote_val, v)) = fetch().await {
+                    if crate::services::api::auth_me_cached_id().as_deref() != Some(uid.as_str()) {
+                        return;
+                    }
+                    let mut merged = remote_val;
+                    for (k, val) in payload {
+                        merged.insert(k, val);
+                    }
+                    if let Ok(nv) = push(merged, v).await {
                         save_persisted_ver(&uid, nv);
                     }
                 }

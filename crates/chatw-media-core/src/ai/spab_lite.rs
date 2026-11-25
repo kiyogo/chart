@@ -47,8 +47,10 @@ pub fn infer_spab_lite_tile(
 ) -> MediaResult<Vec<u8>> {
     let w = width as usize;
     let h = height as usize;
-    let n = w * h;
-    if n == 0 || rgba.len() < n * 4 {
+    let Some(n) = w.checked_mul(h) else {
+        return Err(MediaError::EmptyInput);
+    };
+    if n == 0 || n.checked_mul(4).is_none_or(|req| rgba.len() < req) {
         return Err(MediaError::EmptyInput);
     }
 

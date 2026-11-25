@@ -158,7 +158,10 @@ fn new_backup_codes() -> AppResult<Vec<String>> {
     Ok(out)
 }
 
-pub fn ip_masked(headers: &HeaderMap) -> String {
+pub fn ip_masked_with_trust(headers: &HeaderMap, trust_proxy: bool) -> String {
+    if !trust_proxy {
+        return "Direct".into();
+    }
     let raw = headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
@@ -166,15 +169,19 @@ pub fn ip_masked(headers: &HeaderMap) -> String {
         .map(|v| v.trim().to_string())
         .unwrap_or_default();
     // Keep only the network part: enough to notice "a new place", not to track anyone.
-    if let Some((a, rest)) = raw.split_once('.') {
-        if let Some((b, _)) = rest.split_once('.') {
-            return format!("{a}.{b}.x.x");
-        }
+    if let Some((a, rest)) = raw.split_once('.')
+        && let Some((b, _)) = rest.split_once('.')
+    {
+        return format!("{a}.{b}.x.x");
     }
     if raw.contains(':') {
         return raw.split(':').take(3).collect::<Vec<_>>().join(":") + "::";
     }
     "Unknown".into()
+}
+
+pub fn ip_masked(headers: &HeaderMap) -> String {
+    ip_masked_with_trust(headers, true)
 }
 
 fn ua(headers: &HeaderMap) -> Option<String> {
@@ -218,7 +225,7 @@ pub async fn log_event(state: &AppState, user_id: Uuid, kind: &str, headers: &He
         kind,
         device_of(u.as_deref()),
         u,
-        ip_masked(headers)
+        ip_masked_with_trust(headers, state.config.trust_proxy)
     )
     .execute(&state.db)
     .await;
@@ -278,7 +285,7 @@ pub async fn complete_login(state: &AppState, user_id: Uuid, headers: &HeaderMap
             id,
             user_id,
             ua(headers),
-            ip_masked(headers),
+            ip_masked_with_trust(headers, state.config.trust_proxy),
             CHALLENGE_MINUTES as i32
         )
         .execute(&state.db)
@@ -310,7 +317,7 @@ async fn finish_session(state: &AppState, user_id: Uuid, headers: &HeaderMap, ki
         log_event(state, user_id, "new_device", headers).await;
         state
             .ws_hub
-            .send_to_user(&user_id, WsEvent::SecurityAlert(json!({ "kind": "new_device", "device": device, "ip": ip_masked(headers) })))
+            .send_to_user(&user_id, WsEvent::SecurityAlert(json!({ "kind": "new_device", "device": device, "ip": ip_masked_with_trust(headers, state.config.trust_proxy) })))
             .await;
     }
     Ok(LoginOutcome::Session(raw, set_cookie))
@@ -338,20 +345,26 @@ struct VerifyBody {
 
 /// TOTP code or one backup code for `user_id`; returns the method used.
 pub async fn check_second_factor(state: &AppState, user_id: Uuid, code: &str) -> AppResult<Option<&'static str>> {
-    let row = sqlx::query!("SELECT totp_secret_enc, totp_last_step FROM users WHERE id = $1", user_id).fetch_one(&state.db).await?;
+    let row = sqlx::query!("SELECT totp_secret_enc FROM users WHERE id = $1", user_id).fetch_one(&state.db).await?;
     if let Some(enc) = row.totp_secret_enc {
         let secret = open(state, &enc)?;
         if let Some(step) = totp_match(&secret, code, now_secs()) {
-            if row.totp_last_step.is_some_and(|last| step as i64 <= last) {
-                return Ok(None); // replayed code
+            let claimed = sqlx::query_scalar!(
+                "UPDATE users SET totp_last_step = $1 WHERE id = $2 AND COALESCE(totp_last_step, -1) < $1 RETURNING id",
+                step as i64,
+                user_id
+            )
+            .fetch_optional(&state.db)
+            .await?;
+            if claimed.is_none() {
+                return Ok(None); // replayed or concurrent code
             }
-            sqlx::query!("UPDATE users SET totp_last_step = $1 WHERE id = $2", step as i64, user_id).execute(&state.db).await?;
             return Ok(Some("totp"));
         }
     }
     let h = hash_code(code);
     let used = sqlx::query_scalar!(
-        "UPDATE backup_codes SET used_at = now() WHERE id = (SELECT id FROM backup_codes WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL LIMIT 1) RETURNING id",
+        "UPDATE backup_codes SET used_at = now() WHERE id = (SELECT id FROM backup_codes WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL LIMIT 1) AND used_at IS NULL RETURNING id",
         user_id,
         h
     )
@@ -376,6 +389,7 @@ async fn twofa_verify(State(state): State<AppState>, headers: HeaderMap, Json(b)
         sqlx::query!("DELETE FROM twofa_challenges WHERE id = $1", id).execute(&state.db).await?;
         return Err(AppError::TooManyRequests);
     }
+    guard_attempts(&state, ch.user_id).await?;
     let Some(method) = check_second_factor(&state, ch.user_id, &b.code).await? else {
         log_event(&state, ch.user_id, "failed_2fa", &headers).await;
         return Err(AppError::BadRequest("invalid_code"));
@@ -577,7 +591,7 @@ async fn accounts_add(State(state): State<AppState>, headers: HeaderMap) -> AppR
     let uid = authenticate_session(&state.db, &state.config, &current).await?.id;
     let mut vault = vault_tokens(&headers);
     vault.retain(|t| t != &current);
-    if vault.len() + 1 >= MAX_ACCOUNTS {
+    if vault.len() >= MAX_ACCOUNTS {
         return Err(AppError::BadRequest("account_limit_reached"));
     }
     vault.insert(0, current);
@@ -641,11 +655,24 @@ async fn accounts_logout_one(State(state): State<AppState>, headers: HeaderMap, 
             _ => keep.push(t),
         }
     }
+    let mut cleared_current = false;
+    if let Some(cur) = parse_cookie(&headers, SESSION_COOKIE_NAME)
+        && let Ok(u) = authenticate_session(&state.db, &state.config, cur).await
+        && u.id == user_id
+    {
+        destroy(&state, cur).await;
+        log_event(&state, user_id, "logout", &headers).await;
+        removed = true;
+        cleared_current = true;
+    }
     if !removed {
         return Err(AppError::NotFound("account_not_signed_in"));
     }
     let mut resp = Json(json!({ "ok": true })).into_response();
     resp.headers_mut().append(header::SET_COOKIE, vault_cookie(&state, &keep)?);
+    if cleared_current {
+        resp.headers_mut().append(header::SET_COOKIE, session_cookie(&state, "")?);
+    }
     Ok(resp)
 }
 

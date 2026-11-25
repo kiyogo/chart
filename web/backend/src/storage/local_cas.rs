@@ -171,7 +171,7 @@ impl StorageAdapter for LocalFileStorageAdapter {
 }
 
 impl LocalFileStorageAdapter {
-    /// Assemble sequential uploaded chunks cleanly and return assembled CAS bytes + hash.
+    /// Assemble sequential uploaded chunks cleanly without wiping staging until caller verifies integrity.
     pub async fn assemble_chunks(&self, transfer_id: &str, total_chunks: u32) -> Result<Vec<u8>, StorageError> {
         let dir = self.chunks_dir(transfer_id)?;
         let mut out = Vec::new();
@@ -180,7 +180,6 @@ impl LocalFileStorageAdapter {
             let chunk = tokio::fs::read(&part).await?;
             out.extend_from_slice(&chunk);
         }
-        let _ = tokio::fs::remove_dir_all(&dir).await;
         Ok(out)
     }
 

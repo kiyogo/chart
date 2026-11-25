@@ -171,10 +171,11 @@ pub fn analyze_video_frames(frames: &[&[u8]], width: u32, height: u32, fps: u32)
     let mut peak_motion = 0.0f32;
     let mut motion_pairs = 0usize;
 
+    let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
     for pair in frames.windows(2) {
         let a = pair[0];
         let b = pair[1];
-        if a.len() < w * h * 4 || b.len() < w * h * 4 {
+        if req_bytes.is_none_or(|n| a.len() < n || b.len() < n) {
             continue;
         }
         let mut sad = 0u64;
@@ -303,9 +304,10 @@ pub fn plan_abr_variants(analysis: &VideoSceneAnalysis) -> Vec<AbrVariantPlan> {
     ladder
 }
 
-/// Convert RGBA8 frame to YUV420p (BT.709 limited/full compatible) planar arrays `(y, u, v)`.
+/// Convert RGBA8 frame (with explicit `src_w` pixel row stride) to YUV420p (BT.709) planar arrays `(y, u, v)` of size `w x h`.
+/// Using `src_w` prevents diagonal skew corruption when cropping odd-width inputs to even `w`.
 #[allow(dead_code)]
-fn rgba_to_yuv420(rgba: &[u8], w: usize, h: usize) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+fn rgba_to_yuv420_strided(rgba: &[u8], src_w: usize, w: usize, h: usize) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let cw = (w + 1) / 2;
     let ch = (h + 1) / 2;
     let mut y_plane = vec![0u8; w * h];
@@ -314,7 +316,7 @@ fn rgba_to_yuv420(rgba: &[u8], w: usize, h: usize) -> (Vec<u8>, Vec<u8>, Vec<u8>
 
     for y in 0..h {
         for x in 0..w {
-            let i = (y * w + x) * 4;
+            let i = (y * src_w + x) * 4;
             let r = rgba[i] as f32;
             let g = rgba[i + 1] as f32;
             let b = rgba[i + 2] as f32;
@@ -333,7 +335,7 @@ fn rgba_to_yuv420(rgba: &[u8], w: usize, h: usize) -> (Vec<u8>, Vec<u8>, Vec<u8>
                 let sy = (cy * 2 + dy).min(h - 1);
                 for dx in 0..2 {
                     let sx = (cx * 2 + dx).min(w - 1);
-                    let i = (sy * w + sx) * 4;
+                    let i = (sy * src_w + sx) * 4;
                     r_sum += rgba[i] as f32;
                     g_sum += rgba[i + 1] as f32;
                     b_sum += rgba[i + 2] as f32;
@@ -396,8 +398,17 @@ mod impl_av1 {
             .new_context()
             .map_err(|e| MediaError::Av1EncodeFailed(format!("rav1e context: {e}")))?;
 
+        let src_w = width as usize;
+        let src_h = height as usize;
+        let min_src_bytes = src_w
+            .checked_mul(src_h)
+            .and_then(|p| p.checked_mul(4))
+            .ok_or_else(|| MediaError::InvalidParameter("frame_dimensions_overflow".into()))?;
         for &rgba in frames {
-            let (y, u, v) = rgba_to_yuv420(rgba, w, h);
+            if rgba.len() < min_src_bytes {
+                return Err(MediaError::EmptyInput);
+            }
+            let (y, u, v) = rgba_to_yuv420_strided(rgba, src_w, w, h);
             let cw = (w + 1) / 2;
             let mut frame = ctx.new_frame();
             frame.planes[0].copy_from_raw_u8(&y, w, 1);
@@ -784,5 +795,24 @@ mod tests {
         let probe = probe_av1_hardware();
         assert!(!probe.selected_encoder.is_empty());
         assert!(!probe.note.is_empty());
+    }
+
+    #[test]
+    fn odd_width_rgba_to_yuv420_preserves_row_stride_without_skew() {
+        // Vertical stripe: column 0 is bright white, all other columns are black, odd width = 17.
+        let (src_w, src_h) = (17usize, 11usize);
+        let mut rgba = vec![0u8; src_w * src_h * 4];
+        for y in 0..src_h {
+            let i = (y * src_w) * 4;
+            rgba[i] = 255;
+            rgba[i + 1] = 255;
+            rgba[i + 2] = 255;
+            rgba[i + 3] = 255;
+        }
+        let (y_plane, _, _) = rgba_to_yuv420_strided(&rgba, src_w, 16, 10);
+        for row in 0..10 {
+            assert!(y_plane[row * 16] > 240, "col 0 row {row} must remain bright");
+            assert_eq!(y_plane[row * 16 + 1], 0, "col 1 row {row} must remain black without skew");
+        }
     }
 }

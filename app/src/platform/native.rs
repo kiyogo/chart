@@ -349,21 +349,33 @@ pub async fn start_google_oauth() -> Result<bool, String> {
         .and_then(|t| t.as_str())
         .ok_or_else(|| "missing_ticket".to_string())?
         .to_string();
+    let ticket_secret = v
+        .get("ticket_secret")
+        .and_then(|t| t.as_str())
+        .ok_or_else(|| "missing_ticket_secret".to_string())?
+        .to_string();
 
     let auth_url = format!("{}/api/auth/google?ticket={ticket}", api_base());
     open_external_url(&auth_url);
 
-    // Poll up to 120 seconds
+    // Poll up to 120 seconds with ticket secret proof
+    let poll_url = format!("{}/api/auth/oauth-ticket/{ticket}", api_base());
     for _ in 0..120 {
         sleep_ms(1000).await;
-        if let Ok((_, resp_body)) =
-            http_request("GET", &format!("/api/auth/oauth-ticket/{ticket}"), None, None).await
+        if let Ok(resp) = http_client()
+            .get(&poll_url)
+            .header("x-ticket-secret", &ticket_secret)
+            .send()
+            .await
+            && resp.status().is_success()
+            && let Ok(resp_body) = resp.text().await
             && let Ok(check) = serde_json::from_str::<serde_json::Value>(&resp_body)
-                && check.get("ready").and_then(|b| b.as_bool()).unwrap_or(false)
-                    && let Some(tok) = check.get("token").and_then(|t| t.as_str()) {
-                        set_session_cookie(tok);
-                        return Ok(true);
-                    }
+            && check.get("ready").and_then(|b| b.as_bool()).unwrap_or(false)
+            && let Some(tok) = check.get("token").and_then(|t| t.as_str())
+        {
+            set_session_cookie(tok);
+            return Ok(true);
+        }
     }
     Err("Google sign-in timed out".into())
 }

@@ -166,7 +166,16 @@ async fn update_pref(
     if !["dm", "group", "channel", "self", "bot"].contains(&conv_type.as_str()) {
         return Err(AppError::BadRequest("invalid_conversation_type"));
     }
-    if let Some(ids) = &p.label_ids {
+    let deduped_labels: Option<Vec<Uuid>> = p.label_ids.as_ref().map(|ids| {
+        let mut uniq = Vec::with_capacity(ids.len());
+        for id in ids {
+            if !uniq.contains(id) {
+                uniq.push(*id);
+            }
+        }
+        uniq
+    });
+    if let Some(ids) = &deduped_labels {
         if ids.len() > 10 {
             return Err(AppError::BadRequest("too_many_labels"));
         }
@@ -193,7 +202,7 @@ async fn update_pref(
         conv_type,
         conv_id,
         pinned_at.flatten(),
-        p.label_ids.as_deref(),
+        deduped_labels.as_deref(),
         p.in_messages,
         p.in_communities,
         p.muted,
@@ -296,7 +305,11 @@ struct WallpaperReq {
 
 fn valid_wallpaper(v: &str) -> bool {
     const PRESETS: [&str; 9] = ["none", "dots", "bubbles", "aurora", "paper", "sunset", "ocean", "mint", "night"];
-    PRESETS.contains(&v) || ((v.starts_with("/uploads/media/") || v.starts_with("/wallpapers/")) && !v.contains("..") && v.len() <= 300)
+    PRESETS.contains(&v)
+        || ((v.starts_with("/uploads/media/") || v.starts_with("/wallpapers/"))
+            && !v.contains("..")
+            && v.len() <= 300
+            && !v.chars().any(|c| matches!(c, '"' | '\'' | '(' | ')' | '\\' | '\n' | '\r' | '<' | '>')))
         || (v.starts_with("color:#") && v.len() == 13 && v[7..].chars().all(|c| c.is_ascii_hexdigit()))
 }
 

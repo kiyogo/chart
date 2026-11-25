@@ -220,7 +220,7 @@ fn check_product(p: &ProductReq) -> AppResult<()> {
         return Err(AppError::BadRequest("invalid_product_name"));
     }
     if let Some(ref u) = p.image_url {
-        if !u.is_empty() && (!u.starts_with("/uploads/media/") || u.contains("..")) {
+        if !u.is_empty() && (!u.starts_with("/uploads/media/") || u.contains("..") || u.len() > 300) {
             return Err(AppError::BadRequest("invalid_image_url"));
         }
     }

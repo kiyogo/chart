@@ -596,6 +596,7 @@ ${wasmLoader}
           inject_secret_header: a.inject_secret_header,
           inject_secret_prefix: a.inject_secret_prefix,
           e2ee_tainted: !!inst.e2eeTainted,
+          scope_id: a.scope_id || a.scopeId || null,
         });
       }
       case 'webhooks.list':
@@ -889,9 +890,18 @@ ${wasmLoader}
       };
       if (inst.status === 'starting') {
         inst.bootWaiters = inst.bootWaiters || [];
+        let settled = false;
+        const bootTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(new Error('PLUGIN_BOOT_TIMEOUT'));
+        }, Math.max(timeoutMs, 10000));
         inst.bootWaiters.push((ok) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(bootTimer);
           if (ok) sendNow();
-          else resolve(null);
+          else reject(new Error('PLUGIN_BOOT_FAILED'));
         });
       } else {
         sendNow();

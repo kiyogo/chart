@@ -936,7 +936,7 @@ async fn attempt_outgoing_delivery(
     match resp {
         Ok(r) => {
             let code = r.status().as_u16() as i32;
-            let preview = r
+            let preview: String = r
                 .bytes()
                 .await
                 .map(|b| String::from_utf8_lossy(&b[..b.len().min(512)]).into_owned())
@@ -982,7 +982,7 @@ async fn schedule_retry_or_dlq(
         .bind(http_status)
         .bind(attempt)
         .bind(preview)
-        .bind(&err[..err.len().min(300)])
+        .bind(err.chars().take(300).collect::<String>())
         .bind(deliv_id)
         .execute(&state.db)
         .await;
@@ -996,7 +996,7 @@ async fn schedule_retry_or_dlq(
         .bind(http_status)
         .bind(attempt)
         .bind(preview)
-        .bind(&err[..err.len().min(300)])
+        .bind(err.chars().take(300).collect::<String>())
         .bind(backoff_secs.to_string())
         .bind(deliv_id)
         .execute(&state.db)

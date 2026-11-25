@@ -9,7 +9,6 @@ use tokio::net::TcpListener;
 use tower_http::{
     cors::{AllowHeaders, AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
-    timeout::TimeoutLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -25,6 +24,7 @@ use chatw::{
 
 async fn security_headers_middleware(req: axum::extract::Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
+    let cache_path = path.clone();
     let is_plugin_sandbox = path == "/plugin-sandbox-frame";
     let is_service_worker = path == "/sw.js";
     let mut response = next.run(req).await;
@@ -65,12 +65,43 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
         header::HeaderName::from_static("permissions-policy"),
         HeaderValue::from_static("camera=(self), microphone=(self), display-capture=(self), geolocation=()"),
     );
-    headers.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store, no-cache, must-revalidate"),
-    );
+    let cache_val = if cache_path.as_str().starts_with("/api/") {
+        "no-store, no-cache, must-revalidate"
+    } else if cache_path.as_str().starts_with("/uploads/avatars/") || cache_path.as_str().starts_with("/pkg/") {
+        "public, max-age=3600"
+    } else if matches!(cache_path.as_str(), "/robots.txt" | "/sitemap.xml" | "/llms.txt")
+        || cache_path.as_str().starts_with("/k/")
+        || cache_path.as_str().starts_with("/c/")
+    {
+        "public, max-age=300"
+    } else {
+        "no-cache, must-revalidate"
+    };
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache_val));
 
     response
+}
+
+async fn selective_timeout_middleware(
+    req: axum::extract::Request,
+    next: Next,
+) -> Response {
+    let p = req.uri().path();
+    let limit = if p.starts_with("/api/backup")
+        || p.starts_with("/api/storage")
+        || p.starts_with("/api/attachments")
+        || p.starts_with("/api/bot")
+        || p.starts_with("/api/cloud")
+        || p.starts_with("/api/vico")
+    {
+        Duration::from_secs(120)
+    } else {
+        Duration::from_secs(15)
+    };
+    match tokio::time::timeout(limit, next.run(req)).await {
+        Ok(resp) => resp,
+        Err(_) => axum::response::IntoResponse::into_response(StatusCode::REQUEST_TIMEOUT),
+    }
 }
 
 async fn plugin_sandbox_frame_html() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
@@ -178,14 +209,14 @@ async fn deny_direct_stream_fallback() -> (StatusCode, [(axum::http::header::Hea
 async fn robots_txt() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
     (
         [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        "User-agent: *\nAllow: /\n\nSitemap: /sitemap.xml\n",
+        "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /plugin-sandbox-frame\n\nSitemap: /sitemap.xml\n",
     )
 }
 
 async fn llms_txt() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
     (
         [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        include_str!("../../frontend/public/llms.txt"),
+        include_str!("../../../app/public/llms.txt"),
     )
 }
 
@@ -354,6 +385,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 7b. CORS layer for web development and same-origin requests
     let public_origin_for_cors = config.public_origin.clone();
+    let dev_login_for_cors = config.dev_login_enabled;
     let cors = CorsLayer::new()
         .allow_methods([
             Method::GET,
@@ -373,20 +405,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             header::HeaderName::from_static("x-export-token"),
             header::HeaderName::from_static("x-backup-password"),
             header::HeaderName::from_static("x-chatw-stream-token"),
+            header::HeaderName::from_static("x-ticket-secret"),
         ]))
         .allow_credentials(true)
         .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _| {
             let s = origin.to_str().unwrap_or("");
-            auth::is_allowed_cors_origin(s, &public_origin_for_cors)
+            auth::is_allowed_cors_origin_for_config(s, &public_origin_for_cors, dev_login_for_cors)
         }));
 
     let app = app
         .layer(from_fn(security_headers_middleware))
         .layer(cors)
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(15),
-        ));
+        .layer(from_fn(selective_timeout_middleware));
 
     // 8. Bind server
     let listener = TcpListener::bind(config.bind_addr).await?;

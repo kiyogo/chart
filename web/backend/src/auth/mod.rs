@@ -10,7 +10,9 @@ use axum::{
     routing::{get, post},
 };
 use serde::Serialize;
-use std::sync::Arc;
+use sha2::{Digest, Sha256};
+use std::sync::{Arc, OnceLock};
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::{
@@ -20,7 +22,7 @@ use crate::{
         },
         session::{
             OAUTH_COOKIE_NAME, SESSION_COOKIE_NAME, authenticate_session,
-            destroy_session, parse_cookie,
+            destroy_session, hash_session_token, parse_cookie,
         },
     },
     config::Config,
@@ -29,11 +31,39 @@ use crate::{
 
 pub const OAUTH_TICKET_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 pub const OAUTH_TICKET_MAX_CAPACITY: usize = 1024;
+const OAUTH_CONFIRM_COOKIE_NAME: &str = "chatw_oauth_confirm";
 
 #[derive(Clone, Debug)]
 pub struct OAuthTicketEntry {
+    pub secret_hash: [u8; 32],
     pub token: Option<String>,
     pub created_at: std::time::Instant,
+}
+
+static LOGIN_RATE_LIMITER: OnceLock<std::sync::Mutex<std::collections::HashMap<String, Vec<std::time::Instant>>>> =
+    OnceLock::new();
+
+fn check_and_record_login_rate_limit(keys: &[String], max_attempts: usize, window: std::time::Duration) -> AppResult<()> {
+    let lock = LOGIN_RATE_LIMITER.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut map = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let now = std::time::Instant::now();
+    if map.len() > 4096 {
+        map.retain(|_, ts| {
+            ts.retain(|t| now.duration_since(*t) < window);
+            !ts.is_empty()
+        });
+    }
+    for key in keys {
+        let entries = map.entry(key.clone()).or_default();
+        entries.retain(|t| now.duration_since(*t) < window);
+        if entries.len() >= max_attempts {
+            return Err(AppError::TooManyRequests);
+        }
+    }
+    for key in keys {
+        map.entry(key.clone()).or_default().push(now);
+    }
+    Ok(())
 }
 
 pub type OAuthTicketStore =
@@ -78,6 +108,8 @@ pub struct UpdateAccountPasswordRequest {
     #[serde(default)]
     pub current_password: Option<String>,
     pub new_password: String,
+    #[serde(default)]
+    pub totp_or_backup_code: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -89,6 +121,7 @@ pub struct GoogleLoginQuery {
 #[derive(Serialize)]
 pub struct CreateTicketResponse {
     pub ticket: Uuid,
+    pub ticket_secret: String,
 }
 
 #[derive(Serialize)]
@@ -102,6 +135,7 @@ pub fn routes() -> Router<AppState> {
         .route("/google", get(handle_google_login))
         .route("/google/callback", get(handle_google_callback))
         .route("/oauth-ticket", post(handle_create_oauth_ticket))
+        .route("/oauth-ticket/confirm", post(handle_confirm_oauth_ticket))
         .route("/oauth-ticket/{ticket_id}", get(handle_check_oauth_ticket))
         .route("/dev-login", post(handle_dev_login))
         .route("/register", post(handle_register_password))
@@ -131,43 +165,117 @@ pub fn prune_expired_oauth_tickets(
     }
 }
 
-async fn handle_create_oauth_ticket(State(state): State<AppState>) -> Json<CreateTicketResponse> {
+async fn handle_create_oauth_ticket(State(state): State<AppState>) -> AppResult<Json<CreateTicketResponse>> {
     let ticket = Uuid::new_v4();
+    let mut secret_raw = [0u8; 32];
+    getrandom::fill(&mut secret_raw).map_err(|_| AppError::Internal)?;
+    let ticket_secret = hex::encode(secret_raw);
+    let secret_hash: [u8; 32] = Sha256::digest(ticket_secret.as_bytes()).into();
     let now = std::time::Instant::now();
     let mut tickets = state.oauth_tickets.write().await;
     prune_expired_oauth_tickets(&mut tickets, now);
     tickets.insert(
         ticket,
         OAuthTicketEntry {
+            secret_hash,
             token: None,
             created_at: now,
         },
     );
-    Json(CreateTicketResponse { ticket })
+    Ok(Json(CreateTicketResponse { ticket, ticket_secret }))
 }
 
 async fn handle_check_oauth_ticket(
     State(state): State<AppState>,
+    headers: HeaderMap,
     axum::extract::Path(ticket_id): axum::extract::Path<Uuid>,
-) -> Json<CheckTicketResponse> {
+) -> AppResult<Json<CheckTicketResponse>> {
+    let provided_secret = headers
+        .get("x-ticket-secret")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .unwrap_or("");
+    if provided_secret.is_empty() {
+        return Err(AppError::Forbidden("missing_ticket_secret"));
+    }
+    let provided_hash: [u8; 32] = Sha256::digest(provided_secret.as_bytes()).into();
+
     let now = std::time::Instant::now();
     let mut tickets = state.oauth_tickets.write().await;
     prune_expired_oauth_tickets(&mut tickets, now);
     if let Some(entry) = tickets.get(&ticket_id) {
+        if entry.secret_hash.ct_eq(&provided_hash).unwrap_u8() != 1 {
+            return Err(AppError::Forbidden("invalid_ticket_secret"));
+        }
         if let Some(ref token) = entry.token {
             let tok = token.clone();
             // Atomic one-time consumption: ticket is destroyed immediately once token is claimed
             tickets.remove(&ticket_id);
-            return Json(CheckTicketResponse {
+            return Ok(Json(CheckTicketResponse {
                 ready: true,
                 token: Some(tok),
-            });
+            }));
         }
+        return Ok(Json(CheckTicketResponse {
+            ready: false,
+            token: None,
+        }));
     }
-    Json(CheckTicketResponse {
+    Ok(Json(CheckTicketResponse {
         ready: false,
         token: None,
-    })
+    }))
+}
+
+#[derive(serde::Deserialize)]
+struct ConfirmOAuthTicketForm {
+    ticket: Uuid,
+    csrf: String,
+}
+
+async fn handle_confirm_oauth_ticket(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::Form(form): axum::Form<ConfirmOAuthTicketForm>,
+) -> AppResult<Response> {
+    let raw_confirm = parse_cookie(&headers, OAUTH_CONFIRM_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
+    let (ticket_str, rest) = raw_confirm.split_once('|').ok_or(AppError::Unauthorized)?;
+    let (user_str, rest2) = rest.split_once('|').ok_or(AppError::Unauthorized)?;
+    let (exp_str, rest3) = rest2.split_once('|').ok_or(AppError::Unauthorized)?;
+    let (csrf_saved, sig_hex) = rest3.split_once('|').ok_or(AppError::Unauthorized)?;
+    let unsigned = format!("{ticket_str}|{user_str}|{exp_str}|{csrf_saved}");
+    let expected_sig = hash_session_token(&state.config.session_secret, unsigned.as_bytes());
+    let given_sig = hex::decode(sig_hex).map_err(|_| AppError::Unauthorized)?;
+    if given_sig.len() != 32 || expected_sig.ct_eq(&given_sig).unwrap_u8() != 1 {
+        return Err(AppError::Unauthorized);
+    }
+    let ticket_id = Uuid::parse_str(ticket_str).map_err(|_| AppError::Unauthorized)?;
+    let user_id = Uuid::parse_str(user_str).map_err(|_| AppError::Unauthorized)?;
+    let exp: i64 = exp_str.parse().map_err(|_| AppError::Unauthorized)?;
+    if Utc::now().timestamp() > exp || ticket_id != form.ticket || csrf_saved.as_bytes().ct_eq(form.csrf.as_bytes()).unwrap_u8() != 1 {
+        return Err(AppError::Unauthorized);
+    }
+
+    let (raw_token, _session_cookie) = match crate::security::complete_login(&state, user_id, &headers).await? {
+        crate::security::LoginOutcome::Session(raw, cookie) => (raw, cookie),
+        crate::security::LoginOutcome::Challenge(_, _) => return Err(AppError::Forbidden("twofa_required")),
+    };
+
+    let now = std::time::Instant::now();
+    let mut tickets = state.oauth_tickets.write().await;
+    prune_expired_oauth_tickets(&mut tickets, now);
+    if let Some(entry) = tickets.get_mut(&ticket_id) {
+        entry.token = Some(raw_token);
+    } else {
+        return Err(AppError::BadRequest("ticket_expired"));
+    }
+
+    let secure_flag = if state.config.cookie_secure { "; Secure" } else { "" };
+    let clear_confirm = format!("{OAUTH_CONFIRM_COOKIE_NAME}=; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}");
+    let html = r#"<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>ChatW - Xác nhận thành công</title><style>body{background:#09090b;color:#fafafa;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.box{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:32px;text-align:center;max-width:420px}</style></head><body><div class="box"><h1>Đã xác nhận đăng nhập ứng dụng</h1><p>Bạn có thể đóng tab này và quay lại ChatW.</p></div><script>setTimeout(function(){window.close();},1500);</script></body></html>"#;
+    let mut resp = axum::response::Html(html).into_response();
+    resp.headers_mut().append(header::SET_COOKIE, clear_confirm.parse().map_err(|_| AppError::Internal)?);
+    Ok(resp)
 }
 
 #[derive(Serialize)]
@@ -208,12 +316,8 @@ async fn handle_google_callback(
     let oauth_cookie = match parse_cookie(&headers, OAUTH_COOKIE_NAME) {
         Some(c) => c,
         None => {
-            if state_param.starts_with("local") {
-                let port: u16 = state_param
-                    .strip_prefix("local")
-                    .and_then(|s| s.split('_').next())
-                    .and_then(|p| p.parse().ok())
-                    .unwrap_or(state.config.bind_addr.port());
+            if state_param.starts_with("local") && state.config.bind_addr.ip().is_loopback() {
+                let port = state.config.bind_addr.port();
                 let local_url = format!(
                     "http://127.0.0.1:{port}/api/auth/google/callback?code={}&state={}",
                     urlencoding::encode(&code),
@@ -270,7 +374,7 @@ async fn handle_google_callback(
             Some(row) => {
                 if let Some(ref pic) = claims.picture {
                     sqlx::query!(
-                        "UPDATE users SET avatar_url = $1 WHERE id = $2",
+                        "UPDATE users SET avatar_url = $1 WHERE id = $2 AND (avatar_url IS NULL OR avatar_url LIKE 'https://%googleusercontent.com%')",
                         pic,
                         row.id
                     )
@@ -309,15 +413,6 @@ async fn handle_google_callback(
         }
     };
 
-    if let Some(ticket_id) = saved.ticket {
-        let now = std::time::Instant::now();
-        let mut tickets = state.oauth_tickets.write().await;
-        prune_expired_oauth_tickets(&mut tickets, now);
-        if let Some(entry) = tickets.get_mut(&ticket_id) {
-            entry.token = Some(raw_token);
-        }
-    }
-
     // Clear oauth cookie
     let secure_flag = if state.config.cookie_secure {
         "; Secure"
@@ -327,6 +422,38 @@ async fn handle_google_callback(
     let clear_oauth = format!(
         "{OAUTH_COOKIE_NAME}=; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}"
     );
+
+    if let Some(ticket_id) = saved.ticket {
+        let now = std::time::Instant::now();
+        let ticket_exists = {
+            let mut tickets = state.oauth_tickets.write().await;
+            prune_expired_oauth_tickets(&mut tickets, now);
+            tickets.contains_key(&ticket_id)
+        };
+        if !ticket_exists {
+            return Err(AppError::BadRequest("ticket_expired"));
+        }
+        let _ = raw_token;
+        let mut csrf_bytes = [0u8; 16];
+        getrandom::fill(&mut csrf_bytes).map_err(|_| AppError::Internal)?;
+        let csrf = hex::encode(csrf_bytes);
+        let exp = Utc::now().timestamp() + 180;
+        let unsigned = format!("{ticket_id}|{user_id}|{exp}|{csrf}");
+        let sig = hex::encode(hash_session_token(&state.config.session_secret, unsigned.as_bytes()));
+        let confirm_val = format!("{unsigned}|{sig}");
+        let confirm_cookie = format!(
+            "{OAUTH_CONFIRM_COOKIE_NAME}={confirm_val}; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=180{secure_flag}"
+        );
+        let short_ticket: String = ticket_id.to_string().chars().take(8).collect();
+        let confirm_html = format!(
+            r#"<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>Xác nhận đăng nhập ứng dụng ChatW</title><style>body{{background:#09090b;color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}.box{{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:32px;text-align:center;max-width:420px}}h1{{font-size:20px;margin:0 0 10px}}p{{font-size:14px;color:#a1a1aa;margin:0 0 20px;line-height:1.5}}.btn{{background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer}}</style></head><body><div class="box"><h1>Xác nhận chuyển phiên đăng nhập</h1><p>Bạn có muốn đăng nhập ứng dụng ChatW Desktop (mã phiên {short_ticket}) bằng tài khoản này không?</p><form method="POST" action="/api/auth/oauth-ticket/confirm"><input type="hidden" name="ticket" value="{ticket_id}" /><input type="hidden" name="csrf" value="{csrf}" /><button class="btn" type="submit">Xác nhận đăng nhập ứng dụng</button></form></div></body></html>"#
+        );
+        let mut response = axum::response::Html(confirm_html).into_response();
+        response.headers_mut().append(header::SET_COOKIE, session_cookie.parse().map_err(|_| AppError::Internal)?);
+        response.headers_mut().append(header::SET_COOKIE, confirm_cookie.parse().map_err(|_| AppError::Internal)?);
+        response.headers_mut().append(header::SET_COOKIE, clear_oauth.parse().map_err(|_| AppError::Internal)?);
+        return Ok(response);
+    }
 
     let html = r#"<!DOCTYPE html>
 <html lang="en">
@@ -510,10 +637,15 @@ async fn handle_register_password(
     headers: HeaderMap,
     crate::error::ApiJson(req): crate::error::ApiJson<PasswordAuthRequest>,
 ) -> AppResult<Response> {
+    let ip_key = format!("reg:ip:{}", crate::security::ip_masked_with_trust(&headers, state.config.trust_proxy));
+    check_and_record_login_rate_limit(&[ip_key], 20, std::time::Duration::from_secs(900))?;
     let (display_name, username_norm) =
         crate::users::validate_and_normalize_username(&req.username)?;
     validate_account_password(&req.password)?;
-    let phc = crate::backup::reauth::hash_argon2_phc(&req.password)?;
+    let pw = req.password.clone();
+    let phc = tokio::task::spawn_blocking(move || crate::backup::reauth::hash_argon2_phc(&pw))
+        .await
+        .map_err(|_| AppError::Internal)??;
 
     let user_id = Uuid::new_v4();
     let local_sub = format!("local:{user_id}");
@@ -547,7 +679,12 @@ async fn handle_login_password(
     headers: HeaderMap,
     crate::error::ApiJson(req): crate::error::ApiJson<PasswordAuthRequest>,
 ) -> AppResult<Response> {
+    const DUMMY_PHC: &str = "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     let (_, username_norm) = crate::users::validate_and_normalize_username(&req.username)?;
+    let ip_key = format!("login:ip:{}", crate::security::ip_masked_with_trust(&headers, state.config.trust_proxy));
+    let user_key = format!("login:u:{username_norm}");
+    check_and_record_login_rate_limit(&[ip_key, user_key], 15, std::time::Duration::from_secs(900))?;
+
     if req.password.is_empty() || req.password.len() > 128 {
         return Err(AppError::BadRequest("invalid_credentials"));
     }
@@ -559,12 +696,9 @@ async fn handle_login_password(
     .fetch_optional(&state.db)
     .await?;
 
+    let pw = req.password.clone();
     let Some(row) = row else {
-        // Perform a dummy Argon2 verification timing pass to avoid username enumeration timing side-channels.
-        let _ = crate::backup::reauth::verify_argon2_phc(
-            "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            &req.password,
-        );
+        let _ = tokio::task::spawn_blocking(move || crate::backup::reauth::verify_argon2_phc(DUMMY_PHC, &pw)).await;
         return Err(AppError::BadRequest("invalid_credentials"));
     };
 
@@ -572,13 +706,18 @@ async fn handle_login_password(
     let user_id: Uuid = row.try_get("id")?;
     let suspended: Option<DateTime<Utc>> = row.try_get("suspended_at")?;
     if suspended.is_some() {
+        let _ = tokio::task::spawn_blocking(move || crate::backup::reauth::verify_argon2_phc(DUMMY_PHC, &pw)).await;
         return Err(AppError::Forbidden("account_suspended"));
     }
     let phc: Option<String> = row.try_get("password_hash")?;
     let Some(phc) = phc else {
+        let _ = tokio::task::spawn_blocking(move || crate::backup::reauth::verify_argon2_phc(DUMMY_PHC, &pw)).await;
         return Err(AppError::BadRequest("password_not_set_for_account"));
     };
-    if !crate::backup::reauth::verify_argon2_phc(&phc, &req.password) {
+    let ok = tokio::task::spawn_blocking(move || crate::backup::reauth::verify_argon2_phc(&phc, &pw))
+        .await
+        .map_err(|_| AppError::Internal)?;
+    if !ok {
         crate::security::log_event(&state, user_id, "password_login_failed", &headers).await;
         return Err(AppError::BadRequest("invalid_credentials"));
     }
@@ -595,6 +734,13 @@ async fn handle_update_account_password(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
     validate_account_password(&req.new_password)?;
+    crate::security::require_second_factor(
+        &state,
+        user.id,
+        req.totp_or_backup_code.as_deref(),
+        &headers,
+    )
+    .await?;
 
     let existing_phc: Option<String> =
         sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1")
@@ -602,19 +748,43 @@ async fn handle_update_account_password(
             .fetch_one(&state.db)
             .await?;
 
-    if let Some(ref cur_phc) = existing_phc {
-        let cur = req.current_password.as_deref().unwrap_or("");
-        if !crate::backup::reauth::verify_argon2_phc(cur_phc, cur) {
+    if let Some(cur_phc) = existing_phc {
+        let cur = req.current_password.clone().unwrap_or_default();
+        let ok = tokio::task::spawn_blocking(move || crate::backup::reauth::verify_argon2_phc(&cur_phc, &cur))
+            .await
+            .map_err(|_| AppError::Internal)?;
+        if !ok {
             return Err(AppError::BadRequest("wrong_current_password"));
         }
     }
 
-    let next_phc = crate::backup::reauth::hash_argon2_phc(&req.new_password)?;
+    let next_pw = req.new_password.clone();
+    let next_phc = tokio::task::spawn_blocking(move || crate::backup::reauth::hash_argon2_phc(&next_pw))
+        .await
+        .map_err(|_| AppError::Internal)??;
     sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
         .bind(&next_phc)
         .bind(user.id)
         .execute(&state.db)
         .await?;
+
+    if let Ok(token_bytes) = hex::decode(session_token)
+        && token_bytes.len() == 32
+    {
+        let token_hash = hash_session_token(&state.config.session_secret, &token_bytes);
+        if let Ok(revoked_ids) = sqlx::query_scalar::<_, Uuid>(
+            "DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2 RETURNING id",
+        )
+        .bind(user.id)
+        .bind(&token_hash[..])
+        .fetch_all(&state.db)
+        .await
+        {
+            for sid in revoked_ids {
+                state.ws_hub.disconnect_session(&user.id, sid).await;
+            }
+        }
+    }
 
     crate::security::log_event(&state, user.id, "account_password_updated", &headers).await;
     Ok(Json(serde_json::json!({ "ok": true, "has_password": true })))
@@ -661,7 +831,7 @@ async fn handle_list_sessions(
     let sessions = rows
         .into_iter()
         .map(|r| SessionResponseItem {
-            id: r.id.unwrap_or_else(Uuid::new_v4),
+            id: r.id,
             device_name: r.device_name,
             device_label: r.device_label,
             ip_address: r.ip_address,
@@ -784,7 +954,11 @@ async fn handle_delete_session(
 /// Strict CORS origin check: parses the `Origin` header as a URL and permits only exact
 /// `localhost` / `127.0.0.1` loopback hosts (any port) or the configured `public_origin`.
 /// Rejects prefix-bypass origins like `http://localhost.attacker.evil` or `http://127.0.0.1.evil.com`.
-pub fn is_allowed_cors_origin(origin_raw: &str, configured_public_origin: &str) -> bool {
+pub fn is_allowed_cors_origin_for_config(
+    origin_raw: &str,
+    configured_public_origin: &str,
+    dev_login_enabled: bool,
+) -> bool {
     let trimmed = origin_raw.trim();
     if trimmed.is_empty() || trimmed == "null" {
         return false;
@@ -806,18 +980,30 @@ pub fn is_allowed_cors_origin(origin_raw: &str, configured_public_origin: &str) 
     let Some(host) = parsed.host_str() else {
         return false;
     };
-    if host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" {
+    let pub_parsed = reqwest::Url::parse(configured_public_origin.trim()).ok();
+    let pub_is_loopback = pub_parsed
+        .as_ref()
+        .and_then(|u| u.host_str())
+        .is_some_and(|h| h.eq_ignore_ascii_case("localhost") || h == "127.0.0.1");
+    if (dev_login_enabled || pub_is_loopback)
+        && (host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1")
+    {
         return true;
     }
-    if let Ok(pub_url) = reqwest::Url::parse(configured_public_origin.trim()) {
-        if pub_url.scheme() == parsed.scheme()
-            && pub_url.host_str() == parsed.host_str()
-            && pub_url.port_or_known_default() == parsed.port_or_known_default()
-        {
-            return true;
-        }
+    if let Some(pub_url) = pub_parsed
+        && pub_url.scheme() == parsed.scheme()
+        && pub_url.host_str() == parsed.host_str()
+        && pub_url.port_or_known_default() == parsed.port_or_known_default()
+    {
+        return true;
     }
     false
+}
+
+/// Strict CORS origin check: parses the `Origin` header as a URL and permits only exact
+/// `localhost` / `127.0.0.1` loopback hosts (when configured/dev) or the configured `public_origin`.
+pub fn is_allowed_cors_origin(origin_raw: &str, configured_public_origin: &str) -> bool {
+    is_allowed_cors_origin_for_config(origin_raw, configured_public_origin, false)
 }
 
 #[cfg(test)]
@@ -829,6 +1015,8 @@ mod tests {
         assert!(is_allowed_cors_origin("http://localhost:8085", "http://localhost:8085"));
         assert!(is_allowed_cors_origin("http://127.0.0.1:5173", "http://localhost:8085"));
         assert!(is_allowed_cors_origin("https://chat.example.com", "https://chat.example.com"));
+        // Production non-loopback MUST reject arbitrary localhost origins
+        assert!(!is_allowed_cors_origin("http://localhost:5173", "https://chat.example.com"));
         // Prefix-spoofed attacker domains MUST be rejected
         assert!(!is_allowed_cors_origin("http://localhost.attacker.evil", "http://localhost:8085"));
         assert!(!is_allowed_cors_origin("http://localhost.evil.com:8085", "http://localhost:8085"));
@@ -845,6 +1033,7 @@ mod tests {
         store.insert(
             expired_id,
             OAuthTicketEntry {
+                secret_hash: [1u8; 32],
                 token: Some("old".into()),
                 created_at: base,
             },
@@ -854,6 +1043,7 @@ mod tests {
         store.insert(
             fresh_id,
             OAuthTicketEntry {
+                secret_hash: [2u8; 32],
                 token: Some("fresh".into()),
                 created_at: later,
             },

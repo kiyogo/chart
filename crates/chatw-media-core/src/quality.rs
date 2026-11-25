@@ -138,8 +138,29 @@ pub fn laplacian_sharpness(luma: &[f64], w: usize, h: usize) -> f64 {
 pub fn evaluate_rgba_quality(ref_rgba: &[u8], test_rgba: &[u8], width: u32, height: u32) -> QualityReport {
     let w = width as usize;
     let h = height as usize;
-    let n = w * h;
-    if n == 0 || ref_rgba.len() < n * 4 || test_rgba.len() < n * 4 {
+    let Some(n) = w.checked_mul(h) else {
+        return QualityReport {
+            psnr_db: 0.0,
+            ssim: 0.0,
+            ms_ssim: 0.0,
+            ref_sharpness: 0.0,
+            test_sharpness: 0.0,
+            color_drift_l1: 255.0,
+            edge_preservation_ratio: 0.0,
+        };
+    };
+    let Some(req_bytes) = n.checked_mul(4) else {
+        return QualityReport {
+            psnr_db: 0.0,
+            ssim: 0.0,
+            ms_ssim: 0.0,
+            ref_sharpness: 0.0,
+            test_sharpness: 0.0,
+            color_drift_l1: 255.0,
+            edge_preservation_ratio: 0.0,
+        };
+    };
+    if n == 0 || ref_rgba.len() < req_bytes || test_rgba.len() < req_bytes {
         return QualityReport {
             psnr_db: 0.0,
             ssim: 0.0,

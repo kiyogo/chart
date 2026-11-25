@@ -81,6 +81,19 @@ pub fn validate_p256_public_key(bytes: &[u8]) -> AppResult<()> {
     Ok(())
 }
 
+/// Validate a base64 (standard or URL-safe, padded or not) encoded uncompressed P-256 public key.
+pub fn validate_p256_public_key_b64(b64: &str) -> AppResult<()> {
+    use base64::Engine as _;
+    let t = b64.trim();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(t)
+        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(t))
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(t))
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(t))
+        .map_err(|_| AppError::BadRequest("invalid_public_key_base64"))?;
+    validate_p256_public_key(&bytes)
+}
+
 impl<'a> Envelope<'a> {
     pub fn parse(raw: &'a [u8]) -> AppResult<Self> {
         if raw.len() < MIN_ENVELOPE_LEN {

@@ -50,6 +50,7 @@ pub fn App() -> Element {
                 let cuname = cached_me.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let cav = cached_me.get("avatar_url").and_then(|v| v.as_str()).map(str::to_string);
                 if !cid.is_empty() && !cuname.is_empty() {
+                    api::set_cached_auth_user_id(Some(cid.clone()));
                     current_user.set(Some(CurrentUser {
                         id: cid,
                         username: cuname,

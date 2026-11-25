@@ -51,16 +51,14 @@ pub fn IncomingCallModal(
                 div { style: "display: flex; justify-content: center; gap: 32px; align-items: center;",
                     // Reject Button
                     button {
-                        class: "partner-action-btn",
-                        class: "call-btn call-btn-danger",
+                        class: "partner-action-btn call-btn call-btn-danger",
                         onclick: move |_| on_reject.call(()),
                         PhoneOffIcon { size: 24 }
                     }
 
                     // Accept Button
                     button {
-                        class: "partner-action-btn",
-                        class: "call-btn call-btn-success",
+                        class: "partner-action-btn call-btn call-btn-success",
                         onclick: move |_| on_accept.call(()),
                         if is_video {
                             VideoIcon { size: 24 }

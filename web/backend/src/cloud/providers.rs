@@ -220,10 +220,11 @@ pub fn validate_remote_endpoint(raw_url: &str, allow_lan_nas: bool) -> Result<re
         .ok_or_else(|| CloudError::InvalidConfig("Missing host in URL".into()))?;
     let host_lower = host.to_ascii_lowercase();
 
+    let host_unbracketed_early = host.trim_start_matches('[').trim_end_matches(']');
     let is_lan_http_allowed = if allow_lan_nas && scheme == "http" {
         if host_lower.ends_with(".local") {
             true
-        } else if let Ok(ip) = host.parse::<IpAddr>() {
+        } else if let Ok(ip) = host_unbracketed_early.parse::<IpAddr>() {
             match ip {
                 IpAddr::V4(v4) => v4.is_private(),
                 IpAddr::V6(v6) => (v6.segments()[0] & 0xfe00) == 0xfc00,
@@ -288,16 +289,20 @@ async fn build_safe_cloud_http_client(
         if is_forbidden_ssrf_ip(ip, allow_lan_nas, allow_loopback_test) {
             return Err(CloudError::SsrfBlocked(host.to_string()));
         }
-    } else if let Ok(addrs) = tokio::net::lookup_host((host, port)).await {
-        let resolved: Vec<std::net::SocketAddr> = addrs.collect();
+    } else {
+        let resolved: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host, port))
+            .await
+            .map_err(|e| CloudError::Network(format!("DNS resolution failed for {host}: {e}")))?
+            .collect();
         for addr in &resolved {
             if is_forbidden_ssrf_ip(addr.ip(), allow_lan_nas, allow_loopback_test) {
                 return Err(CloudError::SsrfBlocked(format!("{} -> {}", host, addr.ip())));
             }
         }
-        if let Some(first) = resolved.first() {
-            builder = builder.resolve(host, *first);
-        }
+        let first = resolved
+            .first()
+            .ok_or_else(|| CloudError::Network(format!("No DNS records for {host}")))?;
+        builder = builder.resolve(host, *first);
     }
 
     builder

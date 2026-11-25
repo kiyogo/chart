@@ -44,9 +44,12 @@ fn wrap_local_e2ee_cache(ref_id: &str, plain_bytes: &[u8]) -> Result<Vec<u8>, St
 }
 
 #[allow(deprecated)]
-fn unwrap_local_e2ee_cache(ref_id: &str, stored_bytes: Vec<u8>) -> Option<Vec<u8>> {
+fn unwrap_local_e2ee_cache(ref_id: &str, stored_bytes: Vec<u8>, require_encrypted: bool) -> Option<Vec<u8>> {
     if stored_bytes.len() < 5 + 12 + 16 || &stored_bytes[0..5] != LOCAL_CACHE_MAGIC {
-        // Legacy unencrypted cache item (non-E2EE or pre-Spec 058): return as-is.
+        // For E2EE/DM media, refuse unencrypted cache entries so plaintext cannot be spoofed or stale-cached.
+        if require_encrypted {
+            return None;
+        }
         return Some(stored_bytes);
     }
     let uid = api::auth_me_cached_id()?;
@@ -95,9 +98,10 @@ pub async fn load_or_fetch_media(
     let ref_id = extract_ref_id(url);
 
     // 1. Check local OPFS / IndexedDB / Native CAS first! Zero network traffic on hit.
+    let require_enc_cache = !key_b64.is_empty() || scope_type == "dm";
     if let Some(ref rid) = ref_id {
         if let Some((cached_bytes, cached_mime, _sha)) = get_local_object(rid).await {
-            if let Some(plain_bytes) = unwrap_local_e2ee_cache(rid, cached_bytes) {
+            if let Some(plain_bytes) = unwrap_local_e2ee_cache(rid, cached_bytes, require_enc_cache) {
                 let mime = if cached_mime != "application/octet-stream" {
                     cached_mime
                 } else {
@@ -240,7 +244,7 @@ pub async fn respond_to_incoming_recovery(request_id: &str, ref_id: &str, transp
 
     // Encrypted Server Relay fallback: ALWAYS seal payload with AEAD (`is_e2ee = true`) before uploading.
     // Never leak plaintext bytes through the server relay.
-    let plain_for_relay = unwrap_local_e2ee_cache(ref_id, plain_bytes).unwrap_or_default();
+    let plain_for_relay = unwrap_local_e2ee_cache(ref_id, plain_bytes, true).unwrap_or_default();
     if plain_for_relay.is_empty() {
         return;
     }

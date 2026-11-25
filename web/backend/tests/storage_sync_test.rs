@@ -76,6 +76,8 @@ async fn build_app(pool: sqlx::PgPool, config: Config) -> (axum::Router, Arc<sto
         .nest("/api/audit", audit::routes())
         .nest("/api/servers", servers::server_routes())
         .nest("/api/channels", servers::channel_routes())
+        .nest("/api/stickers", chatw::stickers::routes())
+        .nest("/api/calls", chatw::calls::routes())
         .nest("/api/privacy", privacy::routes())
         .merge(websocket::routes())
         .with_state(state);
@@ -183,10 +185,13 @@ fn sample_png_bytes(w: u32, h: u32) -> Vec<u8> {
 
 fn sample_meme_png(seed: u64, w: u32, h: u32, caption_variant: u8, perturb: u8) -> Vec<u8> {
     let mut img = RgbaImage::new(w, h);
-    let s_factor = ((seed % 500) as f32) * 0.123;
+    let freq_x = 0.05 + ((seed % 17) as f32) * 0.009;
+    let freq_y = 0.05 + (((seed >> 8) % 17) as f32) * 0.009;
+    let phase_x = (((seed >> 16) % 628) as f32) * 0.01;
+    let phase_y = (((seed >> 24) % 628) as f32) * 0.01;
     for y in 0..h {
         for x in 0..w {
-            let wave = (((x as f32 * 0.08).sin() + (y as f32 * 0.07).cos() + s_factor) * 45.0 + 128.0) as u8;
+            let wave = (((x as f32 * freq_x + phase_x).sin() + (y as f32 * freq_y + phase_y).cos()) * 45.0 + 128.0) as u8;
             let r = wave.saturating_add(perturb);
             let g = (((x + y + (seed as u32 % 250)) / 2) % 255) as u8;
             let b = (255u8).saturating_sub(wave / 2);
@@ -208,10 +213,13 @@ fn sample_meme_png(seed: u64, w: u32, h: u32, caption_variant: u8, perturb: u8) 
 
 fn sample_meme_jpg(seed: u64, w: u32, h: u32, caption_variant: u8, perturb: u8) -> Vec<u8> {
     let mut img = RgbaImage::new(w, h);
-    let s_factor = ((seed % 500) as f32) * 0.123;
+    let freq_x = 0.05 + ((seed % 17) as f32) * 0.009;
+    let freq_y = 0.05 + (((seed >> 8) % 17) as f32) * 0.009;
+    let phase_x = (((seed >> 16) % 628) as f32) * 0.01;
+    let phase_y = (((seed >> 24) % 628) as f32) * 0.01;
     for y in 0..h {
         for x in 0..w {
-            let wave = (((x as f32 * 0.08).sin() + (y as f32 * 0.07).cos() + s_factor) * 45.0 + 128.0) as u8;
+            let wave = (((x as f32 * freq_x + phase_x).sin() + (y as f32 * freq_y + phase_y).cos()) * 45.0 + 128.0) as u8;
             let r = wave.saturating_add(perturb);
             let g = (((x + y + (seed as u32 % 250)) / 2) % 255) as u8;
             let b = (255u8).saturating_sub(wave / 2);
@@ -419,7 +427,7 @@ async fn scenario_06_to_14_avatar_honesty_dedup_forward_chunking_and_relay_safet
     let m2_val: Value = serde_json::from_slice(&m2_raw).unwrap();
     assert_ne!(sha_hex(&meme1_png), sha_hex(&meme2_reenc_jpg), "Hashes MUST be distinct to test perceptual deduplication!");
     assert_eq!(m2_val["deduplicated"], true);
-    assert_eq!(m2_val["dedup_match_kind"], "perceptual_meme_match");
+    assert_eq!(m2_val["dedup_match_kind"], "perceptual_pdq_mih_match");
     let m2_ref = m2_val["ref_id"].as_str().unwrap();
 
     // Bob can download and gets the high quality master file
@@ -641,6 +649,10 @@ async fn scenario_15_to_25_devices_approval_sync_and_peer_recovery() {
     assert_eq!(zero_val["status"], "no_remaining_copies");
 
     // 24 & 25. Metrics & S3 Migration dry-run verification
+    // Spec 161: storage metrics/migration are admin-only.
+    let (st_met_forbidden, _) = req_json(&app, "GET", "/api/storage/metrics", &c_bob_dev1, None).await;
+    assert_eq!(st_met_forbidden, StatusCode::FORBIDDEN);
+    sqlx::query("UPDATE users SET is_admin = TRUE WHERE id = $1").bind(alice).execute(&pool).await.unwrap();
     let (st_met, met_val) = req_json(&app, "GET", "/api/storage/metrics", &c_alice_dev1, None).await;
     assert_eq!(st_met, StatusCode::OK);
     assert!(met_val["server"]["physical_bytes"].as_i64().is_some());
@@ -871,4 +883,114 @@ async fn spec160_password_auth_register_login_and_change_works() {
     assert_eq!(st_new, StatusCode::OK);
 
     let _ = std::fs::remove_dir_all(&cfg.uploads_dir);
+}
+
+#[tokio::test]
+async fn spec161_security_regressions() {
+    let pool = setup_db().await;
+    let cfg = test_config("spec161");
+    let (app, _) = build_app(pool.clone(), cfg.clone()).await;
+
+    let (alice, _, c_alice) = create_test_user(&pool, &cfg, "s161_alice").await;
+    let (bob, _, c_bob) = create_test_user(&pool, &cfg, "s161_bob").await;
+
+    // 1. OAuth ticket polling requires X-Ticket-Secret header (prevents ticket takeover / CSRF fixation)
+    let (st_tk, tk_val) = req_json(&app, "POST", "/api/auth/oauth-ticket", "", None).await;
+    assert_eq!(st_tk, StatusCode::OK);
+    let ticket = tk_val["ticket"].as_str().unwrap();
+    let secret = tk_val["ticket_secret"].as_str().unwrap();
+    assert!(!secret.is_empty());
+
+    let (st_no_sec, _) = req_json(&app, "GET", &format!("/api/auth/oauth-ticket/{ticket}"), "", None).await;
+    assert_eq!(st_no_sec, StatusCode::FORBIDDEN);
+
+    let (st_bad_sec, _, _) = req_bytes(
+        &app,
+        "GET",
+        &format!("/api/auth/oauth-ticket/{ticket}"),
+        "",
+        "",
+        vec![],
+        &[("x-ticket-secret", "wrong-secret")],
+    )
+    .await;
+    assert_eq!(st_bad_sec, StatusCode::FORBIDDEN);
+
+    let (st_ok_sec, _, _) = req_bytes(
+        &app,
+        "GET",
+        &format!("/api/auth/oauth-ticket/{ticket}"),
+        "",
+        "",
+        vec![],
+        &[("x-ticket-secret", secret)],
+    )
+    .await;
+    assert_eq!(st_ok_sec, StatusCode::OK);
+
+    // 2. Private sticker pack GET is restricted to pack author (closes IDOR)
+    let (st_pk, pk_val) = req_json(
+        &app,
+        "POST",
+        "/api/stickers/packs",
+        &c_alice,
+        Some(json!({ "name": "Alice Secret Pack" })),
+    )
+    .await;
+    assert_eq!(st_pk, StatusCode::OK);
+    let pack_id = pk_val["id"].as_str().unwrap();
+    let (st_bob_pk, _) = req_json(&app, "GET", &format!("/api/stickers/packs/{pack_id}"), &c_bob, None).await;
+    assert_eq!(st_bob_pk, StatusCode::FORBIDDEN);
+
+    // 3. Delta sync must NEVER leak private server channel messages to non-admin members
+    let (st_srv, srv_val) = req_json(&app, "POST", "/api/servers", &c_alice, Some(json!({ "name": "SecSrv" }))).await;
+    assert_eq!(st_srv, StatusCode::OK);
+    let srv_id = srv_val["id"].as_str().unwrap();
+    sqlx::query("INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid, $2) ON CONFLICT DO NOTHING")
+        .bind(srv_id)
+        .bind(bob)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (st_ch, ch_val) = req_json(
+        &app,
+        "POST",
+        &format!("/api/servers/{srv_id}/channels"),
+        &c_alice,
+        Some(json!({ "name": "exec-only", "channel_type": "text", "is_private": true })),
+    )
+    .await;
+    assert_eq!(st_ch, StatusCode::OK);
+    let priv_ch_id = ch_val["id"].as_str().unwrap();
+    let (st_msg, _) = req_json(
+        &app,
+        "POST",
+        &format!("/api/channels/{priv_ch_id}/messages"),
+        &c_alice,
+        Some(json!({ "content": "TOP_SECRET_EXEC_MEMO" })),
+    )
+    .await;
+    assert_eq!(st_msg, StatusCode::OK);
+
+    let (st_delta, delta_val) = req_json(&app, "GET", "/api/sync/delta?channel_since_seq=0", &c_bob, None).await;
+    assert_eq!(st_delta, StatusCode::OK);
+    let leaked = delta_val["channel_messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|m| m["content"].as_str() == Some("TOP_SECRET_EXEC_MEMO"));
+    assert!(!leaked, "Private channel message leaked to non-admin via /api/sync/delta!");
+
+    // 4. Meet join must reject joining an arbitrary non-meet call UUID
+    let random_call_id = Uuid::new_v4();
+    let (st_meet, _) = req_json(
+        &app,
+        "POST",
+        "/api/calls/meet/join",
+        &c_bob,
+        Some(json!({ "code": random_call_id.to_string() })),
+    )
+    .await;
+    assert_eq!(st_meet, StatusCode::NOT_FOUND);
+    let _ = alice;
 }

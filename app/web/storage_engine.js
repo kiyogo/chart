@@ -577,12 +577,22 @@
     },
 
     async saveCursors(cursors) {
-      await idbTx('sync_cursors', 'readwrite', (s) => s.put({ id: 'current', ...cursors, updated_at: Date.now() }));
+      const uid = (cursors && cursors.user_id) || window.__chatwCurrentUserId || '';
+      const key = uid ? `user:${uid}` : 'current';
+      await idbTx('sync_cursors', 'readwrite', (s) => s.put({ id: key, ...cursors, updated_at: Date.now() }));
       return true;
     },
 
-    async loadCursors() {
-      return (await idbTx('sync_cursors', 'readonly', (s) => s.get('current'))) || { id: 'current', dm_seq: 0, group_seq: 0, channel_seq: 0 };
+    async loadCursors(userId = null) {
+      const uid = userId || window.__chatwCurrentUserId || '';
+      const key = uid ? `user:${uid}` : 'current';
+      const rec = await idbTx('sync_cursors', 'readonly', (s) => s.get(key));
+      if (rec) return rec;
+      if (key !== 'current') {
+        const legacy = await idbTx('sync_cursors', 'readonly', (s) => s.get('current'));
+        if (legacy && (!legacy.user_id || legacy.user_id === uid)) return legacy;
+      }
+      return { id: key, dm_seq: 0, group_seq: 0, channel_seq: 0 };
     },
 
     async enqueueSync(item) {
@@ -950,9 +960,10 @@
 
     async clearSessionSecrets() {
       try {
-        for (const storeName of ['dialogs', 'chat_messages', 'chat_outbox', 'drafts', 'users_peers', 'sync_cursors']) {
+        for (const storeName of ['dialogs', 'chat_messages', 'chat_outbox', 'drafts', 'users_peers', 'sync_cursors', 'sync_queue']) {
           await idbTx(storeName, 'readwrite', (s) => s.clear()).catch(() => {});
         }
+        window.__chatwCurrentUserId = null;
         try {
           localStorage.removeItem('chatw_last_delta_sync_v1');
         } catch (_) {}
@@ -1163,37 +1174,51 @@
         freed_bytes: 0,
       };
 
+      let sharedColdWorker = null;
+      let coldJobId = 1;
+      const disposeColdWorker = () => {
+        if (sharedColdWorker) {
+          try { sharedColdWorker.terminate(); } catch (_) {}
+          sharedColdWorker = null;
+        }
+      };
       const encodeColdWorker = (u8, mime) => {
         if (typeof Worker === 'undefined') return Promise.resolve(null);
         return new Promise((resolve) => {
           try {
-            const w = new Worker('/media_worker.js', { type: 'module' });
+            if (!sharedColdWorker) {
+              sharedColdWorker = new Worker('/media_worker.js', { type: 'module' });
+            }
+            const w = sharedColdWorker;
+            const jobId = coldJobId++;
             const timer = setTimeout(() => {
-              try { w.terminate(); } catch (_) {}
+              disposeColdWorker();
               resolve(null);
             }, 30000);
             w.onmessage = (ev) => {
+              if (ev.data && ev.data.id !== jobId) return;
               clearTimeout(timer);
-              try { w.terminate(); } catch (_) {}
               resolve(ev.data && ev.data.ok ? ev.data : null);
             };
             w.onerror = () => {
               clearTimeout(timer);
-              try { w.terminate(); } catch (_) {}
+              disposeColdWorker();
               resolve(null);
             };
             const copy = new Uint8Array(u8);
             w.postMessage(
-              { id: 1, task: 'optimize_image', buffer: copy.buffer, mime, opts: { qualityMode: 'ultra_optimized', forceCompress: true } },
+              { id: jobId, task: 'optimize_image', buffer: copy.buffer, mime, opts: { qualityMode: 'ultra_optimized', forceCompress: true } },
               [copy.buffer],
             );
           } catch (_) {
+            disposeColdWorker();
             resolve(null);
           }
         });
       };
 
       const objs = await idbGetAll('objects').catch(() => []);
+      try {
       for (const meta of objs) {
         const mime = String(meta.mime_type || '').toLowerCase();
         if (!mime.startsWith('image/') || mime === 'image/svg+xml') continue;
@@ -1304,6 +1329,9 @@
           }
         }
         await idbTx('ai_outputs', 'readwrite', (s) => s.put({ ...rec, cold_compressed_15d: true })).catch(() => {});
+      }
+      } finally {
+        disposeColdWorker();
       }
 
       return report;

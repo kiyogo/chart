@@ -113,10 +113,10 @@ pub fn compute_adaptive_cache_budget(
 
     AdaptiveCacheBudget {
         global_limit_bytes,
-        ai_output_limit_bytes: (global_limit_bytes * 25) / 100,
-        ai_model_limit_bytes: (global_limit_bytes * 20).clamp(64 * 1024 * 1024 * 100, 1024 * 1024 * 1024 * 100) / 100,
-        video_segment_limit_bytes: (global_limit_bytes * 30) / 100,
-        per_account_limit_bytes: (global_limit_bytes * 85) / 100,
+        ai_output_limit_bytes: global_limit_bytes / 4,
+        ai_model_limit_bytes: (global_limit_bytes / 5).clamp(64 * 1024 * 1024, 1024 * 1024 * 1024),
+        video_segment_limit_bytes: (global_limit_bytes / 100).saturating_mul(30),
+        per_account_limit_bytes: (global_limit_bytes / 100).saturating_mul(85),
         reserved_system_headroom_bytes: headroom,
     }
 }

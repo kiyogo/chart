@@ -230,6 +230,9 @@ pub fn open(cipher: &[u8], key_b64: &str, nonce_b64: &str) -> Result<Vec<u8>, St
         return core_e2ee::open_any_media(cipher, key_b64, nonce_b64).map_err(|e| e.to_string());
     }
     if let Some(hdr) = parse_chunked_header(cipher) {
+        if hdr.chunk_count == 0 {
+            return Err("zero_chunk_stream".into());
+        }
         let mut key = URL_SAFE_NO_PAD.decode(key_b64).map_err(|_| "bad_key".to_string())?;
         let nonce_vec = URL_SAFE_NO_PAD.decode(nonce_b64).map_err(|_| "bad_nonce".to_string())?;
         if key.len() != 32 || nonce_vec.len() != 12 {
@@ -255,7 +258,7 @@ pub fn open(cipher: &[u8], key_b64: &str, nonce_b64: &str) -> Result<Vec<u8>, St
                 cipher[pos + 3],
             ]) as usize;
             pos += 4;
-            if pos + ct_len > cipher.len() {
+            if pos.checked_add(ct_len).is_none_or(|end| end > cipher.len()) {
                 return Err("truncated_chunk_payload".into());
             }
             let ct_slice = &cipher[pos..pos + ct_len];

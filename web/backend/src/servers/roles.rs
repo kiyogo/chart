@@ -248,7 +248,7 @@ pub async fn kick_member(State(state): State<AppState>, headers: HeaderMap, Path
     }
     // Members holding administrator can only be removed by the owner.
     let (target_bits, _) = effective(&state.db, server_id, user_id).await?;
-    if target_bits == perm::ALL && owner != uid {
+    if (target_bits & perm::ADMINISTRATOR) != 0 && owner != uid {
         return Err(AppError::Forbidden("cannot_kick_administrator"));
     }
     sqlx::query!("DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2", server_id, user_id).execute(&state.db).await?;

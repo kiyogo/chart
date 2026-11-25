@@ -80,7 +80,7 @@ impl Config {
             })
             .or_else(|| {
                 let cwd = env::current_dir().ok()?;
-                ["web/frontend/dist", "frontend/dist", "../frontend/dist"]
+                ["app/dist", "web/frontend/dist", "frontend/dist", "../frontend/dist"]
                     .into_iter()
                     .map(|p| cwd.join(p))
                     .find(|p| p.exists())

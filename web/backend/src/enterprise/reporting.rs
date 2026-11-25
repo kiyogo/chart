@@ -20,7 +20,7 @@ use crate::{
     community::audit,
     enterprise::{
         hr,
-        models::{self, clean_req, csv_escape, emit_enterprise, ent_perm, load_ctx},
+        models::{self, clean_req, csv_escape, emit_enterprise, ent_perm, load_ctx, valid_ymd},
         ops, work,
     },
     error::{AppError, AppResult},
@@ -51,17 +51,23 @@ pub async fn enterprise_reports(
     }
 
     let today_str = Utc::now().format("%Y-%m-%d").to_string();
+    let from_str = q.from.as_deref().map(str::trim).filter(|s| valid_ymd(s));
+    let to_str = q.to.as_deref().map(str::trim).filter(|s| valid_ymd(s));
 
     let task_by_status = sqlx::query_as::<_, (String, i64)>(
         r#"
         SELECT status, COUNT(*)::bigint
         FROM enterprise_tasks
         WHERE server_id = $1 AND ($2::uuid IS NULL OR department_id = $2)
+          AND ($3::text IS NULL OR to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') >= $3)
+          AND ($4::text IS NULL OR to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') <= $4)
         GROUP BY status
         "#,
     )
     .bind(server_id)
     .bind(q.department_id)
+    .bind(from_str)
+    .bind(to_str)
     .fetch_all(&state.db)
     .await?;
 
@@ -83,16 +89,40 @@ pub async fn enterprise_reports(
     .await?;
 
     let attendance_summary = sqlx::query_as::<_, (String, i64)>(
-        "SELECT status, COUNT(*)::bigint FROM enterprise_attendance WHERE server_id = $1 GROUP BY status",
+        r#"
+        SELECT a.status, COUNT(*)::bigint
+        FROM enterprise_attendance a
+        LEFT JOIN enterprise_employees e ON e.server_id = a.server_id AND e.user_id = a.user_id
+        WHERE a.server_id = $1
+          AND ($2::uuid IS NULL OR e.department_id = $2)
+          AND ($3::text IS NULL OR a.work_date >= $3)
+          AND ($4::text IS NULL OR a.work_date <= $4)
+        GROUP BY a.status
+        "#,
     )
     .bind(server_id)
+    .bind(q.department_id)
+    .bind(from_str)
+    .bind(to_str)
     .fetch_all(&state.db)
     .await?;
 
     let leave_summary = sqlx::query_as::<_, (String, i64)>(
-        "SELECT status, COUNT(*)::bigint FROM enterprise_leave_requests WHERE server_id = $1 GROUP BY status",
+        r#"
+        SELECT l.status, COUNT(*)::bigint
+        FROM enterprise_leave_requests l
+        LEFT JOIN enterprise_employees e ON e.server_id = l.server_id AND e.user_id = l.user_id
+        WHERE l.server_id = $1
+          AND ($2::uuid IS NULL OR e.department_id = $2)
+          AND ($3::text IS NULL OR l.start_date >= $3)
+          AND ($4::text IS NULL OR l.start_date <= $4)
+        GROUP BY l.status
+        "#,
     )
     .bind(server_id)
+    .bind(q.department_id)
+    .bind(from_str)
+    .bind(to_str)
     .fetch_all(&state.db)
     .await?;
 
@@ -105,9 +135,10 @@ pub async fn enterprise_reports(
     .await?;
 
     let total_doc_bytes: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(file_size), 0)::bigint FROM enterprise_documents WHERE server_id = $1 AND trashed_at IS NULL",
+        "SELECT COALESCE(SUM(file_size), 0)::bigint FROM enterprise_documents WHERE server_id = $1 AND trashed_at IS NULL AND ($2::uuid IS NULL OR department_id = $2)",
     )
     .bind(server_id)
+    .bind(q.department_id)
     .fetch_one(&state.db)
     .await?;
 
@@ -311,14 +342,16 @@ pub async fn export_all_json(
         .await?
         .ok_or(AppError::NotFound("server_not_found"))?;
 
-    if owner_id != uid {
+    let mut sensitive_ok = owner_id == uid;
+    if !sensitive_ok {
         let ctx = load_ctx(&state.db, server_id, uid).await?;
         if !ctx.has(ent_perm::EXPORT_DATA) && !ctx.is_admin() {
             return Err(AppError::Forbidden("insufficient_export_permissions"));
         }
+        sensitive_ok = ctx.is_admin() || ctx.has(ent_perm::VIEW_SENSITIVE_HR);
     }
 
-    let employees: Vec<hr::EmployeeItem> = sqlx::query_as(
+    let mut employees: Vec<hr::EmployeeItem> = sqlx::query_as(
         r#"
         SELECT e.*, u.username, u.avatar_url, u.presence, d.name AS department_name
         FROM enterprise_employees e
@@ -330,6 +363,14 @@ pub async fn export_all_json(
     .bind(server_id)
     .fetch_all(&state.db)
     .await?;
+    if !sensitive_ok {
+        for e in &mut employees {
+            e.work_email = None;
+            e.work_phone = None;
+            e.internal_notes = None;
+            e.contract_type = Some("restricted".into());
+        }
+    }
 
     let departments: Vec<hr::DepartmentItem> = sqlx::query_as(
         r#"
@@ -521,9 +562,21 @@ pub fn trigger_workflows<'a>(
                                 .await
                                 {
                                     if let Ok(ids) = sqlx::query_scalar::<_, Uuid>(
-                                        "SELECT user_id FROM server_members WHERE server_id = $1",
+                                        r#"
+                                        SELECT sm.user_id FROM server_members sm
+                                        JOIN channels c ON c.id = $2
+                                        WHERE sm.server_id = $1
+                                          AND (c.is_private IS FALSE OR EXISTS(
+                                              SELECT 1 FROM servers s WHERE s.id = $1 AND s.owner_id = sm.user_id
+                                          ) OR EXISTS(
+                                              SELECT 1 FROM server_member_roles mr
+                                              JOIN server_roles sr ON sr.id = mr.role_id
+                                              WHERE mr.server_id = $1 AND mr.user_id = sm.user_id AND (sr.permissions & 8) = 8
+                                          ))
+                                        "#,
                                     )
                                     .bind(server_id)
+                                    .bind(channel_id)
                                     .fetch_all(&state.db)
                                     .await
                                     {
@@ -563,19 +616,32 @@ pub fn trigger_workflows<'a>(
                 "notify_user" => {
                     if let Some(uid_s) = cfg.get("user_id").and_then(|v| v.as_str()) {
                         if let Ok(target_uid) = Uuid::parse_str(uid_s) {
-                            state
-                                .ws_hub
-                                .send_to_user(
-                                    &target_uid,
-                                    WsEvent::EnterpriseEvent(json!({
-                                        "server_id": server_id,
-                                        "kind": format!("workflow.{}", event),
-                                        "payload": payload,
-                                        "at": Utc::now(),
-                                    })),
-                                )
-                                .await;
-                            detail = format!("notified {}", target_uid);
+                            let in_srv: bool = sqlx::query_scalar(
+                                "SELECT EXISTS(SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2)",
+                            )
+                            .bind(server_id)
+                            .bind(target_uid)
+                            .fetch_one(&state.db)
+                            .await
+                            .unwrap_or(false);
+                            if !in_srv {
+                                status = "skipped";
+                                detail = "user not in server".to_string();
+                            } else {
+                                state
+                                    .ws_hub
+                                    .send_to_user(
+                                        &target_uid,
+                                        WsEvent::EnterpriseEvent(json!({
+                                            "server_id": server_id,
+                                            "kind": format!("workflow.{}", event),
+                                            "payload": payload,
+                                            "at": Utc::now(),
+                                        })),
+                                    )
+                                    .await;
+                                detail = format!("notified {}", target_uid);
+                            }
                         } else {
                             status = "skipped";
                             detail = "invalid user_id".to_string();

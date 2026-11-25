@@ -223,7 +223,7 @@ fn guess_mime_from_filename(name: &str) -> &'static str {
     } else if lower.ends_with(".gif") {
         "image/gif"
     } else if lower.ends_with(".svg") {
-        "image/svg+xml"
+        "application/octet-stream"
     } else if lower.ends_with(".mp4") {
         "video/mp4"
     } else if lower.ends_with(".webm") {
@@ -356,8 +356,7 @@ async fn handle_protected_media_file(
         return serve_existing_key_with_range(&state, &rel_key, &fname, &mime, range_hdr).await;
     }
 
-    let mime = guess_mime_from_filename(&file_name);
-    serve_existing_key_with_range(&state, &rel_key, &file_name, mime, range_hdr).await
+    Err(AppError::Forbidden("media_reference_not_found"))
 }
 
 async fn handle_protected_banner_file(
@@ -387,7 +386,19 @@ async fn handle_protected_sticker_file(
     }
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let sticker_url = format!("/uploads/stickers/{file_name}");
+    let private_blocked: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM stickers s JOIN sticker_packs p ON p.id = s.pack_id WHERE s.file_url = $1 AND p.author_id IS NOT NULL AND p.author_id <> $2)",
+    )
+    .bind(&sticker_url)
+    .bind(user.id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(false);
+    if private_blocked {
+        return Err(AppError::Forbidden("private_sticker_pack"));
+    }
     let range_hdr = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     let rel_key = format!("stickers/{file_name}");
     let mime = guess_mime_from_filename(&file_name);

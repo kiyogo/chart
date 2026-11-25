@@ -48,6 +48,8 @@
   let sessionKey = null;
   let handshakeCompleted = false;
   let clientSeq = 1;
+  let serverHighestSeq = 0;
+  let serverReplayMask = 0n;
   let nextReqId = 1;
   let retryDelayMs = 600;
   let reconnectTimer = null;
@@ -691,6 +693,8 @@
 
       sessionKey = derivedKey;
       clientSeq = 1;
+      serverHighestSeq = 0;
+      serverReplayMask = 0n;
       sendChain = Promise.resolve();
       authFailedCloseCount = 0;
       everAuthenticated = true;
@@ -758,6 +762,24 @@
           if (pongTimeout) { clearTimeout(pongTimeout); pongTimeout = null; }
           stats.lastPongAt = Date.now();
         } else if (sessionKey && handshakeCompleted) {
+          // Enforce monotonic sliding-window anti-replay on server-sent CWBF2 frame.seq
+          const fseq = frame.seq;
+          if (!Number.isSafeInteger(fseq) || fseq <= 0) {
+            stats.lastError = 'invalid_frame_seq';
+            return;
+          }
+          if (fseq > serverHighestSeq) {
+            const shift = BigInt(fseq - serverHighestSeq);
+            serverReplayMask = shift >= 64n ? 1n : ((serverReplayMask << shift) | 1n) & ((1n << 64n) - 1n);
+            serverHighestSeq = fseq;
+          } else {
+            const delta = BigInt(serverHighestSeq - fseq);
+            if (delta >= 64n || ((serverReplayMask >> delta) & 1n) !== 0n) {
+              stats.lastError = 'replayed_frame_rejected';
+              return;
+            }
+            serverReplayMask |= 1n << delta;
+          }
           try {
             const plain = await decodeEncryptedPayload(frame);
             if (frame.op === OP_EVENT) {
@@ -784,6 +806,11 @@
         }
       } else if (typeof ev.data === 'string') {
         stats.plaintextFramesReceived += 1;
+        // Once CWBF2 encryption is established, never process unexpected plaintext WS events.
+        if (handshakeCompleted || sessionKey) {
+          stats.lastError = 'unexpected_plaintext_frame_dropped';
+          return;
+        }
         broadcastAll({ type: 'ws_event', rawJson: ev.data, stats: { ...stats } });
       }
     };
@@ -793,6 +820,8 @@
       const wasHandshaked = handshakeCompleted;
       ws = null;
       sessionKey = null;
+      serverHighestSeq = 0;
+      serverReplayMask = 0n;
       handshakeCompleted = false;
       stats.connected = false;
       stats.handshakeCompleted = false;

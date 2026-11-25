@@ -52,7 +52,7 @@ async fn handle_typing(
     .await?
     .is_some();
 
-    if !is_friend {
+    if !is_friend || crate::privacy::is_blocked_either(&state.db, user.id, friend_id).await? {
         return Err(AppError::Forbidden("not_friends"));
     }
 

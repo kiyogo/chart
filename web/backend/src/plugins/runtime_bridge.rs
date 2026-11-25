@@ -295,12 +295,15 @@ pub async fn plugin_network_fetch(
     if !has_active_grant(&state.db, inst_id, uid, "network.outbound", None).await? {
         return Err(AppError::Forbidden("network_permission_denied"));
     }
+    let target_scope = req
+        .scope_id
+        .or_else(|| if st == "conversation" { Some(sid) } else { None });
     // Enforce E2EE egress policy using BOTH client taint flag AND authoritative server-side E2EE grant/audit state!
     let server_e2ee_tainted = is_server_side_e2ee_tainted(&state.db, inst_id, uid).await?;
     let effective_e2ee_tainted = req.e2ee_tainted || server_e2ee_tainted;
     if effective_e2ee_tainted
-        && !has_active_grant(&state.db, inst_id, uid, "e2ee.egress_external", None).await?
-        && !has_active_grant(&state.db, inst_id, uid, "e2ee.store_external", None).await?
+        && !has_active_grant(&state.db, inst_id, uid, "e2ee.egress_external", target_scope).await?
+        && !has_active_grant(&state.db, inst_id, uid, "e2ee.store_external", target_scope).await?
     {
         return Err(AppError::Forbidden("e2ee_egress_denied"));
     }
@@ -368,7 +371,19 @@ pub async fn plugin_network_fetch(
         if let Some(blob) = ct {
             let pt = decrypt_secret(&state.config.session_secret, &blob)?;
             let sec_str: String = serde_json::from_slice(&pt).unwrap_or_else(|_| String::from_utf8_lossy(&pt).into_owned());
-            let hdr_name = req.inject_secret_header.as_deref().unwrap_or("Authorization");
+            let hdr_name = req
+                .inject_secret_header
+                .as_deref()
+                .map(str::trim)
+                .filter(|h| {
+                    let hl = h.to_ascii_lowercase();
+                    !h.is_empty()
+                        && !matches!(
+                            hl.as_str(),
+                            "host" | "cookie" | "connection" | "content-length" | "transfer-encoding" | "te" | "upgrade"
+                        )
+                })
+                .unwrap_or("Authorization");
             let prefix = req.inject_secret_prefix.as_deref().unwrap_or("Bearer ");
             builder = builder.header(hdr_name, format!("{prefix}{sec_str}"));
         }

@@ -63,9 +63,48 @@ pub struct UpdateConfigReq {
 }
 
 fn validate_endpoint(url: &str) -> bool {
-    (url.starts_with("https://") || url.starts_with("http://localhost") || url.starts_with("http://127.0.0.1"))
-        && url.len() <= 300
-        && !url.chars().any(|c| c.is_whitespace() || c.is_control())
+    let trimmed = url.trim();
+    if trimmed.is_empty() || trimmed.len() > 300 || trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    let Ok(parsed) = reqwest::Url::parse(trimmed) else {
+        return false;
+    };
+    if parsed.scheme() != "https" || !parsed.username().is_empty() || parsed.password().is_some() {
+        return false;
+    }
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let unbracketed = host.trim_start_matches('[').trim_end_matches(']');
+    if unbracketed.eq_ignore_ascii_case("localhost")
+        || unbracketed.ends_with(".local")
+        || unbracketed.ends_with(".internal")
+    {
+        return false;
+    }
+    if let Ok(ip) = unbracketed.parse::<std::net::IpAddr>()
+        && crate::plugins::security::is_blocked_ip(ip)
+    {
+        return false;
+    }
+    true
+}
+
+fn encrypt_vico_api_key(session_secret: &[u8], raw: &str) -> AppResult<String> {
+    let ct = crate::plugins::security::encrypt_secret(session_secret, raw.as_bytes())?;
+    Ok(format!("enc:v1:{}", hex::encode(ct)))
+}
+
+fn decrypt_vico_api_key(session_secret: &[u8], stored: &str) -> String {
+    if let Some(hex_ct) = stored.strip_prefix("enc:v1:")
+        && let Ok(ct) = hex::decode(hex_ct)
+        && let Ok(pt) = crate::plugins::security::decrypt_secret(session_secret, &ct)
+        && let Ok(s) = String::from_utf8(pt)
+    {
+        return s;
+    }
+    stored.to_string()
 }
 
 async fn list_conversations(
@@ -279,7 +318,7 @@ async fn builtin_vico_reply(state: &AppState, uid: Uuid, prompt: &str) -> String
         return "ChatW uses end-to-end encryption (E2EE) with ECDH P-256 key pairs for session key exchange, ECDSA P-256 for identity signing, and AES-256-GCM for each message on your device. The server only forwards the encrypted packet and does not keep the private key.".to_string();
     }
 
-    if low.contains("What time?") || low.contains("today") || low.contains("day") || low.contains("time") {
+    if low.contains("what time") || low.contains("today") || low.contains("day") || low.contains("time") {
         let vn_now = Utc::now() + chrono::Duration::hours(7);
         return format!(
             "Currently according to Vietnam time (UTC+7) it is **{}** on **{}**.",
@@ -312,7 +351,7 @@ async fn builtin_vico_reply(state: &AppState, uid: Uuid, prompt: &str) -> String
     .await
     .unwrap_or(0);
 
-    if low.contains("Hello") || low == "hi" || low == "hello" || low.contains("hello") {
+    if low == "hi" || low.contains("hello") {
         return format!(
             "Hello! I am **Vico AI**.\nYou can ask yourself to quickly calculate (e.g. `125 * 24`), see the date and time, learn about E2EE security, summarize long text (`summary: `), or click the settings icon in the upper corner to connect your own LLM API (OpenAI / Groq / Ollama / OpenRouter). You are currently connected to {friends_count} friends on ChatW."
         );
@@ -324,7 +363,6 @@ async fn builtin_vico_reply(state: &AppState, uid: Uuid, prompt: &str) -> String
 }
 
 async fn call_external_llm(
-    state: &AppState,
     endpoint: &str,
     api_key: &str,
     model: &str,
@@ -335,17 +373,19 @@ async fn call_external_llm(
     } else {
         format!("{}/chat/completions", endpoint.trim_end_matches('/'))
     };
+    let target = crate::plugins::security::validate_outbound_url(&url).await.ok()?;
+    let client = crate::plugins::security::build_pinned_client(&target, 15).ok()?;
     let mut msgs = vec![json!({
         "role": "system",
         "content": "You are Vico AI, the smart, concise and polite AI assistant inside the ChatW messaging app. Reply in Vietnamese unless the user uses another language."
     })];
-    for (r, c) in history.iter().rev().take(16).collect::<Vec<_>>().into_iter().rev() {
+    // `history` is ordered DESC from SQL; take 16 most recent then reverse once to chronological order.
+    for (r, c) in history.iter().take(16).rev() {
         msgs.push(json!({ "role": r, "content": c }));
     }
 
-    let mut req = state
-        .http_client
-        .post(&url)
+    let mut req = client
+        .post(&target.url)
         .json(&json!({ "model": model, "messages": msgs, "temperature": 0.7 }));
     if !api_key.trim().is_empty() {
         req = req.bearer_auth(api_key.trim());
@@ -423,7 +463,8 @@ async fn send_message(
         .or_else(|| std::env::var("VICO_API_URL").ok().filter(|s| !s.trim().is_empty()));
     let key = cfg_row
         .as_ref()
-        .and_then(|c| c.1.clone())
+        .and_then(|c| c.1.as_deref())
+        .map(|s| decrypt_vico_api_key(&state.config.session_secret, s))
         .or_else(|| std::env::var("VICO_API_KEY").ok())
         .unwrap_or_default();
     let model = cfg_row
@@ -440,7 +481,7 @@ async fn send_message(
         .await
         .unwrap_or_default();
 
-        match call_external_llm(&state, &endpoint, &key, &model, &hist_rows).await {
+        match call_external_llm(&endpoint, &key, &model, &hist_rows).await {
             Some(ans) => ans,
             None => builtin_vico_reply(&state, uid, &text).await,
         }
@@ -530,7 +571,11 @@ async fn update_config(
         .map(|s| s.chars().take(80).collect::<String>())
         .unwrap_or_else(|| "gpt-4o-mini".to_string());
 
-    let new_key = p.api_key.as_deref().map(str::trim).map(str::to_string);
+    let new_key = match p.api_key.as_deref().map(str::trim) {
+        Some(k) if !k.is_empty() => Some(encrypt_vico_api_key(&state.config.session_secret, k)?),
+        Some(_) => Some(String::new()),
+        None => None,
+    };
 
     sqlx::query(
         r#"

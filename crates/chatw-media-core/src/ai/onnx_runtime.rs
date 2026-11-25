@@ -59,6 +59,10 @@ mod impl_onnx {
             let w = tw as usize;
             let h = th as usize;
             let scale = self.descriptor.scale_factor.max(1) as usize;
+            let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+            if w == 0 || h == 0 || graph_w == 0 || graph_h == 0 || req_bytes.is_none_or(|n| tile_rgba.len() < n) {
+                return Err(MediaError::EmptyInput);
+            }
 
             // Pack RGB into `[1, 3, graph_h, graph_w]` FP32 NCHW tensor `[0.0, 1.0]` using edge replicate padding
             let mut input_data = vec![0.0f32; 3 * graph_h * graph_w];

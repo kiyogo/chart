@@ -422,7 +422,11 @@ impl WsHub {
         let (tx, rx) = mpsc::channel(CLIENT_CHANNEL_CAPACITY);
 
         let mut clients = self.clients.write().await;
-        clients.entry(user_id).or_default().insert(
+        let user_map = clients.entry(user_id).or_default();
+        if user_map.len() >= 16 {
+            return None;
+        }
+        user_map.insert(
             conn_id,
             WsClientConn {
                 session_id,
@@ -474,6 +478,15 @@ impl WsHub {
             if user_conns.is_empty() {
                 clients.remove(user_id);
             }
+        }
+    }
+
+    pub async fn disconnect_user(&self, user_id: &Uuid) {
+        let mut clients = self.clients.write().await;
+        if let Some(removed_map) = clients.remove(user_id)
+            && !removed_map.is_empty()
+        {
+            self.total_connections.fetch_sub(removed_map.len(), Ordering::Relaxed);
         }
     }
 
@@ -692,8 +705,10 @@ async fn handle_socket(
             maybe_event = rx.recv() => {
                 match maybe_event {
                     Some(event) => {
-                        if let Ok(json) = serde_json::to_string(&event) {
-                            let _ = sender.send(Message::Text(json.into())).await;
+                        if let Ok(json) = serde_json::to_string(&event)
+                            && sender.send(Message::Text(json.into())).await.is_err()
+                        {
+                            break;
                         }
                     }
                     None => break,

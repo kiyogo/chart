@@ -131,9 +131,9 @@ async fn handle_register_keys(
             .bind(user.id)
             .fetch_one(&state.db)
             .await?;
-            if trusted_devices_count > 0 && !payload.allow_rotation && payload.previous_key_signature.is_none() {
-                return Err(AppError::Conflict(
-                    "identity_key_already_exists_require_recovery_or_rotation",
+            if trusted_devices_count > 0 && payload.previous_key_signature.is_none() {
+                return Err(AppError::Forbidden(
+                    "cannot_overwrite_identity_key_from_unbound_session",
                 ));
             }
         }
@@ -384,11 +384,12 @@ async fn handle_get_prekey_bundle(
     let fp: Vec<u8> = row.try_get("fingerprint")?;
     let identity_fp = compute_identity_fingerprint(&ecdh_pub, &ecdsa_pub);
 
+    let mut tx = state.db.begin().await?;
     let prekey_row = sqlx::query(
-        "SELECT signed_prekey_id, signed_prekey_pub, signed_prekey_sig, one_time_prekeys FROM device_prekeys WHERE user_id = $1",
+        "SELECT signed_prekey_id, signed_prekey_pub, signed_prekey_sig, one_time_prekeys FROM device_prekeys WHERE user_id = $1 FOR UPDATE",
     )
     .bind(target_user_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await?;
 
     let mut spk_id: Option<i32> = None;
@@ -415,11 +416,12 @@ async fn handle_get_prekey_bundle(
                 let _ = sqlx::query("UPDATE device_prekeys SET one_time_prekeys = $2 WHERE user_id = $1")
                     .bind(target_user_id)
                     .bind(serde_json::Value::Array(arr))
-                    .execute(&state.db)
+                    .execute(&mut *tx)
                     .await;
             }
         }
     }
+    tx.commit().await?;
 
     Ok(Json(serde_json::json!({
         "user_id": target_user_id,

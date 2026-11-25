@@ -289,8 +289,8 @@ pub fn fastcdc_chunk_bytes_custom(
         return Vec::new();
     }
     let min_c = min_size.max(4096);
-    let avg_c = avg_size.max(min_c * 2);
-    let max_c = max_size.max(avg_c * 2);
+    let avg_c = avg_size.max(min_c.saturating_mul(2));
+    let max_c = max_size.max(avg_c.saturating_mul(2));
 
     // Normalized dual masks calibrated for ~avg_c (default 64 KiB -> 16-bit target -> 17-bit S / 15-bit L)
     let log2_avg = (usize::BITS - avg_c.leading_zeros()).saturating_sub(1).clamp(12, 22);
@@ -393,7 +393,8 @@ pub fn evaluate_dedup_policy(
 pub fn compute_pdq_hash_rgba(rgba: &[u8], width: u32, height: u32) -> PdqHash256 {
     let w = width as usize;
     let h = height as usize;
-    if w < 8 || h < 8 || rgba.len() < w * h * 4 {
+    let total_rgba = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+    if w < 8 || h < 8 || total_rgba.is_none_or(|n| rgba.len() < n) {
         return PdqHash256 {
             bytes: [0u8; 32],
             quality: 0,
@@ -652,7 +653,7 @@ pub fn videos_are_safe_dedup_equivalent(a: &VideoFingerprint, b: &VideoFingerpri
     }
     let dur_diff = a.duration_ms.abs_diff(b.duration_ms);
     let max_dur = a.duration_ms.max(b.duration_ms).max(1);
-    if (dur_diff * 100) / max_dur > 3 {
+    if dur_diff.saturating_mul(100) / max_dur > 3 {
         return false; // Trimmed or lengthened video!
     }
     if a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0 {
@@ -735,7 +736,7 @@ pub fn audio_fingerprints_equivalent(a: &AudioFingerprint, b: &AudioFingerprint)
     }
     let dur_diff = a.duration_ms.abs_diff(b.duration_ms);
     let max_dur = a.duration_ms.max(b.duration_ms).max(1);
-    if (dur_diff * 100) / max_dur > 3 {
+    if dur_diff.saturating_mul(100) / max_dur > 3 {
         return false;
     }
     a.hamming_distance(b) <= 24

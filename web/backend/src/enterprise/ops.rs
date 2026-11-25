@@ -163,6 +163,19 @@ pub async fn submit_approval(
         .take(10)
         .collect();
 
+    if let Some(dept_id) = p.department_id {
+        let ok: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM enterprise_departments WHERE id = $1 AND server_id = $2)",
+        )
+        .bind(dept_id)
+        .bind(server_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_department"));
+        }
+    }
+
     let total_steps: i32 = if let Some(tid) = p.template_id {
         let steps: Option<Value> = sqlx::query_scalar(
             "SELECT workflow_steps FROM enterprise_form_templates WHERE id = $1 AND server_id = $2",
@@ -171,7 +184,8 @@ pub async fn submit_approval(
         .bind(server_id)
         .fetch_optional(&state.db)
         .await?;
-        steps.and_then(|v| v.as_array().map(|a| a.len().max(1) as i32)).unwrap_or(1)
+        let steps = steps.ok_or(AppError::BadRequest("invalid_template"))?;
+        steps.as_array().map(|a| a.len().max(1) as i32).unwrap_or(1)
     } else {
         1
     };
@@ -217,7 +231,7 @@ pub async fn decide_approval(
 
     let mut tx = state.db.begin().await?;
     let row = sqlx::query_as::<_, (Uuid, String, i32, i32)>(
-        "SELECT requester_id, status, current_step, total_steps FROM enterprise_approval_requests WHERE id = $1 AND server_id = $2",
+        "SELECT requester_id, status, current_step, total_steps FROM enterprise_approval_requests WHERE id = $1 AND server_id = $2 FOR UPDATE",
     )
     .bind(req_id)
     .bind(server_id)
@@ -228,6 +242,9 @@ pub async fn decide_approval(
     if row.1 != "pending" && row.1 != "needs_revision" {
         return Err(AppError::BadRequest("already_closed"));
     }
+    if row.1 == "needs_revision" && p.decision == "approved" {
+        return Err(AppError::BadRequest("cannot_approve_needs_revision"));
+    }
 
     if p.decision == "withdrawn" {
         if row.0 != uid {
@@ -237,6 +254,16 @@ pub async fn decide_approval(
         ctx.require(ent_perm::APPROVE_REQUESTS)?;
         if row.0 == uid && !ctx.is_owner {
             return Err(AppError::Forbidden("cannot_approve_own_request"));
+        }
+        let already_acted: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM enterprise_approval_decisions WHERE request_id = $1 AND approver_id = $2 AND decision = 'approved')",
+        )
+        .bind(req_id)
+        .bind(uid)
+        .fetch_one(&mut *tx)
+        .await?;
+        if p.decision == "approved" && already_acted && !ctx.is_owner {
+            return Err(AppError::Forbidden("already_approved_by_actor"));
         }
     }
 
@@ -356,7 +383,8 @@ pub async fn list_documents(
           AND (($2::bool AND d.trashed_at IS NOT NULL) OR (NOT $2 AND d.trashed_at IS NULL))
           AND ($3::text IS NULL OR d.scope = $3)
           AND ($4::bool OR d.scope = 'company' OR d.owner_id = $5
-               OR (d.scope = 'department' AND d.department_id = ANY($6)))
+               OR (d.scope = 'department' AND d.department_id = ANY($6))
+               OR (d.scope = 'project' AND d.project_id IS NOT NULL))
         ORDER BY d.pinned DESC, d.updated_at DESC
         LIMIT 300
         "#,
@@ -409,6 +437,21 @@ pub async fn create_document(
     let fname = clean_req(&p.file_name, 1, 160, "invalid_file_name")?;
     let fsize = p.file_size.unwrap_or(0).max(0);
 
+    if let Some(fid) = p.folder_id {
+        let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_folders WHERE id = $1 AND server_id = $2)")
+            .bind(fid).bind(server_id).fetch_one(&state.db).await?;
+        if !ok { return Err(AppError::BadRequest("invalid_folder_id")); }
+    }
+    if let Some(did) = p.department_id {
+        let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_departments WHERE id = $1 AND server_id = $2)")
+            .bind(did).bind(server_id).fetch_one(&state.db).await?;
+        if !ok { return Err(AppError::BadRequest("invalid_department_id")); }
+    }
+    if let Some(pid) = p.project_id {
+        let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_projects WHERE id = $1 AND server_id = $2)")
+            .bind(pid).bind(server_id).fetch_one(&state.db).await?;
+        if !ok { return Err(AppError::BadRequest("invalid_project_id")); }
+    }
     // Check configured storage quota if set
     let policy: Option<Value> = sqlx::query_scalar(
         "SELECT document_policy FROM server_enterprise_configs WHERE server_id = $1",
@@ -518,6 +561,33 @@ pub async fn update_document(
             if let Some(ref fu) = p.file_url {
                 if !safe_upload_url(fu) {
                     return Err(AppError::BadRequest("invalid_file_url"));
+                }
+            }
+            if let Some(sz) = p.file_size
+                && sz < 0
+            {
+                return Err(AppError::BadRequest("invalid_file_size"));
+            }
+            if let Some(new_sz) = p.file_size {
+                let policy: Option<Value> = sqlx::query_scalar(
+                    "SELECT document_policy FROM server_enterprise_configs WHERE server_id = $1",
+                )
+                .bind(server_id)
+                .fetch_optional(&state.db)
+                .await?;
+                if let Some(max_mb) = policy.as_ref().and_then(|v| v.get("quota_mb").and_then(|x| x.as_i64()))
+                    && max_mb > 0
+                {
+                    let used_bytes: i64 = sqlx::query_scalar(
+                        "SELECT COALESCE(SUM(file_size), 0)::bigint FROM enterprise_documents WHERE server_id = $1 AND trashed_at IS NULL AND id <> $2",
+                    )
+                    .bind(server_id)
+                    .bind(doc_id)
+                    .fetch_one(&state.db)
+                    .await?;
+                    if used_bytes + new_sz > max_mb * 1024 * 1024 {
+                        return Err(AppError::PayloadTooLarge);
+                    }
                 }
             }
             let (next_ver, cur_url, cur_size): (i32, String, i64) = sqlx::query_as(
@@ -699,7 +769,19 @@ pub async fn mark_announcement_read(
     Path((server_id, ann_id)): Path<(Uuid, Uuid)>,
 ) -> AppResult<Json<Value>> {
     let uid = auth_user(&state, &headers).await?;
-    let _ctx = load_ctx(&state.db, server_id, uid).await?;
+    let ctx = load_ctx(&state.db, server_id, uid).await?;
+    let allowed: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM enterprise_announcements a WHERE a.id = $1 AND a.server_id = $2 AND (a.scope = 'company' OR $4::bool OR (a.department_id IS NOT NULL AND a.department_id = ANY($3))))",
+    )
+    .bind(ann_id)
+    .bind(server_id)
+    .bind(&ctx.dept_ids)
+    .bind(ctx.is_admin())
+    .fetch_one(&state.db)
+    .await?;
+    if !allowed {
+        return Err(AppError::NotFound("announcement_not_found"));
+    }
     sqlx::query("INSERT INTO enterprise_announcement_reads (announcement_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
         .bind(ann_id)
         .bind(uid)
@@ -838,9 +920,11 @@ pub async fn test_integration(
         return Err(AppError::BadRequest("invalid_endpoint_url"));
     }
 
-    let ok = match state
-        .http_client
-        .post(&url)
+    let target = crate::plugins::security::validate_outbound_url(&url).await?;
+    let pinned_client = crate::plugins::security::build_pinned_client(&target, 10)?;
+
+    let ok = match pinned_client
+        .post(&target.url)
         .json(&json!({ "event": "chatw.enterprise.ping", "server_id": server_id, "provider": row.1 }))
         .send()
         .await

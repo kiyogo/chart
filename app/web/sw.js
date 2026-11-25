@@ -172,7 +172,7 @@ function purgeGrantCache(grantId) {
 }
 
 function parseByteRange(rangeHeader, totalSize) {
-  if (!rangeHeader || !rangeHeader.startsWith('bytes=')) return null;
+  if (!rangeHeader || !rangeHeader.startsWith('bytes=') || !Number.isFinite(totalSize) || totalSize <= 0) return null;
   const spec = rangeHeader.slice(6).split(',')[0].trim();
   const dash = spec.indexOf('-');
   if (dash < 0) return null;

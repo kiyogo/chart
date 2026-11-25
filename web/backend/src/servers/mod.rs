@@ -877,14 +877,23 @@ async fn handle_create_role(
     }
 
     let name = payload.name.trim();
-    if name.is_empty() || name.len() > 32 {
+    if name.is_empty() || name.chars().count() > 32 {
         return Err(AppError::BadRequest("invalid_role_name"));
     }
 
     let color = payload.color.as_deref().unwrap_or("#99AAB5");
+    if !(color.starts_with('#') && color.len() == 7 && color[1..].chars().all(|c| c.is_ascii_hexdigit())) {
+        return Err(AppError::BadRequest("invalid_color"));
+    }
     let pos = payload.position.unwrap_or(0);
     let perms = payload.permissions.unwrap_or(0);
+    if perms < 0 || perms & !perm_flags::ALL != 0 {
+        return Err(AppError::BadRequest("invalid_permissions"));
+    }
     let eperms = payload.enterprise_permissions.unwrap_or(0);
+    if eperms < 0 || eperms & !crate::enterprise::models::ent_perm::ALL != 0 {
+        return Err(AppError::BadRequest("invalid_enterprise_permissions"));
+    }
     if perms & !mine != 0 || eperms & !my_ent != 0 {
         return Err(AppError::Forbidden("cannot_grant_missing_permissions"));
     }
@@ -969,15 +978,18 @@ async fn handle_join_server_by_invite(
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
     let user = authenticate_session(&state.db, &state.config, session_token).await?;
 
+    let mut tx = state.db.begin().await?;
+
     let invite = sqlx::query!(
         r#"
         SELECT server_id, max_uses, uses, expires_at
         FROM server_invites
         WHERE code = $1
+        FOR UPDATE
         "#,
         code
     )
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or(AppError::NotFound("invite_not_found"))?;
 
@@ -992,9 +1004,7 @@ async fn handle_join_server_by_invite(
         }
     }
 
-    let mut tx = state.db.begin().await?;
-
-    // Increment invite usage
+    // Increment invite usage inside locked transaction to prevent TOCTOU races
     sqlx::query!(
         "UPDATE server_invites SET uses = uses + 1 WHERE code = $1",
         code

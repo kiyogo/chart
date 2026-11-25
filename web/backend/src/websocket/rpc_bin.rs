@@ -603,7 +603,7 @@ pub async fn handle_socket_rpc_bin(
 
     // Forward real-time WsHub events as encrypted CWBF2 OP_EVENT frames
     let event_tx = out_tx.clone();
-    let event_task = tokio::spawn(async move {
+    let mut event_task = tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             if let Ok(json_bytes) = serde_json::to_vec(&event)
                 && event_tx
@@ -624,7 +624,14 @@ pub async fn handle_socket_rpc_bin(
     // 64-bit sliding anti-replay window for client encrypted frames
     let mut replay_win = ReplayWindow::default();
 
-    while let Some(msg) = ws_receiver.next().await {
+    loop {
+        let next_msg = tokio::select! {
+            _ = &mut event_task => break,
+            m = ws_receiver.next() => m,
+        };
+        let Some(msg) = next_msg else {
+            break;
+        };
         match msg {
             Ok(Message::Binary(bytes)) => {
                 let Some(h) = decode_cwbf2_header(&bytes) else {

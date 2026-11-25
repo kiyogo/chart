@@ -363,20 +363,29 @@ pub async fn rules_gate(state: &AppState, server_id: Uuid, uid: Uuid) -> AppResu
 
 // ---------------------------------------------------------------- forum threads
 
-async fn forum_channel(state: &AppState, channel: Uuid) -> AppResult<Uuid> {
-    let r = sqlx::query!("SELECT server_id, channel_type FROM channels WHERE id = $1", channel)
+async fn forum_channel(state: &AppState, channel: Uuid, user_id: Uuid) -> AppResult<Uuid> {
+    let r = sqlx::query!("SELECT server_id, channel_type, is_private FROM channels WHERE id = $1", channel)
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::NotFound("channel_not_found"))?;
     if r.channel_type != "forum" {
         return Err(AppError::BadRequest("not_a_forum"));
     }
+    if r.is_private {
+        crate::servers::permissions::require_server_permission(
+            &state.db,
+            r.server_id,
+            user_id,
+            crate::models::permissions::ADMINISTRATOR,
+        )
+        .await?;
+    }
     Ok(r.server_id)
 }
 
 async fn list_threads(State(state): State<AppState>, headers: HeaderMap, Path(ch): Path<Uuid>) -> AppResult<Json<Value>> {
     let me = auth_user(&state, &headers).await?;
-    let sid = forum_channel(&state, ch).await?;
+    let sid = forum_channel(&state, ch, me).await?;
     member(&state, sid, me).await?;
     let rows = sqlx::query!(
         r#"SELECT t.id, t.title, t.pinned, t.locked, t.created_at, t.last_activity, u.username AS "author?",
@@ -402,7 +411,7 @@ struct NewThread {
 
 async fn create_thread(State(state): State<AppState>, headers: HeaderMap, Path(ch): Path<Uuid>, Json(b): Json<NewThread>) -> AppResult<Json<Value>> {
     let me = auth_user(&state, &headers).await?;
-    let sid = forum_channel(&state, ch).await?;
+    let sid = forum_channel(&state, ch, me).await?;
     need(&state, sid, me, perm::SEND_MESSAGES).await?;
     rules_gate(&state, sid, me).await?;
     let title = clean(&b.title, 120, "invalid_title")?.ok_or(AppError::BadRequest("invalid_title"))?;
@@ -429,7 +438,7 @@ struct ThreadUpdate {
 
 async fn update_thread(State(state): State<AppState>, headers: HeaderMap, Path((ch, tid)): Path<(Uuid, Uuid)>, Json(b): Json<ThreadUpdate>) -> AppResult<Json<Value>> {
     let me = auth_user(&state, &headers).await?;
-    let sid = forum_channel(&state, ch).await?;
+    let sid = forum_channel(&state, ch, me).await?;
     need(&state, sid, me, perm::MANAGE_CHANNELS).await?;
     let t = sqlx::query_scalar!(
         "UPDATE forum_threads SET pinned = COALESCE($1, pinned), locked = COALESCE($2, locked) WHERE id = $3 AND channel_id = $4 RETURNING title",
@@ -449,7 +458,7 @@ async fn update_thread(State(state): State<AppState>, headers: HeaderMap, Path((
 
 async fn thread_messages(State(state): State<AppState>, headers: HeaderMap, Path((ch, tid)): Path<(Uuid, Uuid)>) -> AppResult<Json<Value>> {
     let me = auth_user(&state, &headers).await?;
-    let sid = forum_channel(&state, ch).await?;
+    let sid = forum_channel(&state, ch, me).await?;
     member(&state, sid, me).await?;
     let rows = sqlx::query!(
         r#"SELECT m.id, m.sender_id, m.content, m.created_at, COALESCE(sm.nickname, u.username) AS "name?", COALESCE(sm.avatar_url, u.avatar_url) AS "avatar?"
@@ -475,7 +484,7 @@ struct Reply {
 
 async fn post_thread_message(State(state): State<AppState>, headers: HeaderMap, Path((ch, tid)): Path<(Uuid, Uuid)>, Json(b): Json<Reply>) -> AppResult<Json<Value>> {
     let me = auth_user(&state, &headers).await?;
-    let sid = forum_channel(&state, ch).await?;
+    let sid = forum_channel(&state, ch, me).await?;
     need(&state, sid, me, perm::SEND_MESSAGES).await?;
     rules_gate(&state, sid, me).await?;
     let locked = sqlx::query_scalar!("SELECT locked FROM forum_threads WHERE id = $1 AND channel_id = $2", tid, ch)

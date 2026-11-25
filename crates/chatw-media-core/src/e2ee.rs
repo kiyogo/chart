@@ -297,6 +297,11 @@ pub fn open_cwch3_chunk(
 /// Transparently decrypt `CWCH3`, legacy `CWCH2`, AND legacy v1 single-blob AES-256-GCM ciphertexts!
 pub fn open_any_media(cipher: &[u8], key_b64: &str, nonce_b64: &str) -> MediaResult<Vec<u8>> {
     if let Some(hdr) = parse_cwch3_header(cipher) {
+        // Sealers always emit at least one authenticated chunk; a 0-chunk header would
+        // otherwise "decrypt" to empty plaintext without any AEAD verification.
+        if hdr.chunk_count == 0 {
+            return Err(MediaError::CryptoError("cwch3_zero_chunks".into()));
+        }
         let mut plain = Vec::with_capacity(hdr.total_plain_len.min(128 * 1024 * 1024) as usize);
         let mut pos = CWCH3_HEADER_LEN;
         for idx in 0..hdr.chunk_count {
@@ -305,7 +310,7 @@ pub fn open_any_media(cipher: &[u8], key_b64: &str, nonce_b64: &str) -> MediaRes
             }
             let ct_len = u32::from_be_bytes([cipher[pos], cipher[pos + 1], cipher[pos + 2], cipher[pos + 3]]) as usize;
             pos += 4;
-            if pos + ct_len > cipher.len() {
+            if pos.checked_add(ct_len).is_none_or(|end| end > cipher.len()) {
                 return Err(MediaError::CryptoError("truncated_cwch3_chunk".into()));
             }
             let mut pt = open_cwch3_chunk(&cipher[pos..pos + ct_len], &hdr, idx, key_b64, nonce_b64)?;
@@ -324,6 +329,9 @@ pub fn open_any_media(cipher: &[u8], key_b64: &str, nonce_b64: &str) -> MediaRes
         let total_plain_len = u64::from_be_bytes([
             cipher[13], cipher[14], cipher[15], cipher[16], cipher[17], cipher[18], cipher[19], cipher[20],
         ]);
+        if chunk_count == 0 {
+            return Err(MediaError::CryptoError("cwch2_zero_chunks".into()));
+        }
         let mut key = URL_SAFE_NO_PAD.decode(key_b64).map_err(|_| MediaError::CryptoError("bad_key".into()))?;
         let nonce_vec = URL_SAFE_NO_PAD.decode(nonce_b64).map_err(|_| MediaError::CryptoError("bad_nonce".into()))?;
         if key.len() != 32 || nonce_vec.len() != 12 {
@@ -343,7 +351,7 @@ pub fn open_any_media(cipher: &[u8], key_b64: &str, nonce_b64: &str) -> MediaRes
             }
             let ct_len = u32::from_be_bytes([cipher[pos], cipher[pos + 1], cipher[pos + 2], cipher[pos + 3]]) as usize;
             pos += 4;
-            if pos + ct_len > cipher.len() {
+            if pos.checked_add(ct_len).is_none_or(|end| end > cipher.len()) {
                 return Err(MediaError::CryptoError("truncated_cwch2_payload".into()));
             }
             let mut cn = base_nonce;
@@ -389,60 +397,77 @@ pub fn open_any_media(cipher: &[u8], key_b64: &str, nonce_b64: &str) -> MediaRes
 
 /// Seal a JSON streaming manifest using an HKDF-derived manifest authentication key so manifests
 /// cannot be tampered with by an untrusted relay/CDN/S3 bucket!
+const CWMAN4_MAGIC: &[u8; 5] = b"CWMN4";
+
+fn manifest_cipher(key_b64: &str, nonce_b64: &str) -> MediaResult<(Aes256Gcm, [u8; 12])> {
+    let mut key = URL_SAFE_NO_PAD.decode(key_b64).map_err(|_| MediaError::CryptoError("bad_key".into()))?;
+    let nonce = URL_SAFE_NO_PAD.decode(nonce_b64).map_err(|_| MediaError::CryptoError("bad_nonce".into()))?;
+    if key.len() != 32 || nonce.len() != 12 {
+        key.zeroize();
+        return Err(MediaError::CryptoError("bad_key_len".into()));
+    }
+    let hk = Hkdf::<Sha256>::new(Some(&nonce), &key);
+    key.zeroize();
+    let mut mkey = [0u8; 32];
+    let mut legacy_nonce = [0u8; 12];
+    hk.expand(b"chatw-manifest-key-v3", &mut mkey).map_err(|_| MediaError::CryptoError("hkdf".into()))?;
+    hk.expand(b"chatw-manifest-nonce-v3", &mut legacy_nonce).map_err(|_| MediaError::CryptoError("hkdf".into()))?;
+    let inst = Aes256Gcm::new_from_slice(&mkey).map_err(|_| MediaError::CryptoError("bad_key".into()))?;
+    mkey.zeroize();
+    Ok((inst, legacy_nonce))
+}
+
+/// Seal a manifest (`CWMN4`): a fresh random 96-bit nonce is generated per call and stored in
+/// the output, so re-sealing an updated manifest under the same media key never reuses a GCM nonce.
 pub fn seal_authenticated_manifest(
     manifest_json: &[u8],
     key_b64: &str,
     nonce_b64: &str,
     media_id: &str,
 ) -> MediaResult<Vec<u8>> {
-    let mut key = URL_SAFE_NO_PAD.decode(key_b64).map_err(|_| MediaError::CryptoError("bad_key".into()))?;
-    let nonce = URL_SAFE_NO_PAD.decode(nonce_b64).map_err(|_| MediaError::CryptoError("bad_nonce".into()))?;
-    if key.len() != 32 || nonce.len() != 12 {
-        key.zeroize();
-        return Err(MediaError::CryptoError("bad_key_len".into()));
-    }
-    let hk = Hkdf::<Sha256>::new(Some(&nonce), &key);
-    key.zeroize();
-    let mut mkey = [0u8; 32];
+    let (inst, _) = manifest_cipher(key_b64, nonce_b64)?;
     let mut mnonce = [0u8; 12];
-    hk.expand(b"chatw-manifest-key-v3", &mut mkey).map_err(|_| MediaError::CryptoError("hkdf".into()))?;
-    hk.expand(b"chatw-manifest-nonce-v3", &mut mnonce).map_err(|_| MediaError::CryptoError("hkdf".into()))?;
-    let inst = Aes256Gcm::new_from_slice(&mkey).map_err(|_| MediaError::CryptoError("bad_key".into()))?;
-    mkey.zeroize();
-    let aad = format!("CWMAN3:{media_id}");
-    inst.encrypt(
-        Nonce::from_slice(&mnonce),
-        Payload {
-            msg: manifest_json,
-            aad: aad.as_bytes(),
-        },
-    )
-    .map_err(|_| MediaError::CryptoError("manifest_seal_failed".into()))
+    fill_random(&mut mnonce)?;
+    let aad = format!("CWMAN4:{media_id}");
+    let ct = inst
+        .encrypt(
+            Nonce::from_slice(&mnonce),
+            Payload {
+                msg: manifest_json,
+                aad: aad.as_bytes(),
+            },
+        )
+        .map_err(|_| MediaError::CryptoError("manifest_seal_failed".into()))?;
+    let mut out = Vec::with_capacity(CWMAN4_MAGIC.len() + 12 + ct.len());
+    out.extend_from_slice(CWMAN4_MAGIC);
+    out.extend_from_slice(&mnonce);
+    out.extend_from_slice(&ct);
+    Ok(out)
 }
 
+/// Open a `CWMN4` manifest, falling back to legacy v3 (deterministic HKDF nonce) manifests.
 pub fn open_authenticated_manifest(
     sealed_manifest: &[u8],
     key_b64: &str,
     nonce_b64: &str,
     media_id: &str,
 ) -> MediaResult<Vec<u8>> {
-    let mut key = URL_SAFE_NO_PAD.decode(key_b64).map_err(|_| MediaError::CryptoError("bad_key".into()))?;
-    let nonce = URL_SAFE_NO_PAD.decode(nonce_b64).map_err(|_| MediaError::CryptoError("bad_nonce".into()))?;
-    if key.len() != 32 || nonce.len() != 12 {
-        key.zeroize();
-        return Err(MediaError::CryptoError("bad_key_len".into()));
+    let (inst, legacy_nonce) = manifest_cipher(key_b64, nonce_b64)?;
+    if sealed_manifest.len() >= CWMAN4_MAGIC.len() + 12 + 16 && &sealed_manifest[..5] == CWMAN4_MAGIC {
+        let aad = format!("CWMAN4:{media_id}");
+        if let Ok(pt) = inst.decrypt(
+            Nonce::from_slice(&sealed_manifest[5..17]),
+            Payload {
+                msg: &sealed_manifest[17..],
+                aad: aad.as_bytes(),
+            },
+        ) {
+            return Ok(pt);
+        }
     }
-    let hk = Hkdf::<Sha256>::new(Some(&nonce), &key);
-    key.zeroize();
-    let mut mkey = [0u8; 32];
-    let mut mnonce = [0u8; 12];
-    hk.expand(b"chatw-manifest-key-v3", &mut mkey).map_err(|_| MediaError::CryptoError("hkdf".into()))?;
-    hk.expand(b"chatw-manifest-nonce-v3", &mut mnonce).map_err(|_| MediaError::CryptoError("hkdf".into()))?;
-    let inst = Aes256Gcm::new_from_slice(&mkey).map_err(|_| MediaError::CryptoError("bad_key".into()))?;
-    mkey.zeroize();
     let aad = format!("CWMAN3:{media_id}");
     inst.decrypt(
-        Nonce::from_slice(&mnonce),
+        Nonce::from_slice(&legacy_nonce),
         Payload {
             msg: sealed_manifest,
             aad: aad.as_bytes(),
@@ -484,5 +509,20 @@ mod tests {
         let sealed_man = seal_authenticated_manifest(man, &sealed.key_b64, &sealed.nonce_b64, "media-abc").unwrap();
         assert_eq!(open_authenticated_manifest(&sealed_man, &sealed.key_b64, &sealed.nonce_b64, "media-abc").unwrap(), man);
         assert!(open_authenticated_manifest(&sealed_man, &sealed.key_b64, &sealed.nonce_b64, "media-other").is_err());
+        let sealed_man2 = seal_authenticated_manifest(man, &sealed.key_b64, &sealed.nonce_b64, "media-abc").unwrap();
+        assert_ne!(sealed_man[5..17], sealed_man2[5..17], "manifest nonces must be unique per seal");
+    }
+    #[test]
+    fn cwch3_zero_chunk_header_forgery_is_rejected() {
+        let sealed = seal_cwch3(b"", "media-empty", "orig", 64 * 1024).expect("seal empty");
+        assert_eq!(sealed.chunk_count, 1);
+        assert_eq!(open_any_media(&sealed.cipher, &sealed.key_b64, &sealed.nonce_b64).unwrap(), Vec::<u8>::new());
+        // Forge a header-only blob claiming 0 chunks: must not "decrypt" to empty plaintext.
+        let mut forged = sealed.cipher[..CWCH3_HEADER_LEN].to_vec();
+        forged[10..14].copy_from_slice(&0u32.to_be_bytes());
+        assert!(open_any_media(&forged, &sealed.key_b64, &sealed.nonce_b64).is_err());
+        let mut forged2 = CWCH2_MAGIC.to_vec();
+        forged2.resize(CWCH2_HEADER_LEN, 0);
+        assert!(open_any_media(&forged2, &sealed.key_b64, &sealed.nonce_b64).is_err());
     }
 }

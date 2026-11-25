@@ -228,11 +228,22 @@
   });
 
   function evictBlobPoolIfNeeded() {
-    while (blobPool.size >= MAX_BLOB_URLS) {
+    let attempts = blobPool.size;
+    while (blobPool.size >= MAX_BLOB_URLS && attempts-- > 0) {
       const oldestKey = blobPool.keys().next().value;
       const rec = blobPool.get(oldestKey);
       blobPool.delete(oldestKey);
       if (rec && rec.blobUrl) {
+        let inUse = false;
+        try {
+          if (typeof document !== 'undefined' && document.querySelector) {
+            inUse = Boolean(document.querySelector(`[src="${rec.blobUrl}"]`));
+          }
+        } catch (_) {}
+        if (inUse) {
+          blobPool.set(oldestKey, rec);
+          continue;
+        }
         try { URL.revokeObjectURL(rec.blobUrl); } catch (_) {}
       }
     }
@@ -758,9 +769,12 @@
       }
       this.__chatwPendingImgSrc = null;
     }
-    if (low === 'style' && typeof value === 'string' && value.includes('url(')) {
-      const rewritten = rewriteStyleAndResolveAsync(this, value);
-      return origSetAttr.call(this, name, rewritten);
+    if (low === 'style' && typeof value === 'string') {
+      if (value.includes('url(')) {
+        const rewritten = rewriteStyleAndResolveAsync(this, value);
+        return origSetAttr.call(this, name, rewritten);
+      }
+      this.__chatwPendingStyle = null;
     }
     const res = origSetAttr.call(this, name, value);
     if (this.tagName === 'CANVAS' && (low === 'data-blur-b64' || low === 'data-blur-mime')) {

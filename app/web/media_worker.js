@@ -295,15 +295,53 @@ self.onmessage = async (ev) => {
         ? 'image/avif'
         : (rawSniff.mime !== 'application/octet-stream' ? rawSniff.mime : (mime || 'application/octet-stream'));
       const finalExt = rawSniff.ext === 'bin' ? 'bin' : rawSniff.ext;
+      // Losslessly strip JPEG EXIF/GPS APP1 & COM metadata segments without touching image pixels
+      let outU8 = rawU8;
+      let stripped = false;
+      if (!opts.preserveOriginal && rawSniff.ext === 'jpg' && rawU8.byteLength > 4 && rawU8[0] === 0xFF && rawU8[1] === 0xD8) {
+        const parts = [rawU8.subarray(0, 2)];
+        let p = 2;
+        let ok = true;
+        while (p + 4 <= rawU8.byteLength && rawU8[p] === 0xFF) {
+          const marker = rawU8[p + 1];
+          if (marker === 0xDA || marker === 0xD9) {
+            parts.push(rawU8.subarray(p));
+            p = rawU8.byteLength;
+            break;
+          }
+          if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+            parts.push(rawU8.subarray(p, p + 2));
+            p += 2;
+            continue;
+          }
+          const segLen = (rawU8[p + 2] << 8) | rawU8[p + 3];
+          if (segLen < 2 || p + 2 + segLen > rawU8.byteLength) { ok = false; break; }
+          if (marker === 0xE1 || marker === 0xFE) {
+            stripped = true;
+          } else {
+            parts.push(rawU8.subarray(p, p + 2 + segLen));
+          }
+          p += 2 + segLen;
+        }
+        if (ok && stripped && p === rawU8.byteLength) {
+          const total = parts.reduce((acc, a) => acc + a.byteLength, 0);
+          const merged = new Uint8Array(total);
+          let off = 0;
+          for (const part of parts) { merged.set(part, off); off += part.byteLength; }
+          outU8 = merged;
+        } else {
+          stripped = false;
+        }
+      }
       bitmap.close();
       self.postMessage({
         id,
         ok: true,
-        bytesB64: bytesToB64(rawU8),
+        bytesB64: bytesToB64(outU8),
         mime: finalMime,
         ext: finalExt,
         originalSize: rawU8.byteLength,
-        optimizedSize: rawU8.byteLength,
+        optimizedSize: outU8.byteLength,
         isCrispText: isCrisp,
         width: origW,
         height: origH,
@@ -312,7 +350,7 @@ self.onmessage = async (ev) => {
         blurDataUrl,
         thumbB64: null,
         thumbMime: null,
-        exifStripped: false,
+        exifStripped: stripped,
         workerUsed: true,
         codec: rawSniff.ext === 'avif' ? 'already_avif_passthrough' : 'original_passthrough',
         estimatedSsim: 1.0,

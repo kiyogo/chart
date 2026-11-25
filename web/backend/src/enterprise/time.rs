@@ -4,7 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::Response,
 };
-use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Timelike, Utc};
+use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -188,7 +188,22 @@ pub async fn check_out(
 
     let now_utc = Utc::now();
     let local = vn_now();
-    let work_date = local.format("%Y-%m-%d").to_string();
+    let today_date = local.format("%Y-%m-%d").to_string();
+    let yesterday_date = (local - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+
+    // Support overnight / cross-midnight shifts: prefer today's open check-in, otherwise yesterday's still-open check-in.
+    let target_row: Option<(Uuid, String, String)> = sqlx::query_as(
+        "SELECT id, work_date, status FROM enterprise_attendance WHERE server_id = $1 AND user_id = $2 AND work_date IN ($3, $4) AND check_in_at IS NOT NULL ORDER BY (work_date = $3) DESC, check_in_at DESC LIMIT 1",
+    )
+    .bind(server_id)
+    .bind(uid)
+    .bind(&today_date)
+    .bind(&yesterday_date)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some((att_id, work_date, _prev_status)) = target_row else {
+        return Err(AppError::BadRequest("must_check_in_first"));
+    };
 
     let policy: Option<Value> = sqlx::query_scalar(
         "SELECT attendance_policy FROM server_enterprise_configs WHERE server_id = $1",
@@ -203,37 +218,38 @@ pub async fn check_out(
     let (eh, em) = parse_hhmm(we, 17, 30);
     let now_min = (local.hour() * 60 + local.minute()) as i32;
     let end_min = (eh * 60 + em) as i32;
-    let early_minutes = if now_min < end_min { end_min - now_min } else { 0 };
-    let overtime_minutes = if now_min > end_min + 15 { now_min - end_min } else { 0 };
+    let is_overnight = work_date == yesterday_date;
+    let early_minutes = if is_overnight || now_min >= end_min { 0 } else { end_min - now_min };
+    let overtime_minutes = if is_overnight {
+        now_min + (24 * 60 - end_min)
+    } else if now_min > end_min + 15 {
+        now_min - end_min
+    } else {
+        0
+    };
 
     let note = clean_opt(p.note.as_deref(), 240, "invalid_note")?;
-    let res = sqlx::query(
+    sqlx::query(
         r#"
         UPDATE enterprise_attendance
-        SET check_out_at = $4,
-            early_minutes = $5,
-            overtime_minutes = $6,
+        SET check_out_at = $2,
+            early_minutes = $3,
+            overtime_minutes = $4,
             status = CASE
-                WHEN $6 > 0 THEN 'overtime'
-                WHEN $5 > 10 AND status = 'present' THEN 'early_leave'
+                WHEN status = 'present' AND $4 > 0 THEN 'overtime'
+                WHEN status = 'present' AND $3 > 10 THEN 'early_leave'
                 ELSE status END,
-            note = COALESCE($7, note)
-        WHERE server_id = $1 AND user_id = $2 AND work_date = $3
+            note = COALESCE($5, note)
+        WHERE id = $1
         "#,
     )
-    .bind(server_id)
-    .bind(uid)
-    .bind(&work_date)
+    .bind(att_id)
     .bind(now_utc)
     .bind(early_minutes)
     .bind(overtime_minutes)
     .bind(note)
     .execute(&state.db)
     .await?;
-
-    if res.rows_affected() == 0 {
-        return Err(AppError::BadRequest("must_check_in_first"));
-    }
     emit_enterprise(&state, server_id, "attendance.updated", json!({ "user_id": uid, "work_date": work_date })).await;
     Ok(Json(json!({ "work_date": work_date, "check_out_at": now_utc, "early_minutes": early_minutes, "overtime_minutes": overtime_minutes })))
 }
@@ -298,8 +314,10 @@ pub async fn request_adjustment(
     if !valid_ymd(&p.work_date) {
         return Err(AppError::BadRequest("invalid_work_date"));
     }
-    if p.requested_in.is_none() && p.requested_out.is_none() {
-        return Err(AppError::BadRequest("missing_adjustment_times"));
+    if let (Some(rin), Some(rout)) = (p.requested_in, p.requested_out)
+        && rout <= rin
+    {
+        return Err(AppError::BadRequest("requested_out_before_in"));
     }
     let reason = clean_req(&p.reason, 2, 500, "invalid_reason")?;
     let id: Uuid = sqlx::query_scalar(
@@ -338,7 +356,7 @@ pub async fn decide_adjustment(
 
     let mut tx = state.db.begin().await?;
     let row = sqlx::query_as::<_, (Uuid, String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, String)>(
-        "SELECT user_id, work_date, requested_in, requested_out, status FROM enterprise_attendance_adjustments WHERE id = $1 AND server_id = $2",
+        "SELECT user_id, work_date, requested_in, requested_out, status FROM enterprise_attendance_adjustments WHERE id = $1 AND server_id = $2 FOR UPDATE",
     )
     .bind(adj_id)
     .bind(server_id)
@@ -346,12 +364,15 @@ pub async fn decide_adjustment(
     .await?
     .ok_or(AppError::NotFound("adjustment_not_found"))?;
 
+    if row.0 == uid && !ctx.is_owner {
+        return Err(AppError::Forbidden("cannot_approve_own_adjustment"));
+    }
     if row.4 != "pending" {
         return Err(AppError::BadRequest("already_decided"));
     }
 
-    sqlx::query(
-        "UPDATE enterprise_attendance_adjustments SET status = $3, reviewer_id = $4, reviewed_at = now() WHERE id = $1 AND server_id = $2",
+    let claimed = sqlx::query(
+        "UPDATE enterprise_attendance_adjustments SET status = $3, reviewer_id = $4, reviewed_at = now() WHERE id = $1 AND server_id = $2 AND status = 'pending'",
     )
     .bind(adj_id)
     .bind(server_id)
@@ -359,15 +380,20 @@ pub async fn decide_adjustment(
     .bind(uid)
     .execute(&mut *tx)
     .await?;
+    if claimed.rows_affected() == 0 {
+        return Err(AppError::BadRequest("already_decided"));
+    }
 
     if p.status == "approved" {
         sqlx::query(
             r#"
-            INSERT INTO enterprise_attendance (server_id, user_id, work_date, check_in_at, check_out_at, status, verified_by, note)
-            VALUES ($1, $2, $3, $4, $5, 'present', $6, 'Điều chỉnh công được duyệt')
+            INSERT INTO enterprise_attendance (server_id, user_id, work_date, check_in_at, check_out_at, status, late_minutes, early_minutes, verified_by, note)
+            VALUES ($1, $2, $3, $4, $5, 'present', 0, 0, $6, 'Điều chỉnh công được duyệt')
             ON CONFLICT (server_id, user_id, work_date) DO UPDATE SET
                 check_in_at = COALESCE($4, enterprise_attendance.check_in_at),
                 check_out_at = COALESCE($5, enterprise_attendance.check_out_at),
+                late_minutes = 0,
+                early_minutes = 0,
                 verified_by = $6,
                 status = 'present'
             "#,
@@ -547,14 +573,38 @@ pub async fn create_leave_request(
     if ed < sd {
         return Err(AppError::BadRequest("end_before_start"));
     }
+    if sd.year() != ed.year() {
+        return Err(AppError::BadRequest("leave_cross_year_split_required"));
+    }
     let hd = p.half_day.as_deref().unwrap_or("full");
     if !["full", "morning", "afternoon"].contains(&hd) {
         return Err(AppError::BadRequest("invalid_half_day"));
     }
     let span_days = (ed - sd).num_days() + 1;
+    if span_days > 1 && hd != "full" {
+        return Err(AppError::BadRequest("half_day_only_single_day"));
+    }
     let days_count = if span_days == 1 && hd != "full" { 0.5 } else { span_days as f64 };
     if days_count > 90.0 {
         return Err(AppError::BadRequest("leave_range_too_large"));
+    }
+    let yr = sd.year();
+    let default_total: f64 = if lt.eq_ignore_ascii_case("sick") { 5.0 } else { 12.0 };
+    if let Some((total_d, used_d)) = sqlx::query_as::<_, (f64, f64)>(
+        "SELECT total_days, used_days FROM enterprise_leave_balances WHERE server_id = $1 AND user_id = $2 AND year = $3 AND leave_type = $4",
+    )
+    .bind(server_id)
+    .bind(uid)
+    .bind(yr)
+    .bind(&lt)
+    .fetch_optional(&state.db)
+    .await?
+    {
+        if total_d - used_d < days_count {
+            return Err(AppError::BadRequest("insufficient_leave_balance"));
+        }
+    } else if default_total < days_count {
+        return Err(AppError::BadRequest("insufficient_leave_balance"));
     }
     let reason = clean_req(&p.reason, 2, 500, "invalid_reason")?;
 
@@ -588,7 +638,7 @@ pub async fn decide_leave_request(
 
     let mut tx = state.db.begin().await?;
     let row = sqlx::query_as::<_, (Uuid, String, String, f64, String)>(
-        "SELECT user_id, leave_type, start_date, days_count, status FROM enterprise_leave_requests WHERE id = $1 AND server_id = $2",
+        "SELECT user_id, leave_type, start_date, days_count, status FROM enterprise_leave_requests WHERE id = $1 AND server_id = $2 FOR UPDATE",
     )
     .bind(req_id)
     .bind(server_id)
@@ -614,8 +664,8 @@ pub async fn decide_leave_request(
     }
 
     let note = clean_opt(p.note.as_deref(), 240, "invalid_note")?;
-    sqlx::query(
-        "UPDATE enterprise_leave_requests SET status = $3, approver_id = $4, decision_note = $5, decided_at = now() WHERE id = $1 AND server_id = $2",
+    let claimed = sqlx::query(
+        "UPDATE enterprise_leave_requests SET status = $3, approver_id = $4, decision_note = $5, decided_at = now() WHERE id = $1 AND server_id = $2 AND status = 'pending'",
     )
     .bind(req_id)
     .bind(server_id)
@@ -624,16 +674,26 @@ pub async fn decide_leave_request(
     .bind(&note)
     .execute(&mut *tx)
     .await?;
+    if claimed.rows_affected() == 0 {
+        return Err(AppError::BadRequest("already_decided"));
+    }
 
     if p.status == "approved" {
         let yr: i32 = row.2.get(0..4).and_then(|s| s.parse().ok()).unwrap_or(2026);
+        let default_total: f64 = if row.1.eq_ignore_ascii_case("sick") { 5.0 } else { 12.0 };
         sqlx::query(
-            r#"
-            INSERT INTO enterprise_leave_balances (server_id, user_id, year, leave_type, total_days, used_days)
-            VALUES ($1, $2, $3, $4, 12.0, $5)
-            ON CONFLICT (server_id, user_id, year, leave_type) DO UPDATE SET
-                used_days = enterprise_leave_balances.used_days + EXCLUDED.used_days
-            "#,
+            "INSERT INTO enterprise_leave_balances (server_id, user_id, year, leave_type, total_days, used_days) VALUES ($1, $2, $3, $4, $5, 0.0) ON CONFLICT (server_id, user_id, year, leave_type) DO NOTHING",
+        )
+        .bind(server_id)
+        .bind(row.0)
+        .bind(yr)
+        .bind(&row.1)
+        .bind(default_total)
+        .execute(&mut *tx)
+        .await?;
+
+        let bal_upd = sqlx::query(
+            "UPDATE enterprise_leave_balances SET used_days = used_days + $5 WHERE server_id = $1 AND user_id = $2 AND year = $3 AND leave_type = $4 AND (total_days - used_days) >= $5",
         )
         .bind(server_id)
         .bind(row.0)
@@ -642,6 +702,9 @@ pub async fn decide_leave_request(
         .bind(row.3)
         .execute(&mut *tx)
         .await?;
+        if bal_upd.rows_affected() == 0 {
+            return Err(AppError::BadRequest("insufficient_leave_balance"));
+        }
     }
 
     tx.commit().await?;
@@ -768,6 +831,26 @@ pub async fn create_meeting(
             .await?;
         if !ok {
             return Err(AppError::BadRequest("invalid_channel"));
+        }
+    }
+    if let Some(dept_id) = p.department_id {
+        let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_departments WHERE id = $1 AND server_id = $2)")
+            .bind(dept_id)
+            .bind(server_id)
+            .fetch_one(&state.db)
+            .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_department"));
+        }
+    }
+    if let Some(proj_id) = p.project_id {
+        let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM enterprise_projects WHERE id = $1 AND server_id = $2)")
+            .bind(proj_id)
+            .bind(server_id)
+            .fetch_one(&state.db)
+            .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_project"));
         }
     }
 

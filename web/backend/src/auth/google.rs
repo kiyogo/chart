@@ -139,8 +139,15 @@ pub async fn google_login_handler(
     let nonce = generate_random_token();
     let (code_verifier, code_challenge) = generate_pkce();
 
+    let default_port = config.bind_addr.port();
+    let allowed_local_cb_1 = format!("http://127.0.0.1:{default_port}/api/auth/google/callback");
+    let allowed_local_cb_2 = format!("http://localhost:{default_port}/api/auth/google/callback");
     let redirect_uri = custom_redirect
-        .filter(|u| !u.trim().is_empty())
+        .map(|u| u.trim().to_string())
+        .filter(|u| {
+            u == &config.google_redirect_url
+                || (config.bind_addr.ip().is_loopback() && (u == &allowed_local_cb_1 || u == &allowed_local_cb_2))
+        })
         .unwrap_or_else(|| config.google_redirect_url.clone());
 
     let oauth_payload = OAuthStatePayload {

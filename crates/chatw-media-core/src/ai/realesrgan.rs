@@ -176,7 +176,8 @@ fn extract_profile_with_kernel_stride(
     let h = height as usize;
     let ks = ks.max(1);
     let pad = (ks * 2).max(2);
-    if w <= pad * 2 || h <= pad * 2 || rgba.len() < w * h * 4 {
+    let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+    if w <= pad * 2 || h <= pad * 2 || req_bytes.is_none_or(|n| rgba.len() < n) {
         return OriginalQualityProfile::default();
     }
 
@@ -337,7 +338,8 @@ fn extract_profile_with_kernel_stride(
 fn compute_dark_outline_ratio(rgba: &[u8], width: u32, height: u32) -> f32 {
     let w = width as usize;
     let h = height as usize;
-    if w < 8 || h < 8 || rgba.len() < w * h * 4 {
+    let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+    if w < 8 || h < 8 || req_bytes.is_none_or(|n| rgba.len() < n) {
         return 0.0;
     }
     let step = ((w.max(h) / 96).max(1)).min(8);
@@ -396,7 +398,8 @@ pub fn select_realesrgan_model_adaptive(
 ) -> Option<RealEsrganModelKind> {
     let w = width as usize;
     let h = height as usize;
-    if w < 16 || h < 16 || rgba.len() < w * h * 4 {
+    let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+    if w < 16 || h < 16 || req_bytes.is_none_or(|n| rgba.len() < n) {
         return None;
     }
 
@@ -547,7 +550,8 @@ pub fn calibrate_color_preserve_sr(
 ) -> f32 {
     let w = width as usize;
     let h = height as usize;
-    if w < 8 || h < 8 || rgba.len() < w * h * 4 {
+    let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+    if w < 8 || h < 8 || req_bytes.is_none_or(|n| rgba.len() < n) {
         return 98.5;
     }
     let Some(target) = target_opt.filter(|t| t.sharp > 0.3) else {
@@ -606,7 +610,9 @@ pub fn evaluate_sr_quality_gate(
     let sh = sh as usize;
     let ow = ow as usize;
     let oh = oh as usize;
-    if sw == 0 || sh == 0 || ow == 0 || oh == 0 || src_rgba.len() < sw * sh * 4 || out_rgba.len() < ow * oh * 4 {
+    let req_src = sw.checked_mul(sh).and_then(|p| p.checked_mul(4));
+    let req_out = ow.checked_mul(oh).and_then(|p| p.checked_mul(4));
+    if sw == 0 || sh == 0 || ow == 0 || oh == 0 || req_src.is_none_or(|n| src_rgba.len() < n) || req_out.is_none_or(|n| out_rgba.len() < n) {
         return (false, 0.0, 1.0);
     }
 
@@ -1145,7 +1151,12 @@ fn run_conv3x3(src: &[f32], dst: &mut [f32], w: usize, h: usize, layer: &ConvPre
 
 /// Run `SRVGGNetCompact` on a single RGBA8 tile -> returns RGBA8 at `(w * upscale, h * upscale)`.
 pub fn infer_realesrgan_tile(rgba: &[u8], w: usize, h: usize, model: &RealEsrganModel) -> Vec<u8> {
-    let n_pix = w * h;
+    let Some(n_pix) = w.checked_mul(h) else {
+        return Vec::new();
+    };
+    if n_pix == 0 || n_pix.checked_mul(4).is_none_or(|req| rgba.len() < req) {
+        return Vec::new();
+    }
     let inv255 = 1.0f32 / 255.0;
     let mut rgb_in = vec![0.0f32; n_pix * 3];
     for p in 0..n_pix {
@@ -1212,12 +1223,16 @@ pub fn run_realesrgan_tiled(
 ) -> MediaResult<(Vec<u8>, u32, u32)> {
     let w = width as usize;
     let h = height as usize;
-    if w == 0 || h == 0 || rgba.len() < w * h * 4 {
+    let req_bytes = w.checked_mul(h).and_then(|p| p.checked_mul(4));
+    if w == 0 || h == 0 || req_bytes.is_none_or(|n| rgba.len() < n) {
         return Err(MediaError::EmptyInput);
     }
     let scale = model.upscale;
-    let ow = w * scale;
-    let oh = h * scale;
+    let ow = w.checked_mul(scale).ok_or_else(|| MediaError::InvalidParameter("output_width_overflow".into()))?;
+    let oh = h.checked_mul(scale).ok_or_else(|| MediaError::InvalidParameter("output_height_overflow".into()))?;
+    if ow.checked_mul(oh).and_then(|p| p.checked_mul(4)).is_none() {
+        return Err(MediaError::InvalidParameter("output_buffer_overflow".into()));
+    }
     let tile = tile_size.max(64) as usize;
 
     if w <= tile && h <= tile {

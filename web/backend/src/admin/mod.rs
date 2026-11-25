@@ -177,6 +177,7 @@ async fn user_action(
             sqlx::query!("UPDATE users SET suspended_at = now() WHERE id = $1", id).execute(&mut *tx).await?;
             sqlx::query!("DELETE FROM sessions WHERE user_id = $1", id).execute(&mut *tx).await?;
             tx.commit().await?;
+            state.ws_hub.disconnect_user(&id).await;
         }
         "unsuspend" => {
             sqlx::query!("UPDATE users SET suspended_at = NULL WHERE id = $1", id).execute(&state.db).await?;

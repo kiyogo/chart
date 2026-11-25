@@ -897,6 +897,16 @@ pub async fn upsert_review(
     Json(req): Json<ReviewReq>,
 ) -> AppResult<Json<Value>> {
     let uid = auth_user(&state, &headers).await?;
+    let visible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM plugin_packages WHERE id = $1 AND (is_public = true OR EXISTS(SELECT 1 FROM plugin_installations WHERE package_id = $1 AND installed_by = $2)))",
+    )
+    .bind(package_id)
+    .bind(uid)
+    .fetch_one(&state.db)
+    .await?;
+    if !visible {
+        return Err(AppError::NotFound("package_not_found"));
+    }
     if !(1..=5).contains(&req.rating) || req.comment.len() > 1000 {
         return Err(AppError::BadRequest("invalid_review"));
     }
@@ -938,6 +948,16 @@ pub async fn report_package(
     Json(req): Json<ReportReq>,
 ) -> AppResult<Json<Value>> {
     let uid = auth_user(&state, &headers).await?;
+    let visible: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM plugin_packages WHERE id = $1 AND (is_public = true OR EXISTS(SELECT 1 FROM plugin_installations WHERE package_id = $1 AND installed_by = $2)))",
+    )
+    .bind(package_id)
+    .bind(uid)
+    .fetch_one(&state.db)
+    .await?;
+    if !visible {
+        return Err(AppError::NotFound("package_not_found"));
+    }
     if req.reason.trim().is_empty() || req.reason.len() > 120 || req.details.len() > 2000 {
         return Err(AppError::BadRequest("invalid_report"));
     }

@@ -585,6 +585,7 @@ pub async fn run_incremental_delta_sync_for_user(
     let mut total_gp_count = 0usize;
     let mut total_ch_count = 0usize;
 
+    let mut dm_had_decrypt_miss = false;
     for _page in 0..20 {
         let res = storage_sync::delta_sync_with_limit(dm_since, group_since, channel_since, 250)
             .await
@@ -608,13 +609,6 @@ pub async fn run_incremental_delta_sync_for_user(
 
         if let Some(items) = dm_arr {
             for item in items {
-                if item
-                    .get("deleted_for_all")
-                    .and_then(|b| b.as_bool())
-                    .unwrap_or(false)
-                {
-                    continue;
-                }
                 let Some(id) = item.get("id").and_then(|v| v.as_str()) else {
                     continue;
                 };
@@ -625,14 +619,40 @@ pub async fn run_incremental_delta_sync_for_user(
                 let Some(recipient_id) = item.get("recipient_id").and_then(|v| v.as_str()) else {
                     continue;
                 };
-                let Some(envelope) = item.get("envelope").and_then(|v| v.as_str()) else {
-                    continue;
-                };
                 let created_at = item
                     .get("created_at")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_string();
+                let is_self = sender_id == user_id;
+                let partner_id = if is_self {
+                    recipient_id.to_string()
+                } else {
+                    sender_id.to_string()
+                };
+                if item
+                    .get("deleted_for_all")
+                    .and_then(|b| b.as_bool())
+                    .unwrap_or(false)
+                {
+                    grouped_dms.entry(partner_id).or_default().push(DisplayMessage {
+                        id: id.to_string(),
+                        seq,
+                        sender_id: sender_id.to_string(),
+                        recipient_id: recipient_id.to_string(),
+                        text: "[Message has been revoked]".to_string(),
+                        created_at,
+                        is_self,
+                        status: MessageStatus::Sent,
+                        reply_to_id: None,
+                        reactions: Vec::new(),
+                        is_pinned: false,
+                    });
+                    continue;
+                }
+                let Some(envelope) = item.get("envelope").and_then(|v| v.as_str()) else {
+                    continue;
+                };
                 let reply_to_id = item
                     .get("reply_to_id")
                     .and_then(|v| v.as_str())
@@ -641,13 +661,6 @@ pub async fn run_incremental_delta_sync_for_user(
                     .get("is_pinned")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-
-                let is_self = sender_id == user_id;
-                let partner_id = if is_self {
-                    recipient_id.to_string()
-                } else {
-                    sender_id.to_string()
-                };
 
                 let sender_ecdsa: [u8; 65] = if is_self {
                     my_keys.ecdsa_raw
@@ -666,6 +679,7 @@ pub async fn run_incremental_delta_sync_for_user(
                         }
                     }
                     let Some(pk) = peer_cache.get(&partner_id) else {
+                        dm_had_decrypt_miss = true;
                         continue;
                     };
                     pk.ecdsa_raw
@@ -685,12 +699,16 @@ pub async fn run_incremental_delta_sync_for_user(
                         reactions: Vec::new(),
                         is_pinned,
                     });
+                } else {
+                    dm_had_decrypt_miss = true;
                 }
             }
         }
 
         let progressed = dm_next > dm_since || gp_next > group_since || ch_next > channel_since;
-        dm_since = dm_next;
+        if !dm_had_decrypt_miss {
+            dm_since = dm_next;
+        }
         group_since = gp_next;
         channel_since = ch_next;
 

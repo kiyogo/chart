@@ -378,7 +378,10 @@ mod impl_codec {
         raw_file_bytes: Option<&[u8]>,
         opts: &AvifEncodeOptions,
     ) -> MediaResult<AdaptiveAvifOutput> {
-        if width == 0 || height == 0 || rgba.len() < (width as usize) * (height as usize) * 4 {
+        let req_bytes = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|p| p.checked_mul(4));
+        if width == 0 || height == 0 || req_bytes.is_none_or(|n| rgba.len() < n) {
             return Err(MediaError::EmptyInput);
         }
 
@@ -659,37 +662,39 @@ mod impl_codec {
             });
         }
 
-        // Decode frames from GIF or Animated WebP
+        // Decode frames from GIF or Animated WebP with strict OOM bomb guards (max frames & decoded RGBA bytes)
+        const MAX_ANIM_FRAMES: usize = 300;
+        const MAX_ANIM_RGBA_BYTES: usize = 128 * 1024 * 1024;
+        let collect_bounded = |iter: image::Frames<'_>, label: &str| -> MediaResult<Vec<(Vec<u8>, u32, u32, u32)>> {
+            let mut out = Vec::new();
+            let mut total_bytes = 0usize;
+            for f_res in iter {
+                if out.len() >= MAX_ANIM_FRAMES {
+                    return Err(MediaError::DecodeFailed(format!("{label}: exceeds {MAX_ANIM_FRAMES} frame limit")));
+                }
+                let f = f_res.map_err(|e| MediaError::DecodeFailed(format!("{label} frames: {e}")))?;
+                let (num, den) = f.delay().numer_denom_ms();
+                let delay_ms = (num / den.max(1)).max(20);
+                let buf = f.into_buffer();
+                let (w, h) = buf.dimensions();
+                let raw = buf.into_raw();
+                total_bytes = total_bytes.saturating_add(raw.len());
+                if total_bytes > MAX_ANIM_RGBA_BYTES {
+                    return Err(MediaError::DecodeFailed(format!("{label}: decoded frames exceed 128 MiB limit")));
+                }
+                out.push((raw, w, h, delay_ms));
+            }
+            Ok(out)
+        };
+
         let frames: Vec<(Vec<u8>, u32, u32, u32)> = if sniff.ext == "gif" {
             let dec = image::codecs::gif::GifDecoder::new(Cursor::new(bytes))
                 .map_err(|e| MediaError::DecodeFailed(format!("gif decode: {e}")))?;
-            dec.into_frames()
-                .collect_frames()
-                .map_err(|e| MediaError::DecodeFailed(format!("gif frames: {e}")))?
-                .into_iter()
-                .map(|f| {
-                    let (num, den) = f.delay().numer_denom_ms();
-                    let delay_ms = (num / den.max(1)).max(20);
-                    let buf = f.into_buffer();
-                    let (w, h) = buf.dimensions();
-                    (buf.into_raw(), w, h, delay_ms)
-                })
-                .collect()
+            collect_bounded(dec.into_frames(), "gif")?
         } else if sniff.ext == "webp" {
             let dec = image::codecs::webp::WebPDecoder::new(Cursor::new(bytes))
                 .map_err(|e| MediaError::DecodeFailed(format!("webp decode: {e}")))?;
-            dec.into_frames()
-                .collect_frames()
-                .map_err(|e| MediaError::DecodeFailed(format!("webp frames: {e}")))?
-                .into_iter()
-                .map(|f| {
-                    let (num, den) = f.delay().numer_denom_ms();
-                    let delay_ms = (num / den.max(1)).max(20);
-                    let buf = f.into_buffer();
-                    let (w, h) = buf.dimensions();
-                    (buf.into_raw(), w, h, delay_ms)
-                })
-                .collect()
+            collect_bounded(dec.into_frames(), "webp")?
         } else {
             return Err(MediaError::UnsupportedFormat(format!(
                 "animated format '{}' unsupported",

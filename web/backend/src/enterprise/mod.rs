@@ -1080,10 +1080,12 @@ pub async fn enterprise_search(
     }
 
     let anns = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, title, priority FROM enterprise_announcements WHERE server_id = $1 AND (lower(title) LIKE $2 OR lower(content) LIKE $2) LIMIT 5",
+        "SELECT id, title, priority FROM enterprise_announcements WHERE server_id = $1 AND (scope = 'company' OR $3::bool OR (department_id IS NOT NULL AND department_id = ANY($4))) AND (lower(title) LIKE $2 OR lower(content) LIKE $2) LIMIT 5",
     )
     .bind(server_id)
     .bind(&pat)
+    .bind(ctx.is_admin())
+    .bind(&ctx.dept_ids)
     .fetch_all(&state.db)
     .await?;
     for (id, title, priority) in anns {
@@ -1097,10 +1099,13 @@ pub async fn enterprise_search(
     }
 
     let meetings = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT id, title, status FROM enterprise_meetings WHERE server_id = $1 AND lower(title) LIKE $2 LIMIT 5",
+        "SELECT id, title, status FROM enterprise_meetings WHERE server_id = $1 AND ($3::bool OR organizer_id = $4 OR $4 = ANY(attendee_ids) OR (department_id IS NOT NULL AND department_id = ANY($5))) AND lower(title) LIKE $2 LIMIT 5",
     )
     .bind(server_id)
     .bind(&pat)
+    .bind(ctx.is_admin())
+    .bind(uid)
+    .bind(&ctx.dept_ids)
     .fetch_all(&state.db)
     .await?;
     for (id, title, status) in meetings {

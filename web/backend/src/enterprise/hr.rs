@@ -244,14 +244,29 @@ pub async fn upsert_employee(
         }
     }
 
+    if let Some(mgr_id) = p.manager_user_id {
+        let valid_mgr: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2)",
+        )
+        .bind(server_id)
+        .bind(mgr_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !valid_mgr {
+            return Err(AppError::BadRequest("invalid_manager"));
+        }
+    }
+
     let emp_code = if let Some(c) = clean_opt(p.employee_code.as_deref(), 32, "invalid_code")? {
         Some(c)
     } else {
-        let cnt: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM enterprise_employees WHERE server_id = $1")
-            .bind(server_id)
-            .fetch_one(&mut *tx)
-            .await?;
-        Some(format!("NV-{:04}", cnt + 1))
+        let next_num: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(substring(employee_code FROM '([0-9]+)$')::bigint), 0) + 1 FROM enterprise_employees WHERE server_id = $1 AND employee_code ~ '^NV-[0-9]+$'",
+        )
+        .bind(server_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        Some(format!("NV-{next_num:04}"))
     };
 
     let work_email = clean_opt(p.work_email.as_deref(), 120, "invalid_email")?;
@@ -337,6 +352,23 @@ pub async fn upsert_employee(
     .await?;
 
     if let Some(dept_id) = p.department_id {
+        let valid_dept: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM enterprise_departments WHERE id = $1 AND server_id = $2)",
+        )
+        .bind(dept_id)
+        .bind(server_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !valid_dept {
+            return Err(AppError::BadRequest("invalid_department_id"));
+        }
+        sqlx::query(
+            "DELETE FROM enterprise_department_members WHERE server_id = $1 AND user_id = $2",
+        )
+        .bind(server_id)
+        .bind(target_uid)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query(
             "INSERT INTO enterprise_department_members (department_id, server_id, user_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
         )
@@ -385,6 +417,19 @@ pub async fn bulk_update_employees(
         }
     }
 
+    if let Some(dept_id) = p.department_id {
+        let valid_dept: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM enterprise_departments WHERE id = $1 AND server_id = $2)",
+        )
+        .bind(dept_id)
+        .bind(server_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !valid_dept {
+            return Err(AppError::BadRequest("invalid_department_id"));
+        }
+    }
+
     let mut tx = state.db.begin().await?;
     let mut updated = 0usize;
     for tid in &p.user_ids {
@@ -407,6 +452,13 @@ pub async fn bulk_update_employees(
         .await?;
         updated += res.rows_affected() as usize;
         if let Some(dept_id) = p.department_id {
+            sqlx::query(
+                "DELETE FROM enterprise_department_members WHERE server_id = $1 AND user_id = $2",
+            )
+            .bind(server_id)
+            .bind(tid)
+            .execute(&mut *tx)
+            .await?;
             sqlx::query(
                 "INSERT INTO enterprise_department_members (department_id, server_id, user_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
             )
@@ -621,7 +673,26 @@ pub async fn handover_employee(
 
     if p.mark_offboarded {
         sqlx::query(
-            "UPDATE enterprise_employees SET employment_status = 'offboarded', updated_at = now() WHERE server_id = $1 AND user_id = $2",
+            "UPDATE enterprise_employees SET employment_status = 'offboarded', department_id = NULL, updated_at = now() WHERE server_id = $1 AND user_id = $2",
+        )
+        .bind(server_id)
+        .bind(from_uid)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM enterprise_department_members WHERE server_id = $1 AND user_id = $2")
+            .bind(server_id)
+            .bind(from_uid)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "DELETE FROM server_member_roles WHERE server_id = $1 AND user_id = $2 AND EXISTS(SELECT 1 FROM servers WHERE id = $1 AND owner_id <> $2)",
+        )
+        .bind(server_id)
+        .bind(from_uid)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "DELETE FROM server_members WHERE server_id = $1 AND user_id = $2 AND EXISTS(SELECT 1 FROM servers WHERE id = $1 AND owner_id <> $2)",
         )
         .bind(server_id)
         .bind(from_uid)
@@ -721,6 +792,30 @@ pub async fn create_department(
         .await?;
         if !ok {
             return Err(AppError::BadRequest("invalid_linked_channel"));
+        }
+    }
+    if let Some(parent_id) = p.parent_id {
+        let ok: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM enterprise_departments WHERE id = $1 AND server_id = $2)",
+        )
+        .bind(parent_id)
+        .bind(server_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_parent_department"));
+        }
+    }
+    if let Some(mgr_id) = p.manager_user_id {
+        let ok: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM server_members WHERE server_id = $1 AND user_id = $2)",
+        )
+        .bind(server_id)
+        .bind(mgr_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !ok {
+            return Err(AppError::BadRequest("invalid_manager"));
         }
     }
 

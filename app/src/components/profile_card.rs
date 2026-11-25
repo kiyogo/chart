@@ -82,7 +82,7 @@ pub const EFFECT_ANIMS: [(&str, &str); 6] = [
 pub fn nameplate_style(nameplate: Option<&str>, custom_url: Option<&str>) -> (String, String) {
     match nameplate.unwrap_or("none") {
         "none" | "" => (String::new(), String::new()),
-        "custom" => match custom_url.filter(|u| !u.is_empty()) {
+        "custom" => match custom_url.filter(|u| platform::safe_asset_path(u)) {
             Some(u) => ("has-nameplate np-custom".into(), format!("--np-image: url('{}');", platform::resolve_asset_url(u))),
             None => (String::new(), String::new()),
         },
@@ -191,12 +191,16 @@ pub fn ProfileCard(
 ) -> Element {
     let p = profile;
     let tpl = plus.as_ref().map(|x| format!(" pc-tpl-{}", x.template)).unwrap_or_default();
-    let c1 = p.profile_color.clone().filter(|c| !c.is_empty()).unwrap_or_else(|| "var(--accent)".to_string());
-    let c2 = p.profile_accent.clone().filter(|c| !c.is_empty()).unwrap_or_else(|| c1.clone());
+    let safe_color = |c: &str| {
+        (c.starts_with('#') && (c.len() == 4 || c.len() == 7) && c[1..].chars().all(|ch| ch.is_ascii_hexdigit()))
+            || c == "var(--accent)"
+    };
+    let c1 = p.profile_color.clone().filter(|c| safe_color(c)).unwrap_or_else(|| "var(--accent)".to_string());
+    let c2 = p.profile_accent.clone().filter(|c| safe_color(c)).unwrap_or_else(|| c1.clone());
     let banner_img = p
         .custom_banner_url
         .as_ref()
-        .filter(|u| !u.is_empty())
+        .filter(|u| platform::safe_asset_path(u))
         .map(|u| format!("background-image: url('{}');", platform::resolve_asset_url(u)))
         .unwrap_or_default();
     let effect = p.profile_effect.clone().unwrap_or_else(|| "none".to_string());

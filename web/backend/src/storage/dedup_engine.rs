@@ -1057,28 +1057,40 @@ pub async fn handle_cdc_commit(
         return Ok(Json(obj));
     }
 
-    // Verify all chunks exist in `media_cdc_chunks` and track how many were already referenced (saved!)
+    // Verify all chunks exist in deterministic sorted-hash order to prevent PostgreSQL lock-order deadlocks.
+    let mut unique_chunk_sizes: std::collections::BTreeMap<[u8; 32], i32> = std::collections::BTreeMap::new();
+    for (_, _, len, h) in &parsed_chunks {
+        if let Some(prev_len) = unique_chunk_sizes.insert(*h, *len)
+            && prev_len != *len
+        {
+            return Err(AppError::BadRequest("cdc_chunk_size_mismatch"));
+        }
+    }
     let mut reused_chunks = 0usize;
     let mut saved_bytes: i64 = 0;
-    for (_, _, len, h) in &parsed_chunks {
+    let mut chunk_was_reused: std::collections::HashMap<[u8; 32], bool> = std::collections::HashMap::with_capacity(unique_chunk_sizes.len());
+    for (h, expected_len) in &unique_chunk_sizes {
         let row = sqlx::query("SELECT byte_size, ref_count FROM media_cdc_chunks WHERE chunk_blake3 = $1 FOR UPDATE")
             .bind(&h[..])
             .fetch_optional(&mut *tx)
             .await?
             .ok_or(AppError::BadRequest("missing_cdc_chunk"))?;
         let db_len: i32 = row.try_get("byte_size")?;
-        if db_len != *len {
+        if db_len != *expected_len {
             return Err(AppError::BadRequest("cdc_chunk_size_mismatch"));
         }
         let rc: i32 = row.try_get("ref_count")?;
-        if rc > 0 {
-            reused_chunks += 1;
-            saved_bytes += *len as i64;
-        }
+        chunk_was_reused.insert(*h, rc > 0);
         sqlx::query("UPDATE media_cdc_chunks SET ref_count = ref_count + 1 WHERE chunk_blake3 = $1")
             .bind(&h[..])
             .execute(&mut *tx)
             .await?;
+    }
+    for (_, _, len, h) in &parsed_chunks {
+        if chunk_was_reused.get(h).copied().unwrap_or(false) {
+            reused_chunks += 1;
+            saved_bytes += *len as i64;
+        }
     }
 
     let oid = Uuid::new_v4();

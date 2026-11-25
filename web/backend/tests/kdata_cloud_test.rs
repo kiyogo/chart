@@ -899,20 +899,22 @@ async fn test_cloud_webdav_incremental_verify_tamper_restore_and_safe_gc() {
     assert!(run2["reused_chunks"].as_u64().unwrap() >= 1);
 
     // 4. Corrupt one chunk on remote WebDAV -> restore must detect & reject!
-    let chunk_key = {
+    let orig_chunks: Vec<(String, Vec<u8>)> = {
         let map = dav_state.files.read().unwrap();
-        map.keys()
-            .find(|k| k.contains("/chunks/"))
-            .unwrap()
-            .clone()
+        map.iter()
+            .filter(|(k, _)| k.contains("/chunks/"))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     };
-    let orig_chunk = dav_state.files.read().unwrap().get(&chunk_key).unwrap().clone();
+    assert!(!orig_chunks.is_empty());
     {
         let mut map = dav_state.files.write().unwrap();
-        let mut corrupted = orig_chunk.clone();
-        let last = corrupted.len() - 1;
-        corrupted[last] ^= 0xFF;
-        map.insert(chunk_key.clone(), corrupted);
+        for (chunk_key, orig_chunk) in &orig_chunks {
+            let mut corrupted = orig_chunk.clone();
+            let last = corrupted.len() - 1;
+            corrupted[last] ^= 0xFF;
+            map.insert(chunk_key.clone(), corrupted);
+        }
     }
     let (st, _) = json_req(
         &app,
@@ -928,8 +930,13 @@ async fn test_cloud_webdav_incremental_verify_tamper_restore_and_safe_gc() {
     .await;
     assert!(st.is_client_error() || st.is_server_error());
 
-    // Restore valid chunk back
-    dav_state.files.write().unwrap().insert(chunk_key, orig_chunk);
+    // Restore valid chunks back
+    {
+        let mut map = dav_state.files.write().unwrap();
+        for (chunk_key, orig_chunk) in orig_chunks {
+            map.insert(chunk_key, orig_chunk);
+        }
+    }
 
     // 5. Delete DM2 from DB, restore snapshot #2 -> DM2 comes back cleanly
     sqlx::query("DELETE FROM messages WHERE id = $1")
