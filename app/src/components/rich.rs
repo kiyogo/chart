@@ -715,6 +715,9 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         targetHeight: {target_h},
                         origProfileJson: {qp_json},
                         forceRun: true,
+                        onStage1: (url) => {{
+                            try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
+                        }},
                         onProgress: (pct) => {{
                             try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
                         }},
@@ -753,6 +756,11 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         ai_revealing.set(false);
                         ai_loading.set(true);
                         ai_progress.set(v.get("pct").and_then(|n| n.as_u64()).unwrap_or(3) as u32);
+                    }
+                    "stage1" => {
+                        if let Some(s1_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
+                            src.set(Some(s1_url.to_string()));
+                        }
                     }
                     "progress" => {
                         if let Some(p) = v.get("pct").and_then(|n| n.as_u64()) {
@@ -2481,6 +2489,9 @@ pub fn GlobalImageLightbox() -> Element {
                         origProfileJson: {qp_json},
                         force4x: true,
                         forceRun: true,
+                        onStage1: (url) => {{
+                            try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
+                        }},
                         onProgress: (pct) => {{
                             try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
                         }},
@@ -2497,6 +2508,21 @@ pub fn GlobalImageLightbox() -> Element {
             let mut eval = dioxus::document::eval(&js);
             while let Ok(v) = eval.recv::<serde_json::Value>().await {
                 match v.get("type").and_then(|s| s.as_str()).unwrap_or("") {
+                    "stage1" => {
+                        if let Some(s1_url) = v.get("url").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
+                            let still_same = GLOBAL_LIGHTBOX
+                                .peek()
+                                .as_ref()
+                                .map(|cur| cur.media_id == m.media_id && cur.original_src == m.original_src)
+                                .unwrap_or(false);
+                            if still_same {
+                                *GLOBAL_LIGHTBOX.write() = Some(LightboxMedia {
+                                    src: s1_url.to_string(),
+                                    ..m.clone()
+                                });
+                            }
+                        }
+                    }
                     "progress" => {
                         if let Some(p) = v.get("pct").and_then(|n| n.as_u64()) {
                             let p32 = (p as u32).min(100);
