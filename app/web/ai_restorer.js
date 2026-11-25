@@ -2,7 +2,7 @@
 // Spec 143: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 + RL -> Stage 2 Adaptive SPAN 4× (NomosUni AVIF / ClearRealityV1 / AnimeVideoV3) + Text/QR Guard + AbortSignal cancellation!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v24';
+  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v25';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
     nomosuni_span_x2: { id: 'nomosuni_span_x2', cwsrUrl: '/models/nomosuni_span_x2.cwsp', license: 'CC-BY-4.0', scale: 2 },
@@ -114,7 +114,7 @@
     if (modelBytesMemCache.has(modelId)) return modelBytesMemCache.get(modelId);
     if (window.__chatwStorage && typeof window.__chatwStorage.getAiModel === 'function') {
       try {
-        const hit = await window.__chatwStorage.getAiModel(modelId);
+        const hit = await withTimeout(window.__chatwStorage.getAiModel(modelId), 2000, 'idb_get_model');
         if (hit && hit.byteLength > 100000) {
           modelBytesMemCache.set(modelId, hit);
           return hit;
@@ -519,7 +519,7 @@
 
     if (window.__chatwStorage && typeof window.__chatwStorage.getAiOutput === 'function') {
       try {
-        const hit = await window.__chatwStorage.getAiOutput(cacheKey);
+        const hit = await withTimeout(window.__chatwStorage.getAiOutput(cacheKey), 2000, 'idb_get_ai');
         if (hit && hit.found && hit.blob) {
           const entry = {
             enhanced: true,
@@ -693,7 +693,7 @@
       if (meta.signal && meta.signal.aborted) {
         return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
       }
-      if (wasm && typeof wasm.selectRealEsrganModel === 'function' && typeof wasm.restoreImageRealEsrgan === 'function') {
+      if (hw.webgl2Available && !hw.webgl2Software && wasm && typeof wasm.selectRealEsrganModel === 'function' && typeof wasm.restoreImageRealEsrgan === 'function') {
         try {
           const sel = wasm.selectRealEsrganModel(srcU8, procW, procH, origProfileJson, meta.modelId || '', srcBytes);
           if (sel && sel.skip) {

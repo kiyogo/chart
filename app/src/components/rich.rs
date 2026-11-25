@@ -656,9 +656,12 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         }}
                     }};
                     let inputUrl = {url_json};
-                    // 1. Sender local original check
+                    // 1. Sender local original check (bounded timeout so IndexedDB never stalls at 3%)
                     if (window.__chatwMediaOpt && window.__chatwMediaOpt.getSenderOriginalFromCache) {{
-                        const orig = await window.__chatwMediaOpt.getSenderOriginalFromCache({mid_json});
+                        const orig = await Promise.race([
+                            window.__chatwMediaOpt.getSenderOriginalFromCache({mid_json}).catch(() => null),
+                            new Promise((r) => setTimeout(() => r(null), 1500)),
+                        ]);
                         if (orig && orig.found && orig.url) {{
                             regDedup(true);
                             inputUrl = orig.url;

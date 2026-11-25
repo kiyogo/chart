@@ -3053,12 +3053,20 @@ pub async fn restore_image_realesrgan_rust(
     };
 
     let probe = probe_gpu();
-    if probe.webgl2_available && (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {
+    // Spec 148: Never run heavy multi-tile 4× neural SPAN on software WebGL2 (SwiftShader/llvmpipe takes ~1s/tile = 60–90s!)
+    // or fall through to synchronous single-threaded WASM CPU (which freezes the main thread for minutes).
+    // Immediately return Err so `ai_restorer.js` delivers crisp Stage 1 (FSR 1.0 EASU 2× + RL) at 100% in < 250ms!
+    if !probe.webgl2_available || probe.is_software {
+        return Err("hardware_webgl2_required_fallback_stage1".into());
+    }
+    if (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {
         let prep_ok = with_gl_engine(|eng| eng.prepare_output_canvas(ow as u32, oh as u32));
         if prep_ok.is_ok() {
             // Single-pass (0% halo waste!) on real GPU for images up to 600k pixels (e.g. 512×384 = 196k px -> 1 single pass!!);
-            // large 512px tiles above 600k px, or 160px tiles on software SwiftShader.
-            let single_pass_ok = !probe.is_software && (w * h <= 600_000);
+            // large 512px tiles above 600k px.
+            let single_pass_ok = w * h <= 600_000;
+            let t_gpu_start = js_sys::Date::now();
+            let max_gpu_budget_ms = 5500.0f64;
             let gpu_res: Result<(), String> = if single_pass_ok {
                 if kind.is_span() {
                     run_span_tile_gl_async(
@@ -3187,6 +3195,10 @@ pub async fn restore_image_realesrgan_rust(
                             break 'outer;
                         }
                         done_tiles += 1;
+                        if js_sys::Date::now() - t_gpu_start > max_gpu_budget_ms {
+                            err_opt = Some("gpu_time_budget_exceeded".into());
+                            break 'outer;
+                        }
                         yield_browser_task().await;
                         tx = valid_x1;
                     }
@@ -3253,44 +3265,9 @@ pub async fn restore_image_realesrgan_rust(
         }
     }
 
-    // Pure-Rust CPU Fallback (if WebGL2 is unavailable or exceeded max texture size)
-    emit_progress(on_progress.as_ref(), 25);
-    let (mut out_rgba, cpu_backend) = if kind.is_span() {
-        let model = SpanModel::from_cwsp_bytes(model_bytes).map_err(|e| e.to_string())?;
-        let (buf, _, _) = run_span_tiled(&model, rgba, width, height, 128, None, |_| {})
-            .map_err(|e| e.to_string())?;
-        (buf, "rust_wasm_cpu_span_4x")
-    } else {
-        let model = RealEsrganModel::from_cwsr_bytes(model_bytes).map_err(|e| e.to_string())?;
-        let (buf, _, _) = run_realesrgan_tiled(rgba, width, height, &model, 128, None)
-            .map_err(|e| e.to_string())?;
-        (buf, "rust_wasm_cpu_realesrgan_srvgg")
-    };
-    emit_progress(on_progress.as_ref(), 92);
-
-    let match_pct = calibrate_color_preserve_sr(&mut out_rgba, ow as u32, oh as u32, orig_profile);
-    emit_progress(on_progress.as_ref(), 96);
-
-    let (passed, ssim, drift) = evaluate_sr_quality_gate(rgba, width, height, &out_rgba, ow as u32, oh as u32);
-    if !passed {
-        return Err(format!("quality_gate_rejected (ssim={ssim:.4}, drift={drift:.4})"));
-    }
-    emit_progress(on_progress.as_ref(), 98);
-
-    Ok(RealEsrganFullOutput {
-        canvas: None,
-        rgba: Some(out_rgba),
-        width: ow as u32,
-        height: oh as u32,
-        scale: scale as u32,
-        has_alpha,
-        model_id,
-        model_label,
-        backend: cpu_backend,
-        ssim,
-        mean_color_drift: drift,
-        match_pct,
-    })
+    // Spec 148: Do NOT fall through to synchronous single-threaded WASM CPU inference on the browser main thread.
+    // Returning a clean Err lets `ai_restorer.js` immediately deliver Stage 1 (FSR 1.0 + RL) at 100% with zero freeze!
+    Err("webgl2_stage2_unavailable_fallback_stage1".into())
 }
 
 fn create_float_tex2d(
