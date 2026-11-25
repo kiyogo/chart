@@ -968,7 +968,6 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                     div { class: "ai-gen-frost" }
                                     div { class: "ai-gen-aurora" }
                                     div { class: "ai-gen-dots-base" }
-                                    div { class: "ai-gen-dots-wave" }
                                     span { class: "ai-gen-pct", "{pct_now}%" }
                                 }
                             } else if show_corner_icon {
@@ -1042,7 +1041,6 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     div { class: "ai-gen-frost", aria_hidden: "true" }
                     div { class: "ai-gen-aurora", aria_hidden: "true" }
                     div { class: "ai-gen-dots-base", aria_hidden: "true" }
-                    div { class: "ai-gen-dots-wave", aria_hidden: "true" }
                     span { class: "rich-image-blur-spinner", span { class: "spinner" } }
                 }
             } else {
@@ -2899,7 +2897,6 @@ pub fn GlobalImageLightbox() -> Element {
                                     div { class: "ai-gen-frost" }
                                     div { class: "ai-gen-aurora" }
                                     div { class: "ai-gen-dots-base" }
-                                    div { class: "ai-gen-dots-wave" }
                                     span { class: "ai-gen-pct", "{lb_pct_now}%" }
                                 }
                             }
