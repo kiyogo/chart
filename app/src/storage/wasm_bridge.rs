@@ -51,7 +51,8 @@ pub fn install_wasm_media_bridge() {
             let mode = match mode_str.as_str() {
                 "high" => AvifCompressionMode::HighQuality,
                 "balanced" => AvifCompressionMode::FastAdaptive,
-                "ultra" | "aggressive" | "fast" | _ => AvifCompressionMode::UltraAggressive,
+                "aggressive" | "data_saver" => AvifCompressionMode::UltraAggressive,
+                "ultra" | "fast" | _ => AvifCompressionMode::UltraAdaptive,
             };
             let opts = AvifEncodeOptions {
                 mode,

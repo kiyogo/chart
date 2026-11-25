@@ -906,7 +906,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     let is_loading = ai_loading();
                     let is_revealing = ai_revealing();
                     let pct_now = ai_progress();
-                    let show_corner_icon = needs_on_demand_ai() && !is_ai && !is_loading && !is_revealing && can_ai;
+                    let show_corner_icon = needs_on_demand_ai() && !is_ai && !is_loading && !is_revealing && can_ai && !is_orig && (lb_orig_w > lb_w || lb_w < 960);
 
                     let corner_raw = lb_raw_src.clone();
                     let corner_mid = data.u.clone();
@@ -2579,7 +2579,7 @@ pub fn GlobalImageLightbox() -> Element {
             return;
         }
         if let Some(m) = GLOBAL_LIGHTBOX.peek().clone() {
-            if m.auto_enhance_on_open && !m.ai_restored && m.can_ai_enhance {
+            if m.auto_enhance_on_open && !m.ai_restored && m.can_ai_enhance && !m.is_sender_original {
                 run_lb_enhance(m);
             }
         }

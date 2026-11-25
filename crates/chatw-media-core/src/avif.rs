@@ -281,47 +281,47 @@ mod impl_codec {
                 (cands, 0.92)
             }
             ImageClass::LowLightNoisy | ImageClass::Portrait | ImageClass::Photo => {
-                // 10-bit YCbCr eliminates sky/skin banding even at aggressive ultra-low bitrates!
+                // 10-bit YCbCr eliminates sky/skin banding and preserves fine eyelashes/pores (Spec 136)!
                 let cands = match mode {
                     AvifCompressionMode::FastAdaptive => vec![CandidateConfig {
-                        quality: 62.0,
-                        alpha_quality: 78.0,
+                        quality: 74.0,
+                        alpha_quality: 84.0,
                         speed: fast_speed,
                         bit_depth: BitDepth::Ten,
                         color_model: ColorModel::YCbCr,
                     }],
                     AvifCompressionMode::HighQuality => vec![CandidateConfig {
-                        quality: 82.0,
-                        alpha_quality: 88.0,
+                        quality: 86.0,
+                        alpha_quality: 92.0,
                         speed: careful_speed,
                         bit_depth: BitDepth::Ten,
                         color_model: ColorModel::YCbCr,
                     }],
                     AvifCompressionMode::UltraAdaptive | AvifCompressionMode::UltraAggressive => vec![
                         CandidateConfig {
-                            quality: 48.0,
-                            alpha_quality: 76.0,
+                            quality: 74.0,
+                            alpha_quality: 84.0,
                             speed: fast_speed,
                             bit_depth: BitDepth::Ten,
                             color_model: ColorModel::YCbCr,
                         },
                         CandidateConfig {
-                            quality: 62.0,
-                            alpha_quality: 82.0,
+                            quality: 80.0,
+                            alpha_quality: 88.0,
                             speed: careful_speed,
                             bit_depth: BitDepth::Ten,
                             color_model: ColorModel::YCbCr,
                         },
                         CandidateConfig {
-                            quality: 74.0,
-                            alpha_quality: 86.0,
+                            quality: 86.0,
+                            alpha_quality: 92.0,
                             speed: careful_speed,
                             bit_depth: BitDepth::Ten,
                             color_model: ColorModel::YCbCr,
                         },
                     ],
                 };
-                (cands, if analysis.class == ImageClass::Portrait { 0.93 } else { 0.915 })
+                (cands, if analysis.class == ImageClass::Portrait { 0.95 } else { 0.93 })
             }
         }
     }

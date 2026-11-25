@@ -54,20 +54,18 @@
   }
 
   // Adaptive resolution policy:
-  // When preserveOriginal is false, compress AGGRESSIVELY ("nén mạnh nhất có thể"):
-  // - Downscale large images by 2x (0.5x) so transmitted size drops by 80-90% (e.g. 178KB down to ~15-28KB)
-  // - The sender immediately sees their crisp original file locally (< 20ms)
-  // - The receiver runs on-device AI 2x Super-Resolution to restore back to full original resolution & sharpness!
+  // High-Fidelity & Pristine Detail Preservation (Spec 136):
+  // - Images up to 1920px (e.g. 1024x768, 1280x720, 1920x1080) retain 100% full original resolution (tw = origW, th = origH).
+  // - Gigantic images > 2048px (e.g. 48MP raw camera captures) are capped to 1920px max dimension.
+  // - In data_saver mode, clamp to 1280px max dimension when > 1280px.
   function adaptiveMaxEdge(w, h, isCrisp, qualityMode) {
     if (qualityMode === 'original') return null;
     const maxEdge = Math.max(w, h);
     if (qualityMode === 'data_saver') {
-      return maxEdge > 800 ? Math.round(maxEdge * 0.5) : (maxEdge > 540 ? 540 : null);
+      return maxEdge > 1280 ? 1280 : null;
     }
-    if (maxEdge > 900) {
-      return Math.round(maxEdge * 0.5);
-    } else if (maxEdge > 640) {
-      return 540;
+    if (maxEdge > 2048) {
+      return 1920;
     }
     return null;
   }
@@ -170,7 +168,7 @@
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(bitmap, 0, 0, tw, th);
 
-      const q = isCrisp ? 0.44 : (opts.qualityMode === 'data_saver' ? 0.32 : 0.38);
+      const q = isCrisp ? 0.82 : (opts.qualityMode === 'data_saver' ? 0.65 : 0.80);
       const avif = await tryGenuineAvif(canvas, q);
       bitmap.close();
 
