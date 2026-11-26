@@ -103,11 +103,6 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                         }
                     }
                 }
-                div { class: "auth-hero-foot",
-                    span { "Open source" }
-                    span { "Rust" }
-                    span { "Dioxus" }
-                }
             }
 
             main { class: "auth-panel",
