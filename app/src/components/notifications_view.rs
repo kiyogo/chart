@@ -22,8 +22,6 @@ pub fn NotificationsView(
     on_open_friends_tab: EventHandler<()>,
     on_open_messages: EventHandler<()>,
 ) -> Element {
-    let mut filter = use_signal(|| "all".to_string());
-
     let unread_friends: Vec<(FriendItem, usize)> = friends
         .iter()
         .filter_map(|f| unread_counts.get(&f.id).copied().filter(|&c| c > 0).map(|c| (f.clone(), c)))
@@ -31,9 +29,7 @@ pub fn NotificationsView(
 
     let total_unread_msgs: usize = unread_friends.iter().map(|(_, c)| *c).sum();
     let total_pending = pending_requests.len();
-    let show_msgs = filter() == "all" || filter() == "messages";
-    let show_reqs = filter() == "all" || filter() == "requests";
-    let visible_empty = (!show_msgs || unread_friends.is_empty()) && (!show_reqs || pending_requests.is_empty());
+    let visible_empty = unread_friends.is_empty() && pending_requests.is_empty();
 
     rsx! {
         div { class: "notifications-page",
@@ -44,34 +40,11 @@ pub fn NotificationsView(
                         span { class: "notifications-count-pill", "new {total_unread_msgs + total_pending}" }
                     }
                 }
-                div { class: "notifications-tabs", role: "tablist", aria_label: "Filter notifications",
-                    button {
-                        r#type: "button",
-                        role: "tab",
-                        class: if filter() == "all" { "download-tab active" } else { "download-tab" },
-                        onclick: move |_| filter.set("all".to_string()),
-                        "All"
-                    }
-                    button {
-                        r#type: "button",
-                        role: "tab",
-                        class: if filter() == "messages" { "download-tab active" } else { "download-tab" },
-                        onclick: move |_| filter.set("messages".to_string()),
-                        "Message ({total_unread_msgs})"
-                    }
-                    button {
-                        r#type: "button",
-                        role: "tab",
-                        class: if filter() == "requests" { "download-tab active" } else { "download-tab" },
-                        onclick: move |_| filter.set("requests".to_string()),
-                        "Make friends ({total_pending})"
-                    }
-                }
             }
 
             div { class: "notifications-scroll",
                 div { class: "notifications-inner",
-                    if show_reqs && !pending_requests.is_empty() {
+                    if !pending_requests.is_empty() {
                         section { class: "notifications-section",
                             div { class: "notifications-section-head",
                                 h2 { "Friend requests" }
@@ -104,7 +77,7 @@ pub fn NotificationsView(
                         }
                     }
 
-                    if show_msgs && !unread_friends.is_empty() {
+                    if !unread_friends.is_empty() {
                         section { class: "notifications-section",
                             div { class: "notifications-section-head",
                                 h2 { "Unread messages" }
@@ -138,7 +111,6 @@ pub fn NotificationsView(
                         div { class: "notifications-empty",
                             div { class: "notifications-empty-icon", BellIcon { size: 28 } }
                             h2 { "No new notifications" }
-                            p { "All your unread messages and friend requests will be displayed here." }
                             div { class: "notifications-empty-actions",
                                 button {
                                     r#type: "button",
