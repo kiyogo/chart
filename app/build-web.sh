@@ -81,7 +81,7 @@ sed -i "s|/core_bridge.js|/core_bridge.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/media_stream_bridge.js|/media_stream_bridge.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/media_optimizer.js|/media_optimizer.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/plugin_runtime.js|/plugin_runtime.js?v=${TS}|g" app/dist/index.html
-cp app/web/i18n_runtime.js app/dist/i18n_runtime.js
+sed "s|__BUILD_TS__|${TS}|g" app/web/i18n_runtime.js > app/dist/i18n_runtime.js
 mkdir -p app/dist/locales
 cp -r app/web/locales/. app/dist/locales/
 cp app/web/canvas_scrollbars.js app/dist/canvas_scrollbars.js
@@ -98,7 +98,7 @@ sed "s|/core_worker.js|/core_worker.js?v=${TS}|g" app/web/core_bridge.js > app/d
 sed -e "s|__BUILD_TS__|${TS}|g" app/web/media_worker.js > app/dist/media_worker.js
 cp app/web/network_worker.js app/dist/network_worker.js
 cp app/web/network_bridge.js app/dist/network_bridge.js
-cp app/web/sw.js app/dist/sw.js
+sed -e "s|__BUILD_TS__|${TS}|g" app/web/sw.js > app/dist/sw.js
 cp app/web/media_stream_bridge.js app/dist/media_stream_bridge.js
 sed "s|/media_worker.js|/media_worker.js?v=${TS}|g" app/web/media_optimizer.js > app/dist/media_optimizer.js
 cp app/web/plugin_runtime.js app/dist/plugin_runtime.js

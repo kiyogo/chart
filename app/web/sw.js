@@ -7,8 +7,8 @@
 //    `/stickers/*`, SVG/CSS/JS/WASM assets so repeat boots make 0 redundant Fetch/XHR requests.
 
 const STREAM_PREFIXES = ['/stream/media/', '/stream/'];
-const STATIC_CACHE_NAME = 'chatw-static-v27';
-const SHELL_CACHE_NAME = 'chatw-shell-v27';
+const STATIC_CACHE_NAME = 'chatw-static-v28-__BUILD_TS__';
+const SHELL_CACHE_NAME = 'chatw-shell-v28-__BUILD_TS__';
 const DEFAULT_GRANT_TTL_MS = 15 * 60 * 1000;
 const MAX_CHUNK_CACHE_ENTRIES = 64;
 const MAX_STREAM_SPAN = 1024 * 1024;
@@ -38,7 +38,11 @@ self.addEventListener('activate', (event) => {
     const keys = await caches.keys().catch(() => []);
     await Promise.all(
       keys
-        .filter((k) => k.startsWith('chatw-static-') && k !== STATIC_CACHE_NAME)
+        .filter(
+          (k) =>
+            (k.startsWith('chatw-static-') && k !== STATIC_CACHE_NAME) ||
+            (k.startsWith('chatw-shell-') && k !== SHELL_CACHE_NAME),
+        )
         .map((k) => caches.delete(k).catch(() => {})),
     );
     await self.clients.claim();

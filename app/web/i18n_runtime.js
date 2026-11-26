@@ -9,6 +9,10 @@
 (function () {
   if (window.__chatwI18n) return;
 
+  const I18N_BUILD = '__BUILD_TS__';
+  const I18N_VER = I18N_BUILD.indexOf('__BUILD_') === 0 ? 'v7' : `v7:${I18N_BUILD}`;
+  const I18N_QS = I18N_BUILD.indexOf('__BUILD_') === 0 ? '' : `?v=${encodeURIComponent(I18N_BUILD)}`;
+
   const RTL_LANGS = new Set(["ar", "ar-EG", "ur", "fa", "he", "ps", "ckb", "sd", "bal", "ug", "yi", "dv"]);
   const VALID_LANGS = new Set(["en", "vi", "zh-CN", "zh-TW", "yue", "ja", "ko", "es", "fr", "de", "pt-BR", "pt-PT", "ru", "ar", "ar-EG", "hi", "bn", "ur", "id", "ms", "fil", "th", "km", "lo", "my", "tr", "it", "nl", "pl", "uk", "ro", "cs", "sk", "hu", "el", "sv", "da", "no", "fi", "is", "fa", "he", "ps", "ku", "ckb", "sd", "bal", "ug", "yi", "dv", "ta", "te", "mr", "gu", "kn", "ml", "pa", "or", "as", "ne", "new", "si", "sa", "mai", "bho", "doi", "gom", "mni-Mtei", "lus", "sat", "kha", "bo", "dz", "ka", "hy", "az", "kk", "uz", "ky", "tk", "tg", "mn", "tt", "ba", "cv", "ce", "os", "av", "crh", "sah", "bua", "kv", "ab", "bg", "sr", "hr", "bs", "sl", "mk", "sq", "lt", "lv", "et", "be", "ga", "cy", "gd", "fo", "kl", "eu", "ca", "gl", "mt", "lb", "fy", "co", "br", "oc", "scn", "lmo", "vec", "fur", "lij", "eo", "la", "af", "sw", "am", "ti", "om", "so", "ha", "yo", "ig", "zu", "xh", "st", "sn", "ny", "rw", "rn", "lg", "mg", "bm", "ee", "ak", "ln", "nso", "ts", "tn", "ss", "ve", "nr", "kri", "wo", "ff", "sg", "kg", "lua", "bem", "tum", "ach", "luo", "ndc-ZW", "ber-Latn", "jv", "su", "ban", "min", "ace", "mak", "bbc", "btx", "bts", "ceb", "ilo", "pam", "pag", "hil", "bik", "hmn", "shn", "kac", "tet", "mi", "sm", "haw", "fj", "to", "ty", "tpi", "ht", "pap", "jam", "qu", "gn", "ay"]);
 
@@ -175,9 +179,11 @@
       } catch (_) {
         continue;
       }
-      const entry = { idx: i, re, phOrder, anchor };
-      compiledTemplates.push(entry);
       const lead = parts[0].trim();
+      const staticText = parts.map((p) => p.trim()).join(' ').trim();
+      const isBroadGlue = lead === '' && staticText.length < 12 && !/[:()\[\]·•]/.test(staticText);
+      const entry = { idx: i, re, phOrder, anchor, isBroadGlue };
+      compiledTemplates.push(entry);
       const fw = lead.match(/^[A-Za-z]+/);
       if (fw) {
         const key = fw[0].toLowerCase();
@@ -189,12 +195,15 @@
     }
   }
 
-  async function loadLocaleJson(url, cacheKey) {
+  async function loadLocaleJson(url, cacheKey, cleanupPrefix) {
     // 1. IndexedDB static_cache hit (0ms, 0 Fetch/XHR)
     try {
       if (window.__chatwStorage && window.__chatwStorage.getStaticCache) {
+        if (cleanupPrefix && window.__chatwStorage.deleteStaticCacheByPrefix) {
+          window.__chatwStorage.deleteStaticCacheByPrefix(cleanupPrefix, cacheKey).catch(() => {});
+        }
         const hit = await window.__chatwStorage.getStaticCache(cacheKey);
-        if (hit && hit.data) return hit.data;
+        if (hit && hit.data && hit.version === I18N_VER) return hit.data;
       }
     } catch (_) {}
 
@@ -210,7 +219,7 @@
           if (r && r.ok && r.status === 200 && r.text) {
             const parsed = JSON.parse(r.text);
             if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
-              window.__chatwStorage.putStaticCache(cacheKey, 'v6', parsed).catch(() => {});
+              window.__chatwStorage.putStaticCache(cacheKey, I18N_VER, parsed).catch(() => {});
             }
             return parsed;
           }
@@ -218,13 +227,13 @@
       }
     } catch (_) {}
 
-    // 3. Cold-boot pre-auth fallback (cached by SW + saved to IndexedDB for 0 requests next time)
-    const res = await fetch(url, { cache: 'force-cache' });
+    // 3. Cold-boot pre-auth fallback (version-busted URL + saved to IndexedDB for 0 requests next time)
+    const res = await fetch(url, { cache: I18N_QS ? 'default' : 'no-cache' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const parsed = await res.json();
     try {
       if (window.__chatwStorage && window.__chatwStorage.putStaticCache) {
-        window.__chatwStorage.putStaticCache(cacheKey, 'v6', parsed).catch(() => {});
+        window.__chatwStorage.putStaticCache(cacheKey, I18N_VER, parsed).catch(() => {});
       }
     } catch (_) {}
     return parsed;
@@ -233,7 +242,7 @@
   function fetchKeys() {
     if (keysData) return Promise.resolve(keysData);
     if (keysPromise) return keysPromise;
-    keysPromise = loadLocaleJson('/locales/_keys.json', 'i18n:_keys:v6')
+    keysPromise = loadLocaleJson(`/locales/_keys.json${I18N_QS}`, `i18n:_keys:${I18N_VER}`, 'i18n:_keys:')
       .then((data) => {
         keysData = {
           exact: (data && data.exact) || [],
@@ -257,7 +266,11 @@
 
     const p = Promise.all([
       fetchKeys(),
-      loadLocaleJson(`/locales/${encodeURIComponent(code)}.json`, `i18n:pack:${code}:v6`),
+      loadLocaleJson(
+        `/locales/${encodeURIComponent(code)}.json${I18N_QS}`,
+        `i18n:pack:${code}:${I18N_VER}`,
+        `i18n:pack:${code}:`,
+      ),
     ])
       .then(([keys, data]) => {
         if (!keys || !data) throw new Error('Invalid locale payload');
@@ -350,6 +363,21 @@
       if (!outTpl) continue;
       const m = str.match(c.re);
       if (m) {
+        if (c.isBroadGlue) {
+          let badGlue = false;
+          for (let g = 0; g < c.phOrder.length; g++) {
+            const v = (m[g + 1] || '').trim();
+            if (
+              v.length > 32 ||
+              v.split(/\s+/).length > 4 ||
+              /(?:^|\s)(?:the|a|an|this|that|your|our|right|leave|not|and|or)$/i.test(v)
+            ) {
+              badGlue = true;
+              break;
+            }
+          }
+          if (badGlue) continue;
+        }
         let res = outTpl;
         for (let g = 0; g < c.phOrder.length; g++) {
           const val = m[g + 1] != null ? m[g + 1] : '';
