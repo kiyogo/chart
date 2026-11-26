@@ -12717,16 +12717,20 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   gap: var(--space-2);
   margin-top: auto;
   padding-top: var(--space-6);
-  max-width: 28rem;
+  max-width: 100%;
   width: 100%;
+}
+.auth-legal-container .auth-legal {
+  white-space: nowrap;
 }
 .auth-legal-links {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: var(--space-4);
+  flex-wrap: nowrap;
+  gap: var(--space-3);
   font-size: var(--text-xs);
+  white-space: nowrap;
 }
 .auth-legal-btn {
   background: transparent;
@@ -12737,7 +12741,12 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
+  white-space: nowrap;
   transition: opacity 0.12s ease;
+}
+@media (max-width: 560px) {
+  .auth-legal-container .auth-legal { white-space: normal; }
+  .auth-legal-links { flex-wrap: wrap; }
 }
 .auth-legal-btn:hover {
   opacity: 0.8;

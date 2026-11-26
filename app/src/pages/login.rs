@@ -85,7 +85,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                         span { class: "auth-feature-icon", LockIcon { size: 18 } }
                         div {
                             div { class: "auth-feature-title", "End-to-end encrypted" }
-                            div { class: "auth-feature-sub", "ECDH P-256, AES-256-GCM and ECDSA signature — the private key does not leave the device" }
+                            div { class: "auth-feature-sub", "ECDH P-256, AES-256-GCM and ECDSA signature, the private key does not leave the device" }
                         }
                     }
                     div { class: "auth-feature",
