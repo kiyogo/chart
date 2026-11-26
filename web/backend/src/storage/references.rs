@@ -117,7 +117,7 @@ pub async fn handle_presign_ref(
     let user = auth_caller(&state, &headers).await?;
     let r = sqlx::query(
         r#"
-        SELECT r.owner_id, r.scope_type, r.scope_id, o.storage_key
+        SELECT r.owner_id, r.scope_type, r.scope_id, o.storage_key, o.storage_backend
         FROM media_references r
         JOIN media_objects o ON o.id = r.object_id
         WHERE r.id = $1
@@ -137,13 +137,16 @@ pub async fn handle_presign_ref(
     .await?;
 
     let key: String = r.try_get("storage_key")?;
-    match state.storage.s3.create_temporary_access(&key, "GET", 900).await {
-        Ok(access) => Ok(Json(serde_json::json!({ "mode": "s3_presigned", "access": access }))),
-        Err(_) => Ok(Json(serde_json::json!({
-            "mode": "local_proxy",
-            "url": format!("/api/attachments/{ref_id}"),
-        }))),
+    let backend: String = r.try_get("storage_backend")?;
+    if backend == "s3_ready"
+        && let Ok(access) = state.storage.s3.create_temporary_access(&key, "GET", 900).await
+    {
+        return Ok(Json(serde_json::json!({ "mode": "s3_presigned", "access": access })));
     }
+    Ok(Json(serde_json::json!({
+        "mode": "local_proxy",
+        "url": format!("/api/attachments/{ref_id}"),
+    })))
 }
 
 #[derive(Deserialize, Default)]

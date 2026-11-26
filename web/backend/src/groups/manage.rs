@@ -112,7 +112,10 @@ pub async fn update_settings(
         return Err(AppError::Forbidden("owner_only"));
     }
     if let Some(ref b) = p.banner_url {
-        if !b.is_empty() && (!b.starts_with("/uploads/media/") || b.contains("..")) {
+        if !b.is_empty()
+            && ((!b.starts_with("/uploads/media/") && !b.starts_with("/uploads/banners/"))
+                || b.contains(".."))
+        {
             return Err(AppError::BadRequest("invalid_banner_url"));
         }
     }

@@ -51,11 +51,12 @@ fn is_cookie_mutating_auth_path(path: &str) -> bool {
         "/api/auth/login"
             | "/api/auth/register"
             | "/api/auth/password"
-            | "/api/auth/dev-login"
             | "/api/auth/logout"
             | "/api/auth/logout-all"
             | "/api/auth/google"
             | "/api/auth/google/callback"
+            | "/api/auth/kiyo"
+            | "/api/auth/kiyo/callback"
             | "/api/auth/providers"
             | "/api/auth/oauth-ticket"
             | "/api/auth/2fa/pending"
@@ -217,6 +218,13 @@ pub async fn http_request(
         status: 0,
     })?;
 
+    if let Some(storage) = window.local_storage().ok().flatten()
+        && let Ok(Some(dev_id)) = storage.get_item("chatw_client_device_id")
+        && !dev_id.trim().is_empty()
+    {
+        let _ = headers.set("X-ChatW-Device-Id", dev_id.trim());
+    }
+
     if let Some((bytes, content_type)) = raw_body {
         let _ = headers.set("Content-Type", content_type);
         let u8arr = js_sys::Uint8Array::from(bytes.as_slice());
@@ -265,9 +273,14 @@ pub async fn http_request(
         return Err(ApiError { code, status });
     }
 
-    // Immediately connect SharedWorker Binary RPC right after login or auth_me confirms session cookie,
+    // Immediately connect SharedWorker Binary RPC right after login/2FA or auth_me confirms session cookie,
     // so 100% of subsequent app requests have 0 Fetch/XHR on F12!
-    if path.starts_with("/api/auth/dev-login") || path.starts_with("/api/auth/me") {
+    if ((path.starts_with("/api/auth/login")
+        || path.starts_with("/api/auth/register")
+        || path.starts_with("/api/auth/2fa/verify"))
+        && !text.contains("\"requires_2fa\":true"))
+        || path.starts_with("/api/auth/me")
+    {
         let mut ev = dioxus::document::eval(
             r#"
             (async () => {
@@ -291,13 +304,21 @@ pub async fn http_request(
     Ok((status, text))
 }
 
-pub async fn start_google_oauth() -> Result<bool, String> {
+fn start_web_oauth(endpoint: &str, err_msg: &str) -> Result<bool, String> {
     if let Some(win) = web_sys::window() {
-        let _ = win.location().set_href("/api/auth/google");
+        let _ = win.location().set_href(endpoint);
         Ok(false)
     } else {
-        Err("Cannot open Google sign in page".into())
+        Err(err_msg.into())
     }
+}
+
+pub async fn start_google_oauth() -> Result<bool, String> {
+    start_web_oauth("/api/auth/google", "Cannot open Google sign in page")
+}
+
+pub async fn start_kiyo_oauth() -> Result<bool, String> {
+    start_web_oauth("/api/auth/kiyo", "Cannot open Kiyo sign in page")
 }
 
 /// WebSocket loop offloaded to Dedicated Web Worker (`/network_worker.js`) with

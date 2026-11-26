@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
     websocket::WsEvent,
@@ -129,7 +129,7 @@ async fn handle_send_request(
 ) -> AppResult<Json<RequestResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let sender = authenticate_session(&state.db, &state.config, session_token).await?;
+    let sender = authenticate_session_state(&state, session_token).await?;
 
     let (receiver_id, receiver_username) = if let Some(raw_uname) = payload.username {
         let trimmed = raw_uname.trim();
@@ -297,7 +297,7 @@ async fn handle_list_requests(
 ) -> AppResult<Json<Vec<PendingRequestItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query(
         r#"
@@ -333,7 +333,7 @@ async fn handle_list_sent_requests(
 ) -> AppResult<Json<Vec<SentRequestItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query(
         r#"
@@ -371,7 +371,7 @@ async fn handle_delete_request(
 ) -> AppResult<Json<RequestResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let res = sqlx::query(
         r#"
@@ -402,7 +402,7 @@ async fn handle_remove_friend(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let u_a = user.id.min(friend_id);
     let u_b = user.id.max(friend_id);
@@ -437,7 +437,7 @@ async fn handle_create_target_invite(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let kind = payload.kind.trim();
     if kind != "group" && kind != "server" {
@@ -530,7 +530,7 @@ async fn handle_list_target_invites(
 ) -> AppResult<Json<DirectTargetInvitesResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let recv_rows = sqlx::query(
         r#"
@@ -618,7 +618,7 @@ async fn handle_accept_target_invite(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let row = sqlx::query(
         r#"
@@ -692,7 +692,7 @@ async fn handle_delete_target_invite(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let res = sqlx::query(
         r#"
@@ -719,7 +719,7 @@ async fn handle_accept_request(
 ) -> AppResult<Json<RequestResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let mut tx = state.db.begin().await?;
 
@@ -806,7 +806,7 @@ async fn handle_list_friends(
 ) -> AppResult<Json<Vec<FriendItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query!(
         r#"

@@ -849,6 +849,13 @@ pub async fn get_overview(
         FROM enterprise_announcements a
         WHERE a.server_id = $1
           AND (a.scheduled_at IS NULL OR a.scheduled_at <= now())
+          AND (
+              a.target_department_id IS NULL
+              OR EXISTS (
+                  SELECT 1 FROM enterprise_department_members dm
+                  WHERE dm.department_id = a.target_department_id AND dm.user_id = $2
+              )
+          )
           AND NOT EXISTS (
               SELECT 1 FROM enterprise_announcement_reads r WHERE r.announcement_id = a.id AND r.user_id = $2
           )

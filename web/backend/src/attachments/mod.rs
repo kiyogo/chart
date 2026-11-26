@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state_with_headers, parse_cookie},
     },
     error::{AppError, AppResult},
     storage::{
@@ -132,7 +132,7 @@ async fn handle_issue_stream_token(
 ) -> AppResult<Json<StreamTokenResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
 
     let clean_path = req.path.split('?').next().unwrap_or("").trim();
     let allowed = (clean_path.starts_with("/api/attachments/") || clean_path.starts_with("/uploads/media/"))
@@ -318,7 +318,7 @@ async fn handle_protected_media_file(
     }
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
     let target_path = format!("/uploads/media/{file_name}");
     enforce_anti_direct_media_access(
         &headers,
@@ -372,6 +372,92 @@ async fn handle_protected_media_file(
     Err(AppError::Forbidden("media_reference_not_found"))
 }
 
+async fn authorize_banner_read(
+    pool: &sqlx::PgPool,
+    caller_id: Uuid,
+    file_name: &str,
+) -> AppResult<()> {
+    let url_exact = format!("/uploads/banners/{file_name}");
+    let url_query = format!("/uploads/banners/{file_name}?%");
+
+    if let Some(row) = sqlx::query(
+        r#"
+        SELECT g.is_public, g.verification_status,
+               EXISTS(SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = $3) AS is_member
+        FROM groups g
+        WHERE g.banner_url = $1 OR g.banner_url LIKE $2
+        LIMIT 1
+        "#,
+    )
+    .bind(&url_exact)
+    .bind(&url_query)
+    .bind(caller_id)
+    .fetch_optional(pool)
+    .await?
+    {
+        let is_member: bool = row.try_get("is_member")?;
+        let is_public: bool = row.try_get("is_public")?;
+        let ver: String = row.try_get("verification_status")?;
+        if is_member || (is_public && ver == "verified") {
+            return Ok(());
+        }
+        return Err(AppError::Forbidden("banner_forbidden"));
+    }
+
+    if let Some(row) = sqlx::query(
+        r#"
+        SELECT s.is_public, s.verification_status,
+               EXISTS(SELECT 1 FROM server_members sm WHERE sm.server_id = s.id AND sm.user_id = $3) AS is_member
+        FROM servers s
+        WHERE s.banner_url = $1 OR s.banner_url LIKE $2
+        LIMIT 1
+        "#,
+    )
+    .bind(&url_exact)
+    .bind(&url_query)
+    .bind(caller_id)
+    .fetch_optional(pool)
+    .await?
+    {
+        let is_member: bool = row.try_get("is_member")?;
+        let is_public: bool = row.try_get("is_public")?;
+        let ver: String = row.try_get("verification_status")?;
+        if is_member || (is_public && ver == "verified") {
+            return Ok(());
+        }
+        return Err(AppError::Forbidden("banner_forbidden"));
+    }
+
+    if let Some(row) = sqlx::query(
+        r#"
+        SELECT id, privacy_discoverable
+        FROM users
+        WHERE custom_banner_url = $1 OR custom_banner_url LIKE $2
+        LIMIT 1
+        "#,
+    )
+    .bind(&url_exact)
+    .bind(&url_query)
+    .fetch_optional(pool)
+    .await?
+    {
+        let owner_id: Uuid = row.try_get("id")?;
+        if owner_id == caller_id {
+            return Ok(());
+        }
+        if crate::privacy::is_blocked_either(pool, caller_id, owner_id).await? {
+            return Err(AppError::Forbidden("banner_forbidden"));
+        }
+        let discoverable: bool = row.try_get("privacy_discoverable").unwrap_or(true);
+        if discoverable {
+            return Ok(());
+        }
+        return authorize_legacy_attachment_read(pool, caller_id, owner_id).await;
+    }
+
+    Err(AppError::Forbidden("banner_reference_not_found"))
+}
+
 async fn handle_protected_banner_file(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -382,7 +468,16 @@ async fn handle_protected_banner_file(
     }
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
+    let target_path = format!("/uploads/banners/{file_name}");
+    enforce_anti_direct_media_access(
+        &headers,
+        &state.config.session_secret,
+        user.id,
+        user.session_id,
+        &target_path,
+    )?;
+    authorize_banner_read(&state.db, user.id, &file_name).await?;
     let range_hdr = headers.get(header::RANGE).and_then(|v| v.to_str().ok());
     let rel_key = format!("banners/{file_name}");
     let mime = guess_mime_from_filename(&file_name);
@@ -399,7 +494,7 @@ async fn handle_protected_sticker_file(
     }
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
     let sticker_url = format!("/uploads/stickers/{file_name}");
     let private_blocked: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM stickers s JOIN sticker_packs p ON p.id = s.pack_id WHERE s.file_url = $1 AND p.author_id IS NOT NULL AND p.author_id <> $2)",
@@ -431,7 +526,7 @@ async fn handle_upload_attachment(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
 
     let header_mime = headers
         .get(header::CONTENT_TYPE)
@@ -526,7 +621,7 @@ async fn handle_download_attachment(
 ) -> AppResult<Response> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
     let target_path = format!("/api/attachments/{attachment_id}");
     enforce_anti_direct_media_access(
         &headers,
@@ -591,7 +686,7 @@ async fn handle_delete_attachment(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
 
     let row = sqlx::query(
         "SELECT file_path, uploader_id, ref_id FROM attachments WHERE id = $1",

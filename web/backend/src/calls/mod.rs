@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
     models::{
@@ -41,6 +41,14 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn ensure_meet_columns(db: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'call_sessions' AND column_name = 'meet_code')",
+    )
+    .fetch_one(db)
+    .await?;
+    if exists {
+        return Ok(());
+    }
     sqlx::query(
         r#"
         ALTER TABLE call_sessions
@@ -93,7 +101,7 @@ async fn create_meet(
 ) -> AppResult<Json<CallSessionItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let _ = ensure_meet_columns(&state.db).await;
 
@@ -151,7 +159,7 @@ async fn join_meet(
 ) -> AppResult<Json<CallSessionItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let _ = ensure_meet_columns(&state.db).await;
 
@@ -231,7 +239,7 @@ async fn list_meets(
 ) -> AppResult<Json<Vec<CallSessionItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let _ = ensure_meet_columns(&state.db).await;
 
@@ -269,7 +277,7 @@ async fn start_call(
 ) -> AppResult<Json<CallSessionItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let call_type = match payload.call_type.as_str() {
         "audio" | "video" => payload.call_type.clone(),
@@ -431,7 +439,7 @@ async fn accept_call(
 ) -> AppResult<Json<CallSessionItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let session = sqlx::query!(
         "SELECT id, caller_id, receiver_id, group_id, status FROM call_sessions WHERE id = $1",
@@ -593,7 +601,7 @@ async fn reject_call(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let session = sqlx::query!(
         "SELECT caller_id, receiver_id, group_id, status FROM call_sessions WHERE id = $1",
@@ -638,7 +646,7 @@ async fn end_call(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
     ensure_call_access(&state.db, call_id, user.id).await?;
 
     let targets = get_other_participants(&state.db, call_id, user.id).await?;
@@ -681,7 +689,7 @@ async fn leave_call(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
     ensure_call_access(&state.db, call_id, user.id).await?;
 
     sqlx::query!(
@@ -737,7 +745,7 @@ async fn relay_signal(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
     ensure_call_access(&state.db, call_id, user.id).await?;
 
     let event = WsEvent::CallSignal {
@@ -769,7 +777,7 @@ async fn update_state(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let row = sqlx::query!(
         r#"
@@ -812,7 +820,7 @@ async fn get_active_call(
 ) -> AppResult<Json<Option<CallSessionItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let session = sqlx::query!(
         r#"
@@ -842,7 +850,7 @@ async fn get_call_history(
 ) -> AppResult<Json<Vec<CallSessionItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query!(
         r#"
@@ -980,7 +988,7 @@ async fn sfu_join(
 ) -> AppResult<Json<sfu::SfuJoinReply>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let is_participant = sqlx::query_scalar!(
         "SELECT 1 FROM call_participants WHERE call_id = $1 AND user_id = $2 AND left_at IS NULL",
@@ -1041,7 +1049,7 @@ async fn sfu_leave(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
     state.sfu.leave_peer(call_id, user.id);
     Ok(Json(serde_json::json!({ "left_sfu": true })))
 }

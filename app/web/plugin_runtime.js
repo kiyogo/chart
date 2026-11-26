@@ -666,7 +666,7 @@ ${wasmLoader}
 
     // 1. Check if message comes from an opaque-origin Worker host iframe
     const wEntry = workerFrames.get(data.nonce);
-    if (wEntry && wEntry.iframe && e.source === wEntry.iframe.contentWindow) {
+    if (wEntry && wEntry.iframe && e.source === wEntry.iframe.contentWindow && e.origin === 'null') {
       const inst = instances.get(wEntry.instId);
       if (!inst) return;
       if (data.__cwSandboxShellReady) {
@@ -729,7 +729,7 @@ ${wasmLoader}
 
     // 2. Check if message comes from a sandboxed UI iframe
     const entry = uiFrames.get(data.nonce);
-    if (!entry || !entry.iframe || e.source !== entry.iframe.contentWindow) return;
+    if (!entry || !entry.iframe || e.source !== entry.iframe.contentWindow || e.origin !== 'null') return;
     if (data.__cwSandboxShellReady) {
       try {
         entry.iframe.contentWindow.postMessage(
@@ -825,7 +825,10 @@ ${wasmLoader}
     iframe.style.cssText = 'display:none !important;width:0;height:0;border:0;position:absolute;pointer-events:none;';
 
     const apiBase =
-      window.location && (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+      window.location &&
+      (window.location.protocol === 'http:' || window.location.protocol === 'https:') &&
+      window.location.hostname !== 'dioxus.localhost' &&
+      window.location.hostname !== 'ipc.localhost'
         ? ''
         : (window.CHATW_API_URL || 'http://127.0.0.1:8085');
     iframe.src = `${apiBase}/plugin-sandbox-frame#${nonce}`;
@@ -868,10 +871,10 @@ ${wasmLoader}
       if (inst.pendingInvokes && inst.pendingInvokes.size >= MAX_PENDING_INVOKES) {
         return reject(new Error('PLUGIN_QUEUE_OVERFLOW'));
       }
+      const timeoutMs = Math.min(10000, Math.max(500, (inst.manifest?.resource_limits?.max_exec_ms) || 3000));
       const sendNow = () => {
         if (!inst || !inst.enabled || !inst.worker) return resolve(null);
         const invId = randNonce();
-        const timeoutMs = Math.min(10000, Math.max(500, (inst.manifest?.resource_limits?.max_exec_ms) || 3000));
         const timer = setTimeout(() => {
           inst.pendingInvokes.delete(invId);
           // Kill runaway/infinite-loop plugin immediately!
@@ -977,7 +980,10 @@ ${wasmLoader}
     iframe.style.cssText = 'width:100%;height:100%;min-height:380px;border:none;background:transparent;display:block;';
 
     const apiBase =
-      window.location && (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+      window.location &&
+      (window.location.protocol === 'http:' || window.location.protocol === 'https:') &&
+      window.location.hostname !== 'dioxus.localhost' &&
+      window.location.hostname !== 'ipc.localhost'
         ? ''
         : (window.CHATW_API_URL || 'http://127.0.0.1:8085');
     iframe.src = `${apiBase}/plugin-sandbox-frame#${nonce}`;

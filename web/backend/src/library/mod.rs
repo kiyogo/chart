@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
 };
@@ -65,7 +65,7 @@ fn ext_to_mime(ext: &str) -> &'static str {
 
 async fn auth(state: &AppState, headers: &HeaderMap) -> AppResult<Uuid> {
     let token = parse_cookie(headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    Ok(authenticate_session(&state.db, &state.config, token).await?.id)
+    Ok(authenticate_session_state(&state, token).await?.id)
 }
 
 async fn upload_media(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> AppResult<Json<serde_json::Value>> {

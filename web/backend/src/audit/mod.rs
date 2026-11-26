@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
 };
@@ -53,7 +53,7 @@ async fn handle_get_audit_logs(
 ) -> AppResult<Json<Vec<AuditLogItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query!(
         r#"

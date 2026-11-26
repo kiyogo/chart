@@ -33,7 +33,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, parse_cookie},
     },
     error::{AppError, AppResult},
 };
@@ -614,12 +614,16 @@ async fn ws_handler(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> AppResult<Response> {
-    // 1. Verify Origin header
+    // 1. Verify Origin header against public_origin and explicit cors_allowed_origins
     if let Some(origin) = headers.get(header::ORIGIN) {
         let origin_str = origin
             .to_str()
             .map_err(|_| AppError::Forbidden("invalid_origin"))?;
-        if origin_str != state.config.public_origin {
+        if !crate::auth::is_allowed_cors_origin_for_config(
+            origin_str,
+            &state.config.public_origin,
+            &state.config.cors_allowed_origins,
+        ) {
             return Err(AppError::Forbidden("origin_mismatch"));
         }
     }
@@ -628,7 +632,8 @@ async fn ws_handler(
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
 
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user =
+        crate::auth::session::authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
 
     // 3. Register connection in hub
     let (conn_id, rx) = state

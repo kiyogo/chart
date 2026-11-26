@@ -43,7 +43,8 @@ pub async fn authorize_read(
             let cid = scope_id.ok_or(AppError::Forbidden("attachment_forbidden"))?;
             authorize_channel_access(pool, user_id, cid, perm_flags::VIEW_CHANNELS).await
         }
-        "avatar" | "banner" | "library" | "sticker" => Ok(()),
+        "avatar" | "library" | "sticker" => Ok(()),
+        "banner" => Err(AppError::Forbidden("attachment_forbidden")),
         _ => Err(AppError::Forbidden("attachment_forbidden")),
     }
 }
@@ -100,7 +101,8 @@ pub async fn authorize_write(
             let cid = scope_id.ok_or(AppError::BadRequest("missing_scope_id"))?;
             authorize_channel_access(pool, user_id, cid, perm_flags::SEND_MESSAGES).await
         }
-        "avatar" | "banner" | "library" | "sticker" => Ok(()),
+        "avatar" | "library" | "sticker" => Ok(()),
+        "banner" => Err(AppError::Forbidden("attachment_forbidden")),
         _ => Err(AppError::BadRequest("invalid_scope_type")),
     }
 }

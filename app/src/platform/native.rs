@@ -351,8 +351,7 @@ pub async fn http_request(
     Ok((status, text))
 }
 
-/// Native Google OAuth via backend ticket flow (`POST /api/auth/oauth-ticket`).
-pub async fn start_google_oauth() -> Result<bool, String> {
+async fn start_oauth_ticket_flow(provider: &str, label: &str) -> Result<bool, String> {
     let (_, body) = http_request("POST", "/api/auth/oauth-ticket", None, None)
         .await
         .map_err(|e| e.code)?;
@@ -368,7 +367,7 @@ pub async fn start_google_oauth() -> Result<bool, String> {
         .ok_or_else(|| "missing_ticket_secret".to_string())?
         .to_string();
 
-    let auth_url = format!("{}/api/auth/google?ticket={ticket}", api_base());
+    let auth_url = format!("{}/api/auth/{provider}?ticket={ticket}", api_base());
     open_external_url(&auth_url);
 
     // Poll up to 120 seconds with ticket secret proof
@@ -390,7 +389,17 @@ pub async fn start_google_oauth() -> Result<bool, String> {
             return Ok(true);
         }
     }
-    Err("Google sign-in timed out".into())
+    Err(format!("{label} sign-in timed out"))
+}
+
+/// Native Google OAuth via backend ticket flow (`POST /api/auth/oauth-ticket`).
+pub async fn start_google_oauth() -> Result<bool, String> {
+    start_oauth_ticket_flow("google", "Google").await
+}
+
+/// Native Kiyo OIDC via backend ticket flow (`POST /api/auth/oauth-ticket`).
+pub async fn start_kiyo_oauth() -> Result<bool, String> {
+    start_oauth_ticket_flow("kiyo", "Kiyo").await
 }
 
 fn open_external_url(url: &str) {

@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
     servers::permissions,
@@ -47,7 +47,7 @@ async fn handle_webrtc_signal(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let event = WsEvent::WebRtcSignal {
         sender_id: user.id,
@@ -138,7 +138,7 @@ async fn handle_join_voice_channel(
 ) -> AppResult<Json<Vec<VoiceStateItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let ch = sqlx::query!(
         "SELECT server_id, channel_type, is_private FROM channels WHERE id = $1",
@@ -220,7 +220,7 @@ async fn handle_leave_voice_channel(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     sqlx::query!(
         "DELETE FROM voice_states WHERE channel_id = $1 AND user_id = $2",
@@ -267,7 +267,7 @@ async fn handle_get_voice_participants(
 ) -> AppResult<Json<Vec<VoiceStateItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let ch = sqlx::query!("SELECT server_id, is_private FROM channels WHERE id = $1", channel_id)
         .fetch_optional(&state.db)
@@ -303,7 +303,7 @@ async fn handle_update_voice_state(
 ) -> AppResult<Json<VoiceStateItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let ch = sqlx::query!("SELECT server_id, is_private FROM channels WHERE id = $1", channel_id)
         .fetch_optional(&state.db)

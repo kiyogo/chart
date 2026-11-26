@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     crypto::Envelope,
     error::{AppError, AppResult},
@@ -95,7 +95,7 @@ async fn handle_send_message(
 ) -> AppResult<Json<SendMessageResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let sender = authenticate_session(&state.db, &state.config, session_token).await?;
+    let sender = authenticate_session_state(&state, session_token).await?;
 
     // Spec 165 (Section 39): HTTP Idempotency-Key deduplication for retry safety
     let idem_key = headers
@@ -368,7 +368,7 @@ async fn handle_get_messages(
 ) -> AppResult<Json<Vec<MessageItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let is_self_chat = user.id == friend_id;
     // Verify friendship
@@ -482,7 +482,7 @@ async fn handle_toggle_reaction(
 ) -> AppResult<Json<Vec<ReactionSummaryItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let emoji = payload.emoji.trim();
     if emoji.is_empty() || emoji.len() > 32 {
@@ -544,7 +544,7 @@ async fn handle_get_reactions(
 ) -> AppResult<Json<Vec<ReactionSummaryItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     // Close IDOR: verify caller is a participant of this DM message.
     let msg = sqlx::query!(
@@ -596,7 +596,7 @@ async fn handle_pin_message(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let msg = sqlx::query!(
         "SELECT sender_id, receiver_id FROM messages WHERE id = $1",
@@ -634,7 +634,7 @@ async fn handle_unpin_message(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let msg = sqlx::query!(
         "SELECT sender_id, receiver_id FROM messages WHERE id = $1",
@@ -672,7 +672,7 @@ async fn handle_delete_message(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let msg = sqlx::query!(
         "SELECT sender_id, receiver_id FROM messages WHERE id = $1",
@@ -762,7 +762,7 @@ async fn handle_edit_message(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let msg = sqlx::query!(
         "SELECT sender_id, receiver_id, deleted_for_all FROM messages WHERE id = $1",
@@ -896,7 +896,7 @@ async fn handle_get_pinned_messages(
 ) -> AppResult<Json<Vec<MessageItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query!(
         r#"

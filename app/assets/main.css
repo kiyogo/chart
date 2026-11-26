@@ -2797,45 +2797,13 @@ html[data-theme="dark"][data-surface-tone="light"] .chat-column:not(.wp-night):n
   white-space: nowrap;
 }
 .auth-btn-secondary:hover:not(:disabled) { background: var(--bg-active); }
-.auth-divider { display: flex; align-items: center; gap: var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
-.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
-
-.auth-pw-form {
+.auth-actions {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
-.auth-mode-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-}
-.auth-mode-tab {
-  min-height: 2.25rem;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-secondary);
-}
-.auth-mode-tab.active {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  font-weight: var(--weight-semibold);
-}
-
-.auth-dev-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border-radius: var(--radius-lg);
-  background: var(--bg-secondary);
-}
-.auth-dev-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--text-secondary); display: flex; align-items: center; gap: var(--space-2); }
-.auth-dev-row { display: flex; gap: var(--space-2); }
+.auth-divider { display: flex; align-items: center; gap: var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
 .auth-input { width: 100%; }
 .auth-error {
   font-size: var(--text-sm);

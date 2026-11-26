@@ -53,6 +53,20 @@ fn fast_fail_cm_config() -> ConnectionManagerConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RedisSession {
+    pub id: Uuid,
+    pub token_hash_hex: String,
+    pub user_id: Uuid,
+    pub device_id: Option<Uuid>,
+    pub device_name: Option<String>,
+    pub device_label: Option<String>,
+    pub ip_address: Option<String>,
+    pub created_at_unix: i64,
+    pub last_active_unix: i64,
+    pub expires_at_unix: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ValkeyHealthSnapshot {
     pub configured: bool,
     pub connected: bool,
@@ -594,7 +608,277 @@ impl ValkeyCoordinator {
         });
     }
 
-    // ── 8. Diagnostics & Memory Telemetry ────────────────────────────────────────────────────────
+    // ── 8. Ephemeral Authenticated Session Store (Spec 169) ───────────────────────────────────────
+
+    pub async fn session_store(&self, sess: &RedisSession, ttl_secs: u64) -> Result<(), ()> {
+        let mut conn = self.get_conn().await.ok_or(())?;
+        let ttl = ttl_secs.max(60);
+        let payload = serde_json::to_string(sess).map_err(|_| ())?;
+        let hkey = format!("chatw:sess:h:{}", sess.token_hash_hex);
+        let idkey = format!("chatw:sess:id:{}", sess.id);
+        let ukey = format!("chatw:sess:u:{}", sess.user_id);
+
+        let res = tokio::time::timeout(CMD_TIMEOUT, async {
+            let mut pipe = redis::pipe();
+            pipe.set_ex(&hkey, &payload, ttl)
+                .set_ex(&idkey, &sess.token_hash_hex, ttl)
+                .sadd(&ukey, &sess.token_hash_hex)
+                .expire(&ukey, (ttl + 300) as i64);
+            if let Some(did) = sess.device_id {
+                let dkey = format!("chatw:sess:d:{did}");
+                pipe.sadd(&dkey, &sess.token_hash_hex)
+                    .expire(&dkey, (ttl + 300) as i64);
+            }
+            pipe.query_async::<()>(&mut conn).await
+        })
+        .await;
+
+        match res {
+            Ok(Ok(())) => {
+                self.connected.store(true, Ordering::Relaxed);
+                Ok(())
+            }
+            _ => {
+                self.record_error().await;
+                Err(())
+            }
+        }
+    }
+
+    pub async fn session_get_by_hash(&self, token_hash_hex: &str) -> Result<Option<RedisSession>, ()> {
+        let mut conn = self.get_conn().await.ok_or(())?;
+        let hkey = format!("chatw:sess:h:{token_hash_hex}");
+        match tokio::time::timeout(CMD_TIMEOUT, conn.get::<_, Option<String>>(&hkey)).await {
+            Ok(Ok(Some(raw))) => {
+                self.connected.store(true, Ordering::Relaxed);
+                let parsed = serde_json::from_str::<RedisSession>(&raw).ok();
+                Ok(parsed)
+            }
+            Ok(Ok(None)) => {
+                self.connected.store(true, Ordering::Relaxed);
+                Ok(None)
+            }
+            _ => {
+                self.record_error().await;
+                Err(())
+            }
+        }
+    }
+
+    pub async fn session_list_for_user(&self, user_id: Uuid) -> Result<Vec<RedisSession>, ()> {
+        let mut conn = self.get_conn().await.ok_or(())?;
+        let ukey = format!("chatw:sess:u:{user_id}");
+        let hashes: Vec<String> = tokio::time::timeout(CMD_TIMEOUT, conn.smembers(&ukey))
+            .await
+            .map_err(|_| ())?
+            .map_err(|_| ())?;
+        self.connected.store(true, Ordering::Relaxed);
+        let now = unix_ms_now() as i64 / 1000;
+        let mut out = Vec::new();
+        let mut stale = Vec::new();
+        for h in hashes {
+            match self.session_get_by_hash(&h).await? {
+                Some(s) if s.user_id == user_id && s.expires_at_unix > now => out.push(s),
+                _ => stale.push(h),
+            }
+        }
+        if !stale.is_empty() {
+            let _ = tokio::time::timeout(CMD_TIMEOUT, conn.srem::<_, _, i64>(&ukey, stale)).await;
+        }
+        out.sort_by(|a, b| b.last_active_unix.cmp(&a.last_active_unix));
+        Ok(out)
+    }
+
+    pub async fn session_bind_device(
+        &self,
+        user_id: Uuid,
+        session_id: Uuid,
+        device_id: Uuid,
+    ) -> Result<bool, ()> {
+        let mut conn = self.get_conn().await.ok_or(())?;
+        let idkey = format!("chatw:sess:id:{session_id}");
+        let Some(hash_hex) = tokio::time::timeout(CMD_TIMEOUT, conn.get::<_, Option<String>>(&idkey))
+            .await
+            .map_err(|_| ())?
+            .map_err(|_| ())?
+        else {
+            return Ok(false);
+        };
+        let Some(mut sess) = self.session_get_by_hash(&hash_hex).await? else {
+            return Ok(false);
+        };
+        if sess.user_id != user_id {
+            return Ok(false);
+        }
+        let now = unix_ms_now() as i64 / 1000;
+        let ttl = (sess.expires_at_unix - now).max(60) as u64;
+        sess.device_id = Some(device_id);
+        sess.last_active_unix = now;
+        self.session_store(&sess, ttl).await?;
+        Ok(true)
+    }
+
+    pub async fn session_rename(
+        &self,
+        user_id: Uuid,
+        session_id: Uuid,
+        label: &str,
+    ) -> Result<bool, ()> {
+        let mut conn = self.get_conn().await.ok_or(())?;
+        let idkey = format!("chatw:sess:id:{session_id}");
+        let Some(hash_hex) = tokio::time::timeout(CMD_TIMEOUT, conn.get::<_, Option<String>>(&idkey))
+            .await
+            .map_err(|_| ())?
+            .map_err(|_| ())?
+        else {
+            return Ok(false);
+        };
+        let Some(mut sess) = self.session_get_by_hash(&hash_hex).await? else {
+            return Ok(false);
+        };
+        if sess.user_id != user_id {
+            return Ok(false);
+        }
+        let now = unix_ms_now() as i64 / 1000;
+        let ttl = (sess.expires_at_unix - now).max(60) as u64;
+        sess.device_label = Some(label.to_string());
+        self.session_store(&sess, ttl).await?;
+        Ok(true)
+    }
+
+    async fn delete_session_record(&self, sess: &RedisSession) -> Result<(), ()> {
+        let mut conn = self.get_conn().await.ok_or(())?;
+        let hkey = format!("chatw:sess:h:{}", sess.token_hash_hex);
+        let idkey = format!("chatw:sess:id:{}", sess.id);
+        let ukey = format!("chatw:sess:u:{}", sess.user_id);
+        let res = tokio::time::timeout(CMD_TIMEOUT, async {
+            let mut pipe = redis::pipe();
+            pipe.del(&hkey)
+                .del(&idkey)
+                .srem(&ukey, &sess.token_hash_hex);
+            if let Some(did) = sess.device_id {
+                pipe.srem(format!("chatw:sess:d:{did}"), &sess.token_hash_hex);
+            }
+            pipe.query_async::<()>(&mut conn).await
+        })
+        .await;
+        match res {
+            Ok(Ok(())) => {
+                self.connected.store(true, Ordering::Relaxed);
+                Ok(())
+            }
+            _ => {
+                self.record_error().await;
+                Err(())
+            }
+        }
+    }
+
+    pub async fn session_delete_by_hash(&self, token_hash_hex: &str) -> Result<Option<RedisSession>, ()> {
+        let sess = self.session_get_by_hash(token_hash_hex).await?;
+        if let Some(ref s) = sess {
+            self.delete_session_record(s).await?;
+        }
+        Ok(sess)
+    }
+
+    pub async fn session_delete_by_id(&self, user_id: Uuid, session_id: Uuid) -> Result<bool, ()> {
+        let mut conn = self.get_conn().await.ok_or(())?;
+        let idkey = format!("chatw:sess:id:{session_id}");
+        let Some(hash_hex) = tokio::time::timeout(CMD_TIMEOUT, conn.get::<_, Option<String>>(&idkey))
+            .await
+            .map_err(|_| ())?
+            .map_err(|_| ())?
+        else {
+            return Ok(false);
+        };
+        let Some(sess) = self.session_get_by_hash(&hash_hex).await? else {
+            return Ok(false);
+        };
+        if sess.user_id != user_id {
+            return Ok(false);
+        }
+        self.delete_session_record(&sess).await?;
+        Ok(true)
+    }
+
+    pub async fn session_delete_others(
+        &self,
+        user_id: Uuid,
+        keep_hash_hex: &str,
+    ) -> Result<Vec<Uuid>, ()> {
+        let sessions = self.session_list_for_user(user_id).await?;
+        let mut revoked = Vec::new();
+        for s in sessions {
+            if s.token_hash_hex != keep_hash_hex {
+                revoked.push(s.id);
+                self.delete_session_record(&s).await?;
+            }
+        }
+        Ok(revoked)
+    }
+
+    pub async fn session_delete_all_for_user(&self, user_id: Uuid) -> Result<Vec<Uuid>, ()> {
+        let sessions = self.session_list_for_user(user_id).await?;
+        let mut revoked = Vec::new();
+        for s in sessions {
+            revoked.push(s.id);
+            self.delete_session_record(&s).await?;
+        }
+        Ok(revoked)
+    }
+
+    pub async fn session_delete_by_device(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        keep_only_this_device: bool,
+    ) -> Result<Vec<Uuid>, ()> {
+        let sessions = self.session_list_for_user(user_id).await?;
+        let mut revoked = Vec::new();
+        for s in sessions {
+            let should_delete = if keep_only_this_device {
+                s.device_id != Some(device_id)
+            } else {
+                s.device_id == Some(device_id)
+            };
+            if should_delete {
+                revoked.push(s.id);
+                self.delete_session_record(&s).await?;
+            }
+        }
+        Ok(revoked)
+    }
+
+    pub async fn session_count_total(&self) -> Result<i64, ()> {
+        let mut conn = self.get_conn().await.ok_or(())?;
+        let mut cursor: u64 = 0;
+        let mut total: i64 = 0;
+        loop {
+            let (next, keys): (u64, Vec<String>) = tokio::time::timeout(
+                CMD_TIMEOUT,
+                redis::cmd("SCAN")
+                    .arg(cursor)
+                    .arg("MATCH")
+                    .arg("chatw:sess:h:*")
+                    .arg("COUNT")
+                    .arg(500)
+                    .query_async(&mut conn),
+            )
+            .await
+            .map_err(|_| ())?
+            .map_err(|_| ())?;
+            total += keys.len() as i64;
+            cursor = next;
+            if cursor == 0 {
+                break;
+            }
+        }
+        self.connected.store(true, Ordering::Relaxed);
+        Ok(total)
+    }
+
+    // ── 9. Diagnostics & Memory Telemetry ────────────────────────────────────────────────────────
 
     pub async fn health_snapshot(&self) -> ValkeyHealthSnapshot {
         let mut used_mem = None;

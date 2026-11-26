@@ -389,10 +389,14 @@ async fn invoke_internal_router(
         let kl = k.to_ascii_lowercase();
         let allowed = kl == "range"
             || kl == "accept"
+            || kl == "idempotency-key"
+            || kl == "x-chatw-device-id"
             || kl.starts_with("x-file-")
             || kl.starts_with("x-scope-")
             || kl.starts_with("x-mime-")
             || kl.starts_with("x-sha256-")
+            || kl.starts_with("x-orig-")
+            || kl.starts_with("x-pdq-")
             || kl == "x-export-token"
             || kl == "x-backup-password"
             || kl == "x-chatw-stream-token";

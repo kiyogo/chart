@@ -294,7 +294,30 @@ pub async fn update_webhook(
         return Err(AppError::BadRequest("invalid_webhook_name"));
     }
     let avatar_url = req.avatar_url.or_else(|| cur.get("avatar_url"));
+    if let Some(ref av) = avatar_url {
+        let trimmed = av.trim();
+        if !trimmed.is_empty()
+            && !trimmed.starts_with("/uploads/")
+            && !trimmed.starts_with("https://")
+        {
+            return Err(AppError::BadRequest("invalid_avatar_url"));
+        }
+    }
     let channel_id = req.channel_id.or_else(|| cur.get("channel_id"));
+    if scope_type == "server"
+        && let Some(cid) = channel_id
+    {
+        let valid_ch: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM channels WHERE id = $1 AND server_id = $2)",
+        )
+        .bind(cid)
+        .bind(scope_id)
+        .fetch_one(&state.db)
+        .await?;
+        if !valid_ch {
+            return Err(AppError::BadRequest("channel_not_in_server"));
+        }
+    }
     let subscribed_events = req
         .subscribed_events
         .map(|v| serde_json::to_value(v).unwrap_or_else(|_| json!([])))

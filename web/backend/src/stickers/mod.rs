@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
     models::{
@@ -54,7 +54,7 @@ async fn upload_sticker_image(
     body: Bytes,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let _user = authenticate_session_state(&state, session_token).await?;
 
     if body.is_empty() || body.len() > MAX_STICKER_BYTES {
         return Err(AppError::BadRequest("invalid_sticker_size"));
@@ -74,7 +74,7 @@ async fn delete_pack(
     Path(pack_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
     let pack = sqlx::query!("SELECT author_id FROM sticker_packs WHERE id = $1", pack_id)
         .fetch_optional(&state.db)
         .await?
@@ -95,7 +95,7 @@ async fn delete_sticker(
     Path((pack_id, sticker_id)): Path<(Uuid, Uuid)>,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
     let pack = sqlx::query!("SELECT author_id FROM sticker_packs WHERE id = $1", pack_id)
         .fetch_optional(&state.db)
         .await?
@@ -118,7 +118,7 @@ async fn list_packs(
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<StickerPackItem>>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     // Built-in packs (no author) and the caller's own packs; other users' packs stay private.
     let packs = sqlx::query!(
@@ -184,7 +184,7 @@ async fn get_pack(
     Path(pack_id): Path<Uuid>,
 ) -> AppResult<Json<StickerPackItem>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let _user = authenticate_session_state(&state, session_token).await?;
 
     let p = sqlx::query!(
         r#"
@@ -244,7 +244,7 @@ async fn create_pack(
     Json(payload): Json<CreateStickerPackRequest>,
 ) -> AppResult<Json<StickerPackItem>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     if payload.name.trim().is_empty() {
         return Err(AppError::BadRequest("pack_name_empty"));
@@ -291,7 +291,7 @@ async fn add_sticker(
     Json(payload): Json<AddStickerRequest>,
 ) -> AppResult<Json<StickerItem>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let pack = sqlx::query!("SELECT author_id FROM sticker_packs WHERE id = $1", pack_id)
         .fetch_optional(&state.db)

@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
     websocket::WsEvent,
@@ -86,7 +86,7 @@ async fn handle_create_server(
 ) -> AppResult<Json<ServerItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let name = payload.name.trim();
     if name.len() < 2 || name.len() > 64 {
@@ -248,7 +248,7 @@ async fn handle_list_servers(
 ) -> AppResult<Json<Vec<ServerItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query!(
         r#"
@@ -288,7 +288,7 @@ async fn handle_discover_servers(
 ) -> AppResult<Json<Vec<ServerItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let _user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query!(
         r#"
@@ -327,7 +327,7 @@ async fn handle_join_server_direct(
 ) -> AppResult<Json<ServerItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     // Direct join (without an invite) is only possible for verified public communities.
     let srv = sqlx::query!(
@@ -366,7 +366,7 @@ async fn handle_get_server(
 ) -> AppResult<Json<ServerItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     // Verify member
     let is_member = sqlx::query_scalar!(
@@ -410,7 +410,7 @@ async fn handle_delete_server(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let owner_id = sqlx::query_scalar!(
         "SELECT owner_id FROM servers WHERE id = $1",
@@ -442,7 +442,7 @@ async fn handle_list_categories(
 ) -> AppResult<Json<Vec<ServerCategoryItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     permissions::require_server_permission(
         &state.db,
@@ -486,7 +486,7 @@ async fn handle_create_category(
 ) -> AppResult<Json<ServerCategoryItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     permissions::require_server_permission(
         &state.db,
@@ -538,7 +538,7 @@ async fn handle_list_channels(
 ) -> AppResult<Json<Vec<ChannelItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     permissions::require_server_permission(
         &state.db,
@@ -595,7 +595,7 @@ async fn handle_create_channel(
 ) -> AppResult<Json<ChannelItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     permissions::require_server_permission(
         &state.db,
@@ -660,7 +660,7 @@ async fn handle_list_members(
 ) -> AppResult<Json<Vec<ServerMemberItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     permissions::require_server_permission(
         &state.db,
@@ -752,7 +752,7 @@ async fn handle_search_messages(
 ) -> AppResult<Json<Vec<ServerMessageSearchHit>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     permissions::require_server_permission(
         &state.db,
@@ -822,7 +822,7 @@ async fn handle_list_roles(
 ) -> AppResult<Json<Vec<ServerRoleItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     permissions::require_server_permission(
         &state.db,
@@ -869,7 +869,7 @@ async fn handle_create_role(
 ) -> AppResult<Json<ServerRoleItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let (mine, my_ent, _) = roles::effective_all(&state.db, server_id, user.id).await?;
     if mine & perm_flags::MANAGE_ROLES == 0 {
@@ -940,7 +940,7 @@ async fn handle_create_invite(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     permissions::require_server_permission(
         &state.db,
@@ -976,7 +976,7 @@ async fn handle_join_server_by_invite(
 ) -> AppResult<Json<ServerItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let mut tx = state.db.begin().await?;
 
@@ -1059,7 +1059,7 @@ async fn handle_get_channel_messages(
 ) -> AppResult<Json<Vec<ChannelMessageItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     // Fetch channel to find its server_id and privacy
     let ch = sqlx::query!(
@@ -1138,7 +1138,7 @@ async fn handle_post_channel_message(
 ) -> AppResult<Json<ChannelMessageItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let content = payload.content.trim();
     if content.is_empty() || content.len() > 4000 {
@@ -1370,7 +1370,7 @@ async fn handle_update_settings(
     tx.commit().await?;
 
     if let Ok(t) = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized) {
-        if let Ok(u) = authenticate_session(&state.db, &state.config, t).await {
+        if let Ok(u) = authenticate_session_state(&state, t).await {
             if let Some(enable_ent) = p.is_enterprise {
                 let action = if enable_ent { "enterprise_enabled" } else { "enterprise_disabled" };
                 crate::community::audit(&state, server_id, u.id, action, "").await;

@@ -95,6 +95,7 @@ pub async fn physical_object_available(
         "s3_ready" => storage.s3.object_exists(key).await.unwrap_or(false),
         "temp_relay" => storage.temp_relay.object_exists(key).await.unwrap_or(false),
         "encrypted_backup" => storage.encrypted_backup.object_exists(key).await.unwrap_or(false),
+        "legacy" | "existing" => storage.existing.object_exists(key).await.unwrap_or(false),
         _ => storage.local_cas.object_exists(key).await.unwrap_or(false),
     }
 }

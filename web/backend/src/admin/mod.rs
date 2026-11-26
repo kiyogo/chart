@@ -12,7 +12,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    auth::AppState,
+    auth::{AppState, session},
     error::{AppError, AppResult},
     privacy::auth_user,
 };
@@ -49,7 +49,6 @@ async fn stats(State(state): State<AppState>, headers: HeaderMap) -> AppResult<J
         r#"SELECT
             (SELECT COUNT(*) FROM users) AS "users!",
             (SELECT COUNT(*) FROM users WHERE suspended_at IS NOT NULL) AS "suspended!",
-            (SELECT COUNT(*) FROM sessions WHERE expires_at > now()) AS "sessions!",
             (SELECT COUNT(*) FROM messages) AS "dm_messages!",
             (SELECT COUNT(*) FROM group_messages) AS "group_messages!",
             (SELECT COUNT(*) FROM groups) AS "groups!",
@@ -63,8 +62,9 @@ async fn stats(State(state): State<AppState>, headers: HeaderMap) -> AppResult<J
     )
     .fetch_one(&state.db)
     .await?;
+    let active_sessions = session::count_active_sessions_for_state(&state).await.unwrap_or(0);
     Ok(Json(serde_json::json!({
-        "users": r.users, "suspended": r.suspended, "active_sessions": r.sessions, "dm_messages": r.dm_messages,
+        "users": r.users, "suspended": r.suspended, "active_sessions": active_sessions, "dm_messages": r.dm_messages,
         "group_messages": r.group_messages, "groups": r.groups, "servers": r.servers, "bots": r.bots,
         "businesses": r.businesses, "pending_verifications": r.pending,
     })))
@@ -141,18 +141,18 @@ async fn list_users(State(state): State<AppState>, headers: HeaderMap, Query(p):
     require_admin(&state, &headers).await?;
     let like = format!("{}%", p.q.trim().to_lowercase().replace('%', ""));
     let rows = sqlx::query!(
-        r#"SELECT id, username, created_at, suspended_at, is_admin,
-                  (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()) AS "sessions!"
+        r#"SELECT id, username, created_at, suspended_at, is_admin
            FROM users u WHERE COALESCE(username_norm, '') LIKE $1 ORDER BY created_at DESC LIMIT 50"#,
         like
     )
     .fetch_all(&state.db)
     .await?;
-    Ok(Json(
-        rows.into_iter()
-            .map(|r| serde_json::json!({ "id": r.id, "username": r.username, "created_at": r.created_at, "suspended_at": r.suspended_at, "is_admin": r.is_admin, "sessions": r.sessions }))
-            .collect(),
-    ))
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let sessions = session::count_user_sessions_for_state(&state, r.id).await.unwrap_or(0);
+        out.push(serde_json::json!({ "id": r.id, "username": r.username, "created_at": r.created_at, "suspended_at": r.suspended_at, "is_admin": r.is_admin, "sessions": sessions }));
+    }
+    Ok(Json(out))
 }
 
 async fn user_action(
@@ -173,10 +173,8 @@ async fn user_action(
     }
     match action.as_str() {
         "suspend" => {
-            let mut tx = state.db.begin().await?;
-            sqlx::query!("UPDATE users SET suspended_at = now() WHERE id = $1", id).execute(&mut *tx).await?;
-            sqlx::query!("DELETE FROM sessions WHERE user_id = $1", id).execute(&mut *tx).await?;
-            tx.commit().await?;
+            sqlx::query!("UPDATE users SET suspended_at = now() WHERE id = $1", id).execute(&state.db).await?;
+            let _ = session::revoke_all_user_sessions_for_state(&state, id).await;
             state.ws_hub.disconnect_user(&id).await;
         }
         "unsuspend" => {

@@ -15,7 +15,10 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{AuthUser, SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{
+            self, AuthUser, SESSION_COOKIE_NAME, authenticate_session_state_with_headers,
+            parse_cookie,
+        },
     },
     error::{AppError, AppResult},
     storage::migration,
@@ -54,7 +57,7 @@ pub fn key_backup_routes() -> Router<AppState> {
 
 async fn caller(state: &AppState, headers: &HeaderMap) -> AppResult<AuthUser> {
     let tok = parse_cookie(headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    authenticate_session(&state.db, &state.config, tok).await
+    authenticate_session_state_with_headers(state, tok, Some(headers)).await
 }
 
 fn generate_6_digit_code() -> String {
@@ -209,12 +212,7 @@ async fn handle_register_device(
 
     // Bind current session cleanly to this device_id.
     if let Some(sid) = user.session_id {
-        sqlx::query("UPDATE sessions SET device_id = $1 WHERE id = $2 AND user_id = $3")
-            .bind(device_id)
-            .bind(sid)
-            .bind(user.id)
-            .execute(&state.db)
-            .await?;
+        session::bind_session_device_for_state(&state, user.id, sid, device_id).await?;
     }
 
     let mut challenge_id: Option<Uuid> = None;
@@ -590,19 +588,11 @@ async fn handle_reject_request(
         .bind(req_did)
         .execute(&mut *tx)
         .await?;
-    if let Some(sid) = req_sid {
-        sqlx::query("DELETE FROM sessions WHERE id = $1 AND user_id = $2")
-            .bind(sid)
-            .bind(user.id)
-            .execute(&mut *tx)
-            .await?;
-    }
-    sqlx::query("DELETE FROM sessions WHERE device_id = $1 AND user_id = $2")
-        .bind(req_did)
-        .bind(user.id)
-        .execute(&mut *tx)
-        .await?;
     tx.commit().await?;
+    if let Some(sid) = req_sid {
+        let _ = session::revoke_session_by_id_for_state(&state, user.id, sid).await;
+    }
+    let _ = session::revoke_device_sessions_for_state(&state, user.id, req_did, false).await;
 
     state
         .ws_hub
@@ -742,13 +732,11 @@ async fn handle_recover_lost_devices(
         .bind(current_did)
         .execute(&mut *tx)
         .await?;
-        sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND (device_id IS NULL OR device_id <> $2)")
-            .bind(user.id)
-            .bind(current_did)
-            .execute(&mut *tx)
-            .await?;
     }
     tx.commit().await?;
+    if req.revoke_unreachable_devices.unwrap_or(false) {
+        let _ = session::revoke_device_sessions_for_state(&state, user.id, current_did, true).await;
+    }
 
     if req.revoke_unreachable_devices.unwrap_or(false) {
         for revoked_did in other_trusted_ids {
@@ -765,7 +753,7 @@ async fn handle_recover_lost_devices(
     crate::security::log_event(&state, user.id, "device_recovered", &headers).await;
 
     let backup = sqlx::query(
-        "SELECT wrapped_keys_b64, kdf_salt_b64, kdf_iterations, kdf_alg, kdf_mem_kib, kdf_time_cost, kdf_parallelism, root_key_wrapped_b64, encode(key_fingerprint, 'base64') AS fp_b64 FROM user_key_backups WHERE user_id = $1",
+        "SELECT wrapped_keys_b64, kdf_salt_b64, kdf_iterations, kdf_alg, kdf_mem_kib, kdf_time_cost, kdf_parallelism, root_key_wrapped_b64, fp_b64 FROM public.fetch_user_key_backup($1)",
     )
     .bind(user.id)
     .fetch_optional(&state.db)
@@ -809,11 +797,7 @@ async fn handle_revoke_device(
         return Err(AppError::NotFound("device_not_found"));
     }
 
-    sqlx::query("DELETE FROM sessions WHERE device_id = $1 AND user_id = $2")
-        .bind(device_id)
-        .bind(user.id)
-        .execute(&state.db)
-        .await?;
+    let _ = session::revoke_device_sessions_for_state(&state, user.id, device_id, false).await;
     sqlx::query("DELETE FROM media_device_locations WHERE device_id = $1 AND user_id = $2")
         .bind(device_id)
         .bind(user.id)
@@ -890,23 +874,7 @@ async fn handle_put_key_backup(
     }
 
     sqlx::query(
-        r#"
-        INSERT INTO user_key_backups
-            (user_id, wrapped_keys_b64, kdf_salt_b64, kdf_iterations, key_fingerprint,
-             kdf_alg, kdf_mem_kib, kdf_time_cost, kdf_parallelism, root_key_wrapped_b64, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-        ON CONFLICT (user_id) DO UPDATE SET
-            wrapped_keys_b64 = EXCLUDED.wrapped_keys_b64,
-            kdf_salt_b64 = EXCLUDED.kdf_salt_b64,
-            kdf_iterations = EXCLUDED.kdf_iterations,
-            key_fingerprint = EXCLUDED.key_fingerprint,
-            kdf_alg = EXCLUDED.kdf_alg,
-            kdf_mem_kib = EXCLUDED.kdf_mem_kib,
-            kdf_time_cost = EXCLUDED.kdf_time_cost,
-            kdf_parallelism = EXCLUDED.kdf_parallelism,
-            root_key_wrapped_b64 = EXCLUDED.root_key_wrapped_b64,
-            updated_at = now()
-        "#,
+        "SELECT public.upsert_user_key_backup($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(user.id)
     .bind(&req.wrapped_keys_b64)
@@ -931,7 +899,7 @@ async fn handle_get_key_backup(
 ) -> AppResult<Json<serde_json::Value>> {
     let user = caller(&state, &headers).await?;
     let row = sqlx::query(
-        "SELECT wrapped_keys_b64, kdf_salt_b64, kdf_iterations, kdf_alg, kdf_mem_kib, kdf_time_cost, kdf_parallelism, root_key_wrapped_b64, updated_at FROM user_key_backups WHERE user_id = $1",
+        "SELECT wrapped_keys_b64, kdf_salt_b64, kdf_iterations, kdf_alg, kdf_mem_kib, kdf_time_cost, kdf_parallelism, root_key_wrapped_b64, updated_at FROM public.fetch_user_key_backup($1)",
     )
     .bind(user.id)
     .fetch_optional(&state.db)

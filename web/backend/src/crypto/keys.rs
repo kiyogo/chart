@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     crypto::{compute_fingerprint, compute_identity_fingerprint, validate_p256_public_key},
     error::{AppError, AppResult},
@@ -70,7 +70,7 @@ async fn handle_register_keys(
 ) -> AppResult<Json<PublicKeysResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let ecdh_bytes = URL_SAFE_NO_PAD
         .decode(&payload.ecdh_public)
@@ -216,7 +216,7 @@ async fn handle_get_keys(
 ) -> AppResult<Json<PublicKeysResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let _user = authenticate_session_state(&state, session_token).await?;
 
     let row = sqlx::query!(
         r#"
@@ -248,7 +248,7 @@ async fn handle_get_key_history(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let _user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query(
         r#"
@@ -290,7 +290,7 @@ async fn handle_put_prekeys(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let spk_pub = URL_SAFE_NO_PAD
         .decode(&payload.signed_prekey_pub)
@@ -369,7 +369,7 @@ async fn handle_get_prekey_bundle(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let _user = authenticate_session_state(&state, session_token).await?;
 
     let row = sqlx::query(
         "SELECT ecdh_public, ecdsa_public, fingerprint FROM device_keys WHERE user_id = $1",

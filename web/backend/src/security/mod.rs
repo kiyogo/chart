@@ -14,7 +14,7 @@ use aes_gcm::{
 };
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{ConnectInfo, Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -23,13 +23,17 @@ use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::net::SocketAddr;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, create_session_raw, parse_cookie},
+        session::{
+            SESSION_COOKIE_NAME, authenticate_session_state_with_headers,
+            create_session_for_state, destroy_session_for_state, parse_cookie,
+        },
     },
     error::{AppError, AppResult},
     websocket::WsEvent,
@@ -158,6 +162,54 @@ fn new_backup_codes() -> AppResult<Vec<String>> {
     Ok(out)
 }
 
+/// Optional peer SocketAddr extractor (returns `None` in unit tests without TCP socket).
+pub struct OptionalConnectInfo(pub Option<SocketAddr>);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for OptionalConnectInfo {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(Self(
+            parts
+                .extensions
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|c| c.0),
+        ))
+    }
+}
+
+/// Extract a per-client IP string for HTTP-layer rate limiting (never collapsing all direct clients into one bucket).
+pub fn client_ip_for_rate_limit(
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+    trust_proxy: bool,
+) -> String {
+    if trust_proxy {
+        if let Some(fwd) = headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            return fwd.to_string();
+        }
+        if let Some(real) = headers
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            return real.to_string();
+        }
+    }
+    peer.map(|addr| addr.ip().to_string())
+        .unwrap_or_else(|| "local".to_string())
+}
+
 pub fn ip_masked_with_trust(headers: &HeaderMap, trust_proxy: bool) -> String {
     if !trust_proxy {
         return "Direct".into();
@@ -233,7 +285,7 @@ pub async fn log_event(state: &AppState, user_id: Uuid, kind: &str, headers: &He
 
 async fn me(state: &AppState, headers: &HeaderMap) -> AppResult<Uuid> {
     let t = parse_cookie(headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    Ok(authenticate_session(&state.db, &state.config, t).await?.id)
+    Ok(authenticate_session_state_with_headers(state, t, Some(headers)).await?.id)
 }
 
 fn secure(state: &AppState) -> &'static str {
@@ -311,7 +363,7 @@ async fn finish_session(state: &AppState, user_id: Uuid, headers: &HeaderMap, ki
         .fetch_optional(&state.db)
         .await?
         .is_some();
-    let (raw, set_cookie) = create_session_raw(&state.db, &state.config, user_id, u.as_deref()).await?;
+    let (raw, set_cookie) = create_session_for_state(state, user_id, u.as_deref()).await?;
     log_event(state, user_id, kind, headers).await;
     if has_history && !seen_before {
         log_event(state, user_id, "new_device", headers).await;
@@ -373,7 +425,21 @@ pub async fn check_second_factor(state: &AppState, user_id: Uuid, code: &str) ->
     Ok(used.map(|_| "backup_code"))
 }
 
-async fn twofa_verify(State(state): State<AppState>, headers: HeaderMap, Json(b): Json<VerifyBody>) -> AppResult<Response> {
+async fn twofa_verify(
+    State(state): State<AppState>,
+    OptionalConnectInfo(peer): OptionalConnectInfo,
+    headers: HeaderMap,
+    Json(b): Json<VerifyBody>,
+) -> AppResult<Response> {
+    let ip_key = format!(
+        "2fa:ip:{}",
+        client_ip_for_rate_limit(&headers, peer, state.config.trust_proxy)
+    );
+    state
+        .valkey
+        .check_rate_limit(&[ip_key], 20, std::time::Duration::from_secs(900))
+        .await
+        .map_err(|_| AppError::TooManyRequests)?;
     let id = b
         .challenge
         .or_else(|| parse_cookie(&headers, TWOFA_COOKIE).and_then(|v| Uuid::parse_str(v).ok()))
@@ -559,7 +625,7 @@ async fn accounts_list(State(state): State<AppState>, headers: HeaderMap) -> App
         if t.is_empty() {
             continue;
         }
-        let Ok(u) = authenticate_session(&state.db, &state.config, t).await else { continue };
+        let Ok(u) = authenticate_session_state_with_headers(&state, t, Some(&headers)).await else { continue };
         if !seen.insert(u.id) {
             continue;
         }
@@ -588,7 +654,7 @@ async fn accounts_list(State(state): State<AppState>, headers: HeaderMap) -> App
 /// Park the current account in the vault and go to the sign-in screen for another one.
 async fn accounts_add(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
     let current = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?.to_string();
-    let uid = authenticate_session(&state.db, &state.config, &current).await?.id;
+    let uid = authenticate_session_state_with_headers(&state, &current, Some(&headers)).await?.id;
     let mut vault = vault_tokens(&headers);
     vault.retain(|t| t != &current);
     if vault.len() >= MAX_ACCOUNTS {
@@ -613,7 +679,7 @@ async fn accounts_switch(State(state): State<AppState>, headers: HeaderMap, Json
     let mut vault = vault_tokens(&headers);
     let mut found = None;
     for t in &vault {
-        if let Ok(u) = authenticate_session(&state.db, &state.config, t).await {
+        if let Ok(u) = authenticate_session_state_with_headers(&state, t, Some(&headers)).await {
             if u.id == b.user_id {
                 found = Some(t.clone());
                 break;
@@ -622,7 +688,7 @@ async fn accounts_switch(State(state): State<AppState>, headers: HeaderMap, Json
     }
     let target = found.ok_or(AppError::NotFound("account_not_signed_in"))?;
     vault.retain(|t| t != &target);
-    if !current.is_empty() && authenticate_session(&state.db, &state.config, &current).await.is_ok() {
+    if !current.is_empty() && authenticate_session_state_with_headers(&state, &current, Some(&headers)).await.is_ok() {
         vault.insert(0, current);
     }
     log_event(&state, b.user_id, "account_switched", &headers).await;
@@ -633,12 +699,7 @@ async fn accounts_switch(State(state): State<AppState>, headers: HeaderMap, Json
 }
 
 async fn destroy(state: &AppState, token: &str) {
-    if let Ok(bytes) = hex::decode(token) {
-        if bytes.len() == 32 {
-            let h = crate::auth::session::hash_session_token(&state.config.session_secret, &bytes);
-            let _ = sqlx::query!("DELETE FROM sessions WHERE token_hash = $1", &h[..]).execute(&state.db).await;
-        }
-    }
+    let _ = destroy_session_for_state(state, token).await;
 }
 
 async fn accounts_logout_one(State(state): State<AppState>, headers: HeaderMap, Path(user_id): Path<Uuid>) -> AppResult<Response> {
@@ -646,7 +707,7 @@ async fn accounts_logout_one(State(state): State<AppState>, headers: HeaderMap, 
     let mut removed = false;
     let mut keep = Vec::new();
     for t in vault.drain(..) {
-        match authenticate_session(&state.db, &state.config, &t).await {
+        match authenticate_session_state_with_headers(&state, &t, Some(&headers)).await {
             Ok(u) if u.id == user_id => {
                 destroy(&state, &t).await;
                 log_event(&state, user_id, "logout", &headers).await;
@@ -657,7 +718,7 @@ async fn accounts_logout_one(State(state): State<AppState>, headers: HeaderMap, 
     }
     let mut cleared_current = false;
     if let Some(cur) = parse_cookie(&headers, SESSION_COOKIE_NAME)
-        && let Ok(u) = authenticate_session(&state.db, &state.config, cur).await
+        && let Ok(u) = authenticate_session_state_with_headers(&state, cur, Some(&headers)).await
         && u.id == user_id
     {
         destroy(&state, cur).await;
@@ -682,7 +743,7 @@ async fn logout_all(State(state): State<AppState>, headers: HeaderMap) -> AppRes
         all.push(c.to_string());
     }
     for t in &all {
-        if let Ok(u) = authenticate_session(&state.db, &state.config, t).await {
+        if let Ok(u) = authenticate_session_state_with_headers(&state, t, Some(&headers)).await {
             log_event(&state, u.id, "logout", &headers).await;
         }
         destroy(&state, t).await;

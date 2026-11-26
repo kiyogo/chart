@@ -71,26 +71,6 @@ pub async fn auth_logout() -> Result<(), ApiError> {
     post_empty("/api/auth/logout", None).await
 }
 
-pub async fn auth_dev_login(username: Option<String>) -> Result<(), ApiError> {
-    post_empty("/api/auth/dev-login", Some(json!({ "username": username }))).await
-}
-
-pub async fn auth_register(username: &str, password: &str) -> Result<(), ApiError> {
-    post_empty(
-        "/api/auth/register",
-        Some(json!({ "username": username, "password": password })),
-    )
-    .await
-}
-
-pub async fn auth_login(username: &str, password: &str) -> Result<(), ApiError> {
-    post_empty(
-        "/api/auth/login",
-        Some(json!({ "username": username, "password": password })),
-    )
-    .await
-}
-
 pub async fn auth_set_password(
     current_password: Option<&str>,
     new_password: &str,

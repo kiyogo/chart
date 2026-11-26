@@ -43,8 +43,13 @@ fn test_config(tag: &str) -> Config {
         uploads_dir: std::env::temp_dir().join(format!("chatw_spec022_{tag}_{}", Uuid::new_v4().simple())),
         max_ws_connections: 100,
         trust_proxy: false,
-        dev_login_enabled: false,
+        cors_allowed_origins: Vec::new(),
         google_configured: false,
+        kiyo_issuer: String::new(),
+        kiyo_client_id: String::new(),
+        kiyo_client_secret: String::new(),
+        kiyo_redirect_url: String::new(),
+        kiyo_configured: false,
         valkey_url: None,
         small_chunk_inline_threshold_bytes: 16384,
     }
@@ -57,6 +62,7 @@ async fn build_app(pool: sqlx::PgPool, config: Config) -> (axum::Router, Arc<sto
         db: pool,
         http_client: reqwest::Client::new(),
         jwks_cache: Arc::new(tokio::sync::RwLock::new(GoogleJwksCache::new())),
+        kiyo_jwks_cache: Arc::new(tokio::sync::RwLock::new(GoogleJwksCache::new())),
         ws_hub: Arc::new(WsHub::new(100)),
         oauth_tickets: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         storage: storage_reg.clone(),
@@ -796,31 +802,46 @@ async fn spec160_password_auth_register_login_and_change_works() {
     assert_eq!(st_prov, StatusCode::OK);
     assert_eq!(prov["password"], true);
 
-    // 1. Register new account with username + password only
-    let (st_reg, _, reg_hdrs) = req_bytes(
+    // 1. Public self-registration is disabled (403); pre-provisioned user logs in cleanly
+    let (st_reg_disabled, _) = req_json(
         &app,
         "POST",
         "/api/auth/register",
+        "",
+        Some(json!({ "username": uname, "password": pw1 })),
+    )
+    .await;
+    assert_eq!(st_reg_disabled, StatusCode::FORBIDDEN);
+
+    let pw_hash = chatw::backup::reauth::hash_argon2_phc(pw1).unwrap();
+    let uid = Uuid::new_v4();
+    let uname_norm = uname.to_lowercase();
+    let sub = format!("pw:{uid}");
+    sqlx::query(
+        "INSERT INTO users (id, google_sub, username, username_norm, password_hash) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(uid)
+    .bind(&sub)
+    .bind(&uname)
+    .bind(&uname_norm)
+    .bind(&pw_hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (st_prelogin, _, reg_hdrs) = req_bytes(
+        &app,
+        "POST",
+        "/api/auth/login",
         "",
         "application/json",
         serde_json::to_vec(&json!({ "username": uname, "password": pw1 })).unwrap(),
         &[],
     )
     .await;
-    assert_eq!(st_reg, StatusCode::OK);
+    assert_eq!(st_prelogin, StatusCode::OK);
     let reg_cookie = extract_cookie(&reg_hdrs);
     assert!(!reg_cookie.is_empty());
-
-    // Duplicate username MUST be rejected (409)
-    let (st_dup, _) = req_json(
-        &app,
-        "POST",
-        "/api/auth/register",
-        "",
-        Some(json!({ "username": uname.to_uppercase(), "password": pw1 })),
-    )
-    .await;
-    assert_eq!(st_dup, StatusCode::CONFLICT);
 
     // /api/auth/me reports has_password = true
     let (st_me, me) = req_json(&app, "GET", "/api/auth/me", &reg_cookie, None).await;

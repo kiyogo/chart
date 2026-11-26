@@ -94,7 +94,7 @@ pub fn generate_random_token() -> String {
     hex::encode(bytes)
 }
 
-fn sign_oauth_cookie(secret: &[u8], payload: &OAuthStatePayload) -> String {
+pub fn sign_oauth_cookie(secret: &[u8], payload: &OAuthStatePayload) -> String {
     let json = serde_json::to_vec(payload).unwrap();
     let mut mac = HmacSha256::new_from_slice(secret).unwrap();
     mac.update(&json);

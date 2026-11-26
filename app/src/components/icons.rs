@@ -1193,3 +1193,32 @@ pub fn SelfChatPrideAvatar() -> Element {
         }
     }
 }
+
+#[component]
+pub fn KiyoIcon(#[props(default = 20)] size: u32) -> Element {
+    rsx! {
+        svg {
+            width: "{size}",
+            height: "{size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            xmlns: "http://www.w3.org/2000/svg",
+            rect {
+                x: "2.5",
+                y: "2.5",
+                width: "19",
+                height: "19",
+                rx: "5.5",
+                stroke: "currentColor",
+                stroke_width: "1.8",
+            }
+            path {
+                d: "M8.25 7.25V16.75M15.75 7.25L9.75 12L15.75 16.75",
+                stroke: "currentColor",
+                stroke_width: "2",
+                stroke_linecap: "round",
+                stroke_linejoin: "round",
+            }
+        }
+    }
+}

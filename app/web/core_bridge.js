@@ -507,6 +507,10 @@
       let body = null;
       let ct = '';
       const extraHeaders = {};
+      try {
+        const devId = localStorage.getItem('chatw_client_device_id');
+        if (devId) extraHeaders['X-ChatW-Device-Id'] = devId;
+      } catch (_) {}
       if (rawB64) {
         body = b64ToBytes(rawB64);
         ct = rawContentType || 'application/octet-stream';

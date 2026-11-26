@@ -29,7 +29,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
     storage::{StorageAdapter, StorageRegistry},
@@ -82,7 +82,7 @@ async fn auth_user(
     headers: &HeaderMap,
 ) -> AppResult<crate::auth::session::AuthUser> {
     let token = parse_cookie(headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    authenticate_session(&state.db, &state.config, token).await
+    authenticate_session_state(&state, token).await
 }
 
 /// Normalize canonical DM scope ID (sorted pair `min_uuid:max_uuid`) and enforce strict RBAC.
@@ -135,22 +135,13 @@ async fn authorize_message_scope(
         ScopeKind::Channel => {
             let channel_id = Uuid::parse_str(scope_id_raw)
                 .map_err(|_| AppError::BadRequest("invalid_channel_id"))?;
-            let allowed: bool = sqlx::query_scalar(
-                r#"
-                SELECT EXISTS(
-                    SELECT 1 FROM channels c
-                    JOIN server_members sm ON sm.server_id = c.server_id
-                    WHERE c.id = $1 AND sm.user_id = $2
-                )
-                "#,
+            crate::storage::permissions::authorize_channel_access(
+                pool,
+                user_id,
+                channel_id,
+                crate::models::permissions::VIEW_CHANNELS,
             )
-            .bind(channel_id)
-            .bind(user_id)
-            .fetch_one(pool)
             .await?;
-            if !allowed {
-                return Err(AppError::Forbidden("channel_access_denied"));
-            }
             Ok((kind, channel_id.to_string(), "shared".to_string()))
         }
     }

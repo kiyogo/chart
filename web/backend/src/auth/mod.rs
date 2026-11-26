@@ -1,4 +1,5 @@
 pub mod google;
+pub mod kiyo;
 pub mod session;
 
 use chrono::{DateTime, Utc};
@@ -21,12 +22,13 @@ use crate::{
             CallbackQuery, exchange_code_for_token, google_login_handler, verify_google_id_token,
         },
         session::{
-            OAUTH_COOKIE_NAME, SESSION_COOKIE_NAME, authenticate_session,
-            destroy_session, hash_session_token, parse_cookie,
+            OAUTH_COOKIE_NAME, SESSION_COOKIE_NAME, authenticate_session_state_with_headers,
+            destroy_session_for_state, hash_session_token, parse_cookie,
         },
     },
     config::Config,
     error::{AppError, AppResult},
+    security::OptionalConnectInfo,
 };
 
 pub const OAUTH_TICKET_TTL: std::time::Duration = std::time::Duration::from_secs(300);
@@ -49,6 +51,7 @@ pub struct AppState {
     pub db: sqlx::PgPool,
     pub http_client: reqwest::Client,
     pub jwks_cache: Arc<tokio::sync::RwLock<google::GoogleJwksCache>>,
+    pub kiyo_jwks_cache: Arc<tokio::sync::RwLock<google::GoogleJwksCache>>,
     pub ws_hub: Arc<crate::websocket::WsHub>,
     pub oauth_tickets: OAuthTicketStore,
     pub storage: Arc<crate::storage::StorageRegistry>,
@@ -65,11 +68,6 @@ pub struct MeResponse {
     pub has_keys: bool,
     pub device_id: Option<Uuid>,
     pub has_password: bool,
-}
-
-#[derive(serde::Deserialize)]
-pub struct DevLoginRequest {
-    pub username: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -109,10 +107,11 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/google", get(handle_google_login))
         .route("/google/callback", get(handle_google_callback))
+        .route("/kiyo", get(handle_kiyo_login))
+        .route("/kiyo/callback", get(handle_kiyo_callback))
         .route("/oauth-ticket", post(handle_create_oauth_ticket))
         .route("/oauth-ticket/confirm", post(handle_confirm_oauth_ticket))
         .route("/oauth-ticket/{ticket_id}", get(handle_check_oauth_ticket))
-        .route("/dev-login", post(handle_dev_login))
         .route("/register", post(handle_register_password))
         .route("/login", post(handle_login_password))
         .route("/password", post(handle_update_account_password))
@@ -256,6 +255,7 @@ async fn handle_confirm_oauth_ticket(
 #[derive(Serialize)]
 pub struct ProvidersResponse {
     pub google: bool,
+    pub kiyo: bool,
     pub dev: bool,
     pub password: bool,
 }
@@ -263,7 +263,8 @@ pub struct ProvidersResponse {
 async fn handle_providers(State(state): State<AppState>) -> Json<ProvidersResponse> {
     Json(ProvidersResponse {
         google: state.config.google_configured,
-        dev: state.config.dev_login_enabled,
+        kiyo: state.config.kiyo_configured,
+        dev: false,
         password: true,
     })
 }
@@ -273,6 +274,225 @@ async fn handle_google_login(
     Query(query): Query<GoogleLoginQuery>,
 ) -> AppResult<Response> {
     google_login_handler(&state.config, query.ticket, query.redirect_uri).await
+}
+
+async fn handle_kiyo_login(
+    State(state): State<AppState>,
+    Query(query): Query<GoogleLoginQuery>,
+) -> AppResult<Response> {
+    kiyo::kiyo_login_handler(&state.config, query.ticket, query.redirect_uri).await
+}
+
+async fn upsert_oidc_user(
+    db: &sqlx::PgPool,
+    sub: &str,
+    picture: Option<&str>,
+) -> AppResult<Uuid> {
+    let mut tx = db.begin().await?;
+    let existing = sqlx::query!("SELECT id FROM users WHERE google_sub = $1", sub)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+    let id = match existing {
+        Some(row) => {
+            if let Some(pic) = picture {
+                sqlx::query!(
+                    "UPDATE users SET avatar_url = $1 WHERE id = $2 AND (avatar_url IS NULL OR avatar_url LIKE 'https://%googleusercontent.com%')",
+                    pic,
+                    row.id
+                )
+                .execute(&mut *tx)
+                .await?;
+            }
+            row.id
+        }
+        None => {
+            let new_id = Uuid::new_v4();
+            sqlx::query!(
+                "INSERT INTO users (id, google_sub, username, username_norm, avatar_url) VALUES ($1, $2, NULL, NULL, $3)",
+                new_id,
+                sub,
+                picture
+            )
+            .execute(&mut *tx)
+            .await?;
+            new_id
+        }
+    };
+    tx.commit().await?;
+    Ok(id)
+}
+
+async fn complete_oidc_callback(
+    state: &AppState,
+    headers: &HeaderMap,
+    user_id: Uuid,
+    ticket: Option<Uuid>,
+    oauth_cookie_name: &str,
+    provider_label: &str,
+) -> AppResult<Response> {
+    let secure_flag = if state.config.cookie_secure { "; Secure" } else { "" };
+    let clear_oauth = format!(
+        "{oauth_cookie_name}=; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}"
+    );
+
+    let (raw_token, session_cookie) = match crate::security::complete_login(state, user_id, headers).await? {
+        crate::security::LoginOutcome::Session(raw, cookie) => (raw, cookie),
+        crate::security::LoginOutcome::Challenge(_, challenge_cookie) => {
+            let mut response = Redirect::temporary("/?twofa=1").into_response();
+            response.headers_mut().append(header::SET_COOKIE, challenge_cookie.parse().map_err(|_| AppError::Internal)?);
+            response.headers_mut().append(header::SET_COOKIE, clear_oauth.parse().map_err(|_| AppError::Internal)?);
+            return Ok(response);
+        }
+    };
+
+    if let Some(ticket_id) = ticket {
+        let now = std::time::Instant::now();
+        let ticket_exists = {
+            let mut tickets = state.oauth_tickets.write().await;
+            prune_expired_oauth_tickets(&mut tickets, now);
+            tickets.contains_key(&ticket_id)
+        };
+        if !ticket_exists {
+            return Err(AppError::BadRequest("ticket_expired"));
+        }
+        let _ = raw_token;
+        let mut csrf_bytes = [0u8; 16];
+        getrandom::fill(&mut csrf_bytes).map_err(|_| AppError::Internal)?;
+        let csrf = hex::encode(csrf_bytes);
+        let exp = Utc::now().timestamp() + 180;
+        let unsigned = format!("{ticket_id}|{user_id}|{exp}|{csrf}");
+        let sig = hex::encode(hash_session_token(&state.config.session_secret, unsigned.as_bytes()));
+        let confirm_val = format!("{unsigned}|{sig}");
+        let confirm_cookie = format!(
+            "{OAUTH_CONFIRM_COOKIE_NAME}={confirm_val}; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=180{secure_flag}"
+        );
+        let short_ticket: String = ticket_id.to_string().chars().take(8).collect();
+        let confirm_html = format!(
+            r#"<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>Xác nhận đăng nhập ứng dụng ChatW</title><style>body{{background:#09090b;color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}.box{{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:32px;text-align:center;max-width:420px}}h1{{font-size:20px;margin:0 0 10px}}p{{font-size:14px;color:#a1a1aa;margin:0 0 20px;line-height:1.5}}.btn{{background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer}}</style></head><body><div class="box"><h1>Xác nhận chuyển phiên đăng nhập</h1><p>Bạn có muốn đăng nhập ứng dụng ChatW Desktop (mã phiên {short_ticket}) bằng tài khoản này không?</p><form method="POST" action="/api/auth/oauth-ticket/confirm"><input type="hidden" name="ticket" value="{ticket_id}" /><input type="hidden" name="csrf" value="{csrf}" /><button class="btn" type="submit">Xác nhận đăng nhập ứng dụng</button></form></div></body></html>"#
+        );
+        let mut response = axum::response::Html(confirm_html).into_response();
+        response.headers_mut().append(header::SET_COOKIE, session_cookie.parse().map_err(|_| AppError::Internal)?);
+        response.headers_mut().append(header::SET_COOKIE, confirm_cookie.parse().map_err(|_| AppError::Internal)?);
+        response.headers_mut().append(header::SET_COOKIE, clear_oauth.parse().map_err(|_| AppError::Internal)?);
+        return Ok(response);
+    }
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>ChatW - {provider_label} Sign-In Successful</title>
+    <style>
+        body {{ background: #09090b; color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }}
+        .box {{ background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 36px; text-align: center; max-width: 420px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); }}
+        .icon {{ font-size: 44px; margin-bottom: 16px; }}
+        h1 {{ font-size: 20px; margin: 0 0 10px; color: #ffffff; }}
+        p {{ font-size: 14px; color: #a1a1aa; margin: 0 0 20px; line-height: 1.5; }}
+        .btn {{ display: inline-block; background: #2563eb; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; }}
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="icon">✅</div>
+        <h1>Đăng nhập {provider_label} thành công</h1>
+        <p>Phiên đăng nhập đã được tạo thành công cho tài khoản chatw của bạn. Bạn có thể đóng tab này và quay lại ứng dụng.</p>
+        <a href="javascript:window.close()" class="btn">Đóng cửa sổ</a>
+    </div>
+    <script>setTimeout(function(){{ window.close(); }}, 2500);</script>
+</body>
+</html>"#
+    );
+
+    let mut response = axum::response::Html(html).into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        session_cookie.parse().map_err(|_| AppError::Internal)?,
+    );
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        clear_oauth.parse().map_err(|_| AppError::Internal)?,
+    );
+    Ok(response)
+}
+
+async fn handle_kiyo_callback(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<CallbackQuery>,
+) -> AppResult<Response> {
+    if !state.config.kiyo_configured {
+        return Err(AppError::BadRequest("kiyo_not_configured"));
+    }
+    if let Some(err) = query.error {
+        tracing::warn!(error = %err, "kiyo oauth error callback");
+        return Err(AppError::Unauthorized);
+    }
+
+    let code = query.code.ok_or(AppError::BadRequest("missing_code"))?;
+    let state_param = query.state.ok_or(AppError::BadRequest("missing_state"))?;
+
+    let oauth_cookie = match parse_cookie(&headers, kiyo::KIYO_OAUTH_COOKIE_NAME) {
+        Some(c) => c,
+        None => {
+            if state_param.starts_with("local") && state.config.bind_addr.ip().is_loopback() {
+                let port = state.config.bind_addr.port();
+                let local_url = format!(
+                    "http://127.0.0.1:{port}/api/auth/kiyo/callback?code={}&state={}",
+                    urlencoding::encode(&code),
+                    urlencoding::encode(&state_param)
+                );
+                return Ok(Redirect::temporary(&local_url).into_response());
+            }
+            return Err(AppError::Unauthorized);
+        }
+    };
+
+    let saved = kiyo::verify_kiyo_cookie(&state.config.session_secret, oauth_cookie)
+        .ok_or(AppError::Unauthorized)?;
+
+    if subtle::ConstantTimeEq::ct_eq(state_param.as_bytes(), saved.state.as_bytes()).unwrap_u8()
+        != 1
+    {
+        return Err(AppError::Unauthorized);
+    }
+
+    let redirect_uri = saved
+        .redirect_uri
+        .as_deref()
+        .unwrap_or(&state.config.kiyo_redirect_url);
+
+    let id_token = kiyo::exchange_kiyo_code_for_token(
+        &state.http_client,
+        &state.config,
+        &code,
+        &saved.code_verifier,
+        redirect_uri,
+    )
+    .await?;
+
+    let claims = kiyo::verify_kiyo_id_token(
+        &id_token,
+        &state.config,
+        &saved.nonce,
+        &state.http_client,
+        &state.kiyo_jwks_cache,
+    )
+    .await?;
+
+    let kiyo_sub = format!("kiyo:{}", claims.sub);
+    let user_id = upsert_oidc_user(&state.db, &kiyo_sub, claims.picture.as_deref()).await?;
+
+    complete_oidc_callback(
+        &state,
+        &headers,
+        user_id,
+        saved.ticket,
+        kiyo::KIYO_OAUTH_COOKIE_NAME,
+        "Kiyo",
+    )
+    .await
 }
 
 async fn handle_google_callback(
@@ -339,133 +559,17 @@ async fn handle_google_callback(
     .await?;
 
     // Upsert or fetch internal user record by google_sub
-    let user_id = {
-        let mut tx = state.db.begin().await?;
-        let existing = sqlx::query!("SELECT id FROM users WHERE google_sub = $1", claims.sub)
-            .fetch_optional(&mut *tx)
-            .await?;
+    let user_id = upsert_oidc_user(&state.db, &claims.sub, claims.picture.as_deref()).await?;
 
-        let id = match existing {
-            Some(row) => {
-                if let Some(ref pic) = claims.picture {
-                    sqlx::query!(
-                        "UPDATE users SET avatar_url = $1 WHERE id = $2 AND (avatar_url IS NULL OR avatar_url LIKE 'https://%googleusercontent.com%')",
-                        pic,
-                        row.id
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                row.id
-            }
-            None => {
-                let new_id = Uuid::new_v4();
-                sqlx::query!(
-                    "INSERT INTO users (id, google_sub, username, username_norm, avatar_url) VALUES ($1, $2, NULL, NULL, $3)",
-                    new_id,
-                    claims.sub,
-                    claims.picture
-                )
-                .execute(&mut *tx)
-                .await?;
-                new_id
-            }
-        };
-        tx.commit().await?;
-        id
-    };
-
-    // Create the session, or ask for the second step first (spec 011).
-    let (raw_token, session_cookie) = match crate::security::complete_login(&state, user_id, &headers).await? {
-        crate::security::LoginOutcome::Session(raw, cookie) => (raw, cookie),
-        crate::security::LoginOutcome::Challenge(_, challenge_cookie) => {
-            let secure_flag = if state.config.cookie_secure { "; Secure" } else { "" };
-            let clear_oauth = format!("{OAUTH_COOKIE_NAME}=; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}");
-            let mut response = Redirect::temporary("/?twofa=1").into_response();
-            response.headers_mut().append(header::SET_COOKIE, challenge_cookie.parse().map_err(|_| AppError::Internal)?);
-            response.headers_mut().append(header::SET_COOKIE, clear_oauth.parse().map_err(|_| AppError::Internal)?);
-            return Ok(response);
-        }
-    };
-
-    // Clear oauth cookie
-    let secure_flag = if state.config.cookie_secure {
-        "; Secure"
-    } else {
-        ""
-    };
-    let clear_oauth = format!(
-        "{OAUTH_COOKIE_NAME}=; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=0{secure_flag}"
-    );
-
-    if let Some(ticket_id) = saved.ticket {
-        let now = std::time::Instant::now();
-        let ticket_exists = {
-            let mut tickets = state.oauth_tickets.write().await;
-            prune_expired_oauth_tickets(&mut tickets, now);
-            tickets.contains_key(&ticket_id)
-        };
-        if !ticket_exists {
-            return Err(AppError::BadRequest("ticket_expired"));
-        }
-        let _ = raw_token;
-        let mut csrf_bytes = [0u8; 16];
-        getrandom::fill(&mut csrf_bytes).map_err(|_| AppError::Internal)?;
-        let csrf = hex::encode(csrf_bytes);
-        let exp = Utc::now().timestamp() + 180;
-        let unsigned = format!("{ticket_id}|{user_id}|{exp}|{csrf}");
-        let sig = hex::encode(hash_session_token(&state.config.session_secret, unsigned.as_bytes()));
-        let confirm_val = format!("{unsigned}|{sig}");
-        let confirm_cookie = format!(
-            "{OAUTH_CONFIRM_COOKIE_NAME}={confirm_val}; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=180{secure_flag}"
-        );
-        let short_ticket: String = ticket_id.to_string().chars().take(8).collect();
-        let confirm_html = format!(
-            r#"<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><title>Xác nhận đăng nhập ứng dụng ChatW</title><style>body{{background:#09090b;color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}.box{{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:32px;text-align:center;max-width:420px}}h1{{font-size:20px;margin:0 0 10px}}p{{font-size:14px;color:#a1a1aa;margin:0 0 20px;line-height:1.5}}.btn{{background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer}}</style></head><body><div class="box"><h1>Xác nhận chuyển phiên đăng nhập</h1><p>Bạn có muốn đăng nhập ứng dụng ChatW Desktop (mã phiên {short_ticket}) bằng tài khoản này không?</p><form method="POST" action="/api/auth/oauth-ticket/confirm"><input type="hidden" name="ticket" value="{ticket_id}" /><input type="hidden" name="csrf" value="{csrf}" /><button class="btn" type="submit">Xác nhận đăng nhập ứng dụng</button></form></div></body></html>"#
-        );
-        let mut response = axum::response::Html(confirm_html).into_response();
-        response.headers_mut().append(header::SET_COOKIE, session_cookie.parse().map_err(|_| AppError::Internal)?);
-        response.headers_mut().append(header::SET_COOKIE, confirm_cookie.parse().map_err(|_| AppError::Internal)?);
-        response.headers_mut().append(header::SET_COOKIE, clear_oauth.parse().map_err(|_| AppError::Internal)?);
-        return Ok(response);
-    }
-
-    let html = r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>ChatW - Google Sign-In Successful</title>
-    <style>
-        body { background: #09090b; color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .box { background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 36px; text-align: center; max-width: 420px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
-        .icon { font-size: 44px; margin-bottom: 16px; }
-        h1 { font-size: 20px; margin: 0 0 10px; color: #ffffff; }
-        p { font-size: 14px; color: #a1a1aa; margin: 0 0 20px; line-height: 1.5; }
-        .btn { display: inline-block; background: #2563eb; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; }
-    </style>
-</head>
-<body>
-    <div class="box">
-        <div class="icon">✅</div>
-        <h1>Đăng nhập Google thành công</h1>
-        <p>Phiên đăng nhập đã được tạo thành công cho tài khoản chatw của bạn. Bạn có thể đóng tab này và quay lại ứng dụng.</p>
-        <a href="javascript:window.close()" class="btn">Đóng cửa sổ</a>
-    </div>
-    <script>setTimeout(function(){ window.close(); }, 2500);</script>
-</body>
-</html>"#;
-
-    let mut response = axum::response::Html(html).into_response();
-    response.headers_mut().append(
-        header::SET_COOKIE,
-        session_cookie.parse().map_err(|_| AppError::Internal)?,
-    );
-    response.headers_mut().append(
-        header::SET_COOKIE,
-        clear_oauth.parse().map_err(|_| AppError::Internal)?,
-    );
-
-    Ok(response)
+    complete_oidc_callback(
+        &state,
+        &headers,
+        user_id,
+        saved.ticket,
+        OAUTH_COOKIE_NAME,
+        "Google",
+    )
+    .await
 }
 
 async fn handle_me(
@@ -475,7 +579,7 @@ async fn handle_me(
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
 
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
 
     let key_count: i64 = sqlx::query_scalar!(
         "SELECT COUNT(*) FROM device_keys WHERE user_id = $1",
@@ -505,7 +609,7 @@ async fn handle_me(
 
 async fn handle_logout(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).unwrap_or("");
-    let clear_cookie = destroy_session(&state.db, &state.config, session_token).await?;
+    let clear_cookie = destroy_session_for_state(&state, session_token).await?;
 
     let mut response = StatusCode::OK.into_response();
     response.headers_mut().insert(
@@ -513,65 +617,6 @@ async fn handle_logout(State(state): State<AppState>, headers: HeaderMap) -> App
         clear_cookie.parse().map_err(|_| AppError::Internal)?,
     );
     Ok(response)
-}
-
-async fn handle_dev_login(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    body: Option<Json<DevLoginRequest>>,
-) -> AppResult<Response> {
-    if !state.config.dev_login_enabled {
-        return Err(AppError::NotFound("not_found"));
-    }
-
-    let username = body
-        .and_then(|b| b.0.username)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    let sub = match &username {
-        Some(u) => format!("dev_{}", u.to_lowercase()),
-        None => format!("dev_user_{}", Uuid::new_v4().simple()),
-    };
-
-    let mut tx = state.db.begin().await?;
-    let existing = sqlx::query!("SELECT id FROM users WHERE google_sub = $1", sub)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-    let user_id = match existing {
-        Some(row) => {
-            if let Some(ref u) = username {
-                let norm = u.to_lowercase();
-                sqlx::query!(
-                    "UPDATE users SET username = COALESCE(username, $1), username_norm = COALESCE(username_norm, $2) WHERE id = $3",
-                    u,
-                    norm,
-                    row.id
-                )
-                .execute(&mut *tx)
-                .await?;
-            }
-            row.id
-        }
-        None => {
-            let new_id = Uuid::new_v4();
-            let norm = username.as_ref().map(|u| u.to_lowercase());
-            sqlx::query!(
-                "INSERT INTO users (id, google_sub, username, username_norm) VALUES ($1, $2, $3, $4)",
-                new_id,
-                sub,
-                username,
-                norm
-            )
-            .execute(&mut *tx)
-            .await?;
-            new_id
-        }
-    };
-    tx.commit().await?;
-
-    finish_login_response(&state, user_id, &headers).await
 }
 
 async fn finish_login_response(
@@ -607,64 +652,31 @@ fn validate_account_password(password: &str) -> AppResult<()> {
     Ok(())
 }
 
-async fn handle_register_password(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    crate::error::ApiJson(req): crate::error::ApiJson<PasswordAuthRequest>,
-) -> AppResult<Response> {
-    let ip_key = format!("reg:ip:{}", crate::security::ip_masked_with_trust(&headers, state.config.trust_proxy));
-    state
-        .valkey
-        .check_rate_limit(&[ip_key], 20, std::time::Duration::from_secs(900))
-        .await
-        .map_err(|_| AppError::TooManyRequests)?;
-    let (display_name, username_norm) =
-        crate::users::validate_and_normalize_username(&req.username)?;
-    validate_account_password(&req.password)?;
-    let pw = req.password.clone();
-    let phc = tokio::task::spawn_blocking(move || crate::backup::reauth::hash_argon2_phc(&pw))
-        .await
-        .map_err(|_| AppError::Internal)??;
-
-    let user_id = Uuid::new_v4();
-    let local_sub = format!("local:{user_id}");
-    let res = sqlx::query(
-        "INSERT INTO users (id, google_sub, username, username_norm, password_hash)
-         VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(user_id)
-    .bind(&local_sub)
-    .bind(&display_name)
-    .bind(&username_norm)
-    .bind(&phc)
-    .execute(&state.db)
-    .await;
-
-    match res {
-        Ok(_) => {
-            crate::security::log_event(&state, user_id, "account_registered_password", &headers)
-                .await;
-            finish_login_response(&state, user_id, &headers).await
-        }
-        Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("23505") => {
-            Err(AppError::Conflict("username_taken"))
-        }
-        Err(e) => Err(e.into()),
-    }
+async fn handle_register_password() -> AppResult<Response> {
+    Err(AppError::Forbidden("registration_disabled"))
 }
 
 async fn handle_login_password(
     State(state): State<AppState>,
+    OptionalConnectInfo(peer): OptionalConnectInfo,
     headers: HeaderMap,
     crate::error::ApiJson(req): crate::error::ApiJson<PasswordAuthRequest>,
 ) -> AppResult<Response> {
     const DUMMY_PHC: &str = "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    let ip_key = format!(
+        "login:ip:{}",
+        crate::security::client_ip_for_rate_limit(&headers, peer, state.config.trust_proxy)
+    );
+    state
+        .valkey
+        .check_rate_limit(std::slice::from_ref(&ip_key), 20, std::time::Duration::from_secs(900))
+        .await
+        .map_err(|_| AppError::TooManyRequests)?;
     let (_, username_norm) = crate::users::validate_and_normalize_username(&req.username)?;
-    let ip_key = format!("login:ip:{}", crate::security::ip_masked_with_trust(&headers, state.config.trust_proxy));
     let user_key = format!("login:u:{username_norm}");
     state
         .valkey
-        .check_rate_limit(&[ip_key, user_key], 15, std::time::Duration::from_secs(900))
+        .check_rate_limit(&[user_key], 10, std::time::Duration::from_secs(900))
         .await
         .map_err(|_| AppError::TooManyRequests)?;
 
@@ -715,7 +727,7 @@ async fn handle_update_account_password(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
     validate_account_password(&req.new_password)?;
     crate::security::require_second_factor(
         &state,
@@ -755,13 +767,8 @@ async fn handle_update_account_password(
         && token_bytes.len() == 32
     {
         let token_hash = hash_session_token(&state.config.session_secret, &token_bytes);
-        if let Ok(revoked_ids) = sqlx::query_scalar::<_, Uuid>(
-            "DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2 RETURNING id",
-        )
-        .bind(user.id)
-        .bind(&token_hash[..])
-        .fetch_all(&state.db)
-        .await
+        if let Ok(revoked_ids) =
+            session::revoke_other_sessions_for_state(&state, user.id, &token_hash).await
         {
             for sid in revoked_ids {
                 state.ws_hub.disconnect_session(&user.id, sid).await;
@@ -790,7 +797,7 @@ async fn handle_list_sessions(
 ) -> AppResult<Json<Vec<SessionResponseItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
 
     let token_bytes = hex::decode(session_token).map_err(|_| AppError::Unauthorized)?;
     if token_bytes.len() != 32 {
@@ -798,18 +805,7 @@ async fn handle_list_sessions(
     }
     let token_hash = session::hash_session_token(&state.config.session_secret, &token_bytes);
 
-    let rows = sqlx::query!(
-        r#"
-        SELECT id, device_name, device_label, ip_address, last_active, created_at, (token_hash = $2) as "is_current!"
-        FROM sessions
-        WHERE user_id = $1
-        ORDER BY last_active DESC
-        "#,
-        user.id,
-        &token_hash[..]
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let rows = session::list_user_sessions_for_state(&state, user.id, &token_hash).await?;
 
     let sessions = rows
         .into_iter()
@@ -841,20 +837,12 @@ async fn handle_rename_session(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
     let label = p.label.trim().to_string();
     if label.is_empty() || label.chars().count() > 40 {
         return Err(AppError::BadRequest("invalid_device_label"));
     }
-    let res = sqlx::query!(
-        "UPDATE sessions SET device_label = $1 WHERE id = $2 AND user_id = $3",
-        label,
-        session_id,
-        user.id
-    )
-    .execute(&state.db)
-    .await?;
-    if res.rows_affected() == 0 {
+    if !session::rename_session_for_state(&state, user.id, session_id, &label).await? {
         return Err(AppError::NotFound("session_not_found"));
     }
     Ok(Json(serde_json::json!({ "label": label })))
@@ -868,7 +856,7 @@ async fn handle_delete_other_sessions(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
     // Signing out every other device is sensitive: ask for the second step when it is on.
     crate::security::require_second_factor(&state, user.id, q.get("code").map(String::as_str), &headers).await?;
     crate::security::log_event(&state, user.id, "sessions_revoked_others", &headers).await;
@@ -877,13 +865,7 @@ async fn handle_delete_other_sessions(
         return Err(AppError::Unauthorized);
     }
     let token_hash = session::hash_session_token(&state.config.session_secret, &token_bytes);
-    let revoked_ids: Vec<Uuid> = sqlx::query_scalar(
-        "DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2 RETURNING id",
-    )
-    .bind(user.id)
-    .bind(&token_hash[..])
-    .fetch_all(&state.db)
-    .await?;
+    let revoked_ids = session::revoke_other_sessions_for_state(&state, user.id, &token_hash).await?;
     for sid in &revoked_ids {
         state.ws_hub.disconnect_session(&user.id, *sid).await;
     }
@@ -908,15 +890,9 @@ async fn handle_delete_session(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state_with_headers(&state, session_token, Some(&headers)).await?;
 
-    sqlx::query!(
-        "DELETE FROM sessions WHERE id = $1 AND user_id = $2",
-        session_id,
-        user.id
-    )
-    .execute(&state.db)
-    .await?;
+    session::revoke_session_by_id_for_state(&state, user.id, session_id).await?;
     state.ws_hub.disconnect_session(&user.id, session_id).await;
 
     let _ = crate::audit::log_audit_event(
@@ -934,13 +910,13 @@ async fn handle_delete_session(
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
-/// Strict CORS origin check: parses the `Origin` header as a URL and permits only exact
-/// `localhost` / `127.0.0.1` loopback hosts (any port) or the configured `public_origin`.
-/// Rejects prefix-bypass origins like `http://localhost.attacker.evil` or `http://127.0.0.1.evil.com`.
+/// Strict CORS origin check: parses the `Origin` header as a URL and permits only the exact
+/// configured `public_origin` (scheme + host + port) or an explicit `extra_allowed_origins` entry.
+/// Rejects cross-port loopback origins and prefix-bypass origins like `http://localhost.attacker.evil`.
 pub fn is_allowed_cors_origin_for_config(
     origin_raw: &str,
     configured_public_origin: &str,
-    dev_login_enabled: bool,
+    extra_allowed_origins: &[String],
 ) -> bool {
     let trimmed = origin_raw.trim();
     if trimmed.is_empty() || trimmed == "null" {
@@ -960,33 +936,25 @@ pub fn is_allowed_cors_origin_for_config(
     {
         return false;
     }
-    let Some(host) = parsed.host_str() else {
-        return false;
+    let matches_origin = |candidate: &str| -> bool {
+        reqwest::Url::parse(candidate.trim()).is_ok_and(|allowed| {
+            allowed.scheme() == parsed.scheme()
+                && allowed
+                    .host_str()
+                    .zip(parsed.host_str())
+                    .is_some_and(|(a, b)| a.eq_ignore_ascii_case(b))
+                && allowed.port_or_known_default() == parsed.port_or_known_default()
+        })
     };
-    let pub_parsed = reqwest::Url::parse(configured_public_origin.trim()).ok();
-    let pub_is_loopback = pub_parsed
-        .as_ref()
-        .and_then(|u| u.host_str())
-        .is_some_and(|h| h.eq_ignore_ascii_case("localhost") || h == "127.0.0.1");
-    if (dev_login_enabled || pub_is_loopback)
-        && (host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1")
-    {
+    if matches_origin(configured_public_origin) {
         return true;
     }
-    if let Some(pub_url) = pub_parsed
-        && pub_url.scheme() == parsed.scheme()
-        && pub_url.host_str() == parsed.host_str()
-        && pub_url.port_or_known_default() == parsed.port_or_known_default()
-    {
-        return true;
-    }
-    false
+    extra_allowed_origins.iter().any(|o| matches_origin(o))
 }
 
-/// Strict CORS origin check: parses the `Origin` header as a URL and permits only exact
-/// `localhost` / `127.0.0.1` loopback hosts (when configured/dev) or the configured `public_origin`.
+/// Strict CORS origin check against `configured_public_origin`.
 pub fn is_allowed_cors_origin(origin_raw: &str, configured_public_origin: &str) -> bool {
-    is_allowed_cors_origin_for_config(origin_raw, configured_public_origin, false)
+    is_allowed_cors_origin_for_config(origin_raw, configured_public_origin, &[])
 }
 
 #[cfg(test)]
@@ -996,8 +964,10 @@ mod tests {
     #[test]
     fn test_strict_cors_origin_rejects_subdomain_prefix_bypass() {
         assert!(is_allowed_cors_origin("http://localhost:8085", "http://localhost:8085"));
-        assert!(is_allowed_cors_origin("http://127.0.0.1:5173", "http://localhost:8085"));
         assert!(is_allowed_cors_origin("https://chat.example.com", "https://chat.example.com"));
+        // Cross-port loopback and localhost vs 127.0.0.1 mismatch MUST be rejected to prevent cross-port credential leaks
+        assert!(!is_allowed_cors_origin("http://127.0.0.1:5173", "http://localhost:8085"));
+        assert!(!is_allowed_cors_origin("http://localhost:5173", "http://localhost:8085"));
         // Production non-loopback MUST reject arbitrary localhost origins
         assert!(!is_allowed_cors_origin("http://localhost:5173", "https://chat.example.com"));
         // Prefix-spoofed attacker domains MUST be rejected

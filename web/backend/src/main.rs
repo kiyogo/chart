@@ -1,10 +1,11 @@
 use axum::{
     Router,
+    extract::State,
     http::{HeaderValue, Method, StatusCode, header},
     middleware::{Next, from_fn},
     response::Response,
 };
-use std::{sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 use tower_http::{
     cors::{AllowHeaders, AllowOrigin, CorsLayer},
@@ -43,7 +44,7 @@ async fn security_headers_middleware(req: axum::extract::Request, next: Next) ->
         headers.insert(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src blob:; connect-src 'none'; style-src 'unsafe-inline'; img-src data: https: blob:; font-src data:; frame-ancestors 'self' http://127.0.0.1:* http://localhost:* https://*;",
+                "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src blob:; connect-src 'none'; style-src 'unsafe-inline'; img-src data: https: blob:; font-src data:; frame-ancestors 'self';",
             ),
         );
     } else {
@@ -116,97 +117,116 @@ async fn selective_timeout_middleware(
     }
 }
 
-async fn plugin_sandbox_frame_html() -> ([(axum::http::header::HeaderName, &'static str); 1], &'static str) {
-    (
-        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+async fn plugin_sandbox_frame_html(
+    State(state): State<AppState>,
+) -> ([(axum::http::header::HeaderName, &'static str); 1], String) {
+    let parent_origin_json =
+        serde_json::to_string(&state.config.public_origin).unwrap_or_else(|_| "\"\"".into());
+    let html = format!(
         r#"<!doctype html>
 <html lang="vi">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body>
 <script>
-(function () {
+(function () {{
+  const PARENT_ORIGIN = {parent_origin_json};
+  const ALLOWED_PARENTS = [PARENT_ORIGIN, 'http://ipc.localhost', 'http://dioxus.localhost'];
   const SHELL_NONCE = (location.hash || '').replace(/^#/, '');
+  try {{ if (location.hash) history.replaceState(null, '', location.pathname + location.search); }} catch (_) {{}}
+  let parentTargetOrigin = PARENT_ORIGIN;
+  try {{
+    if (document.referrer) {{
+      const refOrigin = new URL(document.referrer).origin;
+      if (ALLOWED_PARENTS.includes(refOrigin)) parentTargetOrigin = refOrigin;
+    }}
+  }} catch (_) {{}}
   let mounted = false;
   let innerWorker = null;
   let innerWorkerUrl = null;
-  window.addEventListener('message', function onMsg(ev) {
+  window.addEventListener('message', function onMsg(ev) {{
+    if (ev.source !== window.parent || !ALLOWED_PARENTS.includes(ev.origin)) return;
+    parentTargetOrigin = ev.origin;
     const d = ev.data;
-    if (!d || d.nonce !== SHELL_NONCE) return;
-    if (!mounted && d.__cwSpawnWorker) {
+    if (!d || !SHELL_NONCE || d.nonce !== SHELL_NONCE) return;
+    if (!mounted && d.__cwSpawnWorker) {{
       mounted = true;
-      try {
-        const blob = new Blob([String(d.workerSrc || '')], { type: 'application/javascript' });
+      try {{
+        const blob = new Blob([String(d.workerSrc || '')], {{ type: 'application/javascript' }});
         innerWorkerUrl = URL.createObjectURL(blob);
         innerWorker = new Worker(innerWorkerUrl);
-        innerWorker.onmessage = function (we) {
-          window.parent.postMessage(we.data, '*');
-        };
-        innerWorker.onerror = function (err) {
-          window.parent.postMessage({
+        innerWorker.onmessage = function (we) {{
+          window.parent.postMessage(we.data, parentTargetOrigin);
+        }};
+        innerWorker.onerror = function (err) {{
+          window.parent.postMessage({{
             __cwWorkerError: true,
             nonce: SHELL_NONCE,
             error: (err && err.message) || 'Opaque worker runtime crash'
-          }, '*');
-        };
-      } catch (err) {
-        window.parent.postMessage({
+          }}, parentTargetOrigin);
+        }};
+      }} catch (err) {{
+        window.parent.postMessage({{
           __cwWorkerError: true,
           nonce: SHELL_NONCE,
           error: (err && err.message) || String(err)
-        }, '*');
-      }
+        }}, parentTargetOrigin);
+      }}
       return;
-    }
-    if (d.__cwToWorker && innerWorker) {
-      try { innerWorker.postMessage(d.payload); } catch (_) {}
+    }}
+    if (d.__cwToWorker && innerWorker) {{
+      try {{ innerWorker.postMessage(d.payload); }} catch (_) {{}}
       return;
-    }
-    if (d.__cwTerminateWorker) {
-      if (innerWorker) { try { innerWorker.terminate(); } catch (_) {} innerWorker = null; }
-      if (innerWorkerUrl) { try { URL.revokeObjectURL(innerWorkerUrl); } catch (_) {} innerWorkerUrl = null; }
+    }}
+    if (d.__cwTerminateWorker) {{
+      if (innerWorker) {{ try {{ innerWorker.terminate(); }} catch (_) {{}} innerWorker = null; }}
+      if (innerWorkerUrl) {{ try {{ URL.revokeObjectURL(innerWorkerUrl); }} catch (_) {{}} innerWorkerUrl = null; }}
       return;
-    }
+    }}
     if (mounted || !d.__cwMountDoc) return;
     mounted = true;
-    try {
-      if (d.cssVars) {
+    try {{
+      if (d.cssVars) {{
         const st = document.createElement('style');
         st.textContent = d.cssVars;
         document.head.appendChild(st);
-      }
-      if (d.sdkCode) {
+      }}
+      if (d.sdkCode) {{
         const sdk = document.createElement('script');
         sdk.textContent = d.sdkCode;
         document.head.appendChild(sdk);
-      }
+      }}
       const parser = new DOMParser();
       const parsed = parser.parseFromString(String(d.html || ''), 'text/html');
-      parsed.head.querySelectorAll('style').forEach((s) => {
+      parsed.head.querySelectorAll('style').forEach((s) => {{
         const ns = document.createElement('style');
         ns.textContent = s.textContent || '';
         document.head.appendChild(ns);
-      });
+      }});
       const scripts = [];
-      parsed.body.querySelectorAll('script').forEach((s) => {
+      parsed.body.querySelectorAll('script').forEach((s) => {{
         if (!s.src) scripts.push(s.textContent || '');
         s.remove();
-      });
+      }});
       document.body.innerHTML = parsed.body.innerHTML;
-      for (const code of scripts) {
+      for (const code of scripts) {{
         const el = document.createElement('script');
         el.textContent = code;
         document.body.appendChild(el);
-      }
-      window.postMessage({ __cwReady: true, nonce: SHELL_NONCE, context: d.readyContext || {} }, '*');
-    } catch (err) {
+      }}
+      window.postMessage({{ __cwReady: true, nonce: SHELL_NONCE, context: d.readyContext || {{}} }}, '*');
+    }} catch (err) {{
       document.body.textContent = 'Sandbox mount error: ' + (err && err.message ? err.message : String(err));
-    }
-  });
-  window.parent.postMessage({ __cwSandboxShellReady: true, nonce: SHELL_NONCE }, '*');
-})();
+    }}
+  }});
+  window.parent.postMessage({{ __cwSandboxShellReady: true, nonce: SHELL_NONCE }}, parentTargetOrigin);
+}})();
 </script>
 </body>
-</html>"#,
+</html>"#
+    );
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
     )
 }
 
@@ -269,6 +289,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ws_hub.attach_valkey(valkey.clone()).await;
     valkey.spawn_ws_pubsub_listener(ws_hub.clone());
     let jwks_cache = Arc::new(tokio::sync::RwLock::new(GoogleJwksCache::new()));
+    let kiyo_jwks_cache = Arc::new(tokio::sync::RwLock::new(GoogleJwksCache::new()));
     let oauth_tickets = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
     let http_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -282,6 +303,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db,
         http_client,
         jwks_cache,
+        kiyo_jwks_cache,
         ws_hub,
         oauth_tickets,
         storage: storage_registry,
@@ -399,7 +421,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = Router::new()
         .nest("/api", api_router)
         .route("/stream/{*rest}", axum::routing::any(deny_direct_stream_fallback))
-        .route("/plugin-sandbox-frame", axum::routing::get(plugin_sandbox_frame_html))
+        .route("/plugin-sandbox-frame", axum::routing::get(plugin_sandbox_frame_html).with_state(state.clone()))
         .route("/robots.txt", axum::routing::get(robots_txt))
         .route("/llms.txt", axum::routing::get(llms_txt))
         .merge(public_pages)
@@ -422,7 +444,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 7b. CORS layer for web development and same-origin requests
     let public_origin_for_cors = config.public_origin.clone();
-    let dev_login_for_cors = config.dev_login_enabled;
+    let extra_cors_origins = config.cors_allowed_origins.clone();
     let cors = CorsLayer::new()
         .allow_methods([
             Method::GET,
@@ -442,13 +464,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             header::HeaderName::from_static("x-export-token"),
             header::HeaderName::from_static("x-backup-password"),
             header::HeaderName::from_static("x-chatw-stream-token"),
+            header::HeaderName::from_static("x-chatw-device-id"),
             header::HeaderName::from_static("x-ticket-secret"),
             header::HeaderName::from_static("idempotency-key"),
         ]))
         .allow_credentials(true)
         .allow_origin(AllowOrigin::predicate(move |origin: &HeaderValue, _| {
             let s = origin.to_str().unwrap_or("");
-            auth::is_allowed_cors_origin_for_config(s, &public_origin_for_cors, dev_login_for_cors)
+            auth::is_allowed_cors_origin_for_config(s, &public_origin_for_cors, &extra_cors_origins)
         }));
 
     let app = app
@@ -461,9 +484,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("listening on http://{}", config.bind_addr);
 
     // 9. Graceful shutdown handler
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     tracing::info!("server shutdown complete");
     Ok(())

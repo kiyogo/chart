@@ -18,10 +18,16 @@ pub struct Config {
     pub uploads_dir: PathBuf,
     pub max_ws_connections: usize,
     pub trust_proxy: bool,
-    /// Local-only passwordless login for development. Never enabled on non-loopback origins.
-    pub dev_login_enabled: bool,
+    /// Optional explicit extra allowed CORS origins (comma-separated). Empty by default.
+    pub cors_allowed_origins: Vec<String>,
     /// False when Google credentials are placeholders, so the UI can avoid a dead-end redirect.
     pub google_configured: bool,
+    pub kiyo_issuer: String,
+    pub kiyo_client_id: String,
+    pub kiyo_client_secret: String,
+    pub kiyo_redirect_url: String,
+    /// True when KIYO_ISSUER and KIYO_CLIENT_ID are configured.
+    pub kiyo_configured: bool,
     /// Optional Valkey/Redis RESP URL for ephemeral presence, typing, locks, rate limits & WS Pub/Sub.
     pub valkey_url: Option<String>,
     /// Maximum encrypted chunk byte length stored inline in PostgreSQL (`pg_inline`) instead of Object Storage.
@@ -106,20 +112,27 @@ impl Config {
             PathBuf::from("uploads")
         };
 
-        let is_loopback_origin = ["http://localhost", "http://127.0.0.1"]
-            .iter()
-            .any(|p| public_origin == *p || public_origin.starts_with(&format!("{p}:")));
-        let dev_login_requested: bool = parse("DEV_LOGIN", "false")?;
-        if dev_login_requested && !is_loopback_origin {
-            return Err(
-                "DEV_LOGIN=true is only allowed when PUBLIC_URL is a loopback origin".into(),
-            );
-        }
+        let cors_allowed_origins: Vec<String> = env::var("CORS_ALLOWED_ORIGINS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().trim_end_matches('/').to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
 
         let google_client_id = var("GOOGLE_CLIENT_ID")?;
         let google_configured = google_client_id.ends_with(".apps.googleusercontent.com")
             && !google_client_id.starts_with("dev-")
             && !google_client_id.starts_with("your-");
+
+        let kiyo_issuer = var_or("KIYO_ISSUER", "").trim().trim_end_matches('/').to_owned();
+        let kiyo_client_id = var_or("KIYO_CLIENT_ID", "").trim().to_owned();
+        let kiyo_client_secret = var_or("KIYO_CLIENT_SECRET", "").trim().to_owned();
+        let kiyo_redirect_url = env::var("KIYO_REDIRECT_URL")
+            .ok()
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| format!("{public_origin}/api/auth/kiyo/callback"));
+        let kiyo_configured = !kiyo_issuer.is_empty() && !kiyo_client_id.is_empty();
 
         let valkey_url = env::var("VALKEY_URL")
             .ok()
@@ -144,8 +157,13 @@ impl Config {
             uploads_dir,
             max_ws_connections: parse("MAX_WS_CONNECTIONS", "5000")?,
             trust_proxy: parse("TRUST_PROXY", "false")?,
-            dev_login_enabled: dev_login_requested,
+            cors_allowed_origins,
             google_configured,
+            kiyo_issuer,
+            kiyo_client_id,
+            kiyo_client_secret,
+            kiyo_redirect_url,
+            kiyo_configured,
             valkey_url,
             small_chunk_inline_threshold_bytes,
         })

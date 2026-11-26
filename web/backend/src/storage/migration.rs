@@ -204,7 +204,7 @@ pub async fn delete_physical_object(storage: &StorageRegistry, backend: &str, ke
         "encrypted_backup" => {
             let _ = storage.encrypted_backup.delete_object(key).await;
         }
-        "existing" => {
+        "legacy" | "existing" => {
             let _ = storage.existing.delete_object(key).await;
         }
         _ => {}

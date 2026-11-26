@@ -13,10 +13,10 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
-    media_opt::{MediaKind, optimize_chat_image, probe_image_dimensions, sniff_media_bytes},
+    media_opt::{MediaKind, probe_image_dimensions, sniff_media_bytes},
     storage::{
         StorageAdapter, StorageRegistry, local_cas::LocalFileStorageAdapter,
         permissions::{authorize_read, authorize_write},
@@ -189,7 +189,7 @@ pub async fn ingest_media_bytes(
     authorize_write(pool, owner_id, scope_type, scope_id).await?;
 
     let is_e2ee = meta.is_e2ee.unwrap_or(scope_type == "dm" && content_type_header == "application/octet-stream");
-    let preserve_original = meta.preserve_original.unwrap_or(true);
+    let _preserve_original = meta.preserve_original.unwrap_or(true);
     let declared_name = meta
         .file_name
         .as_deref()
@@ -592,106 +592,6 @@ pub async fn ingest_media_bytes(
                     .await;
             }
         }
-    } else if false
-        && !is_e2ee
-        && !preserve_original
-        && matches!(backend_kind, "local_cas" | "s3_ready")
-        && matches!(sniffed.kind, MediaKind::Image | MediaKind::AnimatedImage)
-    {
-        // Spec 158: Active images stay untouched on day 0 and compress automatically after 15 days idle via `compress_inactive_images_15d`.
-        if let Ok(opt) = optimize_chat_image(&bytes) {
-            if opt.bytes.len() < bytes.len() {
-                let opt_sha = sha256_bytes(&opt.bytes);
-                let opt_b3: [u8; 32] = blake3::hash(&opt.bytes).into();
-                let opt_key = if backend_kind == "s3_ready" {
-                    format!("cas/{}", LocalFileStorageAdapter::cas_key_for_sha(&opt_b3, opt.ext))
-                } else {
-                    LocalFileStorageAdapter::cas_key_for_sha(&opt_sha, opt.ext)
-                };
-                let opt_scope = format!("{cas_scope}:opt");
-                let put_ok = if backend_kind == "s3_ready" {
-                    storage.s3.put_object(&opt_key, opt.bytes.clone(), opt.mime, None).await.is_ok()
-                } else {
-                    storage.local_cas.put_object(&opt_key, opt.bytes.clone(), opt.mime, None).await.is_ok()
-                };
-                if put_ok {
-                    let oid = sqlx::query_scalar::<_, Uuid>(
-                        r#"
-                        INSERT INTO media_objects
-                            (id, cas_scope, sha256, blake3, storage_backend, storage_key, mime_type, file_ext,
-                             compression_codec, compression_ratio, quality_ssim, media_class, ai_recommended,
-                             byte_size, original_byte_size, width, height, is_animated, ref_count, variant_of, variant_kind)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, 'optimized')
-                        ON CONFLICT (cas_scope, variant_kind) DO UPDATE SET ref_count = media_objects.ref_count + 1
-                        RETURNING id
-                        "#,
-                    )
-                    .bind(Uuid::new_v4())
-                    .bind(&opt_scope)
-                    .bind(&opt_sha[..])
-                    .bind(&opt_b3[..])
-                    .bind(backend_kind)
-                    .bind(&opt_key)
-                    .bind(opt.mime)
-                    .bind(opt.ext)
-                    .bind(opt.codec)
-                    .bind(opt.compression_ratio)
-                    .bind(opt.estimated_ssim)
-                    .bind(&opt.media_class)
-                    .bind(opt.ai_recommended)
-                    .bind(opt.bytes.len() as i64)
-                    .bind(bytes.len() as i64)
-                    .bind(opt.width as i32)
-                    .bind(opt.height as i32)
-                    .bind(matches!(sniffed.kind, MediaKind::AnimatedImage))
-                    .bind(original_obj_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
-                    opt_obj_id = Some(oid);
-                }
-            }
-            if let Some(tb) = opt.thumb_bytes {
-                let tb_sha = sha256_bytes(&tb);
-                let tb_b3: [u8; 32] = blake3::hash(&tb).into();
-                let tb_key = if backend_kind == "s3_ready" {
-                    format!("cas/{}", LocalFileStorageAdapter::cas_key_for_sha(&tb_b3, opt.thumb_ext))
-                } else {
-                    LocalFileStorageAdapter::cas_key_for_sha(&tb_sha, opt.thumb_ext)
-                };
-                let tb_scope = format!("{cas_scope}:thumb");
-                let put_ok = if backend_kind == "s3_ready" {
-                    storage.s3.put_object(&tb_key, tb.clone(), opt.thumb_mime, None).await.is_ok()
-                } else {
-                    storage.local_cas.put_object(&tb_key, tb.clone(), opt.thumb_mime, None).await.is_ok()
-                };
-                if put_ok {
-                    let tid = sqlx::query_scalar::<_, Uuid>(
-                        r#"
-                        INSERT INTO media_objects
-                            (id, cas_scope, sha256, blake3, storage_backend, storage_key, mime_type, file_ext,
-                             compression_codec, byte_size, original_byte_size, width, height, is_animated, ref_count, variant_of, variant_kind)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'avif_thumb', $9, $10, 320, 320, FALSE, 1, $11, 'thumb')
-                        ON CONFLICT (cas_scope, variant_kind) DO UPDATE SET ref_count = media_objects.ref_count + 1
-                        RETURNING id
-                        "#,
-                    )
-                    .bind(Uuid::new_v4())
-                    .bind(&tb_scope)
-                    .bind(&tb_sha[..])
-                    .bind(&tb_b3[..])
-                    .bind(backend_kind)
-                    .bind(&tb_key)
-                    .bind(opt.thumb_mime)
-                    .bind(opt.thumb_ext)
-                    .bind(tb.len() as i64)
-                    .bind(bytes.len() as i64)
-                    .bind(original_obj_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
-                    thumb_obj_id = Some(tid);
-                }
-            }
-        }
     }
 
     let ref_id = Uuid::new_v4();
@@ -980,7 +880,7 @@ pub async fn serve_media_reference(
 
 pub async fn auth_caller(state: &AppState, headers: &HeaderMap) -> AppResult<crate::auth::session::AuthUser> {
     let tok = parse_cookie(headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    authenticate_session(&state.db, &state.config, tok).await
+    authenticate_session_state(&state, tok).await
 }
 
 async fn handle_capabilities(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<serde_json::Value>> {

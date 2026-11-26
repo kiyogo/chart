@@ -20,7 +20,7 @@ use crate::{
     community::audit,
     enterprise::{
         hr,
-        models::{self, clean_req, csv_escape, emit_enterprise, ent_perm, load_ctx, valid_ymd},
+        models::{clean_req, csv_escape, emit_enterprise, ent_perm, load_ctx, valid_ymd},
         ops, work,
     },
     error::{AppError, AppResult},
@@ -653,32 +653,31 @@ pub fn trigger_workflows<'a>(
                 }
                 "webhook" => {
                     if let Some(url) = cfg.get("url").and_then(|v| v.as_str()) {
-                        if models::safe_webhook_url(url) {
-                            let client = reqwest::Client::builder()
-                                .redirect(reqwest::redirect::Policy::none())
-                                .timeout(std::time::Duration::from_secs(4))
-                                .build();
-                            if let Ok(cli) = client {
-                                let res = cli
-                                    .post(url)
-                                    .json(&json!({ "event": event, "server_id": server_id, "payload": payload }))
-                                    .send()
-                                    .await;
-                                match res {
-                                    Ok(r) if r.status().is_success() => detail = format!("http {}", r.status()),
-                                    Ok(r) => {
-                                        status = "error";
-                                        detail = format!("http {}", r.status());
-                                    }
-                                    Err(e) => {
-                                        status = "error";
-                                        detail = e.to_string();
+                        match crate::plugins::security::validate_outbound_url(url).await {
+                            Ok(validated) => {
+                                if let Ok(cli) = crate::plugins::security::build_pinned_client(&validated, 4) {
+                                    let res = cli
+                                        .post(&validated.url)
+                                        .json(&json!({ "event": event, "server_id": server_id, "payload": payload }))
+                                        .send()
+                                        .await;
+                                    match res {
+                                        Ok(r) if r.status().is_success() => detail = format!("http {}", r.status()),
+                                        Ok(r) => {
+                                            status = "error";
+                                            detail = format!("http {}", r.status());
+                                        }
+                                        Err(e) => {
+                                            status = "error";
+                                            detail = e.to_string();
+                                        }
                                     }
                                 }
                             }
-                        } else {
-                            status = "skipped";
-                            detail = "unsafe webhook url".to_string();
+                            Err(_) => {
+                                status = "skipped";
+                                detail = "unsafe webhook url".to_string();
+                            }
                         }
                     } else {
                         status = "skipped";

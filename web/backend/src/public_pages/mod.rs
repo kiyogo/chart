@@ -153,7 +153,7 @@ async fn community_page(State(state): State<AppState>, Path(server_id): Path<Uui
         return not_found();
     };
     let channels = sqlx::query!(
-        "SELECT id, name FROM channels WHERE server_id = $1 AND channel_type IN ('text', 'announcement') ORDER BY position LIMIT 10",
+        "SELECT id, name FROM channels WHERE server_id = $1 AND NOT is_private AND channel_type IN ('text', 'announcement') ORDER BY position LIMIT 10",
         server_id
     )
     .fetch_all(&state.db)

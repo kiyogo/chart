@@ -171,8 +171,11 @@ pub async fn update_role(
 
 pub async fn delete_role(State(state): State<AppState>, headers: HeaderMap, Path((server_id, role_id)): Path<(Uuid, Uuid)>) -> AppResult<Json<serde_json::Value>> {
     let uid = auth_user(&state, &headers).await?;
-    let (mine, _) = require(&state.db, server_id, uid, perm::MANAGE_ROLES).await?;
-    let role = sqlx::query!("SELECT name, permissions FROM server_roles WHERE id = $1 AND server_id = $2", role_id, server_id)
+    let (mine, my_ent, _) = effective_all(&state.db, server_id, uid).await?;
+    if mine & perm::MANAGE_ROLES == 0 {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+    let role = sqlx::query!("SELECT name, permissions, enterprise_permissions FROM server_roles WHERE id = $1 AND server_id = $2", role_id, server_id)
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::NotFound("role_not_found"))?;
@@ -181,6 +184,9 @@ pub async fn delete_role(State(state): State<AppState>, headers: HeaderMap, Path
     }
     if role.permissions & !mine != 0 {
         return Err(AppError::Forbidden("cannot_grant_missing_permissions"));
+    }
+    if role.enterprise_permissions & !my_ent != 0 {
+        return Err(AppError::Forbidden("cannot_grant_missing_enterprise_permissions"));
     }
     sqlx::query!("DELETE FROM server_roles WHERE id = $1 AND server_id = $2", role_id, server_id).execute(&state.db).await?;
     crate::community::audit(&state, server_id, uid, "role_deleted", &role_id.to_string()).await;
@@ -205,8 +211,11 @@ pub async fn unassign_role(
 
 async fn set_member_role(state: AppState, headers: HeaderMap, server_id: Uuid, user_id: Uuid, role_id: Uuid, on: bool) -> AppResult<Json<serde_json::Value>> {
     let uid = auth_user(&state, &headers).await?;
-    let (mine, _) = require(&state.db, server_id, uid, perm::MANAGE_ROLES).await?;
-    let role = sqlx::query!("SELECT name, permissions FROM server_roles WHERE id = $1 AND server_id = $2", role_id, server_id)
+    let (mine, my_ent, _) = effective_all(&state.db, server_id, uid).await?;
+    if mine & perm::MANAGE_ROLES == 0 {
+        return Err(AppError::Forbidden("insufficient_permissions"));
+    }
+    let role = sqlx::query!("SELECT name, permissions, enterprise_permissions FROM server_roles WHERE id = $1 AND server_id = $2", role_id, server_id)
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::NotFound("role_not_found"))?;
@@ -215,6 +224,9 @@ async fn set_member_role(state: AppState, headers: HeaderMap, server_id: Uuid, u
     }
     if role.permissions & !mine != 0 {
         return Err(AppError::Forbidden("cannot_grant_missing_permissions"));
+    }
+    if role.enterprise_permissions & !my_ent != 0 {
+        return Err(AppError::Forbidden("cannot_grant_missing_enterprise_permissions"));
     }
     let member = sqlx::query_scalar!(r#"SELECT 1 AS "one!" FROM server_members WHERE server_id = $1 AND user_id = $2"#, server_id, user_id)
         .fetch_optional(&state.db)

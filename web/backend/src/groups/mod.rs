@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
     models::{
@@ -124,10 +124,17 @@ async fn create_group(
 ) -> AppResult<Json<GroupItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     if payload.name.trim().is_empty() {
         return Err(AppError::BadRequest("group_name_cannot_be_empty"));
+    }
+    if let Some(ref b) = payload.banner_url
+        && !b.is_empty()
+        && ((!b.starts_with("/uploads/banners/") && !b.starts_with("/uploads/media/"))
+            || b.contains(".."))
+    {
+        return Err(AppError::BadRequest("invalid_banner_url"));
     }
 
     let group_id = Uuid::new_v4();
@@ -235,7 +242,7 @@ async fn list_my_groups(
 ) -> AppResult<Json<Vec<GroupItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let rows = sqlx::query!(
         r#"
@@ -278,7 +285,7 @@ async fn get_group_details(
 ) -> AppResult<Json<GroupItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id).await?;
     if role.is_none() {
@@ -320,14 +327,14 @@ async fn update_group(
 ) -> AppResult<Json<GroupItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
         .ok_or(AppError::Forbidden("not_a_group_member"))?;
 
     if !manage::is_admin_role(&role) {
-        if payload.description.is_some() {
+        if payload.description.is_some() || payload.banner_url.is_some() {
             return Err(AppError::Forbidden("insufficient_permissions"));
         }
         if payload.name.is_some() {
@@ -336,6 +343,13 @@ async fn update_group(
         if payload.avatar_url.is_some() {
             manage::check_member_may(&state.db, group_id, &role, "avatar").await?;
         }
+    }
+    if let Some(ref b) = payload.banner_url
+        && !b.is_empty()
+        && ((!b.starts_with("/uploads/banners/") && !b.starts_with("/uploads/media/"))
+            || b.contains(".."))
+    {
+        return Err(AppError::BadRequest("invalid_banner_url"));
     }
 
     let row = sqlx::query!(
@@ -402,7 +416,7 @@ async fn delete_group(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let group = sqlx::query!("SELECT owner_id FROM groups WHERE id = $1", group_id)
         .fetch_optional(&state.db)
@@ -428,7 +442,7 @@ async fn list_members(
 ) -> AppResult<Json<Vec<GroupMemberItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id).await?;
     if role.is_none() {
@@ -479,7 +493,7 @@ async fn add_member(
 ) -> AppResult<Json<GroupMemberItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -561,7 +575,7 @@ async fn remove_member(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let my_role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -635,7 +649,7 @@ async fn update_member_role(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let my_role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -711,7 +725,7 @@ async fn create_invite(
 ) -> AppResult<Json<GroupInviteItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -760,7 +774,7 @@ async fn join_by_invite(
 ) -> AppResult<Json<GroupItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let invite = sqlx::query!(
         "SELECT group_id, max_uses, uses, expires_at FROM group_invites WHERE code = $1",
@@ -900,7 +914,7 @@ async fn list_messages(
 ) -> AppResult<Json<Vec<GroupMessageItem>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1019,7 +1033,7 @@ async fn send_message(
 ) -> AppResult<Json<GroupMessageItem>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1121,7 +1135,7 @@ async fn edit_message(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let _role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1176,7 +1190,7 @@ async fn delete_message(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1225,7 +1239,7 @@ async fn pin_message(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1257,7 +1271,7 @@ async fn list_categories(
     Path(group_id): Path<Uuid>,
 ) -> AppResult<Json<Vec<GroupCategoryItem>>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id).await?;
     if role.is_none() {
@@ -1283,7 +1297,7 @@ async fn create_category(
     Json(payload): Json<CreateGroupCategoryRequest>,
 ) -> AppResult<Json<GroupCategoryItem>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1323,7 +1337,7 @@ async fn delete_category(
     Path((group_id, category_id)): Path<(Uuid, Uuid)>,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1346,7 +1360,7 @@ async fn list_channels(
     Path(group_id): Path<Uuid>,
 ) -> AppResult<Json<Vec<GroupChannelItem>>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1378,7 +1392,7 @@ async fn create_channel(
     Json(payload): Json<CreateGroupChannelRequest>,
 ) -> AppResult<Json<GroupChannelItem>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1441,7 +1455,7 @@ async fn delete_channel(
     Path((group_id, channel_id)): Path<(Uuid, Uuid)>,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1480,7 +1494,7 @@ async fn toggle_reaction(
     Json(payload): Json<ToggleReactionRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id).await?;
     if role.is_none() {
@@ -1559,7 +1573,7 @@ async fn upload_group_avatar(
     body: Bytes,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?
@@ -1622,7 +1636,7 @@ async fn upload_group_banner(
     body: Bytes,
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token = parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let role = get_member_role(&state.db, group_id, user.id)
         .await?

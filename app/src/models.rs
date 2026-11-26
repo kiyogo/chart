@@ -26,6 +26,8 @@ fn default_true_provider() -> bool {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProvidersResponse {
     pub google: bool,
+    #[serde(default)]
+    pub kiyo: bool,
     pub dev: bool,
     #[serde(default = "default_true_provider")]
     pub password: bool,

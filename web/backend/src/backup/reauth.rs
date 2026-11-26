@@ -35,7 +35,7 @@ pub(crate) fn argon2_instance() -> Argon2<'static> {
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
 }
 
-pub(crate) fn hash_argon2_phc(password: &str) -> AppResult<String> {
+pub fn hash_argon2_phc(password: &str) -> AppResult<String> {
     let mut salt_bytes = [0u8; 16];
     getrandom::fill(&mut salt_bytes).map_err(|_| AppError::Internal)?;
     let salt = SaltString::encode_b64(&salt_bytes).map_err(|_| AppError::Internal)?;

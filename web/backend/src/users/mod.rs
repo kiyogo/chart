@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     auth::{
         AppState,
-        session::{SESSION_COOKIE_NAME, authenticate_session, parse_cookie},
+        session::{SESSION_COOKIE_NAME, authenticate_session_state, parse_cookie},
     },
     error::{AppError, AppResult},
 };
@@ -105,7 +105,7 @@ async fn handle_set_name(
 ) -> AppResult<Json<UserResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let (display_name, search_norm) = validate_and_normalize_username(&payload.name)?;
 
@@ -153,7 +153,7 @@ async fn handle_change_username(
 ) -> AppResult<Json<UserResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
     let (display_name, search_norm) = validate_and_normalize_username(&payload.name)?;
     let res = sqlx::query!(
         "UPDATE users SET username = $1, username_norm = $2 WHERE id = $3",
@@ -177,7 +177,7 @@ async fn handle_search(
 ) -> AppResult<Json<Vec<UserSearchResult>>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     let q_raw = query.q.unwrap_or_default();
     let q_trimmed = q_raw.trim();
@@ -272,7 +272,7 @@ async fn handle_upload_avatar(
 ) -> AppResult<Json<AvatarUploadResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     if body.is_empty() {
         return Err(AppError::BadRequest("empty_avatar_payload"));
@@ -335,7 +335,7 @@ async fn handle_upload_banner(
 ) -> AppResult<Json<serde_json::Value>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     if body.is_empty() {
         return Err(AppError::BadRequest("empty_banner_payload"));
@@ -390,7 +390,7 @@ async fn handle_update_profile(
 ) -> AppResult<Json<crate::models::UserProfileResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let user = authenticate_session_state(&state, session_token).await?;
 
     if let Some(ref bio) = payload.bio {
         if bio.len() > 256 {
@@ -419,7 +419,7 @@ async fn handle_update_profile(
     }
     // Banners must come from our own upload endpoint (no arbitrary external URLs).
     if let Some(ref url) = payload.custom_banner_url {
-        if !url.is_empty() && !url.starts_with("/uploads/banners/") {
+        if !url.is_empty() && (!url.starts_with("/uploads/banners/") || url.contains("..")) {
             return Err(AppError::BadRequest("invalid_banner_url"));
         }
     }
@@ -574,7 +574,7 @@ async fn handle_get_profile(
 ) -> AppResult<Json<crate::models::UserProfileResponse>> {
     let session_token =
         parse_cookie(&headers, SESSION_COOKIE_NAME).ok_or(AppError::Unauthorized)?;
-    let _user = authenticate_session(&state.db, &state.config, session_token).await?;
+    let _user = authenticate_session_state(&state, session_token).await?;
 
     let row = sqlx::query!(
         "SELECT id, username, display_name, avatar_url, custom_banner_url, bio, status_text, status_emoji, presence, badges, social_links, profile_color, profile_accent, avatar_decoration, profile_effect, created_at, avatar_effect, name_effect, nameplate, custom_decoration_url, custom_nameplate_url, custom_effect_url, custom_effect_anim FROM users WHERE id = $1",
