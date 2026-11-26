@@ -12,3 +12,4 @@
    - Build `app/dist/` (`./app/build-web.sh release`) locally and upload to `/www/wwwroot/chart/app/dist`.
    - Sync `web/backend` + `crates/` to `/www/wwwroot/chart/` and compile release binary on server with `rustup` (matching GLIBC 2.39), update `.env` (`PUBLIC_URL`, `CORS_ALLOWED_ORIGINS`, `GOOGLE_REDIRECT_URL`, `STATIC_DIR`, `VALKEY_URL`), restart `chart.service`.
    - Configure aaPanel (`default.db` + Nginx vhosts + Let's Encrypt SSL via `acme.sh` / aaPanel) for `chat.kiyo.vn`, `api.chat01vn.kiyo.vn`, `v01.chat-vn.kiyo.vn`, and disable `api.chat.kiyo.vn`.
+   - Ensure `chat.kiyo.vn` Nginx CSP includes `'wasm-unsafe-eval' 'unsafe-eval' blob:` in `script-src` (required by Dioxus `document::eval`), `worker-src 'self' blob:`, `frame-src 'self' blob: data:`, plus `api.chat01vn.kiyo.vn` and `v01.chat-vn.kiyo.vn` in `connect-src`/`img-src`/`media-src`.
