@@ -13783,22 +13783,25 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   color: var(--text-primary);
 }
 .contacts-surface-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 .contacts-toolbar-card {
   display: flex;
   flex-direction: column;
   overflow: visible;
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 .contacts-toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-3);
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
+  padding: 0 0 var(--space-3);
+  border-bottom: none;
 }
 .contacts-toolbar-search {
   flex: 1;
@@ -13847,7 +13850,7 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   flex-direction: column;
 }
 .contacts-alpha-letter {
-  padding: var(--space-3) var(--space-4) var(--space-1);
+  padding: var(--space-3) var(--space-2) var(--space-1);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   color: var(--text-muted);
@@ -13856,11 +13859,11 @@ html[data-surface-tone="dark"] .skeleton-avatar {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   min-height: 64px;
   width: 100%;
   text-align: left;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   position: relative;
 }
 .contacts-list-row:hover {
@@ -13943,10 +13946,13 @@ html[data-surface-tone="dark"] .skeleton-avatar {
 
 /* Add Friend / Paste Invite Link Box */
 .contacts-add-box {
-  padding: var(--space-4);
+  padding: 0 0 var(--space-2);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 .contacts-add-form {
   display: flex;
@@ -14100,7 +14106,6 @@ html[data-surface-tone="dark"] .skeleton-avatar {
 
 /* Glass / Scrim Theme Compatibility */
 html[data-panel-scrim="true"] .contacts-header,
-html[data-panel-scrim="true"] .contacts-surface-card,
 html[data-panel-scrim="true"] .contacts-req-card {
   background: var(--scrim-surface, var(--bg-surface));
   backdrop-filter: blur(var(--glass-blur, 14px));

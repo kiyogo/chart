@@ -529,7 +529,6 @@ pub fn ContactsMainPanel(
                             let nb = fold(&friend_display_name(b));
                             if sort_mode == "za" { nb.cmp(&na) } else { na.cmp(&nb) }
                         });
-                        let total_shown = filtered.len();
                         let mut map: BTreeMap<char, Vec<FriendItem>> = BTreeMap::new();
                         for f in filtered {
                             map.entry(alpha_bucket(&friend_display_name(&f))).or_default().push(f);
@@ -542,10 +541,7 @@ pub fn ContactsMainPanel(
                         let open_menu_id = friend_menu_for();
 
                         rsx! {
-                            div { class: "contacts-summary-bar",
-                                span { class: "contacts-section-heading", "Friends ({total_shown})" }
-                            }
-                            div { class: "contacts-surface-card contacts-toolbar-card",
+                            div { class: "contacts-toolbar-card",
                                 div { class: "contacts-toolbar",
                                     div { class: "search-field contacts-toolbar-search",
                                         SearchIcon { size: 16 }
@@ -778,13 +774,9 @@ pub fn ContactsMainPanel(
                             "members" => b.members().cmp(&a.members()).then_with(|| fold(a.name()).cmp(&fold(b.name()))),
                             _ => fold(a.name()).cmp(&fold(b.name())),
                         });
-                        let shown_count = items.len();
 
                         rsx! {
-                            div { class: "contacts-summary-bar",
-                                span { class: "contacts-section-heading", "Groups and communities ({shown_count})" }
-                            }
-                            div { class: "contacts-surface-card contacts-toolbar-card",
+                            div { class: "contacts-toolbar-card",
                                 div { class: "contacts-toolbar",
                                     div { class: "search-field contacts-toolbar-search",
                                         SearchIcon { size: 16 }
@@ -893,7 +885,7 @@ pub fn ContactsMainPanel(
 
                         rsx! {
                             // Inline Add-Friend bar
-                            div { class: "contacts-surface-card contacts-add-box",
+                            div { class: "contacts-add-box",
                                 form {
                                     class: "contacts-add-form",
                                     onsubmit: move |e| {
@@ -1011,7 +1003,7 @@ pub fn ContactsMainPanel(
                             section { class: "contacts-section",
                                 h3 { class: "contacts-section-heading", "Received friend requests ({recv_count})" }
                                 if pending_requests.is_empty() {
-                                    div { class: "contacts-surface-card contacts-empty-inline",
+                                    div { class: "contacts-empty-inline",
                                         "No received friend requests"
                                     }
                                 } else {
@@ -1069,7 +1061,7 @@ pub fn ContactsMainPanel(
                             section { class: "contacts-section",
                                 h3 { class: "contacts-section-heading", "Sent friend requests ({sent_count})" }
                                 if sent_requests.is_empty() {
-                                    div { class: "contacts-surface-card contacts-empty-inline",
+                                    div { class: "contacts-empty-inline",
                                         "No sent friend requests"
                                     }
                                 } else {
@@ -1126,7 +1118,7 @@ pub fn ContactsMainPanel(
                         let sent_len = target_invites.sent.len();
 
                         rsx! {
-                            div { class: "contacts-surface-card contacts-add-box",
+                            div { class: "contacts-add-box",
                                 form {
                                     class: "contacts-add-form",
                                     onsubmit: move |e| {
@@ -1158,7 +1150,7 @@ pub fn ContactsMainPanel(
                             section { class: "contacts-section",
                                 h3 { class: "contacts-section-heading", "Received invitations ({recv_len})" }
                                 if target_invites.received.is_empty() {
-                                    div { class: "contacts-surface-card contacts-empty-inline",
+                                    div { class: "contacts-empty-inline",
                                         "No pending group or community invites"
                                     }
                                 } else {
@@ -1225,7 +1217,7 @@ pub fn ContactsMainPanel(
                             section { class: "contacts-section",
                                 h3 { class: "contacts-section-heading", "Sent invitations ({sent_len})" }
                                 if target_invites.sent.is_empty() {
-                                    div { class: "contacts-surface-card contacts-empty-inline",
+                                    div { class: "contacts-empty-inline",
                                         "No sent invitations"
                                     }
                                 } else {
