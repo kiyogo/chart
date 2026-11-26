@@ -16,13 +16,13 @@ use crate::{
 const RELEASES_URL: &str = "https://github.com/kiyogo/chart/releases";
 const RELEASES_LATEST_URL: &str = "https://github.com/kiyogo/chart/releases/latest";
 
-/// Generates a crisp monochrome SVG QR code string for any URL without excessive outer margin.
+/// Generates a crisp monochrome SVG QR code string with standard quiet zone for reliable scanning.
 pub fn render_qr_svg(uri: &str, dark_fg: &str, light_bg: &str) -> String {
     match QrCode::new(uri.as_bytes()) {
         Ok(code) => code
             .render::<svg::Color<'_>>()
             .min_dimensions(180, 180)
-            .quiet_zone(false)
+            .quiet_zone(true)
             .dark_color(svg::Color(dark_fg))
             .light_color(svg::Color(light_bg))
             .build(),

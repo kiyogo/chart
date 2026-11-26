@@ -603,6 +603,8 @@ input[type="color"] {
   left: calc(100% + 4px);
   width: 12.75rem;
   min-width: 12.75rem;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
   padding: var(--space-2);
   border-radius: var(--radius-lg);
   align-items: center;
@@ -618,11 +620,11 @@ input[type="color"] {
   width: 22px;
 }
 .download-popover-qr {
-  padding: 0;
+  padding: 6px;
   width: 100%;
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: transparent;
+  background: #FFFFFF;
   border: none;
   box-shadow: none;
   display: flex;
@@ -8327,9 +8329,9 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   min-width: 12.5rem;
 }
 .download-qr-box {
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
+  background: #FFFFFF;
+  padding: 8px;
+  border-radius: var(--radius-lg);
   border: none;
   display: inline-flex;
 }
