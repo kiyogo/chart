@@ -1,9 +1,9 @@
-# Spec 171: Fix Download QR Code Contrast, Quiet Zone & Popover Framing
+# Spec 171: Fix Download QR Code Theme Contrast & Sharp Corners
 
 ## Problem
-In dark mode, the left-rail download QR popover (`.download-popover-qr`) and download page QR box (`.download-qr-box`) rendered with `quiet_zone(false)`, `padding: 0`, and `background: transparent`. This caused the `#0F172A` outer finder squares to merge into the `#1C2230` dark popover background and get clipped by `border-radius: var(--radius-md); overflow: hidden;`.
+The download QR code used hardcoded `#0F172A` on `#FFFFFF` and rounded corners (`border-radius`), clashing with Dark Mode and violating the sharp-corner QR requirement.
 
 ## Requirements
-- Enable `quiet_zone(true)` in `render_qr_svg` (`app/src/components/download_view.rs`) so the SVG includes the standard quiet zone around all 4 edges.
-- Give `.download-popover-qr` and `.download-qr-box` a crisp `#FFFFFF` background with inner padding (`6px` / `8px`) while keeping `border: none` and `svg` width `>= 155px`.
-- Guard `.rail-menu.download-rail-menu` with `max-height: calc(100dvh - 16px); overflow-y: auto;` so it never overflows shorter viewports.
+- Keep QR containers strictly sharp-cornered (`border-radius: 0`) on both `.download-popover-qr` and `.download-qr-box` (no rounded clipping).
+- Use `currentColor` foreground and `transparent` background in `render_qr_svg` (`quiet_zone(false)`) so the QR automatically adapts to Light Mode (`#0F172A` on `#FFFFFF`), Dark Mode (`#F4F6FA` on `#1C2230`), and surface-tone overrides.
+- Keep `max-height: calc(100dvh - 16px); overflow-y: auto;` on `.rail-menu.download-rail-menu`.

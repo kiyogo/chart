@@ -620,18 +620,19 @@ input[type="color"] {
   width: 22px;
 }
 .download-popover-qr {
-  padding: 6px;
+  padding: 0;
   width: 100%;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: #FFFFFF;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+  color: inherit;
   border: none;
   box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.download-popover-qr svg { width: 100%; max-width: 174px; height: auto; aspect-ratio: 1 / 1; display: block; }
+.download-popover-qr svg { width: 100%; max-width: 174px; height: auto; aspect-ratio: 1 / 1; display: block; border-radius: 0; }
 .download-popover-desktop-btn {
   width: 100%;
   min-height: 2.375rem;
@@ -8329,13 +8330,14 @@ html[data-reduce-motion="true"] .avm .avm-fx { display: none; }
   min-width: 12.5rem;
 }
 .download-qr-box {
-  background: #FFFFFF;
-  padding: 8px;
-  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-primary);
+  padding: 0;
+  border-radius: 0;
   border: none;
   display: inline-flex;
 }
-.download-qr-box svg { width: 164px; height: 164px; display: block; }
+.download-qr-box svg { width: 164px; height: 164px; display: block; border-radius: 0; }
 .download-qr-caption {
   display: flex;
   flex-direction: column;
@@ -10267,7 +10269,7 @@ html[data-rail-tone="light"][data-app-wp]:not([data-app-wp="none"]) .app-rail .r
 .download-qr-box {
   position: relative;
   overflow: hidden;
-  border-radius: var(--radius-lg);
+  border-radius: 0;
 }
 .cw-qr-scan {
   position: absolute;

@@ -101,7 +101,7 @@ pub fn AppRail(
     let notif_count = unread_dm_count + pending_friend_count;
     // Spec 166: Compute QR SVG strictly lazily ONLY when download popover is actually open!
     let qr_svg = if download_hover_open() {
-        render_qr_svg(&download_qr_url(), "#0F172A", "#FFFFFF")
+        render_qr_svg(&download_qr_url(), "currentColor", "transparent")
     } else {
         String::new()
     };
