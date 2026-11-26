@@ -43,14 +43,7 @@ pub struct DevicePasskeySignature {
 
 /// Resolve relative backend URLs (e.g. `/uploads/avatars/...`) for the current platform.
 pub fn resolve_asset_url(url: &str) -> String {
-    let base = api_base();
-    if base.is_empty() || url.starts_with("http://") || url.starts_with("https://") || url.starts_with("data:") {
-        url.to_string()
-    } else if url.starts_with('/') {
-        format!("{base}{url}")
-    } else {
-        format!("{base}/{url}")
-    }
+    resolve_http_url(url)
 }
 
 /// Format an ISO-8601 timestamp as local HH:MM matching JS `toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })`.

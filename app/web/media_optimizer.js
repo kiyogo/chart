@@ -1449,7 +1449,9 @@
         if (window.__chatwCore && window.__chatwCore.isConnected()) {
           return window.__chatwCore.rpc('POST', `/api/recovery/requests/${rid}/signal`, body, 'application/json').catch(() => {});
         }
-        return fetch(`/api/recovery/requests/${rid}/signal`, {
+        const sigPath = `/api/recovery/requests/${rid}/signal`;
+        const sigUrl = globalThis.CHATW_RESOLVE_URL ? globalThis.CHATW_RESOLVE_URL(sigPath) : sigPath;
+        return fetch(sigUrl, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -1470,7 +1472,9 @@
         if (window.__chatwCore && window.__chatwCore.isConnected()) {
           return window.__chatwCore.rpc('POST', `/api/recovery/requests/${rid}/signal`, body, 'application/json').catch(() => {});
         }
-        return fetch(`/api/recovery/requests/${rid}/signal`, {
+        const sigPath = `/api/recovery/requests/${rid}/signal`;
+        const sigUrl = globalThis.CHATW_RESOLVE_URL ? globalThis.CHATW_RESOLVE_URL(sigPath) : sigPath;
+        return fetch(sigUrl, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },

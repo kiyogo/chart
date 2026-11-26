@@ -69,6 +69,16 @@
   };
 
   function defaultWsUrl() {
+    const apiUrl = typeof globalThis !== 'undefined' && typeof globalThis.CHATW_API_URL === 'string'
+      ? globalThis.CHATW_API_URL.trim().replace(/\/+$/, '')
+      : '';
+    if (apiUrl) {
+      try {
+        const u = new URL(apiUrl);
+        const wsProto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${wsProto}//${u.host}/api/ws?proto=rpc-bin`;
+      } catch (_) {}
+    }
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${location.host}/api/ws?proto=rpc-bin`;
   }

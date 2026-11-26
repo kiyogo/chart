@@ -632,8 +632,9 @@
     },
 
     async streamDownloadPost(url, jsonBody, defaultFilename, extraHeaders = {}) {
+      const targetUrl = globalThis.CHATW_RESOLVE_URL ? globalThis.CHATW_RESOLVE_URL(url) : url;
       const headers = { 'Content-Type': 'application/json', ...extraHeaders };
-      const res = await fetch(url, {
+      const res = await fetch(targetUrl, {
         method: 'POST',
         credentials: 'include',
         headers,
@@ -708,7 +709,8 @@
       if (backupPassword && backupPassword.length > 0) {
         headers['x-backup-password'] = backupPassword;
       }
-      const res = await fetch(url, {
+      const targetUrl = globalThis.CHATW_RESOLVE_URL ? globalThis.CHATW_RESOLVE_URL(url) : url;
+      const res = await fetch(targetUrl, {
         method: 'POST',
         credentials: 'include',
         headers,

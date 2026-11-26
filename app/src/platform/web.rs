@@ -9,8 +9,50 @@ use web_sys::{Headers, Request, RequestCredentials, RequestInit, Response, WebSo
 
 use crate::models::{ApiError, WsEvent};
 
+fn read_global_origin(key: &str) -> String {
+    web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &JsValue::from_str(key)).ok())
+        .and_then(|v| v.as_string())
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| s.starts_with("http://") || s.starts_with("https://"))
+        .unwrap_or_default()
+}
+
 pub fn api_base() -> String {
-    String::new()
+    read_global_origin("CHATW_API_URL")
+}
+
+pub fn cdn_base() -> String {
+    let cdn = read_global_origin("CHATW_CDN_URL");
+    if cdn.is_empty() { api_base() } else { cdn }
+}
+
+fn is_media_path(path: &str) -> bool {
+    path.starts_with("/uploads/")
+        || path.starts_with("/api/attachments/")
+        || path.starts_with("/api/media/")
+        || path.starts_with("/api/storage/uploads/")
+        || path.starts_with("/api/storage/msg-chunks/")
+        || path.starts_with("/stickers/")
+        || path.starts_with("/wallpapers/")
+}
+
+pub fn resolve_http_url(path: &str) -> String {
+    if path.starts_with("http://")
+        || path.starts_with("https://")
+        || path.starts_with("data:")
+        || path.starts_with("blob:")
+    {
+        return path.to_string();
+    }
+    let base = if is_media_path(path) { cdn_base() } else { api_base() };
+    if base.is_empty() {
+        path.to_string()
+    } else if path.starts_with('/') {
+        format!("{base}{path}")
+    } else {
+        format!("{base}/{path}")
+    }
 }
 
 pub fn initial_window_width() -> u32 {
@@ -235,7 +277,8 @@ pub async fn http_request(
     }
     opts.set_headers(&headers);
 
-    let request = Request::new_with_str_and_init(path, &opts).map_err(|_| ApiError {
+    let resolved_url = resolve_http_url(path);
+    let request = Request::new_with_str_and_init(&resolved_url, &opts).map_err(|_| ApiError {
         code: "request_init_failed".into(),
         status: 0,
     })?;
@@ -314,26 +357,33 @@ fn start_web_oauth(endpoint: &str, err_msg: &str) -> Result<bool, String> {
 }
 
 pub async fn start_google_oauth() -> Result<bool, String> {
-    start_web_oauth("/api/auth/google", "Cannot open Google sign in page")
+    start_web_oauth(&resolve_http_url("/api/auth/google"), "Cannot open Google sign in page")
 }
 
 pub async fn start_kiyo_oauth() -> Result<bool, String> {
-    start_web_oauth("/api/auth/kiyo", "Cannot open Kiyo sign in page")
+    start_web_oauth(&resolve_http_url("/api/auth/kiyo"), "Cannot open Kiyo sign in page")
 }
 
 /// WebSocket loop offloaded to Dedicated Web Worker (`/network_worker.js`) with
 /// ECDH P-256 + AES-256-GCM encrypted binary protocol (`CWBF1`, `/api/ws?proto=bin`).
 /// Gracefully falls back to direct WebSocket only if `Worker` / Web Crypto is unavailable.
 pub async fn run_ws_loop(tx: UnboundedSender<WsEvent>, stop: Arc<AtomicBool>) {
-    let ws_url = match web_sys::window() {
-        Some(w) => {
-            let loc = w.location();
-            let proto = loc.protocol().unwrap_or_else(|_| "http:".into());
-            let host = loc.host().unwrap_or_else(|_| "127.0.0.1:8085".into());
-            let ws_proto = if proto == "https:" { "wss:" } else { "ws:" };
-            format!("{ws_proto}//{host}/api/ws")
+    let api_origin = api_base();
+    let ws_url = if let Some(rest) = api_origin.strip_prefix("https://") {
+        format!("wss://{rest}/api/ws")
+    } else if let Some(rest) = api_origin.strip_prefix("http://") {
+        format!("ws://{rest}/api/ws")
+    } else {
+        match web_sys::window() {
+            Some(w) => {
+                let loc = w.location();
+                let proto = loc.protocol().unwrap_or_else(|_| "http:".into());
+                let host = loc.host().unwrap_or_else(|_| "127.0.0.1:8085".into());
+                let ws_proto = if proto == "https:" { "wss:" } else { "ws:" };
+                format!("{ws_proto}//{host}/api/ws")
+            }
+            None => return,
         }
-        None => return,
     };
 
     // Prefer Dedicated Web Worker binary encrypted WebSocket bridge (Spec 069)
@@ -481,6 +531,8 @@ pub async fn run_ws_loop(tx: UnboundedSender<WsEvent>, stop: Arc<AtomicBool>) {
 /// Download raw bytes via SharedWorker Binary WS (`OP_MEDIA_CHUNK_REQ`) with HTTP fallback.
 pub async fn fetch_bytes(path: &str) -> Result<Vec<u8>, String> {
     let url_json = serde_json::to_string(path).unwrap_or_default();
+    let http_url = resolve_http_url(path);
+    let http_url_json = serde_json::to_string(&http_url).unwrap_or_default();
     let js = format!(
         r#"
         (async () => {{
@@ -495,7 +547,7 @@ pub async fn fetch_bytes(path: &str) -> Result<Vec<u8>, String> {
                         }}
                     }}
                 }}
-                const res = await fetch({url_json}, {{ credentials: 'include' }});
+                const res = await fetch({http_url_json}, {{ credentials: 'include' }});
                 if (!res.ok) {{ dioxus.send({{ error: 'http_' + res.status }}); return; }}
                 const buf = new Uint8Array(await res.arrayBuffer());
                 let s = '';

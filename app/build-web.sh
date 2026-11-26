@@ -68,6 +68,7 @@ for p, bg in [
 PY
 
 sed "s|/boot.js|/boot.js?v=${TS}|g" app/web/index.html > app/dist/index.html
+sed -i "s|/origins.js|/origins.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/i18n_runtime.js|/i18n_runtime.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/canvas_scrollbars.js|/canvas_scrollbars.js?v=${TS}|g" app/dist/index.html
 sed -i "s|/panel_resizer.js|/panel_resizer.js?v=${TS}|g" app/dist/index.html
@@ -84,6 +85,7 @@ sed -i "s|/plugin_runtime.js|/plugin_runtime.js?v=${TS}|g" app/dist/index.html
 sed "s|__BUILD_TS__|${TS}|g" app/web/i18n_runtime.js > app/dist/i18n_runtime.js
 mkdir -p app/dist/locales
 cp -r app/web/locales/. app/dist/locales/
+cp app/web/origins.js app/dist/origins.js
 cp app/web/canvas_scrollbars.js app/dist/canvas_scrollbars.js
 cp app/web/panel_resizer.js app/dist/panel_resizer.js
 cp app/web/custom_pickers.js app/dist/custom_pickers.js

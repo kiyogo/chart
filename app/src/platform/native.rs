@@ -25,6 +25,22 @@ pub fn api_base() -> String {
         .to_string()
 }
 
+pub fn resolve_http_url(path: &str) -> String {
+    let base = api_base();
+    if base.is_empty()
+        || path.starts_with("http://")
+        || path.starts_with("https://")
+        || path.starts_with("data:")
+        || path.starts_with("blob:")
+    {
+        path.to_string()
+    } else if path.starts_with('/') {
+        format!("{base}{path}")
+    } else {
+        format!("{base}/{path}")
+    }
+}
+
 pub fn initial_window_width() -> u32 {
     1280
 }

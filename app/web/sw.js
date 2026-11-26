@@ -6,6 +6,8 @@
 // 3. Offline App Shell & Static Asset Cache (`Cache-First` + `Stale-While-Revalidate`) for `/locales/*`,
 //    `/stickers/*`, SVG/CSS/JS/WASM assets so repeat boots make 0 redundant Fetch/XHR requests.
 
+try { self.importScripts('/origins.js?v=__BUILD_TS__'); } catch (_) {}
+
 const STREAM_PREFIXES = ['/stream/media/', '/stream/'];
 const STATIC_CACHE_NAME = 'chatw-static-v28-__BUILD_TS__';
 const SHELL_CACHE_NAME = 'chatw-shell-v28-__BUILD_TS__';
@@ -116,7 +118,8 @@ async function fetchUpstreamRange(grant, start, end, prefetchNext = false, total
   const hdrs = new Headers();
   if (limit > 0) hdrs.set('Range', `bytes=${start}-${end}`);
   if (grant.streamToken) hdrs.set('X-ChatW-Stream-Token', grant.streamToken);
-  const res = await fetch(grant.url, { credentials: 'include', headers: hdrs });
+  const targetUrl = self.CHATW_RESOLVE_URL ? self.CHATW_RESOLVE_URL(grant.url) : grant.url;
+  const res = await fetch(targetUrl, { credentials: 'include', headers: hdrs });
   const buf = new Uint8Array(await res.arrayBuffer());
   const cr = res.headers.get('content-range') || '';
   const m = cr.match(/\/(\d+)$/);

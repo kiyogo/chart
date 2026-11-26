@@ -127,7 +127,8 @@
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
     }
-    const resp = await fetch(path, opts);
+    const targetPath = globalThis.CHATW_RESOLVE_URL ? globalThis.CHATW_RESOLVE_URL(path) : path;
+    const resp = await fetch(targetPath, opts);
     const txt = await resp.text();
     let parsed = null;
     try { parsed = txt ? JSON.parse(txt) : null; } catch (_) { parsed = txt; }

@@ -339,7 +339,8 @@ async fn complete_oidc_callback(
     let (raw_token, session_cookie) = match crate::security::complete_login(state, user_id, headers).await? {
         crate::security::LoginOutcome::Session(raw, cookie) => (raw, cookie),
         crate::security::LoginOutcome::Challenge(_, challenge_cookie) => {
-            let mut response = Redirect::temporary("/?twofa=1").into_response();
+            let twofa_url = format!("{}/?twofa=1", state.config.public_origin.trim_end_matches('/'));
+            let mut response = Redirect::temporary(&twofa_url).into_response();
             response.headers_mut().append(header::SET_COOKIE, challenge_cookie.parse().map_err(|_| AppError::Internal)?);
             response.headers_mut().append(header::SET_COOKIE, clear_oauth.parse().map_err(|_| AppError::Internal)?);
             return Ok(response);
@@ -378,34 +379,9 @@ async fn complete_oidc_callback(
         return Ok(response);
     }
 
-    let html = format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>ChatW - {provider_label} Sign-In Successful</title>
-    <style>
-        body {{ background: #09090b; color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }}
-        .box {{ background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 36px; text-align: center; max-width: 420px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); }}
-        .icon {{ font-size: 44px; margin-bottom: 16px; }}
-        h1 {{ font-size: 20px; margin: 0 0 10px; color: #ffffff; }}
-        p {{ font-size: 14px; color: #a1a1aa; margin: 0 0 20px; line-height: 1.5; }}
-        .btn {{ display: inline-block; background: #2563eb; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; }}
-    </style>
-</head>
-<body>
-    <div class="box">
-        <div class="icon">✅</div>
-        <h1>Đăng nhập {provider_label} thành công</h1>
-        <p>Phiên đăng nhập đã được tạo thành công cho tài khoản chatw của bạn. Bạn có thể đóng tab này và quay lại ứng dụng.</p>
-        <a href="javascript:window.close()" class="btn">Đóng cửa sổ</a>
-    </div>
-    <script>setTimeout(function(){{ window.close(); }}, 2500);</script>
-</body>
-</html>"#
-    );
-
-    let mut response = axum::response::Html(html).into_response();
+    let app_home = format!("{}/", state.config.public_origin.trim_end_matches('/'));
+    let _ = provider_label;
+    let mut response = Redirect::temporary(&app_home).into_response();
     response.headers_mut().append(
         header::SET_COOKIE,
         session_cookie.parse().map_err(|_| AppError::Internal)?,
