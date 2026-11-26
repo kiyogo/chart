@@ -133,11 +133,21 @@ pub fn WallpaperPicker(current: Option<String>, shared: bool, on_pick: EventHand
                                 match platform::process_selected_wallpaper_webp("chat-wp-file").await {
                                     Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
                                         Ok(url) => on_pick.call(url),
-                                        Err(_) => error.set(Some("Unable to upload photo".into())),
+                                        Err(err) => {
+                                            let reason = match err.code.as_str() {
+                                                "invalid_media_size" => "Photo larger than 10 MB",
+                                                "unsupported_media_format" => "Image format not supported",
+                                                "svg_upload_not_allowed" => "SVG images are not supported",
+                                                _ => "Unable to upload photo",
+                                            };
+                                            error.set(Some(reason.into()));
+                                        }
                                     },
-                                    Err(e) if e == "too_large" => error.set(Some("Photo larger than 2 MB".into())),
+                                    Err(e) if e == "no_file" => {}
+                                    Err(e) if e == "svg_not_allowed" => error.set(Some("SVG images are not supported".into())),
+                                    Err(e) if e == "too_large" => error.set(Some("Photo larger than 8 MB".into())),
                                     Err(e) if e == "unsupported" => error.set(Some("Image format not supported".into())),
-                                    Err(_) => {}
+                                    Err(_) => error.set(Some("Unable to process image".into())),
                                 }
                                 uploading.set(false);
                             });

@@ -622,21 +622,53 @@ pub fn AppearanceWallpapersGlass(#[props(default)] on_reset_appearance: Option<E
                 input { id: "app-wp-file", r#type: "file", accept: "image/png,image/jpeg,image/webp,image/avif", style: "display: none;",
                     onchange: move |_| {
                         uploading.set(true);
+                        msg.set(None);
                         spawn(async move {
                             match platform::process_selected_wallpaper_webp("app-wp-file").await {
                                 Ok((bytes, mime)) => match library::upload_media(bytes, &mime).await {
-                                    Ok(url) => c.update(move |p| p.app_wallpaper = url),
-                                    Err(_) => msg.set(Some("Unable to upload photo".into())),
+                                    Ok(url) => {
+                                        msg.set(None);
+                                        c.update(move |p| {
+                                            p.app_wallpaper = url;
+                                            if p.panel_opacity == 100 {
+                                                p.panel_opacity = 82;
+                                            }
+                                        });
+                                    }
+                                    Err(err) => {
+                                        let reason = match err.code.as_str() {
+                                            "invalid_media_size" => "Photo larger than 10 MB",
+                                            "unsupported_media_format" => "Image format not supported",
+                                            "svg_upload_not_allowed" => "SVG images are not supported",
+                                            _ => "Unable to upload photo",
+                                        };
+                                        msg.set(Some(reason.into()));
+                                    }
                                 },
-                                Err(e) if e == "too_large" => msg.set(Some("Photo larger than 2 MB".into())),
+                                Err(e) if e == "no_file" => {}
+                                Err(e) if e == "svg_not_allowed" => msg.set(Some("SVG images are not supported".into())),
+                                Err(e) if e == "too_large" => msg.set(Some("Photo larger than 8 MB".into())),
                                 Err(e) if e == "unsupported" => msg.set(Some("Image format not supported".into())),
-                                Err(_) => {}
+                                Err(_) => msg.set(Some("Unable to process image".into())),
                             }
                             uploading.set(false);
                         });
                     },
                 }
                 label { r#for: "app-wp-file", class: "btn-secondary", role: "button", tabindex: "0", ImageIcon { size: 16 } if uploading() { "Uploading" } else { "Upload your image" } }
+                if pr.app_wallpaper.starts_with("/uploads/media/") && platform::safe_asset_path(&pr.app_wallpaper) {
+                    span {
+                        class: "banner-preview",
+                        style: "background-image: url('{platform::resolve_asset_url(&pr.app_wallpaper)}'); width: 64px; height: 36px; border-radius: 6px; background-size: cover; background-position: center; display: inline-block; vertical-align: middle;",
+                        aria_label: "Current custom app wallpaper",
+                    }
+                    button {
+                        r#type: "button",
+                        class: "btn-secondary",
+                        onclick: move |_| c.update(|p| p.app_wallpaper.clear()),
+                        "Remove"
+                    }
+                }
             }
             if let Some(m) = msg() { div { class: "status-badge error", "{m}" } }
             div { class: "settings-row",

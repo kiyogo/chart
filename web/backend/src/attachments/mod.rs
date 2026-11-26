@@ -356,6 +356,19 @@ async fn handle_protected_media_file(
         return serve_existing_key_with_range(&state, &rel_key, &fname, &mime, range_hdr).await;
     }
 
+    if let Some(lib_row) = sqlx::query(
+        "SELECT mime_type FROM library_media WHERE file_name = $1 LIMIT 1",
+    )
+    .bind(&file_name)
+    .fetch_optional(&state.db)
+    .await?
+    {
+        let mime: String = lib_row
+            .try_get("mime_type")
+            .unwrap_or_else(|_| guess_mime_from_filename(&file_name).to_string());
+        return serve_existing_key_with_range(&state, &rel_key, &file_name, &mime, range_hdr).await;
+    }
+
     Err(AppError::Forbidden("media_reference_not_found"))
 }
 

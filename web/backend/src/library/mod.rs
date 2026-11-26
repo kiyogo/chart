@@ -19,7 +19,7 @@ use crate::{
     error::{AppError, AppResult},
 };
 
-const MAX_MEDIA_BYTES: usize = 2 * 1024 * 1024;
+const MAX_MEDIA_BYTES: usize = 10 * 1024 * 1024;
 const MAX_EMOJIS: i64 = 200;
 const MAX_GIFS: i64 = 300;
 
@@ -40,12 +40,26 @@ pub fn sniff_image_ext(bytes: &[u8]) -> Option<&'static str> {
         Some("gif")
     } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
         Some("webp")
-    } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis") {
+    } else if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && matches!(&bytes[8..12], b"avif" | b"avis" | b"mif1" | b"msf1")
+    {
         Some("avif")
     } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
         Some("jpg")
     } else {
         None
+    }
+}
+
+fn ext_to_mime(ext: &str) -> &'static str {
+    match ext {
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "jpg" | "jpeg" => "image/jpeg",
+        _ => "application/octet-stream",
     }
 }
 
@@ -55,7 +69,7 @@ async fn auth(state: &AppState, headers: &HeaderMap) -> AppResult<Uuid> {
 }
 
 async fn upload_media(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> AppResult<Json<serde_json::Value>> {
-    let _uid = auth(&state, &headers).await?;
+    let uid = auth(&state, &headers).await?;
     if body.is_empty() || body.len() > MAX_MEDIA_BYTES {
         return Err(AppError::BadRequest("invalid_media_size"));
     }
@@ -64,10 +78,27 @@ async fn upload_media(State(state): State<AppState>, headers: HeaderMap, body: B
         return Err(AppError::BadRequest("svg_upload_not_allowed"));
     }
     let ext = sniff_image_ext(&body).ok_or(AppError::BadRequest("unsupported_media_format"))?;
+    let mime = ext_to_mime(ext);
     let dir = state.config.uploads_dir.join("media");
     tokio::fs::create_dir_all(&dir).await.map_err(|_| AppError::Internal)?;
     let filename = format!("{}.{ext}", Uuid::new_v4());
-    tokio::fs::write(dir.join(&filename), &body).await.map_err(|_| AppError::Internal)?;
+    let file_path = dir.join(&filename);
+    tokio::fs::write(&file_path, &body).await.map_err(|_| AppError::Internal)?;
+
+    if let Err(err) = sqlx::query(
+        "INSERT INTO library_media (file_name, uploader_id, mime_type, size_bytes) VALUES ($1, $2, $3, $4) ON CONFLICT (file_name) DO NOTHING",
+    )
+    .bind(&filename)
+    .bind(uid)
+    .bind(mime)
+    .bind(body.len() as i64)
+    .execute(&state.db)
+    .await
+    {
+        let _ = tokio::fs::remove_file(&file_path).await;
+        return Err(err.into());
+    }
+
     Ok(Json(serde_json::json!({ "url": format!("/uploads/media/{filename}"), "animated": ext == "gif" })))
 }
 

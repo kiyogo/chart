@@ -194,7 +194,12 @@ pub async fn http_request(
     // 1. Prefer SharedWorker CWBF2 Encrypted Binary RPC Multiplexer (0 Fetch/XHR on F12!)
     let raw_ref = raw_body.as_ref().map(|(b, ct)| (b.as_slice(), *ct));
     if let Some(rpc_res) = try_core_worker_rpc(method, path, json_body.as_deref(), raw_ref).await {
-        return rpc_res;
+        match rpc_res {
+            // Spec 168: If SharedWorker RPC fails at transport level (status == 0) during a binary upload,
+            // fall through to direct same-origin fetch so media/wallpaper/banner uploads remain resilient.
+            Err(ref e) if e.status == 0 && raw_body.is_some() => {}
+            other => return other,
+        }
     }
 
     // 2. HTTP fetch fallback (used ONLY for HttpOnly cookie-setting login/logout or pre-auth boot)

@@ -303,8 +303,10 @@ pub fn GroupManageDialog(
                                                 Ok(url) => s3(json!({ "banner_url": url })),
                                                 Err(_) => msg.set(Some("Unable to upload cover photo".into())),
                                             },
-                                            Err(e) if e == "too_large" => msg.set(Some("Photo larger than 2 MB".into())),
-                                            Err(_) => {}
+                                            Err(e) if e == "no_file" => {}
+                                            Err(e) if e == "svg_not_allowed" => msg.set(Some("SVG images are not supported".into())),
+                                            Err(e) if e == "too_large" => msg.set(Some("Photo larger than 8 MB".into())),
+                                            Err(_) => msg.set(Some("Unable to process cover photo".into())),
                                         }
                                     }); } },
                                 }

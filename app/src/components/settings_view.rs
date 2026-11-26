@@ -623,12 +623,19 @@ pub fn SettingsView(
                                                             is_uploading_banner.set(true);
                                                             banner_status.set(None);
                                                             spawn(async move {
-                                                                match platform::process_selected_banner_bytes().await {
+                                                                let animated = platform::read_animated_image("banner-file-input", 8 * 1024 * 1024).await;
+                                                                let processed = match animated {
+                                                                    Ok(Some(bytes)) => Ok(bytes),
+                                                                    Ok(None) => platform::process_selected_banner_bytes().await,
+                                                                    Err(e) => Err(e),
+                                                                };
+                                                                match processed {
                                                                     Ok(bytes) => match api::users_upload_banner(bytes).await {
                                                                         Ok(_) => banner_status.set(Some((false, "Profile banner saved".into()))),
                                                                         Err(_) => banner_status.set(Some((true, "Unable to upload banner image".into()))),
                                                                     },
                                                                     Err(e) if e == "no_file" => {}
+                                                                    Err(e) if e == "too_large" => banner_status.set(Some((true, "Banner image must be less than 8 MB".into()))),
                                                                     Err(e) if e == "svg_not_allowed" => banner_status.set(Some((true, "Không hỗ trợ gửi tệp SVG".into()))),
                                                                     Err(_) => banner_status.set(Some((true, "Unable to process banner image".into()))),
                                                                 }

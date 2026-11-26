@@ -128,9 +128,11 @@ pub async fn users_upload_avatar(bytes: Vec<u8>) -> Result<AvatarUploadResponse,
     })
 }
 
-pub async fn users_upload_banner(avif_bytes: Vec<u8>) -> Result<String, ApiError> {
+pub async fn users_upload_banner(banner_bytes: Vec<u8>) -> Result<String, ApiError> {
+    let (sniff_mime, _) = crate::storage::media_opt::sniff_mime_from_bytes(&banner_bytes);
+    let content_type = if sniff_mime.starts_with("image/") { sniff_mime } else { "image/webp" };
     let (_, body) =
-        platform::http_request("POST", "/api/users/banner", None, Some((avif_bytes, "image/avif")))
+        platform::http_request("POST", "/api/users/banner", None, Some((banner_bytes, content_type)))
             .await?;
     let v: serde_json::Value = serde_json::from_str(&body).map_err(|_| ApiError {
         code: "invalid_json".into(),

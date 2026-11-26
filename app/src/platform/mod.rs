@@ -285,24 +285,43 @@ pub async fn process_avatar_from_input(input_id: &str) -> Result<Vec<u8>, String
                 return;
             }
             try {
-                let sourceWidth, sourceHeight, drawableSource;
-                if (typeof createImageBitmap === 'function') {
-                    const bitmap = await createImageBitmap(file);
-                    sourceWidth = bitmap.width;
-                    sourceHeight = bitmap.height;
-                    drawableSource = bitmap;
-                } else {
+                const loadImageElement = async () => {
                     const img = new Image();
                     const url = URL.createObjectURL(file);
-                    await new Promise((resolve, reject) => {
-                        img.onload = () => resolve();
-                        img.onerror = () => reject(new Error('Không thể tải tệp hình ảnh'));
-                        img.src = url;
-                    });
-                    URL.revokeObjectURL(url);
-                    sourceWidth = img.naturalWidth || img.width;
-                    sourceHeight = img.naturalHeight || img.height;
-                    drawableSource = img;
+                    try {
+                        await new Promise((resolve, reject) => {
+                            img.onload = () => resolve();
+                            img.onerror = () => reject(new Error('Không thể tải tệp hình ảnh'));
+                            img.src = url;
+                        });
+                    } finally {
+                        URL.revokeObjectURL(url);
+                    }
+                    return {
+                        w: img.naturalWidth || img.width,
+                        h: img.naturalHeight || img.height,
+                        src: img,
+                    };
+                };
+                let sourceWidth, sourceHeight, drawableSource, bitmapToClose = null;
+                if (typeof createImageBitmap === 'function') {
+                    try {
+                        const bitmap = await createImageBitmap(file);
+                        sourceWidth = bitmap.width;
+                        sourceHeight = bitmap.height;
+                        drawableSource = bitmap;
+                        bitmapToClose = bitmap;
+                    } catch (_) {
+                        const loaded = await loadImageElement();
+                        sourceWidth = loaded.w;
+                        sourceHeight = loaded.h;
+                        drawableSource = loaded.src;
+                    }
+                } else {
+                    const loaded = await loadImageElement();
+                    sourceWidth = loaded.w;
+                    sourceHeight = loaded.h;
+                    drawableSource = loaded.src;
                 }
                 const targetSize = 512;
                 let sx = 0, sy = 0;
@@ -318,17 +337,21 @@ pub async fn process_avatar_from_input(input_id: &str) -> Result<Vec<u8>, String
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(drawableSource, sx, sy, sSize, sSize, 0, 0, targetSize, targetSize);
+                if (bitmapToClose && typeof bitmapToClose.close === 'function') bitmapToClose.close();
 
+                const encodeChecked = (mime, q) => new Promise((r) => canvas.toBlob((b) => r(b && b.type === mime ? b : null), mime, q));
                 const quality = file.size > 2 * 1024 * 1024 ? 0.75 : 0.85;
-                let blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/avif', quality));
-                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/webp', quality));
-                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/jpeg', quality));
-                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b)));
+                let blob = await encodeChecked('image/avif', quality);
+                if (!blob) blob = await encodeChecked('image/webp', quality);
+                if (!blob) blob = await encodeChecked('image/jpeg', quality);
+                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/png'));
                 if (!blob) throw new Error('Không thể xử lý hình ảnh');
 
                 const buf = new Uint8Array(await blob.arrayBuffer());
                 let bin = '';
-                for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+                for (let i = 0; i < buf.length; i += 0x8000) {
+                    bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+                }
                 input.value = '';
                 dioxus.send({ b64: btoa(bin) });
             } catch (e) {
@@ -1140,28 +1163,57 @@ pub fn apply_customization(p: &crate::prefs::Prefs) {
             window.__chatwCustom = st;
             const rawWp = {wp_raw_json};
             if (!rawWp) {{
+                window.__chatwWpResolveTarget = null;
+                if (window.__chatwWpFallbackBlob) {{
+                    try {{ URL.revokeObjectURL(window.__chatwWpFallbackBlob); }} catch (_) {{}}
+                    window.__chatwWpFallbackBlob = null;
+                }}
                 root.style.removeProperty('--app-wp-image');
                 window.__chatwRecomputeContrast();
             }} else {{
+                const applyWpBlobUrl = (burl, isFallback) => {{
+                    if (!burl || window.__chatwWpResolveTarget !== rawWp) {{
+                        if (isFallback && burl) {{
+                            try {{ URL.revokeObjectURL(burl); }} catch (_) {{}}
+                        }}
+                        return;
+                    }}
+                    if (isFallback) {{
+                        if (window.__chatwWpFallbackBlob && window.__chatwWpFallbackBlob !== burl) {{
+                            try {{ URL.revokeObjectURL(window.__chatwWpFallbackBlob); }} catch (_) {{}}
+                        }}
+                        window.__chatwWpFallbackBlob = burl;
+                    }}
+                    if (window.__chatwCustom && window.__chatwCustom.wpRawUrl === rawWp) {{
+                        window.__chatwCustom.wpImageUrl = burl;
+                    }}
+                    root.style.setProperty('--app-wp-image', `url('${{burl}}')`);
+                    window.__chatwRecomputeContrast();
+                    if (window.__chatwAdaptiveSurface && window.__chatwAdaptiveSurface.refresh) {{
+                        window.__chatwAdaptiveSurface.refresh();
+                    }}
+                }};
+                const fetchFallback = () => {{
+                    fetch(rawWp, {{ credentials: 'include' }})
+                        .then((r) => (r && r.ok ? r.blob() : null))
+                        .then((blob) => {{
+                            if (!blob || !blob.size) return;
+                            applyWpBlobUrl(URL.createObjectURL(blob), true);
+                        }})
+                        .catch(() => {{}});
+                }};
                 const core = window.__chatwCore;
                 const cached = core && core.getCachedBlobUrlSync ? core.getCachedBlobUrlSync(rawWp) : null;
+                window.__chatwWpResolveTarget = rawWp;
                 if (cached) {{
-                    st.wpImageUrl = cached;
-                    root.style.setProperty('--app-wp-image', `url('${{cached}}')`);
-                    window.__chatwRecomputeContrast();
+                    applyWpBlobUrl(cached, false);
                 }} else if (core && core.downloadMediaBlobUrl) {{
-                    window.__chatwWpResolveTarget = rawWp;
                     core.downloadMediaBlobUrl(rawWp, {{ priority: 'HIGH' }}).then((burl) => {{
-                        if (!burl || window.__chatwWpResolveTarget !== rawWp) return;
-                        if (window.__chatwCustom && window.__chatwCustom.wpRawUrl === rawWp) {{
-                            window.__chatwCustom.wpImageUrl = burl;
-                        }}
-                        root.style.setProperty('--app-wp-image', `url('${{burl}}')`);
-                        window.__chatwRecomputeContrast();
-                        if (window.__chatwAdaptiveSurface && window.__chatwAdaptiveSurface.refresh) {{
-                            window.__chatwAdaptiveSurface.refresh();
-                        }}
-                    }}).catch(() => {{}});
+                        if (burl) applyWpBlobUrl(burl, false);
+                        else fetchFallback();
+                    }}).catch(() => fetchFallback());
+                }} else {{
+                    fetchFallback();
                 }}
             }}
         }})();
@@ -1267,24 +1319,69 @@ pub async fn process_banner_from_input(input_id: &str) -> Result<Vec<u8>, String
                 return;
             }
             try {
-                const bitmap = await createImageBitmap(file);
+                const loadImageElement = async () => {
+                    const img = new Image();
+                    const url = URL.createObjectURL(file);
+                    try {
+                        await new Promise((resolve, reject) => {
+                            img.onload = () => resolve();
+                            img.onerror = () => reject(new Error('img_load_err'));
+                            img.src = url;
+                        });
+                    } finally {
+                        URL.revokeObjectURL(url);
+                    }
+                    return {
+                        w: img.naturalWidth || img.width,
+                        h: img.naturalHeight || img.height,
+                        src: img,
+                    };
+                };
+                let srcW, srcH, src, bitmapToClose = null;
+                if (typeof createImageBitmap === 'function') {
+                    try {
+                        const bitmap = await createImageBitmap(file);
+                        srcW = bitmap.width;
+                        srcH = bitmap.height;
+                        src = bitmap;
+                        bitmapToClose = bitmap;
+                    } catch (_) {
+                        const loaded = await loadImageElement();
+                        srcW = loaded.w;
+                        srcH = loaded.h;
+                        src = loaded.src;
+                    }
+                } else {
+                    const loaded = await loadImageElement();
+                    srcW = loaded.w;
+                    srcH = loaded.h;
+                    src = loaded.src;
+                }
                 const w = 960, h = 320;
                 const canvas = document.createElement('canvas');
                 canvas.width = w;
                 canvas.height = h;
                 const ctx = canvas.getContext('2d');
                 if (!ctx) throw new Error('no_canvas');
-                const scale = Math.max(w / bitmap.width, h / bitmap.height);
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                const scale = Math.max(w / srcW, h / srcH);
                 const sw = w / scale, sh = h / scale;
-                const sx = (bitmap.width - sw) / 2, sy = (bitmap.height - sh) / 2;
-                ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, w, h);
-                let blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/avif', 0.8));
-                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/webp', 0.8));
-                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/jpeg', 0.85));
+                const sx = (srcW - sw) / 2, sy = (srcH - sh) / 2;
+                ctx.drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
+                if (bitmapToClose && typeof bitmapToClose.close === 'function') bitmapToClose.close();
+
+                const encodeChecked = (mime, q) => new Promise((r) => canvas.toBlob((b) => r(b && b.type === mime ? b : null), mime, q));
+                let blob = await encodeChecked('image/avif', 0.82);
+                if (!blob) blob = await encodeChecked('image/webp', 0.84);
+                if (!blob) blob = await encodeChecked('image/jpeg', 0.86);
+                if (!blob) blob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/png'));
                 if (!blob) throw new Error('encode_failed');
                 const buf = new Uint8Array(await blob.arrayBuffer());
                 let bin = '';
-                for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+                for (let i = 0; i < buf.length; i += 0x8000) {
+                    bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+                }
                 input.value = '';
                 dioxus.send({ b64: btoa(bin) });
             } catch (e) {
@@ -1436,7 +1533,7 @@ pub async fn process_selected_sticker(input_id: &str) -> Result<(Vec<u8>, String
     Ok((bytes, mime))
 }
 
-/// Read the raw bytes of the file picked in `<input type=file id=input_id>` (max 2 MB).
+/// Read the raw bytes of the file picked in `<input type=file id=input_id>` (max 8 MB).
 /// Returns (bytes, mime). Used for profile artwork where animation (GIF) must be kept.
 pub async fn read_selected_file_raw(input_id: &str) -> Result<(Vec<u8>, String), String> {
     let id_json = serde_json::to_string(input_id).unwrap_or_default();
@@ -1450,7 +1547,7 @@ pub async fn read_selected_file_raw(input_id: &str) -> Result<(Vec<u8>, String),
                 /\.(svg|svgz)$/i.test(file.name || '') || String(file.type || '').toLowerCase().includes('svg')) {{
                 dioxus.send({{ error: 'svg_not_allowed' }}); input.value = ''; return;
             }}
-            if (file.size > 2 * 1024 * 1024) {{ dioxus.send({{ error: 'too_large' }}); input.value = ''; return; }}
+            if (file.size > 8 * 1024 * 1024) {{ dioxus.send({{ error: 'too_large' }}); input.value = ''; return; }}
             const buf = new Uint8Array(await file.arrayBuffer());
             let s = '';
             for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
@@ -1470,11 +1567,11 @@ pub async fn read_selected_file_raw(input_id: &str) -> Result<(Vec<u8>, String),
     Ok((bytes, val.get("mime").and_then(|v| v.as_str()).unwrap_or("image/png").to_string()))
 }
 
-/// Read and compress a wallpaper image picked in `<input type=file id=input_id>`.
-/// - If the file is > 1 MB, it automatically scales and compresses it into high quality WebP.
-/// - If the file is <= 1 MB, it converts it to WebP format.
-/// - Maximum allowed output size is strictly 2 MB; returns Err("too_large") if it exceeds 2 MB.
-/// Returns (bytes, "image/webp").
+/// Read and optimize a wallpaper image picked in `<input type=file id=input_id>`.
+/// - Accepts source images up to 30 MB (PNG, JPEG, WebP, AVIF, etc.).
+/// - Adaptively downscales (2560 -> 1920 -> 1600 -> 1280) and encodes to WebP (with JPEG fallback
+///   when WebP encoding isn't supported) targeting <= 2.5 MB and strictly <= 8 MB max.
+/// Returns (bytes, actual_mime).
 pub async fn process_selected_wallpaper_webp(input_id: &str) -> Result<(Vec<u8>, String), String> {
     let id_json = serde_json::to_string(input_id).unwrap_or_default();
     let js = format!(
@@ -1498,81 +1595,122 @@ pub async fn process_selected_wallpaper_webp(input_id: &str) -> Result<(Vec<u8>,
                 return btoa(s);
             }};
 
-            if (file.size > 25 * 1024 * 1024) {{
+            if (file.size > 30 * 1024 * 1024) {{
                 dioxus.send({{ error: 'too_large' }});
                 input.value = '';
                 return;
             }}
 
             try {{
-                if (file.type === 'image/webp' && file.size <= 1024 * 1024) {{
+                if ((file.type === 'image/webp' || file.type === 'image/avif') && file.size > 0 && file.size <= 2 * 1024 * 1024) {{
                     const ab = await file.arrayBuffer();
-                    dioxus.send({{ b64: toB64(ab), mime: 'image/webp' }});
+                    dioxus.send({{ b64: toB64(ab), mime: file.type }});
                     input.value = '';
                     return;
                 }}
 
-                let drawableSource;
-                let srcWidth, srcHeight;
-                if (typeof createImageBitmap === 'function') {{
-                    const bmp = await createImageBitmap(file);
-                    srcWidth = bmp.width;
-                    srcHeight = bmp.height;
-                    drawableSource = bmp;
-                }} else {{
+                const loadImageElement = async () => {{
                     const img = new Image();
                     const url = URL.createObjectURL(file);
-                    await new Promise((resolve, reject) => {{
-                        img.onload = () => resolve();
-                        img.onerror = () => reject(new Error('img_load_err'));
-                        img.src = url;
-                    }});
-                    URL.revokeObjectURL(url);
-                    srcWidth = img.naturalWidth || img.width;
-                    srcHeight = img.naturalHeight || img.height;
-                    drawableSource = img;
-                }}
+                    try {{
+                        await new Promise((resolve, reject) => {{
+                            img.onload = () => resolve();
+                            img.onerror = () => reject(new Error('img_load_err'));
+                            img.src = url;
+                        }});
+                    }} finally {{
+                        URL.revokeObjectURL(url);
+                    }}
+                    return {{
+                        w: img.naturalWidth || img.width,
+                        h: img.naturalHeight || img.height,
+                        src: img,
+                    }};
+                }};
 
-                const maxDim = 2560;
-                let scale = 1;
-                if (srcWidth > maxDim || srcHeight > maxDim) {{
-                    scale = Math.min(maxDim / srcWidth, maxDim / srcHeight);
+                let drawableSource, srcWidth, srcHeight, bitmapToClose = null;
+                if (typeof createImageBitmap === 'function') {{
+                    try {{
+                        const bmp = await createImageBitmap(file);
+                        srcWidth = bmp.width;
+                        srcHeight = bmp.height;
+                        drawableSource = bmp;
+                        bitmapToClose = bmp;
+                    }} catch (_) {{
+                        const loaded = await loadImageElement();
+                        srcWidth = loaded.w;
+                        srcHeight = loaded.h;
+                        drawableSource = loaded.src;
+                    }}
+                }} else {{
+                    const loaded = await loadImageElement();
+                    srcWidth = loaded.w;
+                    srcHeight = loaded.h;
+                    drawableSource = loaded.src;
                 }}
-                const targetW = Math.max(1, Math.round(srcWidth * scale));
-                const targetH = Math.max(1, Math.round(srcHeight * scale));
+                if (!srcWidth || !srcHeight) throw new Error('zero_dim');
 
+                const TARGET_SOFT = 2.5 * 1024 * 1024;
+                const HARD_MAX = 8 * 1024 * 1024;
+                const dims = [2560, 1920, 1600, 1280];
+                const qualities = [0.88, 0.78, 0.66];
+                const encodeChecked = (cv, mime, q) => new Promise((r) => cv.toBlob((b) => r(b && b.type === mime ? b : null), mime, q));
+
+                let bestBlob = null;
                 const canvas = document.createElement('canvas');
-                canvas.width = targetW;
-                canvas.height = targetH;
                 const ctx = canvas.getContext('2d');
                 if (!ctx) throw new Error('no_canvas');
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                ctx.drawImage(drawableSource, 0, 0, targetW, targetH);
 
-                let quality = file.size > 1024 * 1024 ? 0.82 : 0.90;
-                let blob = await new Promise((r) => canvas.toBlob(r, 'image/webp', quality));
+                for (const maxDim of dims) {{
+                    const scale = (srcWidth > maxDim || srcHeight > maxDim)
+                        ? Math.min(maxDim / srcWidth, maxDim / srcHeight)
+                        : 1;
+                    const targetW = Math.max(1, Math.round(srcWidth * scale));
+                    const targetH = Math.max(1, Math.round(srcHeight * scale));
+                    if (canvas.width !== targetW || canvas.height !== targetH) {{
+                        canvas.width = targetW;
+                        canvas.height = targetH;
+                    }}
+                    ctx.clearRect(0, 0, targetW, targetH);
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+                    ctx.drawImage(drawableSource, 0, 0, targetW, targetH);
 
-                if (blob && blob.size > 1024 * 1024) {{
-                    const lowerBlob = await new Promise((r) => canvas.toBlob(r, 'image/webp', 0.75));
-                    if (lowerBlob) blob = lowerBlob;
+                    for (const mime of ['image/webp', 'image/jpeg']) {{
+                        let codecSupported = true;
+                        for (const q of qualities) {{
+                            const b = await encodeChecked(canvas, mime, q);
+                            if (!b) {{
+                                codecSupported = false;
+                                break;
+                            }}
+                            if (!bestBlob || b.size < bestBlob.size) bestBlob = b;
+                            if (b.size <= TARGET_SOFT) {{
+                                bestBlob = b;
+                                break;
+                            }}
+                        }}
+                        if (bestBlob && bestBlob.size <= TARGET_SOFT) break;
+                        if (codecSupported && bestBlob && bestBlob.size <= HARD_MAX) break;
+                    }}
+                    if (bestBlob && bestBlob.size <= TARGET_SOFT) break;
                 }}
 
-                if (blob && blob.size > 2 * 1024 * 1024) {{
-                    const minBlob = await new Promise((r) => canvas.toBlob(r, 'image/webp', 0.60));
-                    if (minBlob) blob = minBlob;
+                if (bitmapToClose && typeof bitmapToClose.close === 'function') bitmapToClose.close();
+
+                if (!bestBlob) {{
+                    bestBlob = await new Promise((r) => canvas.toBlob((b) => r(b), 'image/png'));
                 }}
+                if (!bestBlob) throw new Error('compression_failed');
 
-                if (!blob) throw new Error('compression_failed');
-
-                if (blob.size > 2 * 1024 * 1024) {{
+                if (bestBlob.size > HARD_MAX) {{
                     dioxus.send({{ error: 'too_large' }});
                     input.value = '';
                     return;
                 }}
 
-                const ab = await blob.arrayBuffer();
-                dioxus.send({{ b64: toB64(ab), mime: 'image/webp' }});
+                const ab = await bestBlob.arrayBuffer();
+                dioxus.send({{ b64: toB64(ab), mime: bestBlob.type || 'image/webp' }});
                 input.value = '';
             }} catch (e) {{
                 dioxus.send({{ error: 'unsupported' }});

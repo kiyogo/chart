@@ -468,7 +468,13 @@
       }
 
       const pathStr = String(path);
-      const isUploadRpc = pathStr.startsWith('/api/attachments') || pathStr.startsWith('/api/storage/');
+      const isUploadRpc =
+        pathStr.startsWith('/api/attachments') ||
+        pathStr.startsWith('/api/storage/') ||
+        pathStr.startsWith('/api/media/') ||
+        pathStr.startsWith('/api/users/banner') ||
+        pathStr.startsWith('/api/users/avatar') ||
+        pathStr.includes('/banner');
       const rpcTimeoutMs = isUploadRpc ? 45000 : 18000;
       const res = await callWorker(
         {
