@@ -31,7 +31,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
         let kiyo_enabled = providers().map(|p| p.kiyo).unwrap_or(false);
         if !kiyo_enabled {
             error.set(Some(
-                "Kiyo Sign In is not configured on the server.".to_string(),
+                "Kiyo Sign In is not configured on the server".to_string(),
             ));
             return;
         }
@@ -50,7 +50,7 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
         let google_enabled = providers().map(|p| p.google).unwrap_or(false);
         if !google_enabled {
             error.set(Some(
-                "Google Sign In is not configured on the server.".to_string(),
+                "Google Sign In is not configured on the server".to_string(),
             ));
             return;
         }
@@ -75,9 +75,9 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                     span { "chatw" }
                 }
                 div { class: "auth-hero-copy",
-                    h2 { class: "auth-hero-title", "Private messaging, neat community." }
+                    h2 { class: "auth-hero-title", "Private messaging, neat community" }
                     p { class: "auth-hero-sub",
-                        "End-to-end encrypted live chat right on your device, with groups, multi-channel communities, and voice and video calls."
+                        "End-to-end encrypted live chat right on your device, with groups, multi-channel communities, and voice and video calls"
                     }
                 }
                 div { class: "auth-features",
@@ -85,113 +85,118 @@ pub fn Login(on_login_success: EventHandler<()>) -> Element {
                         span { class: "auth-feature-icon", LockIcon { size: 18 } }
                         div {
                             div { class: "auth-feature-title", "End-to-end encrypted" }
-                            div { class: "auth-feature-sub", "ECDH P-256, AES-256-GCM and ECDSA signature. The private key does not leave the device." }
+                            div { class: "auth-feature-sub", "ECDH P-256, AES-256-GCM and ECDSA signature — the private key does not leave the device" }
                         }
                     }
                     div { class: "auth-feature",
                         span { class: "auth-feature-icon", HashIcon { size: 18 } }
                         div {
                             div { class: "auth-feature-title", "Communities and channels" }
-                            div { class: "auth-feature-sub", "Categories, text channels, voice channels and role authorization." }
+                            div { class: "auth-feature-sub", "Categories, text channels, voice channels and role authorization" }
                         }
                     }
                     div { class: "auth-feature",
                         span { class: "auth-feature-icon", PhoneIcon { size: 18 } }
                         div {
                             div { class: "auth-feature-title", "Voice and video calling" }
-                            div { class: "auth-feature-sub", "Direct WebRTC calls between devices." }
+                            div { class: "auth-feature-sub", "Direct WebRTC calls between devices" }
                         }
                     }
                 }
-                div { class: "auth-hero-foot", "Open source · Rust · Dioxus" }
+                div { class: "auth-hero-foot",
+                    span { "Open source" }
+                    span { "Rust" }
+                    span { "Dioxus" }
+                }
             }
 
             main { class: "auth-panel",
-                if twofa() {
-                    div { class: "auth-card",
-                        crate::components::accounts::TwoFactorPrompt {
-                            on_done: move |_| { twofa.set(false); on_login_success.call(()); },
-                            on_cancel: move |_| {
-                                crate::crypto::e2ee::clear_ephemeral_account_password();
-                                twofa.set(false);
-                            },
+                div { class: "auth-panel-main",
+                    if twofa() {
+                        div { class: "auth-card",
+                            crate::components::accounts::TwoFactorPrompt {
+                                on_done: move |_| { twofa.set(false); on_login_success.call(()); },
+                                on_cancel: move |_| {
+                                    crate::crypto::e2ee::clear_ephemeral_account_password();
+                                    twofa.set(false);
+                                },
+                            }
                         }
-                    }
-                } else {
-                div { class: "auth-card",
-                    crate::components::accounts::SignedInAccounts {}
-                    div { class: "auth-card-head",
-                        div { class: "auth-brand auth-card-brand",
-                            span { class: "brand-mark", LogoIcon { size: 22 } }
-                            span { "chatw" }
-                        }
-                        h1 { class: "auth-title", "Sign in" }
-                        p { class: "auth-subtitle", "Sign in with Kiyo or Google to sync your encrypted chats and settings." }
-                    }
+                    } else {
+                        div { class: "auth-card",
+                            crate::components::accounts::SignedInAccounts {}
+                            div { class: "auth-card-head",
+                                div { class: "auth-brand auth-card-brand",
+                                    span { class: "brand-mark", LogoIcon { size: 22 } }
+                                    span { "chatw" }
+                                }
+                                h1 { class: "auth-title", "Sign in" }
+                                p { class: "auth-subtitle", "Sign in with Kiyo or Google to sync your encrypted chats and settings" }
+                            }
 
-                    div { class: "auth-actions",
-                        button {
-                            r#type: "button",
-                            class: "auth-btn-primary auth-btn-kiyo",
-                            disabled: providers().is_none(),
-                            aria_label: "Đăng nhập bằng Kiyo",
-                            onclick: handle_kiyo_login,
-                            KiyoIcon { size: 18 }
-                            span { "Đăng nhập bằng Kiyo" }
-                        }
+                            div { class: "auth-actions",
+                                button {
+                                    r#type: "button",
+                                    class: "auth-btn-google auth-btn-kiyo",
+                                    disabled: providers().is_none(),
+                                    aria_label: "Continue with Kiyo",
+                                    onclick: handle_kiyo_login,
+                                    KiyoIcon { size: 20 }
+                                    span { "Continue with Kiyo" }
+                                }
 
-                        if !google_disabled {
-                            button {
-                                r#type: "button",
-                                class: "auth-btn-google",
-                                disabled: providers().is_none(),
-                                aria_label: "Continue with Google",
-                                onclick: handle_google_login,
-                                GoogleIcon {}
-                                span { "Continue with Google" }
+                                if !google_disabled {
+                                    button {
+                                        r#type: "button",
+                                        class: "auth-btn-google",
+                                        disabled: providers().is_none(),
+                                        aria_label: "Continue with Google",
+                                        onclick: handle_google_login,
+                                        GoogleIcon {}
+                                        span { "Continue with Google" }
+                                    }
+                                }
+                            }
+
+                            if let Some(err_msg) = error() {
+                                div { class: "auth-error", role: "alert", "{err_msg}" }
                             }
                         }
                     }
+                }
 
-                    if let Some(err_msg) = error() {
-                        div { class: "auth-error", role: "alert", "{err_msg}" }
-                    }
-
+                if !twofa() {
                     div { class: "auth-legal-container",
                         p { class: "auth-legal",
-                            "When you continue, your encryption key is generated and saved on this device. The server only receives the public key."
+                            "When you continue, your encryption key is generated and saved on this device, and the server only receives the public key"
                         }
                         div { class: "auth-legal-links",
                             button {
                                 r#type: "button",
                                 class: "auth-legal-btn",
                                 onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Terms)),
-                                "Điều khoản dịch vụ"
+                                "Terms of Service"
                             }
-                            span { class: "auth-legal-sep", "•" }
                             button {
                                 r#type: "button",
                                 class: "auth-legal-btn",
                                 onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Privacy)),
-                                "Chính sách bảo mật"
+                                "Privacy Policy"
                             }
-                            span { class: "auth-legal-sep", "•" }
                             button {
                                 r#type: "button",
                                 class: "auth-legal-btn",
                                 onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Community)),
-                                "Tiêu chuẩn cộng đồng"
+                                "Community Standards"
                             }
-                            span { class: "auth-legal-sep", "•" }
                             button {
                                 r#type: "button",
                                 class: "auth-legal-btn",
                                 onclick: move |_| active_legal_modal.set(Some(crate::components::legal::LegalDocKind::Vision)),
-                                "Tầm nhìn sản phẩm"
+                                "Product Vision"
                             }
                         }
                     }
-                }
                 }
             }
             crate::components::legal::LegalModal {
