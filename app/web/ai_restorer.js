@@ -525,19 +525,76 @@
   }
 
   async function encodeCanvasBlob(canvas, hasAlpha) {
+    const toBlobTimed = (type, quality) =>
+      withTimeout(new Promise((resolve) => canvas.toBlob((b) => resolve(b), type, quality)), 3500, `toBlob_${type}`).catch(() => null);
     // Opaque 4× images use hardware-SIMD `image/jpeg@0.93` (~8× faster than software WebP on 4K canvases,
     // while 4× super-res gives full original 1:1 chroma resolution!). Transparent images keep lossless-alpha WebP.
     if (!hasAlpha) {
-      try {
-        const jpeg = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.93));
-        if (jpeg && jpeg.size > 0 && jpeg.type === 'image/jpeg') return jpeg;
-      } catch (_) {}
+      const jpeg = await toBlobTimed('image/jpeg', 0.93);
+      if (jpeg && jpeg.size > 0 && jpeg.type === 'image/jpeg') return jpeg;
     }
+    const webp = await toBlobTimed('image/webp', 0.88);
+    if (webp && webp.size > 0 && webp.type === 'image/webp') return webp;
+    return await toBlobTimed('image/png', undefined);
+  }
+
+  function rasterizeImgElement(imgEl, maxInEdge) {
+    const rawW = imgEl.naturalWidth || 0;
+    const rawH = imgEl.naturalHeight || 0;
+    if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
+      return { outOfBounds: true };
+    }
+    let procW = rawW;
+    let procH = rawH;
+    if (Math.max(rawW, rawH) > maxInEdge) {
+      const r = maxInEdge / Math.max(rawW, rawH);
+      procW = Math.max(32, Math.round(rawW * r));
+      procH = Math.max(32, Math.round(rawH * r));
+    }
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = procW;
+    srcCanvas.height = procH;
+    const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+    srcCtx.imageSmoothingEnabled = true;
+    srcCtx.imageSmoothingQuality = 'high';
+    srcCtx.drawImage(imgEl, 0, 0, procW, procH);
+    const imgData = srcCtx.getImageData(0, 0, procW, procH);
+    const srcU8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+    return { rawW, rawH, procW, procH, srcU8 };
+  }
+
+  function decodeFromLoadedImgElement(imageUrl, maxInEdge) {
+    if (!imageUrl || typeof document === 'undefined') return null;
     try {
-      const webp = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/webp', 0.88));
-      if (webp && webp.size > 0 && webp.type === 'image/webp') return webp;
+      const imgs = document.querySelectorAll('img');
+      for (const el of imgs) {
+        if (el.src === imageUrl && el.complete && el.naturalWidth >= 16 && el.naturalHeight >= 16) {
+          return rasterizeImgElement(el, maxInEdge);
+        }
+      }
     } catch (_) {}
-    return await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
+    return null;
+  }
+
+  async function decodeViaHtmlImage(imageUrl, maxInEdge, timeoutMs = 3000) {
+    if (!imageUrl || typeof Image === 'undefined') return null;
+    return await withTimeout(
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => {
+          try {
+            resolve(rasterizeImgElement(img, maxInEdge));
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.onerror = () => reject(new Error('html_img_decode_failed'));
+        img.src = imageUrl;
+      }),
+      timeoutMs,
+      'html_img_decode',
+    );
   }
 
   async function restoreImageFromUrl(imageUrl, meta = {}) {
@@ -663,47 +720,84 @@
       let srcU8 = null;
       const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 1024 : 800;
       try {
-        const resp = await withTimeout(fetch(imageUrl), 10000, 'img_fetch');
-        if (!resp.ok) return { enhanced: false, skipped: true, reason: 'fetch_failed', url: imageUrl };
-        const blob = await withTimeout(resp.blob(), 10000, 'img_blob');
-        srcBytes = blob.size;
-        // Offload decode + getImageData completely off the main thread!
-        const wDec = await callAiMediaWorker({ type: 'decode', blob, maxInEdge });
-        if (wDec && wDec.ok && wDec.rgba) {
-          rawW = wDec.rawW;
-          rawH = wDec.rawH;
-          procW = wDec.procW;
-          procH = wDec.procH;
-          srcU8 = wDec.rgba;
-        } else if (wDec && wDec.reason === 'dimensions_out_of_ai_bounds') {
+        // Fast path: reuse already-decoded DOM <img> (`0ms`, zero fetch/Worker/createImageBitmap stall!)
+        const domDec = decodeFromLoadedImgElement(imageUrl, maxInEdge);
+        if (domDec && domDec.outOfBounds) {
           return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+        }
+        if (domDec && domDec.srcU8) {
+          rawW = domDec.rawW;
+          rawH = domDec.rawH;
+          procW = domDec.procW;
+          procH = domDec.procH;
+          srcU8 = domDec.srcU8;
+          // Best-effort byte size probe without blocking decode
+          try {
+            const rProbe = await withTimeout(fetch(imageUrl), 1000, 'img_size_probe');
+            if (rProbe.ok) srcBytes = (await withTimeout(rProbe.blob(), 1000, 'img_blob_probe')).size;
+          } catch (_) {}
         } else {
-          const bitmap = await createImageBitmap(blob);
-          rawW = bitmap.width;
-          rawH = bitmap.height;
-          if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
-            bitmap.close();
+          const resp = await withTimeout(fetch(imageUrl), 4500, 'img_fetch');
+          if (!resp.ok) return { enhanced: false, skipped: true, reason: 'fetch_failed', url: imageUrl };
+          const blob = await withTimeout(resp.blob(), 4500, 'img_blob');
+          srcBytes = blob.size;
+          reportProgress(7);
+          // Offload decode + getImageData off the main thread with bounded 2s timeout
+          const wDec = await callAiMediaWorker({ type: 'decode', blob, maxInEdge }, [], 2000);
+          if (wDec && wDec.ok && wDec.rgba) {
+            rawW = wDec.rawW;
+            rawH = wDec.rawH;
+            procW = wDec.procW;
+            procH = wDec.procH;
+            srcU8 = wDec.rgba;
+          } else if (wDec && wDec.reason === 'dimensions_out_of_ai_bounds') {
             return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+          } else {
+            let decodedMain = null;
+            try {
+              const bitmap = await withTimeout(createImageBitmap(blob), 2000, 'main_bitmap_decode');
+              rawW = bitmap.width;
+              rawH = bitmap.height;
+              if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
+                bitmap.close();
+                return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+              }
+              procW = rawW;
+              procH = rawH;
+              if (Math.max(rawW, rawH) > maxInEdge) {
+                const r = maxInEdge / Math.max(rawW, rawH);
+                procW = Math.max(32, Math.round(rawW * r));
+                procH = Math.max(32, Math.round(rawH * r));
+              }
+              const srcCanvas = document.createElement('canvas');
+              srcCanvas.width = procW;
+              srcCanvas.height = procH;
+              const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+              srcCtx.imageSmoothingEnabled = true;
+              srcCtx.imageSmoothingQuality = 'high';
+              srcCtx.drawImage(bitmap, 0, 0, procW, procH);
+              bitmap.close();
+              const imgData = srcCtx.getImageData(0, 0, procW, procH);
+              srcU8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+              decodedMain = true;
+            } catch (bmpErr) {
+              console.warn('[chatw-ai] createImageBitmap fallback -> HTMLImageElement:', bmpErr);
+            }
+            if (!decodedMain) {
+              const htmlDec = await decodeViaHtmlImage(imageUrl, maxInEdge, 3000);
+              if (!htmlDec || htmlDec.outOfBounds) {
+                return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+              }
+              rawW = htmlDec.rawW;
+              rawH = htmlDec.rawH;
+              procW = htmlDec.procW;
+              procH = htmlDec.procH;
+              srcU8 = htmlDec.srcU8;
+            }
           }
-          procW = rawW;
-          procH = rawH;
-          if (Math.max(rawW, rawH) > maxInEdge) {
-            const r = maxInEdge / Math.max(rawW, rawH);
-            procW = Math.max(32, Math.round(rawW * r));
-            procH = Math.max(32, Math.round(rawH * r));
-          }
-          const srcCanvas = document.createElement('canvas');
-          srcCanvas.width = procW;
-          srcCanvas.height = procH;
-          const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
-          srcCtx.imageSmoothingEnabled = true;
-          srcCtx.imageSmoothingQuality = 'high';
-          srcCtx.drawImage(bitmap, 0, 0, procW, procH);
-          bitmap.close();
-          const imgData = srcCtx.getImageData(0, 0, procW, procH);
-          srcU8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
         }
       } catch (err) {
+        console.warn('[chatw-ai] decode_failed:', err, imageUrl);
         return { enhanced: false, skipped: true, reason: 'decode_failed', error: String(err), url: imageUrl };
       }
 
@@ -914,10 +1008,14 @@
         try {
           let bmp = null;
           if (res.canvas) {
-            bmp = await createImageBitmap(res.canvas);
+            bmp = await withTimeout(createImageBitmap(res.canvas), 2000, 'enc_bmp_canvas');
           } else if (res.rgba) {
-            bmp = await createImageBitmap(
-              new ImageData(new Uint8ClampedArray(res.rgba.buffer, res.rgba.byteOffset, res.rgba.byteLength), res.width, res.height),
+            bmp = await withTimeout(
+              createImageBitmap(
+                new ImageData(new Uint8ClampedArray(res.rgba.buffer, res.rgba.byteOffset, res.rgba.byteLength), res.width, res.height),
+              ),
+              2000,
+              'enc_bmp_rgba',
             );
           }
           if (bmp) {
@@ -925,6 +1023,7 @@
             const wEnc = await callAiMediaWorker(
               { type: 'encode', bitmap: bmp, width: res.width, height: res.height, hasAlpha: Boolean(res.hasAlpha || hasAlpha), maxOutEdge: outEdgeCap },
               [bmp],
+              3500,
             );
             if (wEnc && wEnc.ok && wEnc.blob) {
               outBlob = wEnc.blob;
@@ -932,7 +1031,9 @@
               finalH = wEnc.height || finalH;
             }
           }
-        } catch (_) {}
+        } catch (encErr) {
+          console.warn('[chatw-ai] worker encode fallback:', encErr);
+        }
       }
 
       if (!outBlob && res) {

@@ -799,9 +799,11 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     if (res && res.enhanced && res.url) {{
                         emitOnce({{ type: 'done', url: res.url, cacheHit: Boolean(res.cacheHit), origUrl: inputUrl }});
                     }} else {{
+                        console.warn('[chatw-ai] pipeline failed:', res);
                         emitOnce({{ type: 'failed' }});
                     }}
                   }} catch (err) {{
+                    console.warn('[chatw-ai] pipeline exception:', err);
                     emitOnce({{ type: 'failed', error: String(err) }});
                   }}
                 }})();
@@ -870,7 +872,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                             spawn(async move {
                                 // Hold opaque `.ai-gen-overlay` until the newly swapped `decoding="sync"` <img> paints for 2 rAF frames.
                                 let mut ev1 = dioxus::document::eval(
-                                    "await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); dioxus.send(1);",
+                                    "await Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))), new Promise((r) => setTimeout(r, 150))]); dioxus.send(1);",
                                 );
                                 let _ = ev1.recv::<i32>().await;
                                 rev_sig.set(true);
@@ -2695,7 +2697,7 @@ pub fn GlobalImageLightbox() -> Element {
                                 let expected_key = key_at_start.clone();
                                 spawn(async move {
                                     let mut ev1 = dioxus::document::eval(
-                                        "await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); dioxus.send(1);",
+                                        "await Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))), new Promise((r) => setTimeout(r, 150))]); dioxus.send(1);",
                                     );
                                     let _ = ev1.recv::<i32>().await;
                                     if *active_key_ref.peek() == expected_key {

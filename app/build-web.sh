@@ -91,7 +91,7 @@ cp app/web/panel_resizer.js app/dist/panel_resizer.js
 cp app/web/custom_pickers.js app/dist/custom_pickers.js
 cp app/web/living_motion.js app/dist/living_motion.js
 cp app/web/adaptive_surface.js app/dist/adaptive_surface.js
-cp app/web/storage_engine.js app/dist/storage_engine.js
+sed "s|/media_worker.js|/media_worker.js?v=${TS}|g" app/web/storage_engine.js > app/dist/storage_engine.js
 cp app/web/face_restorer.js app/dist/face_restorer.js
 cp app/web/ai_restorer.js app/dist/ai_restorer.js
 cp app/web/core_worker.js app/dist/core_worker.js

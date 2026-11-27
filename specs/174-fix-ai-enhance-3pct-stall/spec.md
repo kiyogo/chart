@@ -9,7 +9,9 @@ When enhancing images ("Làm nét ảnh" on chat images, auto-enhancing incoming
 3. **Unbounded GPU Single-Pass & Fence Wait / Orphaned WASM Futures**:
    - In `realesrgan_gpu.rs`, `single_pass_ok` allows up to `1024×1024` 4× (`4096×4096` output + 7 RGBA16F texture arrays) without checking `max_gpu_budget_ms`, and `await_gl_fence_nonblocking` can spin up to `600 × 8ms = 4.8s` per fence across 7+ fences (`> 18s`).
    - When JS `withTimeout(..., 18000)` times out, the orphaned Rust `future_to_promise` keeps running and calling `with_gl_engine`, racing with subsequent jobs.
-4. **No Rust-Side Eval Deadline / Re-Entry Guard & Lightbox Edge Cases**:
+4. **Decode Stage Stall at `6%` & Unbounded `createImageBitmap` / `toBlob`**:
+   - Even after jumping ahead of the queue, decoding inside `ai_restorer.js` re-fetched the blob and waited up to `10s` (`img_fetch`) + `10s` (`img_blob`) + `6s` (`callAiMediaWorker`) + unbounded `createImageBitmap(blob)` instead of directly reading from the already-decoded DOM `<img>` or falling back quickly via `HTMLImageElement`.
+5. **No Rust-Side Eval Deadline / Re-Entry Guard & Lightbox Edge Cases**:
    - `RichImage` lacks a double-trigger guard and Rust-side watchdog around `eval.recv()`, and `MediaLightbox` leaves `is_lb_enhancing` permanently stuck at `3%` if `original_src` is missing while `auto_enhance_on_open` is `true`.
 
 ## Acceptance Criteria
