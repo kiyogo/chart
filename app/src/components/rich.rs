@@ -693,10 +693,14 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                 (async () => {{
                   let finished = false;
                   let watchdog = null;
+                  let stallWatchdog = null;
+                  let maxWatchdog = null;
                   const emitOnce = (payload) => {{
                     if (finished) return;
                     finished = true;
                     if (watchdog !== null) {{ clearTimeout(watchdog); watchdog = null; }}
+                    if (stallWatchdog !== null) {{ clearTimeout(stallWatchdog); stallWatchdog = null; }}
+                    if (maxWatchdog !== null) {{ clearTimeout(maxWatchdog); maxWatchdog = null; }}
                     try {{ dioxus.send(payload); }} catch (_) {{}}
                   }};
                   try {{
@@ -780,7 +784,21 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     }}
                     // 4. Live incoming image (or user tapped corner icon) -> blurred + AI shimmer + live progress!
                     dioxus.send({{ type: 'start', pct: 3 }});
-                    watchdog = setTimeout(() => emitOnce({{ type: 'failed', error: 'eval_watchdog_timeout' }}), 24000);
+                    let lastPct = 3;
+                    let stallWatchdog = null;
+                    let maxWatchdog = setTimeout(() => {{
+                        console.warn('[chatw-ai] outer deadline timeout at', lastPct + '%');
+                        emitOnce({{ type: 'failed', error: 'eval_outer_timeout', lastPct }});
+                    }}, 45000);
+                    const resetWatchdog = () => {{
+                        if (finished) return;
+                        if (stallWatchdog !== null) clearTimeout(stallWatchdog);
+                        stallWatchdog = setTimeout(() => {{
+                            console.warn('[chatw-ai] inactivity watchdog timeout at', lastPct + '%');
+                            emitOnce({{ type: 'failed', error: 'eval_watchdog_timeout', lastPct }});
+                        }}, 18000);
+                    }};
+                    resetWatchdog();
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl(inputUrl, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
@@ -790,12 +808,22 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         forceRun: {force_flag},
                         priority: '{priority_str}',
                         onStage1: (url) => {{
-                            if (!finished) try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
+                            if (!finished) {{
+                                resetWatchdog();
+                                try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
+                            }}
                         }},
                         onProgress: (pct) => {{
-                            if (!finished) try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
+                            const n = Number(pct) || 0;
+                            if (n > lastPct) {{
+                                lastPct = n;
+                                resetWatchdog();
+                            }}
+                            if (!finished) try {{ dioxus.send({{ type: 'progress', pct: n }}); }} catch (_) {{}}
                         }},
                     }});
+                    if (stallWatchdog !== null) {{ clearTimeout(stallWatchdog); stallWatchdog = null; }}
+                    if (maxWatchdog !== null) {{ clearTimeout(maxWatchdog); maxWatchdog = null; }}
                     if (res && res.enhanced && res.url) {{
                         emitOnce({{ type: 'done', url: res.url, cacheHit: Boolean(res.cacheHit), origUrl: inputUrl }});
                     }} else {{
@@ -2622,10 +2650,14 @@ pub fn GlobalImageLightbox() -> Element {
                 (async () => {{
                   let finished = false;
                   let watchdog = null;
+                  let stallWatchdog = null;
+                  let maxWatchdog = null;
                   const emitOnce = (payload) => {{
                     if (finished) return;
                     finished = true;
                     if (watchdog !== null) {{ clearTimeout(watchdog); watchdog = null; }}
+                    if (stallWatchdog !== null) {{ clearTimeout(stallWatchdog); stallWatchdog = null; }}
+                    if (maxWatchdog !== null) {{ clearTimeout(maxWatchdog); maxWatchdog = null; }}
                     try {{ dioxus.send(payload); }} catch (_) {{}}
                   }};
                   try {{

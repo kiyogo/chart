@@ -472,6 +472,19 @@
     return new Promise((resolve) => setTimeout(resolve, 0));
   }
 
+  function yieldUiPaint() {
+    return new Promise((resolve) => {
+      if (typeof requestAnimationFrame === 'function') {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        const t = setTimeout(finish, 34);
+        requestAnimationFrame(() => { clearTimeout(t); finish(); });
+      } else {
+        setTimeout(resolve, 16);
+      }
+    });
+  }
+
   // Idle GPU shader + cached model pre-warm so clicking an unenhanced image has 0ms compile hitch!
   let idleWarmupScheduled = false;
   function scheduleIdleGpuWarmup() {
@@ -568,8 +581,10 @@
     try {
       const imgs = document.querySelectorAll('img');
       for (const el of imgs) {
-        if (el.src === imageUrl && el.complete && el.naturalWidth >= 16 && el.naturalHeight >= 16) {
-          return rasterizeImgElement(el, maxInEdge);
+        if ((el.currentSrc === imageUrl || el.src === imageUrl) && el.complete && el.naturalWidth >= 16 && el.naturalHeight >= 16) {
+          try {
+            return rasterizeImgElement(el, maxInEdge);
+          } catch (_) {}
         }
       }
     } catch (_) {}
@@ -731,69 +746,80 @@
           procW = domDec.procW;
           procH = domDec.procH;
           srcU8 = domDec.srcU8;
-          // Best-effort byte size probe without blocking decode
-          try {
-            const rProbe = await withTimeout(fetch(imageUrl), 1000, 'img_size_probe');
-            if (rProbe.ok) srcBytes = (await withTimeout(rProbe.blob(), 1000, 'img_blob_probe')).size;
-          } catch (_) {}
-        } else {
-          const resp = await withTimeout(fetch(imageUrl), 4500, 'img_fetch');
-          if (!resp.ok) return { enhanced: false, skipped: true, reason: 'fetch_failed', url: imageUrl };
-          const blob = await withTimeout(resp.blob(), 4500, 'img_blob');
-          srcBytes = blob.size;
-          reportProgress(7);
-          // Offload decode + getImageData off the main thread with bounded 2s timeout
-          const wDec = await callAiMediaWorker({ type: 'decode', blob, maxInEdge }, [], 2000);
-          if (wDec && wDec.ok && wDec.rgba) {
-            rawW = wDec.rawW;
-            rawH = wDec.rawH;
-            procW = wDec.procW;
-            procH = wDec.procH;
-            srcU8 = wDec.rgba;
-          } else if (wDec && wDec.reason === 'dimensions_out_of_ai_bounds') {
-            return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
-          } else {
-            let decodedMain = null;
+          // Non-blocking byte-size probe only when profile is missing (max 120ms so 6% never stalls)
+          if (!origProfileJson) {
             try {
-              const bitmap = await withTimeout(createImageBitmap(blob), 2000, 'main_bitmap_decode');
-              rawW = bitmap.width;
-              rawH = bitmap.height;
-              if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
-                bitmap.close();
-                return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
-              }
-              procW = rawW;
-              procH = rawH;
-              if (Math.max(rawW, rawH) > maxInEdge) {
-                const r = maxInEdge / Math.max(rawW, rawH);
-                procW = Math.max(32, Math.round(rawW * r));
-                procH = Math.max(32, Math.round(rawH * r));
-              }
-              const srcCanvas = document.createElement('canvas');
-              srcCanvas.width = procW;
-              srcCanvas.height = procH;
-              const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
-              srcCtx.imageSmoothingEnabled = true;
-              srcCtx.imageSmoothingQuality = 'high';
-              srcCtx.drawImage(bitmap, 0, 0, procW, procH);
-              bitmap.close();
-              const imgData = srcCtx.getImageData(0, 0, procW, procH);
-              srcU8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+              const rProbe = await withTimeout(fetch(imageUrl), 120, 'img_size_probe');
+              if (rProbe.ok) srcBytes = (await withTimeout(rProbe.blob(), 120, 'img_blob_probe')).size;
+            } catch (_) {}
+          }
+        } else {
+          let blob = null;
+          try {
+            const resp = await withTimeout(fetch(imageUrl), 3000, 'img_fetch');
+            if (resp.ok) {
+              blob = await withTimeout(resp.blob(), 3000, 'img_blob');
+              srcBytes = blob.size;
+            }
+          } catch (fetchErr) {
+            console.warn('[chatw-ai] fetch blob failed, falling back to HTMLImageElement:', fetchErr);
+          }
+          reportProgress(7);
+          let decodedMain = false;
+          if (blob) {
+            // Offload decode + getImageData off the main thread with bounded 2s timeout
+            const wDec = await callAiMediaWorker({ type: 'decode', blob, maxInEdge }, [], 2000);
+            if (wDec && wDec.ok && wDec.rgba) {
+              rawW = wDec.rawW;
+              rawH = wDec.rawH;
+              procW = wDec.procW;
+              procH = wDec.procH;
+              srcU8 = wDec.rgba;
               decodedMain = true;
-            } catch (bmpErr) {
-              console.warn('[chatw-ai] createImageBitmap fallback -> HTMLImageElement:', bmpErr);
-            }
-            if (!decodedMain) {
-              const htmlDec = await decodeViaHtmlImage(imageUrl, maxInEdge, 3000);
-              if (!htmlDec || htmlDec.outOfBounds) {
-                return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+            } else if (wDec && wDec.reason === 'dimensions_out_of_ai_bounds') {
+              return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+            } else {
+              try {
+                const bitmap = await withTimeout(createImageBitmap(blob), 2000, 'main_bitmap_decode');
+                rawW = bitmap.width;
+                rawH = bitmap.height;
+                if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
+                  bitmap.close();
+                  return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+                }
+                procW = rawW;
+                procH = rawH;
+                if (Math.max(rawW, rawH) > maxInEdge) {
+                  const r = maxInEdge / Math.max(rawW, rawH);
+                  procW = Math.max(32, Math.round(rawW * r));
+                  procH = Math.max(32, Math.round(rawH * r));
+                }
+                const srcCanvas = document.createElement('canvas');
+                srcCanvas.width = procW;
+                srcCanvas.height = procH;
+                const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+                srcCtx.imageSmoothingEnabled = true;
+                srcCtx.imageSmoothingQuality = 'high';
+                srcCtx.drawImage(bitmap, 0, 0, procW, procH);
+                bitmap.close();
+                const imgData = srcCtx.getImageData(0, 0, procW, procH);
+                srcU8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+                decodedMain = true;
+              } catch (bmpErr) {
+                console.warn('[chatw-ai] createImageBitmap fallback -> HTMLImageElement:', bmpErr);
               }
-              rawW = htmlDec.rawW;
-              rawH = htmlDec.rawH;
-              procW = htmlDec.procW;
-              procH = htmlDec.procH;
-              srcU8 = htmlDec.srcU8;
             }
+          }
+          if (!decodedMain) {
+            const htmlDec = await decodeViaHtmlImage(imageUrl, maxInEdge, 2500);
+            if (!htmlDec || htmlDec.outOfBounds) {
+              return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+            }
+            rawW = htmlDec.rawW;
+            rawH = htmlDec.rawH;
+            procW = htmlDec.procW;
+            procH = htmlDec.procH;
+            srcU8 = htmlDec.srcU8;
           }
         }
       } catch (err) {
@@ -802,7 +828,7 @@
       }
 
       reportProgress(8);
-      await yieldUiSlice();
+      await yieldUiPaint();
 
       let hasAlpha = false;
       for (let i = 3; i < srcU8.length; i += 28) {
@@ -839,18 +865,21 @@
       );
 
       // STAGE 1: Run upfront only when hardware WebGL2 neural SR is unavailable;
-      // when hardware WebGL2 runs Stage 2 directly, avoid redundant Stage-1 src swaps that cause decode/paint flicker.
+      // forward real FSR1 progress so software/SwiftShader never appears frozen at 6%/8%!
       if (!canHardwareNeural && typeof meta.onStage1 === 'function' && wasm && typeof wasm.upscaleFsr1 === 'function') {
         try {
-          const s1Out = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, 1.22, null);
+          const s1Progress = (pct) => reportProgress(10 + Math.round((Number(pct) || 0) * 0.72));
+          const s1Out = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, 1.22, s1Progress);
           if (s1Out && s1Out.ok && s1Out.canvas) {
+            reportProgress(82);
             let s1Blob = null;
             if (getAiMediaWorker()) {
               try {
-                const bmp = await createImageBitmap(s1Out.canvas);
+                const bmp = await withTimeout(createImageBitmap(s1Out.canvas), 2000, 's1_bmp_canvas');
                 const wEnc = await callAiMediaWorker(
                   { type: 'encode', bitmap: bmp, width: s1Out.width, height: s1Out.height, hasAlpha, maxOutEdge: 2048 },
                   [bmp],
+                  3500,
                 );
                 if (wEnc && wEnc.ok && wEnc.blob) s1Blob = wEnc.blob;
               } catch (_) {}
@@ -865,13 +894,15 @@
               const s1Url = URL.createObjectURL(s1Blob);
               await predecodeImageUrl(s1Url);
               stage1Delivered = true;
-              reportProgress(28);
+              reportProgress(90);
               reportStage1(s1Url);
               stage1ObjectUrl = s1Url;
               await yieldUiSlice();
             }
           }
-        } catch (_) {}
+        } catch (s1Err) {
+          console.warn('[chatw-ai] stage1 fsr1 failed:', s1Err);
+        }
       }
 
       // STAGE 2: Adaptive Multi-Model Neural 4× Super-Resolution (`nomosuni_span_x4` for crushed/low-res AVIF, `clearreality_span_x4` for clean/high-res AVIF, `realesr_animevideov3` for anime, skip crisp text/QR!)
@@ -903,7 +934,7 @@
               return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
             }
             reportProgress(pBase + 2);
-            await yieldUiSlice();
+            await yieldUiPaint();
             const scaledProgress = (pct) => reportProgress(pBase + Math.round((Number(pct) || 0) * pSpan / 100));
             const srOut = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress);
             if (srOut && srOut.ok && (srOut.canvas || srOut.rgba)) {
@@ -1068,7 +1099,7 @@
               targetH,
               hasAlpha,
               sharpness,
-            });
+            }, [], 3500);
             if (wCas && wCas.ok && wCas.blob) {
               outBlob = wCas.blob;
               finalW = wCas.width || targetW;
