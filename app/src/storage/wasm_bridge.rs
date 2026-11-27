@@ -11,7 +11,7 @@
 #[cfg(target_arch = "wasm32")]
 pub fn install_wasm_media_bridge() {
     use crate::storage::realesrgan_gpu::{
-        probe_gpu, restore_image_realesrgan_rust, upscale_fsr1_rust, warmup_gpu,
+        abort_gpu_jobs, probe_gpu, restore_image_realesrgan_rust, upscale_fsr1_rust, warmup_gpu,
     };
     use chatw_media_core::{
         ai::{
@@ -450,6 +450,8 @@ pub fn install_wasm_media_bridge() {
 
     // 15. warmupRealEsrganGpu() -> bool (idle pre-compile of WebGL2 shaders so first click has 0ms compile hitch!)
     let warmup_cb = Closure::<dyn Fn() -> JsValue>::new(move || JsValue::from(warmup_gpu()));
+    // 16. abortActiveGpuJob() -> u64 (cancels any timed-out WebGL2 async future before starting the next job!)
+    let abort_cb = Closure::<dyn Fn() -> JsValue>::new(move || JsValue::from(abort_gpu_jobs() as f64));
 
     let _ = Reflect::set(&api, &"version".into(), &JsValue::from("chatw-media-core-v2"));
     let _ = Reflect::set(&api, &"cnnEngine".into(), &JsValue::from("rust-realesrgan-srvgg-upscayl-v8"));
@@ -460,6 +462,7 @@ pub fn install_wasm_media_bridge() {
     let _ = Reflect::set(&api, &"blake3Hex".into(), b3_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"probeRealEsrganGpu".into(), probe_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"warmupRealEsrganGpu".into(), warmup_cb.as_ref().unchecked_ref());
+    let _ = Reflect::set(&api, &"abortActiveGpuJob".into(), abort_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"selectRealEsrganModel".into(), select_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"restoreImageRealEsrgan".into(), restore_cb.as_ref().unchecked_ref());
     let _ = Reflect::set(&api, &"upscaleFsr1".into(), fsr1_cb.as_ref().unchecked_ref());
@@ -479,6 +482,7 @@ pub fn install_wasm_media_bridge() {
     b3_cb.forget();
     probe_cb.forget();
     warmup_cb.forget();
+    abort_cb.forget();
     select_cb.forget();
     restore_cb.forget();
     fsr1_cb.forget();

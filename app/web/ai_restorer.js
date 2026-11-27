@@ -52,34 +52,58 @@
     });
   }
 
-  let queue = Promise.resolve();
-  let pendingMainJobs = 0;
+  let activeMainJob = false;
+  const highWaiters = [];
+  const normalWaiters = [];
   let mainIdleResolvers = [];
+  const inFlightByKey = new Map();
+
   function waitForMainQueueIdle() {
-    if (pendingMainJobs <= 0) return Promise.resolve();
+    if (!activeMainJob && highWaiters.length === 0 && normalWaiters.length === 0) return Promise.resolve();
     return new Promise((resolve) => mainIdleResolvers.push(resolve));
   }
-  function enqueueExclusive(fn, timeoutMs = 18000) {
-    pendingMainJobs++;
-    const runWithWatchdog = () =>
-      withTimeout(Promise.resolve().then(fn), timeoutMs, 'ai_restore_job')
-        .catch((err) => ({
+
+  function pumpMainQueue() {
+    if (activeMainJob) return;
+    const nextTask = highWaiters.shift() || normalWaiters.shift();
+    if (!nextTask) {
+      if (mainIdleResolvers.length > 0) {
+        const list = mainIdleResolvers;
+        mainIdleResolvers = [];
+        for (const r of list) r();
+      }
+      return;
+    }
+    activeMainJob = true;
+    const { fn, timeoutMs, resolve } = nextTask;
+    withTimeout(Promise.resolve().then(fn), timeoutMs, 'ai_restore_job')
+      .catch((err) => {
+        try {
+          if (window.__chatwWasmMedia && typeof window.__chatwWasmMedia.abortActiveGpuJob === 'function') {
+            window.__chatwWasmMedia.abortActiveGpuJob();
+          }
+        } catch (_) {}
+        return {
           enhanced: false,
           skipped: true,
           reason: 'job_timeout_or_error',
           error: String(err),
-        }))
-        .finally(() => {
-          pendingMainJobs = Math.max(0, pendingMainJobs - 1);
-          if (pendingMainJobs === 0 && mainIdleResolvers.length > 0) {
-            const list = mainIdleResolvers;
-            mainIdleResolvers = [];
-            for (const r of list) r();
-          }
-        });
-    const next = queue.then(runWithWatchdog, runWithWatchdog);
-    queue = next.catch(() => {});
-    return next;
+        };
+      })
+      .then((res) => resolve(res))
+      .finally(() => {
+        activeMainJob = false;
+        pumpMainQueue();
+      });
+  }
+
+  function enqueueExclusive(fn, timeoutMs = 15000, highPriority = false) {
+    return new Promise((resolve) => {
+      const item = { fn, timeoutMs, resolve };
+      if (highPriority) highWaiters.push(item);
+      else normalWaiters.push(item);
+      pumpMainQueue();
+    });
   }
 
   // Dedicated low-priority background queue for Stage 2B Face Refinement (YuNet + GFPGANv1.4 WebGPU).
@@ -574,13 +598,49 @@
       return { enhanced: false, cacheMiss: true, url: imageUrl };
     }
 
-    const reportProgress = (pct) => {
+    if (inFlightByKey.has(cacheKey)) {
+      const flight = inFlightByKey.get(cacheKey);
       if (typeof meta.onProgress === 'function') {
-        try { meta.onProgress(Math.max(0, Math.min(100, Math.round(pct)))); } catch (_) {}
+        flight.progressSubs.add(meta.onProgress);
+        if (flight.lastProgress > 0) {
+          try { meta.onProgress(flight.lastProgress); } catch (_) {}
+        }
+      }
+      if (typeof meta.onStage1 === 'function') {
+        flight.stage1Subs.add(meta.onStage1);
+      }
+      try {
+        return await flight.promise;
+      } finally {
+        if (typeof meta.onProgress === 'function') flight.progressSubs.delete(meta.onProgress);
+        if (typeof meta.onStage1 === 'function') flight.stage1Subs.delete(meta.onStage1);
+      }
+    }
+
+    const flight = {
+      lastProgress: 3,
+      progressSubs: new Set(typeof meta.onProgress === 'function' ? [meta.onProgress] : []),
+      stage1Subs: new Set(typeof meta.onStage1 === 'function' ? [meta.onStage1] : []),
+      promise: null,
+    };
+
+    const reportProgress = (pct) => {
+      const val = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+      if (val < flight.lastProgress && val < 100) return;
+      flight.lastProgress = val;
+      for (const cb of flight.progressSubs) {
+        try { cb(val); } catch (_) {}
+      }
+    };
+    const reportStage1 = (s1Url) => {
+      for (const cb of flight.stage1Subs) {
+        try { cb(s1Url); } catch (_) {}
       }
     };
 
-    return await enqueueExclusive(async () => {
+    const highPriority = Boolean(meta.forceRun || meta.priority === 'HIGH');
+
+    const jobPromise = enqueueExclusive(async () => {
       if (sessionResultCache.has(cacheKey)) {
         reportProgress(100);
         return { ...sessionResultCache.get(cacheKey), enhanced: true, cacheHit: true, cacheTier: 'memory', provenance: 'ai_restored' };
@@ -588,12 +648,13 @@
 
       const wasm = window.__chatwWasmMedia;
       const t0 = performance.now();
-      reportProgress(2);
+      reportProgress(4);
       const hw = await detectHardware();
       if (hw.lowBattery && !meta.forceRun) {
         return { enhanced: false, skipped: true, reason: 'low_battery_power_saver', url: imageUrl };
       }
 
+      reportProgress(6);
       let srcBytes = 0;
       let rawW = 0;
       let rawH = 0;
@@ -646,6 +707,7 @@
         return { enhanced: false, skipped: true, reason: 'decode_failed', error: String(err), url: imageUrl };
       }
 
+      reportProgress(8);
       await yieldUiSlice();
 
       let hasAlpha = false;
@@ -710,7 +772,7 @@
               await predecodeImageUrl(s1Url);
               stage1Delivered = true;
               reportProgress(28);
-              try { meta.onStage1(s1Url); } catch (_) {}
+              reportStage1(s1Url);
               stage1ObjectUrl = s1Url;
               await yieldUiSlice();
             }
@@ -739,13 +801,14 @@
             }
             skipNeuralSr = true;
           } else if (sel && sel.modelId && sel.cwsrUrl) {
-            const pBase = stage1Delivered ? 30 : 4;
-            const pSpan = stage1Delivered ? 54 : 80;
+            const pBase = stage1Delivered ? 30 : 10;
+            const pSpan = stage1Delivered ? 54 : 74;
             reportProgress(pBase);
             const modelBytes = await loadModelBytesCached(sel.modelId, sel.cwsrUrl, sel.version);
             if (meta.signal && meta.signal.aborted) {
               return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
             }
+            reportProgress(pBase + 2);
             await yieldUiSlice();
             const scaledProgress = (pct) => reportProgress(pBase + Math.round((Number(pct) || 0) * pSpan / 100));
             const srOut = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress);
@@ -1095,7 +1158,13 @@
       }
 
       return entry;
+    }, 15000, highPriority).finally(() => {
+      inFlightByKey.delete(cacheKey);
     });
+
+    flight.promise = jobPromise;
+    inFlightByKey.set(cacheKey, flight);
+    return await jobPromise;
   }
 
   window.__chatwAiRestorer = {

@@ -136,8 +136,37 @@
           db.createObjectStore('compression_checkpoints', { keyPath: 'scope_key' });
         }
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error || new Error('indexeddb_open_failed'));
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        dbPromise = null;
+        reject(new Error('indexeddb_open_timeout'));
+      }, 4500);
+      req.onblocked = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        dbPromise = null;
+        reject(new Error('indexeddb_open_blocked'));
+      };
+      req.onsuccess = () => {
+        if (settled) {
+          try { req.result.close(); } catch (_) {}
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        req.result.onclose = () => { dbPromise = null; };
+        resolve(req.result);
+      };
+      req.onerror = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        dbPromise = null;
+        reject(req.error || new Error('indexeddb_open_failed'));
+      };
     });
     return dbPromise;
   }

@@ -1,0 +1,8 @@
+# Tasks: Spec 174 — Fix AI Image Enhancement Stalling at 3%
+
+- [x] T001 Inspect and harden `realesrgan_gpu.rs` & `wasm_bridge.rs`: add cooperative GPU job generation cancellation, enforce `max_gpu_budget_ms` inside `run_tile_gl_async` / `run_span_tile_gl_async` / `await_gl_fence_nonblocking`, cap `single_pass_ok` VRAM footprint (`w * h <= 520_000`), and expose `abortActiveGpuJob` in `wasm_bridge.rs`.
+- [x] T002 Upgrade `app/web/storage_engine.js`: add `onblocked` & timeout resilience to `openDb()` so IndexedDB never hangs indefinitely.
+- [x] T003 Upgrade `app/web/ai_restorer.js`: add priority queue (`HIGH` vs `NORMAL`), `inFlightJobs` deduplication by `cacheKey`, monotonic progress stages (`>= 4%` -> `100%`), and GPU job cancellation on watchdog timeout with automatic Stage 1 fallback.
+- [x] T004 Harden `app/src/components/rich.rs` (`RichImage::run_ai_pipeline` & `MediaLightbox::run_lb_enhance`): prevent duplicate concurrent runs, enforce monotonic progress updates, pass explicit job priority, fix Lightbox `original_src` edge case, and ensure bounded cleanup.
+- [x] T005 Build release WASM (`./app/build-web.sh release`), run `cargo check --manifest-path app/Cargo.toml`, and run headless Chrome Playwright tests covering both hardware WebGL2 and software WebGL2, single & concurrent enhancement, crisp/large/small images, ensuring `0` page errors and smooth `3% -> 100%` completion.
+- [x] T006 Deploy updated `app/dist` (preserving `/www/wwwroot/chart/app/dist/origins.js`) to `192.168.1.224`, verify live on `https://chat.kiyo.vn/`, mark tasks `[x]`, commit, and push to `origin/main`.

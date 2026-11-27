@@ -610,6 +610,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
     let ai_cache_hit = use_signal(|| false);
     let needs_on_demand_ai = use_signal(|| false);
     let is_sender_original = use_signal(|| false);
+    let ai_run_gen = use_signal(|| 0u64);
 
     let key_now = (data.u.clone(), data.k.clone(), data.n.clone());
     let mime_now = data.m.clone();
@@ -650,12 +651,16 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                 mime_type: String,
                                 orig_qp: String,
                                 auto_run: bool,
+                                interactive_priority: bool,
                                 key_b64_reg: String,
                                 nonce_b64_reg: String,
                                 fname_reg: String,
                                 wire_w_reg: u32,
                                 wire_h_reg: u32| {
         if mime_type == "image/gif" {
+            return;
+        }
+        if interactive_priority && *ai_loading.peek() {
             return;
         }
         let mut ai_loading = ai_loading;
@@ -665,8 +670,11 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
         let mut ai_cache_hit = ai_cache_hit;
         let mut needs_on_demand_ai = needs_on_demand_ai;
         let mut is_sender_original = is_sender_original;
+        let mut ai_run_gen = ai_run_gen;
         let mut src = src;
         let mut raw_src = raw_src;
+        let my_gen = ai_run_gen.peek().wrapping_add(1);
+        ai_run_gen.set(my_gen);
 
         spawn(async move {
             let url_json = serde_json::to_string(&base_url).unwrap_or_default();
@@ -678,9 +686,19 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             let fname_json = serde_json::to_string(&fname_reg).unwrap_or_else(|_| "\"image\"".to_string());
             let mime_json = serde_json::to_string(&mime_type).unwrap_or_else(|_| "\"image/avif\"".to_string());
             let auto_flag = if auto_run { "true" } else { "false" };
+            let priority_str = if interactive_priority { "HIGH" } else { "NORMAL" };
+            let force_flag = if interactive_priority { "true" } else { "false" };
             let js = format!(
                 r#"
                 (async () => {{
+                  let finished = false;
+                  let watchdog = null;
+                  const emitOnce = (payload) => {{
+                    if (finished) return;
+                    finished = true;
+                    if (watchdog !== null) {{ clearTimeout(watchdog); watchdog = null; }}
+                    try {{ dioxus.send(payload); }} catch (_) {{}}
+                  }};
                   try {{
                     // 0. Register this loaded image (even if blurry/un-enhanced!) in local cross-chat PDQ/BLAKE3 dedup index
                     // so copying/pasting it into another chat NEVER creates a duplicate file on the server!
@@ -725,12 +743,12 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                     cacheOnly: true,
                                 }});
                                 if (cached && cached.enhanced && cached.url) {{
-                                    dioxus.send({{ type: 'done', url: cached.url, cacheHit: true, origUrl: orig.url }});
+                                    emitOnce({{ type: 'done', url: cached.url, cacheHit: true, origUrl: orig.url }});
                                     return;
                                 }}
                             }}
                             if (!{auto_flag}) {{
-                                dioxus.send({{ type: 'sender_orig', url: orig.url }});
+                                emitOnce({{ type: 'sender_orig', url: orig.url }});
                                 return;
                             }}
                         }}
@@ -739,7 +757,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         regDedup(false);
                     }}
                     if (!window.__chatwAiRestorer || !window.__chatwAiRestorer.isAiEnabled()) {{
-                        dioxus.send({{ type: 'noop' }});
+                        emitOnce({{ type: 'noop' }});
                         return;
                     }}
                     // 2. Check persistent IndexedDB AI Output Cache first (< 3ms)
@@ -752,38 +770,39 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         cacheOnly: true,
                     }});
                     if (cached && cached.enhanced && cached.url) {{
-                        dioxus.send({{ type: 'done', url: cached.url, cacheHit: true, origUrl: inputUrl }});
+                        emitOnce({{ type: 'done', url: cached.url, cacheHit: true, origUrl: inputUrl }});
                         return;
                     }}
                     // 3. New device / history image not cached yet -> show sleek corner SVG icon until user clicks!
                     if (!{auto_flag}) {{
-                        dioxus.send({{ type: 'needs_on_demand' }});
+                        emitOnce({{ type: 'needs_on_demand' }});
                         return;
                     }}
                     // 4. Live incoming image (or user tapped corner icon) -> blurred + AI shimmer + live progress!
                     dioxus.send({{ type: 'start', pct: 3 }});
+                    watchdog = setTimeout(() => emitOnce({{ type: 'failed', error: 'eval_watchdog_timeout' }}), 24000);
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl(inputUrl, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
                         targetWidth: {target_w},
                         targetHeight: {target_h},
                         origProfileJson: {qp_json},
-                        forceRun: true,
+                        forceRun: {force_flag},
+                        priority: '{priority_str}',
                         onStage1: (url) => {{
-                            try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
+                            if (!finished) try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
                         }},
                         onProgress: (pct) => {{
-                            try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
+                            if (!finished) try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
                         }},
                     }});
-                    console.log('LB AI ENHANCE RESULT:', res);
                     if (res && res.enhanced && res.url) {{
-                        dioxus.send({{ type: 'done', url: res.url, cacheHit: Boolean(res.cacheHit), origUrl: inputUrl }});
+                        emitOnce({{ type: 'done', url: res.url, cacheHit: Boolean(res.cacheHit), origUrl: inputUrl }});
                     }} else {{
-                        dioxus.send({{ type: 'failed' }});
+                        emitOnce({{ type: 'failed' }});
                     }}
                   }} catch (err) {{
-                    try {{ dioxus.send({{ type: 'failed', error: String(err) }}); }} catch (_) {{}}
+                    emitOnce({{ type: 'failed', error: String(err) }});
                   }}
                 }})();
                 "#
@@ -791,6 +810,9 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             let mut eval = dioxus::document::eval(&js);
             let mut handed_off_reveal = false;
             while let Ok(v) = eval.recv::<serde_json::Value>().await {
+                if *ai_run_gen.peek() != my_gen {
+                    break;
+                }
                 let ev_type = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
                 match ev_type {
                     "sender_orig" => {
@@ -813,7 +835,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                         needs_on_demand_ai.set(false);
                         ai_revealing.set(false);
                         ai_loading.set(true);
-                        ai_progress.set(v.get("pct").and_then(|n| n.as_u64()).unwrap_or(3) as u32);
+                        ai_progress.set(v.get("pct").and_then(|n| n.as_u64()).unwrap_or(3).max(3) as u32);
                     }
                     "stage1" => {
                         // Software-only fallback emitted only when WebGL2 Stage 2 cannot run.
@@ -824,7 +846,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     "progress" => {
                         if let Some(p) = v.get("pct").and_then(|n| n.as_u64()) {
                             let p32 = (p as u32).min(100);
-                            if p32 != *ai_progress.peek() {
+                            if p32 > *ai_progress.peek() || p32 == 100 {
                                 ai_progress.set(p32);
                             }
                         }
@@ -868,12 +890,15 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     _ => {
                         ai_loading.set(false);
                         ai_revealing.set(false);
+                        if interactive_priority {
+                            needs_on_demand_ai.set(true);
+                        }
                         break;
                     }
                 }
             }
-            // Guaranteed cleanup: if JS eval exited/aborted before emitting 'done'/'failed', never leave spinner stuck at 3%/90%
-            if !handed_off_reveal && *ai_loading.peek() {
+            // Guaranteed cleanup: if JS eval exited/aborted before emitting 'done'/'failed', never leave spinner stuck at 3%
+            if *ai_run_gen.peek() == my_gen && !handed_off_reveal && *ai_loading.peek() {
                 ai_loading.set(false);
                 ai_revealing.set(false);
             }
@@ -910,7 +935,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             failed.set(false);
             raw_src.set(Some(hit.clone()));
             src.set(Some(hit.clone()));
-            run_ai_pipeline(hit, u, sha_now.clone(), mime_now.clone(), qp_now.clone(), is_live_incoming, k, n, name_now.clone(), wire_w_now, wire_h_now);
+            run_ai_pipeline(hit, u, sha_now.clone(), mime_now.clone(), qp_now.clone(), is_live_incoming, is_live_incoming, k, n, name_now.clone(), wire_w_now, wire_h_now);
             return;
         }
         src.set(None);
@@ -939,7 +964,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                 loaded_key.set(Some(target_key));
                 raw_src.set(Some(burl.clone()));
                 src.set(Some(burl.clone()));
-                run_ai_pipeline(burl, u, sh_in, cached_mime, qp_in, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
+                run_ai_pipeline(burl, u, sh_in, cached_mime, qp_in, is_live_incoming, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
                 return;
             }
             // 2. Local cache miss (receiver first view, cache evicted/cleared, or new device):
@@ -962,7 +987,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                 loaded_key.set(Some(target_key));
                 raw_src.set(Some(burl.clone()));
                 src.set(Some(burl.clone()));
-                run_ai_pipeline(burl, u, sh_in, mime, qp_in, auto_ai, k, n, fname_in, wire_w_in, wire_h_in);
+                run_ai_pipeline(burl, u, sh_in, mime, qp_in, auto_ai, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
                 return;
             }
             match recovery::load_or_fetch_media(&u, &k, &n, &mime, scope, "original").await {
@@ -974,7 +999,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     loaded_key.set(Some(target_key));
                     raw_src.set(Some(burl.clone()));
                     src.set(Some(burl.clone()));
-                    run_ai_pipeline(burl, u, sh_in, m, qp_in, auto_ai, k, n, fname_in, wire_w_in, wire_h_in);
+                    run_ai_pipeline(burl, u, sh_in, m, qp_in, auto_ai, is_live_incoming, k, n, fname_in, wire_w_in, wire_h_in);
                 }
                 MediaFetchOutcome::MissingNeedsRecovery { ref_id, availability_state, reason } => {
                     missing.set(Some((ref_id, availability_state, reason)));
@@ -1093,6 +1118,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                             corner_sha.clone(),
                                             corner_mime.clone(),
                                             corner_qp.clone(),
+                                            true,
                                             true,
                                             corner_k.clone(),
                                             corner_n.clone(),
@@ -2566,7 +2592,13 @@ pub fn GlobalImageLightbox() -> Element {
     }
 
     let run_lb_enhance = move |m: LightboxMedia| {
-        let Some(raw_u) = m.original_src.clone() else { return; };
+        let Some(raw_u) = m.original_src.clone() else {
+            if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
+                cur.auto_enhance_on_open = false;
+                *GLOBAL_LIGHTBOX.write() = Some(cur);
+            }
+            return;
+        };
         if *upscaling_ai.peek() {
             return;
         }
@@ -2586,31 +2618,40 @@ pub fn GlobalImageLightbox() -> Element {
             let js = format!(
                 r#"
                 (async () => {{
+                  let finished = false;
+                  let watchdog = null;
+                  const emitOnce = (payload) => {{
+                    if (finished) return;
+                    finished = true;
+                    if (watchdog !== null) {{ clearTimeout(watchdog); watchdog = null; }}
+                    try {{ dioxus.send(payload); }} catch (_) {{}}
+                  }};
                   try {{
-                    if (!window.__chatwAiRestorer) {{ dioxus.send({{ type: 'failed' }}); return; }}
+                    if (!window.__chatwAiRestorer) {{ emitOnce({{ type: 'failed' }}); return; }}
                     // Let Lightbox Frame-0/Frame-1 paint smoothly at 60/120fps before kicking off GPU AI work!
                     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+                    watchdog = setTimeout(() => emitOnce({{ type: 'failed', error: 'lb_eval_watchdog_timeout' }}), 24000);
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
                         origProfileJson: {qp_json},
                         force4x: true,
                         forceRun: true,
+                        priority: 'HIGH',
                         onStage1: (url) => {{
-                            try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
+                            if (!finished) try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
                         }},
                         onProgress: (pct) => {{
-                            try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
+                            if (!finished) try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
                         }},
                     }});
-                    console.log('LB AI ENHANCE RESULT:', res);
                     if (res && res.enhanced && res.url) {{
-                        dioxus.send({{ type: 'done', url: res.url }});
+                        emitOnce({{ type: 'done', url: res.url }});
                     }} else {{
-                        dioxus.send({{ type: 'failed' }});
+                        emitOnce({{ type: 'failed' }});
                     }}
                   }} catch (err) {{
-                    try {{ dioxus.send({{ type: 'failed', error: String(err) }}); }} catch (_) {{}}
+                    emitOnce({{ type: 'failed', error: String(err) }});
                   }}
                 }})();
                 "#
@@ -2623,7 +2664,7 @@ pub fn GlobalImageLightbox() -> Element {
                     "progress" => {
                         if let Some(p) = v.get("pct").and_then(|n| n.as_u64()) {
                             let p32 = (p as u32).min(100);
-                            if p32 != *lb_progress.peek() {
+                            if p32 > *lb_progress.peek() || p32 == 100 {
                                 lb_progress.set(p32);
                             }
                         }

@@ -22,7 +22,35 @@ use chatw_media_core::ai::{
     span::SpanGpuF16Model,
 };
 use js_sys::{Array, Float32Array, Object, Reflect, Uint16Array};
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
+static ACTIVE_GPU_JOB_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// Increments the active GPU job generation so any orphaned async future aborts cleanly
+/// on its next yield/fence check instead of mutating subsequent jobs' WebGL2 state.
+pub fn abort_gpu_jobs() -> u64 {
+    let next = ACTIVE_GPU_JOB_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let _ = with_gl_engine(|eng| {
+        eng.cleanup_active_tile();
+        eng.cleanup_active_span_tile();
+        Ok(())
+    });
+    next
+}
+
+fn check_gpu_job_active(job_gen: u64, deadline_ms: f64) -> Result<(), String> {
+    if ACTIVE_GPU_JOB_GEN.load(Ordering::Relaxed) != job_gen {
+        return Err("gpu_job_aborted".into());
+    }
+    if js_sys::Date::now() >= deadline_ms {
+        return Err("gpu_time_budget_exceeded".into());
+    }
+    Ok(())
+}
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{
     HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlBuffer, WebGlFramebuffer, WebGlProgram,
@@ -2800,20 +2828,29 @@ async fn yield_browser_task() {
 }
 
 /// Non-blocking WebGL2 `fenceSync` waiter: polls `clientWaitSync(sync, 0, 0)` (0ns timeout!) every 8ms
-/// so the browser main thread NEVER freezes while waiting for GPU shaders or PBO DMA transfers!
-async fn await_gl_fence_nonblocking(sync_opt: Option<WebGlSync>) {
+/// bounded by `deadline_ms` and `job_gen` so the browser main thread NEVER freezes or hangs!
+async fn await_gl_fence_nonblocking(
+    sync_opt: Option<WebGlSync>,
+    job_gen: u64,
+    deadline_ms: f64,
+) -> Result<(), String> {
     let Some(sync) = sync_opt else {
         yield_browser_task().await;
-        return;
+        return check_gpu_job_active(job_gen, deadline_ms);
     };
     let mut spins = 0u32;
+    let mut abort_err: Option<String> = None;
     loop {
+        if let Err(e) = check_gpu_job_active(job_gen, deadline_ms) {
+            abort_err = Some(e);
+            break;
+        }
         let status = with_gl_engine(|eng| Ok(eng.gl.client_wait_sync_with_u32(&sync, 0, 0)))
             .unwrap_or(Gl::WAIT_FAILED);
         if status == Gl::ALREADY_SIGNALED
             || status == Gl::CONDITION_SATISFIED
             || status == Gl::WAIT_FAILED
-            || spins >= 600
+            || spins >= 150
         {
             break;
         }
@@ -2824,6 +2861,10 @@ async fn await_gl_fence_nonblocking(sync_opt: Option<WebGlSync>) {
         eng.gl.delete_sync(Some(&sync));
         Ok(())
     });
+    match abort_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 /// Uploads FP16 `SRVGGNetCompact` weight textures incrementally (4 layers per task slice) so cold-start
@@ -2891,8 +2932,12 @@ async fn run_tile_gl_async(
     prog_start: u32,
     prog_end: u32,
     on_progress: Option<&js_sys::Function>,
+    job_gen: u64,
+    deadline_ms: f64,
 ) -> Result<(), String> {
+    check_gpu_job_active(job_gen, deadline_ms)?;
     ensure_model_uploaded_async(model_id, model_bytes).await?;
+    check_gpu_job_active(job_gen, deadline_ms)?;
     let num_body = with_gl_engine(|eng| eng.begin_tile(tile_rgba, tw, th, model_id, model_bytes))?;
     // Flush in smooth 4-layer chunks + non-blocking GPU fence so UI stays 60–120fps & progress tracks real GPU work!
     let _ = is_software;
@@ -2900,6 +2945,13 @@ async fn run_tile_gl_async(
     let span = prog_end.saturating_sub(prog_start).max(1);
     let mut layer = 0usize;
     while layer < num_body {
+        if let Err(e) = check_gpu_job_active(job_gen, deadline_ms) {
+            let _ = with_gl_engine(|eng| {
+                eng.cleanup_active_tile();
+                Ok(())
+            });
+            return Err(e);
+        }
         let next = (layer + chunk).min(num_body);
         let fence_res = with_gl_engine(|eng| {
             eng.step_body_layers(model_id, layer, next)?;
@@ -2915,7 +2967,13 @@ async fn run_tile_gl_async(
                 return Err(e);
             }
         };
-        await_gl_fence_nonblocking(fence).await;
+        if let Err(e) = await_gl_fence_nonblocking(fence, job_gen, deadline_ms).await {
+            let _ = with_gl_engine(|eng| {
+                eng.cleanup_active_tile();
+                Ok(())
+            });
+            return Err(e);
+        }
         layer = next;
         let pct = prog_start + ((layer as u32 * span * 85) / (num_body.max(1) as u32 * 100));
         emit_progress(on_progress, pct.min(prog_end));
@@ -2933,7 +2991,7 @@ async fn run_tile_gl_async(
             return Err(e);
         }
     };
-    await_gl_fence_nonblocking(fin_fence).await;
+    await_gl_fence_nonblocking(fin_fence, job_gen, deadline_ms).await?;
     emit_progress(on_progress, prog_end);
     Ok(())
 }
@@ -3008,11 +3066,22 @@ async fn run_span_tile_gl_async(
     prog_start: u32,
     prog_end: u32,
     on_progress: Option<&js_sys::Function>,
+    job_gen: u64,
+    deadline_ms: f64,
 ) -> Result<(), String> {
+    check_gpu_job_active(job_gen, deadline_ms)?;
     ensure_span_model_uploaded_async(model_id, model_bytes).await?;
+    check_gpu_job_active(job_gen, deadline_ms)?;
     let num_blocks = with_gl_engine(|eng| eng.begin_span_tile(tile_rgba, tw, th, model_id))?;
     let span = prog_end.saturating_sub(prog_start).max(1);
     for bi in 0..num_blocks {
+        if let Err(e) = check_gpu_job_active(job_gen, deadline_ms) {
+            let _ = with_gl_engine(|eng| {
+                eng.cleanup_active_span_tile();
+                Ok(())
+            });
+            return Err(e);
+        }
         let fence_res = with_gl_engine(|eng| {
             eng.step_span_block(model_id, bi)?;
             Ok(eng.create_flush_fence())
@@ -3027,7 +3096,13 @@ async fn run_span_tile_gl_async(
                 return Err(e);
             }
         };
-        await_gl_fence_nonblocking(fence).await;
+        if let Err(e) = await_gl_fence_nonblocking(fence, job_gen, deadline_ms).await {
+            let _ = with_gl_engine(|eng| {
+                eng.cleanup_active_span_tile();
+                Ok(())
+            });
+            return Err(e);
+        }
         let pct = prog_start + (((bi + 1) as u32 * span * 85) / (num_blocks.max(1) as u32 * 100));
         emit_progress(on_progress, pct.min(prog_end));
     }
@@ -3044,7 +3119,7 @@ async fn run_span_tile_gl_async(
             return Err(e);
         }
     };
-    await_gl_fence_nonblocking(fin_fence).await;
+    await_gl_fence_nonblocking(fin_fence, job_gen, deadline_ms).await?;
     emit_progress(on_progress, prog_end);
     Ok(())
 }
@@ -3099,12 +3174,18 @@ pub async fn restore_image_realesrgan_rust(
         return Err("hardware_webgl2_required_fallback_stage1".into());
     }
     if (ow as u32) <= probe.max_tex_size && (oh as u32) <= probe.max_tex_size {
-        let prep_ok = with_gl_engine(|eng| eng.prepare_output_canvas(ow as u32, oh as u32));
+        let job_gen = ACTIVE_GPU_JOB_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+        let prep_ok = with_gl_engine(|eng| {
+            eng.cleanup_active_tile();
+            eng.cleanup_active_span_tile();
+            eng.prepare_output_canvas(ow as u32, oh as u32)
+        });
         if prep_ok.is_ok() {
-            // Single-pass (0% overlap halo overhead!) on real GPU for images up to 1.1M pixels (covers up to ~900x1200 / 1080x1000).
-            let single_pass_ok = w * h <= 1_100_000;
+            // Single-pass (0% overlap halo overhead) capped safely within iGPU VRAM & TDR limits (`<= 520k` input px and `<= 2560` out edge).
+            let single_pass_ok = w * h <= 520_000 && ow <= 2560 && oh <= 2560;
             let t_gpu_start = js_sys::Date::now();
-            let max_gpu_budget_ms = 5500.0f64;
+            let max_gpu_budget_ms = 6500.0f64;
+            let deadline_ms = t_gpu_start + max_gpu_budget_ms;
             let gpu_res: Result<(), String> = if single_pass_ok {
                 if kind.is_span() {
                     run_span_tile_gl_async(
@@ -3124,6 +3205,8 @@ pub async fn restore_image_realesrgan_rust(
                         8,
                         92,
                         on_progress.as_ref(),
+                        job_gen,
+                        deadline_ms,
                     )
                     .await
                 } else {
@@ -3145,6 +3228,8 @@ pub async fn restore_image_realesrgan_rust(
                         8,
                         92,
                         on_progress.as_ref(),
+                        job_gen,
+                        deadline_ms,
                     )
                     .await
                 }
@@ -3204,6 +3289,8 @@ pub async fn restore_image_realesrgan_rust(
                                 p0,
                                 p1,
                                 on_progress.as_ref(),
+                                job_gen,
+                                deadline_ms,
                             )
                             .await
                         } else {
@@ -3225,6 +3312,8 @@ pub async fn restore_image_realesrgan_rust(
                                 p0,
                                 p1,
                                 on_progress.as_ref(),
+                                job_gen,
+                                deadline_ms,
                             )
                             .await
                         };
@@ -3233,8 +3322,8 @@ pub async fn restore_image_realesrgan_rust(
                             break 'outer;
                         }
                         done_tiles += 1;
-                        if js_sys::Date::now() - t_gpu_start > max_gpu_budget_ms {
-                            err_opt = Some("gpu_time_budget_exceeded".into());
+                        if let Err(e) = check_gpu_job_active(job_gen, deadline_ms) {
+                            err_opt = Some(e);
                             break 'outer;
                         }
                         yield_browser_task().await;
@@ -3264,7 +3353,13 @@ pub async fn restore_image_realesrgan_rust(
                     let (pbo, sync, blen) = eng.begin_gate_thumbnail_pbo(ow as u32, oh as u32, gw, gh)?;
                     Ok((pbo, sync, blen, eng.canvas.clone()))
                 }) {
-                    await_gl_fence_nonblocking(pbo_sync).await;
+                    if let Err(e) = await_gl_fence_nonblocking(pbo_sync, job_gen, deadline_ms).await {
+                        let _ = with_gl_engine(|eng| {
+                            eng.gl.delete_buffer(Some(&pbo));
+                            Ok(())
+                        });
+                        return Err(e);
+                    }
                     let gate_rgba = with_gl_engine(|eng| Ok(eng.finish_gate_thumbnail_pbo(&pbo, byte_len)))?;
                     let (passed, ssim, drift) = evaluate_sr_quality_gate(rgba, width, height, &gate_rgba, gw, gh);
                     if !passed {
@@ -3588,6 +3683,8 @@ pub async fn upscale_fsr1_rust(
         return Err("webgl2_unavailable_for_fsr1".into());
     }
 
+    let fsr_gen = ACTIVE_GPU_JOB_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let fsr_deadline = js_sys::Date::now() + 4500.0;
     with_gl_engine(|eng| eng.run_fsr1_gpu(rgba, width, height, dw, dh, sharpness))?;
     emit_progress(on_progress.as_ref(), 75);
 
@@ -3606,7 +3703,13 @@ pub async fn upscale_fsr1_rust(
         let (pbo, sync, blen) = eng.begin_gate_thumbnail_pbo(dw, dh, gw, gh)?;
         Ok((pbo, sync, blen, eng.canvas.clone()))
     })?;
-    await_gl_fence_nonblocking(pbo_sync).await;
+    if let Err(e) = await_gl_fence_nonblocking(pbo_sync, fsr_gen, fsr_deadline).await {
+        let _ = with_gl_engine(|eng| {
+            eng.gl.delete_buffer(Some(&pbo));
+            Ok(())
+        });
+        return Err(e);
+    }
     let gate_rgba = with_gl_engine(|eng| Ok(eng.finish_gate_thumbnail_pbo(&pbo, byte_len)))?;
     let (_passed, ssim, drift) = evaluate_sr_quality_gate(rgba, width, height, &gate_rgba, gw, gh);
     let match_pct = (((ssim.clamp(0.0, 1.0) * 0.55 + (1.0 - drift * 4.5).clamp(0.0, 1.0) * 0.45) * 1000.0).round() / 10.0)
