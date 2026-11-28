@@ -775,8 +775,8 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                 isAiRecovery: Boolean({qp_json}) || ({target_w} > {wire_w_reg}),
                                 isSenderOrigLocal: Boolean(isSenderOrigLocal),
                             }}).catch(() => {{}});
-                            if (typeof requestIdleCallback === 'function') requestIdleCallback(run, {{ timeout: 800 }});
-                            else setTimeout(run, 120);
+                            if (typeof requestIdleCallback === 'function') requestIdleCallback(run, {{ timeout: 2500 }});
+                            else setTimeout(run, 1500);
                         }}
                     }};
                     let inputUrl = {url_json};

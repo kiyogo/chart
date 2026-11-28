@@ -701,13 +701,23 @@
       promise: null,
     };
 
-    const reportProgress = (pct) => {
+    const setDebugStage = (step, extra = null) => {
+      if (window.__chatwAiRestorer) {
+        window.__chatwAiRestorer.lastRunDebug = {
+          mediaId,
+          step,
+          stage: flight.lastProgress,
+          extra,
+          ts: Date.now(),
+        };
+      }
+    };
+
+    const reportProgress = (pct, step = null) => {
       const val = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
       if (val < flight.lastProgress && val < 100) return;
       flight.lastProgress = val;
-      if (window.__chatwAiRestorer) {
-        window.__chatwAiRestorer.lastRunDebug = { mediaId, stage: val, ts: Date.now() };
-      }
+      setDebugStage(step || `pct_${val}`);
       for (const cb of flight.progressSubs) {
         try { cb(val); } catch (_) {}
       }
@@ -734,7 +744,7 @@
         return { enhanced: false, skipped: true, reason: 'low_battery_power_saver', url: imageUrl };
       }
 
-      reportProgress(6);
+      reportProgress(6, 'domDec');
       let srcBytes = 0;
       let rawW = 0;
       let rawH = 0;
@@ -754,7 +764,8 @@
           procW = domDec.procW;
           procH = domDec.procH;
           srcU8 = domDec.srcU8;
-          // Non-blocking byte-size probe only when profile is missing (max 120ms so 6% never stalls)
+          reportProgress(7, 'rProbe');
+          // Non-blocking byte-size probe only when profile is missing (max 120ms so UI never stalls)
           if (!origProfileJson) {
             try {
               const rProbe = await withTimeout(fetch(imageUrl), 120, 'img_size_probe');
@@ -762,7 +773,7 @@
             } catch (_) {}
           }
         } else {
-          reportProgress(7);
+          reportProgress(7, 'fetch');
           await yieldUiSlice();
           const fetchTimeoutMs = String(imageUrl || '').startsWith('blob:') ? 1200 : 2500;
           let blob = null;
@@ -837,7 +848,7 @@
         return { enhanced: false, skipped: true, reason: 'decode_failed', error: String(err), url: imageUrl };
       }
 
-      reportProgress(8);
+      reportProgress(8, 'preStage');
       await yieldUiPaint();
 
       let hasAlpha = false;
@@ -948,12 +959,12 @@
           } else if (sel && sel.modelId && sel.cwsrUrl) {
             const pBase = stage1Delivered ? 30 : 10;
             const pSpan = stage1Delivered ? 54 : 74;
-            reportProgress(pBase);
+            reportProgress(pBase, 'modelLoad');
             const modelBytes = await loadModelBytesCached(sel.modelId, sel.cwsrUrl, sel.version);
             if (meta.signal && meta.signal.aborted) {
               return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
             }
-            reportProgress(pBase + 2);
+            reportProgress(pBase + 2, 'gpuRun');
             await yieldUiPaint();
             const scaledProgress = (pct) => reportProgress(pBase + Math.round((Number(pct) || 0) * pSpan / 100));
             const srOut = await withTimeout(
@@ -1332,6 +1343,17 @@
     inFlightByKey.set(cacheKey, flight);
     return await jobPromise;
   }
+
+  window.__chatwOnWasmPanic = (msg) => {
+    try {
+      console.error('[chatw-wasm-panic]', msg, window.__chatwAiRestorer && window.__chatwAiRestorer.lastRunDebug);
+      if (typeof document !== 'undefined') {
+        document.querySelectorAll('.ai-gen-overlay').forEach((el) => {
+          el.style.display = 'none';
+        });
+      }
+    } catch (_) {}
+  };
 
   window.__chatwAiRestorer = {
     PIPELINE_VERSION,

@@ -35,6 +35,29 @@ enum AuthStatus {
     Ready,
 }
 
+#[cfg(target_arch = "wasm32")]
+fn install_wasm_panic_hook() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static HOOKED: AtomicBool = AtomicBool::new(false);
+    if HOOKED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info.to_string();
+        if let Some(win) = web_sys::window() {
+            let _ = js_sys::Reflect::set(&win, &"__chatwLastPanic".into(), &wasm_bindgen::JsValue::from(&msg));
+            if let Ok(cb_val) = js_sys::Reflect::get(&win, &"__chatwOnWasmPanic".into()) {
+                if let Some(cb) = wasm_bindgen::JsCast::dyn_ref::<js_sys::Function>(&cb_val) {
+                    let _ = cb.call1(&win, &wasm_bindgen::JsValue::from(&msg));
+                }
+            }
+        }
+    }));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn install_wasm_panic_hook() {}
+
 #[component]
 pub fn App() -> Element {
     let mut status = use_signal(|| AuthStatus::Loading);
@@ -158,6 +181,7 @@ pub fn App() -> Element {
     };
 
     use_effect(move || {
+        install_wasm_panic_hook();
         crate::storage::wasm_bridge::install_wasm_media_bridge();
         platform::apply_appearance(&platform::load_appearance());
         i18n::init_from_storage();
