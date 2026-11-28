@@ -52,7 +52,28 @@
     });
   }
 
+  function raceWithSignal(promise, signal, label = 'preempted') {
+    if (!signal) return promise;
+    if (signal.aborted) return Promise.reject(new Error(`aborted:${label}`));
+    return new Promise((resolve, reject) => {
+      const onAbort = () => reject(new Error(`aborted:${label}`));
+      signal.addEventListener('abort', onAbort, { once: true });
+      Promise.resolve(promise).then(
+        (v) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(v);
+        },
+        (e) => {
+          signal.removeEventListener('abort', onAbort);
+          reject(e);
+        },
+      );
+    });
+  }
+
   let activeMainJob = false;
+  let activeMainPriority = null;
+  let activeJobAbortCtrl = null;
   const highWaiters = [];
   const normalWaiters = [];
   let mainIdleResolvers = [];
@@ -63,9 +84,34 @@
     return new Promise((resolve) => mainIdleResolvers.push(resolve));
   }
 
+  function abortActiveNormalJobForHighPriority() {
+    if (!activeMainJob || activeMainPriority !== 'NORMAL') return;
+    if (activeJobAbortCtrl && !activeJobAbortCtrl.signal.aborted) {
+      try { activeJobAbortCtrl.abort(); } catch (_) {}
+    }
+    try {
+      if (window.__chatwWasmMedia && typeof window.__chatwWasmMedia.abortActiveGpuJob === 'function') {
+        window.__chatwWasmMedia.abortActiveGpuJob();
+      }
+    } catch (_) {}
+  }
+
   function pumpMainQueue() {
-    if (activeMainJob) return;
-    const nextTask = highWaiters.shift() || normalWaiters.shift();
+    if (activeMainJob) {
+      if (highWaiters.length > 0 && activeMainPriority === 'NORMAL') {
+        abortActiveNormalJobForHighPriority();
+      }
+      return;
+    }
+    let nextTask = null;
+    while (!nextTask && (highWaiters.length > 0 || normalWaiters.length > 0)) {
+      const cand = highWaiters.shift() || normalWaiters.shift();
+      if (cand.externalSignal && cand.externalSignal.aborted) {
+        cand.resolve({ enhanced: false, skipped: true, reason: 'cancelled_offscreen' });
+        continue;
+      }
+      nextTask = cand;
+    }
     if (!nextTask) {
       if (mainIdleResolvers.length > 0) {
         const list = mainIdleResolvers;
@@ -74,34 +120,62 @@
       }
       return;
     }
+    const { fn, timeoutMs, highPriority, taskCtrl, externalSignal, resolve } = nextTask;
     activeMainJob = true;
-    const { fn, timeoutMs, resolve } = nextTask;
-    withTimeout(Promise.resolve().then(fn), timeoutMs, 'ai_restore_job')
+    activeMainPriority = highPriority ? 'HIGH' : 'NORMAL';
+    activeJobAbortCtrl = taskCtrl;
+    const onExtAbort = () => {
+      if (!taskCtrl.signal.aborted) {
+        try { taskCtrl.abort(); } catch (_) {}
+      }
+    };
+    if (externalSignal) {
+      if (externalSignal.aborted) onExtAbort();
+      else externalSignal.addEventListener('abort', onExtAbort, { once: true });
+    }
+    withTimeout(
+      raceWithSignal(Promise.resolve().then(() => fn(taskCtrl.signal)), taskCtrl.signal, highPriority ? 'high_cancelled' : 'preempted'),
+      timeoutMs,
+      'ai_restore_job',
+    )
       .catch((err) => {
         try {
           if (window.__chatwWasmMedia && typeof window.__chatwWasmMedia.abortActiveGpuJob === 'function') {
             window.__chatwWasmMedia.abortActiveGpuJob();
           }
         } catch (_) {}
+        const reason = taskCtrl.signal.aborted
+          ? (highPriority ? 'cancelled_offscreen' : 'preempted_by_high_priority')
+          : 'job_timeout_or_error';
         return {
           enhanced: false,
           skipped: true,
-          reason: 'job_timeout_or_error',
+          reason,
           error: String(err),
         };
       })
       .then((res) => resolve(res))
       .finally(() => {
+        if (externalSignal) {
+          try { externalSignal.removeEventListener('abort', onExtAbort); } catch (_) {}
+        }
         activeMainJob = false;
+        activeMainPriority = null;
+        if (activeJobAbortCtrl === taskCtrl) activeJobAbortCtrl = null;
         pumpMainQueue();
       });
   }
 
-  function enqueueExclusive(fn, timeoutMs = 12000, highPriority = false) {
+  function enqueueExclusive(fn, timeoutMs = 12000, highPriority = false, externalSignal = null) {
     return new Promise((resolve) => {
-      const item = { fn, timeoutMs, resolve };
-      if (highPriority) highWaiters.push(item);
-      else normalWaiters.push(item);
+      const taskCtrl = new AbortController();
+      const item = { fn, timeoutMs, highPriority: Boolean(highPriority), taskCtrl, externalSignal, resolve };
+      if (highPriority) {
+        highWaiters.push(item);
+        abortActiveNormalJobForHighPriority();
+      } else {
+        normalWaiters.push(item);
+      }
       pumpMainQueue();
     });
   }
@@ -213,7 +287,7 @@
               const bmp = await createImageBitmap(msg.blob);
               const rawW = bmp.width;
               const rawH = bmp.height;
-              if (rawW < 16 || rawH < 16 || rawW * rawH > 8000000) {
+              if (rawW < 16 || rawH < 16 || rawW * rawH > 36000000) {
                 bmp.close();
                 self.postMessage({ id, ok: false, reason: 'dimensions_out_of_ai_bounds' });
                 return;
@@ -586,8 +660,8 @@
   function rasterizeImgElement(imgEl, maxInEdge) {
     const rawW = imgEl.naturalWidth || 0;
     const rawH = imgEl.naturalHeight || 0;
-    if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
-      return { outOfBounds: true };
+    if (rawW < 16 || rawH < 16 || rawW * rawH > 36_000_000) {
+      return { outOfBounds: true, rawW, rawH };
     }
     let procW = rawW;
     let procH = rawH;
@@ -608,12 +682,14 @@
     return { rawW, rawH, procW, procH, srcU8 };
   }
 
-  function decodeFromLoadedImgElement(imageUrl, maxInEdge) {
+  function decodeFromLoadedImgElement(imageUrl, maxInEdge, mediaId = '') {
     if (!imageUrl || typeof document === 'undefined') return null;
     try {
       const imgs = document.querySelectorAll('img');
       for (const el of imgs) {
-        if ((el.currentSrc === imageUrl || el.src === imageUrl) && el.complete && el.naturalWidth >= 16 && el.naturalHeight >= 16) {
+        const matchUrl = el.currentSrc === imageUrl || el.src === imageUrl;
+        const matchMedia = mediaId && el.getAttribute && el.getAttribute('data-media-ref') === mediaId;
+        if ((matchUrl || matchMedia) && el.complete && el.naturalWidth >= 16 && el.naturalHeight >= 16) {
           try {
             return rasterizeImgElement(el, maxInEdge);
           } catch (_) {}
@@ -623,13 +699,31 @@
     return null;
   }
 
+  function resolveMediaFetchUrl(rawUrl) {
+    const s = String(rawUrl || '');
+    if (!s || s.startsWith('blob:') || s.startsWith('data:')) return s;
+    try {
+      if (typeof window !== 'undefined' && typeof window.CHATW_RESOLVE_URL === 'function') {
+        return window.CHATW_RESOLVE_URL(s);
+      }
+    } catch (_) {}
+    return s;
+  }
+
+  function fetchMediaBlob(rawUrl, timeoutMs, label) {
+    const s = resolveMediaFetchUrl(rawUrl);
+    const opts = (s.startsWith('blob:') || s.startsWith('data:')) ? undefined : { credentials: 'same-origin' };
+    return withTimeout(fetch(s, opts), timeoutMs, label);
+  }
+
   async function decodeViaHtmlImage(imageUrl, maxInEdge, timeoutMs = 3000) {
     if (!imageUrl || typeof Image === 'undefined') return null;
+    const resolvedUrl = resolveMediaFetchUrl(imageUrl);
     return await withTimeout(
       new Promise((resolve, reject) => {
         const img = new Image();
         img.decoding = 'async';
-        if (!String(imageUrl).startsWith('blob:') && !String(imageUrl).startsWith('data:')) {
+        if (!String(resolvedUrl).startsWith('blob:') && !String(resolvedUrl).startsWith('data:')) {
           img.crossOrigin = 'anonymous';
         }
         img.onload = () => {
@@ -640,7 +734,7 @@
           }
         };
         img.onerror = () => reject(new Error('html_img_decode_failed'));
-        img.src = imageUrl;
+        img.src = resolvedUrl;
       }),
       timeoutMs,
       'html_img_decode',
@@ -648,12 +742,24 @@
   }
 
   async function restoreImageFromUrl(imageUrl, meta = {}) {
-    if (!isAiEnabled()) return { enhanced: false, skipped: true, reason: 'ai_disabled_by_user', url: imageUrl };
+    const earlySkip = (reason, extra = null) => {
+      if (window.__chatwAiRestorer) {
+        window.__chatwAiRestorer.lastRunDebug = {
+          mediaId: String(meta.mediaId || meta.refId || imageUrl || '').slice(0, 128),
+          step: 'early_skip',
+          reason,
+          extra,
+          ts: Date.now(),
+        };
+      }
+      return { enhanced: false, skipped: true, reason, url: imageUrl };
+    };
+    if (!isAiEnabled()) return earlySkip('ai_disabled_by_user');
     if (meta.provenance === 'original' || meta.provenance === 'sender_original' || meta.isAnimated) {
-      return { enhanced: false, skipped: true, reason: 'already_original_or_animated', url: imageUrl };
+      return earlySkip('already_original_or_animated', meta.provenance || 'animated');
     }
     if (meta.modelId && !isModelLicenseAllowed(meta.modelId)) {
-      return { enhanced: false, skipped: true, reason: 'model_license_blocked', url: imageUrl };
+      return earlySkip('model_license_blocked', meta.modelId);
     }
 
     const origProfileJson = typeof meta.origProfileJson === 'string' ? meta.origProfileJson : '';
@@ -747,6 +853,12 @@
       }
     };
 
+    const finishSkip = (reason, extra = null) => {
+      setDebugStage('skipped', { reason, extra });
+      console.warn('[chatw-ai] skipped:', reason, { mediaId, stage: flight.lastProgress, extra });
+      return { enhanced: false, skipped: true, reason, url: imageUrl };
+    };
+
     const reportProgress = (pct, step = null) => {
       const val = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
       if (val < flight.lastProgress && val < 100) return;
@@ -764,7 +876,15 @@
 
     const highPriority = Boolean(meta.forceRun || meta.priority === 'HIGH');
 
-    const jobPromise = enqueueExclusive(async () => {
+    const jobPromise = enqueueExclusive(async (queueSignal) => {
+      const isJobAborted = () => Boolean((meta.signal && meta.signal.aborted) || (queueSignal && queueSignal.aborted));
+      const abortReason = () => (queueSignal && queueSignal.aborted && !(meta.signal && meta.signal.aborted)
+        ? 'preempted_by_high_priority'
+        : 'cancelled_offscreen');
+
+      if (isJobAborted()) {
+        return finishSkip(abortReason());
+      }
       if (sessionResultCache.has(cacheKey)) {
         reportProgress(100);
         return { ...sessionResultCache.get(cacheKey), enhanced: true, cacheHit: true, cacheTier: 'memory', provenance: 'ai_restored' };
@@ -772,10 +892,11 @@
 
       const wasm = window.__chatwWasmMedia;
       const t0 = performance.now();
-      reportProgress(4);
-      const hw = await detectHardware();
+      reportProgress(4, 'hwDetect');
+      const hw = await raceWithSignal(detectHardware(), queueSignal, 'hw_detect');
+      if (isJobAborted()) return finishSkip(abortReason());
       if (hw.lowBattery && !meta.forceRun) {
-        return { enhanced: false, skipped: true, reason: 'low_battery_power_saver', url: imageUrl };
+        return finishSkip('low_battery_power_saver');
       }
 
       reportProgress(6, 'domDec');
@@ -788,9 +909,9 @@
       const maxInEdge = hw.webgl2Available && !hw.webgl2Software ? 1024 : 800;
       try {
         // Fast path: reuse already-decoded DOM <img> (`0ms`, zero fetch/Worker/createImageBitmap stall!)
-        const domDec = decodeFromLoadedImgElement(imageUrl, maxInEdge);
+        const domDec = decodeFromLoadedImgElement(imageUrl, maxInEdge, mediaId);
         if (domDec && domDec.outOfBounds) {
-          return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+          return finishSkip('dimensions_out_of_ai_bounds', { rawW: domDec.rawW, rawH: domDec.rawH });
         }
         if (domDec && domDec.srcU8) {
           rawW = domDec.rawW;
@@ -802,28 +923,34 @@
           // Non-blocking byte-size probe only when profile is missing (max 120ms so UI never stalls)
           if (!origProfileJson) {
             try {
-              const rProbe = await withTimeout(fetch(imageUrl), 120, 'img_size_probe');
+              const rProbe = await raceWithSignal(fetchMediaBlob(imageUrl, 120, 'img_size_probe'), queueSignal, 'rProbe');
               if (rProbe.ok) srcBytes = (await withTimeout(rProbe.blob(), 120, 'img_blob_probe')).size;
-            } catch (_) {}
+            } catch (e) {
+              if (isJobAborted()) return finishSkip(abortReason());
+            }
           }
         } else {
           reportProgress(7, 'fetch');
           await yieldUiSlice();
+          if (isJobAborted()) return finishSkip(abortReason());
           const fetchTimeoutMs = String(imageUrl || '').startsWith('blob:') ? 1200 : 2500;
           let blob = null;
           try {
-            const resp = await withTimeout(fetch(imageUrl), fetchTimeoutMs, 'img_fetch');
+            const resp = await raceWithSignal(fetchMediaBlob(imageUrl, fetchTimeoutMs, 'img_fetch'), queueSignal, 'fetch');
             if (resp.ok) {
-              blob = await withTimeout(resp.blob(), fetchTimeoutMs, 'img_blob');
+              blob = await raceWithSignal(withTimeout(resp.blob(), fetchTimeoutMs, 'img_blob'), queueSignal, 'fetch_blob');
               srcBytes = blob.size;
             }
           } catch (fetchErr) {
+            if (isJobAborted()) return finishSkip(abortReason());
             console.warn('[chatw-ai] fetch blob failed, falling back to HTMLImageElement:', fetchErr);
           }
+          if (isJobAborted()) return finishSkip(abortReason());
           let decodedMain = false;
           if (blob) {
             // Offload decode + getImageData off the main thread with bounded 2s timeout
-            const wDec = await callAiMediaWorker({ type: 'decode', blob, maxInEdge }, [], 2000);
+            const wDec = await raceWithSignal(callAiMediaWorker({ type: 'decode', blob, maxInEdge }, [], 2000), queueSignal, 'worker_decode');
+            if (isJobAborted()) return finishSkip(abortReason());
             if (wDec && wDec.ok && wDec.rgba) {
               rawW = wDec.rawW;
               rawH = wDec.rawH;
@@ -832,15 +959,15 @@
               srcU8 = wDec.rgba;
               decodedMain = true;
             } else if (wDec && wDec.reason === 'dimensions_out_of_ai_bounds') {
-              return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+              return finishSkip('dimensions_out_of_ai_bounds', 'worker');
             } else {
               try {
-                const bitmap = await withTimeout(createImageBitmap(blob), 2000, 'main_bitmap_decode');
+                const bitmap = await raceWithSignal(withTimeout(createImageBitmap(blob), 2000, 'main_bitmap_decode'), queueSignal, 'bitmap_decode');
                 rawW = bitmap.width;
                 rawH = bitmap.height;
-                if (rawW < 16 || rawH < 16 || rawW * rawH > 8_000_000) {
+                if (rawW < 16 || rawH < 16 || rawW * rawH > 36_000_000) {
                   bitmap.close();
-                  return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+                  return finishSkip('dimensions_out_of_ai_bounds', { rawW, rawH });
                 }
                 procW = rawW;
                 procH = rawH;
@@ -861,14 +988,16 @@
                 srcU8 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
                 decodedMain = true;
               } catch (bmpErr) {
+                if (isJobAborted()) return finishSkip(abortReason());
                 console.warn('[chatw-ai] createImageBitmap fallback -> HTMLImageElement:', bmpErr);
               }
             }
           }
           if (!decodedMain) {
-            const htmlDec = await decodeViaHtmlImage(imageUrl, maxInEdge, 2500);
+            const htmlDec = await raceWithSignal(decodeViaHtmlImage(imageUrl, maxInEdge, 2500), queueSignal, 'html_decode');
+            if (isJobAborted()) return finishSkip(abortReason());
             if (!htmlDec || htmlDec.outOfBounds) {
-              return { enhanced: false, skipped: true, reason: 'dimensions_out_of_ai_bounds', url: imageUrl };
+              return finishSkip('dimensions_out_of_ai_bounds', htmlDec ? { rawW: htmlDec.rawW, rawH: htmlDec.rawH } : 'no_html_dec');
             }
             rawW = htmlDec.rawW;
             rawH = htmlDec.rawH;
@@ -878,8 +1007,8 @@
           }
         }
       } catch (err) {
-        console.warn('[chatw-ai] decode_failed:', err, imageUrl);
-        return { enhanced: false, skipped: true, reason: 'decode_failed', error: String(err), url: imageUrl };
+        if (isJobAborted()) return finishSkip(abortReason());
+        return finishSkip('decode_failed', String(err));
       }
 
       reportProgress(8, 'preStage');
@@ -970,9 +1099,9 @@
       let skipNeuralSr = false;
       let faceSnapCanvas = null;
       let faceCandidateIsAnime = false;
-      if (meta.signal && meta.signal.aborted) {
+      if (isJobAborted()) {
         if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
-        return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
+        return finishSkip(abortReason());
       }
       if (canHardwareNeural) {
         try {
@@ -987,24 +1116,33 @@
             // instead of aborting, so text/UI/large high-contrast images still visibly sharpen without neural hallucination.
             if (!meta.forceRun || sel.reason === 'dimensions_out_of_ai_bounds') {
               if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
-              return { enhanced: false, skipped: true, reason: sel.reason || 'skipped', url: imageUrl };
+              return finishSkip(sel.reason || 'skipped', sel);
             }
             skipNeuralSr = true;
           } else if (sel && sel.modelId && sel.cwsrUrl) {
             const pBase = stage1Delivered ? 30 : 10;
             const pSpan = stage1Delivered ? 54 : 74;
             reportProgress(pBase, 'modelLoad');
-            const modelBytes = await loadModelBytesCached(sel.modelId, sel.cwsrUrl, sel.version);
-            if (meta.signal && meta.signal.aborted) {
-              return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
+            const modelBytes = await raceWithSignal(loadModelBytesCached(sel.modelId, sel.cwsrUrl, sel.version), queueSignal, 'model_load');
+            if (isJobAborted()) {
+              if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
+              return finishSkip(abortReason());
             }
             reportProgress(pBase + 2, 'gpuRun');
             await yieldUiPaint();
+            if (isJobAborted()) {
+              if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
+              return finishSkip(abortReason());
+            }
             const scaledProgress = (pct) => reportProgress(pBase + Math.round((Number(pct) || 0) * pSpan / 100));
-            const srOut = await withTimeout(
-              wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress),
-              8000,
-              'stage2_realesrgan_gpu',
+            const srOut = await raceWithSignal(
+              withTimeout(
+                wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress),
+                8000,
+                'stage2_realesrgan_gpu',
+              ),
+              queueSignal,
+              'gpu_run',
             );
             if (srOut && srOut.ok && (srOut.canvas || srOut.rgba)) {
               res = srOut;
@@ -1220,13 +1358,13 @@
 
       const encodeMs = Math.round(performance.now() - tEnc0);
       if (!outBlob || outBlob.size === 0) {
-        return { enhanced: false, skipped: true, reason: 'output_encode_failed', url: imageUrl };
+        return finishSkip('output_encode_failed');
       }
       const outUrl = URL.createObjectURL(outBlob);
       const outDecodedOk = await predecodeImageUrlStrict(outUrl);
       if (!outDecodedOk) {
         try { URL.revokeObjectURL(outUrl); } catch (_) {}
-        return { enhanced: false, skipped: true, reason: 'output_decode_verify_failed', url: imageUrl };
+        return finishSkip('output_decode_verify_failed');
       }
       if (stage1ObjectUrl && stage1ObjectUrl !== outUrl) {
         const staleS1 = stage1ObjectUrl;
@@ -1376,7 +1514,7 @@
       }
 
       return entry;
-    }, 12000, highPriority).finally(() => {
+    }, highPriority ? 22000 : 12000, highPriority, meta.signal || null).finally(() => {
       inFlightByKey.delete(inFlightKey);
     });
 

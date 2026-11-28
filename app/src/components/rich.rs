@@ -836,7 +836,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     }}
                     // 4. Live incoming image (or user tapped corner icon) -> blurred + AI shimmer + live progress!
                     dioxus.send({{ type: 'start', pct: 3 }});
-                    const resetWatchdog = startWatchdogs(10000, 24000);
+                    const resetWatchdog = startWatchdogs(18000, 34000);
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl(inputUrl, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
@@ -876,7 +876,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             );
             let mut eval = dioxus::document::eval(&js);
             let mut handed_off_reveal = false;
-            while let Some(v) = eval_recv_with_timeout(&mut eval, 12_500).await {
+            while let Some(v) = eval_recv_with_timeout(&mut eval, 19_500).await {
                 if *ai_run_gen.peek() != my_gen {
                     break;
                 }
@@ -2707,7 +2707,7 @@ pub fn GlobalImageLightbox() -> Element {
                     if (!window.__chatwAiRestorer) {{ emitOnce({{ type: 'failed' }}); return; }}
                     // Let Lightbox Frame-0/Frame-1 paint smoothly at 60/120fps before kicking off GPU AI work!
                     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-                    const resetWatchdog = startWatchdogs(10000, 24000);
+                    const resetWatchdog = startWatchdogs(18000, 34000);
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
@@ -2734,6 +2734,7 @@ pub fn GlobalImageLightbox() -> Element {
                     if (res && res.enhanced && res.url) {{
                         emitOnce({{ type: 'done', url: res.url }});
                     }} else {{
+                        console.warn('[chatw-lb-ai] pipeline skipped/failed:', res);
                         emitOnce({{ type: 'failed' }});
                     }}
                   }} catch (err) {{
@@ -2744,7 +2745,7 @@ pub fn GlobalImageLightbox() -> Element {
             );
             let mut eval = dioxus::document::eval(&js);
             let mut handed_off_reveal = false;
-            while let Some(v) = eval_recv_with_timeout(&mut eval, 12_500).await {
+            while let Some(v) = eval_recv_with_timeout(&mut eval, 19_500).await {
                 match v.get("type").and_then(|s| s.as_str()).unwrap_or("") {
                     "stage1" => {}
                     "progress" => {
