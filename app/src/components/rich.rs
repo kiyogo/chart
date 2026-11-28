@@ -1153,6 +1153,18 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                                 src: "{s}",
                                 alt: "Image",
                                 decoding: "sync",
+                                onerror: move |_| {
+                                    if *ai_enhanced.peek() {
+                                        let mut src_sig = src;
+                                        let mut enh_sig = ai_enhanced;
+                                        let mut pend_sig = needs_on_demand_ai;
+                                        enh_sig.set(false);
+                                        pend_sig.set(true);
+                                        if let Some(raw) = raw_src.peek().clone() {
+                                            src_sig.set(Some(raw));
+                                        }
+                                    }
+                                },
                                 "data-media-ref": "{dom_ref_id}",
                                 "data-ai-restored": if is_ai { "true" } else { "false" },
                                 "data-ai-cache-hit": if ai_cache_hit() { "true" } else { "false" },
@@ -2656,8 +2668,8 @@ pub fn GlobalImageLightbox() -> Element {
         dragging.set(false);
         did_drag.set(false);
         bounds.set((0.0, 0.0, 0.0, 0.0));
-        let mut eng_mut = physics.peek();
-        if let Ok(mut st) = eng_mut.try_borrow_mut() {
+        let eng_ref = physics.peek();
+        if let Ok(mut st) = eng_ref.try_borrow_mut() {
             st.reset_immediate();
         }
     }
@@ -3147,6 +3159,19 @@ pub fn GlobalImageLightbox() -> Element {
                                 alt: "Image",
                                 decoding: "sync",
                                 draggable: "false",
+                                onerror: move |_| {
+                                    if media.ai_restored {
+                                        GLOBAL_LIGHTBOX.with_mut(|slot| {
+                                            if let Some(cur) = slot.as_mut() {
+                                                if let Some(orig) = cur.original_src.clone() {
+                                                    cur.src = orig;
+                                                    cur.ai_restored = false;
+                                                    cur.auto_enhance_on_open = false;
+                                                }
+                                            }
+                                        });
+                                    }
+                                },
                                 "data-media-ref": "{crate::storage::extract_ref_id(&media.media_id).unwrap_or_default()}",
                                 onload: move |_| {
                                     if !has_known_dims && *fallback_nat.peek() == (0, 0) {

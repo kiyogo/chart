@@ -2,7 +2,7 @@
 // Spec 143: 2-Stage Progressive Pipeline — Stage 1 Instant Algorithmic FSR 1.0 + RL -> Stage 2 Adaptive SPAN 4× (NomosUni AVIF / ClearRealityV1 / AnimeVideoV3) + Text/QR Guard + AbortSignal cancellation!
 (() => {
   const STORAGE_PREF_AI_ENABLED = 'chatw_ai_enhance_enabled';
-  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v29-crisp';
+  const PIPELINE_VERSION = 'hybrid-span-gfpgan-v30-strict';
   const BLOCKED_LICENSES_MODELS = Object.freeze(['codeformer', 'rvrt', 'apisr', 'upscayl']);
   const APPROVED_MODELS = Object.freeze({
     nomosuni_span_x2: { id: 'nomosuni_span_x2', cwsrUrl: '/models/nomosuni_span_x2.cwsp', license: 'CC-BY-4.0', scale: 2 },
@@ -540,16 +540,33 @@
   }
   scheduleIdleGpuWarmup();
 
-  async function predecodeImageUrl(url) {
-    if (!url || typeof Image === 'undefined') return;
+  async function predecodeImageUrlStrict(url) {
+    if (!url || typeof Image === 'undefined') return false;
     try {
       const img = new Image();
       img.decoding = 'async';
-      img.src = url;
+      const loaded = await withTimeout(
+        new Promise((resolve) => {
+          img.onload = () => resolve(true);
+          img.onerror = () => resolve(false);
+          img.src = url;
+          if (img.complete && img.naturalWidth > 0) resolve(true);
+        }),
+        2500,
+        'img_load_strict',
+      );
+      if (!loaded) return false;
       if (typeof img.decode === 'function') {
-        await withTimeout(img.decode(), 2500, 'img_decode');
+        await withTimeout(img.decode(), 2500, 'img_decode_strict').catch(() => {});
       }
-    } catch (_) {}
+      return Boolean(img.complete && img.naturalWidth >= 16 && img.naturalHeight >= 16);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function predecodeImageUrl(url) {
+    return await predecodeImageUrlStrict(url);
   }
 
   async function encodeCanvasBlob(canvas, hasAlpha) {
@@ -676,9 +693,12 @@
             matchPct: hit.match_pct != null ? hit.match_pct : null,
             provenance: 'ai_restored',
           };
-          await predecodeImageUrl(entry.url);
-          rememberSessionResult(cacheKey, entry);
-          return entry;
+          const decodedOk = await predecodeImageUrlStrict(entry.url);
+          if (decodedOk) {
+            rememberSessionResult(cacheKey, entry);
+            return entry;
+          }
+          try { URL.revokeObjectURL(entry.url); } catch (_) {}
         }
       } catch (_) {}
     }
@@ -1200,12 +1220,19 @@
 
       const encodeMs = Math.round(performance.now() - tEnc0);
       if (!outBlob || outBlob.size === 0) {
-        if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
         return { enhanced: false, skipped: true, reason: 'output_encode_failed', url: imageUrl };
       }
       const outUrl = URL.createObjectURL(outBlob);
-      await predecodeImageUrl(outUrl);
-      if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
+      const outDecodedOk = await predecodeImageUrlStrict(outUrl);
+      if (!outDecodedOk) {
+        try { URL.revokeObjectURL(outUrl); } catch (_) {}
+        return { enhanced: false, skipped: true, reason: 'output_decode_verify_failed', url: imageUrl };
+      }
+      if (stage1ObjectUrl && stage1ObjectUrl !== outUrl) {
+        const staleS1 = stage1ObjectUrl;
+        stage1ObjectUrl = null;
+        setTimeout(() => { try { URL.revokeObjectURL(staleS1); } catch (_) {} }, 1500);
+      }
       reportProgress(100);
 
       const elapsedMs = Math.round(performance.now() - t0);
