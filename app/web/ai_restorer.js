@@ -136,12 +136,19 @@
     }
   }
 
+  function isValidModelHeader(bytes) {
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength < 100000) return false;
+    // Accept CWSR1 / CWSR / CWSP model headers; reject HTML SPA fallbacks or truncated IDB records
+    const m = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    return m === 'CWSR' || m === 'CWSP';
+  }
+
   async function loadModelBytesCached(modelId, cwsrUrl, version) {
     if (modelBytesMemCache.has(modelId)) return modelBytesMemCache.get(modelId);
     if (window.__chatwStorage && typeof window.__chatwStorage.getAiModel === 'function') {
       try {
         const hit = await withTimeout(window.__chatwStorage.getAiModel(modelId), 2000, 'idb_get_model');
-        if (hit && hit.byteLength > 100000) {
+        if (isValidModelHeader(hit)) {
           modelBytesMemCache.set(modelId, hit);
           return hit;
         }
@@ -150,6 +157,9 @@
     const resp = await withTimeout(fetch(cwsrUrl, { cache: 'force-cache' }), 5000, 'model_fetch');
     if (!resp.ok) throw new Error(`Model fetch failed (${resp.status}): ${cwsrUrl}`);
     const bytes = new Uint8Array(await withTimeout(resp.arrayBuffer(), 5000, 'model_read'));
+    if (!isValidModelHeader(bytes)) {
+      throw new Error(`Invalid model header from ${cwsrUrl} (len=${bytes.byteLength})`);
+    }
     modelBytesMemCache.set(modelId, bytes);
     if (window.__chatwStorage && typeof window.__chatwStorage.putAiModel === 'function') {
       window.__chatwStorage.putAiModel(modelId, bytes, { version: version || '0.2.5.0' }).catch(() => {});
@@ -602,6 +612,9 @@
       new Promise((resolve, reject) => {
         const img = new Image();
         img.decoding = 'async';
+        if (!String(imageUrl).startsWith('blob:') && !String(imageUrl).startsWith('data:')) {
+          img.crossOrigin = 'anonymous';
+        }
         img.onload = () => {
           try {
             resolve(rasterizeImgElement(img, maxInEdge));
@@ -675,8 +688,9 @@
       return { enhanced: false, cacheMiss: true, url: imageUrl };
     }
 
-    if (inFlightByKey.has(cacheKey)) {
-      const flight = inFlightByKey.get(cacheKey);
+    const inFlightKey = `${cacheKey}:${meta.forceRun ? 'force' : 'auto'}`;
+    if (inFlightByKey.has(inFlightKey)) {
+      const flight = inFlightByKey.get(inFlightKey);
       if (typeof meta.onProgress === 'function') {
         flight.progressSubs.add(meta.onProgress);
         if (flight.lastProgress > 0) {
@@ -1336,11 +1350,11 @@
 
       return entry;
     }, 12000, highPriority).finally(() => {
-      inFlightByKey.delete(cacheKey);
+      inFlightByKey.delete(inFlightKey);
     });
 
     flight.promise = jobPromise;
-    inFlightByKey.set(cacheKey, flight);
+    inFlightByKey.set(inFlightKey, flight);
     return await jobPromise;
   }
 
@@ -1351,6 +1365,19 @@
         document.querySelectorAll('.ai-gen-overlay').forEach((el) => {
           el.style.display = 'none';
         });
+        // Fail-safe DOM close fallback so a WASM panic can never trap the user inside a fullscreen Lightbox
+        const dismissLightboxDom = () => {
+          document.querySelectorAll('.lightbox').forEach((lb) => lb.remove());
+        };
+        document.querySelectorAll('.lightbox-close, .lightbox-stage').forEach((el) => {
+          el.addEventListener('click', (ev) => {
+            if (el.classList.contains('lightbox-stage') && ev.target !== el) return;
+            dismissLightboxDom();
+          });
+        });
+        window.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Escape') dismissLightboxDom();
+        }, { capture: true });
       }
     } catch (_) {}
   };

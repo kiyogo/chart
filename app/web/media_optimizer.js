@@ -1297,12 +1297,12 @@
               if (window.__chatwCore && typeof window.__chatwCore.replaceCachedBlobUrlSilently === 'function') {
                 window.__chatwCore.replaceCachedBlobUrlSilently(downloadUrl, keyB64, nonceB64, cachedUrl, rec.mime, cachedHit.blob.size);
               }
-              // Quietly swap any mounted <img> showing the temporary file URL to the persisted cache URL
+              // Update sender DOM preview cleanly without revoking `oldUrl`, since Dioxus signals (`src`/`raw_src`)
+              // may still hold `oldUrl` for subsequent Lightbox opens on this message!
               try {
                 if (oldUrl && oldUrl !== cachedUrl && typeof document !== 'undefined') {
                   const imgs = document.querySelectorAll(`img[src="${oldUrl}"]`);
                   imgs.forEach((img) => { img.src = cachedUrl; });
-                  setTimeout(() => { try { URL.revokeObjectURL(oldUrl); } catch (_) {} }, 1500);
                 }
               } catch (_) {}
             }

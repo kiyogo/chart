@@ -1396,10 +1396,11 @@ pub fn E2eeUnlockRecoveryModal(
                                                                 .await
                                                                 .is_ok()
                                                                 {
-                                                                    if let Some(mut st) = DEVICE_TRUST_STATE.peek().clone() {
-                                                                        st.trust_state = "trusted".into();
-                                                                        *DEVICE_TRUST_STATE.write() = Some(st);
-                                                                    }
+                                                                    DEVICE_TRUST_STATE.with_mut(|slot| {
+                                                                        if let Some(st) = slot.as_mut() {
+                                                                            st.trust_state = "trusted".into();
+                                                                        }
+                                                                    });
                                                                 }
                                                             }
                                                         }

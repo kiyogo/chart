@@ -2656,15 +2656,19 @@ pub fn GlobalImageLightbox() -> Element {
         dragging.set(false);
         did_drag.set(false);
         bounds.set((0.0, 0.0, 0.0, 0.0));
-        physics.peek().borrow_mut().reset_immediate();
+        let mut eng_mut = physics.peek();
+        if let Ok(mut st) = eng_mut.try_borrow_mut() {
+            st.reset_immediate();
+        }
     }
 
     let run_lb_enhance = move |m: LightboxMedia| {
         let Some(raw_u) = m.original_src.clone() else {
-            if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
-                cur.auto_enhance_on_open = false;
-                *GLOBAL_LIGHTBOX.write() = Some(cur);
-            }
+            GLOBAL_LIGHTBOX.with_mut(|slot| {
+                if let Some(cur) = slot.as_mut() {
+                    cur.auto_enhance_on_open = false;
+                }
+            });
             return;
         };
         if *upscaling_ai.peek() {
@@ -2789,10 +2793,11 @@ pub fn GlobalImageLightbox() -> Element {
                         } else {
                             if *active_key.peek() == key_at_start {
                                 upscaling_ai.set(false);
-                                if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
-                                    cur.auto_enhance_on_open = false;
-                                    *GLOBAL_LIGHTBOX.write() = Some(cur);
-                                }
+                                GLOBAL_LIGHTBOX.with_mut(|slot| {
+                                    if let Some(cur) = slot.as_mut() {
+                                        cur.auto_enhance_on_open = false;
+                                    }
+                                });
                             }
                         }
                         break;
@@ -2801,10 +2806,11 @@ pub fn GlobalImageLightbox() -> Element {
                         if *active_key.peek() == key_at_start {
                             upscaling_ai.set(false);
                             lb_revealing.set(false);
-                            if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
-                                cur.auto_enhance_on_open = false;
-                                *GLOBAL_LIGHTBOX.write() = Some(cur);
-                            }
+                            GLOBAL_LIGHTBOX.with_mut(|slot| {
+                                if let Some(cur) = slot.as_mut() {
+                                    cur.auto_enhance_on_open = false;
+                                }
+                            });
                         }
                         break;
                     }
@@ -2812,10 +2818,11 @@ pub fn GlobalImageLightbox() -> Element {
             }
             if !handed_off_reveal && *active_key.peek() == key_at_start && *upscaling_ai.peek() {
                 upscaling_ai.set(false);
-                if let Some(mut cur) = GLOBAL_LIGHTBOX.peek().clone() {
-                    cur.auto_enhance_on_open = false;
-                    *GLOBAL_LIGHTBOX.write() = Some(cur);
-                }
+                GLOBAL_LIGHTBOX.with_mut(|slot| {
+                    if let Some(cur) = slot.as_mut() {
+                        cur.auto_enhance_on_open = false;
+                    }
+                });
             }
         });
     };
@@ -2825,14 +2832,15 @@ pub fn GlobalImageLightbox() -> Element {
         if cur_key.is_empty() {
             return;
         }
-        if let Some(m) = GLOBAL_LIGHTBOX.peek().clone() {
+        let media_snapshot = { GLOBAL_LIGHTBOX.peek().clone() };
+        if let Some(m) = media_snapshot {
             if m.auto_enhance_on_open && !m.ai_restored && m.can_ai_enhance && !m.is_sender_original {
                 run_lb_enhance(m);
             }
         }
     }));
 
-    // Single rAF-throttled viewport resize listener while Lightbox is open (never re-created on `src` swap!).
+    // Single rAF-throttled viewport resize + Escape close listener while Lightbox is open (never re-created on `src` swap!).
     use_effect(use_reactive!(|lightbox_open| {
         if !lightbox_open {
             let _ = dioxus::document::eval(
@@ -2840,6 +2848,10 @@ pub fn GlobalImageLightbox() -> Element {
                 if (window.__chatwLbResize) {
                     window.removeEventListener('resize', window.__chatwLbResize);
                     window.__chatwLbResize = null;
+                }
+                if (window.__chatwLbEsc) {
+                    window.removeEventListener('keydown', window.__chatwLbEsc, true);
+                    window.__chatwLbEsc = null;
                 }
                 "#,
             );
@@ -2853,20 +2865,41 @@ pub fn GlobalImageLightbox() -> Element {
                     if (raf) return;
                     raf = requestAnimationFrame(() => {
                         raf = 0;
-                        try { dioxus.send([window.innerWidth, window.innerHeight]); } catch (_) {}
+                        try { dioxus.send({ type: 'resize', vw: window.innerWidth, vh: window.innerHeight }); } catch (_) {}
                     });
+                };
+                const onKey = (e) => {
+                    if (e && e.key === 'Escape') {
+                        e.preventDefault();
+                        try { dioxus.send({ type: 'esc' }); } catch (_) {}
+                    }
                 };
                 if (window.__chatwLbResize) {
                     window.removeEventListener('resize', window.__chatwLbResize);
                 }
+                if (window.__chatwLbEsc) {
+                    window.removeEventListener('keydown', window.__chatwLbEsc, true);
+                }
                 window.__chatwLbResize = onResize;
+                window.__chatwLbEsc = onKey;
                 window.addEventListener('resize', onResize, { passive: true });
+                window.addEventListener('keydown', onKey, true);
                 "#,
             );
-            while let Ok(arr) = ev.recv::<[f64; 2]>().await {
-                let (vw, vh) = (arr[0], arr[1]);
-                if vw > 100.0 && vh > 100.0 {
-                    viewport.set((vw, vh));
+            while let Ok(v) = ev.recv::<serde_json::Value>().await {
+                match v.get("type").and_then(|s| s.as_str()).unwrap_or("") {
+                    "esc" => {
+                        *GLOBAL_LIGHTBOX.write() = None;
+                        break;
+                    }
+                    "resize" => {
+                        let vw = v.get("vw").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                        let vh = v.get("vh").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                        if vw > 100.0 && vh > 100.0 {
+                            viewport.set((vw, vh));
+                        }
+                    }
+                    _ => {}
                 }
             }
         });
@@ -2885,11 +2918,15 @@ pub fn GlobalImageLightbox() -> Element {
         .map(|(fw, fh)| compute_lightbox_fit_box(fw, fh, vw, vh));
 
     if let Some((fw, fh)) = fit_box {
-        physics.peek().borrow_mut().set_bounds(fw, fh, vw, vh);
+        if let Ok(mut st) = physics.peek().try_borrow_mut() {
+            st.set_bounds(fw, fh, vw, vh);
+        }
     } else {
         let (bw, bh, v_w, v_h) = *bounds.peek();
         if bw > 0.0 && bh > 0.0 {
-            physics.peek().borrow_mut().set_bounds(bw, bh, v_w, v_h);
+            if let Ok(mut st) = physics.peek().try_borrow_mut() {
+                st.set_bounds(bw, bh, v_w, v_h);
+            }
         }
     }
 
@@ -2975,7 +3012,9 @@ pub fn GlobalImageLightbox() -> Element {
     };
 
     let close_lightbox = move || {
-        physics.peek().borrow_mut().reset_immediate();
+        if let Ok(mut st) = physics.peek().try_borrow_mut() {
+            st.reset_immediate();
+        }
         *GLOBAL_LIGHTBOX.write() = None;
     };
 
@@ -2992,7 +3031,11 @@ pub fn GlobalImageLightbox() -> Element {
     } else {
         String::new()
     };
-    let img_style = format!("transform: {};", physics.peek().borrow().format_transform());
+    let img_style = physics
+        .peek()
+        .try_borrow()
+        .map(|st| format!("transform: {};", st.format_transform()))
+        .unwrap_or_else(|_| "transform: translate3d(0.0px, 0.0px, 0) scale(1.000) rotate(0deg);".to_string());
     let clean_media_name = crate::storage::media_opt::strip_file_extension(&media.name);
     let dl_name = if clean_media_name.is_empty() {
         "chatw-image".to_string()
