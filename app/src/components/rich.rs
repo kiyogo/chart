@@ -32,6 +32,69 @@ use crate::{
 
 static SESSION_START_MS: OnceLock<i64> = OnceLock::new();
 
+/// Shared JS watchdog preamble for Dioxus `eval` AI pipelines (activity-reset stall guard + hard outer deadline).
+const AI_EVAL_WATCHDOG_PREAMBLE: &str = r#"
+let finished = false;
+let stallWatchdog = null;
+let maxWatchdog = null;
+let lastPct = 3;
+const clearWatchdogs = () => {
+  if (stallWatchdog !== null) { clearTimeout(stallWatchdog); stallWatchdog = null; }
+  if (maxWatchdog !== null) { clearTimeout(maxWatchdog); maxWatchdog = null; }
+};
+const emitOnce = (payload) => {
+  if (finished) return;
+  finished = true;
+  clearWatchdogs();
+  try { dioxus.send(payload); } catch (_) {}
+};
+const startWatchdogs = (stallMs = 10000, maxMs = 24000) => {
+  clearWatchdogs();
+  maxWatchdog = setTimeout(() => {
+    console.warn('[chatw-ai] outer deadline timeout at', lastPct + '%');
+    emitOnce({ type: 'failed', error: 'eval_outer_timeout', lastPct });
+  }, maxMs);
+  const resetWatchdog = () => {
+    if (finished) return;
+    if (stallWatchdog !== null) clearTimeout(stallWatchdog);
+    stallWatchdog = setTimeout(() => {
+      console.warn('[chatw-ai] inactivity watchdog timeout at', lastPct + '%');
+      emitOnce({ type: 'failed', error: 'eval_watchdog_timeout', lastPct });
+    }, stallMs);
+  };
+  resetWatchdog();
+  return resetWatchdog;
+};
+"#;
+
+/// Receives the next `eval` message bounded by `timeout_ms` on WASM so stalled pipelines never hang `eval.recv().await`.
+async fn eval_recv_with_timeout(
+    eval: &mut dioxus::document::Eval,
+    timeout_ms: i32,
+) -> Option<serde_json::Value> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let promise = js_sys::Promise::new(&mut |resolve, _| {
+            if let Some(win) = web_sys::window() {
+                let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, timeout_ms);
+            } else {
+                let _ = resolve.call0(&wasm_bindgen::JsValue::UNDEFINED);
+            }
+        });
+        let timeout_fut = std::pin::pin!(wasm_bindgen_futures::JsFuture::from(promise));
+        let recv_fut = std::pin::pin!(eval.recv::<serde_json::Value>());
+        match futures_util::future::select(recv_fut, timeout_fut).await {
+            futures_util::future::Either::Left((Ok(v), _)) => Some(v),
+            _ => None,
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = timeout_ms;
+        eval.recv::<serde_json::Value>().await.ok()
+    }
+}
+
 /// Returns true when a received message arrived live during the current session (not historical messages loaded on a new device).
 pub fn is_message_live_incoming(created_at: &str) -> bool {
     let boot_ms = *SESSION_START_MS.get_or_init(|| Utc::now().timestamp_millis());
@@ -691,18 +754,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             let js = format!(
                 r#"
                 (async () => {{
-                  let finished = false;
-                  let watchdog = null;
-                  let stallWatchdog = null;
-                  let maxWatchdog = null;
-                  const emitOnce = (payload) => {{
-                    if (finished) return;
-                    finished = true;
-                    if (watchdog !== null) {{ clearTimeout(watchdog); watchdog = null; }}
-                    if (stallWatchdog !== null) {{ clearTimeout(stallWatchdog); stallWatchdog = null; }}
-                    if (maxWatchdog !== null) {{ clearTimeout(maxWatchdog); maxWatchdog = null; }}
-                    try {{ dioxus.send(payload); }} catch (_) {{}}
-                  }};
+                  {AI_EVAL_WATCHDOG_PREAMBLE}
                   try {{
                     // 0. Register this loaded image (even if blurry/un-enhanced!) in local cross-chat PDQ/BLAKE3 dedup index
                     // so copying/pasting it into another chat NEVER creates a duplicate file on the server!
@@ -784,21 +836,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     }}
                     // 4. Live incoming image (or user tapped corner icon) -> blurred + AI shimmer + live progress!
                     dioxus.send({{ type: 'start', pct: 3 }});
-                    let lastPct = 3;
-                    let stallWatchdog = null;
-                    let maxWatchdog = setTimeout(() => {{
-                        console.warn('[chatw-ai] outer deadline timeout at', lastPct + '%');
-                        emitOnce({{ type: 'failed', error: 'eval_outer_timeout', lastPct }});
-                    }}, 45000);
-                    const resetWatchdog = () => {{
-                        if (finished) return;
-                        if (stallWatchdog !== null) clearTimeout(stallWatchdog);
-                        stallWatchdog = setTimeout(() => {{
-                            console.warn('[chatw-ai] inactivity watchdog timeout at', lastPct + '%');
-                            emitOnce({{ type: 'failed', error: 'eval_watchdog_timeout', lastPct }});
-                        }}, 18000);
-                    }};
-                    resetWatchdog();
+                    const resetWatchdog = startWatchdogs(10000, 24000);
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl(inputUrl, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
@@ -822,8 +860,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                             if (!finished) try {{ dioxus.send({{ type: 'progress', pct: n }}); }} catch (_) {{}}
                         }},
                     }});
-                    if (stallWatchdog !== null) {{ clearTimeout(stallWatchdog); stallWatchdog = null; }}
-                    if (maxWatchdog !== null) {{ clearTimeout(maxWatchdog); maxWatchdog = null; }}
+                    clearWatchdogs();
                     if (res && res.enhanced && res.url) {{
                         emitOnce({{ type: 'done', url: res.url, cacheHit: Boolean(res.cacheHit), origUrl: inputUrl }});
                     }} else {{
@@ -839,7 +876,7 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
             );
             let mut eval = dioxus::document::eval(&js);
             let mut handed_off_reveal = false;
-            while let Ok(v) = eval.recv::<serde_json::Value>().await {
+            while let Some(v) = eval_recv_with_timeout(&mut eval, 12_500).await {
                 if *ai_run_gen.peek() != my_gen {
                     break;
                 }
@@ -927,10 +964,11 @@ pub fn RichImage(data: ImageData, #[props(default)] is_live_incoming: bool) -> E
                     }
                 }
             }
-            // Guaranteed cleanup: if JS eval exited/aborted before emitting 'done'/'failed', never leave spinner stuck at 3%
+            // Guaranteed cleanup: if JS eval exited/aborted/timed out before emitting 'done'/'failed', never leave spinner stuck at 6%
             if *ai_run_gen.peek() == my_gen && !handed_off_reveal && *ai_loading.peek() {
                 ai_loading.set(false);
                 ai_revealing.set(false);
+                needs_on_demand_ai.set(true);
             }
         });
     };
@@ -2648,23 +2686,12 @@ pub fn GlobalImageLightbox() -> Element {
             let js = format!(
                 r#"
                 (async () => {{
-                  let finished = false;
-                  let watchdog = null;
-                  let stallWatchdog = null;
-                  let maxWatchdog = null;
-                  const emitOnce = (payload) => {{
-                    if (finished) return;
-                    finished = true;
-                    if (watchdog !== null) {{ clearTimeout(watchdog); watchdog = null; }}
-                    if (stallWatchdog !== null) {{ clearTimeout(stallWatchdog); stallWatchdog = null; }}
-                    if (maxWatchdog !== null) {{ clearTimeout(maxWatchdog); maxWatchdog = null; }}
-                    try {{ dioxus.send(payload); }} catch (_) {{}}
-                  }};
+                  {AI_EVAL_WATCHDOG_PREAMBLE}
                   try {{
                     if (!window.__chatwAiRestorer) {{ emitOnce({{ type: 'failed' }}); return; }}
                     // Let Lightbox Frame-0/Frame-1 paint smoothly at 60/120fps before kicking off GPU AI work!
                     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-                    watchdog = setTimeout(() => emitOnce({{ type: 'failed', error: 'lb_eval_watchdog_timeout' }}), 24000);
+                    const resetWatchdog = startWatchdogs(10000, 24000);
                     const res = await window.__chatwAiRestorer.restoreImageFromUrl({url_json}, {{
                         mediaId: {mid_json},
                         contentHash: {hash_json},
@@ -2673,12 +2700,21 @@ pub fn GlobalImageLightbox() -> Element {
                         forceRun: true,
                         priority: 'HIGH',
                         onStage1: (url) => {{
-                            if (!finished) try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
+                            if (!finished) {{
+                                resetWatchdog();
+                                try {{ dioxus.send({{ type: 'stage1', url }}); }} catch (_) {{}}
+                            }}
                         }},
                         onProgress: (pct) => {{
-                            if (!finished) try {{ dioxus.send({{ type: 'progress', pct: Number(pct) || 0 }}); }} catch (_) {{}}
+                            const n = Number(pct) || 0;
+                            if (n > lastPct) {{
+                                lastPct = n;
+                                resetWatchdog();
+                            }}
+                            if (!finished) try {{ dioxus.send({{ type: 'progress', pct: n }}); }} catch (_) {{}}
                         }},
                     }});
+                    clearWatchdogs();
                     if (res && res.enhanced && res.url) {{
                         emitOnce({{ type: 'done', url: res.url }});
                     }} else {{
@@ -2692,7 +2728,7 @@ pub fn GlobalImageLightbox() -> Element {
             );
             let mut eval = dioxus::document::eval(&js);
             let mut handed_off_reveal = false;
-            while let Ok(v) = eval.recv::<serde_json::Value>().await {
+            while let Some(v) = eval_recv_with_timeout(&mut eval, 12_500).await {
                 match v.get("type").and_then(|s| s.as_str()).unwrap_or("") {
                     "stage1" => {}
                     "progress" => {

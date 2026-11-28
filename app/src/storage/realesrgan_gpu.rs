@@ -1798,9 +1798,10 @@ where
                 Err(e) => return Err(e), // Do not permanently latch transient GPU init errors
             }
         }
-        match slot.as_mut().unwrap() {
-            Ok(eng) => f(eng),
-            Err(e) => Err(e.clone()),
+        match slot.as_mut() {
+            Some(Ok(eng)) => f(eng),
+            Some(Err(e)) => Err(e.clone()),
+            None => Err("gl_engine_uninitialized".into()),
         }
     })
 }
@@ -1958,7 +1959,10 @@ fn ensure_model_uploaded(eng: &mut RealEsrganGlEngine, model_id: &str, model_byt
             },
         );
     }
-    Ok(eng.models.get(model_id).unwrap().body.len())
+    eng.models
+        .get(model_id)
+        .map(|m| m.body.len())
+        .ok_or_else(|| format!("missing_uploaded_model:{model_id}"))
 }
 
 impl RealEsrganGlEngine {
@@ -2010,7 +2014,10 @@ impl RealEsrganGlEngine {
         let sr_tex = upload_rgba8_tex2d(&self.gl, ow_i, oh_i, None, true)?;
 
         let gl = &self.gl;
-        let mb = self.models.get(model_id).unwrap();
+        let mb = self
+            .models
+            .get(model_id)
+            .ok_or_else(|| format!("missing_uploaded_model:{model_id}"))?;
 
         gl.bind_vertex_array(Some(&self.vao));
         gl.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));

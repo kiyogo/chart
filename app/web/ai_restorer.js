@@ -97,7 +97,7 @@
       });
   }
 
-  function enqueueExclusive(fn, timeoutMs = 15000, highPriority = false) {
+  function enqueueExclusive(fn, timeoutMs = 12000, highPriority = false) {
     return new Promise((resolve) => {
       const item = { fn, timeoutMs, resolve };
       if (highPriority) highWaiters.push(item);
@@ -147,9 +147,9 @@
         }
       } catch (_) {}
     }
-    const resp = await withTimeout(fetch(cwsrUrl, { cache: 'force-cache' }), 10000, 'model_fetch');
+    const resp = await withTimeout(fetch(cwsrUrl, { cache: 'force-cache' }), 5000, 'model_fetch');
     if (!resp.ok) throw new Error(`Model fetch failed (${resp.status}): ${cwsrUrl}`);
-    const bytes = new Uint8Array(await withTimeout(resp.arrayBuffer(), 10000, 'model_read'));
+    const bytes = new Uint8Array(await withTimeout(resp.arrayBuffer(), 5000, 'model_read'));
     modelBytesMemCache.set(modelId, bytes);
     if (window.__chatwStorage && typeof window.__chatwStorage.putAiModel === 'function') {
       window.__chatwStorage.putAiModel(modelId, bytes, { version: version || '0.2.5.0' }).catch(() => {});
@@ -477,10 +477,15 @@
       if (typeof requestAnimationFrame === 'function') {
         let done = false;
         const finish = () => { if (!done) { done = true; resolve(); } };
-        const t = setTimeout(finish, 34);
-        requestAnimationFrame(() => { clearTimeout(t); finish(); });
+        const t = setTimeout(finish, 68);
+        // Wait 2 frames so Dioxus async signal -> VDOM patch -> browser paint commits before WASM/GPU work!
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            requestAnimationFrame(() => { clearTimeout(t); finish(); });
+          }, 0);
+        });
       } else {
-        setTimeout(resolve, 16);
+        setTimeout(resolve, 24);
       }
     });
   }
@@ -700,6 +705,9 @@
       const val = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
       if (val < flight.lastProgress && val < 100) return;
       flight.lastProgress = val;
+      if (window.__chatwAiRestorer) {
+        window.__chatwAiRestorer.lastRunDebug = { mediaId, stage: val, ts: Date.now() };
+      }
       for (const cb of flight.progressSubs) {
         try { cb(val); } catch (_) {}
       }
@@ -754,17 +762,19 @@
             } catch (_) {}
           }
         } else {
+          reportProgress(7);
+          await yieldUiSlice();
+          const fetchTimeoutMs = String(imageUrl || '').startsWith('blob:') ? 1200 : 2500;
           let blob = null;
           try {
-            const resp = await withTimeout(fetch(imageUrl), 3000, 'img_fetch');
+            const resp = await withTimeout(fetch(imageUrl), fetchTimeoutMs, 'img_fetch');
             if (resp.ok) {
-              blob = await withTimeout(resp.blob(), 3000, 'img_blob');
+              blob = await withTimeout(resp.blob(), fetchTimeoutMs, 'img_blob');
               srcBytes = blob.size;
             }
           } catch (fetchErr) {
             console.warn('[chatw-ai] fetch blob failed, falling back to HTMLImageElement:', fetchErr);
           }
-          reportProgress(7);
           let decodedMain = false;
           if (blob) {
             // Offload decode + getImageData off the main thread with bounded 2s timeout
@@ -869,7 +879,11 @@
       if (!canHardwareNeural && typeof meta.onStage1 === 'function' && wasm && typeof wasm.upscaleFsr1 === 'function') {
         try {
           const s1Progress = (pct) => reportProgress(10 + Math.round((Number(pct) || 0) * 0.72));
-          const s1Out = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, 1.22, s1Progress);
+          const s1Out = await withTimeout(
+            wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, 1.22, s1Progress),
+            4500,
+            'stage1_fsr1_gpu',
+          );
           if (s1Out && s1Out.ok && s1Out.canvas) {
             reportProgress(82);
             let s1Blob = null;
@@ -901,6 +915,7 @@
             }
           }
         } catch (s1Err) {
+          try { if (typeof wasm.abortActiveGpuJob === 'function') wasm.abortActiveGpuJob(); } catch (_) {}
           console.warn('[chatw-ai] stage1 fsr1 failed:', s1Err);
         }
       }
@@ -914,9 +929,14 @@
         if (stage1ObjectUrl) { try { URL.revokeObjectURL(stage1ObjectUrl); } catch (_) {} stage1ObjectUrl = null; }
         return { enhanced: false, skipped: true, reason: 'cancelled_offscreen', url: imageUrl };
       }
-      if (hw.webgl2Available && !hw.webgl2Software && wasm && typeof wasm.selectRealEsrganModel === 'function' && typeof wasm.restoreImageRealEsrgan === 'function') {
+      if (canHardwareNeural) {
         try {
-          const sel = wasm.selectRealEsrganModel(srcU8, procW, procH, origProfileJson, meta.modelId || '', srcBytes);
+          let sel = null;
+          try {
+            sel = wasm.selectRealEsrganModel(srcU8, procW, procH, origProfileJson, meta.modelId || '', srcBytes);
+          } catch (selErr) {
+            console.warn('[chatw-ai] selectRealEsrganModel error:', selErr);
+          }
           if (sel && sel.skip) {
             // If user opened image in Lightbox or clicked Enhance (`forceRun`), fall back to crisp edge-safe Luma CAS
             // instead of aborting, so text/UI/large high-contrast images still visibly sharpen without neural hallucination.
@@ -936,7 +956,11 @@
             reportProgress(pBase + 2);
             await yieldUiPaint();
             const scaledProgress = (pct) => reportProgress(pBase + Math.round((Number(pct) || 0) * pSpan / 100));
-            const srOut = await wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress);
+            const srOut = await withTimeout(
+              wasm.restoreImageRealEsrgan(srcU8, procW, procH, sel.modelId, modelBytes, origProfileJson, scaledProgress),
+              8000,
+              'stage2_realesrgan_gpu',
+            );
             if (srOut && srOut.ok && (srOut.canvas || srOut.rgba)) {
               res = srOut;
               // Spec 154: Neural SPAN & AnimeVideoV3 outputs already have clean learned edges;
@@ -1006,17 +1030,27 @@
               await yieldUiSlice();
             }
           }
-        } catch (_) {}
+        } catch (s2Err) {
+          try { if (typeof wasm.abortActiveGpuJob === 'function') wasm.abortActiveGpuJob(); } catch (_) {}
+          console.warn('[chatw-ai] stage2 neural failed, falling back:', s2Err);
+        }
       }
 
       const sharpness = skipNeuralSr ? 0.78 : 1.25;
       if (!skipNeuralSr && !res && !stage1FallbackBlob && wasm && typeof wasm.upscaleFsr1 === 'function') {
         try {
-          const gpuOut = await wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, sharpness, reportProgress);
+          const gpuOut = await withTimeout(
+            wasm.upscaleFsr1(srcU8, procW, procH, targetW, targetH, sharpness, reportProgress),
+            4500,
+            'fallback_fsr1_gpu',
+          );
           if (gpuOut && gpuOut.ok && (gpuOut.canvas || gpuOut.rgba)) {
             res = gpuOut;
           }
-        } catch (_) {}
+        } catch (fsrErr) {
+          try { if (typeof wasm.abortActiveGpuJob === 'function') wasm.abortActiveGpuJob(); } catch (_) {}
+          console.warn('[chatw-ai] fallback fsr1 failed, using CAS:', fsrErr);
+        }
       }
       const gpuMs = Math.round(performance.now() - tGpu0);
 
@@ -1290,7 +1324,7 @@
       }
 
       return entry;
-    }, 15000, highPriority).finally(() => {
+    }, 12000, highPriority).finally(() => {
       inFlightByKey.delete(cacheKey);
     });
 
